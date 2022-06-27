@@ -16,7 +16,6 @@
 #include "core/graph/contrib_ops/range_schema_defs.h"
 #include "core/graph/op.h"
 #include "core/mlas/inc/mlas.h"
-#include "core/graph/signal_ops/signal_defs.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"
 #include "onnx/defs/function.h"
 
@@ -369,7 +368,6 @@ void sparseCompatibleMatmulShapeInference(
   auto default_tensor_type = ctx.getInputType(input2Idx)->value_case();
   updateOutputShape(ctx, 0, resultShape, default_tensor_type);
 }
-
 
 bool ParseScalar(const TensorProto* initializer, int& value) {
   std::vector<int32_t> parsed_data;
@@ -2417,7 +2415,6 @@ void RegisterContribSchemas() {
         // }
         // updateOutputShape(ctx, 0, disentangled_attention_shape);
         propagateShapeFromInputToOutput(ctx, 0, 0);
-
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Snpe)
@@ -2534,10 +2531,6 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();
   }
-#endif
-
-#ifdef BUILD_MS_EXPERIMENTAL_OPS
-  onnxruntime::signal::RegisterSignalSchemas();
 #endif
 }
 
