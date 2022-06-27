@@ -102,7 +102,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.
 // See IControlFlowNode::SetupSubgraphExecutionInfo usage in the control flow kernels.
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
-                               const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                               gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger);
 

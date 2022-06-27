@@ -36,15 +36,13 @@ namespace onnxruntime {
 */
 class Tensor final {
  public:
-  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) {
-    return std::make_unique<Tensor>(p_type, shape, std::move(allocator));
-  }
 
-  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, void* p_data,
-                                        const OrtMemoryInfo& alloc, ptrdiff_t offset = 0,
-                                        gsl::span<const int64_t> strides = {}) {
-    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset, strides);
-  }
+// Prohibit new in the CPU provider. It is a shallow class that can be easily moved
+// no need for new.
+//#ifndef SHARED_PROVIDER
+//  static void* operator new(std::size_t n) noexcept(false) = delete;
+//  void* operator new[](std::size_t n) noexcept(false) = delete;
+//#endif
 
   Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
 

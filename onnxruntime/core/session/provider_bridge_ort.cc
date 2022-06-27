@@ -830,9 +830,23 @@ struct ProviderHostImpl : ProviderHost {
   const DataTransferManager& SessionState__GetDataTransferMgr(const SessionState* p) override { return p->GetDataTransferMgr(); }
 
   // Tensor (wrapped)
-  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) override { return std::make_unique<Tensor>(p_type, shape, std::move(allocator)); }
-  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset) override { return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset); }
-  void Tensor__operator_delete(Tensor* p) override { delete p; }
+  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) override { 
+    return std::make_unique<Tensor>(p_type, shape, std::move(allocator)); 
+  }
+
+  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset) override {
+    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset); 
+  }
+
+  std::unique_ptr<Tensor> Tensor__construct_default() override {
+    return std::make_unique<Tensor>(); 
+  }
+
+  virtual void Tensor__move_assign(Tensor& lhs, Tensor&& rhs) noexcept override {
+    lhs = std::move(rhs);
+  };
+
+  void Tensor__operator_delete(Tensor* p) noexcept override { delete p; }
 
   void Tensor__InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) override {
     Tensor::InitOrtValue(elt_type, shape, std::move(allocator), ort_value);

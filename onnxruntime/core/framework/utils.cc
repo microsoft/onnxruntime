@@ -668,7 +668,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
                                          feeds_fetches_info.fetches_mlvalue_idxs, fetches, {},
                                          logger));
   } else {
-    auto p_feeds = &feeds;
+    auto p_feeds = feeds;
     std::vector<OrtValue>* p_fetches = &fetches;
     std::vector<OrtValue> device_feeds;
     std::vector<OrtValue> device_fetches;
@@ -699,7 +699,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
     }
 
     ORT_RETURN_IF_ERROR(executor.Execute(session_state,
-                                         feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
+                                         feeds_fetches_info.feeds_mlvalue_idxs, p_feeds,
                                          feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, {},
                                          logger));
 
@@ -713,7 +713,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
 #endif
 
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
-                               const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                               gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger) {
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
