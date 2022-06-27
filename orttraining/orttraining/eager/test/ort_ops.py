@@ -196,6 +196,64 @@ class OrtOpTests(unittest.TestCase):
         assert torch.allclose(cpu_result, ort_result.cpu())
         assert cpu_result.dim() == ort_result.dim()
 
+    def test_resize(self):
+        device = self.get_device()
+
+        sizes = [[1], [1, 1], [2, 2], [1, 4]]
+
+        # Basic resize from empty Tensor
+        for size in sizes:
+            torch_size = torch.Size(size)
+            cpu_tensor = torch.tensor([])
+            ort_tensor = torch.tensor([]).to(device)
+
+            cpu_tensor.resize_(torch_size)
+            ort_tensor.resize_(torch_size)
+
+            self.assertEqual(cpu_tensor.size(), ort_tensor.size())
+
+        # Validate cases where we resize from a non-empty tensor
+        # to a larger tensor
+        cpu_tensor = torch.tensor([1.0, 2.0])
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_tensor.resize_(torch.Size([3]))
+        ort_tensor.resize_(torch.Size([3]))
+
+        self.assertEqual(cpu_tensor.size(), ort_tensor.size())
+        self.assertTrue(torch.allclose(cpu_tensor[:2], ort_tensor.cpu()[:2]))
+
+        # Validate case when calling resize with current shape & size
+        cpu_tensor = torch.tensor([1.0, 2.0])
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_tensor.resize_(torch.Size([2]))
+        ort_tensor.resize_(torch.Size([2]))
+
+        self.assertEqual(cpu_tensor.size(), ort_tensor.size())
+        self.assertTrue(torch.allclose(cpu_tensor, ort_tensor.cpu()))
+
+        # Validate case when calling resize with different shape but same size
+        cpu_tensor = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_tensor.resize_(torch.Size([1, 4]))
+        ort_tensor.resize_(torch.Size([1, 4]))
+
+        self.assertEqual(cpu_tensor.size(), ort_tensor.size())
+        self.assertTrue(torch.allclose(cpu_tensor, ort_tensor.cpu()))
+
+        # Validate cases where we resize from a non-empty tensor
+        # to a smaller tensor
+        cpu_tensor = torch.tensor([1.0, 2.0])
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_tensor.resize_(torch.Size([1]))
+        ort_tensor.resize_(torch.Size([1]))
+
+        self.assertEqual(cpu_tensor.size(), ort_tensor.size())
+        self.assertTrue(torch.allclose(cpu_tensor, ort_tensor.cpu()))
+
 
 if __name__ == "__main__":
     unittest.main()
