@@ -88,9 +88,9 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
 
   Tensor transposed_dY;
   Tensor transposed_Y;
-  std::vector<int64_t> transposed_input_dims;
+  TensorShapeVector transposed_input_dims;
   Tensor intermediate_output;  // output that the softmax implementation will write into while using transposed input
-  std::vector<size_t> permutation(rank);
+  InlinedVector<size_t> permutation(rank);
 
   if (is_transpose_required) {
     AllocatorPtr alloc;

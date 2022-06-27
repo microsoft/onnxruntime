@@ -37,12 +37,9 @@ namespace onnxruntime {
 class Tensor final {
  public:
 
-// Prohibit new in the CPU provider. It is a shallow class that can be easily moved
-// no need for new.
-//#ifndef SHARED_PROVIDER
-//  static void* operator new(std::size_t n) noexcept(false) = delete;
-//  void* operator new[](std::size_t n) noexcept(false) = delete;
-//#endif
+  // NB! Removing Create() methods in CPU EP. Still available in GPU. Strive not to allocate
+  // Tensor with new/delete as it is a shallow class and using it by value is just fine.
+  // Use InitOrtValue() methods to allocate for OrtValue.
 
   Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
 
