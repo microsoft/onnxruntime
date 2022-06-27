@@ -682,6 +682,29 @@ at::Tensor& out) {
   return out;
 }
 
+const at::Tensor& resize_(
+    const at::Tensor& self,
+    at::IntArrayRef size,
+    c10::optional<at::MemoryFormat> optional_memory_format) {
+  // TODO: handle named tensor...
+  // TODO: handle optional_memory_format
+
+  ORT_LOG_FN(self, size, optional_memory_format);
+  assert_tensor_supported(self);
+
+  auto& invoker = GetORTInvoker(self.device());
+
+  auto self_ort_value = create_ort_value(invoker, self);
+  auto& self_ort_tensor = self_ort_value.Get<onnxruntime::Tensor>();
+  auto* self_impl = dynamic_cast<ORTTensorImpl*>(self.unsafeGetTensorImpl());
+
+  onnxruntime::Tensor::InitOrtValue(self_ort_tensor.DataType(), onnxruntime::TensorShape(size.vec()),
+        invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), self_ort_value);
+
+  self_impl->set_tensor(self_ort_value);
+  return self;
+}
+
 
 } // namespace aten
 

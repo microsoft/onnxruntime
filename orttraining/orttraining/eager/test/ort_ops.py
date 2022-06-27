@@ -176,6 +176,22 @@ class OrtOpTests(unittest.TestCase):
         assert torch.allclose(cpu_result, ort_result.cpu())
         assert cpu_result.dim() == ort_result.dim()
 
+    def test_resize(self):
+        device = self.get_device()
+
+        sizes = [[1], [1, 1], [2, 2]]
+
+        # Basic resize from empty Tensor
+        for size in sizes:
+            torch_size = torch.Size(size)
+            cpu_tensor = torch.tensor([])
+            ort_tensor = torch.tensor([]).to(device)
+
+            cpu_tensor.resize_(torch_size)
+            ort_tensor.resize_(torch_size)
+
+            self.assertEqual(cpu_tensor.size(), ort_tensor.size())
+
 
 if __name__ == "__main__":
     unittest.main()
