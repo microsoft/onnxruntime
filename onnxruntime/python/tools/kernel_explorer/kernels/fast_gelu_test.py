@@ -26,6 +26,7 @@ def fast_gelu(x, bias):
     y = 0.5 * x * (1 + np.tanh(0.797885 * x + 0.035677 * x * x * x))
     return y
 
+
 @pytest.mark.skip(reason="called by test_fast_gelu_all_sizes")
 def test_fast_gelu(x_size, bias_size, dtype, func):
     np.random.seed(0)
@@ -45,9 +46,8 @@ def test_fast_gelu(x_size, bias_size, dtype, func):
     np.testing.assert_allclose(y_ref, y, rtol=1e-02)
 
 
-test_cases = [((2, 16), 16), 
-              ((1, 2, 768), 768),
-              ((1, 2, 1024), 1024)]
+test_cases = [((2, 16), 16), ((1, 2, 768), 768), ((1, 2, 1024), 1024)]
+
 
 @pytest.mark.parametrize("x_size, bias_size", test_cases)
 def test_fast_gelu_all_sizes(x_size, bias_size):
@@ -55,6 +55,7 @@ def test_fast_gelu_all_sizes(x_size, bias_size):
     for dtype in dtypes:
         for f in dtype_to_funcs(dtype):
             test_fast_gelu(x_size, bias_size, dtype, f)
+
 
 def profile_vector_add_func(batch_size, seq_len, hidden_size, dtype, func):
     x_size = [batch_size, seq_len, hidden_size * 3]
@@ -70,7 +71,15 @@ def profile_vector_add_func(batch_size, seq_len, hidden_size, dtype, func):
     f = getattr(ke, func)
     va = f(x_d, bias_d, y_d, x.size, bias.size)
     t = va.Profile()
-    print(dtype, batch_size, seq_len, hidden_size, f, f"{t*1000:.2f} us", f"{(x.size*2+bias.size)*x.itemsize*1e3/t/1e9:.2f} GB/s")
+    print(
+        dtype,
+        batch_size,
+        seq_len,
+        hidden_size,
+        f, 
+        f"{t*1000:.2f} us", f"{(x.size*2+bias.size)*x.itemsize*1e3/t/1e9:.2f} GB/s",
+    )
+
 
 def profile():
     batch_size = [1]
@@ -84,6 +93,7 @@ def profile():
                     for f in dtype_to_funcs(dt):
                         profile_vector_add_func(bs, sl, hs, dt, f)
                     print()
+
 
 if __name__ == "__main__":
     profile()
