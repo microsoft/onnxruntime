@@ -446,7 +446,7 @@ static void WindowFunction(
   }
 
   auto model =
-      LearningModelBuilder::Create(13)
+      LearningModelBuilder::Create(17)
               .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", TensorKind::Int64, scalar_shape))
               .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", kind, output_shape))
               .Operators().Add(window_operator)
@@ -534,7 +534,7 @@ static void DiscreteFourierTransform_2D() {
   printf("\n  Is Onesided: false");
 
   auto builder =
-      LearningModelBuilder::Create(13)
+      LearningModelBuilder::Create(17)
         .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.Signal", TensorKind::Float, input_shape))
         .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Spectra", TensorKind::Float, output_shape))
         .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Inverse", TensorKind::Float, output_shape))
@@ -666,7 +666,7 @@ static void DiscreteFourierTransform(
   printf("\n  Is Onesided: %s", is_onesided ? "true" : "false");
 
   auto model =
-    LearningModelBuilder::Create(13)
+    LearningModelBuilder::Create(17)
       .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.Signal", TensorKind::Float, input_shape))
       .Inputs().AddConstant(L"Input.DFTLength", TensorInt64Bit::CreateFromArray({}, {INT64(dft_length)}))
       .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Spectra", TensorKind::Float, output_shape))
@@ -770,7 +770,7 @@ static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
   auto dft_length = TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)});
 
   auto model =
-      LearningModelBuilder::Create(13)
+      LearningModelBuilder::Create(17)
           .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, input_shape))
           .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.STFT", TensorKind::Float, output_shape))
           .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.HannWindow", TensorKind::Float, {INT64(dft_size)}))
@@ -835,7 +835,7 @@ static void ModelBuilding_MelWeightMatrix() {
 #if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
   std::vector<int64_t> output_shape = {INT64(9), INT64(8)};
   auto builder =
-    LearningModelBuilder::Create(13)
+    LearningModelBuilder::Create(17)
       .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelWeightMatrix", TensorKind::Float, output_shape))
       .Operators().Add(Operator(L"MelWeightMatrix")
         .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(8)}))
@@ -877,7 +877,7 @@ static void MelSpectrogramOnThreeToneSignal(
   std::vector<int64_t> mel_spectrogram_shape = {INT64(batch_size), 1, INT64(n_dfts), INT64(n_mel_bins)};
 
   auto builder =
-    LearningModelBuilder::Create(13)
+    LearningModelBuilder::Create(17)
       .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, signal_shape))
       .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelSpectrogram", TensorKind::Float, mel_spectrogram_shape))
       .Operators().Add(Operator(L"HannWindow")
@@ -1255,7 +1255,7 @@ static void DiscreteFourierTransformInverse(size_t axis) {
   std::vector<int64_t> output_shape = {2, 5, 8, 2};
 
   auto model =
-      LearningModelBuilder::Create(13)
+      LearningModelBuilder::Create(17)
           .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, shape))
           .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Spectra", TensorKind::Float, output_shape))
           .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Inverse", TensorKind::Float, output_shape))
