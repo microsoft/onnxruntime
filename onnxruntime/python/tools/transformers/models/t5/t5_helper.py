@@ -14,7 +14,7 @@ import torch
 from t5_decoder import T5Decoder, T5DecoderHelper, T5DecoderInit
 from t5_encoder import T5Encoder, T5EncoderHelper
 from t5_encoder_decoder_init import T5EncoderDecoderInit, T5EncoderDecoderInitHelper
-from transformers import T5ForConditionalGeneration
+from transformers import MT5ForConditionalGeneration, T5ForConditionalGeneration
 
 from onnxruntime import InferenceSession
 
@@ -27,6 +27,7 @@ from optimizer import optimize_model
 logger = logging.getLogger(__name__)
 
 PRETRAINED_T5_MODELS = ["t5-small", "t5-base", "t5-large", "t5-3b", "t5-11b"]
+PRETRAINED_MT5_MODELS = ["google/mt5-small", "google/mt5-base", "google/mt5-large", "google/mt5-xl", "google/mt5-xxl"]
 
 
 class T5Helper:
@@ -56,8 +57,8 @@ class T5Helper:
 
         model_name += suffix
 
-        dir = os.path.join(output_dir, model_name) if new_folder else output_dir
-        return os.path.join(dir, model_name + ".onnx")
+        directory = os.path.join(output_dir, model_name) if new_folder else output_dir
+        return os.path.join(directory, model_name + ".onnx")
 
     @staticmethod
     def load_model(
@@ -65,6 +66,7 @@ class T5Helper:
         cache_dir: str,
         device: torch.device,
         merge_encoder_and_decoder_init: bool = True,
+        model_type: str = "t5",
     ) -> Dict[str, torch.nn.Module]:
         """Load model given a pretrained name or path, then build models for ONNX conversion.
 
@@ -73,11 +75,16 @@ class T5Helper:
             cache_dir (str): cache directory
             device (torch.device): device to run the model
             merge_encoder_and_decoder_init (bool, optional): Whether merge encoder and decoder initialization into one ONNX model. Defaults to True.
-
+            is_mt5 (bool, optional): whether the model is MT5 instead of T5
         Returns:
             Dict[str, torch.nn.Module]: mapping from name to modules for ONNX conversion.
         """
-        model = T5ForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
+        if model_type == "t5":
+            model = T5ForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
+        elif model_type == "mt5":
+            model = MT5ForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
+        else:
+            raise ValueError("only support mode_type=t5 or mt5")
 
         decoder = T5Decoder(model.decoder, model.lm_head, model.config)
         decoder.eval().to(device)
@@ -230,7 +237,7 @@ class T5Helper:
         """Optimize ONNX model with an option to convert it to use mixed precision."""
         m = optimize_model(
             onnx_model_path,
-            model_type="bert",
+            model_type="bert",  # TODO: support optimization for t5
             num_heads=num_attention_heads,
             hidden_size=hidden_size,
             opt_level=0,
@@ -243,7 +250,7 @@ class T5Helper:
             else:
                 m.convert_model_float32_to_float16(cast_input_output=False)
 
-        m.save_model_to_file(optimized_model_path, use_external_data_format)
+        m.save_model_to_file(optimized_model_path, use_external_data_format, all_tensors_to_one_file=True)
 
     @staticmethod
     def verify_onnx(

@@ -1382,17 +1382,31 @@ ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetCustomMetadataMapKeys,
     // To guard against overflow in the next step where we compute bytes to allocate
     SafeInt<size_t> alloc_count(count);
 
+    InlinedVector<Ort::AllocatedStringPtr> string_holders;
+    string_holders.reserve(count);
+
+    auto deletor = Ort::detail::AllocatedFree(allocator);
     // alloc_count * sizeof(...) will throw if there was an overflow which will be caught in API_IMPL_END
     // and be returned to the user as a status
     char** p = reinterpret_cast<char**>(allocator->Alloc(allocator, alloc_count * sizeof(char*)));
     assert(p != nullptr);
-    auto map_iter = custom_metadata_map.cbegin();
+
+    // StrDup may throw
+    std::unique_ptr<void, decltype(deletor)> array_guard(p, deletor);
+
     int64_t i = 0;
-    while (map_iter != custom_metadata_map.cend()) {
-      p[i++] = StrDup(map_iter->first, allocator);
-      ++map_iter;
+    for (const auto& e : custom_metadata_map) {
+      auto* s = StrDup(e.first, allocator);
+      string_holders.push_back(Ort::AllocatedStringPtr(s, deletor));
+      p[i++] = s;
     }
+
+    for (auto& s : string_holders) {
+      s.release();
+    }
+
     *keys = p;
+    array_guard.release();
   }
 
   *num_keys = static_cast<int64_t>(count);
