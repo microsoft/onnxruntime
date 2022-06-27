@@ -183,6 +183,9 @@ class QDQMatMul(QDQOperatorBase):
             # only support per-channel quantization on weight
             if self.quantizer.is_per_channel() and find_by_name(tensor_name, self.quantizer.model.initializer()):
                 channel_axis = self.quantizer.qdq_op_type_per_channel_support_to_axis.get(node.op_type, 1)
-                self.quantizer.quantize_tensor_per_channel(tensor_name, channel_axis)
+                if channel_axis is not None:
+                    self.quantizer.quantize_tensor_per_channel(tensor_name, channel_axis)
+                else:
+                    self.quantizer.quantize_tensor(tensor_name)
             else:
                 self.quantizer.quantize_tensor(tensor_name)
