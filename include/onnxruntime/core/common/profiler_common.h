@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include <unordered_map>
+#include <string>
 
 namespace onnxruntime {
 namespace profiling {
@@ -59,6 +60,10 @@ class EpProfiler {
   virtual void Start(uint64_t){};                                       // called before op start, accept an id as argument to identify the op
   virtual void Stop(uint64_t){};                                        // called after op stop, accept an id as argument to identify the op
 };
+
+// Demangle C++ symbols
+std::string demangle(const char* name);
+std::string demangle(const std::string& name);
 
 }  //namespace profiling
 }  //namespace onnxruntime
