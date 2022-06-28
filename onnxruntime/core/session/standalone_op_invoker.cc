@@ -89,7 +89,7 @@ using StandAloneNodesMap = InlinedHashMap<const onnxruntime::OpKernel*, NodePtr>
 
 class NodeRepo {
  public:
-  static NodeRepo& GetInstane() {
+  static NodeRepo& GetInstance() {
     static NodeRepo node_repo;
     return node_repo;
   }
@@ -121,13 +121,13 @@ class NodeRepo {
     }
     if (expect_input_count != static_cast<size_t>(input_count)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "invalid node input count: ", std::to_string(input_count),
-                             ", expect: ", std::to_string(expect_input_count));
+                             "invalid node input count: ", input_count,
+                             ", expect: ", expect_input_count);
     }
     if (expect_output_count != static_cast<size_t>(output_count)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "invalid node output count", std::to_string(output_count),
-                             ", expect: ", std::to_string(expect_output_count));
+                             "invalid node output count", output_count,
+                             ", expect: ", expect_output_count);
     }
     return Status::OK();
   }
@@ -408,7 +408,7 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
   static FuncManager kFuncMgr;
   status = kernel_create_info->kernel_create_func(kFuncMgr, tmp_kernel_info, op_kernel);
   ORT_RETURN_IF_ERROR(status);
-  status = NodeRepo::GetInstane().AddNode(op_kernel.get(), std::move(node_ptr));
+  status = NodeRepo::GetInstance().AddNode(op_kernel.get(), std::move(node_ptr));
   ORT_RETURN_IF_ERROR(status);
   *op = reinterpret_cast<OrtOp*>(op_kernel.release());
   return status;
@@ -424,7 +424,7 @@ onnxruntime::Status InvokeOp(_In_ const OrtKernelContext* context,
   AllocatorPtr allocator{};
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
   auto kernel = reinterpret_cast<const OpKernel*>(ort_op);
-  ORT_RETURN_IF_ERROR(NodeRepo::GetInstane().ValidateInputOutputCounts(kernel, input_count, output_count));
+  ORT_RETURN_IF_ERROR(NodeRepo::GetInstance().ValidateInputOutputCounts(kernel, input_count, output_count));
   StandAloneKernelContext standalone_kernel_ctx(input_values,
                                                 input_count,
                                                 output_values,
@@ -514,7 +514,7 @@ ORT_API_STATUS_IMPL(OrtApis::InvokeOp,
 ORT_API(void, OrtApis::ReleaseOp, _Frees_ptr_opt_ OrtOp* op) {
   if (op) {
     auto kernel = reinterpret_cast<onnxruntime::OpKernel*>(op);
-    onnxruntime::standalone::NodeRepo::GetInstane().RemoveNode(kernel);
+    onnxruntime::standalone::NodeRepo::GetInstance().RemoveNode(kernel);
     delete kernel;
   }
 }
