@@ -109,7 +109,7 @@ void CALLBACK QueryPad(IMLOperatorSupportQueryContextPrivate* context, /*out*/ b
     MLOperatorAttributes attributes(context);
     
     std::vector<int32_t> padding = attributes.GetOptionalAttributeVectorInt32(AttrName::Pads);
-    *isSupported = std::any_of(padding.begin(), padding.end(), [](int32_t padCount) {return padCount < 0; });
+    *isSupported = std::none_of(padding.begin(), padding.end(), [](int32_t padCount) {return padCount < 0; });
 }
 
 DML_OP_DEFINE_CREATION_FUNCTION(Pad7, VersionedKernel<DmlOperatorPadding, 7>);
