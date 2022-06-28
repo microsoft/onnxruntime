@@ -646,10 +646,11 @@ common::Status ExecuteGraph(const SessionState& session_state,
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                                    const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
-                                   const OrtValueCachePtr& cache) {
+                                   const OrtValueCachePtr& cache,
+                                   int32_t partial_graph_index) {
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
-  PartialExecutor executor{state, cache};
+  PartialExecutor executor{state, cache, partial_graph_index};
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
 
