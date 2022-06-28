@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -16,20 +16,25 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxSequence_getStringKeys
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
+    jobjectArray output = NULL;
     // Extract element
     OrtValue* element;
-    checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,index,allocator,&element));
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,index,allocator,&element));
+    if (code == ORT_OK) {
+      // Extract keys from element
+      OrtValue* keys;
+      code = checkOrtStatus(jniEnv,api,api->GetValue(element,0,allocator,&keys));
 
-    // Extract keys from element
-    OrtValue* keys;
-    checkOrtStatus(jniEnv,api,api->GetValue(element,0,allocator,&keys));
+      if (code == ORT_OK) {
+        // Convert to Java String array
+        output = createStringArrayFromTensor(jniEnv, api, allocator, keys);
+        // Release if valid
+        api->ReleaseValue(element);
+      }
 
-    // Convert to Java String array
-    jobjectArray output = createStringArrayFromTensor(jniEnv, api, allocator, keys);
-
-    api->ReleaseValue(keys);
-    api->ReleaseValue(element);
-
+      // Keys is valid, so release
+      api->ReleaseValue(keys);
+    }
     return output;
 }
 
@@ -43,19 +48,25 @@ JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_OnnxSequence_getLongKeys
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
+    jlongArray output = NULL;
     // Extract element
     OrtValue* element;
-    checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,index,allocator,&element));
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,index,allocator,&element));
+    if (code == ORT_OK) {
+      // Extract keys from element
+      OrtValue* keys;
+      code = checkOrtStatus(jniEnv,api,api->GetValue(element,0,allocator,&keys));
 
-    // Extract keys from element
-    OrtValue* keys;
-    checkOrtStatus(jniEnv,api,api->GetValue(element,0,allocator,&keys));
+      if (code == ORT_OK) {
+        // Convert to Java long array
+        output = createLongArrayFromTensor(jniEnv, api, keys);
+        // Release if valid
+        api->ReleaseValue(element);
+      }
 
-    jlongArray output = createLongArrayFromTensor(jniEnv, api, keys);
-
-    api->ReleaseValue(keys);
-    api->ReleaseValue(element);
-
+      // Keys is valid, so release
+      api->ReleaseValue(keys);
+    }
     return output;
 }
 
@@ -69,20 +80,25 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxSequence_getStringValues
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
+    jobjectArray output = NULL;
     // Extract element
     OrtValue* element;
-    checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,index,allocator,&element));
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,index,allocator,&element));
+    if (code == ORT_OK) {
+      // Extract values from element
+      OrtValue* values;
+      code = checkOrtStatus(jniEnv,api,api->GetValue(element,1,allocator,&values));
 
-    // Extract values from element
-    OrtValue* values;
-    checkOrtStatus(jniEnv,api,api->GetValue(element,1,allocator,&values));
+      if (code == ORT_OK) {
+        // Convert to Java String array
+        output = createStringArrayFromTensor(jniEnv, api, allocator, values);
+        // Release if valid
+        api->ReleaseValue(element);
+      }
 
-    // Convert to Java String array
-    jobjectArray output = createStringArrayFromTensor(jniEnv, api, allocator, values);
-
-    api->ReleaseValue(values);
-    api->ReleaseValue(element);
-
+      // values is valid, so release
+      api->ReleaseValue(values);
+    }
     return output;
 }
 
@@ -96,19 +112,25 @@ JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_OnnxSequence_getLongValues
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
+    jlongArray output = NULL;
     // Extract element
     OrtValue* element;
-    checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,index,allocator,&element));
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,index,allocator,&element));
+    if (code == ORT_OK) {
+      // Extract values from element
+      OrtValue* values;
+      code = checkOrtStatus(jniEnv,api,api->GetValue(element,1,allocator,&values));
 
-    // Extract values from element
-    OrtValue* values;
-    checkOrtStatus(jniEnv,api,api->GetValue(element,1,allocator,&values));
+      if (code == ORT_OK) {
+        // Convert to Java long array
+        output = createLongArrayFromTensor(jniEnv, api, values);
+        // Release if valid
+        api->ReleaseValue(element);
+      }
 
-    jlongArray output = createLongArrayFromTensor(jniEnv, api, values);
-
-    api->ReleaseValue(values);
-    api->ReleaseValue(element);
-
+      // values is valid, so release
+      api->ReleaseValue(values);
+    }
     return output;
 }
 
@@ -122,19 +144,25 @@ JNIEXPORT jfloatArray JNICALL Java_ai_onnxruntime_OnnxSequence_getFloatValues
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
+    jfloatArray output = NULL;
     // Extract element
     OrtValue* element;
-    checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,index,allocator,&element));
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,index,allocator,&element));
+    if (code == ORT_OK) {
+      // Extract values from element
+      OrtValue* values;
+      code = checkOrtStatus(jniEnv,api,api->GetValue(element,1,allocator,&values));
 
-    // Extract values from element
-    OrtValue* values;
-    checkOrtStatus(jniEnv,api,api->GetValue(element,1,allocator,&values));
+      if (code == ORT_OK) {
+        // Convert to Java float array
+        output = createFloatArrayFromTensor(jniEnv, api, values);
+        // Release if valid
+        api->ReleaseValue(element);
+      }
 
-    jfloatArray output = createFloatArrayFromTensor(jniEnv, api,values);
-
-    api->ReleaseValue(values);
-    api->ReleaseValue(element);
-
+      // values is valid, so release
+      api->ReleaseValue(values);
+    }
     return output;
 }
 
@@ -148,19 +176,25 @@ JNIEXPORT jdoubleArray JNICALL Java_ai_onnxruntime_OnnxSequence_getDoubleValues
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
+    jdoubleArray output = NULL;
     // Extract element
     OrtValue* element;
-    checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,index,allocator,&element));
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,index,allocator,&element));
+    if (code == ORT_OK) {
+      // Extract values from element
+      OrtValue* values;
+      code = checkOrtStatus(jniEnv,api,api->GetValue(element,1,allocator,&values));
 
-    // Extract values from element
-    OrtValue* values;
-    checkOrtStatus(jniEnv,api,api->GetValue(element,1,allocator,&values));
+      if (code == ORT_OK) {
+        // Convert to Java double array
+        output = createDoubleArrayFromTensor(jniEnv, api, values);
+        // Release if valid
+        api->ReleaseValue(element);
+      }
 
-    jdoubleArray output = createDoubleArrayFromTensor(jniEnv, api,values);
-
-    api->ReleaseValue(values);
-    api->ReleaseValue(element);
-
+      // values is valid, so release
+      api->ReleaseValue(values);
+    }
     return output;
 }
 
@@ -176,22 +210,34 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxSequence_getStrings
     OrtValue* sequence = (OrtValue*) handle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
 
+    jobjectArray outputArray = NULL;
+
     // Get the element count of this sequence
     size_t count;
-    checkOrtStatus(jniEnv,api,api->GetValueCount(sequence,&count));
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetValueCount(sequence,&count));
+    if (code == ORT_OK) {
+      jclass stringClazz = (*jniEnv)->FindClass(jniEnv,"java/lang/String");
+      outputArray = (*jniEnv)->NewObjectArray(jniEnv,safecast_size_t_to_jsize(count),stringClazz, NULL);
+      for (size_t i = 0; i < count; i++) {
+          // Extract element
+          OrtValue* element;
+          code = checkOrtStatus(jniEnv,api,api->GetValue(sequence,(int)i,allocator,&element));
+          if (code == ORT_OK) {
+            jobject str = createStringFromStringTensor(jniEnv,api,allocator,element);
+            if (str == NULL) {
+              api->ReleaseValue(element);
+              // bail out as exception has been thrown
+              return NULL;
+            }
+            (*jniEnv)->SetObjectArrayElement(jniEnv, outputArray, i, str);
 
-    jclass stringClazz = (*jniEnv)->FindClass(jniEnv,"java/lang/String");
-    jobjectArray outputArray = (*jniEnv)->NewObjectArray(jniEnv,safecast_size_t_to_jsize(count),stringClazz, NULL);
-    for (size_t i = 0; i < count; i++) {
-        // Extract element
-        OrtValue* element;
-        checkOrtStatus(jniEnv,api,api->GetValue(sequence,(int)i,allocator,&element));
-
-        createStringFromStringTensor(jniEnv,api,allocator,element);
-
-        api->ReleaseValue(element);
+            api->ReleaseValue(element);
+          } else {
+              // bail out as exception has been thrown
+              return NULL;
+          }
+      }
     }
-
     return outputArray;
 }
 
@@ -206,32 +252,46 @@ JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_OnnxSequence_getLongs
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtValue* sequence = (OrtValue*) handle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
+    jlongArray outputArray = NULL;
 
     // Get the element count of this sequence
     size_t count;
-    checkOrtStatus(jniEnv,api,api->GetValueCount(sequence,&count));
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetValueCount(sequence,&count));
+    if (code == ORT_OK) {
+      int64_t* values;
+      code = checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(int64_t)*count,(void**)&values));
+      if (code == ORT_OK) {
+        for (size_t i = 0; i < count; i++) {
+            // Extract element
+            OrtValue* element;
+            code = checkOrtStatus(jniEnv,api,api->GetValue(sequence,(int)i,allocator,&element));
+            if (code == ORT_OK) {
+              // Extract the values
+              int64_t* arr;
+              code = checkOrtStatus(jniEnv,api,api->GetTensorMutableData(element,(void**)&arr));
+              if (code == ORT_OK) {
+                values[i] = arr[0];
+              } else {
+                // bail out as exception has been thrown
+                api->ReleaseValue(element);
+                checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,values));
+                return NULL;
+              }
 
-    int64_t* values;
-    checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(int64_t)*count,(void**)&values));
+              api->ReleaseValue(element);
+            } else {
+              // bail out as exception has been thrown
+              checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,values));
+              return NULL;
+            }
+        }
 
-    for (size_t i = 0; i < count; i++) {
-        // Extract element
-        OrtValue* element;
-        checkOrtStatus(jniEnv,api,api->GetValue(sequence,(int)i,allocator,&element));
+        outputArray = (*jniEnv)->NewLongArray(jniEnv,safecast_size_t_to_jsize(count));
+        (*jniEnv)->SetLongArrayRegion(jniEnv, outputArray,0,safecast_size_t_to_jsize(count),(jlong*)values);
 
-        // Extract the values
-        int64_t* arr;
-        checkOrtStatus(jniEnv,api,api->GetTensorMutableData(element,(void**)&arr));
-        values[i] = arr[0];
-
-        api->ReleaseValue(element);
+        checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,values));
+      }
     }
-
-    jlongArray outputArray = (*jniEnv)->NewLongArray(jniEnv,safecast_size_t_to_jsize(count));
-    (*jniEnv)->SetLongArrayRegion(jniEnv, outputArray,0,safecast_size_t_to_jsize(count),(jlong*)values);
-
-    checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,values));
-
     return outputArray;
 }
 
@@ -246,32 +306,46 @@ JNIEXPORT jfloatArray JNICALL Java_ai_onnxruntime_OnnxSequence_getFloats
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtValue* sequence = (OrtValue*) handle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
+    jfloatArray outputArray = NULL;
 
     // Get the element count of this sequence
     size_t count;
-    checkOrtStatus(jniEnv,api,api->GetValueCount(sequence,&count));
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetValueCount(sequence,&count));
+    if (code == ORT_OK) {
+      float* values;
+      code = checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(float)*count,(void**)&values));
+      if (code == ORT_OK) {
+        for (size_t i = 0; i < count; i++) {
+            // Extract element
+            OrtValue* element;
+            code = checkOrtStatus(jniEnv,api,api->GetValue(sequence,(int)i,allocator,&element));
+            if (code == ORT_OK) {
+              // Extract the values
+              float* arr;
+              code = checkOrtStatus(jniEnv,api,api->GetTensorMutableData(element,(void**)&arr));
+              if (code == ORT_OK) {
+                values[i] = arr[0];
+              } else {
+                // bail out as exception has been thrown
+                api->ReleaseValue(element);
+                checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,values));
+                return NULL;
+              }
 
-    float* values;
-    checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(float)*count,(void**)&values));
+              api->ReleaseValue(element);
+            } else {
+              // bail out as exception has been thrown
+              checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,values));
+              return NULL;
+            }
+        }
 
-    for (size_t i = 0; i < count; i++) {
-        // Extract element
-        OrtValue* element;
-        checkOrtStatus(jniEnv,api,api->GetValue(sequence,(int)i,allocator,&element));
+        outputArray = (*jniEnv)->NewFloatArray(jniEnv,safecast_size_t_to_jsize(count));
+        (*jniEnv)->SetFloatArrayRegion(jniEnv, outputArray,0,safecast_size_t_to_jsize(count),values);
 
-        // Extract the values
-        float* arr;
-        checkOrtStatus(jniEnv,api,api->GetTensorMutableData(element,(void**)&arr));
-        values[i] = arr[0];
-
-        api->ReleaseValue(element);
+        checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,values));
+      }
     }
-
-    jfloatArray outputArray = (*jniEnv)->NewFloatArray(jniEnv,safecast_size_t_to_jsize(count));
-    (*jniEnv)->SetFloatArrayRegion(jniEnv,outputArray,0,safecast_size_t_to_jsize(count),values);
-
-    checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,values));
-
     return outputArray;
 }
 
@@ -286,32 +360,46 @@ JNIEXPORT jdoubleArray JNICALL Java_ai_onnxruntime_OnnxSequence_getDoubles
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtValue* sequence = (OrtValue*) handle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
+    jdoubleArray outputArray = NULL;
 
     // Get the element count of this sequence
     size_t count;
-    checkOrtStatus(jniEnv,api,api->GetValueCount(sequence,&count));
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetValueCount(sequence,&count));
+    if (code == ORT_OK) {
+      double* values;
+      code = checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(double)*count,(void**)&values));
+      if (code == ORT_OK) {
+        for (size_t i = 0; i < count; i++) {
+            // Extract element
+            OrtValue* element;
+            code = checkOrtStatus(jniEnv,api,api->GetValue(sequence,(int)i,allocator,&element));
+            if (code == ORT_OK) {
+              // Extract the values
+              double* arr;
+              code = checkOrtStatus(jniEnv,api,api->GetTensorMutableData(element,(void**)&arr));
+              if (code == ORT_OK) {
+                values[i] = arr[0];
+              } else {
+                // bail out as exception has been thrown
+                api->ReleaseValue(element);
+                checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,values));
+                return NULL;
+              }
 
-    double* values;
-    checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(double)*count,(void**)&values));
+              api->ReleaseValue(element);
+            } else {
+              // bail out as exception has been thrown
+              checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,values));
+              return NULL;
+            }
+        }
 
-    for (size_t i = 0; i < count; i++) {
-        // Extract element
-        OrtValue* element;
-        checkOrtStatus(jniEnv,api,api->GetValue(sequence,(int)i,allocator,&element));
+        outputArray = (*jniEnv)->NewDoubleArray(jniEnv,safecast_size_t_to_jsize(count));
+        (*jniEnv)->SetDoubleArrayRegion(jniEnv, outputArray,0,safecast_size_t_to_jsize(count),values);
 
-        // Extract the values
-        double* arr;
-        checkOrtStatus(jniEnv,api,api->GetTensorMutableData(element,(void**)&arr));
-        values[i] = arr[0];
-
-        api->ReleaseValue(element);
+        checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,values));
+      }
     }
-
-    jdoubleArray outputArray = (*jniEnv)->NewDoubleArray(jniEnv,safecast_size_t_to_jsize(count));
-    (*jniEnv)->SetDoubleArrayRegion(jniEnv,outputArray,0,safecast_size_t_to_jsize(count),values);
-
-    checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,values));
-
     return outputArray;
 }
 

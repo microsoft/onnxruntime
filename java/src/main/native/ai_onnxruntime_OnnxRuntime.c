@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2022 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -33,22 +33,24 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxRuntime_getAvailableProvi
   int numProviders = 0;
 
   // Extract the provider array
-  checkOrtStatus(jniEnv,api,api->GetAvailableProviders(&providers,&numProviders));
+  jobjectArray providerArray = NULL;
+  OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetAvailableProviders(&providers,&numProviders));
+  if (code == ORT_OK) {
+    // Convert to Java String Array
+    char *stringClassName = "java/lang/String";
+    jclass stringClazz = (*jniEnv)->FindClass(jniEnv, stringClassName);
+    providerArray = (*jniEnv)->NewObjectArray(jniEnv,numProviders,stringClazz,NULL);
 
-  // Convert to Java String Array
-  char *stringClassName = "java/lang/String";
-  jclass stringClazz = (*jniEnv)->FindClass(jniEnv, stringClassName);
-  jobjectArray providerArray = (*jniEnv)->NewObjectArray(jniEnv,numProviders,stringClazz,NULL);
+    for (int i = 0; i < numProviders; i++) {
+      // Read out the provider name and convert it to a java.lang.String
+      jstring provider = (*jniEnv)->NewStringUTF(jniEnv,providers[i]);
+      (*jniEnv)->SetObjectArrayElement(jniEnv, providerArray, i, provider);
+    }
 
-  for (int i = 0; i < numProviders; i++) {
-    // Read out the provider name and convert it to a java.lang.String
-    jstring provider = (*jniEnv)->NewStringUTF(jniEnv,providers[i]);
-    (*jniEnv)->SetObjectArrayElement(jniEnv, providerArray, i, provider);
+    // Release providers
+    // if this fails we return immediately anyway
+    checkOrtStatus(jniEnv,api,api->ReleaseAvailableProviders(providers,numProviders));
+    providers = NULL;
   }
-
-  // Release providers
-  checkOrtStatus(jniEnv,api,api->ReleaseAvailableProviders(providers,numProviders));
-  providers = NULL;
-
   return providerArray;
 }
