@@ -15,7 +15,7 @@ void HasherSHA256Impl::digest(const Ipp8u* src, int size, Ipp8u* dst) {
     const IppsHashMethod* hashMethod = ippsHashMethod_SHA256();
     status = ippsHashMessage_rmf(src, size, dst, hashMethod);
     if (ippStsNoErr != status) {
-        throw std::runtime_error("Can't get SHA-256...");
+        ORT_THROW("Can't get SHA-256...");
     }
 }
 
