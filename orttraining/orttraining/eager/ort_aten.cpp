@@ -688,6 +688,7 @@ const at::Tensor& resize_(
     c10::optional<at::MemoryFormat> optional_memory_format) {
   // TODO: handle named tensor...
   // TODO: handle optional_memory_format
+  // TODO: handle existing values when resizing non-empty tensor
 
   ORT_LOG_FN(self, size, optional_memory_format);
   assert_tensor_supported(self);
@@ -696,15 +697,26 @@ const at::Tensor& resize_(
 
   auto self_ort_value = create_ort_value(invoker, self);
   auto& self_ort_tensor = self_ort_value.Get<onnxruntime::Tensor>();
-  auto* self_impl = dynamic_cast<ORTTensorImpl*>(self.unsafeGetTensorImpl());
 
+  // Create new ORTValue to replace the existing ORTValue on the at::tensor
+  // object.
+  // REVIEW: Should updating the OrtValue be a method on ORTTensorImpl?
+  //         Or possibly should ORTValue / ORTTensor support resize of underlying
+  //         storage?
+  OrtValue updated_ort_value;
   onnxruntime::Tensor::InitOrtValue(self_ort_tensor.DataType(), onnxruntime::TensorShape(size.vec()),
-        invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), self_ort_value);
+        invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), updated_ort_value);
 
-  self_impl->set_tensor(self_ort_value);
+  // TODO: Copy over values from original tensor to the new updated tensor
+  //       If new tensor is larger than existing tensor, copy over existing
+  //       values, leaving new memory uninitialized
+  //       If new tensor is smaller then existing tensor, copy over the range
+  //       of values that fit in new tensor (truncate existing values).
+
+  auto* self_impl = dynamic_cast<ORTTensorImpl*>(self.unsafeGetTensorImpl());
+  self_impl->set_tensor(updated_ort_value);
   return self;
 }
-
 
 } // namespace aten
 
