@@ -29,7 +29,7 @@ std::string HasherSHA256Impl::digest(const char* src, size_t size) {
 std::string HasherSHA256Impl::hexdigest(const char* src, size_t size) {
     std::string byte_digest = digest(src, size);
     std::stringstream ss;
-    for (char c: byte_digest) {
+    for (char c : byte_digest) {
         ss << std::hex << std::setw(2) << std::setfill('0') << (0xff & c);
     }
     return ss.str();

@@ -4,11 +4,11 @@
 #ifndef ONNXRUNTIME_CORE_PROVIDERS_TVM_HASH_ALG_HASHER_IMPL_H_
 #define ONNXRUNTIME_CORE_PROVIDERS_TVM_HASH_ALG_HASHER_IMPL_H_
 
+#include <ippcp.h>
 #include <string>
 #include <iomanip>
 #include <sstream>
 #include <memory>
-#include <ippcp.h>
 
 
 namespace onnxruntime {
