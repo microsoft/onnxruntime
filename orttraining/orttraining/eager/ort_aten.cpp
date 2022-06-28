@@ -682,25 +682,20 @@ at::Tensor& out) {
   return out;
 }
 
-const at::Tensor& resize_(
-    const at::Tensor& self,
-    at::IntArrayRef size,
-    c10::optional<at::MemoryFormat> optional_memory_format) {
-  // TODO: handle named tensor...
-  // TODO: handle optional_memory_format
-  // TODO: handle existing values when resizing non-empty tensor
+// Compare to CPU / CUDA implementations in PyTorch repository:
+//  CPU: aten/src/ATen/native/Resize.cpp
+//  CUDA: aten/src/ATen/native/cuda/Resize.cpp
+// We do not need to set size / strides as these are set implicitly
+// ORTTensorImpl::cacheSizeMetadata()
 
-  ORT_LOG_FN(self, size, optional_memory_format);
-  assert_tensor_supported(self);
+// However, we always need to resize backing tensor
+// as all values for ORTTensorImpl are derived from the backing onnxruntime::tensor.
+void resize_impl_ort_(
+  onnxruntime::ORTInvoker& invoker,
+  ORTTensorImpl* self,
+  at::IntArrayRef size) {
 
-  // If self is already desired size, then return early
-  if (self.sizes() == size) {
-    return self;
-  }
-
-  auto& invoker = GetORTInvoker(self.device());
-
-  auto self_ort_value = create_ort_value(invoker, self);
+  auto self_ort_value = self->tensor();
   auto* self_ort_tensor = self_ort_value.GetMutable<onnxruntime::Tensor>();
 
   // Create new ORTValue to replace the existing ORTValue on the at::tensor
@@ -733,9 +728,8 @@ const at::Tensor& resize_(
     // Currently, it is not possible to copy sub elements between tensors of different sizes
     // as a workaround, create a new tensor (of the same size as the original self tensor)
     // using the buffer of the larger updated tensor.
-
     OrtValue tmp;
-    onnxruntime::Tensor::InitOrtValue(self_ort_tensor->DataType(), onnxruntime::TensorShape(self.sizes().vec()),
+    onnxruntime::Tensor::InitOrtValue(self_ort_tensor->DataType(), onnxruntime::TensorShape(self->sizes().vec()),
                            self_updated_ort_tensor->MutableDataRaw(),
                            invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault)->Info(),
                            tmp);
@@ -755,8 +749,29 @@ const at::Tensor& resize_(
      copy(invoker, tmp, updated_ort_value);
   }
 
-  auto* self_impl = dynamic_cast<ORTTensorImpl*>(self.unsafeGetTensorImpl());
-  self_impl->set_tensor(updated_ort_value);
+  self->set_tensor(updated_ort_value);
+}
+
+const at::Tensor& resize_(
+    const at::Tensor& self,
+    at::IntArrayRef size,
+    c10::optional<at::MemoryFormat> optional_memory_format) {
+  // TODO: handle named tensor...
+  // TODO: handle optional_memory_format
+
+  ORT_LOG_FN(self, size, optional_memory_format);
+  assert_tensor_supported(self);
+
+  // If self is already desired size, then return early
+  if (self.sizes() == size) {
+    return self;
+  }
+
+  auto& invoker = GetORTInvoker(self.device());
+  resize_impl_ort_(
+      invoker,
+      dynamic_cast<ORTTensorImpl*>(self.unsafeGetTensorImpl()),
+      size);
   return self;
 }
 
