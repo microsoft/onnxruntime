@@ -163,6 +163,8 @@ onnx::AttributeProto create_ort_attribute(
     attr.set_type(onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR);
     auto* constant_attribute_tensor_proto = attr.mutable_t();
     constant_attribute_tensor_proto->mutable_dims()->Clear();
+    // Creating a 1 dim tensor of size 1, so add that dim now.
+    constant_attribute_tensor_proto->add_dims(1);
     switch (type) {
     case at::ScalarType::Float:
       constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
@@ -170,16 +172,16 @@ onnx::AttributeProto create_ort_attribute(
       break;
     case at::ScalarType::Double:
       constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
-      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<double>();
+      *constant_attribute_tensor_proto->mutable_double_data()->Add() = value.to<double>();
       break;
     case at::ScalarType::Bool:
     case at::ScalarType::Int:
       constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
-      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<int>();
+      *constant_attribute_tensor_proto->mutable_int32_data()->Add() = value.to<int>();
       break;
     case at::ScalarType::Long:
       constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<int64_t>();
+      *constant_attribute_tensor_proto->mutable_int64_data()->Add() = value.to<int64_t>();
       break;
     default:
       // For most at::ScalarType, it should be safe to just call value.to<>
