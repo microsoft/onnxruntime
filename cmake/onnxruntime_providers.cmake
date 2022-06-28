@@ -1490,8 +1490,9 @@ if (onnxruntime_USE_TVM)
 
   if (WIN32 AND MSVC)
     # wd4100: identifier' : unreferenced formal parameter
+    # wd4127: conditional expression is constant
     # wd4244: conversion from 'int' to 'char', possible loss of data
-    target_compile_options(onnxruntime_providers_tvm PRIVATE "/wd4100" "/wd4244")
+    target_compile_options(onnxruntime_providers_tvm PRIVATE "/wd4100" "/wd4127" "/wd4244")
   else()
     target_compile_options(onnxruntime_providers_tvm PRIVATE "-Wno-error=type-limits")
   endif()

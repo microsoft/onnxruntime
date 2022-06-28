@@ -229,7 +229,7 @@ void TVM_VM_SetInputs(TvmModule& mod,
 
   TvmPackedFunc set_input = mod.GetFunction("set_input", false);
   ::tvm::runtime::TVMRetValue rv;
-  set_input.CallPacked(::tvm::runtime::TVMArgs(tvm_values.data(), tvm_type_codes.data(), num_total_args), &rv);
+  set_input.CallPacked(::tvm::runtime::TVMArgs(tvm_values.data(), tvm_type_codes.data(), int(num_total_args)), &rv);
 }
 
 void TVMGetOutputs(TvmModule& mod,
