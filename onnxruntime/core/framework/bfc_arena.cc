@@ -327,7 +327,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
         notificaiton->ActivateAndUpdate();
         if (wait_fn)
           wait_fn(*stream, *notificaiton);
-        stream->UpdateStreamClock(chunk->stream, notificaiton->timestamp);
+        stream->UpdateStreamClock(notificaiton->stream_clock_);
         // it should be ok to release the notification now, as the wait is already launch to stream.
     }
   }

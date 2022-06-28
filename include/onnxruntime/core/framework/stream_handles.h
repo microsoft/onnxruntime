@@ -31,8 +31,14 @@ struct Stream {
     return ++timestamp;
   }
 
-  void UpdateStreamClock(Stream* stream, uint64_t clock) {
-    other_stream_clock[stream] = clock;
+  void UpdateStreamClock(const std::unordered_map<Stream*, uint64_t>& clock) {
+    for (auto& kv : clock) {
+      auto it = other_stream_clock.find(kv.first);
+      if (it == other_stream_clock.end())
+        other_stream_clock.insert(kv);
+      else
+        other_stream_clock[kv.first] = std::max(it->second, kv.second);
+    }
   }
 
   virtual ~Stream() {}
@@ -46,14 +52,15 @@ namespace synchronize {
 struct Notification {
   // which stream create this notificaiton.
   Stream* stream;
-  uint64_t timestamp{0};
+  std::unordered_map<Stream*, uint64_t> stream_clock_;
 
   Notification(Stream* s) : stream(s) {}
   virtual ~Notification() {}
 
   void ActivateAndUpdate() {
     Activate();
-    timestamp = stream->BumpTimeStampAndReturn();
+    stream_clock_ = stream->other_stream_clock;
+    stream_clock_[stream] = stream->BumpTimeStampAndReturn();
   }
 
   virtual void Activate() = 0;

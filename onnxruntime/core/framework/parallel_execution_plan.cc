@@ -537,7 +537,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
               wait_handle(*ctx.GetDeviceStream(cur_stream_idx), *ctx.notifications[notification_index]);
               // update streams clock status
               if (ctx.GetDeviceStream(cur_stream_idx))
-                ctx.GetDeviceStream(cur_stream_idx)->UpdateStreamClock(ctx.notifications[notification_index]->stream, ctx.notifications[notification_index]->timestamp);
+                ctx.GetDeviceStream(cur_stream_idx)->UpdateStreamClock(ctx.notifications[notification_index]->stream_clock_);
               LOGS(*ctx.logger, INFO) << "stream " << i << " wait on " << upstream_node_name << " for " << node->Name();
               continue_flag = true;
               return Status::OK();
