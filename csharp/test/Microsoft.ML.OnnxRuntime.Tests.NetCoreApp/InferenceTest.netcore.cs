@@ -518,6 +518,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                     {
                                         Assert.Equal(result.AsTensor<float>(), outputValue.AsTensor<float>(), new FloatComparer());
                                     }
+                                    else if (outputMeta.ElementType == typeof(double))
+                                    {
+                                        Assert.Equal(result.AsTensor<double>(), outputValue.AsTensor<double>(), new DoubleComparer());
+                                    }
                                     else if (outputMeta.ElementType == typeof(int))
                                     {
                                         Assert.Equal(result.AsTensor<int>(), outputValue.AsTensor<int>(), new ExactComparer<int>());
@@ -560,12 +564,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                     }
                                     else
                                     {
-                                        Assert.True(false, "The TestPretrainedModels does not yet support output of type " + nameof(outputMeta.ElementType));
+                                        Assert.True(false, $"{nameof(TestPreTrainedModels)} does not yet support output of type {outputMeta.ElementType}");
                                     }
                                 }
                                 else
                                 {
-                                    Assert.True(false, "TestPretrainedModel cannot handle non-tensor outputs yet");
+                                    Assert.True(false, $"{nameof(TestPreTrainedModels)} cannot handle non-tensor outputs yet");
                                 }
                             }
                         }

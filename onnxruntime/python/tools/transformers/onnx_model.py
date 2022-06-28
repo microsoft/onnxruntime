@@ -897,42 +897,58 @@ class OnnxModel:
         #    self.graph_topological_sort(graph)
         OnnxModel.graph_topological_sort(self.model.graph)
 
+    @staticmethod
+    def save(
+        model,
+        output_path,
+        save_as_external_data=False,
+        all_tensors_to_one_file=True,
+        size_threshold=1024,
+        convert_attribute=False,
+    ):
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+        if save_as_external_data:
+            # Save model to external data, which is needed for model size > 2GB
+            output_dir = Path(output_path).parent
+            output_dir.mkdir(parents=True, exist_ok=True)
+            external_data_path = output_path + ".data"
+            location = Path(external_data_path).name if all_tensors_to_one_file else None
+
+            if os.path.exists(output_path):
+                logger.info(f"Delete the existed onnx file: {output_path}")
+                os.remove(output_path)
+
+            if all_tensors_to_one_file:
+                if os.path.exists(external_data_path):
+                    # Delete the external data file. Otherwise, data will be appended to existing file.
+                    logger.info(f"Delete the existed external data file: {external_data_path}")
+                    os.remove(external_data_path)
+            else:
+                if os.listdir(output_dir):
+                    raise RuntimeError(f"Output directory ({output_dir}) for external data is not empty.")
+
+            save_model(
+                model,
+                output_path,
+                save_as_external_data=True,
+                all_tensors_to_one_file=all_tensors_to_one_file,
+                location=location,
+                size_threshold=size_threshold,
+                convert_attribute=convert_attribute,
+            )
+        else:
+            save_model(model, output_path)
+
     def save_model_to_file(self, output_path, use_external_data_format=False, all_tensors_to_one_file=True):
         logger.info(f"Sort graphs in topological order")
         self.topological_sort()
 
-        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-
         if output_path.endswith(".json"):  # Output text for testing small model.
-            assert isinstance(self.model, ModelProto)
             with open(output_path, "w") as out:
-                out.write(str(self.model))
+                out.write(str(model))
         else:
-            # Save model to external data, which is needed for model size > 2GB
-            if use_external_data_format:
-                output_dir = Path(output_path).parent
-                output_dir.mkdir(parents=True, exist_ok=True)
-                location = Path(output_path).name + ".data" if all_tensors_to_one_file else None
-
-                # Show warnings of potential confliction of existing external data file.
-                if all_tensors_to_one_file:
-                    if os.path.exists(location):
-                        logger.warning(
-                            f"External data file ({location}) existed. Please remove the file and try again."
-                        )
-                else:
-                    if os.listdir(output_dir):
-                        logger.warning(
-                            f"Output directory ({output_dir}) for external data is not empty. Please try again with a new directory."
-                        )
-
-                external_data_helper.convert_model_to_external_data(
-                    self.model,
-                    all_tensors_to_one_file=all_tensors_to_one_file,
-                    location=location,
-                )
-            save_model(self.model, output_path)
-
+            OnnxModel.save(self.model, output_path, use_external_data_format, all_tensors_to_one_file)
         logger.info(f"Model saved to {output_path}")
 
     def get_graph_inputs_excluding_initializers(self):

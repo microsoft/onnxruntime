@@ -466,8 +466,8 @@ endif()
 if(onnxruntime_USE_NUPHAR)
   # the test case under nuphar_tvm is only to verify some basic tvm show case, which is already out of date
   # it doesn't have relationship to nuphar directly. consider we have an official tvm execution provider now,
-  # keep those test cases doesn't bring any value now. 
-  
+  # keep those test cases doesn't bring any value now.
+
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/nuphar/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nuphar)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nuphar)
@@ -699,11 +699,11 @@ endif()
 set(test_all_args)
 if (onnxruntime_USE_TENSORRT)
     # TRT EP CI takes much longer time when updating to TRT 8.2
-    # So, we only run trt ep and exclude other eps to reduce CI test time.  
+    # So, we only run trt ep and exclude other eps to reduce CI test time.
     #
     # The test names of model tests were using sequential number in the past.
-    # This PR https://github.com/microsoft/onnxruntime/pull/10220 (Please see ExpandModelName function in model_tests.cc for more details) 
-    # made test name contain the "ep" and "model path" information, so we can easily filter the tests using cuda ep or other ep with *cpu__* or *xxx__*.  
+    # This PR https://github.com/microsoft/onnxruntime/pull/10220 (Please see ExpandModelName function in model_tests.cc for more details)
+    # made test name contain the "ep" and "model path" information, so we can easily filter the tests using cuda ep or other ep with *cpu__* or *xxx__*.
     list(APPEND test_all_args "--gtest_filter=-*cpu__*:*cuda__*" )
 endif ()
 
@@ -714,7 +714,7 @@ AddTest(
     onnx_test_runner_common ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
     onnx_test_data_proto nlohmann_json::nlohmann_json
   DEPENDS ${all_dependencies}
-  TEST_ARGS ${test_all_args} 
+  TEST_ARGS ${test_all_args}
 )
 if (MSVC)
   # The warning means the type of two integral values around a binary operator is narrow than their result.
@@ -753,6 +753,10 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1")
   endif()
+endif()
+
+if (onnxruntime_ENABLE_ATEN)
+  target_compile_definitions(onnxruntime_test_all PRIVATE ENABLE_ATEN)
 endif()
 
 set(test_data_target onnxruntime_test_all)
@@ -857,7 +861,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   endif()
 endif()
 
-target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
+target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} nlohmann_json::nlohmann_json)
 target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
 if (onnxruntime_USE_ROCM)
   target_include_directories(onnx_test_runner PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)

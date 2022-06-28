@@ -52,9 +52,12 @@ namespace layout_transformer {
 const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps();
 
 /// <summary>
-/// Transforms data layout from NCHW to NHWC, using the kMSInternalNHWCDomain domain for updated nodes. The current
-/// usage is by a compiling EP such as NNAPI, where the synthetic domain is a signal that the node has been updated
-/// to the EP's required layout.
+/// Transforms data layout from NCHW to NHWC, using the kMSInternalNHWCDomain domain for updated nodes.
+///
+/// This can be used by a compiling EP such as NNAPI, where the synthetic domain is a signal that the node has been
+/// updated to the EP's required layout, or an EP with statically registered kernels such as XNNPACK where a kernel
+/// is registered for the NHWC version of an ONNX operator. The NHWC version of the ONNX operator uses the synthetic
+/// domain and is defined by onnxruntime/core/graph/contrib_ops/internal_nhwc_onnx_opset.cc
 ///
 /// Transforms are applied to layout sensitive nodes assigned to execution_provider provided by the caller,
 /// and any other non-layout sensitive nodes in order to optimize the transposes as much as possible.
@@ -62,7 +65,13 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps();
 /// <param name="graph">graph to transform</param>
 /// <param name="modified">indicates whether the graph is modified during transformation</param>
 /// <param name="execution_provider">execution provider for which the transformation needs to be performed</param>
-Status TransformLayoutForCompilingEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider);
+Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider);
 
+/// <summary>
+/// Checks if the opset of the Graph is supported by the layout transformer.
+/// </summary>
+/// <param name="graph">Graph to check</param>
+/// <returns></returns>
+bool IsSupportedOpset(const Graph& graph);
 }  // namespace layout_transformer
 }  // namespace onnxruntime

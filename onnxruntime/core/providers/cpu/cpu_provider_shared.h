@@ -134,10 +134,13 @@ struct ProviderHostCPU {
   virtual void BeamSearch__Init(contrib::transformers::BeamSearch* p, const OpKernelInfo& info) = 0;
   virtual Status BeamSearch__Compute(const contrib::transformers::BeamSearch* p, OpKernelContext* ctx) = 0;
   virtual Status BeamSearch__SetupSubgraphExecutionInfo(contrib::transformers::BeamSearch* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) = 0;
+
+#ifdef ENABLE_ATEN
+  virtual Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) = 0;
+#endif
 #endif
 
 #ifdef ENABLE_TRAINING
-  virtual Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) = 0;
   virtual void contrib__record_event_in_tensor(const Tensor& event_id_tensor) = 0;
   virtual void contrib__wait_event_in_tensor(const Tensor& event_id_tensor) = 0;
   virtual Status contrib__Group__Compute(const contrib::Group* p, OpKernelContext* context) = 0;
