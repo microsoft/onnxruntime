@@ -107,8 +107,10 @@ common::Status TvmSoExecutionProvider::Compile(const std::vector<FusedNodeAndGra
   for (auto& fused_node_graph : fused_nodes_and_graphs) {
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
-    ORT_ENFORCE(checkHash(fused_node.ModelPath().ToPathString()),
-                "Hash check shows that used tuning files were not obtained for the given onnx-model");
+    if (options_.check_hash) {
+      ORT_ENFORCE(checkHash(fused_node.ModelPath().ToPathString()),
+                  "Hash check shows that used tuning files were not obtained for the given onnx-model");
+    }
     const std::string func_name = fused_node.Name();
 
     compilers_[func_name] = std::make_shared<TVMSoCompiler>();
@@ -153,9 +155,14 @@ bool TvmSoExecutionProvider::checkHash(const std::string& onnx_path) const {
   std::string onnx_str = readFromFile(onnx_path);
   std::string onnx_hash = hasher.hash(onnx_str.c_str(), onnx_str.size());
   onnx_str.clear();
-  // TODO(vvchernov): align hash file name with OctoML team
-  std::string octo_hash = readFromFile(options_.so_folder + "/hash.txt");
-  return onnx_hash == octo_hash;
+  std::string hash;
+  if (options_.hash_file_path.empty()) {
+    // TODO(vvchernov): align hash file name with OctoML team
+    hash = readFromFile(options_.so_folder + "/hash.txt");
+  } else {
+    hash = readFromFile(options_.hash_file_path);
+  }
+  return onnx_hash == hash;
 }
 
 std::shared_ptr<TvmModule> TvmSoExecutionProvider::compileModel(const std::string& func_name,
