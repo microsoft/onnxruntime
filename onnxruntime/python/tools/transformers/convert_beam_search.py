@@ -37,7 +37,7 @@ import numpy as np
 import onnx
 import torch
 from benchmark_helper import Precision
-from onnx import onnx_pb as onnx_proto
+from onnx import GraphProto, ModelProto, TensorProto
 from transformers import (
     GPT2Config,
     GPT2LMHeadModel,
@@ -393,9 +393,9 @@ def verify_gpt2_subgraph(graph: onnx.GraphProto, precision: Precision):
         if graph.input[i].name != expected_input:
             raise ValueError(f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}")
 
-        expected_type = onnx_proto.TensorProto.INT32
+        expected_type = TensorProto.INT32
         if i >= 3:
-            expected_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
+            expected_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
 
         input_type = graph.input[i].type.tensor_type.elem_type
         if input_type != expected_type:
@@ -410,7 +410,7 @@ def verify_gpt2_subgraph(graph: onnx.GraphProto, precision: Precision):
         if graph.output[i].name != expected_output:
             raise ValueError(f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}")
 
-        expected_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
+        expected_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
         output_type = graph.output[i].type.tensor_type.elem_type
         if output_type != expected_type:
             raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {output_type}")
@@ -436,7 +436,7 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
         ValueError: Output data type is not expected.
     """
     is_float16 = Precision.FLOAT16 == precision
-    float_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
+    float_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
 
     input_count = len(graph.input)
     layer_count = (input_count - 3) // 4
@@ -469,7 +469,7 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
         if graph.input[i].name != expected_input:
             raise ValueError(f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}")
 
-        expected_type = onnx_proto.TensorProto.INT32 if i < 2 else float_type
+        expected_type = TensorProto.INT32 if i < 2 else float_type
         input_type = graph.input[i].type.tensor_type.elem_type
         if input_type != expected_type:
             raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}")
@@ -526,7 +526,7 @@ def verify_t5_encoder_decoder_init_subgraph(graph: onnx.GraphProto, precision: P
         if graph.input[i].name != expected_input:
             raise ValueError(f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}")
 
-        expected_type = onnx_proto.TensorProto.INT32
+        expected_type = TensorProto.INT32
         input_type = graph.input[i].type.tensor_type.elem_type
         if input_type != expected_type:
             raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}")
@@ -555,12 +555,126 @@ def verify_t5_encoder_decoder_init_subgraph(graph: onnx.GraphProto, precision: P
         if graph.output[i].name != expected_output:
             raise ValueError(f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}")
 
-        expected_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
+        expected_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
         output_type = graph.output[i].type.tensor_type.elem_type
         if output_type != expected_type:
             raise ValueError(f"Output {i} is expected to have onnx data type {expected_type}. Got {output_type}")
 
     print("T5 encoder graph verified: name and data type of inputs and outputs are good.")
+
+
+def remove_shared_initializers(
+    graph1: GraphProto,
+    graph2: GraphProto,
+    shared_prefix: str = "shared_",
+    min_elements: int = 1024,
+):
+    """Remove intializers with same value from subgraphs.
+
+    Args:
+        graph1 (GraphProto): the first graph to process
+        graph2 (GraphProto): the second graph to process
+        shared_prefix (str): add prefix to the shared initializers among two graphs
+        min_elements (int, optional): minimal number of elements for initializers to be considered. Defaults to 1024.
+    """
+
+    mapping_initializers_1 = {}
+    mapping_initializers_2 = {}
+    shared_initializers_1 = []
+    shared_initializers_2 = []
+    shared_initializers_names = []
+
+    for initializer1 in graph1.initializer:
+        if not (initializer1.dims and sum(initializer1.dims) > min_elements):
+            continue
+
+        for initializer2 in graph2.initializer:
+            if not (initializer2.dims and sum(initializer2.dims) > min_elements):
+                continue
+
+            if OnnxModel.has_same_value(initializer1, initializer2):
+                mapping_initializers_1[initializer1.name] = shared_prefix + initializer2.name
+                shared_initializers_1.append(initializer1)
+
+                if initializer2.name not in mapping_initializers_2:
+                    shared_name = shared_prefix + initializer2.name
+                    mapping_initializers_2[initializer2.name] = shared_name
+                    shared_initializers_2.append(initializer2)
+                    shared_initializers_names.append(shared_name)
+                break
+
+    logger.debug(f"shared initializers:{shared_initializers_names}")
+
+    # Make sure new name does not exist in graph 1
+    for node in graph1.node:
+        for j in range(len(node.input)):
+            if node.input[j] in shared_initializers_names:
+                raise RuntimeError(f"name is found in graph 1: {node.input[j]}")
+
+    # Make sure new name does not exist in graph 2
+    for node in graph2.node:
+        for j in range(len(node.input)):
+            if node.input[j] in shared_initializers_names:
+                raise RuntimeError(f"name is found in graph 2: {node.input[j]}")
+
+    # Remove shared initializers from graph 2
+    for initializer in shared_initializers_2:
+        graph2.initializer.remove(initializer)
+
+    # Rename value info for old names in graph 2
+    for value_info in graph2.value_info:
+        if value_info.name in mapping_initializers_2:
+            value_info.name = mapping_initializers_2[value_info.name]
+
+    # Rename nodes inputs in graph 1:
+    for node in graph2.node:
+        for j in range(len(node.input)):
+            if node.input[j] in mapping_initializers_2:
+                new_name = mapping_initializers_2[node.input[j]]
+                logger.debug(f"graph 2 rename node {node.name} input {j} from {node.input[j]} to {new_name}")
+                node.input[j] = new_name
+
+    #  Remove shared initializers from graph 1
+    for initializer in shared_initializers_1:
+        graph1.initializer.remove(initializer)
+
+    # Rename value info for old names in graph 1
+    for value_info in graph1.value_info:
+        if value_info.name in mapping_initializers_1:
+            value_info.name = mapping_initializers_1[value_info.name]
+
+    # Rename nodes inputs in graph 1:
+    for node in graph1.node:
+        for j in range(len(node.input)):
+            if node.input[j] in mapping_initializers_1:
+                new_name = mapping_initializers_1[node.input[j]]
+                logger.debug(f"graph 1 rename node {node.name} input {j} from {node.input[j]} to {new_name}")
+                node.input[j] = new_name
+
+    # Rename shared initializers in graph 2
+    for initializer in shared_initializers_2:
+        initializer.name = mapping_initializers_2[initializer.name]
+
+    for initializer in shared_initializers_2:
+        shape = onnx.numpy_helper.to_array(initializer).shape
+        value_info = onnx.helper.make_tensor_value_info(initializer.name, initializer.data_type, shape)
+        # Need add value_info for initializers moved to parent graph. Otherwise, ORT will fail.
+        graph1.value_info.append(value_info)
+        graph2.value_info.append(value_info)
+
+    return shared_initializers_2
+
+
+def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto):
+    encoder = OnnxModel(encoder_model)
+    decoder = OnnxModel(decoder_model)
+    encoder.add_prefix_to_names("e_")
+    decoder.add_prefix_to_names("d_")
+    encoder.remove_duplicated_initializer()
+    decoder.remove_duplicated_initializer()
+    initializers = remove_shared_initializers(encoder.model.graph, decoder.model.graph, "s_")
+    print(f"{len(initializers)} shared initializers are moved to parent graph")
+    return initializers
 
 
 def convert_model(args: argparse.Namespace):
@@ -653,10 +767,10 @@ def convert_model(args: argparse.Namespace):
             onnx.helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
             onnx.helper.make_attribute("early_stopping", 1 if args.early_stopping else 0),
             onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
-            onnx.helper.make_attribute("decoder", model.graph),
         ]
     )
 
+    initializers = []
     if args.model_type in ["t5", "mt5"]:
         if enable_shape_inference:
             print(f"Run symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten.")
@@ -664,14 +778,20 @@ def convert_model(args: argparse.Namespace):
         init_model = onnx.load_model(args.encoder_decoder_init_onnx, load_external_data=True)
         init_model.graph.name = f"{args.model_type} encoder and decoder init"
         verify_t5_encoder_decoder_init_subgraph(init_model.graph, args.precision)
+
+        initializers = get_shared_initializers(init_model, model)
+
         node.attribute.extend(
             [
                 onnx.helper.make_attribute("encoder", init_model.graph),
+                onnx.helper.make_attribute("decoder", model.graph),
                 onnx.helper.make_attribute(
                     "decoder_start_token_id", config.decoder_start_token_id if len(init_model.graph.input) == 3 else -1
                 ),
             ]
         )
+    else:
+        node.attribute.extend(onnx.helper.make_attribute("decoder", decoder_subgraph))
 
     from onnx import TensorProto
 
@@ -719,8 +839,6 @@ def convert_model(args: argparse.Namespace):
         ["max_length - sequence_length", "batch_size", "num_beams", vocab_size],
     )
 
-    initializers = []
-
     graph_outputs = [sequences]
 
     if args.output_sequences_scores:
@@ -730,11 +848,7 @@ def convert_model(args: argparse.Namespace):
         graph_outputs.append(scores)
 
     new_graph = onnx.helper.make_graph(
-        [node],
-        f"{args.model_type}-beam-search",
-        graph_inputs,
-        graph_outputs,
-        initializers,
+        [node], f"{args.model_type}-beam-search", graph_inputs, graph_outputs, initializers
     )
 
     # Create the model
@@ -1224,6 +1338,7 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
 
     convert_model(args)
 
+    logger.info("start testing model...")
     if args.model_type in ["t5", "mt5"]:
         return test_t5_model(args, use_vocab_mask=True, sentences=sentences)
     else:
