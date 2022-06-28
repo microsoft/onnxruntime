@@ -699,6 +699,11 @@ const at::Tensor& resize_(
   ORT_LOG_FN(self, size, optional_memory_format);
   assert_tensor_supported(self);
 
+  // If self is already desired size, then return early
+  if (self.sizes() == size) {
+    return self;
+  }
+
   auto& invoker = GetORTInvoker(self.device());
 
   auto self_ort_value = create_ort_value(invoker, self);

@@ -203,6 +203,16 @@ class OrtOpTests(unittest.TestCase):
         self.assertEqual(cpu_tensor.size(), ort_tensor.size())
         self.assertTrue(torch.allclose(cpu_tensor[:2], ort_tensor.cpu()[:2]))
 
+        # Validate case when resizing to current size
+        cpu_tensor = torch.tensor([1.0, 2.0])
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_tensor.resize_(torch.Size([2]))
+        ort_tensor.resize_(torch.Size([2]))
+
+        self.assertEqual(cpu_tensor.size(), ort_tensor.size())
+        self.assertTrue(torch.allclose(cpu_tensor, ort_tensor.cpu()))
+
 
 if __name__ == "__main__":
     unittest.main()
