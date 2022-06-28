@@ -7,7 +7,7 @@
 
 #include "rocm_profiler.h"
 #include "RoctracerLogger.h"
-#include "core/common/demangle.h"
+#include "core/common/profiler_common.h"
 
 #define BSIZE 4096
 

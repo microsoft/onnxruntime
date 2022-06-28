@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "demangle.h"
+#include "core/common/profiler_common.h"
 
 #ifndef _MSC_VER
 #include <cxxabi.h>
