@@ -81,7 +81,8 @@ export const createIndicesHelper = (name: string, shape: readonly number[]) => {
   const i2oExpression = (varIndices: string, isPtr?: boolean) =>
       shape.length < 2 ? `(${isPtr ? '*' : ''}${varIndices})` : `ih_i2o_${name}(${isPtr ? '' : '&'}${varIndices})`;
 
-  const indicesVariableDeclaration = (v: string) => `var ${v}:${iType};`;
+  const indicesVariableDeclaration = (v: string, init?: string[]) =>
+      `var ${v}:${iType}${init ? `=${iType}(${init.join(',')})` : ''};`;
 
   return {o2iImpl, o2iCall, i2oImpl, i2oExpression, indicesVariableDeclaration, iType};
 };
