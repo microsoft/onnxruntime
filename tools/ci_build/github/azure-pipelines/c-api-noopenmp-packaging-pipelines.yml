@@ -494,7 +494,7 @@ jobs:
     inputs:
       targetType: 'inline'
       script: |
-        dotnet workload install android ios maccatalyst macos
+        dotnet workload install android ios macos
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
     
   - task: PowerShell@2
