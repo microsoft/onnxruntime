@@ -2494,7 +2494,7 @@ void CUDAExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
 }
 
 void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
-  RegisterCudaStreamHandles(stream_handle_registry, stream_, use_ep_level_unified_stream_);
+  RegisterCudaStreamHandles(stream_handle_registry, kCudaExecutionProvider, stream_, use_ep_level_unified_stream_);
 }
 
 }  // namespace onnxruntime

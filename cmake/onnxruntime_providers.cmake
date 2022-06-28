@@ -607,6 +607,8 @@ if (onnxruntime_USE_TENSORRT)
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_stream_handle.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_stream_handle.cc"
   )
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_tensorrt_cc_srcs})

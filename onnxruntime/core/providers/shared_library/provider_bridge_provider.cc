@@ -332,8 +332,8 @@ std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const c
   return g_host->CreateROCMPinnedAllocator(device_id, name);
 }
 
-std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) {
-  return g_host->CreateGPUDataTransfer(stream);
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
+  return g_host->CreateGPUDataTransfer();
 }
 #endif
 

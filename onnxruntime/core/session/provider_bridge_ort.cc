@@ -1026,7 +1026,7 @@ struct ProviderLibrary {
         provider_->Initialize();
       }
       return *provider_;
-    } catch (...) {
+    } catch (std::exception e) {
       Unload();  // If anything fails we unload the library and rethrow
       throw;
     }

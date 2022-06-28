@@ -250,7 +250,7 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
 std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
 
-std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream);
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer();
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const std::string& provider_type,

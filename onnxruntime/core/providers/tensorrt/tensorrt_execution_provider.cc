@@ -19,6 +19,8 @@
 #include <limits>
 #include <map>
 #include <memory>
+//TODO: find a better way to share this
+#include "core/providers/cuda/cuda_stream_handle.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -180,9 +182,16 @@ class Memcpy final : public OpKernel {
 
   Status Compute(OpKernelContext* ctx) const override {
     const auto* X = ctx->Input<Tensor>(0);
+    ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
     Tensor* Y = ctx->Output(0, X->Shape());
-    Status retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
-    return retval;
+    ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
+    // do we support async copy?
+    auto& src_device = Info().GetInputLocation(0).device;
+    auto& dst_device = Info().GetOutputLocation(0).device;
+    auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
+    if (!gpu_data_transfer)
+      return Status(common::ONNXRUNTIME, common::EP_FAIL, "gpu data transfer is missing in TRT EP.");
+    return gpu_data_transfer->CopyTensorAsync(*X, *Y, ctx->GetComputeStream());
   }
 };
 
@@ -196,7 +205,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kTensorrtExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
-        .ExecQueueId(kCudaStreamCopyIn)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
@@ -207,7 +215,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kTensorrtExecutionProvider,
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
-        .ExecQueueId(kCudaStreamCopyOut)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
@@ -254,8 +261,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   if (info.has_user_compute_stream) {
     external_stream_ = true;
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
-  } else {
-    CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
   }
 
   // Get environment variables
@@ -434,9 +439,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
-  if (!external_stream_ && stream_) {
-    CUDA_CALL(cudaStreamDestroy(stream_));
-  }
 }
 
 AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
@@ -494,24 +496,12 @@ void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManag
 }
 
 std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
-  return onnxruntime::CreateGPUDataTransfer(static_cast<void*>(GetComputeStream()));
+  return onnxruntime::CreateGPUDataTransfer();
 }
 
 Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
-  if (sync_stream) {
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
-  }
-  return Status::OK();
-}
-
-Status TensorrtExecutionProvider::SetComputeStream(void* stream) {
-  if (stream != stream_) {
-    if (stream_) {
-      CUDA_RETURN_IF_ERROR(cudaStreamDestroy(stream_));
-    }
-
-    external_stream_ = true;
-    stream_ = static_cast<cudaStream_t>(stream);
+  if (sync_stream && external_stream_) {
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   }
   return Status::OK();
 }
@@ -1333,7 +1323,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       std::unordered_set<std::string> input_names;
       std::unordered_map<std::string, std::vector<int32_t>> tensor_shape_values;
 
-      cudaStream_t stream = static_cast<cudaStream_t>(this->GetComputeStream());
+      cudaStream_t stream = static_cast<cudaStream_t>(ort.KernelContext_GetGPUComputeStream(context));
 
       for (int i = 0, end = num_inputs; i < end; ++i) {
         auto input = trt_state->network->get()->getInput(i);
@@ -1839,4 +1829,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
   }
   return Status::OK();
 }
+
+void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
+  RegisterCudaStreamHandles(stream_handle_registry, kTensorrtExecutionProvider, stream_, external_stream_);
+  // register additional wait method between TRT/Cuda
+  stream_handle_registry.RegisterWaitFn(kTensorrtExecutionProvider, kCudaExecutionProvider, WaitCudaNotificationOnDevice);
+  stream_handle_registry.RegisterWaitFn(kCudaExecutionProvider, kTensorrtExecutionProvider, WaitCudaNotificationOnDevice);
+}
+
 }  // namespace onnxruntime

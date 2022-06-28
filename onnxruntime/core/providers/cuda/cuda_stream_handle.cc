@@ -69,21 +69,19 @@ void ReleaseCUdaNotification(void* handle) {
   delete static_cast<CudaNotification*>(handle);
 }
 
-void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry, cudaStream_t external_stream, bool use_existing_stream) {
+void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry, const std::string& ep_type, cudaStream_t external_stream, bool use_existing_stream) {
   // wait cuda notification on cuda ep
-  stream_handle_registry.RegisterWaitFn(kCudaExecutionProvider, kCudaExecutionProvider, WaitCudaNotificationOnDevice);
+  stream_handle_registry.RegisterWaitFn(ep_type, ep_type, WaitCudaNotificationOnDevice);
   // wait cuda notification on cpu ep
-  stream_handle_registry.RegisterWaitFn(kCudaExecutionProvider, kCpuExecutionProvider, WaitCudaNotificationOnHost);
+  stream_handle_registry.RegisterWaitFn(ep_type, kCpuExecutionProvider, WaitCudaNotificationOnHost);
   if (!use_existing_stream)
-    stream_handle_registry.RegisterCreateStreamFn(kCudaExecutionProvider, [](const IExecutionProvider* provider) {
-      ORT_ENFORCE(provider->Type() == kCudaExecutionProvider);
+    stream_handle_registry.RegisterCreateStreamFn(ep_type, [](const IExecutionProvider* provider) {
       cudaStream_t stream = nullptr;
       CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
       return std::make_unique<CudaStream>(stream, provider, true);
     });
   else
     stream_handle_registry.RegisterCreateStreamFn(kCudaExecutionProvider, [external_stream](const IExecutionProvider* provider) {
-      ORT_ENFORCE(provider->Type() == kCudaExecutionProvider);
       return std::make_unique<CudaStream>(external_stream, provider, false);
     });
 }

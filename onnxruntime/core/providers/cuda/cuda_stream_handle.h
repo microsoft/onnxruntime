@@ -20,6 +20,6 @@ struct CudaStream : Stream {
   bool own_stream_{true};
 };
 
-void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry, cudaStream_t external_stream, bool use_existing_stream);
+void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry, const std::string& ep_type, cudaStream_t external_stream, bool use_existing_stream);
 void WaitCudaNotificationOnDevice(Stream& stream, synchronize::Notification& notification);
 }

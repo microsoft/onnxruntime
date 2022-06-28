@@ -136,13 +136,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   Status OnRunEnd(bool sync_stream) override;
 
-  Status SetComputeStream(void* stream) override;
-
-  void* GetComputeStream() const override { return static_cast<void*>(stream_); }
-
   ProviderOptions GetProviderOptions() const override {
     return TensorrtExecutionProviderInfo::ToProviderOptions(info_);
   }
+
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
 
  private:
   TensorrtExecutionProviderInfo info_;
