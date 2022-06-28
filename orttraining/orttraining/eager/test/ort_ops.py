@@ -196,7 +196,7 @@ class OrtOpTests(unittest.TestCase):
         assert torch.allclose(cpu_result, ort_result.cpu())
         assert cpu_result.dim() == ort_result.dim()
 
-    def test_eq(self):
+    def test_eq_tensor(self):
         device = self.get_device()
         cpu_a = torch.Tensor([1.0, 1.5])
         ort_a = cpu_a.to(device)
@@ -212,23 +212,50 @@ class OrtOpTests(unittest.TestCase):
         # print(cpu_a_b_eq_result)
         # print(ort_a_b_eq_result)
         # assert torch.equal(cpu_out_tensor.to(device), ort_out_tensor)
-        # assert torch.allclose(cpu_a_b_eq_result, ort_a_b_eq_result.cpu)
+        assert torch.allclose(cpu_a_b_eq_result, ort_a_b_eq_result.to("cpu"))
         # assert torch.allclose(cpu_out_tensor, ort_out_tensor.to("cpu"))
-        cpu_c = torch.Tensor([1.0, 1.0])
-        ort_c = cpu_c.to(device)
-        cpu_c_eq_result = torch.eq(cpu_c, int(1))
-        ort_c_eq_result = torch.eq(ort_c, int(1))
-        assert torch.equal(cpu_c_eq_result.to(device), ort_c_eq_result)
 
+    def test_eq_scalar(self):
+        device = self.get_device()
+        cpu_int = torch.tensor([1, 1], dtype=torch.int32)
+        cpu_scalar_int = torch.scalar_tensor(1, dtype=torch.int)
 
-"""     def test_fill(self):
+        cpu_float = torch.tensor([1.1, 1.0], dtype=torch.float32)
+        cpu_scalar_float = torch.scalar_tensor(1.0, dtype=torch.float32)
+        # print(f"cpu tensor: {cpu_c}, cpu tensor type {cpu_c.dtype}")
+        ort_float = cpu_float.to(device)
+        ort_int = cpu_int.to(device)
+        ort_scalar_float = cpu_scalar_float.to(device)
+        ort_scalar_int = cpu_scalar_int.to(device)
+        # print(f"cpu tensor: {ort_c}, cpu tensor type {ort_c.dtype}")
+        # compare int to int, int to float, float to float, float to int
+        cpu_int_int_result = torch.eq(cpu_int, cpu_scalar_int)
+        cpu_int_float_result = torch.eq(cpu_int, cpu_scalar_float)
+        cpu_float_float_result = torch.eq(cpu_float, cpu_scalar_float)
+        cpu_float_int_result = torch.eq(cpu_float, cpu_scalar_int)
+
+        ort_int_int_result = torch.eq(ort_int, ort_scalar_int)
+        # ort_int_float_result = torch.eq(ort_int, ort_scalar_float)
+        ort_float_float_result = torch.eq(ort_float, ort_scalar_float)
+        # ort_float_int_result = torch.eq(ort_float, ort_scalar_int)
+
+        assert torch.equal(cpu_int_int_result.to(device), ort_int_int_result)
+        # assert torch.equal(cpu_int_float_result.to(device), ort_int_float_result)
+        assert torch.equal(cpu_float_float_result.to(device), ort_float_float_result)
+        # assert torch.equal(cpu_float_int_result.to(device), ort_float_int_result)
+
+    def test_fill(self):
         device = self.get_device()
         cpu_a = torch.Tensor([1.0, 1.5])
         ort_a = cpu_a.to(device)
         cpu_a.fill_(3.2)
         print(cpu_a)
-        ort_a.fill_(3.2)
-        print(ort_a) """
+        print(cpu_a.size())
+        # ort_a.fill_(3.2)
+        print(ort_a.size())
+        print(ort_a.shape)
+        cpu_copy = ort_a.to("cpu")
+        print(cpu_copy)
 
 
 if __name__ == "__main__":

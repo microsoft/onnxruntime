@@ -127,14 +127,11 @@ hand_implemented = {
     "aten::max": ReduceMax("self", keepdims=0),
     "aten::min": ReduceMin("self", keepdims=0),
     "aten::_cat": Concat("tensors", "dim"),
-    "aten::fill_.Scalar": ConstantOfShape("self", value="value"),
+    "aten::fill_.Scalar": SignatureOnly(),  # ConstantOfShape(Shape("self"), value="value"),
     "aten::ne.Scalar_out": MakeTorchFallback(),
     "aten::ne.Tensor_out": MakeTorchFallback(),
     "aten::eq.Tensor_out": SignatureOnly(),  # Equal once out is supported in generator
-    "aten::eq.Scalar_out": SignatureOnly(),  # once out is supported in generator something like below might work
-    # Equal(
-    #    "self", ConstantOfShape("self", value="other")
-    # ), double use of self causes generate to use same variable multiple time
+    "aten::eq.Scalar_out": SignatureOnly(),  # Equal("self", "other"), # once out is supported in generator
     "aten::bitwise_and.Tensor_out": MakeTorchFallback(),
     "aten::masked_select": MakeTorchFallback(),
     "aten::_local_scalar_dense": MakeTorchFallback(),

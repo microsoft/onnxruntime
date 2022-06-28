@@ -164,6 +164,7 @@ onnx::AttributeProto create_ort_attribute(
     attr.set_type(onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR);
     auto* constant_attribute_tensor_proto = attr.mutable_t();
     constant_attribute_tensor_proto->mutable_dims()->Clear();
+    constant_attribute_tensor_proto->add_dims(1);
     switch (type) {
     case at::ScalarType::Float:
       constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
@@ -171,16 +172,16 @@ onnx::AttributeProto create_ort_attribute(
       break;
     case at::ScalarType::Double:
       constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
-      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<double>();
+      *constant_attribute_tensor_proto->mutable_double_data()->Add() = value.to<double>();
       break;
     case at::ScalarType::Bool:
     case at::ScalarType::Int:
       constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
-      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<int>();
+      *constant_attribute_tensor_proto->mutable_int32_data()->Add() = value.to<int>();
       break;
     case at::ScalarType::Long:
       constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<int64_t>();
+      *constant_attribute_tensor_proto->mutable_int64_data()->Add() = value.to<int64_t>();
       break;
     default:
       // For most at::ScalarType, it should be safe to just call value.to<>
@@ -802,9 +803,7 @@ at::Tensor& eq_Scalar_out(
   ORT_LOG_FN(self, other, out);
 
   if (
-    !IsSupportedType(self, {at::kLong}) ||
-    !IsSupportedType(self, {at::kLong,at::kShort,at::kDouble,at::kInt,at::kFloat,at::kBool,at::kHalf,at::kBFloat16,at::kByte})) {
-
+    !IsSupportedType(other, {at::kHalf,at::kLong,at::kByte,at::kBFloat16,at::kInt,at::kDouble,at::kBool,at::kFloat,at::kShort})) {
     std::cout << "eq_Scalar_out - Fell back to cpu!\n";
     return at::native::call_fallback_fn<
       &at::native::cpu_fallback,
@@ -813,29 +812,14 @@ at::Tensor& eq_Scalar_out(
   auto& invoker = GetORTInvoker(self.device());
 
   auto ort_input_self = create_ort_value(invoker, self);
+  auto ort_input_other = create_ort_value(invoker, other);
 
-  NodeAttributes attrs(1);
-  attrs["value"] = create_ort_attribute(
-    "value", other, true);
+  std::vector<OrtValue> ort_outputs_0_Equal(1);
 
-  std::vector<OrtValue> ort_outputs_0_ConstantOfShape(1);
-
-  auto status = invoker.Invoke("ConstantOfShape", {
+  auto status = invoker.Invoke("Equal", {
     std::move(ort_input_self),
-  }, ort_outputs_0_ConstantOfShape, &attrs);
-
-  if (!status.IsOK())
-    throw std::runtime_error(
-      "ORT return failure status:" + status.ErrorMessage());
-
-  //auto ort_input_self = create_ort_value(invoker, self);
-
-  std::vector<OrtValue> ort_outputs_1_Equal(1);
-
-  status = invoker.Invoke("Equal", {
-    std::move(ort_input_self),
-    std::move(ort_outputs_0_ConstantOfShape[0]),
-  }, ort_outputs_1_Equal, nullptr);
+    std::move(ort_input_other),
+  }, ort_outputs_0_Equal, nullptr);
 
   if (!status.IsOK())
     throw std::runtime_error(
@@ -844,9 +828,76 @@ at::Tensor& eq_Scalar_out(
   // generator also needs to do this to handle the out param!
   at::TensorOptions tensor_options = out.options();
   out = aten_tensor_from_ort(
-    std::move(ort_outputs_1_Equal[0]),
+    std::move(ort_outputs_0_Equal[0]),
     tensor_options);
   return out;
+}
+
+// aten::fill_.Scalar(Tensor(a!) self, Scalar value) -> Tensor(a!)
+at::Tensor& fill__Scalar(
+  at::Tensor& self,
+  const at::Scalar& value) {
+  ORT_LOG_FN(self, value);
+
+  if (
+    !IsSupportedType(self, {at::kHalf,at::kByte,at::kInt,at::kFloat,at::kDouble,at::kBool,at::kLong,at::kBFloat16,at::kShort})) {
+    std::cout << "fill__Scalar - Fell back to cpu!\n";
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(fill__Scalar)>::call(self, value);
+  }
+  auto& invoker = GetORTInvoker(self.device());
+
+  auto ort_input_self = create_ort_value(invoker, self);
+
+  std::vector<OrtValue> ort_outputs_0_Shape(1);
+
+  std::cout << "Running Shape\n";
+
+  auto status = invoker.Invoke("Shape", {
+    std::move(ort_input_self),
+  }, ort_outputs_0_Shape, nullptr);
+
+  std::cout << "Ran Shape\n";
+
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+
+  onnx::AttributeProto valueAttr = create_ort_attribute(
+    "value", value, true);
+
+  NodeAttributes attrs(1);
+  attrs["value"] = valueAttr;
+
+  std::vector<OrtValue> ort_outputs_1_ConstantOfShape(1);
+
+  std::cout << "Running constantOfShape with attr dim: ";
+  std::cout << valueAttr.t().dims().size();
+  std::cout << "\n";
+
+  status = invoker.Invoke("ConstantOfShape", {
+    std::move(ort_outputs_0_Shape[0]),
+  }, ort_outputs_1_ConstantOfShape, &attrs);
+
+  std::cout << "Ran constantOfShape\n";
+
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+
+  std::cout << "Shape of constant ";
+  std::cout << ort_outputs_1_ConstantOfShape[0].Get<onnxruntime::Tensor>().Shape();
+  std::cout << "\n";
+  at::TensorOptions tensor_options = self.options();
+
+  std::cout << "set self \n";
+  self = aten_tensor_from_ort(
+    std::move(ort_outputs_1_ConstantOfShape[0]),
+    tensor_options);
+
+  std::cout << "return self \n";
+  return self;
 }
 
 } // namespace aten
