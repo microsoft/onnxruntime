@@ -3347,11 +3347,11 @@ struct OrtApi {
 
   /** \brief: Create attribute of onnxruntime operator
   * 
-  * \param[in] name of the attribute
-  * \param[in] data of the attribute
-  * \param[in] data length
-  * \param[in] data type
-  * \param[out] attribute that has been created, which must be released by OrtApi::ReleaseOpAttr
+  * \param[in] name Name of the attribute
+  * \param[in] data Data content of the attribute
+  * \param[in] len Number of bytes stored in data
+  * \param[in] type Data type
+  * \param[out] op_attr Attribute that has been created, which must be released by OrtApi::ReleaseOpAttr
   * 
   * \since Version 1.12.
   */
@@ -3364,7 +3364,7 @@ struct OrtApi {
 
   /* \brief: Release op attribute
   *
-  * \param[in] attribute created by OrtApi::CreateOpAttr
+  * \param[in] opAttr Attribute created by OrtApi::CreateOpAttr
   * 
   * \since Version 1.12.
   */
@@ -3372,16 +3372,18 @@ struct OrtApi {
 
   /** \brief: Create onnxruntime native operator
   * 
-  * \param[in] kernel info 
-  * \param[in] operator name
-  * \param[in] operator domain
-  * \param[in] operator opset
-  * \param[in] name of the type contraints, such as "T" or "T1"
-  * \param[in] type of each contraints
-  * \param[in] number of contraints
-  * \param[in] attributes used to initialize the operator
-  * \param[in] number of the attributes
-  * \param[out] operator that has been created
+  * \param[in] info Kernel info 
+  * \param[in] op_name Operator name
+  * \param[in] domain Operator domain
+  * \param[in] version Operator opset version
+  * \param[in] type_constraint_names Name of the type contraints, such as "T" or "T1"
+  * \param[in] type_constraint_values Type of each contraints
+  * \param[in] type_constraint_count Number of contraints
+  * \param[in] attr_values Attributes used to initialize the operator
+  * \param[in] attr_count Number of the attributes
+  * \param[in] input_count Number of inputs
+  * \param[in] output_count Number of outputs
+  * \param[out] ort_op Operator that has been created
   * 
   * \since Version 1.12.
   */
@@ -3395,17 +3397,19 @@ struct OrtApi {
                   _In_opt_ int type_constraint_count,
                   _In_opt_ const OrtOpAttr* const* attr_values,
                   _In_opt_ int attr_count,
+                  _In_ int input_count,
+                  _In_ int output_count,
                   _Outptr_ OrtOp** ort_op);
 
   /** \brief: Invoke the operator created by OrtApi::CreateOp
   * The inputs must follow the order as specified in onnx specification
   * 
-  * \param[in] kernel context
-  * \param[in] operator that has been created
-  * \param[in] inputs
-  * \param[in] number of inputs
-  * \param[in] outputs
-  * \param[in] number of outputs
+  * \param[in] context Kernel context
+  * \param[in] ort_op Operator that has been created
+  * \param[in] input_values Array of inputs
+  * \param[in] input_count Number of inputs
+  * \param[in] output_values Array of outputs
+  * \param[in] output_count Number of outputs
   * 
   * \since Version 1.12.
   */
@@ -3419,7 +3423,7 @@ struct OrtApi {
 
   /* \brief: Release an onnxruntime operator
   *
-  * \param[in] operator created by OrtApi::CreateOp
+  * \param[in] Op Operator created by OrtApi::CreateOp
   * 
   * \since Version 1.12.
   */
@@ -3463,6 +3467,25 @@ struct OrtApi {
                   _In_reads_(num_keys) const char* const* provider_options_keys,
                   _In_reads_(num_keys) const char* const* provider_options_values,
                   _In_ size_t num_keys);
+
+  /* \brief: Get a copy of kernel info
+  *
+  * \param[in] info Kernel info
+  * \param[out] info_copy Copy of kernel info
+  *
+  * \since Version 1.12.
+  */
+  ORT_API2_STATUS(CopyKernelInfo,
+                  _In_ const OrtKernelInfo* info,
+                  _Outptr_ OrtKernelInfo** info_copy);
+
+  /* \brief: Release kernel info
+  * 
+  * \param[in] KernelInfo A copy of kernel info returned by CopyKernelInfo
+  * 
+  * \since Version 1.12.
+  */
+  ORT_CLASS_RELEASE(KernelInfo);
 };
 
 /*
