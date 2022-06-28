@@ -408,7 +408,7 @@ TEST(CApiTest, custom_op_handler) {
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(REDUCED_OPS_BUILD)
 // disable test in reduced-op-build since TOPK and GRU are excluded there
-TEST(CApiTest, instant_op_handler) {
+TEST(CApiTest, standalone_op_handler) {
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
   input.name = "X";
@@ -418,12 +418,20 @@ TEST(CApiTest, instant_op_handler) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
-  InstantCustomOp instant_op{onnxruntime::kCpuExecutionProvider, nullptr};
-  Ort::CustomOpDomain custom_op_domain("");
-  custom_op_domain.Add(&instant_op);
+#ifdef USE_CUDA
+  StandaloneCustomOp standalone_op{onnxruntime::kCudaExecutionProvider, nullptr};
+#else
+  StandaloneCustomOp standalone_op{onnxruntime::kCpuExecutionProvider, nullptr};
+#endif
 
-  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
-                       custom_op_domain, nullptr);
+  Ort::CustomOpDomain custom_op_domain("");
+  custom_op_domain.Add(&standalone_op);
+
+#ifdef USE_CUDA
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr);
+#else
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
+#endif
 }
 #endif
 
