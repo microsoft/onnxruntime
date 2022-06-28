@@ -682,6 +682,12 @@ at::Tensor& out) {
   return out;
 }
 
+void copy(onnxruntime::ORTInvoker& invoker,
+          const onnxruntime::Tensor& src_tensor, onnxruntime::Tensor& dst_tensor){
+  auto& ort_ep = invoker.GetCurrentExecutionProvider();
+  ORT_THROW_IF_ERROR(ort_ep.GetDataTransfer()->CopyTensor(src_tensor, dst_tensor));
+}
+
 const at::Tensor& resize_(
     const at::Tensor& self,
     at::IntArrayRef size,
@@ -696,7 +702,7 @@ const at::Tensor& resize_(
   auto& invoker = GetORTInvoker(self.device());
 
   auto self_ort_value = create_ort_value(invoker, self);
-  auto& self_ort_tensor = self_ort_value.Get<onnxruntime::Tensor>();
+  auto* self_ort_tensor = self_ort_value.GetMutable<onnxruntime::Tensor>();
 
   // Create new ORTValue to replace the existing ORTValue on the at::tensor
   // object.
@@ -704,7 +710,7 @@ const at::Tensor& resize_(
   //         Or possibly should ORTValue / ORTTensor support resize of underlying
   //         storage?
   OrtValue updated_ort_value;
-  onnxruntime::Tensor::InitOrtValue(self_ort_tensor.DataType(), onnxruntime::TensorShape(size.vec()),
+  onnxruntime::Tensor::InitOrtValue(self_ort_tensor->DataType(), onnxruntime::TensorShape(size.vec()),
         invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), updated_ort_value);
 
   // TODO: Copy over values from original tensor to the new updated tensor
@@ -712,6 +718,22 @@ const at::Tensor& resize_(
   //       values, leaving new memory uninitialized
   //       If new tensor is smaller then existing tensor, copy over the range
   //       of values that fit in new tensor (truncate existing values).
+
+  auto* self_updated_ort_tensor = updated_ort_value.GetMutable<onnxruntime::Tensor>();
+  // If new size is larger, then copy over old values
+  if (self_updated_ort_tensor->SizeInBytes() > self_ort_tensor->SizeInBytes()) {
+
+    // Currently, it is not possible to copy sub elements between tensors of different sizes
+    // as a workaround, create a new tensor (of the same size as the original self tensor)
+    // using the buffer of the larger updated tensor.
+    onnxruntime::Tensor tmpTensor{
+      self_ort_tensor->DataType(),
+      onnxruntime::TensorShape(self.sizes().vec()),
+      self_updated_ort_tensor->MutableDataRaw(),
+      invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault)->Info()};
+
+     copy(invoker, *self_ort_tensor, tmpTensor);
+  }
 
   auto* self_impl = dynamic_cast<ORTTensorImpl*>(self.unsafeGetTensorImpl());
   self_impl->set_tensor(updated_ort_value);
