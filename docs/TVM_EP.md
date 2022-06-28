@@ -103,8 +103,8 @@ tvm_session = onnxruntime.InferenceSession(model_path, providers=["TvmExecutionP
 
 - `executor` is executor type used by TVM. There is choice between two types: GraphExecutor and VirtualMachine which are corresponded to "graph" and "vm" tags. VirtualMachine is used by default.
 - `so_folder` is path to folder with set of files (.ro-, .so-files and weights) obtained after model tuning. It uses these files for executor compilation instead of onnx-model. But the latter is still needed for ONNX Runtime.
-- `check_hash` means that it is necessary to perform a HASH check for the model obtained in the `so_folder` parameter.
-- `hash_file_path` is path to file that contains the pre-computed HASH for the ONNX model that was used for tuning in the `so_folder` parameter.
+- `check_hash` means that it is necessary to perform a HASH check for the model obtained in the `so_folder` parameter. It is `False` by default.
+- `hash_file_path` is path to file that contains the pre-computed HASH for the ONNX model which result of tuning locates in the path passed by `so_folder` parameter.
   If an empty string was passed as this value, then the file will be searched in the folder that was passed in the `so_folder` parameter.
 - `target` and `target_host` are strings like in TVM (e.g. "llvm --mcpu=avx2"). When using accelerators, target may be something like `cuda` while target_host may be `llvm -mtriple=x86_64-linux-gnu`
 - `opt_level` is TVM optimization level. It is 3 by default
