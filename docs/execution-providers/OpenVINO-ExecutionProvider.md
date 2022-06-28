@@ -26,7 +26,7 @@ Pre-built packages and Docker images are published for OpenVINO™ Execution Pro
 
 ## Requirements
 
-|ONNX Runtime|OOpenVINO™|Notes|
+|ONNX Runtime|OpenVINO™|Notes|
 |---|---|---|
 |1.11.0|2022.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v4.0)|
 |1.10.0|2021.4.2|[Details](https://github.com/intel/onnxruntime/releases/tag/v3.4)|
@@ -568,3 +568,8 @@ In order to showcase what you can do with the OpenVINO™ Execution Provider for
 
 ### Tutorial on how to use OpenVINO™ Execution Provider for ONNX Runtime python wheel packages
 [Python Pip Wheel Packages](https://www.intel.com/content/www/us/en/artificial-intelligence/posts/openvino-execution-provider-for-onnx-runtime.html)
+
+### Accelerate inference for PyTorch models with OpenVINO Execution Provider (Preview)
+
+ONNX Runtime for PyTorch is now extended to support PyTorch model inference using ONNX Runtime.
+It is available via the torch-ort-inference python package. This preview package enables OpenVINO™ Execution Provider for ONNX Runtime by default for accelerating inference on various Intel® CPUs, Intel® integrated GPUs, and Intel® Movidius™ Vision Processing Units - referred to as VPU. For more details, see [torch-ort-inference](https://github.com/pytorch/ort#accelerate-inference-for-pytorch-models-with-onnx-runtime-preview).
