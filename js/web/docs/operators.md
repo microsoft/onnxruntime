@@ -36,7 +36,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [ConstantOfShape](https://github.com/onnx/onnx/blob/master/docs/Operators.md#ConstantOfShape) |  |
 | [Conv](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Conv) | [1-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Conv-1), [11+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Conv-11) |
 | [ConvInteger](https://github.com/onnx/onnx/blob/master/docs/Operators.md#ConvInteger) |  |
-| [ConvTranspose](https://github.com/onnx/onnx/blob/master/docs/Operators.md#ConvTranspose) |  |
+| [ConvTranspose](https://github.com/onnx/onnx/blob/master/docs/Operators.md#ConvTranspose) | [1-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ConvTranspose-1), [11+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ConvTranspose-11) |
 | [Cos](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Cos) | [7+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Cos-7) |
 | [Cosh](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Cosh) |  |
 | [CumSum](https://github.com/onnx/onnx/blob/master/docs/Operators.md#CumSum) |  |
