@@ -725,8 +725,12 @@ const at::Tensor& resize_(
   //       of values that fit in new tensor (truncate existing values).
 
   auto* self_updated_ort_tensor = updated_ort_value.GetMutable<onnxruntime::Tensor>();
-  // If new size is larger, then copy over old values
-  if (self_updated_ort_tensor->SizeInBytes() > self_ort_tensor->SizeInBytes()) {
+
+  if (self_ort_tensor->SizeInBytes() == 0 ||
+      self_ort_tensor->SizeInBytes() == self_updated_ort_tensor->SizeInBytes()) {
+    // Do nothing...
+  } else if (self_updated_ort_tensor->SizeInBytes() > self_ort_tensor->SizeInBytes()) {
+    // Copy elements from (smaller) initial self tensor to (larger) updated self tensor
 
     // To match observed PyTorch behavior, zero out newly allocated memory
     // REVIEW: is there a better way to accomplish this?
@@ -742,6 +746,18 @@ const at::Tensor& resize_(
       invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault)->Info()};
 
      copy(invoker, *self_ort_tensor, tmpTensor);
+  } else if (self_updated_ort_tensor->SizeInBytes() < self_ort_tensor->SizeInBytes()) {
+    // Copy elements from (larger) initial self tensor to (smaller) updated self tensor
+
+    // See comment in previous if block for explanation of this
+    // workaround...
+    onnxruntime::Tensor tmpTensor{
+      self_ort_tensor->DataType(),
+      onnxruntime::TensorShape(size.vec()),
+      self_ort_tensor->MutableDataRaw(),
+      invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault)->Info()};
+
+     copy(invoker, tmpTensor, *self_updated_ort_tensor);
   }
 
   auto* self_impl = dynamic_cast<ORTTensorImpl*>(self.unsafeGetTensorImpl());
