@@ -20,8 +20,10 @@ limitations under the License.
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Modifications: Add SkipLayerNormKernelSmallVec and SkipLayerNormKernelVec to
+// Modifications: Add SkipLayerNormKernelVec to
 //                leverage vectorized load/write.
+//                and templatize ComputeSkipLayerNorm for different
+//                data types.
 // Copyright (c) Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 
@@ -80,22 +82,19 @@ __global__ void SkipLayerNormKernel(
   LayerNorm<T, TPB>(thread_data, ld, offset, beta, gamma, epsilon, output);
 }
 
-template <unsigned TPB, int ILP>
-__global__ void SkipLayerNormKernelSmallVec(
-    const int ld, const half* input, const half* skip, const half* beta, const half* gamma,
-    const half* bias, const half epsilon, half* output, bool hasBias) {
-  const half rld = half(1.f) / half(ld);
+
+template <typename T, unsigned TPB, int ILP>
+__global__ void SkipLayerNormKernelVec(
+    const int ld, const T* input, const T* skip, const T* beta, const T* gamma,
+    const T* bias, const T epsilon, T* output, bool hasBias) {
+  const T rld = T(1.f / ld);
   const int idx = blockIdx.x * ld + threadIdx.x * ILP;  // grid_size = n / ld
 
-  using VecT = aligned_vector<half, ILP>;
-  using BlockReduce = cub::BlockReduce<cub::KeyValuePair<half, half>, TPB>;
-  __shared__ typename BlockReduce::TempStorage temp_storage;
-  __shared__ half mu;      // mean
-  __shared__ half rsigma;  // 1 / std.dev.
-  KeyValuePairSum pair_sum;
+  using VecT = aligned_vector<T, ILP>;
+  __shared__ T mu;      // mean
+  __shared__ T rsigma;  // 1 / std.dev.
 
-  using VecT = aligned_vector<half, ILP>;
-  half input_v[ILP], skip_v[ILP], beta_v[ILP], gamma_v[ILP], bias_v[ILP], output_v[ILP];
+  T input_v[ILP], skip_v[ILP], bias_v[ILP], output_v[ILP];
 
   VecT* input_val = reinterpret_cast<VecT*>(&input_v);
   *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
@@ -103,208 +102,91 @@ __global__ void SkipLayerNormKernelSmallVec(
   VecT* skip_val = reinterpret_cast<VecT*>(&skip_v);
   *skip_val = *reinterpret_cast<const VecT*>(&skip[idx]);
 
-  if (beta != nullptr) {
-    VecT* beta_val = reinterpret_cast<VecT*>(&beta_v);
-    *beta_val = *reinterpret_cast<const VecT*>(&beta[threadIdx.x * ILP]);
-  }
-
-  VecT* gamma_val = reinterpret_cast<VecT*>(&gamma_v);
-  *gamma_val = *reinterpret_cast<const VecT*>(&gamma[threadIdx.x * ILP]);
-
   if (hasBias) {
     VecT* bias_val = reinterpret_cast<VecT*>(&bias_v);
     *bias_val = *reinterpret_cast<const VecT*>(&bias[threadIdx.x * ILP]);
   }
 
-  VecT* output_val = reinterpret_cast<VecT*>(&output_v);
+  cub::KeyValuePair<T, T> thread_data(T(0.f), T(0.f));
 
-  cub::KeyValuePair<half, half> thread_data;
   if (ILP * threadIdx.x < ld) {
-    half rldval_sum = half(0.f);
-    half rldvalsq_sum = half(0.f);
+    T rldval_sum = T(0.f);
+    T rldvalsq_sum = T(0.f);
     #pragma unroll
     for (int i = 0; i < ILP; i++) {
       input_v[i] += skip_v[i];
       if (hasBias) {
         input_v[i] += bias_v[i];
       }
-      const half rldval = rld * input_v[i];
+      const T rldval = rld * input_v[i];
       rldval_sum += rldval;
       rldvalsq_sum += rldval * input_v[i];
     }
-    thread_data = cub::KeyValuePair<half, half>(rldval_sum, rldvalsq_sum);
-  } else {
-    thread_data = cub::KeyValuePair<half, half>(half(0.f), half(0.f));
+    thread_data = cub::KeyValuePair<T, T>(rldval_sum, rldvalsq_sum);
   }
-  const cub::KeyValuePair<half, half> sumKV = BlockReduce(temp_storage).Reduce(thread_data, pair_sum);
-  if (threadIdx.x == 0) {
-    mu = sumKV.key;
-    rsigma = Rsqrt(sumKV.value - mu * mu + epsilon);
-  }
-  __syncthreads();
-  if (ILP * threadIdx.x < ld) {
-    #pragma unroll
-    for (int i = 0; i < ILP; i++) {
-      output_v[i] = (beta != nullptr) ? gamma_v[i] * (input_v[i] - mu) * rsigma + beta_v[i] :
-                                        gamma_v[i] * (input_v[i] - mu) * rsigma;
-    }
-    *(reinterpret_cast<VecT*>(&output[idx])) = *reinterpret_cast<VecT*>(&output_v[0]);
-  }
+  LayerNormSmallVec<T, TPB, ILP>(input_v, thread_data, ld, idx, beta, gamma, epsilon, output);
 }
 
-template <unsigned TPB, int ILP>
-__global__ void SkipLayerNormKernelVec(
-    const int ld, const half* input, const half* skip, const half* beta, const half* gamma,
-    const half* bias, const half epsilon, half* output, bool hasBias) {
-  const half rld = half(1.f) / half(ld);
-  const int idx = blockIdx.x * ld + threadIdx.x * ILP; // TPB = "ld / ILP", grid_size = n / ld
-
-  using VecT = aligned_vector<half, ILP>;
-  using BlockReduce = cub::BlockReduce<cub::KeyValuePair<half, half>, TPB>;
-  __shared__ typename BlockReduce::TempStorage temp_storage;
-  __shared__ half mu;      // mean
-  __shared__ half rsigma;  // 1 / std.dev.
-  KeyValuePairSum pair_sum;
-
-  using VecT = aligned_vector<half, ILP>;
-  half input_v[ILP], skip_v[ILP], beta_v[ILP], gamma_v[ILP], bias_v[ILP], output_v[ILP];
-
-  VecT* input_val = reinterpret_cast<VecT*>(&input_v);
-  *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
-
-  VecT* skip_val = reinterpret_cast<VecT*>(&skip_v);
-  *skip_val = *reinterpret_cast<const VecT*>(&skip[idx]);
-
-  if (beta != nullptr) {
-    VecT* beta_val = reinterpret_cast<VecT*>(&beta_v);
-    *beta_val = *reinterpret_cast<const VecT*>(&beta[threadIdx.x * ILP]);
-  }
-
-  VecT* gamma_val = reinterpret_cast<VecT*>(&gamma_v);
-  *gamma_val = *reinterpret_cast<const VecT*>(&gamma[threadIdx.x * ILP]);
-
-  if (hasBias) {
-    VecT* bias_val = reinterpret_cast<VecT*>(&bias_v);
-    *bias_val = *reinterpret_cast<const VecT*>(&bias[threadIdx.x * ILP]);
-  }
-
-  VecT* output_val = reinterpret_cast<VecT*>(&output_v);
-
-  half rldval_sum = half(0.f);
-  half rldvalsq_sum = half(0.f);
-  #pragma unroll
-  for (int i = 0; i < ILP; i++) {
-    input_v[i] += skip_v[i];
-    if (hasBias) {
-      input_v[i] += bias_v[i];
-    }
-    const half rldval = rld * input_v[i];
-    rldval_sum += rldval;
-    rldvalsq_sum += rldval * input_v[i];
-  }
-  cub::KeyValuePair<half, half> thread_data(rldval_sum, rldvalsq_sum);
-  const cub::KeyValuePair<half, half> sumKV = BlockReduce(temp_storage).Reduce(thread_data, pair_sum);
-  if (threadIdx.x == 0) {
-    mu = sumKV.key;
-    rsigma = Rsqrt(sumKV.value - mu * mu + epsilon);
-  }
-  __syncthreads();
-
-  #pragma unroll
-  for (int i = 0; i < ILP; i++) {
-    output_v[i] = (beta != nullptr) ? gamma_v[i] * (input_v[i] - mu) * rsigma + beta_v[i] :
-                                      gamma_v[i] * (input_v[i] - mu) * rsigma;
-  }
-  *(reinterpret_cast<VecT*>(&output[idx])) = *reinterpret_cast<VecT*>(&output_v[0]);
-}
-
-/* float32 */
-bool ComputeSkipLayerNorm(cudaStream_t stream, const int ld, const int n, const float* input,
-    const float* skip, const float* beta, const float* gamma, const float* bias, const float epsilon,
-    float* output, bool use_half2) {
-  // this must be true because n is the total size of the tensor
-  assert(n % ld == 0);
-  const int grid_size = n / ld;
-
-  if (ld <= 32) {
-    constexpr int block_size = 32;
-    SkipLayerNormKernelSmall<float, block_size>
-        <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
-  } else if (ld <= 128) {
-    constexpr int block_size = 128;
-    SkipLayerNormKernelSmall<float, block_size>
-        <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
-  } else if (ld == 384) {
-    constexpr int block_size = 384;
-    SkipLayerNormKernelSmall<float, block_size>
-        <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
-  } else {
-    constexpr int block_size = 256;
-    SkipLayerNormKernel<float, block_size>
-        <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
-  }
-  return CUDA_CALL(cudaPeekAtLastError());
-}
-
-/* half16 */
+/* half16 and float32 */
+template <typename T>
 bool ComputeSkipLayerNorm(
-    cudaStream_t stream, const int ld, const int n, const half* input, const half* skip, const half* beta,
-    const half* gamma, const half* bias, const half epsilon, half* output, bool use_half2) {
+    cudaStream_t stream, const int ld, const int n, const T* input, const T* skip, const T* beta,
+    const T* gamma, const T* bias, const T epsilon, T* output, bool use_half2) {
   // this must be true because n is the total size of the tensor
   assert(n % ld == 0);
-  if (use_half2 && 0 == (n & 1)) {
+  if (use_half2 && 0 == (n % 4)) {  // this will force float32 to use the original kernels.
     const int grid_size = n / ld;
     bool hasBias = (bias == nullptr) ? false : true;
     if (ld <= 32) {
       constexpr int block_size = 32 / 4;
-      SkipLayerNormKernelSmallVec<block_size, 4>
+      SkipLayerNormKernelVec<T, block_size, 4>
          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output, hasBias);
     } else if (ld == 64) {
       constexpr int block_size = 64 / 4;
-      SkipLayerNormKernelVec<block_size, 4>
+      SkipLayerNormKernelVec<T, block_size, 4>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output, hasBias);
     } else if (ld == 128) {
       constexpr int block_size = 128 / 4;
-      SkipLayerNormKernelVec<block_size, 4>
+      SkipLayerNormKernelVec<T, block_size, 4>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output, hasBias);
     } else if (ld == 384) {
       constexpr int block_size = 384 / 4;
-      SkipLayerNormKernelVec<block_size, 4>
+      SkipLayerNormKernelVec<T, block_size, 4>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output, hasBias);
     } else if (ld == 768) {
       constexpr int block_size = 768 / 4;
-      SkipLayerNormKernelVec<block_size, 4>
+      SkipLayerNormKernelVec<T, block_size, 4>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output, hasBias);
     } else if (ld == 1024) {
       constexpr int block_size = 1024 / 4;
-      SkipLayerNormKernelVec<block_size, 4>
+      SkipLayerNormKernelVec<T, block_size, 4>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output, hasBias);
     } else {
       constexpr int block_size = 256;
-      SkipLayerNormKernel<half, block_size>
+      SkipLayerNormKernel<T, block_size>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
     }
   } else {
     const int grid_size = n / ld;
     if (ld <= 32) {
       constexpr int block_size = 32;
-      SkipLayerNormKernelSmall<half, block_size>
+      SkipLayerNormKernelSmall<T, block_size>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
     } else if (ld <= 64) {
       constexpr int block_size = 64;
-      SkipLayerNormKernelSmall<half, block_size>
+      SkipLayerNormKernelSmall<T, block_size>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
     } else if (ld <= 128) {
       constexpr int block_size = 128;
-      SkipLayerNormKernelSmall<half, block_size>
+      SkipLayerNormKernelSmall<T, block_size>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
     } else if (ld == 384) {
       constexpr int block_size = 384;
-      SkipLayerNormKernelSmall<half, block_size>
+      SkipLayerNormKernelSmall<T, block_size>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
     } else {
       constexpr int block_size = 256;
-      SkipLayerNormKernel<half, block_size>
+      SkipLayerNormKernel<T, block_size>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
     }
   }
@@ -326,7 +208,7 @@ bool LaunchSkipLayerNormKernel(
     size_t element_size,
     bool use_half2) {
 
-  return ComputeSkipLayerNorm(
+  return ComputeSkipLayerNorm<half>(
          stream,
          hidden_size,
          element_count,
@@ -355,7 +237,7 @@ bool LaunchSkipLayerNormKernel(
     size_t element_size,
     bool use_half2) {
 
-  return ComputeSkipLayerNorm(
+  return ComputeSkipLayerNorm<float>(
          stream,
          hidden_size,
          element_count,

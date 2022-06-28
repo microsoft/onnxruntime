@@ -52,15 +52,6 @@ __device__ inline half Rsqrt(const half& x) {
 #endif
 }
 
-template <>
-__device__ inline half2 Rsqrt(const half2& x) {
-#if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
-  return h2rsqrt(x);
-#else
-  return half2{half(rsqrtf(float(x.x))), half(rsqrtf(float(x.y)))};
-#endif
-}
-
 __device__ inline half2 AddHalf2(const half2 a, const half2 b) {
 #if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
   return __hadd2(a, b);
@@ -143,6 +134,49 @@ __device__ inline void LayerNormSmall(const T val, const cub::KeyValuePair<T, T>
   }
 }
 
+template <typename T, int TPB, int ILP>
+__device__ inline void LayerNormSmallVec(const T* input_v, const cub::KeyValuePair<T, T>& thread_data,
+                                         const int ld, const int idx, const T* beta, const T* gamma,
+                                         const T epsilon, T* output) {
+  // Assuming thread_data is already divided by ld
+  // Small settings: the block covers the leading dimension TPB >= ld. The input
+  // value is available in a register
+  using VecT = aligned_vector<T, ILP>;
+  using BlockReduce = cub::BlockReduce<cub::KeyValuePair<T, T>, TPB>;
+  __shared__ typename BlockReduce::TempStorage temp_storage;
+  __shared__ T mu;      // mean
+  __shared__ T rsigma;  // 1 / std.dev.
+  T beta_v[ILP], gamma_v[ILP], output_v[ILP];
+
+  if (beta != nullptr) {
+    VecT* beta_val = reinterpret_cast<VecT*>(&beta_v);
+    *beta_val = *reinterpret_cast<const VecT*>(&beta[threadIdx.x * ILP]);
+  }
+  VecT* gamma_val = reinterpret_cast<VecT*>(&gamma_v);
+  *gamma_val = *reinterpret_cast<const VecT*>(&gamma[threadIdx.x * ILP]);
+
+  VecT* output_val = reinterpret_cast<VecT*>(&output_v);
+
+  KeyValuePairSum pair_sum;
+  const cub::KeyValuePair<T, T> sum_kv = BlockReduce(temp_storage).Reduce(thread_data, pair_sum);
+
+  if (threadIdx.x == 0) {
+    mu = sum_kv.key;
+    rsigma = Rsqrt(sum_kv.value - mu * mu + epsilon);
+  }
+  __syncthreads();
+
+  if (ILP * threadIdx.x < ld) {
+    #pragma unroll
+    for (int i = 0; i < ILP; i++) {
+      output_v[i] = (beta != nullptr) ? gamma_v[i] * (input_v[i] - mu) * rsigma + beta_v[i] :
+                                        gamma_v[i] * (input_v[i] - mu) * rsigma;
+    }
+    *(reinterpret_cast<VecT*>(&output[idx])) = *reinterpret_cast<VecT*>(&output_v[0]);
+  }
+}
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
+
