@@ -330,7 +330,6 @@ def verify_gpt2_subgraph(graph, precision):
                 f"Input {i} is expected to have onnx data type {expected_type}. Got {graph.output[i].type.tensor_type.elem_type}"
             )
     print("Verifying GPT-2 graph outputs: name and data type are good.")
-
     # TODO: verify shapes of inputs and outputs.
     return
 
@@ -387,6 +386,8 @@ def convert_model(args):
         verify_gpt2_subgraph(model.graph, args.precision)
     else:
         verify_t5_decoder_subgraph(model.graph, args.precision)
+
+    onnx.save(model, "D:\\ai\\AI frameworks Team\\tasks\\deepwrite\\DeepWritev1\\DeepWrite\\model\\customop\\model\\DW6_multistream_fp32_opt2.onnx")
 
     inputs = [
         "input_ids",

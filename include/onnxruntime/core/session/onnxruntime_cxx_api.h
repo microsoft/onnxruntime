@@ -28,12 +28,12 @@
 #endif
 
 /** \brief All C++ Onnxruntime APIs are defined inside this namespace
-* 
+*
 */
 namespace Ort {
 
 /** \brief All C++ methods that can fail will throw an exception of this type
-* 
+*
 * If <tt>ORT_NO_EXCEPTIONS</tt> is defined, then any error will result in a call to abort()
 */
 struct Exception : std::exception {
@@ -76,6 +76,10 @@ template <typename T>
 #ifdef ORT_API_MANUAL_INIT
 const OrtApi* Global<T>::api_{};
 inline void InitApi() { Global<void>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION); }
+inline void InitApiWith(OrtApi api) {
+  OrtApi* new_api = new OrtApi(api);
+  Global<void>::api_ = new_api;
+}
 #else
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
@@ -124,38 +128,38 @@ ORT_DEFINE_RELEASE(ArenaCfg);
   * The type is implicitly convertible to/from uint16_t.
   * The size of the structure should align with uint16_t and one can freely cast
   * uint16_t buffers to/from Ort::Float16_t to feed and retrieve data.
-  * 
+  *
   * Generally, you can feed any of your types as float16/blfoat16 data to create a tensor
   * on top of it, providing it can form a continuous buffer with 16-bit elements with no padding.
   * And you can also feed a array of uint16_t elements directly. For example,
-  * 
+  *
   * \code{.unparsed}
   * uint16_t values[] = { 15360, 16384, 16896, 17408, 17664};
   * constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
   * std::vector<int64_t> dims = {values_length};  // one dimensional example
   * Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   * // Note we are passing bytes count in this api, not number of elements -> sizeof(values)
-  * auto float16_tensor = Ort::Value::CreateTensor(info, values, sizeof(values), 
+  * auto float16_tensor = Ort::Value::CreateTensor(info, values, sizeof(values),
   *                                                dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
   * \endcode
-  * 
+  *
   * Here is another example, a little bit more elaborate. Let's assume that you use your own float16 type and you want to use
   * a templated version of the API above so the type is automatically set based on your type. You will need to supply an extra
   * template specialization.
-  * 
+  *
   * \code{.unparsed}
   * namespace yours { struct half {}; } // assume this is your type, define this:
-  * namespace Ort { 
+  * namespace Ort {
   * template<>
   * struct TypeToTensorType<yours::half> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16; };
   * } //namespace Ort
-  * 
+  *
   * std::vector<yours::half> values;
   * std::vector<int64_t> dims = {values.size()}; // one dimensional example
   * Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   * // Here we are passing element count -> values.size()
   * auto float16_tensor = Ort::Value::CreateTensor<yours::half>(info, values.data(), values.size(), dims.data(), dims.size());
-  * 
+  *
   *  \endcode
   */
 struct Float16_t {
@@ -174,7 +178,7 @@ static_assert(sizeof(Float16_t) == sizeof(uint16_t), "Sizes must match");
   * The type is implicitly convertible to/from uint16_t.
   * The size of the structure should align with uint16_t and one can freely cast
   * uint16_t buffers to/from Ort::BFloat16_t to feed and retrieve data.
-  * 
+  *
   * See also code examples for Float16_t above.
   */
 struct BFloat16_t {
@@ -189,11 +193,11 @@ struct BFloat16_t {
 static_assert(sizeof(BFloat16_t) == sizeof(uint16_t), "Sizes must match");
 
 /** \brief Used internally by the C++ API. C++ wrapper types inherit from this
-* 
+*
 * This is a zero cost abstraction to wrap the C API objects and delete them on destruction.
 * There is a secondary class 'Unowned<T>' that is used to prevent deletion on destruction (Used for return types that are
 * not owned by the caller)
-* 
+*
 */
 template <typename T>
 struct Base {
@@ -232,7 +236,7 @@ struct Base {
 };
 
 /** \brief Wraps an object that inherits from Ort::Base and stops it from deleting the contained pointer on destruction
-* 
+*
 * This has the effect of making it not own the memory held by Ort::Base.
 */
 template <typename T>
@@ -309,7 +313,7 @@ struct RunOptions : Base<OrtRunOptions> {
   /** \brief Terminates all currently executing Session::Run calls that were made using this RunOptions instance
   *
   * If a currently executing session needs to be force terminated, this can be called from another thread to force it to fail with an error
-  * Wraps OrtApi::RunOptionsSetTerminate 
+  * Wraps OrtApi::RunOptionsSetTerminate
   */
   RunOptions& SetTerminate();
 
@@ -405,14 +409,14 @@ struct Session : Base<OrtSession> {
   Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options);                                        ///< Wraps OrtApi::CreateSessionFromArray
 
   /** \brief Run the model returning results in an Ort allocated vector.
-  * 
+  *
   * Wraps OrtApi::Run
   *
   * The caller provides a list of inputs and a list of the desired outputs to return.
   *
   * See the output logs for more information on warnings/errors that occur while processing the model.
   * Common errors are.. (TODO)
-  * 
+  *
   * \param[in] run_options
   * \param[in] input_names Array of null terminated strings of length input_count that is the list of input names
   * \param[in] input_values Array of Value objects of length input_count that is the list of input values
@@ -1004,6 +1008,8 @@ struct CustomOpApi {
                 _In_ int output_count);
 
   void ReleaseOp(_Frees_ptr_opt_ OrtOp* ort_op);
+
+  void* KernelContext_GetThreadPool(const OrtKernelContext* context);
 
  private:
   const OrtApi& api_;

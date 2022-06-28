@@ -1216,6 +1216,12 @@ inline void* CustomOpApi::KernelContext_GetGPUComputeStream(const OrtKernelConte
   return out;
 }
 
+inline void* CustomOpApi::KernelContext_GetThreadPool(const OrtKernelContext* context) {
+  void* out;
+  ThrowOnError(api_.KernelContext_GetThreadPool(context, &out));
+  return out;
+}
+
 inline void CustomOpApi::CreateOpAttr(_In_ const char* name,
                                       _In_ const void* data,
                                       _In_ int len,

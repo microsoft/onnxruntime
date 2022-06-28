@@ -76,6 +76,11 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKe
   return nullptr;
 };
 
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetThreadPool, _In_ const OrtKernelContext* context, _Outptr_ void** out) {
+  *out = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetOperatorThreadPool();
+  return nullptr;
+};
+
 template <typename T, typename std::enable_if<std::is_fundamental<T>::value, int>::type = 0>
 static Status CopyDataFromVectorToMemory(const std::vector<T>& values, T* out, size_t* size) {
   if (out == nullptr) {  // User is querying the true size of the attribute

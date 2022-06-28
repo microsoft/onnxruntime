@@ -381,7 +381,12 @@ ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_SNPE,
                     _In_reads_(num_keys) const char* const* provider_options_keys,
                     _In_reads_(num_keys) const char* const* provider_options_values,
                     _In_ size_t num_keys);
+
 ORT_API_STATUS_IMPL(KernelInfoGetAttributeArray_void, _In_ const OrtKernelInfo* info,
                     _In_ OrtAllocator* ort_allocator, _In_ const char* name, _Out_ void** buffer,
                     _Out_ size_t* size);
+
+ORT_API_STATUS_IMPL(KernelContext_GetThreadPool,
+                    _In_ const OrtKernelContext* context,
+                    _Outptr_ void** out);
 }  // namespace OrtApis

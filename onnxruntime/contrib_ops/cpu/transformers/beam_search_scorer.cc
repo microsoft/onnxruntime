@@ -146,7 +146,6 @@ void BeamSearchScorer::Process(ISequences* sequences,
   // Sequences shape is (batch_size * num_beams, total_sequence_length)
   // It contains word ID of whole sequence generated so far.
   // It is different from subgraph input_ids, which only need one word when past state is not empty.
-
   const int sequence_length = sequences->GetSequenceLength();
 
   ORT_ENFORCE(next_scores.size() == next_tokens.size());

@@ -53,6 +53,10 @@ class OpKernelContextInternal : public OpKernelContext {
     return OpKernelContext::GetOutputMLValue(index);
   }
 
+  const concurrency::ThreadPool* GetOperatorThreadPool() {
+    return OpKernelContext::GetOperatorThreadPool();
+  }
+
 #ifdef ENABLE_TRAINING
   Status SetOutputMLValue(int index, const OrtValue& ort_value) {
     return OpKernelContext::SetOutputMLValue(index, ort_value);
