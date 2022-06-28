@@ -6,8 +6,7 @@
 This converts GPT2 or T5 model to onnx with beam search operator.
 
 Example 1: convert gpt2 model with beam search:
-    python convert_beam_search.py -m gpt2 --decoder_onnx ./onnx_models/gpt2_past_fp32.onnx     \
-        --output ./onnx_models/gpt2_beam_search.onnx --output_sequences_scores
+    python convert_beam_search.py -m gpt2 --output gpt2_beam_search.onnx
 
 Example 2: convert T5 model with beam search in two steps:
     cd ./models/t5
@@ -75,25 +74,27 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
+    input_group = parser.add_argument_group("Input options")
+
+    input_group.add_argument(
         "-m",
         "--model_name_or_path",
         required=True,
         type=str,
-        help="Model path, or pretrained model name in the list: "
+        help="Pytorch model checkpoint path, or pretrained model name in the list: "
         + ", ".join(PRETRAINED_GPT2_MODELS + PRETRAINED_T5_MODELS + PRETRAINED_MT5_MODELS),
     )
 
-    parser.add_argument(
+    input_group.add_argument(
         "--model_type",
         required=False,
         type=str,
         default="gpt2",
         choices=["gpt2", "t5", "mt5"],
-        help="Model type in the list: " + ", ".join(["gpt2", "t5", "mt5"]),
+        help="Model type (default is gpt2) in the list: " + ", ".join(["gpt2", "t5", "mt5"]),
     )
 
-    parser.add_argument(
+    input_group.add_argument(
         "--cache_dir",
         required=False,
         type=str,
@@ -101,52 +102,21 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Directory to cache pre-trained models",
     )
 
-    parser.add_argument(
+    input_group.add_argument(
         "--decoder_onnx",
         required=False,
         type=str,
         default="",
-        help="Path of onnx model for decoder. Required for gpt2 model type.",
+        help="Path of onnx model for decoder. Specify it when you have exported the model.",
     )
 
-    parser.add_argument(
+    input_group.add_argument(
         "--encoder_decoder_init_onnx",
         required=False,
         type=str,
         default="",
-        help="Path of ONNX model for encoder and decoder initialization. For t5 model type.",
+        help="Path of ONNX model for encoder and decoder initialization. Specify it when you have exported the model.",
     )
-
-    parser.add_argument(
-        "--output",
-        required=False,
-        type=str,
-        help="Output path for onnx model with beam search.",
-    )
-
-    parser.add_argument(
-        "-p",
-        "--precision",
-        required=False,
-        type=Precision,
-        default=Precision.FLOAT32,
-        choices=[Precision.FLOAT32, Precision.FLOAT16],
-        help="Precision of model to run. fp32 for full precision, fp16 for half or mixed precision",
-    )
-
-    parser.add_argument("--use_gpu", required=False, action="store_true", help="use GPU for inference")
-    parser.set_defaults(use_gpu=False)
-
-    parser.add_argument("-e", "--use_external_data_format", required=False, action="store_true")
-    parser.set_defaults(use_external_data_format=False)
-
-    parser.add_argument(
-        "--disable_parity",
-        required=False,
-        action="store_true",
-        help="do not run parity test",
-    )
-    parser.set_defaults(disable_parity=False)
 
     parser.add_argument(
         "--verbose",
@@ -156,48 +126,61 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
     parser.set_defaults(verbose=False)
 
-    parser.add_argument(
-        "--torch_performance",
+    output_group = parser.add_argument_group("Output options")
+
+    output_group.add_argument(
+        "--output",
+        required=True,
+        type=str,
+        help="Output path for onnx model with beam search.",
+    )
+
+    output_group.add_argument(
+        "-p",
+        "--precision",
+        required=False,
+        type=Precision,
+        default=Precision.FLOAT32,
+        choices=[Precision.FLOAT32, Precision.FLOAT16],
+        help="Precision of model to run. fp32 for full precision, fp16 for half or mixed precision",
+    )
+
+    output_group.add_argument(
+        "-e",
+        "--use_external_data_format",
         required=False,
         action="store_true",
-        help="test PyTorch performance",
+        help="save external data for model > 2G",
     )
-    parser.set_defaults(torch_performance=False)
+    output_group.set_defaults(use_external_data_format=False)
 
-    parser.add_argument(
-        "--total_runs",
-        required=False,
-        type=int,
-        default=1,
-        help="Number of times of inference for latency measurement",
+    output_group.add_argument(
+        "-s", "--run_shape_inference", required=False, action="store_true", help="run shape inference"
     )
+    output_group.set_defaults(run_shape_inference=False)
 
-    beam_search_group = parser.add_argument_group("beam search options")
+    model_group = parser.add_argument_group("Beam search parameters that stored in the output model")
 
-    beam_search_group.add_argument(
+    model_group.add_argument(
         "--output_sequences_scores",
         required=False,
         action="store_true",
         help="output sequences scores",
     )
-    beam_search_group.set_defaults(output_sequences_scores=False)
+    model_group.set_defaults(output_sequences_scores=False)
 
-    beam_search_group.add_argument(
+    model_group.add_argument(
         "--output_token_scores",
         required=False,
         action="store_true",
         help="output token scores",
     )
-    beam_search_group.set_defaults(output_token_scores=False)
+    model_group.set_defaults(output_token_scores=False)
 
-    beam_search_group.add_argument("--early_stopping", required=False, action="store_true")
-    beam_search_group.set_defaults(early_stopping=False)
+    model_group.add_argument("--early_stopping", required=False, action="store_true")
+    model_group.set_defaults(early_stopping=False)
 
-    beam_search_group.add_argument("--min_length", type=int, required=False, default=1, help="Min sequence length")
-
-    beam_search_group.add_argument("--max_length", type=int, required=False, default=50, help="Max sequence length")
-
-    beam_search_group.add_argument(
+    model_group.add_argument(
         "--no_repeat_ngram_size",
         type=int,
         required=False,
@@ -205,9 +188,33 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="No repeat ngram size",
     )
 
-    beam_search_group.add_argument("--num_beams", type=int, required=False, default=4, help="Beam size")
+    model_group.add_argument(
+        "--vocab_mask",
+        required=False,
+        action="store_true",
+        help="Enable vocab_mask. This mask applies only to every generated token to filter some bad words.",
+    )
+    model_group.set_defaults(vocab_mask=False)
 
-    beam_search_group.add_argument(
+    model_group.add_argument(
+        "--prefix_vocab_mask",
+        required=False,
+        action="store_true",
+        help="Enable prefix_vocab_mask. This mask can be used to filter bad words in the first generated token only",
+    )
+    model_group.set_defaults(prefix_vocab_mask=False)
+
+    beam_parameters_group = parser.add_argument_group(
+        "Beam search parameters not stored in the output model, for testing parity and performance"
+    )
+
+    beam_parameters_group.add_argument("--min_length", type=int, required=False, default=1, help="Min sequence length")
+
+    beam_parameters_group.add_argument("--max_length", type=int, required=False, default=50, help="Max sequence length")
+
+    beam_parameters_group.add_argument("--num_beams", type=int, required=False, default=4, help="Beam size")
+
+    beam_parameters_group.add_argument(
         "--num_return_sequences",
         type=int,
         required=False,
@@ -215,7 +222,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Number of return sequence <= num_beams",
     )
 
-    beam_search_group.add_argument(
+    beam_parameters_group.add_argument(
         "--length_penalty",
         type=float,
         required=False,
@@ -223,7 +230,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Positive. >1 to penalize and <1 to encourage short sentence.",
     )
 
-    beam_search_group.add_argument(
+    beam_parameters_group.add_argument(
         "--repetition_penalty",
         type=float,
         required=False,
@@ -231,21 +238,52 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Positive. >1 to penalize and <1 to encourage.",
     )
 
-    beam_search_group.add_argument(
+    beam_parameters_group.add_argument(
         "--vocab_size",
         type=int,
         required=False,
         default=-1,
-        help="Vocab_size of the underlying model",
+        help="Vocab_size of the underlying model used to decide the shape of vocab mask",
     )
 
-    beam_search_group.add_argument(
-        "--prefix_vocab_mask",
+    test_group = parser.add_argument_group("Other options for testing parity and performance")
+
+    test_group.add_argument(
+        "--use_gpu", required=False, action="store_true", help="use GPU for inference. Required for fp16."
+    )
+    test_group.set_defaults(use_gpu=False)
+
+    test_group.add_argument(
+        "--disable_parity",
         required=False,
         action="store_true",
-        help="This vocab mask applies only to first iteration, enable if last word in query might need auto complete",
+        help="do not run parity test",
     )
-    beam_search_group.set_defaults(prefix_vocab_mask=False)
+    test_group.set_defaults(disable_parity=False)
+
+    test_group.add_argument(
+        "--torch_performance",
+        required=False,
+        action="store_true",
+        help="test PyTorch performance",
+    )
+    test_group.set_defaults(torch_performance=False)
+
+    test_group.add_argument(
+        "--total_runs",
+        required=False,
+        type=int,
+        default=1,
+        help="Number of times of inference for latency measurement",
+    )
+
+    test_group.add_argument(
+        "--save_test_data",
+        required=False,
+        action="store_true",
+        help="save test data for onnxruntimer_perf_test tool",
+    )
+    test_group.set_defaults(save_test_data=False)
 
     args = parser.parse_args(argv)
 
@@ -273,6 +311,7 @@ def gpt2_to_onnx(args: argparse.Namespace):
         "--test_cases",
         "10",
         "--use_int32_inputs",  # BeamSearch requires to use int32 for input_ids, position_ids and attention_mask
+        "--overwrite",  # Overwrite onnx file if existed
     ]
     if args.use_gpu:
         arguments.append("--use_gpu")
@@ -287,7 +326,7 @@ def gpt2_to_onnx(args: argparse.Namespace):
         arguments.extend(["--op_block_list", "Add", "LayerNormalization", "FastGelu"])
 
     if args.verbose:
-        print(f"arguments for convert_to_onnx:{arguments}")
+        logger.info(f"arguments for convert_to_onnx:{arguments}")
 
     convert_gpt2_to_onnx(argv=arguments)
 
@@ -321,21 +360,22 @@ def t5_to_onnx(args: argparse.Namespace):
     args.decoder_onnx = paths[1]
 
 
-def shape_inference(onnx_path: str):
+def shape_inference(onnx_path: str, use_external_data_format: bool = True):
     """Shape inference on an onnx file, which will be overwritten.
 
     Args:
         onnx_path (str): Path of onnx model
+        use_external_data_format(bool): output tensors to external data or not.
     """
     # Run symbolic shape inference to walk around ORT shape inference issue for subgraph.
     from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
-    out = SymbolicShapeInference.infer_shapes(onnx.load(onnx_path), auto_merge=True, guess_output_rank=False)
+    model = onnx.load_model(onnx_path, load_external_data=True)
+    out = SymbolicShapeInference.infer_shapes(model, auto_merge=True, guess_output_rank=False)
     if out:
-        # TODO(tianleiwu): Use external format if input has extra data.
-        onnx.save(out, onnx_path)
+        OnnxModel.save(out, onnx_path, save_as_external_data=use_external_data_format)
     else:
-        print("Failed to run symbolic shape inference on the model.")
+        logger.warning("Failed to run symbolic shape inference on the model.")
 
 
 def create_ort_session(model_path: str, use_gpu: bool) -> InferenceSession:
@@ -358,7 +398,7 @@ def create_ort_session(model_path: str, use_gpu: bool) -> InferenceSession:
         if "CUDAExecutionProvider" not in get_available_providers():
             raise RuntimeError("CUDAExecutionProvider is not available for --use_gpu!")
         else:
-            print("use CUDAExecutionProvider")
+            logger.info("use CUDAExecutionProvider")
 
     ort_session = InferenceSession(model_path, sess_options, providers=execution_providers)
     return ort_session
@@ -400,7 +440,7 @@ def verify_gpt2_subgraph(graph: onnx.GraphProto, precision: Precision):
         input_type = graph.input[i].type.tensor_type.elem_type
         if input_type != expected_type:
             raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}")
-    print("Verifying GPT-2 graph inputs: name and data type are good.")
+    logger.info("Verifying GPT-2 graph inputs: name and data type are good.")
 
     expected_outputs = ["logits"] + [f"present_{i}" for i in range(layer_count)]
     if len(graph.output) != len(expected_outputs):
@@ -414,7 +454,7 @@ def verify_gpt2_subgraph(graph: onnx.GraphProto, precision: Precision):
         output_type = graph.output[i].type.tensor_type.elem_type
         if output_type != expected_type:
             raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {output_type}")
-    print("Verifying GPT-2 graph outputs: name and data type are good.")
+    logger.info("Verifying GPT-2 graph outputs: name and data type are good.")
 
     # TODO(tianleiwu): verify shapes of inputs and outputs.
     return
@@ -454,6 +494,8 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
     #   past_key_cross_0: (B, num_heads, encode_sequence_length, head_size)
     #   past_value_cross_0: (B, num_heads, encode_sequence_length, head_size)
     #   ... (for each cross attention layer)
+
+    # TODO: encoder_hidden_states is optional
     expected_inputs = ["input_ids", "encoder_attention_mask", "encoder_hidden_states"]
     for i in range(layer_count):
         expected_inputs.append(f"past_key_self_{i}")
@@ -560,7 +602,7 @@ def verify_t5_encoder_decoder_init_subgraph(graph: onnx.GraphProto, precision: P
         if output_type != expected_type:
             raise ValueError(f"Output {i} is expected to have onnx data type {expected_type}. Got {output_type}")
 
-    print("T5 encoder graph verified: name and data type of inputs and outputs are good.")
+    logger.info("T5 encoder graph verified: name and data type of inputs and outputs are good.")
 
 
 def remove_shared_initializers(
@@ -685,26 +727,27 @@ def convert_model(args: argparse.Namespace):
     """
     is_gpt2: bool = args.model_type == "gpt2"
     if is_gpt2:
-        if os.path.exists(args.decoder_onnx):
-            print(f"skip convert_to_onnx since path existed: {args.decoder_onnx}")
+        if args.decoder_onnx and os.path.exists(args.decoder_onnx):
+            logger.info(f"skip convert_to_onnx since path existed: {args.decoder_onnx}")
         else:
-            print(f"Convert GPT model {args.model_name_or_path} to onnx {args.decoder_onnx} ...")
+            if not args.decoder_onnx:
+                onnx_filename = "gpt2_past_{}.onnx".format("fp16" if args.precision == Precision.FLOAT16 else "fp32")
+                args.decoder_onnx = Path(Path(args.output).parent, onnx_filename).as_posix()
+
+            logger.info(f"Convert GPT model {args.model_name_or_path} to onnx {args.decoder_onnx} ...")
             gpt2_to_onnx(args)
     else:  # t5 or mt5
         if args.decoder_onnx and args.encoder_decoder_init_onnx:
-            print(
+            logger.info(
                 f"skip convert_to_onnx since paths specified: {args.decoder_onnx} and {args.encoder_decoder_init_onnx}"
             )
         else:
-            print(f"Convert T5 model {args.model_name_or_path} to onnx ...")
+            logger.info(f"Convert model {args.model_name_or_path} to onnx ...")
             t5_to_onnx(args)
 
-    # TODO(tianleiwu): fix shape inference for T5. Currently symbolic shape inference on T5 is broken.
-    enable_shape_inference = args.model_type == "gpt2"
-
-    if enable_shape_inference:
-        print(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
-        shape_inference(args.decoder_onnx)
+    if args.run_shape_inference:
+        logger.info(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
+        shape_inference(args.decoder_onnx, args.use_external_data_format)
 
     if is_gpt2:
         config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
@@ -714,7 +757,7 @@ def convert_model(args: argparse.Namespace):
         config = MT5Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
 
     if args.verbose:
-        print(config)
+        logger.info(f"Config={config}")
 
     eos_token_id = config.eos_token_id
     pad_token_id = config.eos_token_id if is_gpt2 else config.pad_token_id
@@ -740,10 +783,17 @@ def convert_model(args: argparse.Namespace):
         "num_return_sequences",
         "length_penalty",
         "repetition_penalty",
-        "vocab_mask",
     ]
+
+    if args.vocab_mask:
+        inputs.append("vocab_mask")
+    else:
+        inputs.append("")
+
     if args.prefix_vocab_mask:
         inputs.append("prefix_vocab_mask")
+    else:
+        inputs.append("")
 
     outputs = ["sequences"]
     if args.output_sequences_scores:
@@ -772,9 +822,9 @@ def convert_model(args: argparse.Namespace):
 
     initializers = []
     if args.model_type in ["t5", "mt5"]:
-        if enable_shape_inference:
-            print(f"Run symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten.")
-            shape_inference(args.encoder_decoder_init_onnx)
+        if args.run_shape_inference:
+            logger.info(f"Symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten.")
+            shape_inference(args.encoder_decoder_init_onnx, args.use_external_data_format)
         init_model = onnx.load_model(args.encoder_decoder_init_onnx, load_external_data=True)
         init_model.graph.name = f"{args.model_type} encoder and decoder init"
         verify_t5_encoder_decoder_init_subgraph(init_model.graph, args.precision)
@@ -803,7 +853,6 @@ def convert_model(args: argparse.Namespace):
     num_return_sequences = onnx.helper.make_tensor_value_info("num_return_sequences", TensorProto.INT32, [1])
     length_penalty = onnx.helper.make_tensor_value_info("length_penalty", TensorProto.FLOAT, [1])
     repetition_penalty = onnx.helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
-    vocab_mask = onnx.helper.make_tensor_value_info("vocab_mask", TensorProto.INT32, [vocab_size])
 
     graph_inputs = [
         input_ids,
@@ -813,8 +862,11 @@ def convert_model(args: argparse.Namespace):
         num_return_sequences,
         length_penalty,
         repetition_penalty,
-        vocab_mask,
     ]
+
+    if args.vocab_mask:
+        vocab_mask = onnx.helper.make_tensor_value_info("vocab_mask", TensorProto.INT32, [vocab_size])
+        graph_inputs.append(vocab_mask)
 
     if args.prefix_vocab_mask:
         prefix_vocab_mask = onnx.helper.make_tensor_value_info(
@@ -860,17 +912,20 @@ def convert_model(args: argparse.Namespace):
 
     # TODO(tianleiwu): move shared initializers from T5 encoder and decoder subgraphs to parent graph to save memory.
     if args.use_external_data_format:
+        from packaging import version
+
+        if version.parse(onnx.__version__) < version.parse("1.12.0"):
+            logger.warning("Require onnx >= 1.12 to save large (>2GB) model!")
+
         OnnxModel.save(
             new_model,
             args.output,
             save_as_external_data=True,
             all_tensors_to_one_file=True,
-            size_threshold=1024,
-            convert_attribute=False,
         )
     else:
         onnx.save(new_model, args.output)
-    print(f"model save to {args.output}")
+    logger.info(f"model save to {args.output}")
 
 
 def test_torch_performance(
@@ -952,10 +1007,6 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
     """
     assert args.model_type == "gpt2"
 
-    if args.prefix_vocab_mask:
-        print("Skipping parity test as prefix vocab mask is not implemented by Hugging Face")
-        return None
-
     tokenizer = GPT2Tokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
     tokenizer.padding_side = "left"
     tokenizer.pad_token = tokenizer.eos_token
@@ -1009,7 +1060,7 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
             num_return_sequences=args.num_return_sequences,
             length_penalty=args.length_penalty,
             repetition_penalty=args.repetition_penalty,
-            bad_words_ids=bad_words_ids,
+            bad_words_ids=bad_words_ids if bad_words_ids else None,
             return_dict_in_generate=True,
             output_scores=args.output_sequences_scores or args.output_token_scores,
         )
@@ -1030,11 +1081,6 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
 
     ort_session = create_ort_session(args.output, args.use_gpu)
 
-    vocab_mask = np.ones((vocab_size), dtype=np.int32)
-    if use_vocab_mask:
-        for bad_word_id in bad_words_ids:
-            vocab_mask[bad_word_id] = 0
-
     inputs = {
         "input_ids": input_ids.cpu().numpy().astype(np.int32),
         "max_length": np.array([args.max_length], dtype=np.int32),
@@ -1043,20 +1089,33 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
         "num_return_sequences": np.array([args.num_return_sequences], dtype=np.int32),
         "length_penalty": np.array([args.length_penalty], dtype=np.float32),
         "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
-        "vocab_mask": vocab_mask,
     }
+
+    if args.vocab_mask:
+        vocab_mask = np.ones((vocab_size), dtype=np.int32)
+        if use_vocab_mask:
+            for bad_word_id in bad_words_ids:
+                vocab_mask[bad_word_id] = 0
+        inputs["vocab_mask"] = vocab_mask
+
+    batch_size = input_ids.shape[0]
+    if args.prefix_vocab_mask:
+        logger.info("Use prefix vocab mask with all ones in ORT, but no corresponding setting for Torch model.")
+        prefix_vocab_mask = np.ones((batch_size, vocab_size), dtype=np.int32)
+        inputs["prefix_vocab_mask"] = prefix_vocab_mask
 
     print("inputs", inputs)
     result = ort_session.run(None, inputs)
 
-    test_data_dir = Path(args.output).parent.as_posix()
-    print("test_data_dir", test_data_dir)
-    from bert_test_data import output_test_data
+    if args.save_test_data:
+        test_data_dir = Path(args.output).parent.as_posix()
+        print("test_data_dir", test_data_dir)
+        from bert_test_data import output_test_data
 
-    all_inputs = [inputs]
-    for i, inputs in enumerate(all_inputs):
-        dir = os.path.join(test_data_dir, "test_data_set_" + str(i))
-        output_test_data(dir, inputs)
+        all_inputs = [inputs]
+        for i, inputs in enumerate(all_inputs):
+            dir = os.path.join(test_data_dir, "test_data_set_" + str(i))
+            output_test_data(dir, inputs)
 
     # Test performance
     latency = []
@@ -1064,7 +1123,7 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
         start = time.time()
         _ = ort_session.run(None, inputs)
         latency.append(time.time() - start)
-    batch_size = input_ids.shape[0]
+
     from benchmark_helper import get_latency_result
 
     output = get_latency_result(latency, batch_size)
@@ -1115,6 +1174,7 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
         print("Torch Latency", torch_latency_output)
 
     print("ORT", output)
+
     return output
 
 
@@ -1194,7 +1254,7 @@ def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, senten
             num_return_sequences=args.num_return_sequences,
             length_penalty=args.length_penalty,
             repetition_penalty=args.repetition_penalty,
-            bad_words_ids=bad_words_ids,
+            bad_words_ids=bad_words_ids if bad_words_ids else None,
             return_dict_in_generate=True,
             output_scores=args.output_sequences_scores or args.output_token_scores,
         )
@@ -1322,11 +1382,7 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
     args = parse_arguments(argv)
     setup_logger(args.verbose)
 
-    if args.model_type == "gpt2":
-        if not args.decoder_onnx:
-            onnx_filename = "gpt2_past_{}.onnx".format("fp16" if args.precision == Precision.FLOAT16 else "fp32")
-            args.decoder_onnx = Path(Path(args.output).parent, onnx_filename).as_posix()
-    elif args.model_type in ["t5", "mt5"]:
+    if args.model_type in ["t5", "mt5"]:
         if args.encoder_decoder_init_onnx and not os.path.exists(args.encoder_decoder_init_onnx):
             raise ValueError(f"Path does not exist: --encoder_decoder_init_onnx {args.encoder_decoder_init_onnx}")
         if args.decoder_onnx and not os.path.exists(args.decoder_onnx):
@@ -1340,9 +1396,9 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
 
     logger.info("start testing model...")
     if args.model_type in ["t5", "mt5"]:
-        return test_t5_model(args, use_vocab_mask=True, sentences=sentences)
+        return test_t5_model(args, use_vocab_mask=args.vocab_mask, sentences=sentences)
     else:
-        return test_gpt_model(args, use_vocab_mask=True, sentences=sentences)
+        return test_gpt_model(args, use_vocab_mask=args.vocab_mask, sentences=sentences)
 
 
 if __name__ == "__main__":
