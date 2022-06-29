@@ -44,6 +44,20 @@ parameters:
   default: 'default'
 
 jobs:
+- job: Debug_NuGet_Packaging_CPU_nuget_location
+  pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+  - task: PowerShell@2  
+    displayName: Display some info about nuget location
+    inputs:
+      targetType: 'inline'
+      script: |
+        get-command nuget
+        nuget help 
+        dir 'C:\Android\android-sdk\platforms'
+        dir 'C:\Program Files (x86)\NuGet'
+        dir 'C:\vcpkg'
+        & 'C:\Program Files (x86)\NuGet\nuget.exe' help
+
 - template: c-api-linux-cpu.yml
   parameters:        
     AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
@@ -435,15 +449,6 @@ jobs:
         dotnet workload install android ios macos
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
   
-  - task: PowerShell@2  
-    displayName: Display some info
-    inputs:
-      targetType: 'inline'
-      script: |
-        dotnet --info
-        nuget help 
-        dir 'C:\Android\android-sdk\platforms'
-
   - task: PowerShell@2  
     displayName: Build Microsoft.ML.OnnxRuntime .NET 6 targets using dotnet
     inputs:
