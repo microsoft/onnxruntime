@@ -141,7 +141,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     // deserialize directly to CPU tensor
     if (utils::HasExternalData(tensor_proto)) {
       OrtCallback ext_data_deleter;
-      Status st = ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_tensor, ext_data_deleter);
+      ORT_RETURN_IF_ERROR(ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_tensor, ext_data_deleter));
 
       ExtDataValueDeleter deleter { ext_data_deleter, p_tensor.get() };
 
@@ -170,8 +170,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 
     OrtCallback ext_data_deleter;
     if (utils::HasExternalData(tensor_proto)) {
-      Status st = ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_deserialize_tensor, ext_data_deleter); //,
-      if (! st.IsOK()) { return st; }
+      ORT_RETURN_IF_ERROR(ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_deserialize_tensor, ext_data_deleter));
     } else {
       ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
     }
@@ -257,7 +256,7 @@ common::Status SaveInitializedTensors(
     const auto entry = initialized_tensors_to_allocate.find(ort_value_index);
     auto location = exec_plan.GetLocation(ort_value_index).name;
     if (utils::HasExternalData(*entry->second) && (strcmp(location, CPU) == 0)) {
-      // exernal data will be memory mapped, no need to plan for its allocation
+      // external data will be memory mapped, no need to plan for its allocation
       continue;
     } else {
       // can not trace string tensor
