@@ -30,14 +30,18 @@ Please Note for VAD-M use Docker installation / Build from Source for Linux.
 Windows release supports only Python 3.9. Please install OpenVINO™ PyPi Package separately for Windows. 
 For installation instructions on Windows please refer to  `OpenVINO™ Execution Provider for ONNX Runtime for Windows <https://github.com/intel/onnxruntime/releases/>`_.
 
-This **OpenVINO™ Execution Provider for ONNX Runtime** Linux Wheels comes with pre-built libraries of OpenVINO™ version 2022.1.0 meaning you do not have to install OpenVINO™ separately. CXX11_ABI flag for pre built OpenVINO™ libraries is 0. The package also comes with `ONNX Runtime Training module <https://github.com/intel/onnxruntime/tree/master/orttraining/>`_ to enable inferencing of torch models using `ORT <https://github.com/pytorch/ort>`_. 
+This **OpenVINO™ Execution Provider for ONNX Runtime** Linux Wheels comes with pre-built libraries of OpenVINO™ version 2022.1.0 meaning you do not have to install OpenVINO™ separately. CXX11_ABI flag for pre built OpenVINO™ libraries is 0.
+
+Package contains `ORTTraining <https://github.com/microsoft/onnxruntime/tree/master/orttraining/>`_ module part of it to accelerate inference for PyTorch models with OpenVINO Execution Provider (Preview).
+The Pytorch model inference using onnxruntime can be run via `torch-ort-inference preview package <https://github.com/pytorch/ort#accelerate-inference-for-pytorch-models-with-onnx-runtime-preview>`_.
 
 For more details on build and installation please refer to `Build <https://onnxruntime.ai/docs/build/eps.html#openvino>`_.
 
 Usage
 ^^^^^
 
-By default, Intel® CPU is used to run inference. However, you can change the default option to either Intel® integrated GPU or Intel® VPU for AI inferencing. Invoke the following function to change the hardware on which inferencing is done.
+By default, Intel® CPU is used to run inference. However, you can change the default option to either Intel® integrated GPU or Intel® VPU for AI inferencing.
+Invoke `the provider config device type argument <https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#summary-of-options>`_ to change the hardware on which inferencing is done.
 
 For more API calls and environment variables, see  `Usage <https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#configuration-options>`_.
 
