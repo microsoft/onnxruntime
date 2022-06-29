@@ -54,15 +54,6 @@ static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const T
   return Status::OK();
 }
 
-// null (do nothing) allocator for tensors that wrap external data pointers which are
-// memory mapped or allocated without an ORT allocator; these pointers are instead
-// released with the deleter of the ORT value which holds the ext data tensor
-struct ExtDataNullAllocator : public IAllocator {
-  ExtDataNullAllocator() : IAllocator(OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)) {}
-  void* Alloc(size_t size) override { ORT_UNUSED_PARAMETER(size); return nullptr; }
-  void Free(void* p) override { ORT_UNUSED_PARAMETER(p); }
-};
-
 // deleter for external data tensors managed by an OrtValue; manages the release of
 // the tensor's data buffer (which points to the external data) and the tensor itself
 struct ExtDataValueDeleter {
@@ -92,12 +83,11 @@ static inline common::Status ExtDataTensorProtoToTensor(const Env& env, const st
   // NB: creating a do-nothing allocator per tensor is wasteful; can perhaps be
   // avoided if the Tensor class implements the do-nothing behavior when given a
   // nullptr for the allocator argument
-  AllocatorPtr ext_data_alloc = std::make_shared<ExtDataNullAllocator>();
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   std::vector<int64_t> tensor_shape_vec = utils::GetTensorShapeFromTensorProto(tensor_proto);
   TensorShape tensor_shape {tensor_shape_vec};
 
-  auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, ext_data_buf, ext_data_alloc);
+  auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, ext_data_buf, OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   tensor = std::move(*p_tensor);
 
   return common::Status::OK();
