@@ -334,6 +334,21 @@ class OrtOpTests(unittest.TestCase):
         assert torch.equal(cpu_float_float_result, ort_float_float_result.to("cpu"))
         assert torch.equal(cpu_float_float_not_result, ort_float_float_not_result.to("cpu"))
 
+        cpu_int_int_ne_result = torch.ne(cpu_tensor_int, cpu_scalar_int)
+        cpu_int_int_not_ne_result = torch.ne(cpu_tensor_int, cpu_scalar_int_not)
+        cpu_float_float_ne_result = torch.ne(cpu_tensor_float, cpu_scalar_float)
+        cpu_float_float_not_ne_result = torch.ne(cpu_tensor_float, cpu_scalar_float_not)
+
+        ort_int_int_ne_result = torch.ne(ort_tensor_int, ort_scalar_int)
+        ort_int_int_not_ne_result = torch.ne(ort_tensor_int, ort_scalar_int_not)
+        ort_float_float_ne_result = torch.ne(ort_tensor_float, ort_scalar_float)
+        ort_float_float_not_ne_result = torch.ne(ort_tensor_float, ort_scalar_float_not)
+
+        assert torch.equal(cpu_int_int_ne_result, ort_int_int_ne_result.to("cpu"))
+        assert torch.equal(cpu_int_int_not_ne_result, ort_int_int_not_ne_result.to("cpu"))
+        assert torch.equal(cpu_float_float_ne_result, ort_float_float_ne_result.to("cpu"))
+        assert torch.equal(cpu_float_float_not_ne_result, ort_float_float_not_ne_result.to("cpu"))
+
 
 if __name__ == "__main__":
     unittest.main()
