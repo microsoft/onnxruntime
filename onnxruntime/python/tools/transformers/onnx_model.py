@@ -972,7 +972,11 @@ class OnnxModel:
 
     def remove_duplicated_initializer(self):
         """Remove initializers with duplicated values, and only keep the first one.
-        It could help reduce size of models (like ALBert) with shared weights."""
+        It could help reduce size of models (like ALBert) with shared weights.
+        Note: this function does not process subgraph.
+        """
+        if len(self.graphs()) > 1:
+            logger.warning("remove_duplicated_initializer does not process subgraphs.")
 
         initializer_count = len(self.model.graph.initializer)
 
@@ -999,9 +1003,10 @@ class OnnxModel:
     def add_prefix_to_names(self, prefix: str):
         """Add prefix to initializer or intermediate outputs in graph. Main graph inputs and outputs are excluded.
         It could help avoid conflicting in name of node_args when merging two graphs.
+        Note: this function does not process subgraph.
         """
         if len(self.graphs()) > 1:
-            info.warning("add_prefix_to_names does not process subgraphs.")
+            logger.warning("add_prefix_to_names does not process subgraphs.")
 
         # Exclude the names of inputs and outputs of main graph (but not subgraphs)
         excluded = [i.name for i in self.model.graph.input] + [o.name for o in self.model.graph.output]
