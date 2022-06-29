@@ -5,6 +5,7 @@
 #include <onnxruntime_training_c_api.h>
 
 #include "cxxopts.hpp"
+#include "core/common/path_string.h"
 #include "../common/synthetic_data_loader.h"
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
@@ -13,6 +14,7 @@
 #include "core/providers/cuda/nvtx_profile_context.h"
 #endif
 
+using namespace onnxruntime;
 using namespace std;
 
 const OrtApi* g_ort_api = nullptr;
@@ -20,10 +22,10 @@ const OrtTrainingApi* g_ort_training_api = nullptr;
 
 struct TestRunnerParameters {
   // Models configs.
-  std::string model_training_graph_path;
-  std::optional<std::string> model_evaluation_graph_path;
-  std::string optimizer_training_graph_path;
-  std::string checkpoint_to_load_path;
+  PathString model_training_graph_path;
+  std::optional<PathString> model_evaluation_graph_path;
+  PathString optimizer_training_graph_path;
+  PathString checkpoint_to_load_path;
   std::string model_name;
   std::string synthetic_input_type;
 
@@ -98,17 +100,17 @@ bool ParseArguments(int argc, char* argv[], TestRunnerParameters& params) {
   try {
     auto flags = options.parse(argc, argv);
 
-    params.model_training_graph_path = flags["model_training_graph_path"].as<std::string>();
+    params.model_training_graph_path = ToPathString(flags["model_training_graph_path"].as<std::string>());
     std::string eval_path = flags["model_evaluation_graph_path"].as<std::string>();
     if (eval_path.empty()) {
       params.model_evaluation_graph_path = std::nullopt;
     } else {
-      params.model_evaluation_graph_path = eval_path;
+      params.model_evaluation_graph_path = ToPathString(eval_path);
     }
     params.synthetic_input_type = flags["synthetic_input_type"].as<std::string>();
 
-    params.optimizer_training_graph_path = flags["optimizer_training_graph_path"].as<std::string>();
-    params.checkpoint_to_load_path = flags["checkpoint_to_load_path"].as<std::string>();
+    params.optimizer_training_graph_path = ToPathString(flags["optimizer_training_graph_path"].as<std::string>());
+    params.checkpoint_to_load_path = ToPathString(flags["checkpoint_to_load_path"].as<std::string>());
     params.model_name = flags["model_name"].as<std::string>();
 
     params.train_batch_size = flags["train_batch_size"].as<int>();
@@ -299,7 +301,7 @@ int RunTraining(const TestRunnerParameters& params) {
 
       if ((batch_idx + 1) % params.checkpoint_interval == 0) {
         // Save trained weights
-        std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
+        PathString ckpt_file = ToPathString(params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx));
         ORT_RETURN_ON_ERROR(g_ort_training_api->SaveCheckpoint(ckpt_file.c_str(), session, true));
 
         // TODO(baiju): enable adding more properties to checkpoint
@@ -321,7 +323,7 @@ int RunTraining(const TestRunnerParameters& params) {
   }
 
   // Save trained weights
-  std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name;
+  PathString ckpt_file = ToPathString(params.output_dir + "/ckpt_" + params.model_name);
   ORT_RETURN_ON_ERROR(g_ort_training_api->SaveCheckpoint(ckpt_file.c_str(), session, true));
 
   auto end = std::chrono::high_resolution_clock::now();

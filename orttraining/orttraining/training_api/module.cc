@@ -72,7 +72,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
   // Reorder the extracted input names in the following order:
   // user inputs, weights, gradients, reset_grad
   std::vector<std::string> user_input_names, param_input_names, grad_input_names, reset_grad_name;
-  std::string param_name;
+  std::string name;
 
   std::unordered_map<std::string, size_t> param_name_to_grad_input_index_map;
   for (const auto& input_name : train_input_names) {
@@ -81,8 +81,8 @@ Module::Module(const std::string& train_model_path_or_bytes,
       param_input_names.emplace_back(input_name);
     } else if (input_name == ACCUMULATE_GRAD_CONTROL_INPUT_NAME) {
       reset_grad_name.emplace_back(input_name);
-    } else if (utils::GetParamNameFromGradient(input_name, param_name)) {
-      param_name_to_grad_input_index_map.insert({param_name, grad_input_names.size()});
+    } else if (utils::GetParamNameFromGradient(input_name, name)) {
+      param_name_to_grad_input_index_map.insert({name, grad_input_names.size()});
       grad_input_names.emplace_back(input_name);
     } else {
       user_input_names.emplace_back(input_name);
@@ -97,7 +97,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
   train_input_names_.insert(train_input_names_.end(), reset_grad_name.begin(), reset_grad_name.end());
 
   for (const auto& output_name : train_output_names) {
-    if (!utils::GetParamNameFromGradient(output_name, param_name)) {
+    if (!utils::GetParamNameFromGradient(output_name, name)) {
       train_output_names_.emplace_back(output_name);
     }
   }
@@ -167,11 +167,11 @@ Module::Module(const std::string& train_model_path_or_bytes,
     // We are making certain assumptions: Like the order in which parameters occur will be same between train and eval
     // graphs, and all the weights present in both graphs match.
     // TODO: Add the checks instead of making assumptions??
-    std::vector<std::string> eval_user_input_names, param_input_names;
+    std::vector<std::string> eval_user_input_names, eval_param_input_names;
     for (const auto& input_name : eval_input_names_) {
       if (named_parameters_.find(input_name) != named_parameters_.end()) {
         // it is a parameter
-        param_input_names.emplace_back(input_name);
+        eval_param_input_names.emplace_back(input_name);
         continue;
       } else {
         // It is a user input. We handle user inputs separately in eval
@@ -182,7 +182,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
       }
     }
     eval_input_names_ = eval_user_input_names;
-    eval_input_names_.insert(eval_input_names_.end(), param_input_names.begin(), param_input_names.end());
+    eval_input_names_.insert(eval_input_names_.end(), eval_param_input_names.begin(), eval_param_input_names.end());
   }
 }
 

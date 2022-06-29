@@ -31,7 +31,7 @@ template <typename IntType>
 void RandomInts(std::vector<IntType>& rets, IntType low, IntType high) {
   static std::random_device rd;
   static std::mt19937 generator(rd());
-  std::uniform_int_distribution<> distribution(low, high);
+  std::uniform_int_distribution<IntType> distribution(low, high);
   std::for_each(rets.begin(), rets.end(),
                 [&distribution](IntType& value) { value = distribution(generator); });
 }

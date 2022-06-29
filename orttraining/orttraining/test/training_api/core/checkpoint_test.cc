@@ -102,7 +102,7 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   ASSERT_STATUS_OK(SaveCheckpoint(trainable_param_values, non_trainable_param_values, checkpoint_path));
 
   // Check the ckpt files in the directory.
-  std::set<PathString> expected_file_names{"paramfrozen_tensors.pbseq", "paramtrain_tensors.pbseq"};
+  std::set<PathString> expected_file_names{ORT_TSTR("paramfrozen_tensors.pbseq"), ORT_TSTR("paramtrain_tensors.pbseq")};
   std::set<PathString> valid_file_names;
   LoopDir(checkpoint_path,
           [&valid_file_names, &checkpoint_path](const PathChar* filename, OrtFileType file_type) -> bool {
@@ -234,9 +234,9 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
 
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{
-      "optim_group0_momentum0_tensors.pbseq",
-      "optim_group0_momentum1_tensors.pbseq",
-      "optim_group0_properties.pbseq",
+      ORT_TSTR("optim_group0_momentum0_tensors.pbseq"),
+      ORT_TSTR("optim_group0_momentum1_tensors.pbseq"),
+      ORT_TSTR("optim_group0_properties.pbseq"),
   };
 
   std::set<PathString> valid_file_names;
@@ -338,7 +338,7 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
 
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{
-      "custom_properties.pbseq",
+      ORT_TSTR("custom_properties.pbseq"),
   };
 
   std::set<PathString> valid_file_names;
