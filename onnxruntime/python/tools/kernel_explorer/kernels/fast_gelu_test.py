@@ -27,8 +27,7 @@ def fast_gelu(x, bias):
     return y
 
 
-@pytest.mark.skip(reason="called by test_fast_gelu_all_sizes")
-def test_fast_gelu(x_size, bias_size, dtype, func):
+def run_fast_gelu(x_size, bias_size, dtype, func):
     np.random.seed(0)
     x = np.random.rand(*x_size).astype(dtype)
     bias = np.random.rand(bias_size).astype(dtype)
@@ -50,11 +49,11 @@ test_cases = [((2, 16), 16), ((1, 2, 768), 768), ((1, 2, 1024), 1024)]
 
 
 @pytest.mark.parametrize("x_size, bias_size", test_cases)
-def test_fast_gelu_all_sizes(x_size, bias_size):
+def test_fast_gelu(x_size, bias_size):
     dtypes = ["float16", "float32", "float64"]
     for dtype in dtypes:
         for f in dtype_to_funcs(dtype):
-            test_fast_gelu(x_size, bias_size, dtype, f)
+            run_fast_gelu(x_size, bias_size, dtype, f)
 
 
 def profile_vector_add_func(batch_size, seq_len, hidden_size, dtype, func):
