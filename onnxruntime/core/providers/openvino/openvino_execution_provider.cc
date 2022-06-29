@@ -101,12 +101,7 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer, const 
     std::cout << "In the OpenVINO EP" << std::endl;
   }
   openvino_ep::BackendManager::GetGlobalContext().onnx_model_name = graph_viewer.Name();
-#ifdef _WIN32
-  std::wstring onnx_path = graph_viewer.ModelPath().ToPathString();
-  openvino_ep::BackendManager::GetGlobalContext().onnx_model_path_name = std::string(onnx_path.begin(), onnx_path.end());
-#else
-  openvino_ep::BackendManager::GetGlobalContext().onnx_model_path_name = graph_viewer.ModelPath().ToPathString();
-#endif
+  openvino_ep::BackendManager::GetGlobalContext().onnx_model_path_name = ToUTF8String(graph_viewer.ModelPath().ToPathString());
   openvino_ep::BackendManager::GetGlobalContext().onnx_opset_version = graph_viewer.DomainToVersionMap().at(kOnnxDomain);
 
 #if defined (OPENVINO_2021_2)
@@ -143,7 +138,7 @@ common::Status OpenVINOExecutionProvider::Compile(
     openvino_ep::BackendManager::GetGlobalContext().use_api_2 = true;
 #else
     openvino_ep::BackendManager::GetGlobalContext().use_api_2 = false;
-#endif 
+#endif
 
     std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, graph_body_viewer, *GetLogger());
 
