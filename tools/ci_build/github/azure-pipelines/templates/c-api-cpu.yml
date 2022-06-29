@@ -45,6 +45,8 @@ parameters:
 
 jobs:
 - job: Debug_NuGet_Packaging_CPU_nuget_location
+  workspace:
+    clean: all
   pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
   - task: PowerShell@2  
     displayName: Display some info about nuget location
