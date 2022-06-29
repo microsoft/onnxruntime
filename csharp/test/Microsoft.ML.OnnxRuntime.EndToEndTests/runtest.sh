@@ -19,7 +19,7 @@ echo "Current NuGet package version is $CurrentOnnxRuntimeVersion"
 if [ $RunTestCsharp = "true" ]; then
   if [[ $IsMacOS == "True" || $IsMacOS == "true" ]]; then
     mkdir -p $BUILD_BINARIESDIRECTORY/models
-    ln -s $BUILD_SOURCESDIRECTORY/cmake/external/onnx/onnx/backend/test/data/node $BUILD_BINARIESDIRECTORY/models/opset16
+    ln -s $BUILD_SOURCESDIRECTORY/cmake/external/onnx/onnx/backend/test/data/node $BUILD_BINARIESDIRECTORY/models/opset17
   fi
   # Run C# tests
   dotnet restore $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj -s $LocalNuGetRepo -s https://api.nuget.org/v3/index.json
@@ -29,7 +29,7 @@ if [ $RunTestCsharp = "true" ]; then
   fi
 
   if [ $PACKAGENAME = "Microsoft.ML.OnnxRuntime.Gpu" ]; then
-    export TESTONGPU=ON 
+    export TESTONGPU=ON
     dotnet test -p:DefineConstants=USE_CUDA $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed
     if [ $? -ne 0 ]; then
       echo "Failed to build or execute the end-to-end test"
