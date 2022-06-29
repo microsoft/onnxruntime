@@ -16,7 +16,6 @@
 #include "core/graph/contrib_ops/range_schema_defs.h"
 #include "core/graph/op.h"
 #include "core/mlas/inc/mlas.h"
-#include "core/graph/signal_ops/signal_defs.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"
 #include "onnx/defs/function.h"
 
@@ -369,7 +368,6 @@ void sparseCompatibleMatmulShapeInference(
   auto default_tensor_type = ctx.getInputType(input2Idx)->value_case();
   updateOutputShape(ctx, 0, resultShape, default_tensor_type);
 }
-
 
 bool ParseScalar(const TensorProto* initializer, int& value) {
   std::vector<int32_t> parsed_data;
@@ -957,25 +955,26 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                 .SetDoc("Beam Search for text generation. Supports GPT-2 decoder.")
                                 .Attr("eos_token_id", "The id of the end-of-sequence token", AttributeProto::INT)
                                 .Attr("pad_token_id", "The id of the padding token", AttributeProto::INT)
+                                .Attr("decoder_start_token_id", "The id of the token that indicates decoding starts.", AttributeProto::INT, static_cast<int64_t>(-1))
                                 .Attr("no_repeat_ngram_size", "no repeat ngrams size", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("early_stopping", "early stop or not", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("model_type", "model type: 0 for GPT-2; 1 for encoder decoder like T5", AttributeProto::INT, static_cast<int64_t>(0))
-                                .Attr("encoder_decoder_init", "subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
                                 .Attr("decoder", "Decoder subgraph to execute in a loop.", AttributeProto::GRAPH)
                                 .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
                                 .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
                                 .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
                                 .Input(3, "num_beams", "Number of beams for beam search. 1 means no beam search. Shape is (1)", "I")
                                 .Input(4, "num_return_sequences", "The number of returned sequences in the batch. Shape is (1)", "I")
-                                .Input(5, "temperature", "The value used to module the next token probabilities. Accepts value > 0.0. Shape is (1)", "T")
-                                .Input(6, "length_penalty",
+                                .Input(5, "length_penalty",
                                        "Exponential penalty to the length. Default value 1.0 means no penalty."
                                        "Value > 1.0 encourages longer sequences, while values < 1.0 produces shorter sequences."
                                        "Shape is (1,)",
                                        "T", OpSchema::Optional)
-                                .Input(7, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
-                                .Input(8, "vocab_mask", "Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)", "M", OpSchema::Optional)
-                                .Input(9, "prefix_vocab_mask", "Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)", "M", OpSchema::Optional)
+                                .Input(6, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
+                                .Input(7, "vocab_mask", "Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)", "M", OpSchema::Optional)
+                                .Input(8, "prefix_vocab_mask", "Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)", "M", OpSchema::Optional)
+                                .Input(9, "attention_mask", "Custom attention mask. Shape is (batch_size, sequence_length)", "I", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)", "I")
                                 .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "T", OpSchema::Optional)
                                 .Output(2, "scores",
@@ -2416,7 +2415,6 @@ void RegisterContribSchemas() {
         // }
         // updateOutputShape(ctx, 0, disentangled_attention_shape);
         propagateShapeFromInputToOutput(ctx, 0, 0);
-
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Snpe)
@@ -2533,10 +2531,6 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();
   }
-#endif
-
-#ifdef BUILD_MS_EXPERIMENTAL_OPS
-  onnxruntime::signal::RegisterSignalSchemas();
 #endif
 }
 

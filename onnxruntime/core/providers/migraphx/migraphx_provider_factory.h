@@ -10,5 +10,4 @@ struct IExecutionProviderFactory;
 struct MIGraphXExecutionProviderInfo;
 enum class ArenaExtendStrategy : int32_t;
 struct MIGraphXExecutionProviderExternalAllocatorInfo;
-}
-
+}  // namespace onnxruntime

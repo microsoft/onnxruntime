@@ -44,6 +44,6 @@ common::Status SaveInitializedTensors(
     const SessionOptions& session_options);
 common::Status SaveInputOutputNamesToNodeMapping(const GraphViewer& graph,
                                                  SessionState& session_state,
-                                                 const std::vector<const NodeArg*>& implicit_inputs);
+                                                 gsl::span<const NodeArg* const> implicit_inputs);
 }  // namespace session_state_utils
 }  // namespace onnxruntime

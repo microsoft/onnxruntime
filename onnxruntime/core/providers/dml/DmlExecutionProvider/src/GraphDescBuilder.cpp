@@ -38,8 +38,8 @@ namespace Dml::GraphDescBuilder
         const size_t isConstGpuGraphInputCount,
         std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
         const onnxruntime::Graph& graph,
-        const onnxruntime::ConstPointerContainer<std::vector<onnxruntime::NodeArg*>>& fusedNodeInputDefs,
-        const onnxruntime::ConstPointerContainer<std::vector<onnxruntime::NodeArg*>>& fusedNodeOutputDefs,
+        const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
+        const gsl::span<const std::string> fusedNodeOutputArgOriginalNames,
         const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
         IDMLDevice* device,
         const void* executionHandle)
@@ -56,10 +56,9 @@ namespace Dml::GraphDescBuilder
         // Map from Lotus node argument names to input indices of the fused kernel node.
         std::unordered_map<std::string, uint32_t> nameToFusedNodeInputIndex;
 
-        for (size_t inputIndex = 0; inputIndex < fusedNodeInputDefs.size(); ++inputIndex)
+        for (size_t inputIndex = 0; inputIndex < fusedNodeInputArgOriginalNames.size(); ++inputIndex)
         {
-            const onnxruntime::NodeArg* graphInput = graph.GetNodeArg(
-                GraphKernelHelper::GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[inputIndex]->Name()));
+            const onnxruntime::NodeArg* graphInput = graph.GetNodeArg(fusedNodeInputArgOriginalNames[inputIndex]);
 
             if (!graphInput)
             {
@@ -140,8 +139,9 @@ namespace Dml::GraphDescBuilder
                 node,
                 constantCpuNodeInputGetter,
                 executionHandle,
-                &graphNodeInfo
+                /*out*/ &graphNodeInfo
             );
+            ORT_THROW_HR_IF(E_UNEXPECTED, !graphNodeInfo.desc);
 
             uint32_t nodeIndex = gsl::narrow_cast<uint32_t>(graphNodes.size());
             AbstractOperatorDesc opDesc = *graphNodeInfo.desc; // Make a copy
@@ -166,13 +166,6 @@ namespace Dml::GraphDescBuilder
                 if (arg->Exists())
                 {
                     auto iter = nameToFusedNodeInputIndex.find(arg->Name());
-
-                    // The graph input could be missing the suffix, so try to match without it.
-                    // This is part of a temporary workaround; see comments in GraphKernelHelper::GetFusedNodeArgNameMatchingGraph.
-                    if (iter == nameToFusedNodeInputIndex.end())
-                    {
-                        iter = nameToFusedNodeInputIndex.find(GraphKernelHelper::GetFusedNodeArgNameMatchingGraph(arg->Name()));
-                    }
 
                     if (iter != nameToFusedNodeInputIndex.end())
                     {
@@ -239,10 +232,9 @@ namespace Dml::GraphDescBuilder
         assert(graphNodes.size() == orderedNodeIndices.size());
 
         // Add graph output nodes, which might be in a different order from the encapsulating node
-        for (size_t outputIndex = 0; outputIndex < fusedNodeOutputDefs.size(); ++outputIndex)
+        for (size_t outputIndex = 0; outputIndex < fusedNodeOutputArgOriginalNames.size(); ++outputIndex)
         {
-            const onnxruntime::NodeArg* graphOutput = graph.GetNodeArg(
-                GraphKernelHelper::GetFusedNodeArgNameMatchingGraph(fusedNodeOutputDefs[outputIndex]->Name()));
+            const onnxruntime::NodeArg* graphOutput = graph.GetNodeArg(fusedNodeOutputArgOriginalNames[outputIndex]);
 
             ORT_THROW_HR_IF_NULL_MSG(E_POINTER, graphOutput, "FusedNode's nodeArgList does not contain one of the nodeArg");
             const auto& outputNodeAndIndex = nameToNodeAndIndexMap.at(graphOutput->Name());
