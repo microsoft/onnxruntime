@@ -778,6 +778,45 @@ bool resize_output(
   }
 }
 
+// aten::abs.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+at::Tensor& abs_out(
+  const at::Tensor& self,
+  // *,
+  at::Tensor& out) {
+  ORT_LOG_FN(self, out);
+
+  if (
+    !IsSupportedType(self, {at::kHalf,at::kByte,at::kInt,at::kBFloat16,at::kFloat,at::kDouble,at::kShort,at::kLong})) {
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(abs_out)>::call(self, out);
+  }
+  auto& invoker = GetORTInvoker(self.device());
+
+  auto ort_input_self = create_ort_value(invoker, self);
+
+  std::vector<OrtValue> ort_outputs_0_Abs(1);
+
+  auto status = invoker.Invoke("Abs", {
+    std::move(ort_input_self),
+  }, ort_outputs_0_Abs, nullptr);
+
+  if (!status.IsOK()) {
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+  }
+
+  resize_output(invoker,
+                dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()),
+                self.sizes());
+
+  // Copy result to out tensor
+  auto ort_out = create_ort_value(invoker, out);
+  copy(invoker, ort_outputs_0_Abs[0], ort_out);
+
+  return out;
+}
+
 const at::Tensor& resize_(
     const at::Tensor& self,
     at::IntArrayRef size,
