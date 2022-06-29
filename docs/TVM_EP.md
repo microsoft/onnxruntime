@@ -86,6 +86,8 @@ TVM Executor Provider can be configured with the following provider options:
 ```python
 po = [dict(executor=tvm_executor_type,
            so_folder=folder_with_pretuned_files,
+           check_hash=check_hash,
+           hash_file_path=hash_file_path,
            target=client_target,
            target_host=client_target_host,
            opt_level=client_opt_level,
@@ -101,6 +103,9 @@ tvm_session = onnxruntime.InferenceSession(model_path, providers=["TvmExecutionP
 
 - `executor` is executor type used by TVM. There is choice between two types: GraphExecutor and VirtualMachine which are corresponded to "graph" and "vm" tags. VirtualMachine is used by default.
 - `so_folder` is path to folder with set of files (.ro-, .so-files and weights) obtained after model tuning. It uses these files for executor compilation instead of onnx-model. But the latter is still needed for ONNX Runtime.
+- `check_hash` means that it is necessary to perform a HASH check for the model obtained in the `so_folder` parameter. It is `False` by default.
+- `hash_file_path` is path to file that contains the pre-computed HASH for the ONNX model which result of tuning locates in the path passed by `so_folder` parameter.
+  If an empty string was passed as this value, then the file will be searched in the folder that was passed in the `so_folder` parameter.
 - `target` and `target_host` are strings like in TVM (e.g. "llvm --mcpu=avx2"). When using accelerators, target may be something like `cuda` while target_host may be `llvm -mtriple=x86_64-linux-gnu`
 - `opt_level` is TVM optimization level. It is 3 by default
 - `freeze_weights` means that all model weights are kept on compilation stage otherwise they are downloaded each inference. True is recommended value for the best performance. It is true by default.
@@ -146,6 +151,9 @@ In order to use the precompiled model, only need to pass two options:
 (this functionality is not supported for `GraphExecutor`);
 * **so_folder** - as a value, you must pass the path to the directory where 
 the files of the precompiled model are located.
+* **check_hash** - (optional) if you want to check hash, you must pass `True` as the value.
+* **hash_file_path** - (optional) by default, the file containing the hash for the tuned model will be searched in the directory that is passed in the `so_folder` parameter.
+  If you want to specify different location, then you must pass the path to the file that contains the desired hash as a value.
 
 You can read more about these options in section [Configuration options](#configuration-options) above.
 
