@@ -52,7 +52,7 @@ common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_prot
  * @param tensor_proto  source data
  * @param tensorp       destination empty tensor
  * @return
-*/
+ */
 common::Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
                                    const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                    Tensor& tensor);
@@ -78,7 +78,7 @@ common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& 
 // Given a tensor proto with external data obtain a pointer to the data and its length.
 // The ext_data_deleter argument is updated with a callback that owns/releases the data.
 common::Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path, const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                 void*& ext_data_buf, size_t& ext_data_len, OrtCallback& ext_data_deleter);
+                                         void*& ext_data_buf, size_t& ext_data_len, OrtCallback& ext_data_deleter);
 
 // Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer
 // If AttributeProto contains a TensorProto, this tensor proto is converted as is including the case when the
@@ -406,7 +406,7 @@ inline bool HasModelVersion(const ONNX_NAMESPACE::ModelProto& m_proto) {
 }
 
 inline bool HasName(const ONNX_NAMESPACE::NodeProto& node_proto) {
-  //XXX: Figure out proto3 style
+  // XXX: Figure out proto3 style
   return node_proto.has_name();
 }
 #endif
