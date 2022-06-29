@@ -748,6 +748,36 @@ void resize_impl_ort_(
   self->set_tensor(updated_ort_value);
 }
 
+// Returns true if resize is necessary
+bool resize_output_check(
+  ORTTensorImpl* output,
+  at::IntArrayRef shape) {
+  if (output->sizes().equals(shape)) {
+    return false;
+  }
+
+  // The PyTorch implementations of this function
+  // for CPU / CUDA expect we will only resize an
+  // empty out tensor, and warn if the out tensor
+  // is not empty...
+
+  return true;
+}
+
+bool resize_output(
+  onnxruntime::ORTInvoker& invoker,
+  ORTTensorImpl* output,
+  at::IntArrayRef shape) {
+
+  if (resize_output_check(output, shape)) {
+    resize_impl_ort_(invoker, output, shape);
+
+    return true;
+  } else {
+    return false;
+  }
+}
+
 const at::Tensor& resize_(
     const at::Tensor& self,
     at::IntArrayRef size,
