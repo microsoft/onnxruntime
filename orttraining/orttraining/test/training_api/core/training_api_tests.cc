@@ -57,7 +57,7 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
-  auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option,
+  auto model = std::make_unique<Module>(ToUTF8String(model_uri), state.module_checkpoint_state.named_parameters, session_option,
                                         *env, std::vector<std::shared_ptr<IExecutionProvider>>());
   ORT_ENFORCE(model->GetTrainModeOutputCount() == 1);
   OrtValue input, target;
@@ -117,9 +117,9 @@ TEST(TrainingApiTest, OptimStep) {
   std::shared_ptr<IExecutionProvider> cuda_provider = providers.front();
   std::shared_ptr<IExecutionProvider> cpu_provider = onnxruntime::test::DefaultCpuExecutionProvider();
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
-  auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option,
+  auto model = std::make_unique<Module>(ToUTF8String(model_uri), state.module_checkpoint_state.named_parameters, session_option,
                                         *env, providers);
-  auto optim = std::make_unique<Optimizer>(optim_uri, model->NamedParameters(), session_option,
+  auto optim = std::make_unique<Optimizer>(ToUTF8String(optim_uri), model->NamedParameters(), session_option,
                                            *env, providers);
 
   OrtValue input, target;
@@ -194,9 +194,9 @@ void TestLRSchduler(const std::string& test_file_name, float initial_lr, int64_t
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
   const std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCudaExecutionProvider()};
-  auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option,
+  auto model = std::make_unique<Module>(ToUTF8String(model_uri), state.module_checkpoint_state.named_parameters, session_option,
                                         *env, providers);
-  auto optim = std::make_shared<Optimizer>(optim_uri, model->NamedParameters(), session_option,
+  auto optim = std::make_shared<Optimizer>(ToUTF8String(optim_uri), model->NamedParameters(), session_option,
                                            *env, providers);
 
   OrtValue input, target;
