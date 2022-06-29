@@ -9,13 +9,29 @@
 #include "core/graph/constants.h"
 
 namespace onnxruntime {
+
+class VulkanInstance {
+ public:
+  VulkanInstance();
+  ~VulkanInstance();
+  VkInstance Get() const;
+
+ private:
+  VkInstance vulkan_instance;
+};
+
 class VulkanExecutionProvider : public IExecutionProvider {
   VulkanExecutionProvider();
   ~VulkanExecutionProvider();
 
  private:
-  VkInstance vulkan_instance;
+  std::shared_ptr<VulkanInstance> vulkan_instance;
   VkPhysicalDevice vulkan_physical_device;
+  uint32_t vulkan_queue_family_index;
+  VkDevice vulkan_logical_device;
+  VkPhysicalDeviceProperties vulkan_device_properties;
+  VkQueue vulkan_queue;
+  VkPhysicalDeviceMemoryProperties vulkan_device_memory_properties;
 };
 
 }  // namespace onnxruntime
