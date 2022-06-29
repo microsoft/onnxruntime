@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "ort_aten.h"
-#include "ort_tensor.h"
 #include <c10/core/TensorImpl.h>
 #include <ATen/native/CPUFallback.h>
 #include <ATen/InferSize.h>
@@ -342,6 +341,35 @@ OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at:
     throw std::runtime_error(
     "ORT return failure status:" + status.ErrorMessage());
   return output[0];
+}
+
+/*
+ * Utility function for resizing output tensor
+ * Only resizes if:
+ *   - The shape is different
+ *   - The output tensor is empty
+ *
+ * We do not support resizing non-empty output tensors.
+ * PyToch implementation of resize will warn about resizing
+ * non-empty and indicate this is deprecated behavior that
+ * can / will change.
+  *
+ * In PyTorch repository see: aten/src/ATen/native/Resize.{h|cpp}
+ */
+void resize_output(
+  onnxruntime::ORTInvoker& invoker,
+  ORTTensorImpl* output,
+  at::IntArrayRef shape) {
+  if (output->sizes().equals(shape)) {
+    return;
+  }
+
+  if (output->numel() != 0) {
+    throw std::runtime_error(
+      "resizing a non-empty output tensor is not supported.");
+  }
+
+  resize_impl_ort_(invoker, output, shape);
 }
 
 //#pragma endregion
