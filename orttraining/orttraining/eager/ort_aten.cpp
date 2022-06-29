@@ -682,12 +682,6 @@ at::Tensor& out) {
   return out;
 }
 
-void copy(onnxruntime::ORTInvoker& invoker,
-          const onnxruntime::Tensor& src_tensor, onnxruntime::Tensor& dst_tensor){
-  auto& ort_ep = invoker.GetCurrentExecutionProvider();
-  ORT_THROW_IF_ERROR(ort_ep.GetDataTransfer()->CopyTensor(src_tensor, dst_tensor));
-}
-
 const at::Tensor& resize_(
     const at::Tensor& self,
     at::IntArrayRef size,
@@ -739,25 +733,26 @@ const at::Tensor& resize_(
     // Currently, it is not possible to copy sub elements between tensors of different sizes
     // as a workaround, create a new tensor (of the same size as the original self tensor)
     // using the buffer of the larger updated tensor.
-    onnxruntime::Tensor tmpTensor{
-      self_ort_tensor->DataType(),
-      onnxruntime::TensorShape(self.sizes().vec()),
-      self_updated_ort_tensor->MutableDataRaw(),
-      invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault)->Info()};
 
-     copy(invoker, *self_ort_tensor, tmpTensor);
+    OrtValue tmp;
+    onnxruntime::Tensor::InitOrtValue(self_ort_tensor->DataType(), onnxruntime::TensorShape(self.sizes().vec()),
+                           self_updated_ort_tensor->MutableDataRaw(),
+                           invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault)->Info(),
+                           tmp);
+
+     copy(invoker, self_ort_value, tmp);
   } else if (self_updated_ort_tensor->SizeInBytes() < self_ort_tensor->SizeInBytes()) {
     // Copy elements from (larger) initial self tensor to (smaller) updated self tensor
 
     // See comment in previous if block for explanation of this
     // workaround...
-    onnxruntime::Tensor tmpTensor{
-      self_ort_tensor->DataType(),
-      onnxruntime::TensorShape(size.vec()),
-      self_ort_tensor->MutableDataRaw(),
-      invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault)->Info()};
+    OrtValue tmp;
+    onnxruntime::Tensor::InitOrtValue(self_ort_tensor->DataType(), onnxruntime::TensorShape(size.vec()),
+                           self_ort_tensor->MutableDataRaw(),
+                           invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault)->Info(),
+                           tmp);
 
-     copy(invoker, tmpTensor, *self_updated_ort_tensor);
+     copy(invoker, tmp, updated_ort_value);
   }
 
   auto* self_impl = dynamic_cast<ORTTensorImpl*>(self.unsafeGetTensorImpl());
