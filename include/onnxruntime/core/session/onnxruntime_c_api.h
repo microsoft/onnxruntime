@@ -270,11 +270,6 @@ ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
 ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
 
-#ifdef ENABLE_TRAINING_ON_DEVICE
-ORT_RUNTIME_CLASS(TrainingSession);
-ORT_RUNTIME_CLASS(CheckpointState);
-#endif
-
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
 #else
@@ -539,6 +534,11 @@ typedef struct OrtOpenVINOProviderOptions {
 struct OrtApi;
 typedef struct OrtApi OrtApi;
 
+#ifdef ENABLE_TRAINING_ON_DEVICE
+struct OrtTrainingApi;
+typedef struct OrtTrainingApi OrtTrainingApi;
+#endif
+
 /** \brief The helper interface to get the right version of OrtApi
 *
 * Get a pointer to this structure through ::OrtGetApiBase
@@ -551,6 +551,14 @@ struct OrtApiBase {
   *   older than the version created with this header file.
   */
   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;
+#ifdef ENABLE_TRAINING_ON_DEVICE
+  /** \brief Get a pointer to the requested version of the ::OrtTrainingApi
+   *
+   * \param[in] version Must be ::ORT_API_VERSION
+   * \return The ::OrtTrainingApi for the version requested, nullptr will be returned if this version is unsupported.
+   */
+  const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version)NO_EXCEPTION;
+#endif
   const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;  ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
 };
 typedef struct OrtApiBase OrtApiBase;
@@ -3452,12 +3460,6 @@ struct OrtApi {
                   _In_reads_(num_keys) const char* const* provider_options_keys,
                   _In_reads_(num_keys) const char* const* provider_options_values,
                   _In_ size_t num_keys);
-
-#ifdef ENABLE_TRAINING_ON_DEVICE
-  // defines c apis for on device training scenarios
-  #include "../../../orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h"
-#endif
-
 };
 
 /*
