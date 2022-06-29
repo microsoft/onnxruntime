@@ -45,20 +45,19 @@ parameters:
 
 jobs:
 - job: Debug_NuGet_Packaging_CPU_nuget_location
-  workspace:
-    clean: all
   pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
-  - task: PowerShell@2  
-    displayName: Display some info about nuget location
-    inputs:
-      targetType: 'inline'
-      script: |
-        get-command nuget
-        nuget help 
-        dir 'C:\Android\android-sdk\platforms'
-        dir 'C:\Program Files (x86)\NuGet'
-        dir 'C:\vcpkg'
-        & 'C:\Program Files (x86)\NuGet\nuget.exe' help
+  steps:
+    - task: PowerShell@2  
+      displayName: Display some info about nuget location
+      inputs:
+        targetType: 'inline'
+        script: |
+          get-command nuget
+          nuget help 
+          dir 'C:\Android\android-sdk\platforms'
+          dir 'C:\Program Files (x86)\NuGet'
+          dir 'C:\vcpkg'
+          & 'C:\Program Files (x86)\NuGet\nuget.exe' help
 
 - template: c-api-linux-cpu.yml
   parameters:        
