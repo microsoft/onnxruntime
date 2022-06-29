@@ -30,11 +30,11 @@ struct OpBuilderRegistrations {
 };
 
 #define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)             \
-  {                                                                                \
+  do {                                                                             \
     uint32_t _index = 0;                                                           \
     ORT_RETURN_IF_ERROR(model_builder.AddOperandFromScalar(scalar_value, _index)); \
     input_indices.push_back(_index);                                               \
-  }
+  } while (0)
 
 Status AddTransposeOperator(ModelBuilder& model_builder,
                             const std::string& input,
@@ -142,6 +142,34 @@ enum DataLayout {
   L_0231 = 0,
   L_1230 = 1,
 };
+
+static Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit& node_unit,
+                                            std::vector<int32_t>& axes) {
+  // Squeeze/Unsqueeze opset 13 uses input1 as axes
+  if (node_unit.SinceVersion() > 12) {
+    // For squeeze, axes is an optional input.If it is not supplied, return an empty axes as default to squeeze all
+    // For unsqueeze, axes is a required input. This check has no effect for it
+    // TODO: Add helper function to handle the following conversion from int64 initializer to int32
+    if (node_unit.Inputs().size() > 1) {
+      const auto& initializers(model_builder.GetInitializerTensors());
+      const auto& axes_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
+      std::vector<uint8_t> unpacked_tensor;
+      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(axes_tensor, unpacked_tensor));
+      const int64_t* raw_axes = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+      const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
+      axes.resize(size);
+      for (uint32_t i = 0; i < size; i++) {
+        // it is unlikely we have an axis value overflow for int32
+        axes[i] = static_cast<int32_t>(raw_axes[i]);
+      }
+    }
+  } else {
+    NodeAttrHelper helper(node_unit);
+    axes = helper.Get("axes", std::vector<int32_t>());
+  }
+
+  return Status::OK();
+}
 
 // This is primarily used for adding the weight (an initializer) of Conv/QlinearConv
 // And perform layout change from ONNX -> NNAPI
@@ -925,6 +953,52 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 }
 
 #pragma endregion op_reshape
+
+#pragma region op_unsqueeze
+
+class UnsqueezeOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+};
+
+void UnsqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  // Unsqueeze opset 13 uses input 1 as axes, add it to initializer skip list
+  if (node_unit.SinceVersion() > 12 && node_unit.Inputs().size() > 1) {
+    model_builder.AddInitializerToSkip(node_unit.Inputs()[1].node_arg.Name());  // "axes"
+  }
+}
+
+Status UnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& shaper(model_builder.GetShaper());
+  const auto& input = node_unit.Inputs()[0].node_arg.Name();
+
+  // NNAPI does not support unsqueeze, here we utilize unsqueeze's axes input to compute output shape
+  // And add equivalent operation as ANEURALNETWORKS_RESHAPE to nnapi model
+  std::vector<int32_t> axes;
+  ORT_RETURN_IF_ERROR(GetAxesForSqueezeAndUnSqueeze(model_builder, node_unit, axes));
+
+  Shape input_shape = shaper[input];
+  auto input_dims = input_shape.size();
+  std::vector<int32_t> shape;
+  const auto size = SafeInt<uint32_t>(input_dims + axes.size());  // "output rank"
+  shape.reserve(size);
+  for (auto& axis : axes) {
+    axis = static_cast<int32_t>(HandleNegativeAxis(axis, size));
+  }
+  std::sort(axes.begin(), axes.end());
+  std::copy(input_shape.cbegin(), input_shape.cend(), std::back_inserter(shape));
+  for (size_t i = 0; i < axes.size(); i++) {
+    auto iter = shape.cbegin() + axes[i];
+    shape.insert(iter, SafeInt<int32_t>(1));
+  }
+
+  return ReshapeOpBuilder::AddReshapeOperator(model_builder, node_unit, input, shape);
+}
+
+#pragma endregion op_unsqueeze
 
 #pragma region op_batchnormalization
 
@@ -2046,7 +2120,6 @@ class SqueezeOpBuilder : public BaseOpBuilder {
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
-  static Status GetAxes(ModelBuilder& model_builder, const NodeUnit& node_unit, std::vector<int32_t>& axes);
 };
 
 void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2055,37 +2128,11 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   }
 }
 
-/* static */ Status SqueezeOpBuilder::GetAxes(ModelBuilder& model_builder,
-                                              const NodeUnit& node_unit, std::vector<int32_t>& axes) {
-  // Squeeze opset 13 use input as axes
-  if (node_unit.SinceVersion() > 12) {
-    // If axes is not supplied, return an empty axes as default to squeeze all
-    if (node_unit.Inputs().size() > 1) {
-      const auto& initializers(model_builder.GetInitializerTensors());
-      const auto& axes_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
-      std::vector<uint8_t> unpacked_tensor;
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(axes_tensor, unpacked_tensor));
-      const int64_t* raw_axes = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
-      const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
-      axes.resize(size);
-      for (uint32_t i = 0; i < size; i++) {
-        // it is unlikely we have a axis value overflow for int32
-        axes[i] = static_cast<int32_t>(raw_axes[i]);
-      }
-    }
-  } else {
-    NodeAttrHelper helper(node_unit);
-    axes = helper.Get("axes", std::vector<int32_t>());
-  }
-
-  return Status::OK();
-}
-
 Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   auto input = node_unit.Inputs()[0].node_arg.Name();
 
   std::vector<int32_t> axes;
-  ORT_RETURN_IF_ERROR(GetAxes(model_builder, node_unit, axes));
+  ORT_RETURN_IF_ERROR(GetAxesForSqueezeAndUnSqueeze(model_builder, node_unit, axes));
   return AddSqueezeOp(model_builder, node_unit.Name(), input, node_unit.Outputs()[0].node_arg.Name(), axes);
 }
 
@@ -2436,6 +2483,82 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
 #pragma endregion
 
+#pragma region op_gather
+
+class GatherOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+};
+
+void GatherOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  // Skip the second input `indices` for Gather
+  const auto& inputs = node_unit.Inputs();
+  model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());  // indices
+}
+
+Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  const auto& initializers(model_builder.GetInitializerTensors());
+  const auto& input1 = node_unit.Inputs()[0].node_arg.Name();
+  const auto& input2 = node_unit.Inputs()[1].node_arg.Name();  // "indices"
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
+
+  NodeAttrHelper helper(node_unit);
+  int32_t rank = static_cast<int32_t>(shaper[input1].size());
+  int32_t axis = static_cast<int32_t>(HandleNegativeAxis(helper.Get("axis", 0), rank));
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input1));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
+
+  // Add indices operand into nnapi
+  const auto& indices_tensor = *initializers.at(input2);
+  std::vector<uint8_t> unpacked_tensor;
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(indices_tensor, unpacked_tensor));
+
+  const auto data_type = indices_tensor.data_type();
+  const auto indices_shape = indices_tensor.dims();
+  uint32_t size = 1;
+  Shape indices_dimen;
+  indices_dimen.reserve(indices_tensor.dims_size());
+  for (auto i = 0; i < indices_tensor.dims_size(); i++) {
+    size *= indices_shape[i];
+    indices_dimen.push_back(static_cast<uint32_t>(indices_shape[i]));
+  }
+
+  std::vector<int32_t> indices(size);
+  // see https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#type-punning-arrays for the usage of memcpy here
+  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    for (uint32_t i = 0; i < size; i++) {
+      int64_t index_i64;
+      memcpy(&index_i64, unpacked_tensor.data() + i * sizeof(int64_t), sizeof(int64_t));
+      indices[i] = SafeInt<int32_t>(index_i64);
+    }
+  } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    for (uint32_t i = 0; i < size; i++) {
+      int32_t index;
+      memcpy(&index, unpacked_tensor.data() + i * sizeof(int32_t), sizeof(int32_t));
+      indices[i] = SafeInt<int32_t>(index);
+    }
+  }
+
+  OperandType indices_operand_type(Type::TENSOR_INT32, indices_dimen);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(input2, indices.data(), indices_operand_type));
+  input_indices.push_back(operand_indices.at(input2));
+  ORT_RETURN_IF_ERROR(shaper.Gather(input1, input2, axis, output));
+  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
+
+  return model_builder.AddOperation(ANEURALNETWORKS_GATHER, input_indices,
+                                    {output}, {output_operand_type});
+}
+
+#pragma endregion
+
 #pragma region op_minmax
 
 class MinMaxOpBuilder : public BaseOpBuilder {
@@ -2694,6 +2817,109 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
 #pragma endregion
 
+#pragma region op_pad
+
+class PadOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+};
+
+void PadOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& inputs = node_unit.Inputs();
+  model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());  // pads
+  if (inputs.size() > 2) {
+    model_builder.AddInitializerToSkip(inputs[2].node_arg.Name());  // constant_value
+  }
+}
+
+Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  auto& shaper = model_builder.GetShaper();
+  const auto& operand_indices = model_builder.GetOperandIndices();
+  const auto& operand_types = model_builder.GetOperandTypes();
+  const auto& inputs = node_unit.Inputs();
+  const auto& outputs = node_unit.Outputs();
+
+  std::vector<uint32_t> input_indices{};
+
+  // `data` input
+  const auto& data = inputs[0].node_arg.Name();
+  input_indices.push_back(operand_indices.at(data));
+
+  // `pads` input
+  // convert from [begin_1, begin_2, ..., end_1, end_2, ...] to [begin_1, end_1, begin_2, end_2, ...]
+  // convert from int64_t to int32_t
+  const auto& data_shape = shaper[data];
+  const uint32_t data_rank = SafeInt<uint32_t>(data_shape.size());
+
+  const auto& pads = inputs[1].node_arg.Name();
+  const auto* pads_initializer = model_builder.GetConstantInitializer(pads);
+  ORT_RETURN_IF_NOT(pads_initializer, "pads must be a constant");
+
+  std::vector<uint8_t> pads_initializer_raw_data{};
+  ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*pads_initializer, pads_initializer_raw_data));
+  // assume pads_initializer has int64 data, per ONNX spec
+  ORT_RETURN_IF_NOT(pads_initializer_raw_data.size() == 2 * data_rank * sizeof(int64_t),
+                    "Expected pads initializer size in bytes: ", 2 * data_rank * sizeof(int64_t),
+                    ", actual: ", pads_initializer_raw_data.size());
+
+  std::vector<int32_t> converted_pads_data{};
+  converted_pads_data.reserve(2 * data_rank);
+
+  auto copy_and_convert = [](const void* raw_i64_src,
+                             std::back_insert_iterator<decltype(converted_pads_data)> i32_dst) {
+    int64_t i64;
+    memcpy(&i64, raw_i64_src, sizeof(i64));
+    *i32_dst = SafeInt<int32_t>(i64);
+  };
+
+  for (size_t i = 0; i < data_rank; ++i) {
+    copy_and_convert(&pads_initializer_raw_data[i * sizeof(int64_t)],
+                     std::back_inserter(converted_pads_data));
+
+    copy_and_convert(&pads_initializer_raw_data[(i + data_rank) * sizeof(int64_t)],
+                     std::back_inserter(converted_pads_data));
+  }
+
+  const Shape converted_pads_shape{data_rank, 2};
+  const OperandType converted_pads_operand_type{Type::TENSOR_INT32, converted_pads_shape};
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(pads, converted_pads_data.data(),
+                                                                      converted_pads_operand_type));
+  input_indices.push_back(operand_indices.at(pads));
+
+  // `constant_value` input
+  float pad_value = 0.0f;
+  if (inputs.size() > 2 && inputs[2].node_arg.Exists()) {
+    const auto& constant_value = inputs[2].node_arg.Name();
+    const auto* constant_value_initializer = model_builder.GetConstantInitializer(constant_value);
+    ORT_RETURN_IF_NOT(constant_value_initializer, "constant_value must be a constant");
+
+    std::vector<uint8_t> pad_value_raw_data{};
+    ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*constant_value_initializer, pad_value_raw_data));
+    // assume constant_value_initializer has float data
+    // ONNX spec says it matches `data` input type, and op support checker limits that to float
+    ORT_RETURN_IF_NOT(pad_value_raw_data.size() == sizeof(float),
+                      "Expected constant_value initializer size in bytes: ", sizeof(float),
+                      ", actual size: ", pad_value_raw_data.size());
+    memcpy(&pad_value, pad_value_raw_data.data(), sizeof(float));
+  }
+
+  ADD_SCALAR_OPERAND(model_builder, input_indices, pad_value);
+
+  const auto& output = outputs[0].node_arg.Name();
+
+  ORT_RETURN_IF_ERROR(shaper.Pad(data, converted_pads_data, output));
+
+  const OperandType output_operand_type{operand_types.at(data).type, shaper[output]};
+  const auto op_code = ANEURALNETWORKS_PAD_V2;
+
+  return model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type});
+}
+
+#pragma endregion op_pad
+
 #pragma region CreateGetOpBuilders
 
 // The reason we use macros to create OpBuilders is for easy exclusion in build if certain op(s) are not used
@@ -2704,10 +2930,10 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
 // This is for ops with dedicated OpBuilder
 #define NNAPI_EP_ADD_SINGLE_OP_BUILDER(OP_TYPE, BUILDER_NAME)                                 \
-  {                                                                                           \
+  do {                                                                                        \
     op_registrations.builders.push_back(std::make_unique<BUILDER_NAME>());                    \
     op_registrations.op_builder_map.emplace(OP_TYPE, op_registrations.builders.back().get()); \
-  }
+  } while (0)
 
 static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   OpBuilderRegistrations op_registrations;
@@ -2721,8 +2947,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("DequantizeLinear", DequantizeLinearOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Elu", EluOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Flatten", FlattenOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Gather", GatherOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Identity", IdentityOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("LRN", LRNOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Pad", PadOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("QuantizeLinear", QuantizeLinearOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Relu", ReluOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Reshape", ReshapeOpBuilder);
@@ -2731,6 +2959,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Softmax", SoftMaxOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Squeeze", SqueezeOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Transpose", TransposeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Unsqueeze", UnsqueezeOpBuilder);
 
   // Builders shared among similar ops
   {

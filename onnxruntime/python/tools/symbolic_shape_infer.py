@@ -2389,6 +2389,29 @@ def parse_arguments():
         type=int,
         default=0,
     )
+    parser.add_argument(
+        "--save_as_external_data",
+        help="Saving an ONNX model to external data",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--all_tensors_to_one_file",
+        help="Saving all the external data to one file",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--external_data_location",
+        help="The file location to save the external file",
+        default="./",
+    )
+    parser.add_argument(
+        "--external_data_size_threshold",
+        help="The size threshold for external data",
+        type=int,
+        default=1024,
+    )
     return parser.parse_args()
 
 
@@ -2406,5 +2429,16 @@ if __name__ == "__main__":
         args.verbose,
     )
     if args.output and out_mp:
-        onnx.save(out_mp, args.output)
+        if args.save_as_external_data:
+            onnx.save_model(
+                out_mp,
+                args.output,
+                save_as_external_data=True,
+                all_tensors_to_one_file=args.all_tensors_to_one_file,
+                location=args.external_data_location,
+                size_threshold=args.external_data_size_threshold,
+                convert_attribute=False,
+            )
+        else:
+            onnx.save(out_mp, args.output)
         logger.info("Done!")

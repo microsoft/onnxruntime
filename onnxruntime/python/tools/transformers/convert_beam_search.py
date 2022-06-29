@@ -20,6 +20,9 @@ Example 2: convert T5 model with beam search in two steps:
 
 Example 3: convert T5 model with beam search. All in one step:
     python convert_beam_search.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx
+
+Example 4: convert MT5 model with external data file like mt5-base-beamsearch.onnx.data in below example.
+    python convert_beam_search.py -m google/mt5-base --model_type mt5 --output mt5-base-beamsearch.onnx -e
 """
 
 import argparse
@@ -35,7 +38,16 @@ import onnx
 import torch
 from benchmark_helper import Precision
 from onnx import onnx_pb as onnx_proto
-from transformers import GPT2Config, GPT2LMHeadModel, GPT2Tokenizer, T5Config, T5ForConditionalGeneration, T5Tokenizer
+from transformers import (
+    GPT2Config,
+    GPT2LMHeadModel,
+    GPT2Tokenizer,
+    MT5Config,
+    MT5ForConditionalGeneration,
+    T5Config,
+    T5ForConditionalGeneration,
+    T5Tokenizer,
+)
 
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions, get_available_providers
 
@@ -44,7 +56,10 @@ from gpt2_helper import PRETRAINED_GPT2_MODELS  # noqa: E402
 from models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx  # noqa: E402
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "models", "t5"))
+from benchmark_helper import setup_logger
 from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models  # noqa: E402
+from models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS  # noqa: E402
+from onnx_model import OnnxModel
 
 logger = logging.getLogger("")
 
@@ -65,7 +80,8 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--model_name_or_path",
         required=True,
         type=str,
-        help="Model path, or pretrained model name in the list: " + ", ".join(PRETRAINED_GPT2_MODELS),
+        help="Model path, or pretrained model name in the list: "
+        + ", ".join(PRETRAINED_GPT2_MODELS + PRETRAINED_T5_MODELS + PRETRAINED_MT5_MODELS),
     )
 
     parser.add_argument(
@@ -73,8 +89,8 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         required=False,
         type=str,
         default="gpt2",
-        choices=["gpt2", "t5"],
-        help="Model type in the list: " + ", ".join(["gpt2", "t5"]),
+        choices=["gpt2", "t5", "mt5"],
+        help="Model type in the list: " + ", ".join(["gpt2", "t5", "mt5"]),
     )
 
     parser.add_argument(
@@ -200,14 +216,6 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
 
     beam_search_group.add_argument(
-        "--temperature",
-        type=float,
-        required=False,
-        default=1,
-        help="Softmax temperature for output logits.",
-    )
-
-    beam_search_group.add_argument(
         "--length_penalty",
         type=float,
         required=False,
@@ -304,7 +312,11 @@ def t5_to_onnx(args: argparse.Namespace):
         overwrite=True,
         disable_auto_mixed_precision=False,
         use_int32_inputs=True,
+        model_type=args.model_type,
     )
+
+    print(f"onnx model for encoder: {paths[0]}")
+    print(f"onnx model for decoder: {paths[1]}")
     args.encoder_decoder_init_onnx = paths[0]
     args.decoder_onnx = paths[1]
 
@@ -564,7 +576,7 @@ def convert_model(args: argparse.Namespace):
         else:
             print(f"Convert GPT model {args.model_name_or_path} to onnx {args.decoder_onnx} ...")
             gpt2_to_onnx(args)
-    else:  # t5
+    else:  # t5 or mt5
         if args.decoder_onnx and args.encoder_decoder_init_onnx:
             print(
                 f"skip convert_to_onnx since paths specified: {args.decoder_onnx} and {args.encoder_decoder_init_onnx}"
@@ -582,8 +594,10 @@ def convert_model(args: argparse.Namespace):
 
     if is_gpt2:
         config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
-    else:
+    elif args.model_type == "t5":
         config = T5Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+    else:
+        config = MT5Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
 
     if args.verbose:
         print(config)
@@ -596,8 +610,8 @@ def convert_model(args: argparse.Namespace):
     if args.vocab_size != -1:
         vocab_size = args.vocab_size
 
-    model = onnx.load(args.decoder_onnx)
-    model.graph.name = f"{args.model_type} decoder subgraph"
+    model = onnx.load_model(args.decoder_onnx, load_external_data=True)
+    model.graph.name = f"{args.model_type} decoder"
 
     if args.model_type == "gpt2":
         verify_gpt2_subgraph(model.graph, args.precision)
@@ -610,7 +624,6 @@ def convert_model(args: argparse.Namespace):
         "min_length",
         "num_beams",
         "num_return_sequences",
-        "temperature",
         "length_penalty",
         "repetition_penalty",
         "vocab_mask",
@@ -644,12 +657,12 @@ def convert_model(args: argparse.Namespace):
         ]
     )
 
-    if args.model_type == "t5":
+    if args.model_type in ["t5", "mt5"]:
         if enable_shape_inference:
             print(f"Run symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten.")
             shape_inference(args.encoder_decoder_init_onnx)
-        init_model = onnx.load(args.encoder_decoder_init_onnx)
-        init_model.graph.name = f"{args.model_type} encoder decoder init subgraph"
+        init_model = onnx.load_model(args.encoder_decoder_init_onnx, load_external_data=True)
+        init_model.graph.name = f"{args.model_type} encoder and decoder init"
         verify_t5_encoder_decoder_init_subgraph(init_model.graph, args.precision)
         node.attribute.extend(
             [
@@ -668,7 +681,6 @@ def convert_model(args: argparse.Namespace):
     min_length = onnx.helper.make_tensor_value_info("min_length", TensorProto.INT32, [1])
     num_beams = onnx.helper.make_tensor_value_info("num_beams", TensorProto.INT32, [1])
     num_return_sequences = onnx.helper.make_tensor_value_info("num_return_sequences", TensorProto.INT32, [1])
-    temperature = onnx.helper.make_tensor_value_info("temperature", TensorProto.FLOAT, [1])
     length_penalty = onnx.helper.make_tensor_value_info("length_penalty", TensorProto.FLOAT, [1])
     repetition_penalty = onnx.helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
     vocab_mask = onnx.helper.make_tensor_value_info("vocab_mask", TensorProto.INT32, [vocab_size])
@@ -679,7 +691,6 @@ def convert_model(args: argparse.Namespace):
         min_length,
         num_beams,
         num_return_sequences,
-        temperature,
         length_penalty,
         repetition_penalty,
         vocab_mask,
@@ -734,7 +745,18 @@ def convert_model(args: argparse.Namespace):
     )
 
     # TODO(tianleiwu): move shared initializers from T5 encoder and decoder subgraphs to parent graph to save memory.
-    onnx.save(new_model, args.output)
+    if args.use_external_data_format:
+        OnnxModel.save(
+            new_model,
+            args.output,
+            save_as_external_data=True,
+            all_tensors_to_one_file=True,
+            size_threshold=1024,
+            convert_attribute=False,
+        )
+    else:
+        onnx.save(new_model, args.output)
+    print(f"model save to {args.output}")
 
 
 def test_torch_performance(
@@ -790,7 +812,6 @@ def test_torch_performance(
             eos_token_id=eos_token_id,
             pad_token_id=pad_token_id,
             num_return_sequences=args.num_return_sequences,
-            temperature=args.temperature,
             length_penalty=args.length_penalty,
             repetition_penalty=args.repetition_penalty,
             bad_words_ids=bad_words_ids,
@@ -816,11 +837,6 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
         Union[Dict[str, Any], None]: A dictionary with string with metric name, and value can be integer or string.
     """
     assert args.model_type == "gpt2"
-
-    if args.temperature != 1.0:
-        # TODO(tianleiwu): implement temperature in BeamSearch operator.
-        print("Skipping parity test as temperature is not implemented in BeamSearch operator")
-        return None
 
     if args.prefix_vocab_mask:
         print("Skipping parity test as prefix vocab mask is not implemented by Hugging Face")
@@ -877,7 +893,6 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
             eos_token_id=eos_token_id,
             pad_token_id=pad_token_id,
             num_return_sequences=args.num_return_sequences,
-            temperature=args.temperature,
             length_penalty=args.length_penalty,
             repetition_penalty=args.repetition_penalty,
             bad_words_ids=bad_words_ids,
@@ -912,7 +927,6 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
         "min_length": np.array([args.min_length], dtype=np.int32),
         "num_beams": np.array([args.num_beams], dtype=np.int32),
         "num_return_sequences": np.array([args.num_return_sequences], dtype=np.int32),
-        "temperature": np.array([args.temperature], dtype=np.float32),
         "length_penalty": np.array([args.length_penalty], dtype=np.float32),
         "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
         "vocab_mask": vocab_mask,
@@ -991,7 +1005,7 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
 
 
 def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, sentences: Optional[List[str]] = None):
-    """Test T5 model
+    """Test T5 or MT5 model
 
     Args:
         args (argparse.Namespace): arguments parsed from command line
@@ -1001,12 +1015,7 @@ def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, senten
     Returns:
         Union[Dict[str, Any], None]: A dictionary with string with metric name, and value can be integer or string.
     """
-    assert args.model_type == "t5"
-
-    if args.temperature != 1.0:
-        # TODO(tianleiwu): implement temperature in BeamSearch operator.
-        print("Skipping parity test as temperature is not implemented in BeamSearch operator")
-        return None
+    assert args.model_type in ["t5", "mt5"]
 
     if args.prefix_vocab_mask:
         print("Skipping parity test as prefix vocab mask is not implemented by Hugging Face")
@@ -1015,10 +1024,16 @@ def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, senten
     tokenizer = T5Tokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
     tokenizer.padding_side = "left"
 
-    model = T5ForConditionalGeneration.from_pretrained(
-        args.model_name_or_path,
-        cache_dir=args.cache_dir,
-    )
+    if args.model_type == "t5":
+        model = T5ForConditionalGeneration.from_pretrained(
+            args.model_name_or_path,
+            cache_dir=args.cache_dir,
+        )
+    else:
+        model = MT5ForConditionalGeneration.from_pretrained(
+            args.model_name_or_path,
+            cache_dir=args.cache_dir,
+        )
 
     # Use different length sentences to test batching
     if sentences is None:
@@ -1063,7 +1078,6 @@ def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, senten
             eos_token_id=eos_token_id,
             pad_token_id=pad_token_id,
             num_return_sequences=args.num_return_sequences,
-            temperature=args.temperature,
             length_penalty=args.length_penalty,
             repetition_penalty=args.repetition_penalty,
             bad_words_ids=bad_words_ids,
@@ -1099,7 +1113,6 @@ def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, senten
         "min_length": np.array([args.min_length], dtype=np.int32),
         "num_beams": np.array([args.num_beams], dtype=np.int32),
         "num_return_sequences": np.array([args.num_return_sequences], dtype=np.int32),
-        "temperature": np.array([args.temperature], dtype=np.float32),
         "length_penalty": np.array([args.length_penalty], dtype=np.float32),
         "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
         "vocab_mask": vocab_mask,
@@ -1184,7 +1197,6 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
         sentences (Optional[List[str]], optional): input text. Defaults to None.
 
     Raises:
-        ValueError: --decoder_onnx is not specified for GPT2 model
         ValueError: Path does not exist: --encoder_decoder_init_onnx
         ValueError: Path does not exist: --decoder_onnx
         ValueError: --decoder_onnx and --encoder_decoder_init_onnx are not used together for T5
@@ -1194,11 +1206,13 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
     """
 
     args = parse_arguments(argv)
+    setup_logger(args.verbose)
 
     if args.model_type == "gpt2":
         if not args.decoder_onnx:
-            raise ValueError("--decoder_onnx shall be specified for gpt2 model")
-    elif args.model_type == "t5":
+            onnx_filename = "gpt2_past_{}.onnx".format("fp16" if args.precision == Precision.FLOAT16 else "fp32")
+            args.decoder_onnx = Path(Path(args.output).parent, onnx_filename).as_posix()
+    elif args.model_type in ["t5", "mt5"]:
         if args.encoder_decoder_init_onnx and not os.path.exists(args.encoder_decoder_init_onnx):
             raise ValueError(f"Path does not exist: --encoder_decoder_init_onnx {args.encoder_decoder_init_onnx}")
         if args.decoder_onnx and not os.path.exists(args.decoder_onnx):
@@ -1210,7 +1224,7 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
 
     convert_model(args)
 
-    if args.model_type == "t5":
+    if args.model_type in ["t5", "mt5"]:
         return test_t5_model(args, use_vocab_mask=True, sentences=sentences)
     else:
         return test_gpt_model(args, use_vocab_mask=True, sentences=sentences)
