@@ -45,6 +45,11 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 }
 #endif
 
+#ifdef ENABLE_TRAINING_ON_DEVICE
+#include "orttraining/training_api/include/onnxruntime_training_c_api.h"
+#include "orttraining/training_api/include/ort_training_apis.h"
+#endif
+
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t version) NO_EXCEPTION;
@@ -2229,6 +2234,9 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
 
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
+#ifdef ENABLE_TRAINING_ON_DEVICE
+    &OrtTrainingApis::GetTrainingApi,
+#endif
     &OrtApis::GetVersionString,
 };
 
@@ -2528,21 +2536,6 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::InvokeOp,
     &OrtApis::ReleaseOp,
     &OrtApis::SessionOptionsAppendExecutionProvider_SNPE,
-#ifdef ENABLE_TRAINING_ON_DEVICE
-    // Experimental for on-device training. Always keep at the bottom.
-    &OrtApis::LoadCheckpoint,
-    &OrtApis::SaveCheckpoint,
-    &OrtApis::CreateTrainingSession,
-    &OrtApis::TrainingSessionGetTrainModeOutputCount,
-    &OrtApis::TrainingSessionGetEvalModeOutputCount,
-    &OrtApis::ResetGrad,
-    &OrtApis::TrainStep,
-    &OrtApis::EvalStep,
-    &OrtApis::OptimizerStep,
-    &OrtApis::ReleaseTrainingSession,
-    &OrtApis::ReleaseCheckpointState,
-#endif
-
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

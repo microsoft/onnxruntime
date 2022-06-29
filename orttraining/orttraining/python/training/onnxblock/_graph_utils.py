@@ -171,7 +171,7 @@ def build_gradient_accumulation_graph(grad_model, all_args_requiring_gradient_na
         # accumulated gradient update flag is also a graph output
         grad_accumulation_output = onnx.helper.make_tensor_value_info(
             grad_accumulation_output_name, onnx.TensorProto.BOOL, [1]
-            )
+        )
         graph_outputs.append(grad_accumulation_output)
 
     lazy_reset_grad_input = onnx.helper.make_tensor_value_info(lazy_reset_grad_input_name, onnx.TensorProto.BOOL, [1])

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include <onnxruntime_c_api.h>
-#include "orttraining/training_api/include/utils.h"
+#include <onnxruntime_training_c_api.h>
 
 #include "cxxopts.hpp"
 #include "../common/synthetic_data_loader.h"
@@ -13,10 +13,10 @@
 #include "core/providers/cuda/nvtx_profile_context.h"
 #endif
 
-using namespace onnxruntime::training::api;
 using namespace std;
 
 const OrtApi* g_ort_api = nullptr;
+const OrtTrainingApi* g_ort_training_api = nullptr;
 
 struct TestRunnerParameters {
   // Models configs.
@@ -173,6 +173,7 @@ void InitSyntheticDataLoader(
 
 int RunTraining(const TestRunnerParameters& params) {
   g_ort_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  g_ort_training_api = OrtGetApiBase()->GetTrainingApi(ORT_API_VERSION);
 
   // Create Env
   OrtEnv* env;
@@ -185,7 +186,7 @@ int RunTraining(const TestRunnerParameters& params) {
 
   // Load Checkpoint State
   OrtCheckpointState* checkpoint_state;
-  ORT_RETURN_ON_ERROR(g_ort_api->LoadCheckpoint(params.checkpoint_to_load_path.c_str(), &checkpoint_state));
+  ORT_RETURN_ON_ERROR(g_ort_training_api->LoadCheckpoint(params.checkpoint_to_load_path.c_str(), &checkpoint_state));
 
   // Create TrainingSession
   OrtSessionOptions* soptions;
@@ -199,16 +200,16 @@ int RunTraining(const TestRunnerParameters& params) {
 
   OrtTrainingSession* session;
   bool do_eval = params.model_evaluation_graph_path.has_value();
-  ORT_RETURN_ON_ERROR(g_ort_api->CreateTrainingSession(env, soptions, checkpoint_state,
-                                                       params.model_training_graph_path.c_str(), do_eval ? params.model_evaluation_graph_path.value().c_str() : nullptr,
-                                                       params.optimizer_training_graph_path.size() > 0 ? params.optimizer_training_graph_path.c_str() : nullptr,
-                                                       &session));
+  ORT_RETURN_ON_ERROR(g_ort_training_api->CreateTrainingSession(env, soptions, checkpoint_state,
+                                                                params.model_training_graph_path.c_str(), do_eval ? params.model_evaluation_graph_path.value().c_str() : nullptr,
+                                                                params.optimizer_training_graph_path.size() > 0 ? params.optimizer_training_graph_path.c_str() : nullptr,
+                                                                &session));
 
   size_t train_mode_output_count, eval_mode_output_count = 0;
-  ORT_RETURN_ON_ERROR(g_ort_api->TrainingSessionGetTrainModeOutputCount(session, &train_mode_output_count));
+  ORT_RETURN_ON_ERROR(g_ort_training_api->TrainingSessionGetTrainModeOutputCount(session, &train_mode_output_count));
 
   if (do_eval) {
-    ORT_RETURN_ON_ERROR(g_ort_api->TrainingSessionGetEvalModeOutputCount(session, &eval_mode_output_count));
+    ORT_RETURN_ON_ERROR(g_ort_training_api->TrainingSessionGetEvalModeOutputCount(session, &eval_mode_output_count));
   }
 
   int64_t sample_batch_count_per_epoch = 4;
@@ -247,9 +248,9 @@ int RunTraining(const TestRunnerParameters& params) {
 #endif
 
       std::vector<OrtValue*> fetches(train_mode_output_count);
-      ORT_RETURN_ON_ERROR(g_ort_api->TrainStep(session, nullptr,
-                                               inputs.size(), (const OrtValue* const*)inputs.data(),
-                                               train_mode_output_count, fetches.data()));
+      ORT_RETURN_ON_ERROR(g_ort_training_api->TrainStep(session, nullptr,
+                                                        inputs.size(), (const OrtValue* const*)inputs.data(),
+                                                        train_mode_output_count, fetches.data()));
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
       train_step_range.End();
 #endif
@@ -266,7 +267,7 @@ int RunTraining(const TestRunnerParameters& params) {
             onnxruntime::profile::Color::Blue);
         opt_step_range.Begin();
 #endif
-        ORT_RETURN_ON_ERROR(g_ort_api->OptimizerStep(session, nullptr));
+        ORT_RETURN_ON_ERROR(g_ort_training_api->OptimizerStep(session, nullptr));
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
         opt_step_range.End();
@@ -282,7 +283,7 @@ int RunTraining(const TestRunnerParameters& params) {
         resetgrad_range.Begin();
 #endif
 
-        ORT_RETURN_ON_ERROR(g_ort_api->ResetGrad(session));
+        ORT_RETURN_ON_ERROR(g_ort_training_api->ResetGrad(session));
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
         resetgrad_range.End();
@@ -291,15 +292,15 @@ int RunTraining(const TestRunnerParameters& params) {
 
       if (do_eval && (batch_idx + 1) % params.eval_interval == 0) {
         std::vector<OrtValue*> eval_results(eval_mode_output_count);
-        ORT_RETURN_ON_ERROR(g_ort_api->EvalStep(session, nullptr,
-                                                inputs.size(), (const OrtValue* const*)inputs.data(),
-                                                train_mode_output_count, eval_results.data()));
+        ORT_RETURN_ON_ERROR(g_ort_training_api->EvalStep(session, nullptr,
+                                                         inputs.size(), (const OrtValue* const*)inputs.data(),
+                                                         train_mode_output_count, eval_results.data()));
       }
 
       if ((batch_idx + 1) % params.checkpoint_interval == 0) {
         // Save trained weights
         std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
-        ORT_RETURN_ON_ERROR(g_ort_api->SaveCheckpoint(ckpt_file.c_str(), session, true));
+        ORT_RETURN_ON_ERROR(g_ort_training_api->SaveCheckpoint(ckpt_file.c_str(), session, true));
 
         // TODO(baiju): enable adding more properties to checkpoint
         // state_to_save.property_bag.AddProperty<int64_t>(std::string("epoch"), epoch);
@@ -321,7 +322,7 @@ int RunTraining(const TestRunnerParameters& params) {
 
   // Save trained weights
   std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name;
-  ORT_RETURN_ON_ERROR(g_ort_api->SaveCheckpoint(ckpt_file.c_str(), session, true));
+  ORT_RETURN_ON_ERROR(g_ort_training_api->SaveCheckpoint(ckpt_file.c_str(), session, true));
 
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> duration_seconds = end - end_to_end_start;
@@ -330,14 +331,14 @@ int RunTraining(const TestRunnerParameters& params) {
   std::cout << "Training completed - end to end latency: " << stabilized_total_end_to_end_time << "(s)" << std::endl;
 
   // Delete all the ptrs
-  g_ort_api->ReleaseTrainingSession(session);
+  g_ort_training_api->ReleaseTrainingSession(session);
 
 #ifdef USE_CUDA
   // Finally, don't forget to release the provider options
   g_ort_api->ReleaseCUDAProviderOptions(cuda_options);
 #endif
   g_ort_api->ReleaseSessionOptions(soptions);
-  g_ort_api->ReleaseCheckpointState(checkpoint_state);
+  g_ort_training_api->ReleaseCheckpointState(checkpoint_state);
   g_ort_api->ReleaseEnv(env);
 
   return 0;
