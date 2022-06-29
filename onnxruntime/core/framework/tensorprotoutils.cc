@@ -583,8 +583,7 @@ static Status GetFileContent(
 }
 
 Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path, const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                 void*& ext_data_buf, size_t& ext_data_len, OrtCallback& ext_data_deleter)
-{
+                                 void*& ext_data_buf, size_t& ext_data_len, OrtCallback& ext_data_deleter) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
   ORT_ENFORCE(model_path);
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
