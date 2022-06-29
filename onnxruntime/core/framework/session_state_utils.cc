@@ -238,7 +238,9 @@ common::Status SaveInitializedTensors(
   }
 
   // tensors requiring a specific allocation order are traced first, to ensure they are allocated in order
-  // NB: vector with init allocation order may contain a subset of all tensors (or none at all)
+  // NB1: vector with init allocation order may contain a subset of all tensors (or none at all)
+  // NB2: only skip tracing and planing memory when data is external (i.e mmap) and on CPU.
+  //    when data is external and on GPU, need to copy first to cpu memory, then to gpu memory.
   auto initialized_tensors_to_allocate = id_to_initialized_tensor;
   for (int ort_value_index : initializer_allocation_order) {
     const auto entry = initialized_tensors_to_allocate.find(ort_value_index);
