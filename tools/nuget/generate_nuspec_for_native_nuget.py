@@ -241,15 +241,15 @@ def generate_dependencies(xml_text, package_name, version, dependency_id, depend
             xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
             xml_text.append("</group>")
             # Support net6.0-android
-            xml_text.append('<group targetFramework="net6.0-android">')
+            xml_text.append('<group targetFramework="net6.0-android31.0">')
             xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
             xml_text.append("</group>")
             # Support net6.0-ios
-            xml_text.append('<group targetFramework="net6.0-ios">')
+            xml_text.append('<group targetFramework="net6.0-ios15.4">')
             xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
             xml_text.append("</group>")
             # Support net6.0-macos
-            xml_text.append('<group targetFramework="net6.0-macos">')
+            xml_text.append('<group targetFramework="net6.0-macos12.3">')
             xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
             xml_text.append("</group>")
         # Support Native C++
@@ -916,19 +916,19 @@ def generate_files(list, args):
                 "<file src=" + '"' + xamarinios_target_targets + '" target="buildTransitive\\xamarinios10" />'
             )
 
-            files_list.append("<file src=" + '"' + net6_android_target_targets + '" target="build\\net6.0-android" />')
+            files_list.append("<file src=" + '"' + net6_android_target_targets + '" target="build\\net6.0-android31.0" />')
             files_list.append(
-                "<file src=" + '"' + net6_android_target_targets + '" target="buildTransitive\\net6.0-android" />'
+                "<file src=" + '"' + net6_android_target_targets + '" target="buildTransitive\\net6.0-android31.0" />'
             )
 
-            files_list.append("<file src=" + '"' + net6_ios_target_targets + '" target="build\\net6.0-ios" />')
+            files_list.append("<file src=" + '"' + net6_ios_target_targets + '" target="build\\net6.0-ios15.4" />')
             files_list.append(
-                "<file src=" + '"' + net6_ios_target_targets + '" target="buildTransitive\\net6.0-ios" />'
+                "<file src=" + '"' + net6_ios_target_targets + '" target="buildTransitive\\net6.0-ios15.4" />'
             )
 
-            files_list.append("<file src=" + '"' + net6_macos_target_targets + '" target="build\\net6.0-macos" />')
+            files_list.append("<file src=" + '"' + net6_macos_target_targets + '" target="build\\net6.0-macos12.3" />')
             files_list.append(
-                "<file src=" + '"' + net6_macos_target_targets + '" target="buildTransitive\\net6.0-macos" />'
+                "<file src=" + '"' + net6_macos_target_targets + '" target="buildTransitive\\net6.0-macos12.3" />'
             )
 
     # Process License, ThirdPartyNotices, Privacy
