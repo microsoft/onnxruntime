@@ -1765,10 +1765,9 @@ static bool CanNodeSkipCostCheck(const OptimizerCtx& ctx, const api::NodeRef& no
     // Inclusion of MaxPool is a hack because it has higher perf in the NHWC variant when supported.
     return true;
   }
-#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
   if (node.IsOp("Resize")) {
     // Resize is included because it has higher perf in the NHWC variant when
-    // the input X is 4D int8 tensor and the mode is linear on ARM
+    // the input X is 4D int8 tensor and the mode is linear
     auto X_value_info = ctx.graph.GetValueInfo(node.Inputs()[0]);
     auto X_shape = X_value_info->Shape();
     auto X_dtype = X_value_info->DType();
@@ -1778,9 +1777,6 @@ static bool CanNodeSkipCostCheck(const OptimizerCtx& ctx, const api::NodeRef& no
       return true;
     }
   }
-#else
-  (void)ctx;
-#endif
   return false;
 }
 
