@@ -70,10 +70,9 @@ struct ExtDataValueDeleter {
 // by the OrtValue's deleter
 static inline common::Status ExtDataTensorProtoToTensor(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                                         const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                                        Tensor& tensor, OrtCallback& ext_data_deleter)
-{
+                                                        Tensor& tensor, OrtCallback& ext_data_deleter) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
-  ORT_ENFORCE(! proto_path.empty());
+  ORT_ENFORCE(!proto_path.empty());
 
   void* ext_data_buf = nullptr;
   size_t ext_data_len = 0;
@@ -85,7 +84,7 @@ static inline common::Status ExtDataTensorProtoToTensor(const Env& env, const st
   // nullptr for the allocator argument
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   std::vector<int64_t> tensor_shape_vec = utils::GetTensorShapeFromTensorProto(tensor_proto);
-  TensorShape tensor_shape {tensor_shape_vec};
+  TensorShape tensor_shape{tensor_shape_vec};
 
   auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, ext_data_buf, OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   tensor = std::move(*p_tensor);
@@ -98,7 +97,6 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                              const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,
                                              OrtValue& ort_value, const DataTransferManager& data_transfer_mgr,
                                              bool use_device_allocator_for_initializers = false) {
-
   if (bool(alloc) == (m != nullptr)) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "DeserializeTensorProto() takes either pre-allocated buffer or an allocator!");
@@ -133,7 +131,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       OrtCallback ext_data_deleter;
       ORT_RETURN_IF_ERROR(ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_tensor, ext_data_deleter));
 
-      ExtDataValueDeleter deleter { ext_data_deleter, p_tensor.get() };
+      ExtDataValueDeleter deleter{ext_data_deleter, p_tensor.get()};
 
       MLDataType ml_tensor_type = DataTypeImpl::GetType<Tensor>();
       ort_value.Init(p_tensor.release(), ml_tensor_type, deleter);
