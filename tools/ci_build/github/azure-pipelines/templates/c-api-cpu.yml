@@ -44,21 +44,6 @@ parameters:
   default: 'default'
 
 jobs:
-- job: Debug_NuGet_Packaging_CPU_nuget_location
-  pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
-  steps:
-    - task: PowerShell@2  
-      displayName: Display some info about nuget location
-      inputs:
-        targetType: 'inline'
-        script: |
-          get-command nuget
-          nuget help 
-          dir 'C:\Android\android-sdk\platforms'
-          dir 'C:\Program Files (x86)\NuGet'
-          dir 'C:\vcpkg'
-          & 'C:\Program Files (x86)\NuGet\nuget.exe' help
-
 - template: c-api-linux-cpu.yml
   parameters:        
     AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
@@ -504,7 +489,9 @@ jobs:
       solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
       platform: 'Any CPU'
       configuration: RelWithDebInfo
-      msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
+      # need fragile hardcoded path to nuget to use latest version from CI image that knows about the android targets.
+      # TODO: find a better way to use the MSBuild task with nuget
+      msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:NugetExe="C:\ProgramData\Chocolatey\bin\nuget.exe"'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: CopyFiles@2
