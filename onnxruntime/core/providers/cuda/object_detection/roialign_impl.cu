@@ -188,6 +188,7 @@ void RoiAlignImpl(
   int64_t roi_cols,
   T* top_data,
   const bool is_mode_avg,
+  const bool half_pixel,
   const int64_t* batch_indices_ptr) {
     int blocksPerGrid = (int)(ceil(static_cast<float>(nthreads) / GridDim::maxThreadsPerBlock)); 
     RoIAlignForward<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
@@ -204,6 +205,7 @@ void RoiAlignImpl(
       roi_cols,
       top_data,
       is_mode_avg,
+      half_pixel,
       batch_indices_ptr);    
 }
 
@@ -223,6 +225,7 @@ void RoiAlignImpl(
         int64_t roi_cols,                       \
         T* top_data,                            \
         const bool is_mode_avg,                 \
+        const bool half_pixel,                  \
         const int64_t* batch_indices_ptr);
 
 SPECIALIZED_IMPL(float)
