@@ -41,12 +41,8 @@ OrtValue add(onnxruntime::ORTInvoker& invoker,
              const OrtValue& A,
              const OrtValue& B);
 
-void copy(onnxruntime::ORTInvoker& invoker,
+void copy(onnxruntime::ORTInvoker& invoker, 
           const OrtValue& src, OrtValue& dst);
-
-// Fill OrtValue (Tensor) with zeros
-void zero(onnxruntime::ORTInvoker& invoker,
-          OrtValue& ort_in_self) ;
 
 } // namespace eager
 } // namespace torch_ort

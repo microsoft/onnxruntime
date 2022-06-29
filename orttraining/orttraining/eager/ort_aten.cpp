@@ -721,10 +721,6 @@ void resize_impl_ort_(
   } else if (self_updated_ort_tensor->SizeInBytes() > self_ort_tensor->SizeInBytes()) {
     // Copy elements from (smaller) initial self tensor to (larger) updated self tensor
 
-    // To match observed PyTorch behavior, zero out newly allocated memory
-    // REVIEW: is there a better way to accomplish this?
-    zero(invoker, updated_ort_value);
-
     // Currently, it is not possible to copy sub elements between tensors of different sizes
     // as a workaround, create a new tensor (of the same size as the original self tensor)
     // using the buffer of the larger updated tensor.

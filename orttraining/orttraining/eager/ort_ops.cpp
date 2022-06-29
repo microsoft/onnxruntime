@@ -35,32 +35,5 @@ template <typename T>
 using Vector = std::vector<T, std::allocator<T>>;
 template void createInplaceOutputValue<Vector>(OrtValue& input, Vector<int64_t> shape, OrtValue* p_mlvalue);
 
-// Fill OrtValue (Tensor) with zeros
-// REVIEW: Is this the best way to fill an OrtValue / OrtTensor with zeros?
-//         Is there a more direct command / wWould fill._Scalar be a better pattern?
-void zero(onnxruntime::ORTInvoker& invoker, OrtValue& ort_in_self) {
-
-  OrtValue flag_val;
-  //construct a constant tensor
-  auto element_type = onnxruntime::DataTypeImpl::GetType<int64_t>();
-  onnxruntime::Tensor::InitOrtValue(element_type, onnxruntime::TensorShape({}),
-                                    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), flag_val);
-  auto* ort_flag_tensor = flag_val.GetMutable<onnxruntime::Tensor>();
-  int64_t one = 1;
-  CopyVectorToTensor<int64_t>(invoker, &one, 1, *ort_flag_tensor);
-
-  std::vector<OrtValue> ort_out = {ort_in_self};
-
-  auto status = invoker.Invoke(
-    "ZeroGradient", {
-      std::move(ort_in_self),
-      std::move(flag_val)
-    }, ort_out, nullptr, onnxruntime::kMSDomain, 1);
-
-  if (!status.IsOK())
-    throw std::runtime_error(
-      "ORT return failure status:" + status.ErrorMessage());
-}
-
 } // namespace eager
 } // namespace torch_ort
