@@ -2159,7 +2159,7 @@ TEST(CApiTest, TestCudaMemcpyToHostWithSequenceTensors) {
 #endif
 
 #if !defined(DISABLE_OPTIONAL_TYPE)
-TEST(CApiTest, TestCudaMemcpyToHostWithSequenceTensors) {
+TEST(CApiTest, GH_11717) {
   const auto* model_path = OPTIONAL_TYPE_GH_11717_MODEL;
   Ort::SessionOptions session_options{};
   // Just check if the model loads fine without a segmentation fault
