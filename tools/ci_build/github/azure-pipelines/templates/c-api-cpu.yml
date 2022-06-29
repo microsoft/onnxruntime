@@ -434,7 +434,16 @@ jobs:
       script: |
         dotnet workload install android ios macos
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
-    
+  
+  - task: PowerShell@2  
+    displayName: Display some info
+    inputs:
+      targetType: 'inline'
+      script: |
+        dotnet --info
+        nuget help 
+        dir 'C:\Android\android-sdk\platforms'
+
   - task: PowerShell@2  
     displayName: Build Microsoft.ML.OnnxRuntime .NET 6 targets using dotnet
     inputs:

@@ -241,7 +241,7 @@ def generate_dependencies(xml_text, package_name, version, dependency_id, depend
             xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
             xml_text.append("</group>")
             # Support net6.0-android
-            xml_text.append('<group targetFramework="net6.0-android31.0">')
+            xml_text.append('<group targetFramework="net6.0-android31.1">')
             xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
             xml_text.append("</group>")
             # Support net6.0-ios
