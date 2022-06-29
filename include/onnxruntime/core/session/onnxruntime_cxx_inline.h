@@ -1312,29 +1312,34 @@ inline void* CustomOpApi::KernelContext_GetGPUComputeStream(const OrtKernelConte
   return out;
 }
 
-inline void CustomOpApi::CreateOpAttr(_In_ const char* name,
-                                      _In_ const void* data,
-                                      _In_ int len,
-                                      _In_ OrtOpAttrType type,
-                                      _Outptr_ OrtOpAttr** op_attr) {
-  ThrowOnError(api_.CreateOpAttr(name, data, len, type, op_attr));
+inline OrtOpAttr* CustomOpApi::CreateOpAttr(_In_ const char* name,
+                                            _In_ const void* data,
+                                            _In_ int len,
+                                            _In_ OrtOpAttrType type) {
+  OrtOpAttr* op_attr{};
+  ThrowOnError(api_.CreateOpAttr(name, data, len, type, &op_attr));
+  return op_attr;
 }
 
 inline void CustomOpApi::ReleaseOpAttr(_Frees_ptr_opt_ OrtOpAttr* op_attr) {
   api_.ReleaseOpAttr(op_attr);
 }
 
-inline void CustomOpApi::CreateOp(_In_ const OrtKernelInfo* info,
-                                  _In_ const char* op_name,
-                                  _In_ const char* domain,
-                                  int version,
-                                  _In_opt_ const char** type_constraint_names,
-                                  _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
-                                  int type_constraint_count,
-                                  _In_opt_ const OrtOpAttr* const* attr_values,
-                                  int attr_count,
-                                  _Outptr_ OrtOp** ort_op) {
-  ThrowOnError(api_.CreateOp(info, op_name, domain, version, type_constraint_names, type_constraint_values, type_constraint_count, attr_values, attr_count, ort_op));
+inline OrtOp* CustomOpApi::CreateOp(_In_ const OrtKernelInfo* info,
+                                    _In_ const char* op_name,
+                                    _In_ const char* domain,
+                                    _In_ int version,
+                                    _In_opt_ const char** type_constraint_names,
+                                    _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
+                                    _In_opt_ int type_constraint_count,
+                                    _In_opt_ const OrtOpAttr* const* attr_values,
+                                    _In_opt_ int attr_count,
+                                    _In_ int input_count,
+                                    _In_ int output_count) {
+  OrtOp* ort_op{};
+  ThrowOnError(api_.CreateOp(info, op_name, domain, version, type_constraint_names, type_constraint_values,
+                             type_constraint_count, attr_values, attr_count, input_count, output_count, &ort_op));
+  return ort_op;
 }
 
 inline void CustomOpApi::InvokeOp(_In_ const OrtKernelContext* context,
@@ -1349,6 +1354,16 @@ inline void CustomOpApi::InvokeOp(_In_ const OrtKernelContext* context,
 inline void CustomOpApi::ReleaseOp(_Frees_ptr_opt_ OrtOp* ort_op) {
   api_.ReleaseOp(ort_op);
 }
+
+inline OrtKernelInfo* CustomOpApi::CopyKernelInfo(_In_ const OrtKernelInfo* info) {
+  OrtKernelInfo* info_copy{};
+  ThrowOnError(api_.CopyKernelInfo(info, &info_copy));
+  return info_copy;
+}
+
+inline void CustomOpApi::ReleaseKernelInfo(_Frees_ptr_opt_ OrtKernelInfo* info_copy) {
+  api_.ReleaseKernelInfo(info_copy);
+} 
 
 inline SessionOptions& SessionOptions::DisablePerSessionThreads() {
   ThrowOnError(GetApi().DisablePerSessionThreads(p_));

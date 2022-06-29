@@ -264,6 +264,7 @@ DML_OP_EXTERN_QUERY_FUNCTION(Resize);
 DML_OP_EXTERN_QUERY_FUNCTION(EinSum);
 DML_OP_EXTERN_QUERY_FUNCTION(RecurrentNeuralNetwork);
 DML_OP_EXTERN_QUERY_FUNCTION(BatchNormalization);
+DML_OP_EXTERN_QUERY_FUNCTION(Pad);
 
 constexpr static std::array<const char*, 1> typeNameListDefault = {"T"};
 constexpr static std::array<const char*, 2> typeNameListTwo = { "T1", "T2" };
@@ -428,7 +429,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER( 10,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,               DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3, 4), std::nullopt, QuerySlice)},  // Adds negative axes.
     {REG_INFO_VER( 11,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,               DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3, 4), std::nullopt, QuerySlice)},
     {REG_INFO_VER( 13,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,               DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3, 4), std::nullopt, QuerySlice)},
-    {REG_INFO_VER(  7,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
+    {REG_INFO_VER(  7,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(), std::nullopt, QueryPad)},
     {REG_INFO_VER( 11,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2) /*pads, value*/)}, // https://microsoft.visualstudio.com/OS/_workitems/edit/26007728
     {REG_INFO_VER( 13,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2) /*pads, value*/)}, // https://microsoft.visualstudio.com/OS/_workitems/edit/26007728
     {REG_INFO(      7,  SpaceToDepth,                       typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
