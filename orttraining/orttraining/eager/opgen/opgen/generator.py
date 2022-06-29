@@ -472,27 +472,41 @@ class ORTGen:
 
         if len(in_place_params) == 0:
             # tensor options
-            writer.write(f"at::TensorOptions tensor_options = {first_param.identifier.value}")
-            if first_param.parameter_type.desugar().identifier_tokens[0].value == "TensorList":
-                writer.write("[0]")
-            writer.write(".options()")
-            if need_type_promotion:
-                writer.write(".dtype(*promoted_type)")
-            writer.writeline(";")
+            # if last param is out and a reference tensor, then we need to set and return that
+            last_param = cpp_func.parameters[-1].member
+            if last_param.identifier.value == "out" and last_param.parameter_type.__str__() == "Tensor&":
+                writer.writeline(f"at::TensorOptions tensor_options = {last_param.identifier.value}.options();")
 
-            writer.writeline("return aten_tensor_from_ort(")
-            writer.push_indent()
-            if (
-                isinstance(cpp_func.return_type, ast.TemplateType)
-                and cpp_func.return_type.identifier_tokens[-1].value == "std::vector"
-            ):
-                writer.writeline(f"{return_outputs},")
-                writer.writeline("tensor_options);")
-            else:
+                writer.writeline(f"{last_param.identifier.value} = aten_tensor_from_ort(")
+                writer.push_indent()
                 writer.writeline(f"std::move({return_outputs}[0]),")
                 writer.writeline("tensor_options);")
-            writer.pop_indent()
-            return
+                writer.pop_indent()
+                writer.writeline(f"return {last_param.identifier.value};")
+                return
+
+            else:
+                writer.write(f"at::TensorOptions tensor_options = {first_param.identifier.value}")
+                if first_param.parameter_type.desugar().identifier_tokens[0].value == "TensorList":
+                    writer.write("[0]")
+                writer.write(".options()")
+                if need_type_promotion:
+                    writer.write(".dtype(*promoted_type)")
+                writer.writeline(";")
+
+                writer.writeline("return aten_tensor_from_ort(")
+                writer.push_indent()
+                if (
+                    isinstance(cpp_func.return_type, ast.TemplateType)
+                    and cpp_func.return_type.identifier_tokens[-1].value == "std::vector"
+                ):
+                    writer.writeline(f"{return_outputs},")
+                    writer.writeline("tensor_options);")
+                else:
+                    writer.writeline(f"std::move({return_outputs}[0]),")
+                    writer.writeline("tensor_options);")
+                writer.pop_indent()
+                return
         else:
             if len(in_place_params) == 1:
                 writer.writeline(f"return {in_place_params[0]};")
