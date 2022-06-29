@@ -26,13 +26,8 @@ template <typename T>
 class ConvTranspose : public OpKernel {
  public:
   ConvTranspose(const OpKernelInfo& info) : OpKernel(info), conv_transpose_attrs_(info) {
-    AutoPadType auto_pad = AutoPadType::NOTSET;
-    std::string auto_pad_str;
-    auto status = info.GetAttr<std::string>("auto_pad", &auto_pad_str);
-    if (status.IsOK()) {
-      auto_pad = StringToAutoPadType(auto_pad_str);
-    }
-    if (auto_pad == AutoPadType::SAME_UPPER || auto_pad == AutoPadType::SAME_LOWER) {
+    if (conv_transpose_attrs_.auto_pad == AutoPadType::SAME_UPPER ||
+        conv_transpose_attrs_.auto_pad == AutoPadType::SAME_LOWER) {
       // TODO(jcwchen): #9740 ORT 1.13 will correct the logic by switching them to meet ONNX spec
       LOGS_DEFAULT(WARNING) << "The existing bug in the padding distribution for auto_pad type"
                             << " SAME_UPPER/SAME_LOWER will be fixed in next ORT 1.13 release and hence the"
