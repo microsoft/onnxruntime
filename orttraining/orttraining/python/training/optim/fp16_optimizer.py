@@ -3,6 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import warnings
+
 from ._modifier_registry import OptimizerModifierTypeRegistry
 
 
