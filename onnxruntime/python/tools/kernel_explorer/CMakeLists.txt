@@ -6,8 +6,7 @@ cmake_minimum_required(VERSION 3.21)
 
 include(../../../../cmake/external/pybind11.cmake)
 
-# Memory error with Release build (-o3 -DNDEBUG), AMD is currently investigating
-set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_CXX_COMPILER /opt/rocm/bin/hipcc)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fpic")
 set(CMAKE_CXX_STANDARD 14)
@@ -21,6 +20,7 @@ find_package(PythonLibs 3.8 EXACT REQUIRED)
 
 include_directories(${PYTHON_INCLUDE_DIRS})
 include_directories(${pybind11_INCLUDE_DIRS})
+include_directories(../../../../onnxruntime/contrib_ops/rocm/bert/)
 include_directories(.)
 
 FILE(GLOB kernel_srcs kernels/*.cpp)
