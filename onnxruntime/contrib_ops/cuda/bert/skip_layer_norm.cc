@@ -1,14 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Modifications: Remove GetDeviceProp in LaunchFastGeluKernel.
-// Copyright (c) Advanced Micro Devices, Inc. All rights reserved.
-// Licensed under the MIT License.
-
 #include "core/providers/cuda/cuda_common.h"
 #include "skip_layer_norm.h"
 #include "skip_layer_norm_impl.h"
-#include "transformer_common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -34,8 +29,6 @@ template <typename T>
 SkipLayerNorm<T>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
   ORT_ENFORCE(epsilon_ >= 0);
-  const TransformerOptions* options = TransformerOptions::GetInstance();
-  use_half2_ = !options->DisableHalf2();
 }
 
 template <typename T>
@@ -101,21 +94,19 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   int hidden_size = static_cast<int>(input_dims[2]);
   int64_t element_count = input_dims[0] * sequence_length * hidden_size;
   size_t element_size = sizeof(T);
-  typedef typename ToCudaType<T>::MappedType CudaT;
 
-  if (!LaunchSkipLayerNormKernel<CudaT>(
+  if (!LaunchSkipLayerNormKernel(
           Stream(),
-          reinterpret_cast<CudaT*>(output->template MutableData<T>()),
-          reinterpret_cast<const CudaT*>(input->template Data<T>()),
-          reinterpret_cast<const CudaT*>(skip->template Data<T>()),
-          reinterpret_cast<const CudaT*>(gamma->template Data<T>()),
-          (nullptr != beta) ? reinterpret_cast<const CudaT*>(beta->template Data<T>()) : nullptr,
-          (nullptr != bias) ? reinterpret_cast<const CudaT*>(bias->template Data<T>()) : nullptr,
+          output->template MutableData<T>(),
+          input->template Data<T>(),
+          skip->template Data<T>(),
+          gamma->template Data<T>(),
+          beta != nullptr ? beta->template Data<T>() : nullptr,
+          bias != nullptr ? bias->template Data<T>() : nullptr,
           epsilon_,
           hidden_size,
           static_cast<int>(element_count),  //TODO: check range
-          element_size,
-          use_half2_)) {
+          element_size)) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);

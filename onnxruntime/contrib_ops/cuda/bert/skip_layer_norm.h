@@ -19,7 +19,6 @@ class SkipLayerNorm final : public CudaKernel {
 
  private:
   float epsilon_;
-  bool use_half2_;
 };
 
 }  // namespace cuda
