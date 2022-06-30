@@ -193,8 +193,8 @@ class Conv : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
-  inline IAllocatorUniquePtr<void> GetWorkSpace() const {
-    return GetScratchBuffer<void>(s_.workspace_bytes);
+  inline IAllocatorUniquePtr<void> GetWorkSpace(onnxruntime::Stream* stream) const {
+    return GetScratchBuffer<void>(s_.workspace_bytes, stream);
   }
 
   Status UpdateState(OpKernelContext* context, bool bias_expected = false) const;

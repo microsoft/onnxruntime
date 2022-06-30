@@ -12,7 +12,7 @@ namespace BeamSearchCpuDeviceHelper {
 
 Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
             AllocatorPtr allocator,
-            void* /*stream*/,
+            Stream* /*stream*/,
             onnxruntime::concurrency::ThreadPool* threadpool,
             std::unique_ptr<Tensor>& output_values,
             std::unique_ptr<Tensor>& output_indices) {
@@ -146,7 +146,7 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
                    gsl::span<const int32_t> input_ids_in_cpu,
                    int sequence_length,
                    int max_length,
-                   void* /*stream*/) {
+                   Stream* /*stream*/) {
   memset(beam_state->beam_scores.data(), 0, beam_state->beam_scores.size_bytes());
   memset(beam_state->next_token_logits.data(), 0, beam_state->next_token_logits.size_bytes());
   memset(beam_state->next_token_scores.data(), 0, beam_state->next_token_scores.size_bytes());
@@ -188,7 +188,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      transformers::IBeamScorer* beam_scorer,                 // beam scorer
                      const transformers::IBeamSearchParameters* parameters,  // parameters
                      int step,                                               // iteration counter
-                     void* stream,                                           // cuda stream (for CUDA only)
+                     Stream* stream,                                           // cuda stream (for CUDA only)
                      const transformers::IConsoleDumper* dumper) {           // tensor dumper
   ORT_UNUSED_PARAMETER(cpu_state);
 #ifndef DEBUG_BEAM_SEARCH
@@ -327,7 +327,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 }
 
 template <typename T>
-Status DeviceCopy(gsl::span<T> target, gsl::span<const T> source, void* /*stream*/, int /*copyDirection*/) {
+Status DeviceCopy(gsl::span<T> target, gsl::span<const T> source, Stream* /*stream*/, int /*copyDirection*/) {
   gsl::copy(source, target);
   return Status::OK();
 }
@@ -337,7 +337,7 @@ void PickPastState(const std::vector<OrtValue>& last_outputs,
                    std::vector<OrtValue>& next_inputs,
                    gsl::span<const int32_t>& beam_indices,
                    AllocatorPtr allocator,
-                   void* /*stream*/) {
+                   Stream* /*stream*/) {
 
   for (size_t i = 1; i < last_outputs.size(); ++i) {
     const OrtValue& present = last_outputs[i];  // shape is like (2, batch_beam_size, 12, past_seq_len, 64)
@@ -372,7 +372,7 @@ void PickPastState(const std::vector<OrtValue>& last_outputs,
 template <typename T>
 Status UpdateFeeds(
     AllocatorPtr allocator,
-    void* stream,
+    Stream* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int current_length,
@@ -453,7 +453,7 @@ template void InitBeamState<float>(
     gsl::span<const int32_t> input_ids_in_cpu,
     int sequence_length,
     int max_length,
-    void* stream);
+    Stream* stream);
 
 template Status ProcessLogits<float>(
     const OrtValue& logits,
@@ -466,18 +466,18 @@ template Status ProcessLogits<float>(
     transformers::IBeamScorer* beam_scorer,
     const transformers::IBeamSearchParameters* parameters,
     int step,
-    void* stream,
+    Stream* stream,
     const transformers::IConsoleDumper* dumper);
 
 template Status DeviceCopy<float>(
     gsl::span<float> target,
     gsl::span<const float> source,
-    void* stream,
+    Stream* stream,
     int copyDirectionn);
 
 template Status UpdateFeeds<float>(
     AllocatorPtr allocator,
-    void* stream,
+    Stream* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int current_length,

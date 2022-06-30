@@ -435,10 +435,11 @@ __global__ void ExcludeOutput(int64_t* output_i, int64_t K, int64_t dimension) {
 }
 
 template <typename T>
-Status TopKImpl(const CudaKernel* kernel, cudaStream_t stream, const T* input_x, T* output_v, int64_t* output_i, const TArray<int64_t>& elem_nums, size_t size, int32_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
+Status TopKImpl(const CudaKernel* kernel, Stream* ort_stream, const T* input_x, T* output_v, int64_t* output_i, const TArray<int64_t>& elem_nums, size_t size, int32_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const CudaT* input_x_ptr = reinterpret_cast<const CudaT*>(input_x);
   CudaT* output_v_ptr = reinterpret_cast<CudaT*>(output_v);
+  cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->handle) : nullptr;
 
   auto aligned_K = ALIGN(K);
   auto aligned_dimension = ALIGN(dimension);
@@ -456,17 +457,17 @@ Status TopKImpl(const CudaKernel* kernel, cudaStream_t stream, const T* input_x,
       RadixTopK<CudaT, BT, 16><<<N, BT, 256 * sizeof(uint32_t), stream>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, NumericLimits<T>::Min(), NumericLimits<T>::Max());
     }
   } else {
-    auto input_key_buffer = kernel->GetScratchBuffer<CudaT>(dimension);
-    auto output_key_buffer = kernel->GetScratchBuffer<CudaT>(dimension);
-    auto input_value_buffer = kernel->GetScratchBuffer<int64_t>(dimension);
-    auto output_value_buffer = kernel->GetScratchBuffer<int64_t>(dimension);
+    auto input_key_buffer = kernel->GetScratchBuffer<CudaT>(dimension, ort_stream);
+    auto output_key_buffer = kernel->GetScratchBuffer<CudaT>(dimension, ort_stream);
+    auto input_value_buffer = kernel->GetScratchBuffer<int64_t>(dimension, ort_stream);
+    auto output_value_buffer = kernel->GetScratchBuffer<int64_t>(dimension, ort_stream);
     auto* input_key = input_key_buffer.get();
     auto* output_key = output_key_buffer.get();
     auto* input_value = input_value_buffer.get();
     auto* output_value = output_value_buffer.get();
     size_t temp_bytes = 0;
     CUDA_RETURN_IF_ERROR(cub::DeviceRadixSort::SortPairs(nullptr, temp_bytes, input_key, output_key, input_value, output_value, dimension, 0, sizeof(T)*8, stream));
-    auto temp_storage_buffer = kernel->GetScratchBuffer<char>(temp_bytes);
+    auto temp_storage_buffer = kernel->GetScratchBuffer<char>(temp_bytes, ort_stream);
     auto* temp_storage = temp_storage_buffer.get();
     auto blocks_per_grid_D = (int)(ceil(static_cast<float>(dimension) / BT));
     auto blocks_per_grid_K = (int)(ceil(static_cast<float>(K) / BT));
@@ -487,7 +488,7 @@ Status TopKImpl(const CudaKernel* kernel, cudaStream_t stream, const T* input_x,
 }
 
 #define TOPKIMPLE(T) template Status TopKImpl<T>(const CudaKernel* kernel, \
-                                                 cudaStream_t stream,      \
+                                                 Stream* ort_stream,       \
                                                  const T* input_x,         \
                                                  T* output_v,              \
                                                  int64_t* output_i,        \

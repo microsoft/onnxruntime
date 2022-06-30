@@ -37,8 +37,8 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
   Status ComputeInternal(OpKernelContext* context) const override {
     CUDNN_RETURN_IF_ERROR(status_);
     std::lock_guard<OrtMutex> lock(Base::s_.mutex);
-    CUDNN_CALL_THROW(cudnnSetStream(Base::CudnnHandle(), Stream()));
-    CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream()));
+    CUDNN_CALL_THROW(cudnnSetStream(Base::CudnnHandle(), Stream(context)));
+    CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream(context)));
 
     ORT_RETURN_IF_ERROR(Base::UpdateState(context, true));
     if (Base::s_.Y->Shape().Size() == 0) {
@@ -49,7 +49,7 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
     typedef typename onnxruntime::cuda::ToCudaType<T>::MappedType CudaT;
     const auto alpha = onnxruntime::cuda::Consts<CudaT>::One;
     const auto beta = onnxruntime::cuda::Consts<CudaT>::Zero;
-    IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace();
+    IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace(OrtStream(context));
     auto cudnn_status = cudnnConvolutionBiasActivationForward(Base::CudnnHandle(),
                                                               &alpha,
                                                               Base::s_.x_tensor,
@@ -95,7 +95,7 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
     }
     if (Base::s_.post_slicing_required) {
       ORT_RETURN_IF_ERROR(onnxruntime::cuda::SliceOutUnwantedOutputSection(
-          this->Stream(), Base::s_.y_data, Base::s_.y_dims_with_adjusted_pads, Base::s_.Y->MutableDataRaw(),
+          this->Stream(context), Base::s_.y_data, Base::s_.y_dims_with_adjusted_pads, Base::s_.Y->MutableDataRaw(),
           Base::s_.y_dims.GetDims(), Base::s_.slice_starts, Base::s_.slice_ends, Base::s_.slice_axes, Base::s_.element_size));
     }
     return Status::OK();

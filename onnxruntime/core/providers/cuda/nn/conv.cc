@@ -178,7 +178,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     s_.Y = context->Output(0, TensorShape(s_.y_dims));
     if (post_slicing_required) {
       // Post slicing needed. Create and fill in the Conv results in an intermediate buffer.
-      s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(y_dims_with_adjusted_pads).Size() * s_.element_size);
+      s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(y_dims_with_adjusted_pads).Size() * s_.element_size, OrtStream(context));
       s_.y_data = reinterpret_cast<CudaT*>(s_.memory_for_cudnn_conv_results.get());
     } else {
       // No post slicing needed. Fill the output tensor's buffer directly.
@@ -252,7 +252,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
         s_.b_zero = nullptr;
       }
       CUDA_CALL_THROW(cudaMalloc(&s_.b_zero, malloc_size));
-      CUDA_CALL_THROW(cudaMemsetAsync(s_.b_zero, 0, malloc_size, Stream()));
+      CUDA_CALL_THROW(cudaMemsetAsync(s_.b_zero, 0, malloc_size, Stream(context)));
     }
 
     if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
@@ -322,7 +322,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       return Status::OK();
     }
     if (s_.post_slicing_required) {
-      s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(s_.y_dims_with_adjusted_pads).Size() * s_.element_size);
+      s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(s_.y_dims_with_adjusted_pads).Size() * s_.element_size, OrtStream(context));
       s_.y_data = reinterpret_cast<CudaT*>(s_.memory_for_cudnn_conv_results.get());
     } else {
       s_.y_data = reinterpret_cast<CudaT*>(s_.Y->template MutableData<T>());
@@ -334,15 +334,15 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 template <typename T>
 Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   std::lock_guard<OrtMutex> lock(s_.mutex);
-  CUDNN_CALL_THROW(cudnnSetStream(s_.handle, Stream()));
-  CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream()));
+  CUDNN_CALL_THROW(cudnnSetStream(s_.handle, Stream(context)));
+  CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream(context)));
   ORT_RETURN_IF_ERROR(UpdateState(context));
   if (s_.Y->Shape().Size() == 0) {
     return Status::OK();
   }
   const auto alpha = Consts<CudaT>::One;
   const auto beta = Consts<CudaT>::Zero;
-  IAllocatorUniquePtr<void> workspace = GetWorkSpace();
+  IAllocatorUniquePtr<void> workspace = GetWorkSpace(OrtStream(context));
 
   CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(s_.handle,
                                                 &alpha,
@@ -364,7 +364,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   // To deal with asymmetric padding, we may have over-padded on one or both sides of the spatial dimensions
   // This may have lead to extra results that are unnecessary and hence we slice that off here
   if (s_.post_slicing_required) {
-    ORT_RETURN_IF_ERROR(SliceOutUnwantedOutputSection(Stream(), s_.y_data, gsl::make_span(s_.y_dims_with_adjusted_pads),
+    ORT_RETURN_IF_ERROR(SliceOutUnwantedOutputSection(Stream(context), s_.y_data, gsl::make_span(s_.y_dims_with_adjusted_pads),
                                                       s_.Y->MutableDataRaw(), s_.y_dims.GetDims(), s_.slice_starts,
                                                       s_.slice_ends, s_.slice_axes, s_.element_size));
   }

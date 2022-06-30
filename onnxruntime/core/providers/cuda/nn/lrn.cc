@@ -71,7 +71,7 @@ Status LRN<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* Y = context->Output(0, X->Shape());
 
   std::lock_guard<OrtMutex> lock(cudnn_stream_mutex_);
-  CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream()));
+  CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream(context)));
 
   CudnnTensor x_tensor;
   ORT_RETURN_IF_ERROR(x_tensor.Set(X->Shape().GetDims(), CudnnTensor::GetDataType<CudaT>()));

@@ -168,7 +168,7 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
                               int64_t, uint8_t, uint16_t, uint32_t, uint64_t, double, bool>
       t_disp(data_tensor->GetElementType());
   return t_disp.InvokeRet<Status, ComputeImpl>(
-      Stream(), data_tensor, updates_tensor, indices_tensor, output_tensor, rank,
+      Stream(context), data_tensor, updates_tensor, indices_tensor, output_tensor, rank,
       input_data_size, buffer_input_dims, buffer_input_strides, indices_size,
       buffer_indices_dims, fdm_indices_strides, axis);
 }

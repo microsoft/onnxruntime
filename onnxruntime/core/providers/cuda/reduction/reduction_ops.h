@@ -68,6 +68,7 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
       OutT* Y,
       const TensorShape& output_shape,
       cudnnReduceTensorOp_t cudnn_reduce_op,
+      onnxruntime::Stream* stream,
       TensorShapeVector& output_dims) const;
 
   using ReduceKernelBase<allow_multi_axes>::axes_;

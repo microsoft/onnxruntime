@@ -126,7 +126,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto& device_prop = GetDeviceProp();
 
   std::lock_guard<OrtMutex> lock(cublas_stream_mutex_);
-  CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream()));
+  CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream(ctx)));
 
   if (helper.OutputOffsets().size() == 1) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -179,9 +179,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(left_X->template Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(right_X->template Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<CudaT*>(Y->template MutableData<T>()), helper.OutputOffsets(), output_arrays.CpuSpan());
-  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu());
-  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu());
-  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu());
+  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu(OrtStream(ctx)));
+  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu(OrtStream(ctx)));
+  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu(OrtStream(ctx)));
 
   // note that onnxruntime OrtValue is row major, while cublas is column major,
   // so swap left/right operands

@@ -48,7 +48,7 @@ Status Trilu::ComputeInternal(OpKernelContext* ctx) const {
 
   size_t element_size = input.DataType()->Size();
   return TriluImpl(
-      this->Stream(),
+      this->Stream(ctx),
       upper_,
       element_size,
       k_val,

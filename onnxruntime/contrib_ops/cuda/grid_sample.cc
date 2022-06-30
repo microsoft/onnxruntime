@@ -75,7 +75,7 @@ Status GridSample<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   CudaT* Y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
   GridSampleImpl<CudaT>(
-      Stream(),
+      Stream(context),
       reinterpret_cast<const CudaT*>(X->Data<T>()),
       reinterpret_cast<const CudaT*>(Grid->Data<T>()),
       mode_i_,

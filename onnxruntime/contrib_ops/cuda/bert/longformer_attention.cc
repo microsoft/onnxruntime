@@ -61,18 +61,18 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, shape);
 
   cublasHandle_t cublas = CublasHandle();
-  cudaStream_t stream = Stream();
+  cudaStream_t stream = Stream(context);
   CUBLAS_RETURN_IF_ERROR(cublasSetStream(cublas, stream));
 
   constexpr size_t element_size = sizeof(T);
 
   // TODO: only calculate once per model.
   // Build Global Index
-  auto global_index_buffer = GetScratchBuffer<int>(batch_size * sequence_length);
-  auto batch_global_num_buffer = GetScratchBuffer<int>(batch_size);
+  auto global_index_buffer = GetScratchBuffer<int>(batch_size * sequence_length, OrtStream(context));
+  auto batch_global_num_buffer = GetScratchBuffer<int>(batch_size, OrtStream(context));
 
   size_t global_scratch_bytes = GetGlobalScratchSize(batch_size, sequence_length);
-  auto global_scratch_buffer = GetScratchBuffer<void>(global_scratch_bytes);
+  auto global_scratch_buffer = GetScratchBuffer<void>(global_scratch_bytes, OrtStream(context));
 
   BuildGlobalIndex(
       stream,
@@ -107,7 +107,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int k = hidden_size;
 
   size_t qkv_size = batch_size * sequence_length * 3 * hidden_size * element_size;
-  auto gemm_buffer = GetScratchBuffer<T>(qkv_size);
+  auto gemm_buffer = GetScratchBuffer<T>(qkv_size, OrtStream(context));
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
@@ -148,7 +148,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // Fully connection for global projection.
   // Note that Q only need handle global query tokens if we split GEMM to global Q/K/V separately.
   // When there is no global token, need not run glboal GEMM.
-  auto global_gemm_buffer = GetScratchBuffer<T>(max_num_global > 0 ? qkv_size : 0);
+  auto global_gemm_buffer = GetScratchBuffer<T>(max_num_global > 0 ? qkv_size : 0, OrtStream(context));
 
   if (max_num_global > 0) {
 
@@ -173,7 +173,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                              max_num_global,
                                                              window_,
                                                              disable_compact_memory);
-  auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize);
+  auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize, OrtStream(context));
   if (!LaunchLongformerAttentionKernel(
           device_prop,
           cublas,

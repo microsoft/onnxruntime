@@ -34,7 +34,7 @@ Status NGramRepeatBlock::ComputeInternal(OpKernelContext* context) const {
   const auto* scores_source = static_cast<const float*>(scores->DataRaw());
   auto* scores_target = static_cast<float*>(output->MutableDataRaw());
   if (scores_source != scores_target) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(scores_target, scores_source, scores->Shape().Size() * sizeof(float), cudaMemcpyDeviceToDevice, Stream()));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(scores_target, scores_source, scores->Shape().Size() * sizeof(float), cudaMemcpyDeviceToDevice, Stream(context)));
   }
 
   const auto& input_ids_dims = input_ids->Shape().GetDims();
@@ -53,7 +53,7 @@ Status NGramRepeatBlock::ComputeInternal(OpKernelContext* context) const {
   const auto* input_ids_data = static_cast<const int64_t*>(input_ids->DataRaw(input_ids->DataType()));
 
   NGramRepeatBlockImpl(
-      Stream(),
+      Stream(context),
       input_ids_data,
       scores_target,
       gsl::narrow_cast<int>(batch_size),

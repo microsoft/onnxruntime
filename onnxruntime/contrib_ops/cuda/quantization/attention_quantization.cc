@@ -131,8 +131,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   int m = batch_size * sequence_length;
   int n = 3 * hidden_size;
   int k = input_hidden_size;
-  auto gemm_buffer = GetScratchBuffer<T>(batch_size * sequence_length * 3 * hidden_size * element_size);
-  auto gemm_buffer_quantized = GetScratchBuffer<int32_t>(batch_size * sequence_length * 3 * hidden_size);
+  auto gemm_buffer = GetScratchBuffer<T>(batch_size * sequence_length * 3 * hidden_size * element_size, OrtStream(context));
+  auto gemm_buffer_quantized = GetScratchBuffer<int32_t>(batch_size * sequence_length * 3 * hidden_size, OrtStream(context));
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
@@ -141,7 +141,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                input->template Data<int8_t>(), k,
                                weights->template Data<int8_t>(), n,
                                gemm_buffer_quantized.get(), n,
-                               this));
+                               this,
+                               context->GetComputeStream()));
 
   CudaT dequant_scale;
   CudaT input_scale = *(reinterpret_cast<const CudaT*>(input_scale_tensor->template Data<T>()));
@@ -152,7 +153,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
     dequant_scale = input_scale * weight_scale;
   }
   // scale back and bias
-  ORT_RETURN_IF_ERROR(CudaDequantizeWithBias(Stream(),
+  ORT_RETURN_IF_ERROR(CudaDequantizeWithBias(Stream(context),
                                              gemm_buffer_quantized.get(),
                                              reinterpret_cast<const CudaT*>(bias->template Data<T>()),
                                              reinterpret_cast<CudaT*>(gemm_buffer.get()),
@@ -164,10 +165,10 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   Tensor* present_tensor = GetPresent(context, past_tensor, batch_size, head_size, sequence_length, past_sequence_length);
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, past_sequence_length);
-  auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);
+  auto temp_buffer = GetScratchBuffer<void>(workSpaceSize, OrtStream(context));
   if (!LaunchAttentionKernel(
           GetDeviceProp(),
-          Stream(),
+          Stream(context),
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
           nullptr == mask_index ? nullptr : mask_index->template Data<int>(),
           nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),

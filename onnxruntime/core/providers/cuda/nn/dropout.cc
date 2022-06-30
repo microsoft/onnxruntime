@@ -60,28 +60,28 @@ Status Dropout::ComputeInternal(OpKernelContext* context) const {
     const void* X_data = X->DataRaw();
     void* Y_data = Y->MutableDataRaw();
     if (Y_data != X_data) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(context)));
     }
 
     // If mask is requested, return all 1s.
     if (mask != nullptr) {
-      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask->MutableData<bool>(), true, N * sizeof(bool), Stream()));
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask->MutableData<bool>(), true, N * sizeof(bool), Stream(context)));
     }
 
     return Status::OK();
   }
 
   IAllocatorUniquePtr<bool> temp_mask_buffer{};  // buffer to use if mask is not provided
-  bool* const mask_data = [this, N, mask, &temp_mask_buffer]() {
+  bool* const mask_data = [this, N, mask, &temp_mask_buffer, context]() {
     if (mask) return mask->MutableData<bool>();
-    temp_mask_buffer = GetScratchBuffer<bool>(N);
+    temp_mask_buffer = GetScratchBuffer<bool>(N, OrtStream(context));
     return temp_mask_buffer.get();
   }();
 
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
 
   utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(X->GetElementType());
-  t_disp.Invoke<DropoutComputeImpl>(GetDeviceProp(), Stream(), N, ratio_data, generator, *X, *Y, mask_data);
+  t_disp.Invoke<DropoutComputeImpl>(GetDeviceProp(), Stream(context), N, ratio_data, generator, *X, *Y, mask_data);
 
   return Status::OK();
 }

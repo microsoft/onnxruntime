@@ -25,18 +25,6 @@ class CudaKernel : public OpKernel {
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
-    // !!!!
-    // TODO: this is a tempoarary workaround
-    // we set the stream when every compute start to avoid change signature of Stream()
-    // this avoid change too much files so make our sync with master branch difficult.
-    // Need to remove this hack when prepare PR.
-    std::lock_guard<OrtMutex> lock(stream_mutex_);
-
-    if (p_op_kernel_context->GetComputeStream()) {
-      stream_ = p_op_kernel_context->GetComputeStream();
-    } else {
-      ORT_THROW("Stream not set on a cuda kernel, not expected.");
-    }
 
     auto s = ComputeInternal(p_op_kernel_context);
     // use this to precisely locate the node where CUDA failure comes from
@@ -62,8 +50,8 @@ class CudaKernel : public OpKernel {
   }
 
   template <typename T>
-  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
-    return provider_->GetScratchBuffer<T>(count_or_bytes, stream_, WaitCudaNotificationOnDevice);
+  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, onnxruntime::Stream* stream) const {
+    return provider_->GetScratchBuffer<T>(count_or_bytes, stream, WaitCudaNotificationOnDevice);
   }
 
   // Different from GetScratchBuffer which use IAllocator::Alloc() to allocate memory,
@@ -81,13 +69,15 @@ class CudaKernel : public OpKernel {
 
   const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }
 
-  inline cudaStream_t Stream() const { 
-    return stream_ ? static_cast<cudaStream_t>(stream_->handle) : nullptr;
+  inline cudaStream_t Stream(OpKernelContext* ctx) const { 
+    auto* stream = ctx->GetComputeStream();
+    return stream ? static_cast<cudaStream_t>(stream->handle) : nullptr;
   }
 
-  void SetStream(onnxruntime::Stream* stream) {
-    stream_ = stream;
+  inline onnxruntime::Stream* OrtStream(OpKernelContext* ctx) const {
+    return ctx->GetComputeStream();
   }
+
 
   // To support cudaMemcpyAsync, the cpu memory should be allocated in pinned memory
   // and it can only be released after the copy has finished
@@ -119,11 +109,13 @@ class CudaKernel : public OpKernel {
       count_ = count;
     }
 
-    Status CopyToGpu() {
+    Status CopyToGpu(onnxruntime::Stream* stream) {
       if (cpu_pinned_copy_) {
-        gpu_copy_ = op_kernel_->GetScratchBuffer<T>(count_);
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), cudaMemcpyHostToDevice, op_kernel_->Stream()));
-        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release(), op_kernel_->Stream());
+        gpu_copy_ = op_kernel_->GetScratchBuffer<T>(count_, stream);
+        cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->handle) : nullptr;
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), cudaMemcpyHostToDevice, 
+            cuda_stream));
+        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release(), cuda_stream);
       }
       return Status::OK();
     }
@@ -178,12 +170,6 @@ class CudaKernel : public OpKernel {
 
  private:
   CUDAExecutionProvider* provider_;
-  // !!!!
-  // TODO: this is a tempoarary workaround
-  // Remove it before we PR this feature.
-  mutable OrtMutex stream_mutex_;
- protected:
-  mutable onnxruntime::Stream* stream_{nullptr};
 };
 
 }  // namespace cuda

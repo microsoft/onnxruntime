@@ -190,7 +190,7 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
   }
 
   std::lock_guard<OrtMutex> lock(cudnn_stream_mutex_);
-  CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream()));
+  CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream(context)));
 
   cudnnPoolingMode_t mode = CUDNN_POOLING_MAX;
   if constexpr (PoolType::type == onnxruntime::PoolType::kAveragePool) {
@@ -212,11 +212,11 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
     const auto input_count = x_shape.Size();
     const auto output_count = y_shape.Size();
 
-    IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count);
-    auto temp_Y = GetScratchBuffer<float>(output_count);
-    Impl_Cast<CudaT, float>(Stream(), reinterpret_cast<const CudaT*>(x_data), temp_X.get(), input_count);
+    IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count, OrtStream(context));
+    auto temp_Y = GetScratchBuffer<float>(output_count, OrtStream(context));
+    Impl_Cast<CudaT, float>(Stream(context), reinterpret_cast<const CudaT*>(x_data), temp_X.get(), input_count);
     CUDNN_RETURN_IF_ERROR(cudnnPoolingForward(CudnnHandle(), pooling_desc, &alpha, x_tensor, temp_X.get(), &beta, y_tensor, temp_Y.get()));
-    Impl_Cast<float, CudaT>(Stream(), temp_Y.get(), y_data, output_count);
+    Impl_Cast<float, CudaT>(Stream(context), temp_Y.get(), y_data, output_count);
   } else {
     const auto alpha = Consts<CudaT>::One;
     const auto beta = Consts<CudaT>::Zero;
@@ -266,7 +266,7 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
   if (nullptr != I || !this->pool_attrs_.default_dilations) {
     auto i_data = nullptr == I ? nullptr : I->template MutableData<int64_t>();
     MaxPoolWithIndex<CudaT>(
-        this->Stream(),
+        this->Stream(context),
         x_shape,
         TensorShape(y_dims),
         kernel_shape,

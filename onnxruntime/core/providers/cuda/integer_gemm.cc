@@ -16,11 +16,11 @@ inline int roundoff(int v, int d) {
 Status GemmInt8(int m, int n, int k,
                 int32_t alpha, int32_t beta,
                 const int8_t* a, int lda, const int8_t* b, int ldb, int32_t* c, int ldc,
-                const CudaKernel* cuda_kernel) {
+                const CudaKernel* cuda_kernel, onnxruntime::Stream* ort_stream) {
   ORT_ENFORCE(a != nullptr && b != nullptr && c != nullptr, "input matrix should not be null");
   ORT_ENFORCE(cuda_kernel != nullptr, "kernel is null");
 
-  cudaStream_t stream = cuda_kernel->Stream();
+  cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->handle) : nullptr;
 
   // pad A and B to make their leading dimension be multiples of 32
   // because cublasGemmEx requires:
@@ -32,7 +32,7 @@ Status GemmInt8(int m, int n, int k,
   IAllocatorUniquePtr<int8_t> a_padded;
   if ((mask & lda_aligned) != 0) {
     lda_aligned = roundoff(lda, 32);
-    a_padded = cuda_kernel->GetScratchBuffer<int8_t>(m * lda_aligned);
+    a_padded = cuda_kernel->GetScratchBuffer<int8_t>(m * lda_aligned, ort_stream);
     cudaMemcpy2DAsync(a_padded.get(), lda_aligned, a, lda, k, m, cudaMemcpyDeviceToDevice, stream);
   }
 
@@ -40,7 +40,7 @@ Status GemmInt8(int m, int n, int k,
   IAllocatorUniquePtr<int8_t> b_padded;
   if ((mask & ldb_aligned) != 0) {
     ldb_aligned = roundoff(ldb, 32);
-    b_padded = cuda_kernel->GetScratchBuffer<int8_t>(k * ldb_aligned);
+    b_padded = cuda_kernel->GetScratchBuffer<int8_t>(k * ldb_aligned, ort_stream);
     cudaMemcpy2DAsync(b_padded.get(), ldb_aligned, b, ldb, n, k, cudaMemcpyDeviceToDevice, stream);
   }
 

@@ -108,9 +108,10 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
   }
 
   IAllocatorUniquePtr<bool> temp_mask_buffer{};  // buffer to use if mask is not provided
-  bool* const mask_data = [this, N, mask, &temp_mask_buffer]() {
+  auto* ort_stream = OrtStream(context);
+  bool* const mask_data = [this, N, mask, &temp_mask_buffer, ort_stream]() {
     if (mask) return mask->MutableData<bool>();
-    temp_mask_buffer = GetScratchBuffer<bool>(N);
+    temp_mask_buffer = GetScratchBuffer<bool>(N, ort_stream);
     return temp_mask_buffer.get();
   }();
 
@@ -119,7 +120,7 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
 
   utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(X->GetElementType());
   return t_disp.InvokeRet<Status, BiasDropoutComputeImpl>(
-      GetDeviceProp(), Stream(), N, fdm_dim, ratio_data, generator, *X, *bias, residual, *Y, mask_data, has_same_shape_bias);
+      GetDeviceProp(), Stream(context), N, fdm_dim, ratio_data, generator, *X, *bias, residual, *Y, mask_data, has_same_shape_bias);
 }
 
 }  // namespace cuda

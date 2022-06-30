@@ -65,7 +65,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* present = GetPresent(context, past, batch_size, head_size, sequence_length, past_sequence_length);
 
   std::lock_guard<OrtMutex> lock(cublas_stream_mutex_);
-  CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream()));
+  CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream(context)));
 
   cublasHandle_t cublas = CublasHandle();
   constexpr size_t element_size = sizeof(T);
@@ -74,7 +74,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   int m = batch_size * sequence_length;
   int n = 3 * hidden_size;
   int k = input_hidden_size;
-  auto gemm_buffer = GetScratchBuffer<T>(batch_size * sequence_length * 3 * hidden_size * element_size);
+  auto gemm_buffer = GetScratchBuffer<T>(batch_size * sequence_length * 3 * hidden_size * element_size, OrtStream(context));
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
@@ -96,10 +96,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       &one, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, past_sequence_length);
-  auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);
+  auto temp_buffer = GetScratchBuffer<void>(workSpaceSize, OrtStream(context));
   if (!LaunchAttentionKernel(
           device_prop,
-          Stream(),
+          Stream(context),
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
           nullptr == mask_index ? nullptr : mask_index->template Data<int>(),
           nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),

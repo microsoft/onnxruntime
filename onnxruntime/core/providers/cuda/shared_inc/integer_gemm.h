@@ -18,6 +18,7 @@ Status GemmInt8(int m,
                 int ldb,
                 int32_t* c,
                 int ldc,
-                const CudaKernel* cuda_kernel);
+                const CudaKernel* cuda_kernel,
+                onnxruntime::Stream* stream);
 }
 }

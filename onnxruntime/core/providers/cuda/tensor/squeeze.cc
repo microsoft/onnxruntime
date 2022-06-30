@@ -68,7 +68,7 @@ Status Squeeze::ComputeInternal(OpKernelContext* ctx) const {
 
   auto count = X->Shape().Size();
   auto element_bytes = X->DataType()->Size();
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output, input, count * element_bytes, cudaMemcpyDeviceToDevice, Stream()));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output, input, count * element_bytes, cudaMemcpyDeviceToDevice, Stream(ctx)));
 
   return Status::OK();
 }

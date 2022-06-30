@@ -145,7 +145,7 @@ class BeamSearchImpl {
                  const SessionState& session_state,
                  GptSubgraph& gpt_subgraph,
                  concurrency::ThreadPool* thread_pool,
-                 void* cuda_stream,
+                 Stream* cuda_stream,
                  IConsoleDumper* cuda_dumper,
                  BeamSearchParameters& params,
                  const BeamSearchDeviceHelper::CreateInputsFunc& create_inputs_func,
@@ -231,7 +231,7 @@ class BeamSearchImpl {
 
   const std::vector<const OrtValue*>& implicit_inputs_;
 
-  void* cuda_stream_;
+  Stream* cuda_stream_;
 
   IConsoleDumper* cuda_dumper_;
   CpuTensorConsoleDumper cpu_dumper_;
@@ -296,7 +296,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
   BeamSearchParameters parameters = parameters_;  // make a copy since we will update the parameters based on inputs later
-  void* cuda_stream = ctx->GetComputeStream() ? ctx->GetComputeStream()->handle : nullptr;
+  Stream* cuda_stream = ctx->GetComputeStream();
   // Subgraph has constraint that the output is either float or float16
   if (!gpt_subgraph_->IsOutputFloat16()) {
     BeamSearchImpl<float> impl{*ctx_internal, *session_state, *gpt_subgraph_, thread_pool, cuda_stream, dumper_, parameters,

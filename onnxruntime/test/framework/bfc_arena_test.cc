@@ -321,10 +321,6 @@ TEST(StreamAwareArenaTest, TwoStreamAllocation) {
 
   StreamMock stream1, stream2;
 
-  /*auto stream1_notification_a = stream1.CreateNotification(1);
-  stream1_notification_a->ActivateAndUpdate();
-  stream2.UpdateStreamClock(&stream1, stream1_notification_a->timestamp);*/
-
   auto* stream1_chunk_a = a.AllocOnStream(4096, &stream1, nullptr);
   auto* stream2_chunk_a = a.AllocOnStream(4096, &stream2, nullptr);
   a.Free(stream1_chunk_a);
@@ -350,7 +346,7 @@ TEST(StreamAwareArenaTest, TwoStreamAllocation) {
   // add stream2 to stream 1 depenency
   auto stream1_notification_a = stream1.CreateNotification(1);
   stream1_notification_a->ActivateAndUpdate();
-  stream2.UpdateStreamClock(&stream1, stream1_notification_a->timestamp);
+  stream2.UpdateStreamClock(stream1_notification_a->stream_clock_);
   auto* stream2_chunk_c = a.AllocOnStream(4096, &stream2, nullptr);
   // it should pick the first chunk
   EXPECT_EQ(stream2_chunk_c, stream1_chunk_c);

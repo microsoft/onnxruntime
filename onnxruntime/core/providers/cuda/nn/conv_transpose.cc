@@ -66,8 +66,8 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
   {
     std::lock_guard<OrtMutex> lock(s_.mutex);
-    CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream()));
-    CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream()));
+    CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream(context)));
+    CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream(context)));
     // TODO: add a global cache if need to handle cases for multiple frames running simultaneously with different batch_size
     bool input_dims_changed = (s_.last_x_dims.AsShapeVector() != x_dims);
     bool w_dims_changed = (s_.last_w_dims.AsShapeVector() != w_dims);
@@ -128,7 +128,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       y_data = reinterpret_cast<CudaT*>(p.Y->template MutableData<T>());
 
       if (!s_.cached_benchmark_results.contains(x_dims)) {
-        IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize);
+        IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize, OrtStream(context));
 
         // set math type to tensor core before algorithm search
         if constexpr (std::is_same<T, MLFloat16>::value)
@@ -178,7 +178,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
     const auto alpha = Consts<CudaT>::One;
     const auto beta = Consts<CudaT>::Zero;
 
-    IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes);
+    IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes, OrtStream(context));
 
     CUDNN_RETURN_IF_ERROR(
         cudnnConvolutionBackwardData(
