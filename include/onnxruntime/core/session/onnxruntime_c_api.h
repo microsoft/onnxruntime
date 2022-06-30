@@ -3346,15 +3346,6 @@ struct OrtApi {
                   _In_reads_(input_len) const OrtValue* const* initializers, size_t initializers_num);
 
   /** \brief: Create attribute of onnxruntime operator
-<<<<<<< HEAD
-  *
-  * \param[in] name of the attribute
-  * \param[in] data of the attribute
-  * \param[in] data length
-  * \param[in] data type
-  * \param[out] attribute that has been created, which must be released by OrtApi::ReleaseOpAttr
-  *
-=======
   *
   * \param[in] name Name of the attribute
   * \param[in] data Data content of the attribute
@@ -3362,7 +3353,6 @@ struct OrtApi {
   * \param[in] type Data type
   * \param[out] op_attr Attribute that has been created, which must be released by OrtApi::ReleaseOpAttr
   *
->>>>>>> origin/master
   * \since Version 1.12.
   */
   ORT_API2_STATUS(CreateOpAttr,
@@ -3374,13 +3364,8 @@ struct OrtApi {
 
   /* \brief: Release op attribute
   *
-<<<<<<< HEAD
-  * \param[in] attribute created by OrtApi::CreateOpAttr
-  *
-=======
   * \param[in] opAttr Attribute created by OrtApi::CreateOpAttr
   *
->>>>>>> origin/master
   * \since Version 1.12.
   */
   ORT_CLASS_RELEASE(OpAttr);
@@ -3501,6 +3486,18 @@ struct OrtApi {
   * \since Version 1.12.
   */
   ORT_CLASS_RELEASE(KernelInfo);
+
+  ORT_API2_STATUS(KernelInfoGetAttributeArray_void,
+                  _In_ const OrtKernelInfo* info,
+                  _In_ OrtAllocator* ort_allocator,
+                  _In_ const char* name,
+                  _Out_ void** buffer,
+                  _Out_ size_t* size);
+
+  ORT_API2_STATUS(KernelContext_GetThreadPool,
+                  _In_ const OrtKernelContext* context,
+                  _Outptr_ void** out);
+
 };
 
 /*

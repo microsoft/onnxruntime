@@ -298,7 +298,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"QuantizeLinear", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"DequantizeLinear", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"Shape", V_2022_1, {"GPU"}});
-  
+
 
   subgraph_supported_.push_back({"Mul", V_2020_4, {"All"}});
   subgraph_supported_.push_back({"Transpose", V_2020_4, {"All"}});
@@ -958,7 +958,7 @@ void DataOps::populate_op_mode_supported() {
                                 if (device_id_.find("GPU") != std::string::npos) {
                                  auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
                                  //If the output of ReduceMax op is INT8 or UINT8, it is rejected for GPU.
-                                 if (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 || 
+                                 if (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 ||
                                    output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)
                                    return true;
                                }

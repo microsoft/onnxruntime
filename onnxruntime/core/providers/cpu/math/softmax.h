@@ -31,7 +31,7 @@ class Softmax final : public OpKernel {
       }
     }
 
-    log_softmax_ = info.GetKernelDef().OpName() == "LogSoftmax";
+    log_softmax_ = info.GetKernelDef().OpName() == "LogSoftmax" || info.node().Name() == "standalone_LogSoftmax";
   }
 
   Status Compute(OpKernelContext* ctx) const override;
