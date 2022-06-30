@@ -10,10 +10,11 @@
 # - has_overflow_partitioned_grads_serial : https://github.com/microsoft/DeepSpeed/blob/d8e9ef6f99e27bb95e10bd146d145b3372b4cfda/deepspeed/runtime/zero/stage2.py#L1799
 # --------------------------------------------------------------------------
 
-import torch
 import types
 import warnings
 from distutils.version import LooseVersion
+
+import torch
 from numpy import inf
 
 from ._modifier import FP16OptimizerModifier, check_overflow, check_overflow_for_grads
@@ -27,14 +28,11 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
         super().__init__(optimizer)
 
     def can_be_modified(self):
-        try:
-            import deepspeed
+        import deepspeed
 
-            v = LooseVersion(deepspeed.__version__)
-            if v > LooseVersion("0.5.4") or v < LooseVersion("0.4.0"):
-                warnings.warn("Unsupported DeepSpeed version to override, skipped.", UserWarning)
-                return False
-        except Exception as _:
+        ds_version = LooseVersion(deepspeed.__version__)
+        if ds_version > LooseVersion("0.6.5") or ds_version < LooseVersion("0.4.0"):
+            warnings.warn("Skip modifying optimizer because of unsupported DeepSpeed version.", UserWarning)
             return False
 
         return self.check_requirements(
@@ -141,7 +139,8 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
             #### END OF THE ORIGINAL IMPLEMENTATION ####
 
             #### THIS IS THE FASTER IMPLEMENTATION ####
-            for i in range(len(target.fp16_groups)):
+            groups = target.fp16_groups if hasattr(target, "fp16_groups") else target.bit16_groups
+            for i in range(len(groups)):
                 grad_data = [grad.data for grad in target.averaged_gradients[i] if grad is not None]
                 if check_overflow_for_grads(grad_data):
                     return True

@@ -355,10 +355,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>decoder</tt> : graph (required)</dt>
 <dd>Decoder subgraph to execute in a loop.</dd>
+<dt><tt>decoder_start_token_id</tt> : int</dt>
+<dd>The id of the token that indicates decoding starts.</dd>
 <dt><tt>early_stopping</tt> : int</dt>
 <dd>early stop or not</dd>
-<dt><tt>encoder_decoder_init</tt> : graph</dt>
-<dd>subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.</dd>
+<dt><tt>encoder</tt> : graph</dt>
+<dd>The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.</dd>
 <dt><tt>eos_token_id</tt> : int (required)</dt>
 <dd>The id of the end-of-sequence token</dd>
 <dt><tt>model_type</tt> : int</dt>
@@ -369,7 +371,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The id of the padding token</dd>
 </dl>
 
-#### Inputs (6 - 10)
+#### Inputs (5 - 10)
 
 <dl>
 <dt><tt>input_ids</tt> : I</dt>
@@ -382,8 +384,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of beams for beam search. 1 means no beam search. Shape is (1)</dd>
 <dt><tt>num_return_sequences</tt> : I</dt>
 <dd>The number of returned sequences in the batch. Shape is (1)</dd>
-<dt><tt>temperature</tt> : T</dt>
-<dd>The value used to module the next token probabilities. Accepts value > 0.0. Shape is (1)</dd>
 <dt><tt>length_penalty</tt> (optional) : T</dt>
 <dd>Exponential penalty to the length. Default value 1.0 means no penalty.Value > 1.0 encourages longer sequences, while values < 1.0 produces shorter sequences.Shape is (1,)</dd>
 <dt><tt>repetition_penalty</tt> (optional) : T</dt>
@@ -392,6 +392,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)</dd>
 <dt><tt>prefix_vocab_mask</tt> (optional) : M</dt>
 <dd>Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)</dd>
+<dt><tt>attention_mask</tt> (optional) : I</dt>
+<dd>Custom attention mask. Shape is (batch_size, sequence_length)</dd>
 </dl>
 
 #### Outputs (1 - 3)

@@ -77,13 +77,16 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
   const SequentialExecutionPlan& plan = *planinfo.first;
   const SessionState& session_state = *planinfo.second;
   auto& graph = session_state.GetGraphViewer();
-  std::unordered_map<int, std::string> index_to_name;
+
+  const auto& name_idx_map = session_state.GetOrtValueNameIdxMap();
+  InlinedHashMap<int, std::string_view> index_to_name;
+  index_to_name.reserve(name_idx_map.Size());
 
   out << "Allocation Plan:\n";
   out << "(ort_value_idx) output_name : <allocation plan>\n";
   auto plan_size = plan.allocation_plan.size();
 
-  for (auto& name_index : session_state.GetOrtValueNameIdxMap()) {
+  for (auto& name_index : name_idx_map) {
     auto index = name_index.second;
     index_to_name[index] = name_index.first;
     out << "(" << index << ") " << name_index.first << " : ";
@@ -141,10 +144,10 @@ static const KernelCreateInfo& GetKernelCreateInfo(
 class PlannerImpl {
  public:
   PlannerImpl(const Node* parent_node, const onnxruntime::GraphViewer& graph_viewer,
-              const std::vector<const NodeArg*>& outer_scope_node_args, const ExecutionProviders& providers,
+              gsl::span<const NodeArg* const> outer_scope_node_args, const ExecutionProviders& providers,
               const KernelCreateInfoMap& kernel_create_info_map,
               const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
-              const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
+              const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
               const OrtValueNameIdxMap& ort_value_name_idx_map,
               const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
       : context_(context),
@@ -166,13 +169,13 @@ class PlannerImpl {
 
   const Node* parent_node_;
   const onnxruntime::GraphViewer& graph_viewer_;
-  const std::vector<const NodeArg*>& outer_scope_node_args_;
+  gsl::span<const NodeArg* const> outer_scope_node_args_;
   const ExecutionProviders& execution_providers_;
 
   const KernelCreateInfoMap& kernel_create_info_map_;
   const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps_;
 
-  const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map_;
+  const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map_;
 
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
 
@@ -1331,16 +1334,16 @@ Status PlannerImpl::CreatePlan() {
 Status SequentialPlanner::CreatePlan(
     const Node* parent_node,
     const onnxruntime::GraphViewer& graph_viewer,
-    const std::vector<const NodeArg*>& outer_scope_node_args,
+    gsl::span<const NodeArg* const> outer_scope_node_args,
     const ExecutionProviders& providers,
     const KernelCreateInfoMap& kernel_create_info_map,
     const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
-    const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
+    const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
-    std::unique_ptr<SequentialExecutionPlan>& plan) {
+    std::optional<SequentialExecutionPlan>& plan) {
   // allocate/reset here so we know it's clean
-  plan = std::make_unique<SequentialExecutionPlan>();
+  plan.emplace();
 
   PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers,
                       kernel_create_info_map, subgraphs_kernel_create_info_maps,

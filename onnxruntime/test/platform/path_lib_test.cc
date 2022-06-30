@@ -40,6 +40,26 @@ TEST(PathTest, windows_root) {
 TEST(PathTest, root) {
   PATH_EXPECT("\\", "\\");
 }
+
+TEST(PathTest, windows_slash_path_1) {
+  PATH_EXPECT("C:\\Windows", "C:/Windows/a.txt");
+}
+
+TEST(PathTest, windows_slash_path_2) {
+  PATH_EXPECT("C:\\Windows", "C:\\Windows/a.txt");
+}
+
+TEST(PathTest, windows_slash_path_3) {
+  PATH_EXPECT("C:\\Windows", "C:\\Windows//a.txt");
+}
+
+TEST(PathTest, windows_slash_path_4) {
+  PATH_EXPECT("C:\\Windows", "C:\\Windows\\\\system32/");
+}
+
+TEST(PathTest, windows_slash_path_5) {
+  PATH_EXPECT("C:\\Windows", "C:/Windows//system32/");
+}
 #else
 TEST(PathTest, simple) {
   PATH_EXPECT("/Windows", "/Windows/a.txt");

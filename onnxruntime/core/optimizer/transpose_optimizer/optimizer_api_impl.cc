@@ -77,6 +77,7 @@ class ApiNode final : public api::NodeRef {
   std::vector<std::string_view> Inputs() const override;
   std::vector<std::string_view> Outputs() const override;
   std::optional<int64_t> GetAttributeInt(std::string_view name) const override;
+  std::optional<std::string> GetAttributeString(std::string_view name) const override;
   std::optional<std::vector<int64_t>> GetAttributeInts(std::string_view name) const override;
   void SetAttributeInt(std::string_view name, int64_t value) override;
   void SetAttributeInts(std::string_view name, const std::vector<int64_t>& value) override;
@@ -296,6 +297,15 @@ std::optional<int64_t> ApiNode::GetAttributeInt(std::string_view name) const {
   }
 
   return attr->i();
+}
+
+std::optional<std::string> ApiNode::GetAttributeString(std::string_view name) const {
+  const onnx::AttributeProto* attr = graph_utils::GetNodeAttribute(node_, std::string(name));
+  if (attr == nullptr || attr->type() != onnx::AttributeProto_AttributeType_STRING) {
+    return std::nullopt;
+  }
+
+  return attr->s();
 }
 
 std::optional<std::vector<int64_t>> ApiNode::GetAttributeInts(std::string_view name) const {
@@ -803,7 +813,7 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
   return ort_layout_senstive_ops;
 }
 
-Status TransformLayoutForCompilingEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider) {
+Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider) {
   // sub graph recurse will be added later
   auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(0, OrtMemTypeDefault), nullptr);
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
@@ -887,6 +897,14 @@ Status TransformLayoutForCompilingEP(Graph& graph, bool& modified, const IExecut
   }
 
   return Status::OK();
+}
+
+bool IsSupportedOpset(const Graph& graph) {
+  const auto& version_map = graph.DomainToVersionMap();
+  const auto& onnx_version = version_map.find(kOnnxDomain);
+  return (onnx_version != version_map.end() &&
+          onnx_version->second >= onnx_layout_transformation::kMinSupportedOpset &&
+          onnx_version->second <= kMaxSupportedOpset);
 }
 
 }  // namespace layout_transformer

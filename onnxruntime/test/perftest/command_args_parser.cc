@@ -33,8 +33,8 @@ namespace perftest {
       "\t-A: Disable memory arena\n"
       "\t-I: Generate tensor input binding (Free dimensions are treated as 1.)\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
-      "\t-e [cpu|cuda|dnnl|tensorrt|openvino|nuphar|dml|acl|rocm|migraphx]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
-      "'openvino', 'nuphar', 'dml', 'acl', 'nnapi', 'coreml', 'snpe', 'rocm' or 'migraphx'. "
+      "\t-e [cpu|cuda|dnnl|tensorrt|openvino|nuphar|dml|acl|nnapi|coreml|snpe|rocm|migraphx|xnnpack]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
+      "'openvino', 'nuphar', 'dml', 'acl', 'nnapi', 'coreml', 'snpe', 'rocm', 'migraphx' or 'xnnpack'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
@@ -78,6 +78,7 @@ namespace perftest {
       "\t    [TensorRT only] [trt_engine_cache_enable]: Enable engine caching.\n"
       "\t    [TensorRT only] [trt_engine_cache_path]: Specify engine cache path.\n"
       "\t    [TensorRT only] [trt_force_sequential_engine_build]: Force TensorRT engines to be built sequentially.\n"
+      "\t    [TensorRT only] [trt_context_memory_sharing_enable]: Enable TensorRT context memory sharing between subgraphs.\n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n\n"
       "\t [Example] [For TensorRT EP] -e tensorrt -i 'trt_fp16_enable|true trt_int8_enable|true trt_int8_calibration_table_name|calibration.flatbuffers trt_int8_use_native_calibration_table|false trt_force_sequential_engine_build|false'\n"
       "\t    [NNAPI only] [NNAPI_FLAG_USE_FP16]: Use fp16 relaxation in NNAPI EP..\n"
@@ -111,7 +112,8 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
     if (override_val <= 0) {
       return false;
     }
-  } ORT_CATCH (...) {
+  }
+  ORT_CATCH(...) {
     return false;
   }
   return true;
@@ -190,6 +192,8 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
           test_config.machine_config.provider_type_name = onnxruntime::kRocmExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("migraphx"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kMIGraphXExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("xnnpack"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kXnnpackExecutionProvider;
         } else {
           return false;
         }

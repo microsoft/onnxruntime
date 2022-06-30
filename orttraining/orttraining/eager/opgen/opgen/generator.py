@@ -1,15 +1,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-from typing import Optional, Dict, List, Union
-
-import sys
 import json
+import sys
+from typing import Dict, List, Optional, Union
 
-import opgen.lexer as lexer
-import opgen.parser as parser
-import opgen.ast as ast
-import opgen.writer as writer
+from opgen import ast, lexer, parser, writer
 
 
 class Outputs:
@@ -356,7 +352,7 @@ class ORTGen:
                     writer.writeline("}")
 
             # Torch kwargs -> ORT attributes
-            attrs = {k: v for k, v in onnx_op.attributes.items() if v and v.value}
+            attrs = {k: v for k, v in onnx_op.attributes.items() if v and v.value is not None}
             if len(attrs) > 0:
                 attrs_arg = "attrs"
                 writer.writeline()
