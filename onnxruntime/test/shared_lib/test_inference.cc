@@ -2172,6 +2172,6 @@ TEST(CApiTest, GH_11717) {
   Ort::SessionOptions session_options{};
   // Just check if the model loads fine without a segmentation fault
   // in the default CPU EP
-  Ort::Session session{*ort_env, model_path, session_options};
+  EXPECT_NO_THROW(Ort::Session session(*ort_env, model_path, session_options));
 }
 #endif
