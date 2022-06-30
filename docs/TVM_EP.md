@@ -24,8 +24,9 @@ TVM EP is currently in "Preview". It's been tested to work on a handful of model
 Install the minimal pre-requisites on Ubuntu/Debian like linux operating systems:
 ```bash
 apt-get install -y python3 python3-dev python3-pip python3-setuptools gcc libtinfo-dev zlib1g-dev build-essential cmake libedit-dev libxml2-dev llvm-12
-pip3 install numpy decorator attrs
+pip3 install numpy decorator attrs nasm
 ```
+Note: since ONNX Runtime with TVM EP is built with Intel ipp-crypto library there are new requirements. Compiler gcc (and g++) version should be equal to or higher than 8.2. nasm version should be 2.14.02 or higher. Problem with small nasm version can be seen [here](https://github.com/intel/ipp-crypto/issues/9) or [here](https://bugzilla.nasm.us/show_bug.cgi?id=3392205). For ubuntu LTS 18 `apt-get install nasm` is not enough due to it has version 2.13.02, see how to install from sources instruction [here](https://stackoverflow.com/questions/36144930/steps-to-install-nasm-offline-on-ubuntu#:~:text=wget%20http%3A//www.nasm.us/pub/nasm/releasebuilds/2.14.02/nasm%2D2.14.02.tar.bz2%0Atar%20xfj%20nasm%2D2.14.02.tar.bz2%0Acd%20nasm%2D2.14.02/%0A./autogen.sh%0A./configure%20%2D%2Dprefix%3D/usr/local/%20%0Amake%20%0Asudo%20make%20install%0Ahash%20%2Dd%20nasm).
 
 Also, the current implementation has `NVidia GPU` support for TVM EP. For now, you can use only `NVidia GPU` with CUDA Toolkit support.
 To do this, make sure you have installed the NVidia driver and CUDA Toolkit.
