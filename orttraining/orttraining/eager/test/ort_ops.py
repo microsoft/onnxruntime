@@ -120,9 +120,29 @@ class OrtOpTests(unittest.TestCase):
 
     def test_equal(self):
         device = self.get_device()
-        cpu_x = torch.ones(3, 3, dtype=torch.float32)
-        cpu_y = torch.ones(3, 3, dtype=torch.float32)
-        assert torch.equal(cpu_x.to(device), cpu_y.to(device))
+        cpu_a = torch.Tensor([1.0, 1.5])
+        ort_a = cpu_a.to(device)
+        cpu_b = torch.Tensor([1.0, 1.5])
+        ort_b = cpu_b.to(device)
+        cpu_c = torch.Tensor([1.0, 1.8])
+        ort_c = cpu_c.to(device)
+        cpu_d = torch.Tensor([1.0, 1.5, 2.1])
+        ort_d = cpu_d.to(device)
+        cpu_e = torch.Tensor([[1.0, 1.5]])
+        ort_e = cpu_e.to(device)
+
+        # a = b
+        assert torch.equal(cpu_a, cpu_b)
+        assert torch.equal(ort_a, ort_b)
+        # a != c based on one value
+        assert not torch.equal(cpu_a, cpu_c)
+        assert not torch.equal(ort_a, ort_c)
+        # a != d because size of dim 1 is not equal
+        assert not torch.equal(cpu_a, cpu_d)
+        assert not torch.equal(ort_a, ort_d)
+        # a != e because dim does not match
+        assert not torch.equal(cpu_a, cpu_e)
+        assert not torch.equal(ort_a, ort_e)
 
     def test_torch_ones(self):
         device = self.get_device()

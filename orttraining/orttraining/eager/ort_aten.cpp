@@ -682,6 +682,72 @@ at::Tensor& out) {
   return out;
 }
 
+// aten::equal(Tensor self, Tensor other) -> bool
+bool equal(
+  const at::Tensor& self,
+  const at::Tensor& other) {
+  ORT_LOG_FN(self, other);
+
+  if (
+    std::vector<at::ScalarType> supportedTypes =
+      {at::kFloat, at::kBFloat16, at::kHalf, at::kDouble, at::kLong, at::kByte, at::kInt, at::kShort, at::kBool};
+    !IsSupportedType(self, supportedTypes) ||
+    !IsSupportedType(other, supportedTypes)) {
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(equal)>::call(self, other);
+  }
+
+  auto& invoker = GetORTInvoker(self.device());
+
+  auto ort_input_self = create_ort_value(invoker, self);
+  auto ort_input_other = create_ort_value(invoker, other);
+
+  auto& ort_tensor_self = ort_input_self.Get<onnxruntime::Tensor>();
+  auto& shape_self = ort_tensor_self.Shape();
+  auto& ort_tensor_other = ort_input_other.Get<onnxruntime::Tensor>();
+  auto& shape_other = ort_tensor_other.Shape();
+
+  // ensure shape is equal
+  if (shape_self != shape_other) return false;
+
+  // to check content, we'll do elementwise comparison
+  // then we'll reduce to the mininum value based on false
+  // being less than true, so any false will reduce to false.
+  std::vector<OrtValue> ort_outputs_0_Equal(1);
+
+  auto equalStatus = invoker.Invoke("Equal", {
+    std::move(ort_input_self),
+    std::move(ort_input_other),
+  }, ort_outputs_0_Equal, nullptr);
+
+  if (!equalStatus.IsOK())
+    throw std::runtime_error(
+      "ORT Equal return failure status:" + equalStatus.ErrorMessage());
+
+  // now reduce the resulting tensor of bool values to its minimum value (any false)
+  NodeAttributes attrs(1);
+  attrs["keepdims"] = create_ort_attribute(
+    "keepdims", 0, at::ScalarType::Int);
+
+  std::vector<OrtValue> ort_outputs_0_ReduceMin(1);
+
+  // ReduceMin does not support bool or short and CastToType does not support Byte because
+  // GetONNXTensorProtoDataType doesn't support byte, which leaves us with int
+  OrtValue equalAsInt = CastToType(invoker, ort_outputs_0_Equal[0], at::ScalarType::Int);
+
+  auto reduceStatus = invoker.Invoke("ReduceMin", {
+    std::move(equalAsInt),
+  }, ort_outputs_0_ReduceMin, &attrs);
+
+  if (!reduceStatus.IsOK())
+    throw std::runtime_error(
+      "ORT ReduceMin return failure reduceStatus:" + reduceStatus.ErrorMessage());
+
+  auto* ort_tensor = ort_outputs_0_ReduceMin[0].GetMutable<onnxruntime::Tensor>();
+  // the first (and only) value of the tensor will be 0 for false else true
+  return *(ort_tensor->Data<int>()) != 0;
+}
 
 } // namespace aten
 
