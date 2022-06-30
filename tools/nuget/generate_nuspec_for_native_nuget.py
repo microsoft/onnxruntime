@@ -863,11 +863,11 @@ def generate_files(list, args):
                 args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "monoandroid11.0",
                 args.package_name + ".targets",
             )
-            
+
             xamarinios_source_targets = os.path.join(
-                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "xamarinios10", 
+                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "xamarinios10",
                 "targets.xml"
-            )         
+            )
             xamarinios_target_targets = os.path.join(
                 args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "xamarinios10",
                 args.package_name + ".targets",
@@ -883,7 +883,7 @@ def generate_files(list, args):
             )
 
             net6_ios_source_targets = os.path.join(
-                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net6.0-ios", 
+                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net6.0-ios",
                 "targets.xml"
             )
             net6_ios_target_targets = os.path.join(
@@ -892,7 +892,7 @@ def generate_files(list, args):
             )
 
             net6_macos_source_targets = os.path.join(
-                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net6.0-macos", 
+                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net6.0-macos",
                 "targets.xml"
             )
             net6_macos_target_targets = os.path.join(
@@ -910,13 +910,14 @@ def generate_files(list, args):
             files_list.append(
                 "<file src=" + '"' + monoandroid_target_targets + '" target="buildTransitive\\monoandroid11.0" />'
             )
-            
+
             files_list.append("<file src=" + '"' + xamarinios_target_targets + '" target="build\\xamarinios10" />')
             files_list.append(
                 "<file src=" + '"' + xamarinios_target_targets + '" target="buildTransitive\\xamarinios10" />'
             )
 
-            files_list.append("<file src=" + '"' + net6_android_target_targets + '" target="build\\net6.0-android31.0" />')
+            files_list.append("<file src=" + '"' + net6_android_target_targets
+                              + '" target="build\\net6.0-android31.0" />')
             files_list.append(
                 "<file src=" + '"' + net6_android_target_targets + '" target="buildTransitive\\net6.0-android31.0" />'
             )
