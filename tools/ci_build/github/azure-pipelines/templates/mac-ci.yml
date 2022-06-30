@@ -56,13 +56,11 @@ jobs:
         rm -rf '$(Build.SourcesDirectory)/build'
         export RUST_LOG=trace
         ${{ parameters.BuildCommand }}
-      displayName: 'Build and Test OnnxRuntime lib for MacOS'
-    - script: |
         if which sccache > /dev/null; then
           sccache --show-stats
           sccache --stop-server
         fi
-      displayName: 'Show Sccache Stats'
+      displayName: 'Build and Test OnnxRuntime lib for MacOS'
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
       inputs:
