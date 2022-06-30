@@ -5,9 +5,9 @@
 
 #include "device_array.h"
 #include "operator.h"
-#include "fast_gelu_impl.h"
-template <typename T, int ThreadsPerBlock, int VecSize>
+#include "fast_gelu_impl_kernel.h"
 
+template <typename T, int ThreadsPerBlock, int VecSize>
 void LaunchFastGelu(const T* input, const T* bias, T* output, int input_length, int bias_length) {
   hipLaunchKernelGGL((onnxruntime::contrib::rocm::FastGeluKernelVec<T, ThreadsPerBlock, VecSize>), 
                   dim3(ceil(float(input_length)/(float(ThreadsPerBlock)*VecSize))),

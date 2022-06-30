@@ -11,7 +11,7 @@ __global__ void VectorAddKernel(const T* __restrict__ x,
                                   const T* __restrict__ y,
                                   T* __restrict__ z, int n) {
   int i = hipBlockDim_x * hipBlockIdx_x + hipThreadIdx_x;
-  using LoadT = aligned_vector<T, VecSize>;
+  using LoadT = onnxruntime::rocm::aligned_vector<T, VecSize>;
 
   if (VecSize * i + VecSize - 1 < n) {
     T x_vec[VecSize];

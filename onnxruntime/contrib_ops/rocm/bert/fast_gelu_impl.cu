@@ -29,6 +29,7 @@ limitations under the License.
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/shared_inc/rocm_call.h"
+#include "contrib_ops/rocm/bert/fast_gelu_impl_kernel.h"
 #include "contrib_ops/rocm/bert/fast_gelu_impl.h"
 
 using namespace onnxruntime::rocm;

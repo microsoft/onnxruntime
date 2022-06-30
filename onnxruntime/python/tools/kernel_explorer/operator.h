@@ -5,10 +5,16 @@
 
 #include "timer.h"
 
+namespace onnxruntime {
+namespace rocm {
+
 template<typename T, int vec_size>
 struct alignas(sizeof(T) * vec_size) aligned_vector {
   T val[vec_size];
 };
+
+}
+}
 
 template <typename T>
 class Operator {
