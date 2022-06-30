@@ -106,38 +106,10 @@ __device__ inline void LayerNorm(
   }
 }
 
-template <typename T, int TPB>
-__device__ inline void LayerNormSmall(const T val, const cub::KeyValuePair<T, T>& thread_data, const int ld, const int idx,
-                                      const T* beta, const T* gamma, const T epsilon, T* output) {
-  // Assuming thread_data is already divided by ld
-  // Small settings: the block covers the leading dimension TPB >= ld. The input
-  // value is available in a register
-
-  using BlockReduce = cub::BlockReduce<cub::KeyValuePair<T, T>, TPB>;
-  __shared__ typename BlockReduce::TempStorage temp_storage;
-  __shared__ T mu;      // mean
-  __shared__ T rsigma;  // 1 / std.dev.
-
-  KeyValuePairSum pair_sum;
-  const auto sum_kv = BlockReduce(temp_storage).Reduce(thread_data, pair_sum);
-
-  if (threadIdx.x == 0) {
-    mu = sum_kv.key;
-    rsigma = Rsqrt(sum_kv.value - mu * mu + epsilon);
-  }
-  __syncthreads();
-
-  if (threadIdx.x < ld) {
-    const T g(gamma[threadIdx.x]);
-    const T b = (nullptr == beta) ? (T)0 : beta[threadIdx.x];
-    output[idx] = g * (val - mu) * rsigma + b;
-  }
-}
-
 template <typename T, int TPB, int ILP>
-__device__ inline void LayerNormSmallVec(const T* input_v, const cub::KeyValuePair<T, T>& thread_data,
-                                         const int ld, const int idx, const T* beta, const T* gamma,
-                                         const T epsilon, T* output) {
+__device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<T, T>& thread_data,
+                                      const int ld, const int idx, const T* beta, const T* gamma,
+                                      const T epsilon, T* output) {
   // Assuming thread_data is already divided by ld
   // Small settings: the block covers the leading dimension TPB >= ld. The input
   // value is available in a register
