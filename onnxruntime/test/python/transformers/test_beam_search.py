@@ -57,8 +57,11 @@ class TestBeamSearchGpt(unittest.TestCase):
         if os.path.exists(self.beam_search_onnx_path):
             os.remove(self.beam_search_onnx_path)
 
-    def run_beam_search(self, extra_arguments: str, sentences=None):
-        arguments = " ".join(self.default_arguments + [extra_arguments]).split()
+    def run_beam_search(self, extra_arguments: str, sentences=None, append_arguments=True):
+        if append_arguments:
+            arguments = " ".join(self.default_arguments + [extra_arguments]).split()
+        else:
+            arguments = extra_arguments.split()
 
         # Test CPU
         result = run(arguments, sentences=self.sentences if sentences is None else sentences)
@@ -91,6 +94,12 @@ class TestBeamSearchGpt(unittest.TestCase):
     def test_no_repeat_ngram(self):
         for ngram_size in [1, 2]:
             self.run_beam_search(f"--no_repeat_ngram_size {ngram_size}")
+
+    @pytest.mark.slow
+    def test_external_data(self):
+        self.run_beam_search(
+            f"-m gpt2 -e --output {self.beam_search_onnx_path}", sentences=None, append_arguments=False
+        )
 
 
 class TestBeamSearchT5(unittest.TestCase):
@@ -151,8 +160,11 @@ class TestBeamSearchT5(unittest.TestCase):
         if os.path.exists(self.encoder_onnx_path):
             os.remove(self.encoder_onnx_path)
 
-    def run_beam_search(self, extra_arguments: str, sentences=None):
-        arguments = " ".join(self.default_arguments + [extra_arguments]).split()
+    def run_beam_search(self, extra_arguments: str, sentences=None, append_arguments=True):
+        if append_arguments:
+            arguments = " ".join(self.default_arguments + [extra_arguments]).split()
+        else:
+            arguments = extra_arguments.split()
 
         # Test CPU
         result = run(arguments, sentences=self.sentences if sentences is None else sentences)
@@ -185,6 +197,14 @@ class TestBeamSearchT5(unittest.TestCase):
     def test_no_repeat_ngram(self):
         for ngram_size in [1, 2]:
             self.run_beam_search(f"--no_repeat_ngram_size {ngram_size}")
+
+    @pytest.mark.slow
+    def test_external_data(self):
+        self.run_beam_search(
+            f"-m t5-small --model_type t5 -e --output {self.beam_search_onnx_path}",
+            sentences=None,
+            append_arguments=False,
+        )
 
 
 if __name__ == "__main__":

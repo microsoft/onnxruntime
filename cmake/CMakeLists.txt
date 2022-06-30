@@ -1481,8 +1481,17 @@ if (onnxruntime_USE_TVM)
   if (NOT TARGET tvm)
     message(STATUS "Include TVM(*).")
     include(tvm)
+    message(STATUS "Include ipp-crypto(*).")
+    include(ipp-crypto)
   endif()
 
+  # ipp-crypto
+  set(ARCH intel64 CACHE STRING "Only defined for TVM")
+  add_subdirectory(${ipp_crypto_SOURCE_DIR} ${ipp_crypto_BINARY_DIR} EXCLUDE_FROM_ALL)
+  set_target_properties(ippcp_s PROPERTIES FOLDER ${ipp_crypto_SOURCE_DIR})
+  set(IPP_CRYPTO_INCLUDES ${ipp_crypto_INCLUDE_DIRS})
+
+  # TVM
   if (onnxruntime_USE_LLVM)
     set(USE_LLVM ON CACHE BOOL "Only defined for TVM")
   endif()
@@ -1514,8 +1523,8 @@ if (onnxruntime_USE_TVM)
       set(FS_STDLIB stdc++fs)
     endif()
   endif()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ${FS_STDLIB})
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ippcp_s ${FS_STDLIB})
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm ippcp_s)
 endif()
 
 # XNNPACK EP
