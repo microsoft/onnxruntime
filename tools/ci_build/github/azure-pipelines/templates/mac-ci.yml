@@ -32,9 +32,9 @@ jobs:
     - task: NodeTool@0
       inputs:
         versionSpec: '16.x'
-    - task: AzureKeyVault@1
+    - task: AzureKeyVault@2
       inputs:
-        azureSubscription: 'AIInfraBuild'
+        connectedServiceName: 'AIInfraBuild'
         KeyVaultName: 'zhanyi-cache-test'
         SecretsFilter: 'zhanyi-conn-string'
         RunAsPreJob: false
