@@ -27,16 +27,11 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
         super().__init__(optimizer)
 
     def can_be_modified(self):
-        try:
-            import deepspeed
-
-            v = LooseVersion(deepspeed.__version__)
-            if v > LooseVersion("0.5.4") or v < LooseVersion("0.4.0"):
-                warnings.warn("Unsupported DeepSpeed version to override, skipped.", UserWarning)
-                return False
-        except Exception as _:
+        if not hasattr(self._optimizer, "fp16_groups") and not hasattr(self._optimizer, "bit16_groups"):
+            warnings.warn(
+                "Skip modifying optimizer because of specific attribute not found in original optimizer.", UserWarning
+            )
             return False
-
         return self.check_requirements(
             ["has_overflow_serial", "get_grad_norm_direct", "has_overflow_partitioned_grads_serial"],
             require_apex=True,
@@ -141,7 +136,8 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
             #### END OF THE ORIGINAL IMPLEMENTATION ####
 
             #### THIS IS THE FASTER IMPLEMENTATION ####
-            for i in range(len(target.fp16_groups)):
+            groups = target.fp16_groups if hasattr(target, "fp16_groups") else target.bit16_groups
+            for i in range(len(groups)):
                 grad_data = [grad.data for grad in target.averaged_gradients[i] if grad is not None]
                 if check_overflow_for_grads(grad_data):
                     return True
