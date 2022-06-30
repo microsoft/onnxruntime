@@ -77,7 +77,8 @@ common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& 
 
 // Given a tensor proto with external data obtain a pointer to the data and its length.
 // The ext_data_deleter argument is updated with a callback that owns/releases the data.
-common::Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path, const ONNX_NAMESPACE::TensorProto& tensor_proto,
+common::Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
+                                         const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                          void*& ext_data_buf, size_t& ext_data_len, OrtCallback& ext_data_deleter);
 
 // Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer

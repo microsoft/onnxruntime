@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <limits>
+#include <utility>
 #include <core/common/status.h>
 
 #include "core/common/common.h"
@@ -68,7 +69,8 @@ struct ExtDataValueDeleter {
 // given a tensor proto with externdal data return an OrtValue with a tensor for
 // that data; the pointers for the tensor data and the tensor itself are owned
 // by the OrtValue's deleter
-static inline common::Status ExtDataTensorProtoToTensor(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
+static inline common::Status ExtDataTensorProtoToTensor(const Env& env,
+                                                        const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                                         const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                         Tensor& tensor, OrtCallback& ext_data_deleter) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
@@ -158,7 +160,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 
     OrtCallback ext_data_deleter;
     if (utils::HasExternalData(tensor_proto)) {
-      ORT_RETURN_IF_ERROR(ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_deserialize_tensor, ext_data_deleter));
+      ORT_RETURN_IF_ERROR(ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_deserialize_tensor,
+                                                     ext_data_deleter));
     } else {
       ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
     }
@@ -250,7 +253,8 @@ common::Status SaveInitializedTensors(
       continue;
     } else {
       // can not trace string tensor
-      ORT_ENFORCE(entry != initialized_tensors_to_allocate.end() && entry->second->data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING);
+      ORT_ENFORCE(entry != initialized_tensors_to_allocate.end() &&
+                  entry->second->data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING);
       ORT_RETURN_IF_ERROR(planner.Trace(entry->first, entry->second));
     }
     initialized_tensors_to_allocate.erase(entry);
