@@ -32,6 +32,12 @@ jobs:
     - task: NodeTool@0
       inputs:
         versionSpec: '16.x'
+    - task: AzureKeyVault@1
+      inputs:
+        azureSubscription: 'AIInfraBuild'
+        KeyVaultName: 'zhanyi-cache-test'
+        SecretsFilter: 'zhanyi-conn-string'
+        RunAsPreJob: false
     - script: |
         set -e
         pushd .
@@ -53,13 +59,15 @@ jobs:
         env
         ${{ parameters.BuildCommand }}
         # rerun
-        rm -rf '$(Build.SourcesDirectory)/build'
-        export RUST_LOG=trace
-        ${{ parameters.BuildCommand }}
+        # rm -rf '$(Build.SourcesDirectory)/build'
+        # export RUST_LOG=trace
+        # ${{ parameters.BuildCommand }}
         if which sccache > /dev/null; then
           sccache --show-stats
           sccache --stop-server
         fi
+      env:
+        SCCACHE_AZURE_CONNECTION_STRING: '$(zhanyi-conn-string)'
       displayName: 'Build and Test OnnxRuntime lib for MacOS'
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
