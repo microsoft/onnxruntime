@@ -49,14 +49,15 @@ jobs:
         source '$(Build.SourcesDirectory)/tools/ci_build/github/apple/set_sccache.sh'
         export CC=clang
         export CXX=clang++
+        export SCCACHE_DIR='$(Build.SourcesDirectory)/sccache'
         env
         ${{ parameters.BuildCommand }}
         # rerun
         rm -rf '$(Build.SourcesDirectory)/build'
+        export RUST_LOG=trace
         ${{ parameters.BuildCommand }}
       displayName: 'Build and Test OnnxRuntime lib for MacOS'
     - script: |
-        set -e
         if which sccache > /dev/null; then
           sccache --show-stats
           sccache --stop-server
