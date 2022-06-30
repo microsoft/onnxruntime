@@ -15,9 +15,25 @@ parameters:
   default: true
 - name: ScriptName
   type: string
-  default: "tools/ci_build/get_docker_image.py" 
+  default: "tools/ci_build/get_docker_image.py"
+- name: UseDockerHubCredentials
+  type: boolean
+  default: true
+
+variables:
+  - ${{ if parameters.UseDockerHubCredentials }}:
+    - group: docker-hub-credentials
 
 steps:
+- ${{ if parameters.UseDockerHubCredentials }}:
+  - bash: |
+      env | grep ORT_DOCKERHUB_PASSWORD | cut -d= -f2- | \
+        docker login docker.io --username ${ORT_DOCKERHUB_USER} --password-stdin
+    env:
+      DOCKERHUB_USER: $(docker-hub-user)
+      DOCKERHUB_PASSWORD: $(docker-hub-password)
+    displayName: "Log in to docker.io"
+
 - ${{ if eq(parameters.UseImageCacheContainerRegistry, true) }}:
   - template: with-container-registry-steps.yml
     parameters:
@@ -39,3 +55,9 @@ steps:
         --docker-build-args "${{ parameters.DockerBuildArgs }}" \
         --repository "${{ parameters.Repository }}"
     displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"
+
+- ${{ if parameters.UseDockerHubCredentials }}:
+  - bash: |
+      docker logout docker.io
+    displayName: "Log out of docker.io"
+    condition: always()
