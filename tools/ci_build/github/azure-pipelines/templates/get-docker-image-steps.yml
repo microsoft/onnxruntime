@@ -30,8 +30,8 @@ steps:
       env | grep DOCKERHUB_USER | cut -d= -f2- | \
         docker login docker.io --username ${DOCKERHUB_PASSWORD} --password-stdin
     env:
-      DOCKERHUB_USER: $(docker-hub-user)
-      DOCKERHUB_PASSWORD: $(docker-hub-password)
+      DOCKERHUB_USER: $(build-docker-hub-user)
+      DOCKERHUB_PASSWORD: $(build-docker-hub-password)
     displayName: "Log in to docker.io"
 
 - ${{ if eq(parameters.UseImageCacheContainerRegistry, true) }}:
