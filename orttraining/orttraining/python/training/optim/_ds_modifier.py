@@ -14,7 +14,6 @@ import types
 import warnings
 from distutils.version import LooseVersion
 
-import deepspeed
 import torch
 from numpy import inf
 
@@ -29,10 +28,13 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
         super().__init__(optimizer)
 
     def can_be_modified(self):
-        v = LooseVersion(deepspeed.__version__)
-        if v > LooseVersion("0.6.5") or v < LooseVersion("0.4.0"):
+        import deepspeed
+
+        ds_version = LooseVersion(deepspeed.__version__)
+        if ds_version > LooseVersion("0.6.5") or ds_version < LooseVersion("0.4.0"):
             warnings.warn("Skip modifying optimizer because of unsupported DeepSpeed version.", UserWarning)
             return False
+
         return self.check_requirements(
             ["has_overflow_serial", "get_grad_norm_direct", "has_overflow_partitioned_grads_serial"],
             require_apex=True,
