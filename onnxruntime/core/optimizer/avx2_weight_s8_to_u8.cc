@@ -135,7 +135,21 @@ Status Avx2WeightS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int 
       constexpr size_t weight_zp_idx = 5;
       modified |= ConvertS8WeightToU8(graph, op_node, weights_idx, weight_zp_idx);
     }
+
     if (graph_utils::IsSupportedOptypeVersionAndDomain(op_node, "DynamicQuantizeMatMul", {1}, kMSDomain) &&
+        graph_utils::IsSupportedProvider(op_node, GetCompatibleExecutionProviders())) {
+      constexpr size_t weights_idx = 1;
+      constexpr size_t weight_zp_idx = 3;
+      modified |= ConvertS8WeightToU8(graph, op_node, weights_idx, weight_zp_idx);
+    }
+
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(op_node, "QGemm", {1}, kMSDomain) &&
+        graph_utils::IsSupportedProvider(op_node, GetCompatibleExecutionProviders())) {
+      constexpr size_t weights_idx = 3;
+      constexpr size_t weight_zp_idx = 5;
+      modified |= ConvertS8WeightToU8(graph, op_node, weights_idx, weight_zp_idx);
+    }
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(op_node, "MatMulInteger", {10}, kOnnxDomain) &&
         graph_utils::IsSupportedProvider(op_node, GetCompatibleExecutionProviders())) {
       constexpr size_t weights_idx = 1;
       constexpr size_t weight_zp_idx = 3;
