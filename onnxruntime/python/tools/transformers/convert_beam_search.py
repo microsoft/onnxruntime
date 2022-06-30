@@ -36,7 +36,7 @@ import numpy as np
 import onnx
 import torch
 from benchmark_helper import Precision
-from onnx import onnx_pb as onnx_proto
+from onnx import GraphProto, ModelProto, TensorProto
 from transformers import (
     GPT2Config,
     GPT2LMHeadModel,
@@ -158,6 +158,15 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "-s", "--run_shape_inference", required=False, action="store_true", help="run shape inference"
     )
     output_group.set_defaults(run_shape_inference=False)
+
+    output_group.add_argument(
+        "-i",
+        "--disable_shared_initializers",
+        required=False,
+        action="store_true",
+        help="do not share initializers in encoder and decoder. It will increase memory usage of t5/mt5 models.",
+    )
+    output_group.set_defaults(disable_shared_initializers=False)
 
     model_group = parser.add_argument_group("Beam search parameters that stored in the output model")
 
@@ -354,8 +363,8 @@ def t5_to_onnx(args: argparse.Namespace):
         model_type=args.model_type,
     )
 
-    print(f"onnx model for encoder: {paths[0]}")
-    print(f"onnx model for decoder: {paths[1]}")
+    logger.debug(f"onnx model for encoder: {paths[0]}")
+    logger.debug(f"onnx model for decoder: {paths[1]}")
     args.encoder_decoder_init_onnx = paths[0]
     args.decoder_onnx = paths[1]
 
@@ -433,9 +442,9 @@ def verify_gpt2_subgraph(graph: onnx.GraphProto, precision: Precision):
         if graph.input[i].name != expected_input:
             raise ValueError(f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}")
 
-        expected_type = onnx_proto.TensorProto.INT32
+        expected_type = TensorProto.INT32
         if i >= 3:
-            expected_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
+            expected_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
 
         input_type = graph.input[i].type.tensor_type.elem_type
         if input_type != expected_type:
@@ -450,7 +459,7 @@ def verify_gpt2_subgraph(graph: onnx.GraphProto, precision: Precision):
         if graph.output[i].name != expected_output:
             raise ValueError(f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}")
 
-        expected_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
+        expected_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
         output_type = graph.output[i].type.tensor_type.elem_type
         if output_type != expected_type:
             raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {output_type}")
@@ -476,7 +485,7 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
         ValueError: Output data type is not expected.
     """
     is_float16 = Precision.FLOAT16 == precision
-    float_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
+    float_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
 
     input_count = len(graph.input)
     layer_count = (input_count - 3) // 4
@@ -511,7 +520,7 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
         if graph.input[i].name != expected_input:
             raise ValueError(f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}")
 
-        expected_type = onnx_proto.TensorProto.INT32 if i < 2 else float_type
+        expected_type = TensorProto.INT32 if i < 2 else float_type
         input_type = graph.input[i].type.tensor_type.elem_type
         if input_type != expected_type:
             raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}")
@@ -568,7 +577,7 @@ def verify_t5_encoder_decoder_init_subgraph(graph: onnx.GraphProto, precision: P
         if graph.input[i].name != expected_input:
             raise ValueError(f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}")
 
-        expected_type = onnx_proto.TensorProto.INT32
+        expected_type = TensorProto.INT32
         input_type = graph.input[i].type.tensor_type.elem_type
         if input_type != expected_type:
             raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}")
@@ -597,12 +606,125 @@ def verify_t5_encoder_decoder_init_subgraph(graph: onnx.GraphProto, precision: P
         if graph.output[i].name != expected_output:
             raise ValueError(f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}")
 
-        expected_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
+        expected_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
         output_type = graph.output[i].type.tensor_type.elem_type
         if output_type != expected_type:
             raise ValueError(f"Output {i} is expected to have onnx data type {expected_type}. Got {output_type}")
 
     logger.info("T5 encoder graph verified: name and data type of inputs and outputs are good.")
+
+
+def remove_shared_initializers(
+    graph1: GraphProto,
+    graph2: GraphProto,
+    shared_prefix: str = "shared_",
+    min_elements: int = 1024,
+):
+    """Remove intializers with same value from two graphs.
+
+    Args:
+        graph1 (GraphProto): the first graph to process
+        graph2 (GraphProto): the second graph to process
+        shared_prefix (str): add prefix to the shared initializers among two graphs
+        min_elements (int, optional): minimal number of elements for initializers to be considered. Defaults to 1024.
+    """
+
+    mapping_initializers_1 = {}
+    mapping_initializers_2 = {}
+    shared_initializers_1 = []
+    shared_initializers_2 = []
+    shared_initializers_names = []
+
+    for initializer1 in graph1.initializer:
+        if not (initializer1.dims and sum(initializer1.dims) > min_elements):
+            continue
+
+        for initializer2 in graph2.initializer:
+            if not (initializer2.dims and sum(initializer2.dims) > min_elements):
+                continue
+
+            if OnnxModel.has_same_value(initializer1, initializer2):
+                mapping_initializers_1[initializer1.name] = shared_prefix + initializer2.name
+                shared_initializers_1.append(initializer1)
+
+                if initializer2.name not in mapping_initializers_2:
+                    shared_name = shared_prefix + initializer2.name
+                    mapping_initializers_2[initializer2.name] = shared_name
+                    shared_initializers_2.append(initializer2)
+                    shared_initializers_names.append(shared_name)
+                break
+
+    logger.debug(f"shared initializers:{shared_initializers_names}")
+
+    # Make sure new name does not exist in graph 1
+    for node in graph1.node:
+        for j in range(len(node.input)):
+            if node.input[j] in shared_initializers_names:
+                raise RuntimeError(f"name is found in graph 1: {node.input[j]}")
+
+    # Make sure new name does not exist in graph 2
+    for node in graph2.node:
+        for j in range(len(node.input)):
+            if node.input[j] in shared_initializers_names:
+                raise RuntimeError(f"name is found in graph 2: {node.input[j]}")
+
+    # Remove shared initializers from graph 2
+    for initializer in shared_initializers_2:
+        graph2.initializer.remove(initializer)
+
+    # Rename value info for old names in graph 2
+    for value_info in graph2.value_info:
+        if value_info.name in mapping_initializers_2:
+            value_info.name = mapping_initializers_2[value_info.name]
+
+    # Rename nodes inputs in graph 1:
+    for node in graph2.node:
+        for j in range(len(node.input)):
+            if node.input[j] in mapping_initializers_2:
+                new_name = mapping_initializers_2[node.input[j]]
+                logger.debug(f"graph 2 rename node {node.name} input {j} from {node.input[j]} to {new_name}")
+                node.input[j] = new_name
+
+    #  Remove shared initializers from graph 1
+    for initializer in shared_initializers_1:
+        graph1.initializer.remove(initializer)
+
+    # Rename value info for old names in graph 1
+    for value_info in graph1.value_info:
+        if value_info.name in mapping_initializers_1:
+            value_info.name = mapping_initializers_1[value_info.name]
+
+    # Rename nodes inputs in graph 1:
+    for node in graph1.node:
+        for j in range(len(node.input)):
+            if node.input[j] in mapping_initializers_1:
+                new_name = mapping_initializers_1[node.input[j]]
+                logger.debug(f"graph 1 rename node {node.name} input {j} from {node.input[j]} to {new_name}")
+                node.input[j] = new_name
+
+    # Rename shared initializers in graph 2
+    for initializer in shared_initializers_2:
+        initializer.name = mapping_initializers_2[initializer.name]
+
+    for initializer in shared_initializers_2:
+        shape = onnx.numpy_helper.to_array(initializer).shape
+        value_info = onnx.helper.make_tensor_value_info(initializer.name, initializer.data_type, shape)
+        # Need add value_info for initializers moved to parent graph. Otherwise, ORT will fail.
+        graph1.value_info.append(value_info)
+        graph2.value_info.append(value_info)
+
+    return shared_initializers_2
+
+
+def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto):
+    encoder = OnnxModel(encoder_model)
+    decoder = OnnxModel(decoder_model)
+    encoder.add_prefix_to_names("e_")
+    decoder.add_prefix_to_names("d_")
+    encoder.remove_duplicated_initializer()
+    decoder.remove_duplicated_initializer()
+    initializers = remove_shared_initializers(encoder.model.graph, decoder.model.graph, "s_")
+    return initializers
 
 
 def convert_model(args: argparse.Namespace):
@@ -653,13 +775,13 @@ def convert_model(args: argparse.Namespace):
     if args.vocab_size != -1:
         vocab_size = args.vocab_size
 
-    model = onnx.load_model(args.decoder_onnx, load_external_data=True)
-    model.graph.name = f"{args.model_type} decoder"
+    decoder_model = onnx.load_model(args.decoder_onnx, load_external_data=True)
+    decoder_model.graph.name = f"{args.model_type} decoder"
 
     if args.model_type == "gpt2":
-        verify_gpt2_subgraph(model.graph, args.precision)
+        verify_gpt2_subgraph(decoder_model.graph, args.precision)
     else:
-        verify_t5_decoder_subgraph(model.graph, args.precision)
+        verify_t5_decoder_subgraph(decoder_model.graph, args.precision)
 
     inputs = [
         "input_ids",
@@ -703,25 +825,34 @@ def convert_model(args: argparse.Namespace):
             onnx.helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
             onnx.helper.make_attribute("early_stopping", 1 if args.early_stopping else 0),
             onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
-            onnx.helper.make_attribute("decoder", model.graph),
         ]
     )
 
+    initializers = []
     if args.model_type in ["t5", "mt5"]:
         if args.run_shape_inference:
             logger.info(f"Symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten.")
             shape_inference(args.encoder_decoder_init_onnx, args.use_external_data_format)
-        init_model = onnx.load_model(args.encoder_decoder_init_onnx, load_external_data=True)
-        init_model.graph.name = f"{args.model_type} encoder and decoder init"
-        verify_t5_encoder_decoder_init_subgraph(init_model.graph, args.precision)
+        encoder_model = onnx.load_model(args.encoder_decoder_init_onnx, load_external_data=True)
+        encoder_model.graph.name = f"{args.model_type} encoder and decoder init"
+        verify_t5_encoder_decoder_init_subgraph(encoder_model.graph, args.precision)
+
+        if not args.disable_shared_initializers:
+            initializers = get_shared_initializers(encoder_model, decoder_model)
+            logger.info(f"{len(initializers)} shared initializers in subgraphs are moved to the main graph")
+
         node.attribute.extend(
             [
-                onnx.helper.make_attribute("encoder", init_model.graph),
+                onnx.helper.make_attribute("encoder", encoder_model.graph),
+                onnx.helper.make_attribute("decoder", decoder_model.graph),
                 onnx.helper.make_attribute(
-                    "decoder_start_token_id", config.decoder_start_token_id if len(init_model.graph.input) == 3 else -1
+                    "decoder_start_token_id",
+                    config.decoder_start_token_id if len(encoder_model.graph.input) == 3 else -1,
                 ),
             ]
         )
+    else:
+        node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
 
     from onnx import TensorProto
 
@@ -771,8 +902,6 @@ def convert_model(args: argparse.Namespace):
         ["max_length - sequence_length", "batch_size", "num_beams", vocab_size],
     )
 
-    initializers = []
-
     graph_outputs = [sequences]
 
     if args.output_sequences_scores:
@@ -782,18 +911,14 @@ def convert_model(args: argparse.Namespace):
         graph_outputs.append(scores)
 
     new_graph = onnx.helper.make_graph(
-        [node],
-        f"{args.model_type}-beam-search",
-        graph_inputs,
-        graph_outputs,
-        initializers,
+        [node], f"{args.model_type} beam search", graph_inputs, graph_outputs, initializers
     )
 
     # Create the model
     new_model = onnx.helper.make_model(
         new_graph,
         producer_name="onnxruntime.transformers",
-        opset_imports=model.opset_import,
+        opset_imports=decoder_model.opset_import,
     )
 
     # TODO(tianleiwu): move shared initializers from T5 encoder and decoder subgraphs to parent graph to save memory.
@@ -880,12 +1005,11 @@ def test_torch_performance(
     return get_latency_result(torch_latency, batch_size)
 
 
-def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sentences: Optional[List[str]] = None):
+def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = None):
     """Test GPT-2 model
 
     Args:
         args (argparse.Namespace): arguments parsed from command line
-        use_vocab_mask (bool, optional): use vocabulary mask. Defaults to False.
         sentences (Optional[List[str]], optional): input text. Defaults to None.
 
     Returns:
@@ -918,8 +1042,8 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
     bad_words = "walk in park"
     bad_words_ids = tokenizer.encode(bad_words, add_prefix_space=True)
     bad_words_ids = [[word_id] for word_id in bad_words_ids]  # Convert to list of list
-    if use_vocab_mask:
-        print("bad_words_ids", bad_words_ids)
+    if args.vocab_mask:
+        logger.debug("bad_words_ids", bad_words_ids)
     else:
         bad_words_ids = []
 
@@ -963,7 +1087,7 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
             print(f"{i}: {decoded_sequence}")
 
     print("-" * 50)
-    print("Test ONNX model and bream search with onnxruntime...")
+    print("Testing beam search with onnxruntime...")
 
     ort_session = create_ort_session(args.output, args.use_gpu)
 
@@ -979,7 +1103,7 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
 
     if args.vocab_mask:
         vocab_mask = np.ones((vocab_size), dtype=np.int32)
-        if use_vocab_mask:
+        if args.vocab_mask:
             for bad_word_id in bad_words_ids:
                 vocab_mask[bad_word_id] = 0
         inputs["vocab_mask"] = vocab_mask
@@ -990,12 +1114,12 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
         prefix_vocab_mask = np.ones((batch_size, vocab_size), dtype=np.int32)
         inputs["prefix_vocab_mask"] = prefix_vocab_mask
 
-    print("inputs", inputs)
+    logger.debug("ORT inputs", inputs)
     result = ort_session.run(None, inputs)
 
     if args.save_test_data:
         test_data_dir = Path(args.output).parent.as_posix()
-        print("test_data_dir", test_data_dir)
+        logger.debug("test_data_dir", test_data_dir)
         from bert_test_data import output_test_data
 
         all_inputs = [inputs]
@@ -1064,12 +1188,11 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
     return output
 
 
-def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, sentences: Optional[List[str]] = None):
+def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = None):
     """Test T5 or MT5 model
 
     Args:
         args (argparse.Namespace): arguments parsed from command line
-        use_vocab_mask (bool, optional): use vocabulary mask. Defaults to False.
         sentences (Optional[List[str]], optional): input text. Defaults to None.
 
     Returns:
@@ -1078,7 +1201,7 @@ def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, senten
     assert args.model_type in ["t5", "mt5"]
 
     if args.prefix_vocab_mask:
-        print("Skipping parity test as prefix vocab mask is not implemented by Hugging Face")
+        logger.debug("Skipping parity test as prefix vocab mask is not implemented by Hugging Face")
         return None
 
     tokenizer = T5Tokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
@@ -1112,8 +1235,8 @@ def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, senten
     bad_words = "walk in park"
     bad_words_ids = tokenizer.encode(bad_words)[:-1]  # exclude the last token (EOS)
     bad_words_ids = [[word_id] for word_id in bad_words_ids]  # Convert to list of list
-    if use_vocab_mask:
-        print("bad_words_ids", bad_words_ids)
+    if args.vocab_mask:
+        logger.debug("bad_words_ids", bad_words_ids)
     else:
         bad_words_ids = []
 
@@ -1121,7 +1244,7 @@ def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, senten
     eos_token_id = config.eos_token_id
     pad_token_id = config.pad_token_id
     vocab_size = config.vocab_size
-    print(f"eos_token_id:{eos_token_id}, pad_token_id:{pad_token_id}, vocab_size:{vocab_size}")
+    logger.debug(f"eos_token_id:{eos_token_id}, pad_token_id:{pad_token_id}, vocab_size:{vocab_size}")
 
     torch_decoded_sequences = []
     if not args.disable_parity:
@@ -1158,12 +1281,12 @@ def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, senten
             print("{}: {}".format(i, decoded_sequence))
 
     print("-" * 50)
-    print("Test ONNX model and bream search with onnxruntime...")
+    print("Testing beam search with onnxruntime...")
 
     ort_session = create_ort_session(args.output, args.use_gpu)
 
     vocab_mask = np.ones((vocab_size), dtype=np.int32)
-    if use_vocab_mask:
+    if args.vocab_mask:
         for bad_word_id in bad_words_ids:
             vocab_mask[bad_word_id] = 0
 
@@ -1175,19 +1298,22 @@ def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, senten
         "num_return_sequences": np.array([args.num_return_sequences], dtype=np.int32),
         "length_penalty": np.array([args.length_penalty], dtype=np.float32),
         "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
-        "vocab_mask": vocab_mask,
     }
 
-    test_data_dir = Path(args.output).parent.as_posix()
-    print("test_data_dir", test_data_dir)
-    from bert_test_data import output_test_data
+    if args.vocab_mask:
+        inputs["vocab_mask"] = vocab_mask
 
-    all_inputs = [inputs]
-    for i, inputs in enumerate(all_inputs):
-        dir = os.path.join(test_data_dir, "test_data_set_" + str(i))
-        output_test_data(dir, inputs)
+    if args.save_test_data:
+        test_data_dir = Path(args.output).parent.as_posix()
+        logger.debug("test_data_dir", test_data_dir)
+        from bert_test_data import output_test_data
 
-    print("inputs", inputs)
+        all_inputs = [inputs]
+        for i, inputs in enumerate(all_inputs):
+            dir = os.path.join(test_data_dir, "test_data_set_" + str(i))
+            output_test_data(dir, inputs)
+
+    logger.debug("ORT inputs", inputs)
 
     # Test performance
     latency = []
@@ -1280,10 +1406,19 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
 
     convert_model(args)
 
+    logger.info("start testing model...")
     if args.model_type in ["t5", "mt5"]:
-        return test_t5_model(args, use_vocab_mask=args.vocab_mask, sentences=sentences)
+        result = test_t5_model(args, sentences=sentences)
     else:
-        return test_gpt_model(args, use_vocab_mask=args.vocab_mask, sentences=sentences)
+        result = test_gpt_model(args, sentences=sentences)
+
+    if result:
+        if args.use_external_data_format:
+            logger.info(f"Output files: {args.output}, {args.output}.data")
+        else:
+            logger.info(f"Output file: {args.output}")
+
+    return result
 
 
 if __name__ == "__main__":
