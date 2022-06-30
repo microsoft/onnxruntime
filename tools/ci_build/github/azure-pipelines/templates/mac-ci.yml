@@ -49,7 +49,6 @@ jobs:
         source '$(Build.SourcesDirectory)/tools/ci_build/github/apple/set_sccache.sh'
         export CC=clang
         export CXX=clang++
-        exprot SCCACHE_AZURE_CONNECTION_STRING=
         env
         ${{ parameters.BuildCommand }}
         # rerun
