@@ -11,12 +11,12 @@ Changes
 1.12.0
 ^^^^^^
 
-Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v1.12.0
+Release Notes : TBD
 
 1.11.0
 ^^^^^^
 
-Release Notes : TBD
+Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v1.11.0
 
 1.10.0
 ^^^^^^

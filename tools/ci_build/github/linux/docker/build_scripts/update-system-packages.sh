@@ -20,7 +20,7 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ] || [ "${AUDITWHEEL_POLICY}" == 
 	fi
 	yum clean all
 	rm -rf /var/cache/yum
-elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
+elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_27" ]; then
 	export DEBIAN_FRONTEND=noninteractive
 	apt-get update -qq
 	apt-get upgrade -qq -y
@@ -56,7 +56,7 @@ if [ "${BASE_POLICY}" == "manylinux" ]; then
 		if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ]; then
 			mv -f ${LOCALE_ARCHIVE} ${LOCALE_ARCHIVE}.tmpl
 			build-locale-archive --install-langs="en_US.utf8"
-		elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
+		elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_27" ]; then
 			rm ${LOCALE_ARCHIVE}
 			localedef -i en_US -f UTF-8 en_US.UTF-8
 			update-locale LANG=en_US.UTF-8
