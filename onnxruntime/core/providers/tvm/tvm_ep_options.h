@@ -34,6 +34,8 @@ using InputsInfoMap = std::unordered_map<size_t, TensorShapeVector>;
 struct TvmEPOptions {
   std::string executor{tvm::default_executor_type};
   std::string so_folder{""};
+  bool check_hash = false;
+  std::string hash_file_path{""};
   std::string target{tvm::default_target_str};
   std::string target_host{tvm::default_target_str};
   unsigned int opt_level{tvm::default_opt_level};
