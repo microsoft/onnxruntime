@@ -138,7 +138,7 @@ hand_implemented = {
     "aten::_local_scalar_dense": MakeTorchFallback(),
     "aten::gt.Scalar_out": MakeTorchFallback(),
     "aten::lt.Scalar_out": MakeTorchFallback(),
-    "aten::equal": MakeTorchFallback(),
+    "aten::equal": SignatureOnly(),
     "aten::_softmax": Softmax("self", axis="dim"),
     "aten::argmax.out": SignatureOnly(),
 }
