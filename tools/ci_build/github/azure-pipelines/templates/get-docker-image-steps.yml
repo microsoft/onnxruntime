@@ -27,8 +27,8 @@ variables:
 steps:
 - ${{ if parameters.UseDockerHubCredentials }}:
   - bash: |
-      env | grep ORT_DOCKERHUB_PASSWORD | cut -d= -f2- | \
-        docker login docker.io --username ${ORT_DOCKERHUB_USER} --password-stdin
+      env | grep DOCKERHUB_USER | cut -d= -f2- | \
+        docker login docker.io --username ${DOCKERHUB_PASSWORD} --password-stdin
     env:
       DOCKERHUB_USER: $(docker-hub-user)
       DOCKERHUB_PASSWORD: $(docker-hub-password)
