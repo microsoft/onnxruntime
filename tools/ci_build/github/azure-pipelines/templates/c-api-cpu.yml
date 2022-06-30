@@ -423,9 +423,9 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Create models link'
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 5.7.0
+    displayName: Use Nuget 6.2.1
     inputs:
-      versionSpec: 5.7.0
+      versionSpec: 6.2.1
 
   - task: PowerShell@2
     displayName: Install .NET 6 workloads
@@ -491,7 +491,7 @@ jobs:
       configuration: RelWithDebInfo
       # need fragile hardcoded path to nuget to use latest version from CI image that knows about the android targets.
       # TODO: find a better way to use the MSBuild task with nuget
-      msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:NugetExe="C:\ProgramData\Chocolatey\bin\nuget.exe"'
+      msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: CopyFiles@2
