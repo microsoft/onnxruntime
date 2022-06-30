@@ -35,7 +35,7 @@ jobs:
     - script: |
         set -ex
         brew install sccache
-        source '$(Build.SourcesDirectory)/tools/ci_build/github/linux/apple/set_sccache.sh'
+        source '$(Build.SourcesDirectory)/tools/ci_build/github/apple/set_sccache.sh'
         export CC=clang
         export CXX=clang++
         env
