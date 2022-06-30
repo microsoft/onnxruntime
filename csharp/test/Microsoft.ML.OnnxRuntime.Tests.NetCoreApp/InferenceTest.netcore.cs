@@ -343,6 +343,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_identity_opt", "opset16 version not implemented yet"},
                 { "test_if_opt", "opset16 version not implemented yet"},
                 { "test_loop16_seq_none", "opset16 version not implemented yet"},
+                { "test_sequence_map_extract_shapes", "sequence type is not supported in test infra." },
+                { "test_sequence_map_identity_1_sequence_1_tensor", "sequence type is not supported in test infra." },
+                { "test_sequence_map_identity_1_sequence_1_tensor_expanded", "sequence type is not supported in test infra." },
+                { "test_sequence_map_add_1_sequence_1_tensor", "sequence type is not supported in test infra." },
+                { "test_sequence_map_identity_1_sequence_expanded", "sequence type is not supported in test infra." },
+                { "test_sequence_map_identity_2_sequences", "sequence type is not supported in test infra." },
+                { "test_sequence_map_add_2_sequences_expanded", "sequence type is not supported in test infra." },
+                { "test_sequence_map_identity_2_sequences_expanded", "sequence type is not supported in test infra." },
+                { "test_sequence_map_extract_shapes_expanded", "sequence type is not supported in test infra." },
+                { "test_sequence_map_add_1_sequence_1_tensor_expanded", "sequence type is not supported in test infra." },
+                { "test_sequence_map_add_2_sequences", "sequence type is not supported in test infra." },
+                { "test_sequence_map_identity_1_sequence", "sequence type is not supported in test infra." }
             };
 
             // The following models fails on nocontribops win CI
