@@ -33,14 +33,6 @@ jobs:
       inputs:
         versionSpec: '16.x'
     - script: |
-        set -ex
-        brew install sccache
-        source '$(Build.SourcesDirectory)/tools/ci_build/github/apple/set_sccache.sh'
-        export CC=clang
-        export CXX=clang++
-        env
-      displayName: 'Set Sccache'
-    - script: |
         set -e
         pushd .
         cd $(Build.SourcesDirectory)/cmake/external/protobuf
@@ -53,6 +45,11 @@ jobs:
         export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
         sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
+        brew install sccache
+        source '$(Build.SourcesDirectory)/tools/ci_build/github/apple/set_sccache.sh'
+        export CC=clang
+        export CXX=clang++
+        env
         ${{ parameters.BuildCommand }}
       displayName: 'Build and Test OnnxRuntime lib for MacOS'
     - script: |
