@@ -4,6 +4,8 @@ jobs:
   workspace:
     clean: all
   pool: Linux-CPU-2019
+  variables:
+  - group: docker-hub-credentials
   steps:
   - checkout: self
     clean: true
@@ -24,6 +26,9 @@ jobs:
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuild
+      UseDockerHubCredentials: true
+      DockerHubUser: $(build-docker-hub-user)
+      DockerHubPassword: $(build-docker-hub-password)
 
   - task: CmdLine@2
     displayName: 'build'

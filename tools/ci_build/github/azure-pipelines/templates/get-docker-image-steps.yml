@@ -18,11 +18,13 @@ parameters:
   default: "tools/ci_build/get_docker_image.py"
 - name: UseDockerHubCredentials
   type: boolean
-  default: true
-
-variables:
-  - ${{ if parameters.UseDockerHubCredentials }}:
-    - group: docker-hub-credentials
+  default: false
+- name: DockerHubUser
+  type: string
+  default: ""
+- name: DockerHubPassword
+  type: string
+  default: ""
 
 steps:
 - ${{ if parameters.UseDockerHubCredentials }}:
