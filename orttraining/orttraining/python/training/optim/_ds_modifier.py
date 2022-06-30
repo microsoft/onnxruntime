@@ -10,10 +10,12 @@
 # - has_overflow_partitioned_grads_serial : https://github.com/microsoft/DeepSpeed/blob/d8e9ef6f99e27bb95e10bd146d145b3372b4cfda/deepspeed/runtime/zero/stage2.py#L1799
 # --------------------------------------------------------------------------
 
-import torch
 import types
 import warnings
 from distutils.version import LooseVersion
+
+import deepspeed
+import torch
 from numpy import inf
 
 from ._modifier import FP16OptimizerModifier, check_overflow, check_overflow_for_grads
@@ -27,10 +29,9 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
         super().__init__(optimizer)
 
     def can_be_modified(self):
-        if not hasattr(self._optimizer, "fp16_groups") and not hasattr(self._optimizer, "bit16_groups"):
-            warnings.warn(
-                "Skip modifying optimizer because of specific attribute not found in original optimizer.", UserWarning
-            )
+        v = LooseVersion(deepspeed.__version__)
+        if v > LooseVersion("0.6.5") or v < LooseVersion("0.4.0"):
+            warnings.warn("Skip modifying optimizer because of unsupported DeepSpeed version.", UserWarning)
             return False
         return self.check_requirements(
             ["has_overflow_serial", "get_grad_norm_direct", "has_overflow_partitioned_grads_serial"],
