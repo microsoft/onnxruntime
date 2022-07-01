@@ -107,6 +107,7 @@ hand_implemented = {
     "aten::_reshape_alias": SignatureOnly(),
     "aten::view": SignatureOnly(),
     "aten::_copy_from_and_resize": SignatureOnly(),
+    "aten::resize_": SignatureOnly(),
     "aten::as_strided": SignatureOnly(),
     # manually implement Slice using stride and offset.
     "aten::slice.Tensor": SignatureOnly(),
