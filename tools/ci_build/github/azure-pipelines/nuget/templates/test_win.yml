@@ -19,12 +19,14 @@ jobs:
     value: 'ON'
   - name: runCodesignValidationInjection
     value: false
+  - name: TestOnnxModelPath
+    value: 'C:\\local\\models'
 
   steps:
   - task: UsePythonVersion@0
-    inputs: 
-      versionSpec: '3.7' 
-      addToPath: true 
+    inputs:
+      versionSpec: '3.7'
+      addToPath: true
       architecture: x64
 
   - task: NuGetToolInstaller@0
@@ -45,7 +47,7 @@ jobs:
       filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
       arguments: 'amd64'
       modifyEnvironment: true
-  
+
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact'
     inputs:
@@ -62,11 +64,6 @@ jobs:
     parameters:
       packageFolder: '$(Build.BinariesDirectory)\nuget-artifact'
 
-  - script: |
-     mklink /D /J models C:\local\models
-    workingDirectory: '$(Build.BinariesDirectory)'
-    displayName: 'Create models link'
-
   # TODO: Add .Net Core AnyCPU test task
 
   - script: |
@@ -76,6 +73,7 @@ jobs:
     displayName: 'Run End to End Test (C#) .Net Core x64'
     env:
       PACKAGENAME: ${{ parameters.NugetPackageName }}
+      TestOnnxModelPath: ${TestOnnxModelPath}
 
   - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
       - script: |
@@ -85,6 +83,7 @@ jobs:
         displayName: 'Run End to End Test (C#) .Net Core x86'
         env:
           PACKAGENAME: ${{ parameters.NugetPackageName }}
+          TestOnnxModelPath: ${TestOnnxModelPath}
 
   # TODO: Add .Net Framework AnyCPU test task
 
@@ -95,6 +94,7 @@ jobs:
     displayName: 'Run End to End Test (C#) .NetFramework x64'
     env:
       PACKAGENAME: ${{ parameters.NugetPackageName }}
+      TestOnnxModelPath: ${TestOnnxModelPath}
 
   - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
       - script: |
@@ -105,6 +105,7 @@ jobs:
         enabled: false
         env:
           PACKAGENAME: ${{ parameters.NugetPackageName }}
+          TestOnnxModelPath: ${TestOnnxModelPath}
 
   - template: ../../templates/component-governance-component-detection-steps.yml
     parameters :

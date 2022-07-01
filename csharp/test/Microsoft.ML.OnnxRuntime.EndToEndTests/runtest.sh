@@ -24,6 +24,7 @@ if [ $RunTestCsharp = "true" ]; then
     OPSET_VERSION=$(grep "${ONNX_VERSION_NUMBER}" "${ONNX_DIR}/docs/Versioning.md" | sed -E "s/${ONNX_VERSION_NUMBER}\|[^|]+\|([0-9]+)\|.*/\1/")
     mkdir -p "${BUILD_BINARIESDIRECTORY}/models"
     ln -s "${ONNX_DIR}/onnx/backend/test/data/node" "${BUILD_BINARIESDIRECTORY}/models/opset${OPSET_VERSION}"
+    export OnnxModelRootPath="${BUILD_BINARIESDIRECTORY}/models"
   fi
   # Run C# tests
   dotnet restore $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj -s $LocalNuGetRepo -s https://api.nuget.org/v3/index.json

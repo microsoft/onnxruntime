@@ -410,17 +410,20 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public static IEnumerable<object[]> GetModelsForTest()
         {
             var modelsDir = GetTestModelsDir();
+            Console.WriteLine($"modelsDir: {modelsDir}");
             var modelsDirInfo = new DirectoryInfo(modelsDir);
+            Console.WriteLine($"1 modelsDirInfo.FullName: {modelsDirInfo.FullName}");
             var skipModels = GetSkippedModels(modelsDirInfo);
-
-            foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
+            Console.WriteLine($"2 modelsDirInfo.FullName: {modelsDirInfo.FullName}");
+            foreach (var modelGroupDir in modelsDirInfo.EnumerateDirectories())
             {
-                //var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opsetDir.Name));
-                foreach (var modelDir in opsetDir.EnumerateDirectories())
+                Console.WriteLine($"3 modelGroupDir: {modelGroupDir}");
+                foreach (var modelDir in modelGroupDir.EnumerateDirectories())
                 {
+                    Console.WriteLine($"modelDir: {modelDir.FullName}");
                     if (!skipModels.ContainsKey(modelDir.Name))
                     {
-                        yield return new object[] { modelDir.Parent.Name, modelDir.Name };
+                        yield return new object[] { modelDir.FullName };
                     }
                 } //model
             } //opset
@@ -432,15 +435,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var modelsDirInfo = new DirectoryInfo(modelsDir);
             var skipModels = GetSkippedModels(modelsDirInfo);
 
-            foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
+            foreach (var modelGroupDir in modelsDirInfo.EnumerateDirectories())
             {
-                var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opsetDir.Name));
-                foreach (var modelDir in modelRoot.EnumerateDirectories())
+                foreach (var modelDir in modelGroupDir.EnumerateDirectories())
                 {
                     if (skipModels.ContainsKey(modelDir.Name))
                     {
                         //Console.WriteLine("Model {0} is skipped due to the error: {1}", modelDir.FullName, skipModels[modelDir.Name]);
-                        yield return new object[] { modelDir.Parent.Name, modelDir.Name };
+                        yield return new object[] { modelDir.FullName };
                     }
 
                 }
@@ -450,13 +452,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Theory(DisplayName = "TestPreTrainedModels")]
         [MemberData(nameof(GetModelsForTest))]
         [MemberData(nameof(GetSkippedModelForTest), Skip = "Skipped due to Error, please fix the error and enable the test")]
-        private void TestPreTrainedModels(string opset, string modelName)
+        private void TestPreTrainedModels(string modelDirPath)
         {
-            var modelsDir = GetTestModelsDir();
             string onnxModelFileName = null;
-
-            var modelDir = new DirectoryInfo(Path.Combine(modelsDir, opset, modelName));
-
+            var modelDir = new DirectoryInfo(modelDirPath);
             try
             {
                 var onnxModelNames = modelDir.GetFiles("*.onnx");
@@ -476,22 +475,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 if (validModelFound)
                 {
-                    onnxModelFileName = Path.Combine(modelDir.FullName, onnxModelNames[0].Name);
+                    onnxModelFileName = Path.Combine(modelDirPath, onnxModelNames[0].Name);
                 }
                 else
                 {
                     var modelNamesList = string.Join(",", onnxModelNames.Select(x => x.ToString()));
-                    throw new Exception($"Opset {opset} Model {modelName}. Can't determine model file name. Found these :{modelNamesList}");
+                    throw new Exception($"Folder {modelDirPath} doesn't contain valid ONNX model file(s). Found these :{modelNamesList}");
                 }
 
                 using (var session = new InferenceSession(onnxModelFileName))
                 {
                     var inMeta = session.InputMetadata;
                     string testDataDirNamePattern = "test_data*";
-                    if (opset == "opset9" && modelName == "LSTM_Seq_lens_unpacked")
-                    {
-                        testDataDirNamePattern = "seq_lens*"; // discrepancy in data directory
-                    }
                     foreach (var testDataDir in modelDir.EnumerateDirectories(testDataDirNamePattern))
                     {
                         var inputContainer = new List<NamedOnnxValue>();
@@ -590,7 +585,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
             catch (Exception ex)
             {
-                var msg = $"Opset {opset}, Model {modelName}: ModelFile = {onnxModelFileName} error = {ex.Message}";
+                var msg = $"Model path = {modelDirPath}, model file = {onnxModelFileName}, error = {ex.Message}";
                 if (ex.Message.Contains("ONNX Runtime only *guarantees* support for models stamped with official released onnx opset versions"))
                 {
                     // If the exception is thrown because the opset version of the test model is
@@ -816,12 +811,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
         static string GetTestModelsDir()
         {
-            // get build directory, append downloaded models location
-            var cwd = Directory.GetCurrentDirectory();
-            var props = File.ReadAllLines(Path.Combine(cwd, propertiesFile));
-            var modelsRelDir = Path.Combine(props[0].Split('=')[1].Trim());
-            var modelsDir = Path.Combine(cwd, @"../../..", modelsRelDir, "models");
-            return modelsDir;
+            var path = Environment.GetEnvironmentVariable("OnnxModelRootPath");
+            //var path = "C:\\Users\\wechi\\repos\\onnxruntime\\build\\Windows\\models";
+            Console.WriteLine($"OnnxModelRootPath: {path}");
+            return path;
         }
     }
 }
