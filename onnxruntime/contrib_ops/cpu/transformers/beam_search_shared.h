@@ -6,6 +6,8 @@
 #include "gsl/gsl"
 #include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
+#include "core/common/safeint.h"
+#include "contrib_ops/cpu/transformers/beam_search_shared.h"
 
 #ifndef NDEBUG
 //#define DEBUG_BEAM_SEARCH 1  // uncomment it for debugging beam search
@@ -41,6 +43,18 @@ struct IBeamSearchCpuState {
   gsl::span<int32_t> topk_tokens;      // shape (batch_size, 2*num_beams), tokens of topk candidates.
   gsl::span<int32_t> topk_indices;     // shape (batch_size, 2*num_beams), beam indices of topk candidates.
   gsl::span<float> final_beam_scores;  // shape (batch_size, num_beams)
+};
+
+template <typename T>
+struct IGreedySearchState {
+  gsl::span<int32_t> sequences_space;  // shape (2, batch_size, max_length)
+  gsl::span<int32_t> sequence_lengths; // shape (batch_size)
+  gsl::span<int32_t> next_positions;   // shape (batch_size, num_beams). Next position value for position_ids.
+  gsl::span<bool> eos_meet;            // shape (batch_size)
+
+  gsl::span<T> next_token_logits;      // shape (batch_size, vocab_size)
+  gsl::span<float> next_token_scores;  // shape (batch_size, vocab_size)
+  gsl::span<int32_t> next_tokens;      // shape (batch_size)
 };
 
 class ISequences {
@@ -131,6 +145,26 @@ class IConsoleDumper {
  protected:
   bool is_enabled_;
 };
+
+template <typename T>
+gsl::span<T> AllocateBuffer(AllocatorPtr allocator,
+                            BufferUniquePtr& buffer,
+                            size_t elements,
+                            bool fill = false,
+                            T fill_value = T{}) {
+  size_t bytes = SafeInt<size_t>(sizeof(T)) * elements;
+  void* data = allocator->Alloc(bytes);
+  BufferUniquePtr temp_buffer(data, BufferDeleter(allocator));
+  buffer = std::move(temp_buffer);
+  T* first = reinterpret_cast<T*>(buffer.get());
+  auto span = gsl::make_span(first, elements);
+
+  if (fill) {
+    std::fill_n(first, elements, fill_value);
+  }
+
+  return span;
+}
 
 }  // namespace transformers
 }  // namespace contrib

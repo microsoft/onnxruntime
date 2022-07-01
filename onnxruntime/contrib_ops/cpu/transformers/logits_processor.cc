@@ -220,6 +220,23 @@ void LogitsProcessorList::Init(const BeamSearchParameters& parameters) {
   vocab_size_ = parameters.vocab_size;
 }
 
+void LogitsProcessorList::Init(const GreedySearchParameters& parameters) {
+  processor_list_.clear();
+
+  if (parameters.repetition_penalty != 1.0f) {  // 1.0 means no penalty
+    repetition_penalty_processor_ = std::make_unique<RepetitionPenaltyLogitsProcessor<float>>(parameters.repetition_penalty);
+    processor_list_.push_back(repetition_penalty_processor_.get());
+  }
+
+  if (parameters.min_length > 0) {
+    min_length_processor_ = std::make_unique<MinLengthLogitsProcessor<float>>(parameters.min_length, parameters.eos_token_id);
+    processor_list_.push_back(min_length_processor_.get());
+  }
+
+  batch_beam_size_ = parameters.BatchBeamSize();
+  vocab_size_ = parameters.vocab_size;
+}
+
 void LogitsProcessorList::Process(const ISequences* sequences,
                                   gsl::span<float>& next_token_scores,
                                   int step) {

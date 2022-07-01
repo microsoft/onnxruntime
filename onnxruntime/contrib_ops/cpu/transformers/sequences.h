@@ -34,6 +34,9 @@ class Sequences : public ISequences {
       gsl::span<int32_t>& beam_indices,
       gsl::span<int32_t>& beam_next_tokens);
 
+  void AppendNextTokenToSequences(
+      gsl::span<int32_t>& next_tokens);
+
  private:
   // Two buffers of shape (batch_size, num_beams, max_seq_length) to store sequences.
   // At each time, there is only one buffer is active. The other one will be active in next token.
