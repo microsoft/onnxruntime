@@ -72,6 +72,7 @@ jobs:
         fi
       env:
         SCCACHE_AZURE_CONNECTION_STRING: '$(zhanyi-conn-string)'
+        SCCACHE_AZURE_BLOB_CONTAINER: 'zhanyi-sccache'
       displayName: 'Build and Test OnnxRuntime lib for MacOS'
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
