@@ -85,6 +85,8 @@ class MemoryInfo;
 using SubgraphSessionStateMap =
     std::unordered_map<onnxruntime::NodeIndex, std::unordered_map<std::string, std::unique_ptr<SessionState>>>;
 
+struct ExecutionPlan;
+
 class SessionState {
  public:
   SessionState(Graph& graph,
@@ -183,6 +185,8 @@ class SessionState {
   const SequentialExecutionPlan* GetExecutionPlan() const;
 
   ParallelExecutionPlan* GetParalllelExecutionPlan();
+
+  ExecutionPlan* GetTheExecutionPlan() const { return nullptr; };
 
   const ParallelExecutionPlan& GetConstParalllelExecutionPlan() const;
 
