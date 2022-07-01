@@ -55,8 +55,12 @@ jobs:
         source '$(Build.SourcesDirectory)/tools/ci_build/github/apple/set_sccache.sh'
         export CC=clang
         export CXX=clang++
-        export SCCACHE_DIR='$(Build.SourcesDirectory)/sccache'
+        # export SCCACHE_DIR='$(Build.SourcesDirectory)/sccache'
         env
+        if which sccache > /dev/null; then
+          sccache --show-stats
+          sccache --stop-server
+        fi
         ${{ parameters.BuildCommand }}
         # rerun
         # rm -rf '$(Build.SourcesDirectory)/build'
