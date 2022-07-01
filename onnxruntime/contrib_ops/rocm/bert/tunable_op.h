@@ -9,6 +9,10 @@
 #include <string>
 #include "timer.h"
 
+namespace onnxruntime {
+namespace contrib {
+namespace rocm {
+
 struct OpParams {
   virtual std::string signature() const = 0;
 };
@@ -83,3 +87,7 @@ class TunableOp {
 
   std::map<std::string, int> kernel_map_;
 };
+
+}  // namespace rocm
+}  // namespace contrib
+}  // namespace onnxruntime

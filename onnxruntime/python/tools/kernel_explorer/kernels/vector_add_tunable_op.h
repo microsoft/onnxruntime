@@ -7,6 +7,8 @@
 #include "tunable_op.h"
 #include "vector_add_kernel.h"
 
+using namespace onnxruntime::contrib::rocm;
+
 template<typename T>
 struct VectorAddParams : OpParams {
   VectorAddParams(const T* x, const T* y, T* z, int n) : x(x), y(y), z(z), n(n) {}

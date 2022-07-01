@@ -3,6 +3,10 @@
 
 #include "timer.h"
 
+namespace onnxruntime {
+namespace contrib {
+namespace rocm {
+
 Timer::Timer() {
   hipEventCreate(&start_);
   hipEventCreate(&end_);
@@ -29,3 +33,7 @@ Timer::~Timer() {
   hipEventDestroy(start_);
   hipEventDestroy(end_);
 }
+
+}  // namespace rocm
+}  // namespace contrib
+}  // namespace onnxruntime

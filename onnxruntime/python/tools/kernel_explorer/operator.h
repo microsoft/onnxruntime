@@ -5,6 +5,8 @@
 
 #include "timer.h"
 
+using namespace onnxruntime::contrib::rocm;
+
 namespace onnxruntime {
 namespace rocm {
 
