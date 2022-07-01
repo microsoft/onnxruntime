@@ -734,14 +734,15 @@ TEST_F(GraphTransformationTests, FuseCudaConvAddRelu_UnsupportedType) {
     node.SetExecutionProviderType(kCudaExecutionProvider);
   }
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Add"] == 1);
-  ASSERT_TRUE(op_to_count["Relu"] == 1);
+  ASSERT_EQ(op_to_count["Add"], 1);
+  ASSERT_EQ(op_to_count["Relu"], 1);
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Add"] == 1);   // Add not removed from graph (fusion not triggered)
-  ASSERT_TRUE(op_to_count["Relu"] == 1);  // Relu not removed from graph (fusion not triggered)
+  ASSERT_EQ(op_to_count["Add"], 1);   // Add not removed from graph (fusion not triggered)
+  ASSERT_EQ(op_to_count["Relu"], 1);  // Relu not removed from graph (fusion not triggered)
 }
 
 // Conv->Add->Relu will be left intact since there is Identity depend on Add
