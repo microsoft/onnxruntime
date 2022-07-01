@@ -489,8 +489,6 @@ jobs:
       solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
       platform: 'Any CPU'
       configuration: RelWithDebInfo
-      # need fragile hardcoded path to nuget to use latest version from CI image that knows about the android targets.
-      # TODO: find a better way to use the MSBuild task with nuget
       msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
