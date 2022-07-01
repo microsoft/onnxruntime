@@ -103,6 +103,25 @@ git clone --depth 1 --branch release/11.x https://github.com/llvm/llvm-project.g
 cmake -S llvm -B build -DLLVM_ENABLE_PROJECTS="clang;libcxx;libcxxabi" -DLLVM_TARGETS_TO_BUILD=X86 -Thost=x64 -DCMAKE_BUILD_TYPE=Release -G "Visual Studio 17 2022"
 cmake --build ./build --config Release
 ```
+- Dependencies of ipp-crypto:<br>
+1. install asm compiler (nasm) on windows by line:
+```cmd
+winget install nasm -i
+```
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+Add it to PATH (instruction for Windows GUI can be seen [here](https://www.computerhope.com/issues/ch000549.htm#dospath)) or by cmd:
+```
+set PATH="%PATH%;C:\Program Files\NASM"
+```
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+Check by `nasm --version` in prompt command line.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+2. install openssl on windows by msi-file from [here](https://slproweb.com/products/Win32OpenSSL.html)
+Add path to directory (e.g. "C:\Program Files\OpenSSL-Win64\bin") with executable file to PATH (see instructions above).<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+Check by `openssl version` in prompt command line.
+<br>
+<br>
 
 For using NVIDIA GPU (optional) CUDA and cuDNN should be installed.
 - CUDA: Install CUDA by the [link](https://developer.nvidia.com/cuda-11.0-download-archive).
@@ -135,7 +154,7 @@ Default path to the package is `<path_to_onnxruntime_root>/build/Windows/Release
 ```cmd
 pip install .\onnxruntime\build\Windows\Release\Release\dist\onnxruntime_tvm-1.6.0-cp37-cp37m-win_amd64.whl
 ```
-- Verify result by python script:
+- Verify result by python script. Note: python should not be launched from directory containing 'onnxruntime' directory for correct result:
 ```python
 import onnxruntime
 print(onnxruntime.__version__)
