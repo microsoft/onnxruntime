@@ -295,9 +295,12 @@ class OrtOpTests(unittest.TestCase):
         ort_a = cpu_a.to(device)
         cpu_b = torch.Tensor([1.0, 1.5, 2.1])
         ort_b = cpu_b.to(device)
-        cpu_out_tensor = torch.tensor([], dtype=torch.bool)
+        cpu_out_tensor = torch.tensor([])
+        print(cpu_out_tensor.dtype)
         ort_out_tensor = cpu_out_tensor.to(device)
         cpu_a_b_eq_result = torch.eq(cpu_a, cpu_b, out=cpu_out_tensor)
+        print(cpu_out_tensor.dtype)
+        print(cpu_out_tensor)
         ort_a_b_eq_result = torch.eq(ort_a, ort_b, out=ort_out_tensor)
         assert torch.equal(cpu_a_b_eq_result.to(device), ort_a_b_eq_result)
         assert torch.equal(cpu_out_tensor, ort_out_tensor.to("cpu"))
@@ -319,16 +322,22 @@ class OrtOpTests(unittest.TestCase):
         ort_scalar_float_not = cpu_scalar_float_not.to(device)
 
         # compare int to int, float to float - ort only supports same type at the moment
-        cpu_int_int_result = torch.eq(cpu_tensor_int, cpu_scalar_int)
+        cpu_out_tensor = torch.tensor([], dtype=torch.bool)
+        ort_out_tensor = cpu_out_tensor.to(device)
+
+        cpu_int_int_result = torch.eq(cpu_tensor_int, cpu_scalar_int, out=cpu_out_tensor)
         cpu_int_int_not_result = torch.eq(cpu_tensor_int, cpu_scalar_int_not)
         cpu_float_float_result = torch.eq(cpu_tensor_float, cpu_scalar_float)
         cpu_float_float_not_result = torch.eq(cpu_tensor_float, cpu_scalar_float_not)
 
-        ort_int_int_result = torch.eq(ort_tensor_int, ort_scalar_int)
+        ort_int_int_result = torch.eq(ort_tensor_int, ort_scalar_int, out=ort_out_tensor)
         ort_int_int_not_result = torch.eq(ort_tensor_int, ort_scalar_int_not)
         ort_float_float_result = torch.eq(ort_tensor_float, ort_scalar_float)
         ort_float_float_not_result = torch.eq(ort_tensor_float, ort_scalar_float_not)
 
+        print(cpu_out_tensor)
+        print(ort_out_tensor)
+        assert torch.equal(cpu_out_tensor, ort_out_tensor.to("cpu"))
         assert torch.equal(cpu_int_int_result, ort_int_int_result.to("cpu"))
         assert torch.equal(cpu_int_int_not_result, ort_int_int_not_result.to("cpu"))
         assert torch.equal(cpu_float_float_result, ort_float_float_result.to("cpu"))

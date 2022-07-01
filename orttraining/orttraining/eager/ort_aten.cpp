@@ -901,29 +901,33 @@ const at::Tensor& resize_(
   return self;
 }
 
+/*
+The following are examples copied from the generated code to demonstrate the new cases
+For abs the code is essentially unchanged just some ordering changes
+
 // aten::abs.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
-at::Tensor& abs_out(
-  const at::Tensor& self,
+Tensor& abs_out(
+  const Tensor& self,
   // *,
-  at::Tensor& out) {
+  Tensor& out) {
   ORT_LOG_FN(self, out);
 
   if (
-    !IsSupportedType(self, {at::kHalf,at::kByte,at::kInt,at::kBFloat16,at::kFloat,at::kDouble,at::kShort,at::kLong})) {
-    return at::native::call_fallback_fn<
-      &at::native::cpu_fallback,
+    !IsSupportedType(self, {at::kLong,at::kHalf,at::kByte,at::kShort,at::kDouble,at::kBFloat16,at::kFloat,at::kInt})) {
+    return native::call_fallback_fn<
+      &native::cpu_fallback,
       ATEN_OP(abs_out)>::call(self, out);
   }
   auto& invoker = GetORTInvoker(self.device());
 
+  // resize the output and then create output ort value to be updated.
+  resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), self.sizes());
+  auto ort_input_out = create_ort_value(invoker, out);
+
   auto ort_input_self = create_ort_value(invoker, self);
 
-  resize_output(invoker,
-                dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()),
-                self.sizes());
-
-  auto ort_out = create_ort_value(invoker, out);
-  std::vector<OrtValue> ort_outputs_0_Abs{ort_out};
+  std::vector<OrtValue> ort_outputs_0_Abs(1);
+  ort_outputs_0_Abs[0] = ort_input_out;
 
   auto status = invoker.Invoke("Abs", {
     std::move(ort_input_self),
@@ -936,6 +940,103 @@ at::Tensor& abs_out(
 
   return out;
 }
+
+// eq has to cast the output to align with expected aten behavior
+
+// aten::eq.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+Tensor& eq_Tensor_out(
+  const Tensor& self,
+  const Tensor& other,
+  // *,
+  Tensor& out) {
+  ORT_LOG_FN(self, other, out);
+
+  if (
+    !IsSupportedType(self, {at::kBool,at::kLong,at::kHalf,at::kByte,at::kShort,at::kDouble,at::kBFloat16,at::kFloat,at::kInt}) ||
+    !IsSupportedType(other, {at::kBool,at::kLong,at::kHalf,at::kByte,at::kShort,at::kDouble,at::kBFloat16,at::kFloat,at::kInt})) {
+    return native::call_fallback_fn<
+      &native::cpu_fallback,
+      ATEN_OP(eq_Tensor_out)>::call(self, other, out);
+  }
+  auto& invoker = GetORTInvoker(self.device());
+
+  // resize the output and then create output ort value to be updated.
+  resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), self.sizes());
+  auto ort_input_out = create_ort_value(invoker, out);
+
+  auto ort_input_self = create_ort_value(invoker, self);
+  auto ort_input_other = create_ort_value(invoker, other);
+
+  std::vector<OrtValue> ort_outputs_0_Equal(1);
+
+  auto status = invoker.Invoke("Equal", {
+    std::move(ort_input_self),
+    std::move(ort_input_other),
+  }, ort_outputs_0_Equal, nullptr);
+
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+
+  auto temp = CastToType(invoker, ort_outputs_0_Equal[0], out.scalar_type());
+  copy(invoker, temp, ort_input_out);
+  return out;
+}
+
+// this is an example of nested calls that contain the eq which has special casting behavior
+
+// aten::ne.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+Tensor& ne_Tensor_out(
+  const Tensor& self,
+  const Tensor& other,
+  // *,
+  Tensor& out) {
+  ORT_LOG_FN(self, other, out);
+
+  if (
+    !IsSupportedType(self, {at::kBool,at::kLong,at::kHalf,at::kByte,at::kShort,at::kDouble,at::kBFloat16,at::kFloat,at::kInt}) ||
+    !IsSupportedType(other, {at::kBool,at::kLong,at::kHalf,at::kByte,at::kShort,at::kDouble,at::kBFloat16,at::kFloat,at::kInt})) {
+    return native::call_fallback_fn<
+      &native::cpu_fallback,
+      ATEN_OP(ne_Tensor_out)>::call(self, other, out);
+  }
+  auto& invoker = GetORTInvoker(self.device());
+
+  // resize the output and then create output ort value to be updated.
+  resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), self.sizes());
+  auto ort_input_out = create_ort_value(invoker, out);
+
+  auto ort_input_self = create_ort_value(invoker, self);
+  auto ort_input_other = create_ort_value(invoker, other);
+
+  std::vector<OrtValue> ort_outputs_0_Equal(1);
+
+  auto status = invoker.Invoke("Equal", {
+    std::move(ort_input_self),
+    std::move(ort_input_other),
+  }, ort_outputs_0_Equal, nullptr);
+
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+
+
+  std::vector<OrtValue> ort_outputs_1_Not(1);
+
+  status = invoker.Invoke("Not", {
+    std::move(ort_outputs_0_Equal[0]),
+  }, ort_outputs_1_Not, nullptr);
+
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+
+  auto temp = CastToType(invoker, ort_outputs_1_Not[0], out.scalar_type());
+  copy(invoker, temp, ort_input_out);
+  return out;
+}
+
+*/
 
 } // namespace aten
 

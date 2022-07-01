@@ -99,7 +99,7 @@ for unary_op in [
         ops[f"{aten_name}_"] = onnx_op
 
 hand_implemented = {
-    "aten::abs.out": SignatureOnly(),
+    "aten::abs.out": Abs("self"),
     "aten::empty.memory_format": SignatureOnly(),
     "aten::empty_strided": SignatureOnly(),
     "aten::zero_": SignatureOnly(),
