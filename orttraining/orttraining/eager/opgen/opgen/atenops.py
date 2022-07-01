@@ -60,7 +60,6 @@ for binary_op, onnx_op in {
                 type_promotion_ops.append(f"aten::{binary_op}{variant}.{dtype}")
 
 for unary_op in [
-    "abs",
     "acos",
     "acosh",
     "asinh",
@@ -100,6 +99,7 @@ for unary_op in [
         ops[f"{aten_name}_"] = onnx_op
 
 hand_implemented = {
+    "aten::abs.out": SignatureOnly(),
     "aten::empty.memory_format": SignatureOnly(),
     "aten::empty_strided": SignatureOnly(),
     "aten::zero_": SignatureOnly(),
