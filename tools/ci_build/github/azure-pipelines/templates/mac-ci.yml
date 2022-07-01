@@ -40,6 +40,12 @@ jobs:
         RunAsPreJob: false
     - script: |
         set -e
+        brew install sccache
+        export CC=clang
+        export CXX=clang++
+        source '$(Build.SourcesDirectory)/tools/ci_build/github/apple/set_sccache.sh'
+
+
         pushd .
         cd $(Build.SourcesDirectory)/cmake/external/protobuf
         cmake ./cmake -DCMAKE_INSTALL_PREFIX=$(Build.BinariesDirectory)/protobuf -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo
@@ -49,23 +55,14 @@ jobs:
         export PATH=$(Build.BinariesDirectory)/protobuf/bin:$PATH
         export ONNX_ML=1
         export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
-        sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-        sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
-        brew install sccache
-        source '$(Build.SourcesDirectory)/tools/ci_build/github/apple/set_sccache.sh'
-        export CC=clang
-        export CXX=clang++
-        # export SCCACHE_DIR='$(Build.SourcesDirectory)/sccache'
-        env
         if which sccache > /dev/null; then
           sccache --show-stats
           sccache --stop-server
         fi
+
+        sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+        sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
         ${{ parameters.BuildCommand }}
-        # rerun
-        # rm -rf '$(Build.SourcesDirectory)/build'
-        # export RUST_LOG=trace
-        # ${{ parameters.BuildCommand }}
         if which sccache > /dev/null; then
           sccache --show-stats
           sccache --stop-server
