@@ -59,7 +59,7 @@ jobs:
     setVcvars: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
     DocUpdateNeeded: ${{ parameters.DocUpdateNeeded }}
-    OnnxModelRootPath: '${{Build.BinariesDirectory)/models}}'
+    OnnxModelRootPath: '$(Build.BinariesDirectory)/models'
   workspace:
     clean: all
   pool: ${{ parameters.MachinePool }}

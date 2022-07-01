@@ -43,7 +43,7 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     setVcvars: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
-    OnnxModelRootPath: '${{Build.BinariesDirectory)/models}}'
+    OnnxModelRootPath: '$(Build.BinariesDirectory)/models'
   workspace:
     clean: all
   pool: 'Win-CPU-2019'
