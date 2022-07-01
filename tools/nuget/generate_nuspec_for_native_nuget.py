@@ -240,6 +240,18 @@ def generate_dependencies(xml_text, package_name, version, dependency_id, depend
             xml_text.append('<group targetFramework="xamarinios10">')
             xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
             xml_text.append("</group>")
+            # Support net6.0-android
+            xml_text.append('<group targetFramework="net6.0-android31.0">')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append("</group>")
+            # Support net6.0-ios
+            xml_text.append('<group targetFramework="net6.0-ios15.4">')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append("</group>")
+            # Support net6.0-macos
+            xml_text.append('<group targetFramework="net6.0-macos12.3">')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append("</group>")
         # Support Native C++
         if include_dml:
             xml_text.append('<group targetFramework="native">')
@@ -861,7 +873,6 @@ def generate_files(list, args):
                 "monoandroid11.0",
                 args.package_name + ".targets",
             )
-            os.system(copy_command + " " + monoandroid_source_targets + " " + monoandroid_target_targets)
 
             xamarinios_source_targets = os.path.join(
                 args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "xamarinios10", "targets.xml"
@@ -875,15 +886,83 @@ def generate_files(list, args):
                 "xamarinios10",
                 args.package_name + ".targets",
             )
+
+            net6_android_source_targets = os.path.join(
+                args.sources_path,
+                "csharp",
+                "src",
+                "Microsoft.ML.OnnxRuntime",
+                "targets",
+                "net6.0-android",
+                "targets.xml",
+            )
+            net6_android_target_targets = os.path.join(
+                args.sources_path,
+                "csharp",
+                "src",
+                "Microsoft.ML.OnnxRuntime",
+                "targets",
+                "net6.0-android",
+                args.package_name + ".targets",
+            )
+
+            net6_ios_source_targets = os.path.join(
+                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net6.0-ios", "targets.xml"
+            )
+            net6_ios_target_targets = os.path.join(
+                args.sources_path,
+                "csharp",
+                "src",
+                "Microsoft.ML.OnnxRuntime",
+                "targets",
+                "net6.0-ios",
+                args.package_name + ".targets",
+            )
+
+            net6_macos_source_targets = os.path.join(
+                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net6.0-macos", "targets.xml"
+            )
+            net6_macos_target_targets = os.path.join(
+                args.sources_path,
+                "csharp",
+                "src",
+                "Microsoft.ML.OnnxRuntime",
+                "targets",
+                "net6.0-macos",
+                args.package_name + ".targets",
+            )
+
+            os.system(copy_command + " " + monoandroid_source_targets + " " + monoandroid_target_targets)
             os.system(copy_command + " " + xamarinios_source_targets + " " + xamarinios_target_targets)
+            os.system(copy_command + " " + net6_android_source_targets + " " + net6_android_target_targets)
+            os.system(copy_command + " " + net6_ios_source_targets + " " + net6_ios_target_targets)
+            os.system(copy_command + " " + net6_macos_source_targets + " " + net6_macos_target_targets)
 
             files_list.append("<file src=" + '"' + monoandroid_target_targets + '" target="build\\monoandroid11.0" />')
             files_list.append(
                 "<file src=" + '"' + monoandroid_target_targets + '" target="buildTransitive\\monoandroid11.0" />'
             )
+
             files_list.append("<file src=" + '"' + xamarinios_target_targets + '" target="build\\xamarinios10" />')
             files_list.append(
                 "<file src=" + '"' + xamarinios_target_targets + '" target="buildTransitive\\xamarinios10" />'
+            )
+
+            files_list.append(
+                "<file src=" + '"' + net6_android_target_targets + '" target="build\\net6.0-android31.0" />'
+            )
+            files_list.append(
+                "<file src=" + '"' + net6_android_target_targets + '" target="buildTransitive\\net6.0-android31.0" />'
+            )
+
+            files_list.append("<file src=" + '"' + net6_ios_target_targets + '" target="build\\net6.0-ios15.4" />')
+            files_list.append(
+                "<file src=" + '"' + net6_ios_target_targets + '" target="buildTransitive\\net6.0-ios15.4" />'
+            )
+
+            files_list.append("<file src=" + '"' + net6_macos_target_targets + '" target="build\\net6.0-macos12.3" />')
+            files_list.append(
+                "<file src=" + '"' + net6_macos_target_targets + '" target="buildTransitive\\net6.0-macos12.3" />'
             )
 
     # Process License, ThirdPartyNotices, Privacy

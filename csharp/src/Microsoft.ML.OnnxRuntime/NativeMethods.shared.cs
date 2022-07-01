@@ -425,6 +425,21 @@ namespace Microsoft.ML.OnnxRuntime
                     typeof(DSessionOptionsAppendExecutionProvider));
         }
 
+        internal class NativeLib
+        {
+#if __ANDROID__
+        // define the library name required for android
+        internal const string DllName = "libonnxruntime.so";
+#elif __IOS__
+        // define the library name required for iOS
+        internal const string DllName = "__Internal";
+#else
+            internal const string DllName = "onnxruntime";
+#endif
+            // TODO: Does macos need special handling or will 'onnxruntime' -> libonnxruntime.dylib?
+        }
+
+
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern ref OrtApiBase OrtGetApiBase();
 
