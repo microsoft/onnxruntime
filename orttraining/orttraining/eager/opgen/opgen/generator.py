@@ -328,29 +328,43 @@ class ORTGen:
                 )
                 writer.writeline()
 
-        last_op_index = len(ctx.ops) - 1
-        equal_onnxop_found = 0
+        # Gather return info on the torch func, such as Tensor(a! -> a)
+        # which implies the return value is writeable tensor (Tensor&)
         return_info = cpp_func.torch_func.return_type if cpp_func.torch_func else None
-        # check if the return is a ref tensor and there exists an out aten method input
-        set_out_tensor = 0
+
+        # if the torch func has a return ref tensor, out is the last param, and self param is the first input
+        # then we need to update and return out.
+        set_out_tensor = False
         last_param = cpp_func.parameters[-1].member
-        if return_info and last_param and last_param.identifier.value == "out":
+        if (
+            return_info
+            and last_param
+            and last_param.identifier.value == "out"
+            and first_param.identifier.value == "self"
+        ):
+
+            # output_alias is how the return tensor is marked, normally (a! -> a)
+            output_alias = self._get_alias_info(return_info)
+
             for torch_p in last_param.torch_param:
-                output_alias = self._get_alias_info(return_info)
-                if output_alias and self._get_alias_info(torch_p) == output_alias and output_alias.is_writable:
-                    set_out_tensor = 1
+                # Confirm we have an output alias and that it is writable (!)
+                # and the current param (torch_p/last_param) is marked with the output alias
+                if output_alias and output_alias.is_writable and self._get_alias_info(torch_p) == output_alias:
+                    set_out_tensor = True
                     writer.writeline("// resize the output and then create output ort value to be updated.")
                     writer.writeline(
                         "resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), self.sizes());"
                     )
-                    writer.writeline(f"auto ort_input_out = create_ort_value(invoker, out);")
+                    writer.writeline("auto ort_input_out = create_ort_value(invoker, out);")
                     writer.writeline()
 
+        cast_output_to_bool = False
         for onnx_op_index, onnx_op in enumerate(ctx.ops):
             # equal onnx op only returns bool but that doesn't align with aten behavior,
             # so we track if the Equal op is in the list and if so we'll do a cast at the end
+            # in the future if there are other ops like Equal we could add them here too.
             if onnx_op.name == "Equal":
-                equal_onnxop_found = 1
+                cast_output_to_bool = True
 
             # Torch -> ORT inputs
             for op_input in onnx_op.inputs:
@@ -446,10 +460,19 @@ class ORTGen:
                                     in_place_params[0] = cpp_param.identifier.value
                                     break
 
-                # if no in_place_params found and there is out input to set and this is the last onnx op and no equals in the mix
-                if len(in_place_params) == 0 and set_out_tensor == 1 and last_op_index == onnx_op_index and equal_onnxop_found == 0:
-                    # assign output ort value
-                    writer.writeline(f"{onnx_op.outputs}[0] = ort_input_out;")
+                # if no in_place_params found and there is an out input to set
+                # and this is the last onnx op, we set the out to be written to
+                if len(in_place_params) == 0 and set_out_tensor and onnx_op_index == (len(ctx.ops) - 1):
+                    if cast_output_to_bool:
+                        # if the out type is bool already we can still set it since no cast will be needed.
+                        writer.writeline("if (out.scalar_type() == at::kBool) {")
+                        writer.push_indent()
+                        writer.writeline(f"{onnx_op.outputs}[0] = ort_input_out;")
+                        writer.pop_indent()
+                        writer.writeline("}")
+                    else:
+                        # assign output ort value directly since we don't need special handling.
+                        writer.writeline(f"{onnx_op.outputs}[0] = ort_input_out;")
 
                 if len(in_place_params) != 0 and len(in_place_params) != (
                     len(return_info.elements) if isinstance(return_info, ast.TupleType) else 1
@@ -499,10 +522,14 @@ class ORTGen:
 
         if len(in_place_params) == 0:
             # tensor options
-            if set_out_tensor == 1:
-                if equal_onnxop_found == 1:
+            if set_out_tensor:
+                if cast_output_to_bool:
+                    writer.writeline("if (out.scalar_type() != at::kBool) {")
+                    writer.push_indent()
                     writer.writeline(f"auto temp = CastToType(invoker, {return_outputs}[0], out.scalar_type());")
-                    writer.writeline(f"copy(invoker, temp, ort_input_out);")
+                    writer.writeline("copy(invoker, temp, ort_input_out);")
+                    writer.pop_indent()
+                    writer.writeline("}")
 
                 writer.writeline(f"return {last_param.identifier.value};")
                 return

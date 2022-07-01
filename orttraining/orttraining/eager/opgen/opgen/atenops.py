@@ -98,6 +98,15 @@ for unary_op in [
     if unary_op not in ["isnan", "nonzero", "min", "max", "isinf", "det"]:
         ops[f"{aten_name}_"] = onnx_op
 
+#  Notes on Onnx op mapping
+#
+# Equal - Onnx spec has the return as a bool tensor, but aten will keep the tensor
+#         return type matching that of the "out" tensor if one is passed. To support this behavior
+#         the generator will add a CAST to the Equal result to match the "out" is it is not of
+#         bool type. This works in eq and ne usage below but beware of this behavior.
+#
+# ---------------------------
+
 hand_implemented = {
     "aten::abs.out": Abs("self"),
     "aten::empty.memory_format": SignatureOnly(),
