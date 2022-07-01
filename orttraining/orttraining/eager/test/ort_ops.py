@@ -254,6 +254,41 @@ class OrtOpTests(unittest.TestCase):
         self.assertEqual(cpu_tensor.size(), ort_tensor.size())
         self.assertTrue(torch.allclose(cpu_tensor, ort_tensor.cpu()))
 
+    def test_abs(self):
+        device = self.get_device()
+        cpu_tensor = torch.tensor([-1, -2, 3, -6, -7])
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_result = torch.abs(cpu_tensor)
+        ort_result = torch.abs(ort_tensor)
+
+        assert torch.equal(cpu_result, ort_result.cpu())
+
+    def test_abs_(self):
+        device = self.get_device()
+        cpu_tensor = torch.tensor([-1, -2, 3, -6, -7])
+        ort_tensor = cpu_tensor.to(device)
+
+        torch.abs_(cpu_tensor)
+        torch.abs_(ort_tensor)
+
+        assert torch.equal(cpu_tensor, ort_tensor.cpu())
+
+    def test_abs_out(self):
+        device = self.get_device()
+        cpu_tensor = torch.tensor([-1, -2, 3, -6, -7])
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_out_tensor = torch.tensor([], dtype=torch.long)
+        ort_out_tensor = cpu_out_tensor.to(device)
+
+        cpu_result = torch.abs(cpu_tensor, out=cpu_out_tensor)
+        ort_result = torch.abs(ort_tensor, out=ort_out_tensor)
+
+        assert torch.equal(cpu_result, ort_result.cpu())
+        assert torch.equal(cpu_out_tensor, ort_out_tensor.cpu())
+        assert torch.equal(ort_result.cpu(), ort_out_tensor.cpu())
+
 
 if __name__ == "__main__":
     unittest.main()
