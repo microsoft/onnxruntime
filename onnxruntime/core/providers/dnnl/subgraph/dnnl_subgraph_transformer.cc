@@ -23,6 +23,8 @@ void DnnlGraphTransformer::Apply(DnnlSubgraph& subgraph, const onnxruntime::Grap
   Gelu(subgraph, onnx_subgraph_viewer);
   FastGelu(subgraph, onnx_subgraph_viewer);
   RemoveMatMulIntegerZP(subgraph, onnx_subgraph_viewer);
+  //MatMulIntToFloat(subgraph, onnx_subgraph_viewer);
+  MatMulIntegerBinaryEltwise(subgraph);
 }
 
 //resolve a fusion by replacing old_indices nodes with a new_node
@@ -842,6 +844,172 @@ void DnnlGraphTransformer::RemoveMatMulIntegerZP(DnnlSubgraph& subgraph, const o
     b_zero_point.RemoveConsumer(DnnlNodeArg(dnnl_node, 3, false));
     //detach b_zero_point from matmulint node
     dnnl_node->Inputs()[3] = nullptr;
+  }
+}
+
+void DnnlGraphTransformer::MatMulIntToFloat(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer) {
+  //global index of convrelu
+  static int matmul_int_to_float_index = 0;
+
+  //traverse with max index as there will be empty nodes due to fusion
+  size_t max_index = subgraph.GetMaxNodeIndex();
+  for (size_t index = 0; index < max_index; index++) {
+    auto dnnl_node = subgraph.GetDnnlNode(index);
+
+    //look for conv relu pattern
+    if (dnnl_node == nullptr || dnnl_node->OpType() != "MatMulInteger") {
+      continue;
+    }
+
+    if (!IsNodeFusable(subgraph, dnnl_node)) {
+      continue;
+    }
+
+    auto next_dnnl_node = dnnl_node->Output(0).GetConsumers()[0].GetNode();
+    if (next_dnnl_node == nullptr) {
+      continue;
+    }
+    if (next_dnnl_node->OpType() != "Cast") {
+      continue;
+    }
+
+    if (!IsNodeFusable(subgraph, next_dnnl_node)) {
+      continue;
+    }
+
+    //construct new node
+    auto new_node = std::make_unique<DnnlNode>();
+    new_node->Name() = dnnl_node->Name() + "_MatMulIntToFloat_" + std::to_string(matmul_int_to_float_index++);
+    new_node->OpType() = "MatMulInteger";
+    for (auto def : dnnl_node->Inputs()) {
+      new_node->Inputs().push_back(def);
+    }
+    for (auto def : next_dnnl_node->Outputs()) {
+      new_node->Outputs().push_back(def);
+    }
+    new_node->Attributes().insert(next_dnnl_node->Attributes());
+
+    //insert new node, remove original nodes, connect new edges
+    if (debug_log_) {
+      LOGS_DEFAULT(ERROR) << "MatMulInteger fusion of [" << dnnl_node->Name() << "] and [" << next_dnnl_node->Name() << "]";
+    }
+    ResolveFusion(subgraph, {dnnl_node->Index(), next_dnnl_node->Index()}, std::move(new_node));
+  }
+}
+
+void DnnlGraphTransformer::MatMulIntegerBinaryEltwise(DnnlSubgraph& subgraph) {
+  std::unordered_set<std::string> binary_ops = {"Add", "Div", "Mul", "Sub"};
+  std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp", "LeakyRelu", "Log", "Relu",
+                                                     "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
+
+  static int fused_index = 0;
+  size_t max_index = subgraph.GetMaxNodeIndex();
+  for (size_t index = 0; index < max_index; index++) {
+    std::vector<size_t> matmul_binary_eltwize_indices = {};
+    auto dnnl_node = subgraph.GetDnnlNode(index);
+    auto attr_node = dnnl_node;
+    bool attribute_flag = false;
+
+    if (dnnl_node == nullptr || dnnl_node->OpType() != "MatMulInteger") {
+      continue;
+    }
+
+    if (!IsNodeFusable(subgraph, dnnl_node)) {
+      continue;
+    }
+
+    auto fused_node_inputs = dnnl_node->Inputs();
+    matmul_binary_eltwize_indices.push_back(dnnl_node->Index());
+
+    auto next_dnnl_node = dnnl_node->Output(0).GetConsumers()[0].GetNode();
+    if (next_dnnl_node == nullptr) {
+      continue;
+    }
+    if (next_dnnl_node->OpType() != "Cast") {
+      continue;
+    }
+
+    if (!IsNodeFusable(subgraph, next_dnnl_node)) {
+      continue;
+    }
+
+    dnnl_node = next_dnnl_node;
+    matmul_binary_eltwize_indices.push_back(dnnl_node->Index());
+
+    // Upto 32 post-ops are supported. Since the initial MatMul is not a
+    // post op we check for MAX_POST_OP_COUNT + 2
+    const size_t MAX_POST_OP_COUNT = 32;
+
+    while (matmul_binary_eltwize_indices.size() < MAX_POST_OP_COUNT + 2) {
+      if (!IsNodeFusable(subgraph, dnnl_node)) {
+        break;
+      }
+
+      auto next_dnnl_node = dnnl_node->Output(0).GetConsumers()[0].GetNode();
+      if (next_dnnl_node == nullptr) {
+        break;
+      }
+
+      auto next_type = next_dnnl_node->OpType();
+      bool is_binary_op = !(binary_ops.count(next_type) == 0);
+      bool is_eltwise_op = !(elementwise_ops.count(next_type) == 0);
+      if (!is_binary_op && !is_eltwise_op) {
+        break;
+      }
+
+      if (is_binary_op) {
+        if (dnnl_node->Output(0).Name() == next_dnnl_node->Inputs()[0]->Name()) {
+          fused_node_inputs.push_back(next_dnnl_node->Inputs()[1]);
+        } else {
+          if (next_dnnl_node->OpType() == "Div" || next_dnnl_node->OpType() == "Sub") {
+            break;
+          }
+          fused_node_inputs.push_back(next_dnnl_node->Inputs()[0]);
+        }
+      } else if (is_eltwise_op) {
+        // We only support a single node with an "alpha" attribute. If we see Elu or
+        // LeakyRelu set attr_node and attribute_flag. If the attribute_flag is set break
+        // out of the while loop looking for additional post ops. Since the next op cannot
+        // be part of the postop fusion.
+        if (next_dnnl_node->OpType() == "Elu" || next_dnnl_node->OpType() == "LeakyRelu") {
+          if (attribute_flag) break;
+          attr_node = next_dnnl_node;
+          attribute_flag = true;
+        }
+      }
+      dnnl_node = next_dnnl_node;
+      matmul_binary_eltwize_indices.push_back(dnnl_node->Index());
+    }
+
+    if (!(matmul_binary_eltwize_indices.size() > 1)) {
+      matmul_binary_eltwize_indices.clear();
+      continue;
+    }
+
+    //construct new node
+    auto fused_node = std::make_unique<DnnlNode>();
+    fused_node->Name() = "MatMulIntegerPostOps_fusion" + std::to_string(fused_index++);
+    std::string fused_node_name = "MatMulIntegerPostOps";
+    for (size_t i : matmul_binary_eltwize_indices) {
+      if (subgraph.GetDnnlNode(i)->OpType() != "MatMulInteger" && subgraph.GetDnnlNode(i)->OpType() != "Cast") {
+        fused_node->AppendPostOp(subgraph.GetDnnlNode(i)->OpType());
+      }
+    }
+    fused_node->OpType() = fused_node_name;
+    fused_node->Inputs() = fused_node_inputs;
+    fused_node->Outputs() = {dnnl_node->Outputs()[0]};
+
+    fused_node->Attributes().insert(attr_node->Attributes());
+
+    if (debug_log_) {
+      std::stringstream ss;
+      for (size_t i : matmul_binary_eltwize_indices) {
+        ss << subgraph.GetDnnlNode(i)->OpType() << "[" << subgraph.GetDnnlNode(i)->Name() << "] ";
+      }
+      LOGS_DEFAULT(ERROR) << fused_node->OpType() << "[" << fused_node->Name() << "] fusion of " << ss.str();
+    }
+    // insert new node, remove original nodes, connect new edges
+    ResolveFusion(subgraph, matmul_binary_eltwize_indices, std::move(fused_node));
   }
 }
 
