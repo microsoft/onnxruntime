@@ -41,10 +41,7 @@ jobs:
     - script: |
         set -e
         brew install sccache
-        export CC=clang
-        export CXX=clang++
         source '$(Build.SourcesDirectory)/tools/ci_build/github/apple/set_sccache.sh'
-
 
         pushd .
         cd $(Build.SourcesDirectory)/cmake/external/protobuf

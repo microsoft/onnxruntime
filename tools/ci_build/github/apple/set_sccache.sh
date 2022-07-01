@@ -18,3 +18,6 @@ if which sccache > /dev/null; then
 
   export PATH="${tmp_dir}:$PATH"
 fi
+
+export CC=clang
+export CXX=clang++
