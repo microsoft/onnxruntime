@@ -1467,7 +1467,7 @@ namespace Windows::AI::MachineLearning::Adapter
             m_abiExecutionObject = m_providerExecutionObject;
             if (m_winmlProvider)
             {
-                m_winmlProvider->GetABIExecutionInterface(isInternalOperator, m_abiExecutionObject.ReleaseAndGetAddressOf());
+                m_winmlProvider->GetABIExecutionInterfaceAndInvalidateState(isInternalOperator, m_abiExecutionObject.ReleaseAndGetAddressOf());
             }
 
             TransitionResourcesForOperatorIfRequired(true);
@@ -1737,7 +1737,7 @@ namespace Windows::AI::MachineLearning::Adapter
             if (m_winmlProvider)
             {
                 // Get the particular object to return to a isInternalOperator based on the registration of that kernel.
-                m_winmlProvider->GetABIExecutionInterface(isInternalOperator, m_abiExecutionObject.ReleaseAndGetAddressOf());
+                m_winmlProvider->GetABIExecutionInterfaceAndInvalidateState(isInternalOperator, m_abiExecutionObject.ReleaseAndGetAddressOf());
             }
         }
 
