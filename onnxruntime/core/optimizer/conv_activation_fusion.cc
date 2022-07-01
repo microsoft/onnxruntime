@@ -44,10 +44,10 @@ bool HasElementDataType(const NodeArg& node_arg, int32_t data_type) {
 }
 
 bool ConvFusionDataTypeCheck(const Node& conv_node) {
-  // TODO: The CPU and CUDA EP only support float type for the Conv+Activation
+  // TODO(hasesh): The CPU and CUDA EP only support float type for the Conv+Activation
   // and the Conv+Add+Relu fusions.
   // Assess the support level for the other compatible EPs and if they also
-  // only support float, remove the EP check altogether
+  // only support float, remove the EP check altogether.
   const std::string_view node_ep = conv_node.GetExecutionProviderType();
   if (node_ep == kCudaExecutionProvider || node_ep == kCpuExecutionProvider) {
     if (!HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
