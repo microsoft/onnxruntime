@@ -13,6 +13,9 @@ jobs:
   variables:
   - name: OnnxRuntimeBuildDirectory
     value: '$(Build.BinariesDirectory)'
+  - name: OnnxModelRootPath
+    value: '$(Build.BinariesDirectory)/model'
+
   steps:
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - Signed NuGet'

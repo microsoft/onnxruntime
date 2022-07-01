@@ -19,8 +19,8 @@ jobs:
     value: 'ON'
   - name: runCodesignValidationInjection
     value: false
-  - name: TestOnnxModelPath
-    value: 'C:\\local\\models'
+  - name: OnnxModelRootPath
+    value: '$(Build.BinariesDirectory)/model'
 
   steps:
   - task: UsePythonVersion@0
