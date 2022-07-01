@@ -418,6 +418,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 //var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opsetDir.Name));
                 foreach (var modelDir in opsetDir.EnumerateDirectories())
                 {
+                    Console.WriteLine($"modelDir.Name: {modelDir.Name}");
                     if (!skipModels.ContainsKey(modelDir.Name))
                     {
                         yield return new object[] { modelDir.Parent.Name, modelDir.Name };
