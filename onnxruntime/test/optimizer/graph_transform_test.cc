@@ -723,7 +723,7 @@ TEST_F(GraphTransformationTests, FuseCudaConvAddRelu) {
 // TODO(hasesh): Limit the test to using the CUDA EP for now as the level of
 // data type support in other compatible EPs is still yet to be ascertained.
 
-// TODO(hasesh): If it all the fp16 type is supported for the fusion, adjust/remove
+// TODO(hasesh): If at all the fp16 type is supported for the fusion, adjust/remove
 // this test.
 TEST_F(GraphTransformationTests, FuseCudaConvAddRelu_UnsupportedType) {
   auto model_uri = MODEL_FOLDER "fusion/conv_add_relu_fp16.onnx";
