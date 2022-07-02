@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 #include "contrib_ops/rocm/bert/tunable_op.h"

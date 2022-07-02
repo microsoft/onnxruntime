@@ -4,6 +4,7 @@
 #pragma once
 
 #include <iostream>
+#include <memory>
 #include <map>
 #include <string>
 #include <vector>
@@ -66,7 +67,7 @@ class TunableOp {
 
  protected:
   std::vector<std::unique_ptr<Op>> ops_;
- 
+
  private:
   int FindFastest(const OpParams* op_params_) {
     assert(ops_.size() > 0);
