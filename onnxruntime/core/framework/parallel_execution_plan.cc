@@ -236,7 +236,7 @@ struct ExecutionContext {
 
   void SetStatus(Status& status) {
     // TODO: if multiple worker report non-ok status,
-    // what is our strategy? currently we just keep 
+    // what is our strategy? currently we just keep
     // a random one. as long as it is not OK, the
     // execution will fail.
     if (task_status_.IsOK() && !status.IsOK())
@@ -326,12 +326,12 @@ struct ParallelExecutionPlanImpl {
                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                          const logging::Logger& logger,
                          const DeviceStreamColloection& device_streams,
-                         const bool& terminate_flag, 
+                         const bool& terminate_flag,
                          const bool only_execute_path_to_fetches);
 
   const std::vector<int>& GetRefCounts() const { return value_ref_counts_; }
 
-  size_t NumStreams() const { return num_logic_streams_;}
+  size_t NumStreams() const { return num_logic_streams_; }
 
   void ScheduleDownstream(ExecutionContext& ctx, onnxruntime::NotificationIndex notification_index);
 
@@ -350,7 +350,7 @@ struct ParallelExecutionPlanImpl {
   std::unordered_map<onnxruntime::OrtValueIndex, onnxruntime::NodeIndex> value_node_map_;
   ProviderStreamMap provider_stream_map_;
   OpStreamMap op_stream_map_;
-  std::vector<std::vector<std::string>> streams_log_;   // save up nodes per stream for logging
+  std::vector<std::vector<std::string>> streams_log_;  // save up nodes per stream for logging
 
   int num_barriers_{};
   std::unordered_map<onnxruntime::NotificationIndex, std::vector<std::pair<int, int>>> downstream_map_;
@@ -365,8 +365,8 @@ struct ParallelExecutionPlanImpl {
 
 //todo: remove dependency on session_state
 
-common::Status ParallelExecutionPlanImpl::BindToDeviceStream(Stream* parent_stream, 
-    DeviceStreamColloection& device_stream_map) const {
+common::Status ParallelExecutionPlanImpl::BindToDeviceStream(Stream* parent_stream,
+                                                             DeviceStreamColloection& device_stream_map) const {
   for (size_t i = 0; i < logic_streams_.size(); ++i) {
     auto& logic_stream = logic_streams_[i];
     if (logic_stream->commands_.size() > 0) {
@@ -386,8 +386,7 @@ common::Status ParallelExecutionPlanImpl::BindToDeviceStream(Stream* parent_stre
                     ", this is not supported yet.");
         }
         device_stream_map.SetDeviceStream(i, parent_stream);
-      }
-      else if (create_stream_fn) {
+      } else if (create_stream_fn) {
         auto device_stream = create_stream_fn(logic_stream->ep_);
         device_stream_map.SetDeviceStream(i, std::move(device_stream));
       } else {
@@ -411,7 +410,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
 
   // instantiate logic streams
 
-  class StreamRange { //iterate between [from,to)
+  class StreamRange {  //iterate between [from,to)
    public:
     StreamRange(int from, int to) : from_(from), to_(to){};
     int next() {
@@ -425,6 +424,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
     StreamRange(StreamRange&&) = default;
     StreamRange& operator=(const StreamRange&) = default;
     StreamRange& operator=(StreamRange&&) = default;
+
    private:
     int from_{};
     int to_{};
@@ -457,9 +457,9 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
 
   num_logic_streams_ = stream_idx;
   const auto& graph_viewer = session_state_.GetGraphViewer();
-  
+
   //1. partition the nodes into streams
-  std::unique_ptr<std::vector<NodeIndex>[]> nodes_in_stream { new std::vector<NodeIndex>[num_logic_streams_] };
+  std::unique_ptr<std::vector<NodeIndex>[]> nodes_in_stream { new std::vector<NodeIndex>[ num_logic_streams_ ] };
   std::unique_ptr<size_t[]> node_stream_map{new size_t[graph_viewer.MaxNodeIndex()]};
   for (auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
     const auto* node = graph_viewer.GetNode(node_index);
@@ -501,8 +501,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
       const IExecutionProvider* ep = session_state.GetExecutionProviders().Get(exec_provider_name);
       if (logic_streams_[node_stream_map[node_index]]->ep_) {
         ORT_ENFORCE(logic_streams_[node_stream_map[node_index]]->ep_ == ep);
-      } 
-      else {
+      } else {
         logic_streams_[node_stream_map[node_index]]->ep_ = ep;
       }
     }
@@ -630,7 +629,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
   int num_ml_values = value_map.MaxIdx() + 1;
   std::unordered_set<int> node_outputs;
   value_ref_counts_.resize(num_ml_values);
-  
+
   for (auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
     auto* node = graph_viewer.GetNode(node_index);
     const auto& output_defs = node->OutputDefs();
@@ -709,7 +708,7 @@ common::Status ParallelExecutionPlanImpl::Execute(const SessionState& session_st
                        fetches,
                        fetch_allocators,
                        num_barriers_,
-                       logger, 
+                       logger,
                        device_streams,
                        terminate_flag);
 
@@ -748,7 +747,7 @@ common::Status ParallelExecutionPlan::Execute(const SessionState& session_state,
                                               const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                               const logging::Logger& logger,
                                               const DeviceStreamColloection& device_streams,
-                                              const bool& terminate_flag, 
+                                              const bool& terminate_flag,
                                               const bool only_execute_path_to_fetches) {
   return impl_->Execute(session_state, feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, logger, device_streams, terminate_flag, only_execute_path_to_fetches);
 }
@@ -757,8 +756,8 @@ const std::vector<AllocPlanPerValue>& ParallelExecutionPlan::GetAllocPlanPerValu
   return this->allocation_plan;
 }
 
-const std::vector<int>& ParallelExecutionPlan::GetRefCounts() const { 
-    return impl_->value_ref_counts_; 
+const std::vector<int>& ParallelExecutionPlan::GetRefCounts() const {
+  return impl_->value_ref_counts_;
 }
 
 const std::unordered_map<size_t, size_t>& ParallelExecutionPlan::GetValueToStreamMap() const {
@@ -910,11 +909,10 @@ void ParallelExecutionPlan::GenerateReusePlan(const ISequentialPlannerContext& c
     auto* node = graph_viewer.GetNode(node_index);
 
     for (int output_arg_num = 0; output_arg_num < node->OutputDefs().size(); output_arg_num++) {
-
       auto p_output_arg = node->OutputDefs()[output_arg_num];
       OrtValueIndex output_idx_global{};
 
-      if (!value_map.GetIdx(p_output_arg->Name(), output_idx_global).IsOK() || 
+      if (!value_map.GetIdx(p_output_arg->Name(), output_idx_global).IsOK() ||
           allcation_plan[output_idx_global].alloc_kind != AllocKind::kAllocate) {
         continue;
       }
@@ -946,7 +944,7 @@ void ParallelExecutionPlan::GenerateReusePlan(const ISequentialPlannerContext& c
             auto p_input_arg = input_args[pair.first];
             if (p_input_arg->Exists()) {
               OrtValueIndex reusable_input{};
-              if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() && 
+              if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() &&
                   allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate) {
                 // LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
                 std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
@@ -969,7 +967,6 @@ void ParallelExecutionPlan::GenerateReusePlan(const ISequentialPlannerContext& c
 
       const auto& variadic_alias_offsets = ci.kernel_def->VariadicAlias();
       if (variadic_alias_offsets.has_value()) {
-
         int input_offset = variadic_alias_offsets->first;
         int output_offset = variadic_alias_offsets->second;
         int alias_input_index = output_arg_num - output_offset + input_offset;
@@ -981,7 +978,6 @@ void ParallelExecutionPlan::GenerateReusePlan(const ISequentialPlannerContext& c
             OrtValueIndex reusable_input{};
             if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() &&
                 allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate) {
-
               // LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
               std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
               allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
@@ -1004,7 +1000,6 @@ void ParallelExecutionPlan::GenerateReusePlan(const ISequentialPlannerContext& c
               OrtValueIndex input_arg_index{};
               if (value_map.GetIdx(p_input_arg->Name(), input_arg_index).IsOK() &&
                   allocation_plan[input_arg_index].alloc_kind == AllocKind::kAllocate) {
-
                 if (impl_->value_consumer_map_[input_arg_index].size() == 1 && SameSize(context, *p_input_arg, *p_output_arg)) {
                   LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as an input" << std::endl;
                   std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as an input" << std::endl;
@@ -1110,7 +1105,7 @@ void ParallelExecutionPlan::GenerateReusePlan(const ISequentialPlannerContext& c
             if (size_iter->second.empty()) {
               local_iter->second.erase(size_iter);
             }
-            break; // only resued once
+            break;  // only resued once
           } else {
             // dependents not fully covered, cannot reuse, try next one in waiting_list
             node_iter = next(node_iter);
@@ -1143,11 +1138,6 @@ void ParallelExecutionPlan::GenerateReusePlan(const ISequentialPlannerContext& c
 }
 
 //////////////////////////////////////////////////// REFACTORED CLASSES /////////////////////////////////////////////////////////////
-/*
-1. struct ExecutionPlan, containing logic streams, per-value allocation plan and release plan
-2. ExcutionPlanner, fill up an ExecutionPlan with valid logic streams ...
-3. ExcutorPlanExecutor, run the ExecutionPlan
-*/
 
 struct ExecutionPlanContext;
 using LogicStreamOffset = std::pair<int, int>;
@@ -1162,7 +1152,7 @@ struct ExecutionPlan {
   int num_barriers_{};
 
   void ScheduleDownstream(ExecutionPlanContext& ctx, onnxruntime::NotificationIndex notification_index);
-  
+
   //{
   //  auto* tp = ctx.session_state->GetInterOpThreadPool();
   //  auto* ctx_ptr = &ctx;
@@ -1303,8 +1293,7 @@ struct ExecutionPlanContext {
   }
 };
 
-struct ExecutionPlanner {
-
+struct ExecutionPlannerImpl {
   const Node* parent_node_;
   const onnxruntime::GraphViewer& graph_viewer_;
   const std::vector<const NodeArg*>& outer_scope_node_args_;
@@ -1313,39 +1302,40 @@ struct ExecutionPlanner {
   const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps_;
   const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map_;
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
-  const ISequentialPlannerContext& context_;
   std::vector<int> value_ref_counts_;
   InlinedHashMap<onnxruntime::NodeIndex, InlinedHashSet<onnxruntime::NodeIndex>> dependence_graph_;
   std::unordered_map<onnxruntime::OrtValueIndex, onnxruntime::NodeIndex> value_node_map_;
+  IStreamCommandHandleRegistry& stream_handle_registry_;
+  const ProviderStreamMap& provider_stream_map_;
+  const OpStreamMap& op_stream_map_;
+  const ISequentialPlannerContext& context_;
 
-  ExecutionPlanner(const Node* parent_node,
-                   const onnxruntime::GraphViewer& graph_viewer,
-                   const std::vector<const NodeArg*>& outer_scope_node_args,
-                   const ExecutionProviders& providers,
-                   const KernelCreateInfoMap& kernel_create_info_map,
-                   const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
-                   const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
-                   const OrtValueNameIdxMap& ort_value_name_idx_map,
-                   const ISequentialPlannerContext& context) : parent_node_(parent_node),
-                                                               graph_viewer_(graph_viewer),
-                                                               outer_scope_node_args_(outer_scope_node_args),
-                                                               execution_providers_(providers),
-                                                               kernel_create_info_map_(kernel_create_info_map),
-                                                               subgraphs_kernel_create_info_maps_(subgraphs_kernel_create_info_maps),
-                                                               outer_scope_node_arg_to_location_map_(outer_scope_node_arg_to_location_map),
-                                                               ort_value_name_idx_map_(ort_value_name_idx_map),
-                                                               context_(context) {}
+  ExecutionPlannerImpl(const Node* parent_node,
+                       const onnxruntime::GraphViewer& graph_viewer,
+                       const std::vector<const NodeArg*>& outer_scope_node_args,
+                       const ExecutionProviders& providers,
+                       const KernelCreateInfoMap& kernel_create_info_map,
+                       const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
+                       const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
+                       const OrtValueNameIdxMap& ort_value_name_idx_map,
+                       IStreamCommandHandleRegistry& stream_handle_registry,
+                       const ProviderStreamMap& provider_stream_map,
+                       const OpStreamMap& op_stream_map,
+                       const ISequentialPlannerContext& context) : parent_node_(parent_node),
+                                                                   graph_viewer_(graph_viewer),
+                                                                   outer_scope_node_args_(outer_scope_node_args),
+                                                                   execution_providers_(providers),
+                                                                   kernel_create_info_map_(kernel_create_info_map),
+                                                                   subgraphs_kernel_create_info_maps_(subgraphs_kernel_create_info_maps),
+                                                                   outer_scope_node_arg_to_location_map_(outer_scope_node_arg_to_location_map),
+                                                                   ort_value_name_idx_map_(ort_value_name_idx_map),
+                                                                   stream_handle_registry_(stream_handle_registry),
+                                                                   provider_stream_map_(provider_stream_map),
+                                                                   op_stream_map_(op_stream_map),
+                                                                   context_(context) {}
 
-  onnxruntime::Status CreatePlan(/*const SessionState& session_state, */
-                                 IStreamCommandHandleRegistry& stream_handle_registry,
-                                 const ProviderStreamMap& provider_stream_map,
-                                 const OpStreamMap& op_stream_map,
-                                 ExecutionPlan& plan) {
-
-    //const auto& ort_value_name_idx_map_ = session_state.GetOrtValueNameIdxMap();
-    //const auto& execution_providers = session_state.GetExecutionProviders();
-    //const auto& kernel_create_info_map = session_state.GetKernelCreateInfoMap();
-
+  std::unique_ptr<ExecutionPlan> Create() {
+    auto plan = std::make_unique<ExecutionPlan>();
     std::vector<std::vector<std::string>> streams_log;
     std::unordered_map<NodeIndex, size_t> node_to_stream_map;
     std::unordered_map<onnxruntime::NodeIndex, std::vector<onnxruntime::OrtValueIndex>> node_value_map;
@@ -1376,20 +1366,20 @@ struct ExecutionPlanner {
     int stream_idx = 0;
 
     std::map<std::string, std::unique_ptr<StreamRange>> stream_map;
-    for (const auto& iter : provider_stream_map) {
+    for (const auto& iter : provider_stream_map_) {
       const auto& provider_name = iter.first;
       int num_streams = iter.second;
       int prev_stream_idx = stream_idx;
       for (int i = 0; i < num_streams; ++i) {
-        plan.logic_streams_.push_back(std::make_unique<LogicStream>());
+        plan->logic_streams_.push_back(std::make_unique<LogicStream>());
         streams_log.push_back(std::vector<std::string>{});  // todo - replace this with logger
         stream_idx++;
       }
       stream_map.insert({provider_name, std::make_unique<StreamRange>(prev_stream_idx, stream_idx)});
     }
 
-    for (const auto& iter : op_stream_map) {
-      plan.logic_streams_.push_back(std::make_unique<LogicStream>());
+    for (const auto& iter : op_stream_map_) {
+      plan->logic_streams_.push_back(std::make_unique<LogicStream>());
       streams_log.push_back(std::vector<std::string>{});  // todo - replace this with logger
       for (const auto& op : iter) {
         stream_map.insert({op, std::make_unique<StreamRange>(stream_idx, stream_idx + 1)});
@@ -1440,20 +1430,20 @@ struct ExecutionPlanner {
         auto* node = graph_viewer_.GetNode(node_index);
         onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
         const IExecutionProvider* ep = execution_providers_.Get(exec_provider_name);
-        if (plan.logic_streams_[node_stream_map[node_index]]->ep_) {
-          ORT_ENFORCE(plan.logic_streams_[node_stream_map[node_index]]->ep_ == ep);
+        if (plan->logic_streams_[node_stream_map[node_index]]->ep_) {
+          ORT_ENFORCE(plan->logic_streams_[node_stream_map[node_index]]->ep_ == ep);
         } else {
-          plan.logic_streams_[node_stream_map[node_index]]->ep_ = ep;
+          plan->logic_streams_[node_stream_map[node_index]]->ep_ = ep;
         }
       }
     }
     //4. set notification owners
-    plan.notification_owners_.resize(num_notifications);
+    plan->notification_owners_.resize(num_notifications);
     for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
       auto it = node_to_notification.find(node_index);
       if (it != node_to_notification.end()) {
         // notification owned by the node who produced it.
-        plan.notification_owners_[it->second] = node_stream_map[node_index];
+        plan->notification_owners_[it->second] = node_stream_map[node_index];
       }
     }
     //5. add commands to logic queue
@@ -1474,20 +1464,20 @@ struct ExecutionPlanner {
             ORT_ENFORCE(notfication_it != node_to_notification.end());
             NotificationIndex notification_index = notfication_it->second;
             // push a barrier
-            int barrier_id = plan.num_barriers_++;
-            plan.downstream_map_[notification_index].push_back({i, static_cast<int>(plan.logic_streams_[i]->commands_.size())});
-            plan.logic_streams_[i]->commands_.push_back([barrier_id](void* ctx, bool& continue_flag) {
+            int barrier_id = plan->num_barriers_++;
+            plan->downstream_map_[notification_index].push_back({i, static_cast<int>(plan->logic_streams_[i]->commands_.size())});
+            plan->logic_streams_[i]->commands_.push_back([barrier_id](void* ctx, bool& continue_flag) {
               ExecutionPlanContext* execution_context = reinterpret_cast<ExecutionPlanContext*>(ctx);
               continue_flag = execution_context->DecCountDownBarrier(barrier_id);
               return Status::OK();
             });
             // push a wait command if has EP registered it.
-            auto wait_handle = stream_handle_registry.GetWaitHandle(
-                plan.logic_streams_[plan.notification_owners_[notfication_it->second]]->ep_->Type(),
+            auto wait_handle = stream_handle_registry_.GetWaitHandle(
+                plan->logic_streams_[plan->notification_owners_[notfication_it->second]]->ep_->Type(),
                 node->GetExecutionProviderType());
             if (wait_handle) {
               const std::string& upstream_node_name = it->Name();
-              plan.logic_streams_[i]->commands_.push_back([wait_handle, cur_stream_idx, notification_index, i, node, upstream_node_name](void* ctx, bool& continue_flag) {
+              plan->logic_streams_[i]->commands_.push_back([wait_handle, cur_stream_idx, notification_index, i, node, upstream_node_name](void* ctx, bool& continue_flag) {
                 ExecutionPlanContext* execution_context = reinterpret_cast<ExecutionPlanContext*>(ctx);
                 wait_handle(*execution_context->GetDeviceStream(cur_stream_idx), *execution_context->notifications_[notification_index]);
                 // update streams clock status
@@ -1506,7 +1496,7 @@ struct ExecutionPlanner {
           dependence_graph_[it->Index()].insert(node_index);
         }
         // push launch kernel command
-        plan.logic_streams_[i]->commands_.push_back([this, node, node_index, cur_stream_idx, i](void* ctx, bool& continue_flag) {
+        plan->logic_streams_[i]->commands_.push_back([this, node, node_index, cur_stream_idx, i](void* ctx, bool& continue_flag) {
           ExecutionPlanContext* execution_context = reinterpret_cast<ExecutionPlanContext*>(ctx);
           ORT_RETURN_IF_ERROR(execution_context->ExecuteKernel(node_index, cur_stream_idx));
           return Status::OK();
@@ -1515,7 +1505,7 @@ struct ExecutionPlanner {
         auto notification_it = node_to_notification.find(node_index);
         if (notification_it != node_to_notification.end()) {
           NotificationIndex notification_index = notification_it->second;
-          plan.logic_streams_[i]->commands_.push_back([notification_index, i, node](void* ctx, bool& continue_flag) {
+          plan->logic_streams_[i]->commands_.push_back([notification_index, i, node](void* ctx, bool& continue_flag) {
             ExecutionPlanContext* execution_context = reinterpret_cast<ExecutionPlanContext*>(ctx);
             if (execution_context->notifications_[notification_index]) {
               execution_context->notifications_[notification_index]->ActivateAndUpdate();
@@ -1525,9 +1515,9 @@ struct ExecutionPlanner {
             return Status::OK();
           });
           // notify downstreams
-          plan.logic_streams_[i]->commands_.push_back([this, notification_index, &plan](void* ctx, bool& continue_flag) {
+          plan->logic_streams_[i]->commands_.push_back([this, notification_index, &plan](void* ctx, bool& continue_flag) {
             ExecutionPlanContext* execution_context = reinterpret_cast<ExecutionPlanContext*>(ctx);
-            plan.ScheduleDownstream(*execution_context, notification_index);
+            plan->ScheduleDownstream(*execution_context, notification_index);
             continue_flag = true;
             return Status::OK();
           });
@@ -1562,7 +1552,7 @@ struct ExecutionPlanner {
         if (input_arg->Exists()) {
           OrtValueIndex input_idx_global;
           ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(input_arg->Name(), input_idx_global));
-          plan.value_consumer_map_[input_idx_global].insert(node_index);
+          plan->value_consumer_map_[input_idx_global].insert(node_index);
           if (node_outputs.find(input_idx_global) != node_outputs.end()) {
             value_ref_counts_[input_idx_global]++;
             node_value_map[node_index].push_back(input_idx_global);
@@ -1572,11 +1562,15 @@ struct ExecutionPlanner {
     }
 
     // 7. set per-value memory location
-    ORT_RETURN_IF_ERROR(SetValueLocation(plan));
+    if (!SetValueLocation(*plan).IsOK()) {
+      ORT_THROW("Failed to set local for each ort value");
+    }
 
     // 8. set per-value alloc plan
-    ORT_RETURN_IF_ERROR(SetAllocPlan(plan));
- 
+    if (!SetAllocPlan(*plan.get()).IsOK()) {
+      ORT_THROW("Failed to set alloc plan for each ort value");
+    }
+
     //TODO: move this to logger
     //for (int i = 0; i < streams_log.size(); ++i) {
     //  if (streams_log[i].empty()) {
@@ -1589,7 +1583,7 @@ struct ExecutionPlanner {
     //  }
     //}
 
-    return Status::OK();
+    return plan;
   }
 
   static const KernelCreateInfo& GetKernelCreateInfo(
@@ -1996,7 +1990,7 @@ struct ExecutionPlanner {
     return Status::OK();
   }
 
-  onnxruntime::Status TryReuseTensor (ExecutionPlan& plan) {
+  onnxruntime::Status TryReuseTensor(ExecutionPlan& plan) {
     InlinedHashMap<NodeIndex, int> dependents;
     for (const auto& it : dependence_graph_) {
       for (NodeIndex node_index : it.second) {
@@ -2273,7 +2267,40 @@ struct ExecutionPlanner {
       }
     }
   }
-}; // struct ExecutionPlanner
+};  // struct ExecutionPlannerImpl
+
+ExecutionPlanner::ExecutionPlanner(const Node* parent_node,
+                                   const onnxruntime::GraphViewer& graph_viewer,
+                                   const std::vector<const NodeArg*>& outer_scope_node_args,
+                                   const ExecutionProviders& providers,
+                                   const KernelCreateInfoMap& kernel_create_info_map,
+                                   const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
+                                   const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
+                                   const OrtValueNameIdxMap& ort_value_name_idx_map,
+                                   IStreamCommandHandleRegistry& stream_handle_registry,
+                                   const ProviderStreamMap& provider_stream_map,
+                                   const OpStreamMap& op_stream_map,
+                                   const ISequentialPlannerContext& context) {
+  // init planner
+  planner_impl_ = std::make_unique<ExecutionPlannerImpl>(parent_node,
+                                                         graph_viewer,
+                                                         outer_scope_node_args,
+                                                         providers,
+                                                         kernel_create_info_map,
+                                                         subgraphs_kernel_create_info_maps,
+                                                         outer_scope_node_arg_to_location_map,
+                                                         ort_value_name_idx_map,
+                                                         stream_handle_registry,
+                                                         provider_stream_map,
+                                                         op_stream_map,
+                                                         context);
+}
+
+ExecutionPlanner::~ExecutionPlanner() {}
+
+std::unique_ptr<ExecutionPlan> ExecutionPlanner::Create() {
+  return planner_impl_->Create();
+}
 
 void ExecutionPlan::ScheduleDownstream(ExecutionPlanContext& ctx, onnxruntime::NotificationIndex notification_index) {
   auto* ctx_ptr = &ctx;
@@ -2321,38 +2348,37 @@ void LogicStream::RunSince(ExecutionPlanContext& ctx, size_t since) {
   return;
 }
 
-struct ExecutionPlanExecutor {
-  onnxruntime::Status Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
-                              const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
-                              std::vector<OrtValue>& fetches,
-                              const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                              const logging::Logger& logger,
-                              const DeviceStreamColloection& device_streams,
-                              const bool& terminate_flag,
-                              const bool only_execute_path_to_fetches) {
-
-    if (only_execute_path_to_fetches) {
-      ORT_THROW("NOT IMPLEMENTED YET.");
-    }
-
-    ExecutionPlan& plan = *session_state.GetTheExecutionPlan();
-    auto frame = std::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state, &device_streams.GetStreams());
-    ExecutionPlanContext context(session_state, plan, *frame, session_state.Logger(), device_streams, terminate_flag);
-    auto* tp = session_state.GetInterOpThreadPool();
-
-    for (int i = 0; i < plan.logic_streams_.size(); ++i) {
-      if (!plan.logic_streams_[i]->commands_.empty()) {
-        concurrency::ThreadPool::Schedule(tp, [i, this, &context, &plan]() {
-          plan.logic_streams_[i]->RunSince(context, 0);
-        });
-      }
-    }
-
-    context.WaitAll();
-    ORT_RETURN_IF_ERROR(context.task_status_);
-    ORT_RETURN_IF_ERROR(frame->GetOutputs(fetches));
-    return Status::OK();
+onnxruntime::Status ExecutionPlanExecutor::Execute(const SessionState& session_state,
+                                                   const std::vector<int>& feed_mlvalue_idxs,
+                                                   const std::vector<OrtValue>& feeds,
+                                                   const std::vector<int>& fetch_mlvalue_idxs,
+                                                   std::vector<OrtValue>& fetches,
+                                                   const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                                   const logging::Logger& logger,
+                                                   const DeviceStreamColloection& device_streams,
+                                                   const bool& terminate_flag,
+                                                   const bool only_execute_path_to_fetches) {
+  if (only_execute_path_to_fetches) {
+    ORT_THROW("NOT IMPLEMENTED YET.");
   }
-};
+
+  ExecutionPlan& plan = *session_state.GetTheExecutionPlan();
+  ExecutionFrame frame(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state, &device_streams.GetStreams());
+  ExecutionPlanContext context(session_state, plan, frame, session_state.Logger(), device_streams, terminate_flag);
+  auto* tp = session_state.GetInterOpThreadPool();
+
+  for (int i = 0; i < plan.logic_streams_.size(); ++i) {
+    if (!plan.logic_streams_[i]->commands_.empty()) {
+      concurrency::ThreadPool::Schedule(tp, [i, this, &context, &plan]() {
+        plan.logic_streams_[i]->RunSince(context, 0);
+      });
+    }
+  }
+
+  context.WaitAll();
+  ORT_RETURN_IF_ERROR(context.task_status_);
+  ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
+  return Status::OK();
+}
 
 }  // namespace onnxruntime
