@@ -62,14 +62,10 @@ class TunableOp {
     ops_[id]->Run(op_params_);
   }
 
-  virtual ~TunableOp() {
-    for (auto& op : ops_) {
-      delete op;
-    }
-  }
+  virtual ~TunableOp() {}
 
  protected:
-  std::vector<Op*> ops_;
+  std::vector<std::unique_ptr<Op>> ops_;
  
  private:
   int FindFastest(const OpParams* op_params_) {

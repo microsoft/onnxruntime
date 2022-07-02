@@ -40,11 +40,11 @@ class VectorAddOp : public Op {
   }
 };
 
-#define ADD_OP(threads_per_block)                              \
-  ops_.push_back(new VectorAddOp<T, threads_per_block, 1>());  \
-  ops_.push_back(new VectorAddOp<T, threads_per_block, 2>());  \
-  ops_.push_back(new VectorAddOp<T, threads_per_block, 4>());  \
-  ops_.push_back(new VectorAddOp<T, threads_per_block, 8>()); 
+#define ADD_OP(threads_per_block)                                              \
+  ops_.push_back(std::make_unique<VectorAddOp<half, threads_per_block, 1>>()); \
+  ops_.push_back(std::make_unique<VectorAddOp<half, threads_per_block, 2>>()); \
+  ops_.push_back(std::make_unique<VectorAddOp<half, threads_per_block, 4>>()); \
+  ops_.push_back(std::make_unique<VectorAddOp<half, threads_per_block, 8>>());
 
 template <typename T>
 class VectorAddTunableOp : public TunableOp {
