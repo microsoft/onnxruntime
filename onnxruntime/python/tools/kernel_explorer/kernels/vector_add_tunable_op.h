@@ -3,11 +3,14 @@
 
 #pragma once
 
+#include <string>
 #include <vector>
-#include "tunable_op.h"
-#include "vector_add_kernel.h"
+#include "contrib_ops/rocm/bert/tunable_op.h"
+#include "kernels/vector_add_kernel.h"
 
-using namespace onnxruntime::contrib::rocm;
+using onnxruntime::contrib::rocm::OpParams;
+using onnxruntime::contrib::rocm::Op;
+using onnxruntime::contrib::rocm::TunableOp;
 
 template<typename T>
 struct VectorAddParams : OpParams {
@@ -30,14 +33,17 @@ class VectorAddOp : public Op {
 
   void Run(const OpParams* op_params) {
     const VectorAddParams<T>* vector_add_params = static_cast<const VectorAddParams<T>*>(op_params);
-    LaunchVectorAdd<T, ThreadsPerBlock, VecSize>(vector_add_params->x, vector_add_params->y, vector_add_params->z, vector_add_params->n);
-  } 
+    LaunchVectorAdd<T, ThreadsPerBlock, VecSize>(vector_add_params->x,
+                                                 vector_add_params->y,
+                                                 vector_add_params->z,
+                                                 vector_add_params->n);
+  }
 };
 
-#define ADD_OP(threads_per_block)                             \
-  ops_.push_back(new VectorAddOp<T, threads_per_block, 1>()); \
-  ops_.push_back(new VectorAddOp<T, threads_per_block, 2>()); \
-  ops_.push_back(new VectorAddOp<T, threads_per_block, 4>()); \
+#define ADD_OP(threads_per_block)                              \
+  ops_.push_back(new VectorAddOp<T, threads_per_block, 1>());  \
+  ops_.push_back(new VectorAddOp<T, threads_per_block, 2>());  \
+  ops_.push_back(new VectorAddOp<T, threads_per_block, 4>());  \
   ops_.push_back(new VectorAddOp<T, threads_per_block, 8>()); 
 
 template <typename T>

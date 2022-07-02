@@ -5,9 +5,9 @@
 
 #include <iostream>
 #include <map>
-#include <vector>
 #include <string>
-#include "timer.h"
+#include <vector>
+#include "contrib_ops/rocm/bert/timer.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -70,13 +70,14 @@ class TunableOp {
 
  protected:
   std::vector<Op*> ops_;
-  
+ 
  private:
   int FindFastest(const OpParams* op_params_) {
-    float min_time = ops_[0]->Profile(op_params_); 
+    assert(ops_.size() > 0);
+    float min_time = ops_[0]->Profile(op_params_);
     int id = 0;
     for (int i = 1; i < ops_.size(); i++) {
-      float time = ops_[i]->Profile(op_params_); 
+      float time = ops_[i]->Profile(op_params_);
       if (time < min_time) {
         min_time = time;
         id = i;

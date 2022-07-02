@@ -3,8 +3,8 @@
 
 #include <pybind11/pybind11.h>
 #include "hip/hip_fp16.h"
-#include "vector_add_kernel.h"
-#include "vector_add_tunable_op.h"
+#include "kernels/vector_add_kernel.h"
+#include "kernels/vector_add_tunable_op.h"
 
 namespace py = pybind11;
 

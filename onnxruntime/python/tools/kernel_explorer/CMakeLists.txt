@@ -18,10 +18,11 @@ list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_ROCM_HOME} ${onnxruntime_ROCM_HOME}/
 find_package(hip)
 find_package(PythonLibs 3.8 EXACT REQUIRED)
 
-set(onnxruntime_BERT_DIR ../../../../onnxruntime/contrib_ops/rocm/bert/)
+set(onnxruntime_DIR ../../../../onnxruntime/)
+set(onnxruntime_BERT_DIR ${onnxruntime_DIR}/contrib_ops/rocm/bert/)
 include_directories(${PYTHON_INCLUDE_DIRS})
 include_directories(${pybind11_INCLUDE_DIRS})
-include_directories(${onnxruntime_BERT_DIR})
+include_directories(${onnxruntime_DIR})
 include_directories(.)
 
 FILE(GLOB kernel_srcs kernels/*.cc)
