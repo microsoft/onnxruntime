@@ -260,13 +260,14 @@ void Print(const std::string& type, const std::vector<AllocPlanPerValue>& alloc_
 }
 
 const std::vector<AllocPlanPerValue>& SessionState::GetPerAllocPlan() const {
-  if (p_para_exec_plan_) {
-    // Print("seq plan", p_seq_exec_plan_->allocation_plan);
-    // Print("para plan", p_para_exec_plan_->GetAllocPlanPerValue());
-    return p_para_exec_plan_->GetAllocPlanPerValue();
-  } else {
-    return p_seq_exec_plan_->allocation_plan;
-  }
+  //if (p_para_exec_plan_) {
+  //  // Print("seq plan", p_seq_exec_plan_->allocation_plan);
+  //  // Print("para plan", p_para_exec_plan_->GetAllocPlanPerValue());
+  //  return p_para_exec_plan_->GetAllocPlanPerValue();
+  //} else {
+  //  return p_seq_exec_plan_->allocation_plan;
+  //}
+  return p_exec_plan_->GetAllocationPlan();
 }
 
 Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d,
@@ -1521,18 +1522,45 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     return op_stream_map;
   };
 
-  p_para_exec_plan_ = std::make_unique<ParallelExecutionPlan>(*this, provider_stream_map, read_op_map_from_str(session_options.grouped_ops));
-
   ParalllelPlannerContext para_context;
-  std::unique_ptr<SequentialExecutionPlan> tmp_para_exec_plan_wrapper(p_para_exec_plan_.get());
-  ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
-                                                    execution_providers_, kernel_create_info_map_,
-                                                    subgraphs_kernel_create_info_maps,
-                                                    outer_scope_node_arg_to_location_map,
-                                                    ort_value_name_idx_map_, para_context, tmp_para_exec_plan_wrapper));
-  tmp_para_exec_plan_wrapper.release();
-  p_para_exec_plan_->GenerateReusePlan(para_context);
-  LOGS(logger_, INFO) << "p_para_exec_plan initialized";
+  ExecutionPlanner planner(parent_node,
+                           *graph_viewer_,
+                           valid_outer_scope_node_args,
+                           execution_providers_,
+                           kernel_create_info_map_,
+                           subgraphs_kernel_create_info_maps,
+                           outer_scope_node_arg_to_location_map,
+                           ort_value_name_idx_map_,
+                           GetStreamHandleRegistryInstance(),
+                           provider_stream_map,
+                           read_op_map_from_str(session_options.grouped_ops),
+                           para_context);
+  p_exec_plan_ = planner.CreatePlan();
+  LOGS(logger_, INFO) << "p_exec_plan initialized";
+
+  //const Node* parent_node,
+  //                 const GraphViewer& graph_viewer,
+  //                 const std::vector<const NodeArg*>& outer_scope_node_args,
+  //                 const ExecutionProviders& providers,
+  //                 const KernelCreateInfoMap& kernel_create_info_map,
+  //                 const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
+  //                 const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
+  //                 const OrtValueNameIdxMap& ort_value_name_idx_map,
+  //                 IStreamCommandHandleRegistry& stream_handle_registry,
+  //                 const ProviderStreamMap& provider_stream_map,
+  //                 const OpStreamMap& op_stream_map,
+  //                 const ISequentialPlannerContext& context);
+
+  //p_para_exec_plan_ = std::make_unique<ParallelExecutionPlan>(*this, provider_stream_map, read_op_map_from_str(session_options.grouped_ops));
+  //std::unique_ptr<SequentialExecutionPlan> tmp_para_exec_plan_wrapper(p_para_exec_plan_.get());
+  //ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
+  //                                                  execution_providers_, kernel_create_info_map_,
+  //                                                  subgraphs_kernel_create_info_maps,
+  //                                                  outer_scope_node_arg_to_location_map,
+  //                                                  ort_value_name_idx_map_, para_context, tmp_para_exec_plan_wrapper));
+  //tmp_para_exec_plan_wrapper.release();
+  //p_para_exec_plan_->GenerateReusePlan(para_context);
+  //LOGS(logger_, INFO) << "p_para_exec_plan initialized";
 
   // Record the allocation plan
 

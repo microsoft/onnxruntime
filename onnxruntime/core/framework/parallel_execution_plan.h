@@ -70,11 +70,23 @@ class ParallelExecutionPlan : public SequentialExecutionPlan {
 2. ExcutionPlanner, fill up an ExecutionPlan with valid logic streams ...
 3. ExcutorPlanExecutor, run the ExecutionPlan
 */
-struct ExecutionPlan;
+struct ExecutionPlanImpl;
 struct ExecutionPlannerImpl;
 class Node;
 class GraphViewer;
 class ExecutionProviders;
+
+struct ExecutionPlan {
+  ExecutionPlan();
+  ~ExecutionPlan();
+  size_t NumStreams() const;
+  common::Status BindToDeviceStream(Stream* parent_stream,
+                                    DeviceStreamColloection& device_stream_map,
+                                    IStreamCommandHandleRegistry& stream_handle_registry) const;
+  const std::vector<AllocPlanPerValue>& GetAllocationPlan();
+  const std::unordered_map<size_t, size_t>& GetValueToStreamMap() const;
+  std::unique_ptr<ExecutionPlanImpl> impl_;
+};
 
 struct ExecutionPlanner {
   ExecutionPlanner(const Node* parent_node,
@@ -92,7 +104,7 @@ struct ExecutionPlanner {
 
   ~ExecutionPlanner();
 
-  std::unique_ptr<ExecutionPlan> Create();
+  std::unique_ptr<ExecutionPlan> CreatePlan();
 
  private:
   std::unique_ptr<ExecutionPlannerImpl> planner_impl_;

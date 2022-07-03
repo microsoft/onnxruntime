@@ -1142,13 +1142,14 @@ void ParallelExecutionPlan::GenerateReusePlan(const ISequentialPlannerContext& c
 struct ExecutionPlanContext;
 using LogicStreamOffset = std::pair<int, int>;
 
-struct ExecutionPlan {
+struct ExecutionPlanImpl {
   ReleasePlan release_plan;
   std::vector<AllocPlanPerValue> allocation_plan_;
   std::vector<std::unique_ptr<LogicStream>> logic_streams_;
   std::unordered_map<onnxruntime::NotificationIndex, std::vector<LogicStreamOffset>> downstream_map_;
   std::unordered_map<onnxruntime::OrtValueIndex, std::unordered_set<onnxruntime::NodeIndex>> value_consumer_map_;
   std::vector<size_t> notification_owners_;
+  std::unordered_map<size_t, size_t> value_to_stream_map_;
   int num_barriers_{};
 
   void ScheduleDownstream(ExecutionPlanContext& ctx, onnxruntime::NotificationIndex notification_index);
@@ -1185,9 +1186,61 @@ struct ExecutionPlan {
   }
 };
 
+ExecutionPlan::ExecutionPlan() {
+  impl_ = std::make_unique<ExecutionPlanImpl>();
+}
+
+ExecutionPlan::~ExecutionPlan() {}
+
+size_t ExecutionPlan::NumStreams() const {
+    return impl_->logic_streams_.size();
+}
+
+common::Status ExecutionPlan::BindToDeviceStream(Stream* parent_stream,
+                                                 DeviceStreamColloection& device_stream_map,
+                                                 IStreamCommandHandleRegistry& stream_handle_registry) const {
+  for (size_t i = 0; i < impl_->logic_streams_.size(); ++i) {
+    auto& logic_stream = impl_->logic_streams_[i];
+    if (logic_stream->commands_.size() > 0) {
+      auto create_stream_fn = stream_handle_registry.GetCreateStreamFn(logic_stream->ep_->Type());
+      // TODO: in theory, we should make current subgraph's stream depends on parent stream.
+      // but in current code structure, it causing issues with the resource sharing and stream
+      // lifetime. it also may cause additional cost of stream sync for single stream case.
+      // In first phase, let's just put all the subgraph execution on the parent stream.
+      if (parent_stream) {
+        // if current logic stream is not on the same EP instance as parent stream
+        // and the EP instance does have async streams (not EP like CPU)
+        // throw error as we don't have the code to setup the dependency at this moment.
+        if (logic_stream->ep_ != parent_stream->provider && create_stream_fn) {
+          ORT_THROW("Subgraph has nodes running on EP: ", logic_stream->ep_->Type(),
+                    " while parent graph node running on EP: ", parent_stream->provider->Type(),
+                    ", this is not supported yet.");
+        }
+        device_stream_map.SetDeviceStream(i, parent_stream);
+      } else if (create_stream_fn) {
+        auto device_stream = create_stream_fn(logic_stream->ep_);
+        device_stream_map.SetDeviceStream(i, std::move(device_stream));
+      } else {
+        device_stream_map.SetDeviceStream(i, nullptr);
+      }
+    } else {
+      device_stream_map.SetDeviceStream(i, nullptr);
+    }
+  }
+  return Status::OK();
+}
+
+const std::vector<AllocPlanPerValue>& ExecutionPlan::GetAllocationPlan() {
+  return impl_->allocation_plan_;
+}
+
+const std::unordered_map<size_t, size_t>& ExecutionPlan::GetValueToStreamMap() const {
+  return impl_->value_to_stream_map_;
+}
+
 struct ExecutionPlanContext {
   const SessionState& session_state_;
-  const ExecutionPlan& plan_;
+  const ExecutionPlanImpl& plan_;
   ExecutionFrame& frame_;
   const logging::Logger& logger_;
   std::vector<std::unique_ptr<synchronize::Notification>> notifications_;
@@ -1199,27 +1252,28 @@ struct ExecutionPlanContext {
   Status task_status_{Status::OK()};
 
   ExecutionPlanContext(const SessionState& session_state,
-                       const ExecutionPlan& plan,
+                       const ExecutionPlan& exe_plan,
                        ExecutionFrame& frame,
                        const logging::Logger& logger,
                        const DeviceStreamColloection& device_streams_map,
                        const bool& terminate_flag) : session_state_(session_state),
-                                                     plan_(plan),
+                                                     plan_(*exe_plan.impl_),
                                                      frame_(frame),
                                                      logger_(logger),
+                                                     count_down_barriers_(plan_.num_barriers_),
                                                      device_stream_map_(device_streams_map),
                                                      terminate_flag_(terminate_flag) {
     int32_t valid_streams = 0;
     //1. bind logic stream to device stream;
-    for (auto& logic_stream : plan.logic_streams_) {
+    for (auto& logic_stream : plan_.logic_streams_) {
       if (logic_stream->commands_.size() > 0) {
         valid_streams++;
       }
     }
 
     auto& device_streams = device_stream_map_.GetStreams();
-    for (auto i = 0; i < plan.notification_owners_.size(); ++i) {
-      auto& stream = device_streams[plan.notification_owners_[i]];
+    for (auto i = 0; i < plan_.notification_owners_.size(); ++i) {
+      auto& stream = device_streams[plan_.notification_owners_[i]];
       if (stream) {
         notifications_.push_back(std::move(stream->CreateNotification(/*TODO: calculate num of consumers*/ 0)));
       } else {
@@ -1228,7 +1282,7 @@ struct ExecutionPlanContext {
     }
 
     // init barreris
-    for (auto i = 0; i < plan.num_barriers_; ++i) {
+    for (auto i = 0; i < plan_.num_barriers_; ++i) {
       count_down_barriers_[i].Set(2);
     }
     remain_tasks_.Set(valid_streams);
@@ -1286,7 +1340,6 @@ struct ExecutionPlanContext {
     auto* p_kernel = session_state_.GetKernel(node_index);
     auto* intra_tp = session_state_.GetThreadPool();
     OpKernelContextInternal kernel_context(session_state_, frame_, *p_kernel, logger_, terminate_flag_, GetDeviceStream(stream_index));
-    ORT_THROW(!p_kernel->IsAsync(), "Async Kernel Support is not implemented yet.");
     ORT_RETURN_IF_ERROR(p_kernel->Compute(&kernel_context));
     RecycleNodeInputs(node_index);
     return Status::OK();
@@ -1334,12 +1387,12 @@ struct ExecutionPlannerImpl {
                                                                    op_stream_map_(op_stream_map),
                                                                    context_(context) {}
 
-  std::unique_ptr<ExecutionPlan> Create() {
-    auto plan = std::make_unique<ExecutionPlan>();
+  std::unique_ptr<ExecutionPlan> CreatePlan() {
+    auto exe_plan = std::make_unique<ExecutionPlan>();
+    auto& plan = exe_plan->impl_;
     std::vector<std::vector<std::string>> streams_log;
     std::unordered_map<NodeIndex, size_t> node_to_stream_map;
     std::unordered_map<onnxruntime::NodeIndex, std::vector<onnxruntime::OrtValueIndex>> node_value_map;
-    std::unordered_map<size_t, size_t> value_to_stream_map;
 
     // instantiate logic streams
     class StreamRange {  //iterate between [from,to)
@@ -1538,7 +1591,7 @@ struct ExecutionPlannerImpl {
         OrtValueIndex output_idx_global;
         ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(node_output->Name(), output_idx_global));
         node_outputs.insert(output_idx_global);
-        value_to_stream_map[output_idx_global] = node_to_stream_map[node_index];
+        plan->value_to_stream_map_[output_idx_global] = node_to_stream_map[node_index];
         value_node_map_[output_idx_global] = node_index;
       }
     }
@@ -1560,6 +1613,8 @@ struct ExecutionPlannerImpl {
         }
       }
     }
+
+    plan->allocation_plan_.resize(num_ml_values);
 
     // 7. set per-value memory location
     if (!SetValueLocation(*plan).IsOK()) {
@@ -1583,7 +1638,7 @@ struct ExecutionPlannerImpl {
     //  }
     //}
 
-    return plan;
+    return exe_plan;
   }
 
   static const KernelCreateInfo& GetKernelCreateInfo(
@@ -1618,7 +1673,7 @@ struct ExecutionPlannerImpl {
     return ci.kernel_def->HasExternalOutputs();
   }
 
-  Status SetValueLocation(ExecutionPlan& plan) {
+  Status SetValueLocation(ExecutionPlanImpl& plan) {
     // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
     using GraphInputsSet = InlinedHashSet<std::string_view>;
     const auto& graph_inputs_nodes = graph_viewer_.GetInputsIncludingInitializers();
@@ -1923,7 +1978,7 @@ struct ExecutionPlannerImpl {
     }
   }
 
-  Status GeneratePlanForWeights(ExecutionPlan& plan) {
+  Status GeneratePlanForWeights(ExecutionPlanImpl& plan) {
     std::vector<std::vector<OrtMemoryInfo>> locations(plan.allocation_plan_.size());
     GeneratePlanForWeightsHelper(graph_viewer_,
                                  graph_viewer_.GetAllInitializedTensors(),
@@ -1945,7 +2000,7 @@ struct ExecutionPlannerImpl {
     return !utils::HasTensorType(type_proto);
   }
 
-  onnxruntime::Status SetAllocPlan(ExecutionPlan& plan) {
+  onnxruntime::Status SetAllocPlan(ExecutionPlanImpl& plan) {
     auto setup_preexisting = [this, &plan](const NodeArg* node_arg) {
       auto input_index = Index(node_arg->Name());
       AllocPlanPerValue& thisplan = plan.allocation_plan_[input_index];
@@ -1990,7 +2045,8 @@ struct ExecutionPlannerImpl {
     return Status::OK();
   }
 
-  onnxruntime::Status TryReuseTensor(ExecutionPlan& plan) {
+  onnxruntime::Status TryReuseTensor(ExecutionPlan& exe_plan) {
+    ExecutionPlanImpl& plan = *exe_plan.impl_;
     InlinedHashMap<NodeIndex, int> dependents;
     for (const auto& it : dependence_graph_) {
       for (NodeIndex node_index : it.second) {
@@ -2298,11 +2354,11 @@ ExecutionPlanner::ExecutionPlanner(const Node* parent_node,
 
 ExecutionPlanner::~ExecutionPlanner() {}
 
-std::unique_ptr<ExecutionPlan> ExecutionPlanner::Create() {
-  return planner_impl_->Create();
+std::unique_ptr<ExecutionPlan> ExecutionPlanner::CreatePlan() {
+  return planner_impl_->CreatePlan();
 }
 
-void ExecutionPlan::ScheduleDownstream(ExecutionPlanContext& ctx, onnxruntime::NotificationIndex notification_index) {
+void ExecutionPlanImpl::ScheduleDownstream(ExecutionPlanContext& ctx, onnxruntime::NotificationIndex notification_index) {
   auto* ctx_ptr = &ctx;
   for (auto downstream : downstream_map_[notification_index]) {
     concurrency::ThreadPool::Schedule(ctx.session_state_.GetInterOpThreadPool(), [this, ctx_ptr, downstream]() {
@@ -2367,10 +2423,10 @@ onnxruntime::Status ExecutionPlanExecutor::Execute(const SessionState& session_s
   ExecutionPlanContext context(session_state, plan, frame, session_state.Logger(), device_streams, terminate_flag);
   auto* tp = session_state.GetInterOpThreadPool();
 
-  for (int i = 0; i < plan.logic_streams_.size(); ++i) {
-    if (!plan.logic_streams_[i]->commands_.empty()) {
+  for (int i = 0; i < plan.impl_->logic_streams_.size(); ++i) {
+    if (!plan.impl_->logic_streams_[i]->commands_.empty()) {
       concurrency::ThreadPool::Schedule(tp, [i, this, &context, &plan]() {
-        plan.logic_streams_[i]->RunSince(context, 0);
+        plan.impl_->logic_streams_[i]->RunSince(context, 0);
       });
     }
   }

@@ -562,21 +562,29 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
   
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
-  auto* paral_plan = const_cast<SessionState&>(session_state).GetParalllelExecutionPlan();
-
+  //auto* paral_plan = const_cast<SessionState&>(session_state).GetParalllelExecutionPlan();
+  auto* paral_plan = const_cast<SessionState&>(session_state).GetTheExecutionPlan();
   DeviceStreamColloection device_stream_collection(paral_plan->NumStreams());
-  ORT_RETURN_IF_ERROR(paral_plan->BindToDeviceStream(parent_stream, device_stream_collection));
-
+  //ORT_RETURN_IF_ERROR(paral_plan->BindToDeviceStream(parent_stream, device_stream_collection));
+  ORT_RETURN_IF_ERROR(paral_plan->BindToDeviceStream(parent_stream, device_stream_collection, session_state.GetStreamHandleRegistryInstance()));
+  ExecutionPlanExecutor plan_executor;
   // see if we can skip copies due to the types of execution providers available
   if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
     // no device copies are needed so simple execute
-    auto ret = paral_plan->Execute(session_state,
-                                    feeds_fetches_info.feeds_mlvalue_idxs, feeds,
-                                    feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
-                                    logger,
-                                    device_stream_collection,
-                                    terminate_flag,
-                                    only_execute_path_to_fetches);
+    //auto ret = paral_plan->Execute(session_state,
+    //                                feeds_fetches_info.feeds_mlvalue_idxs, feeds,
+    //                                feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
+    //                                logger,
+    //                                device_stream_collection,
+    //                                terminate_flag,
+    //                                only_execute_path_to_fetches);
+    auto ret = plan_executor.Execute(session_state,
+                                feeds_fetches_info.feeds_mlvalue_idxs, feeds,
+                                feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
+                                logger,
+                                device_stream_collection,
+                                terminate_flag,
+                                only_execute_path_to_fetches);
     ORT_RETURN_IF_ERROR(ret);
   } else {
     const std::vector<OrtValue>* p_feeds = &feeds;
@@ -611,28 +619,34 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
 
     // no device copies are needed so simple execute
     std::vector<Stream*> fetches_streams;
-    auto ret = paral_plan->Execute(session_state,
-                                    feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
-                                    feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
-                                    logger,
-                                    device_stream_collection,
-                                    terminate_flag,
-                                    only_execute_path_to_fetches);
+    //auto ret = paral_plan->Execute(session_state,
+    //                                feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
+    //                                feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
+    //                                logger,
+    //                                device_stream_collection,
+    //                                terminate_flag,
+    //                                only_execute_path_to_fetches);
+    auto ret = plan_executor.Execute(session_state,
+                                     feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
+                                     feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
+                                     logger,
+                                     device_stream_collection,
+                                     terminate_flag,
+                                     only_execute_path_to_fetches);
     ORT_RETURN_IF_ERROR(ret);
     auto& value_to_stream_map = paral_plan->GetValueToStreamMap();
     auto& device_streams = device_stream_collection.GetStreams();
     for (auto fetch_idx : feeds_fetches_info.fetches_mlvalue_idxs) {
-    auto it = value_to_stream_map.find(fetch_idx);
-    if (it != value_to_stream_map.end()) {
-        fetches_streams.push_back(device_streams[it->second]); 
-    } else {
+      auto it = value_to_stream_map.find(fetch_idx);
+      if (it != value_to_stream_map.end()) {
+        fetches_streams.push_back(device_streams[it->second]);
+      } else {
         // for subgraph, it is possible the graph is empty,
         // the fetches are come from parent graph.
         fetches_streams.push_back(parent_stream);
+      }
     }
-        
-    }
-    
+
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
       ORT_RETURN_IF_ERROR(CopyOutputsAcrossDevices(session_state, *p_fetches, fetches, fetch_copy_info, fetches_streams));
     }

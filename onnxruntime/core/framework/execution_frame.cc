@@ -476,7 +476,8 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, i
 }
 
 Stream* ExecutionFrame::GetValueStream(int ort_value_idx) const{
-  auto& value_to_stream_map = session_state_.GetConstParalllelExecutionPlan().GetValueToStreamMap();
+  //auto& value_to_stream_map = session_state_.GetConstParalllelExecutionPlan().GetValueToStreamMap();
+  auto& value_to_stream_map = const_cast<SessionState&>(session_state_).GetTheExecutionPlan()->GetValueToStreamMap();
   auto it = value_to_stream_map.find(ort_value_idx);
   if (it != value_to_stream_map.end() && device_streams_ && it->second < device_streams_->size()) {
     return (*device_streams_)[it->second];
