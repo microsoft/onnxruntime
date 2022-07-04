@@ -1461,10 +1461,18 @@ if (onnxruntime_USE_TVM)
     add_definitions(-DUSE_TVM_HASH=1)
   endif()
 
-  file (GLOB_RECURSE onnxruntime_providers_tvm_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.cc"
+  if (onnxruntime_TVM_USE_HASH)
+    file (GLOB_RECURSE onnxruntime_providers_tvm_cc_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.cc"
     )
+  else()
+    file (GLOB onnxruntime_providers_tvm_cc_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.cc"
+    )
+  endif()
+
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_tvm_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_tvm ${onnxruntime_providers_tvm_cc_srcs})
 

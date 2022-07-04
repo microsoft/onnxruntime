@@ -476,7 +476,9 @@ def parse_arguments():
     parser.add_argument("--use_nuphar", action="store_true", help="Build with nuphar")
     parser.add_argument("--use_tvm", action="store_true", help="Build with TVM")
     parser.add_argument("--tvm_cuda_runtime", action="store_true", default=False, help="Build TVM with CUDA support")
-    parser.add_argument("--use_tvm_hash", action="store_true", help="Build ipp-crypto for hash generation. It is used by TVM EP only")
+    parser.add_argument(
+        "--use_tvm_hash", action="store_true", help="Build ipp-crypto for hash generation. It is used by TVM EP only"
+    )
     parser.add_argument("--use_tensorrt", action="store_true", help="Build with TensorRT")
     parser.add_argument(
         "--tensorrt_placeholder_builder", action="store_true", help="Instantiate Placeholder TensorRT Builder"
