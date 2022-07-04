@@ -73,7 +73,11 @@ std::vector<std::string> glob(const std::string& dir, const std::string& extensi
   if(hFind != INVALID_HANDLE_VALUE) {
     do {
       if(! (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ) {
-        filenames.push_back(fd.cFileName);
+        filenames.push_back(
+          dir +
+          ToUTF8String(PathString{k_preferred_path_separator}) +
+          fd.cFileName
+        );
       }
     } while(::FindNextFile(hFind, &fd));
     ::FindClose(hFind);
