@@ -24,9 +24,6 @@ namespace cuda {
 
 TERNARY_OPS()
 
-// OP_FUNCTOR_DEFINITION(BiasGeluGrad_dX, ComputeGeluGradScalar(a, b, c, onnxruntime::gelu_computation_mode::Default))
-// OP_FUNCTOR_DEFINITION(Pow, _Pow(a, b))
-
 #undef TERNARY_OP_NAME_EXPR
 #undef OP_FUNCTOR_DEFINITION
 

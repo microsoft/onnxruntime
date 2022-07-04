@@ -53,9 +53,9 @@ Status Where<T>::ComputeInternal(OpKernelContext* context) const {
     return Status::OK();
 
   TernaryElementwisePreparation prepare;
-  prepare.a_tensor = condition;
-  prepare.b_tensor = X;
-  prepare.c_tensor = Y;
+  prepare.x_tensor = condition;
+  prepare.y_tensor = X;
+  prepare.z_tensor = Y;
   prepare.output_tensor = output_tensor;
 
   ORT_RETURN_IF_ERROR(prepare.TernaryElementwiseBroadcastPrepareHelper(condition_shape, X_shape, Y_shape, output_shape));
@@ -63,15 +63,15 @@ Status Where<T>::ComputeInternal(OpKernelContext* context) const {
   WhereImpl<CudaT>(
       Stream(),
       prepare.output_rank_or_simple_broadcast,
-      prepare.a_index_type,
-      prepare.a_padded_strides,
-      reinterpret_cast<const bool*>(prepare.a_tensor->template Data<bool>()),
-      prepare.b_index_type,
-      prepare.b_padded_strides,
-      reinterpret_cast<const CudaT*>(prepare.b_tensor->template Data<T>()),
-      prepare.c_index_type,
-      prepare.c_padded_strides,
-      reinterpret_cast<const CudaT*>(prepare.c_tensor->template Data<T>()),
+      prepare.x_index_type,
+      prepare.x_padded_strides,
+      reinterpret_cast<const bool*>(prepare.x_tensor->template Data<bool>()),
+      prepare.y_index_type,
+      prepare.y_padded_strides,
+      reinterpret_cast<const CudaT*>(prepare.y_tensor->template Data<T>()),
+      prepare.z_index_type,
+      prepare.z_padded_strides,
+      reinterpret_cast<const CudaT*>(prepare.z_tensor->template Data<T>()),
       prepare.fdm_output_strides,
       reinterpret_cast<CudaT*>(output_tensor->template MutableData<T>()),
       output_tensor->Shape().Size());

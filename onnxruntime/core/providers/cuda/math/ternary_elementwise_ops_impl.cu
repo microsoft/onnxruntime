@@ -1,18 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cuda_runtime.h>
-// #include "core/providers/cuda/cu_inc/common.cuh"
+// #include <cuda_runtime.h>
 #include "core/providers/cuda/cu_inc/ternary_elementwise_impl.cuh"
-#include "orttraining/training_ops/cpu/activation/gelu_computation_mode.h"
 #include "core/providers/cuda/math/ternary_elementwise_ops_impl_functors.cuh"
-#include <cuda_runtime.h>
-#include "orttraining/training_ops/cuda/activation/activations_grad_impl.h"
-// #include "orttraining/training_ops/cuda/activation/gelu_grad_impl_common.cuh"
-#include "core/providers/cuda/cu_inc/common.cuh"
-
-// #include "orttraining/training_ops/cpu/activation/gelu_computation_mode.h"
-// #include "orttraining/training_ops/cuda/activation/gelu_grad_impl_common.cuh"
 
 namespace onnxruntime {
 namespace cuda {
@@ -33,7 +24,9 @@ namespace cuda {
                           fdm_output_strides,              \
                           output_data,                     \
                           count,                           \
-                          OP_##name<T>());                 \
+                          OP_##name<T>(),                  \
+                          only_last_dim_broadcast,         \
+                          last_dim_fdm);                   \
   }
 
 #define SPECIALIZED_TERNARY_ELEMENTWISE_IMPL(x, T)   \
@@ -51,7 +44,9 @@ namespace cuda {
       const T* y_data,                               \
       const TArray<fast_divmod>& fdm_output_strides, \
       T* output_data,                                \
-      size_t count);
+      size_t count,                                  \
+      bool only_last_dim_broadcast,                  \
+      const fast_divmod& last_dim_fdm);
 
 #define SPECIALIZED_TERNARY_ELEMENTWISE_IMPL_UZILHFD(x) \
   SPECIALIZED_TERNARY_ELEMENTWISE_IMPL(x, half)         \
