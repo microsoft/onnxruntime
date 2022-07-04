@@ -10,6 +10,7 @@ std::string HasherSHA256Impl::hash(const char* src, size_t size) const {
   return hexdigest(src, size);
 }
 
+#ifdef USE_TVM_HASH
 void HasherSHA256Impl::digest(const Ipp8u* src, int size, Ipp8u* dst) {
     IppStatus status = ippStsNoErr;
     const IppsHashMethod* hashMethod = ippsHashMethod_SHA256();
@@ -18,12 +19,17 @@ void HasherSHA256Impl::digest(const Ipp8u* src, int size, Ipp8u* dst) {
         ORT_THROW("Can't get SHA-256...");
     }
 }
+#endif
 
 std::string HasherSHA256Impl::digest(const char* src, size_t size) {
+#ifdef USE_TVM_HASH
     const int digest_size_byte = IPP_SHA256_DIGEST_BITSIZE / 8;
     auto dst = std::unique_ptr<char>(new char[digest_size_byte]);
     digest(reinterpret_cast<const Ipp8u*>(src), static_cast<int>(size), reinterpret_cast<Ipp8u*>(dst.get()));
     return std::string(dst.get(), digest_size_byte);
+#else
+    ORT_THROW("We don't have intel/ipp-crypto");
+#endif
 }
 
 std::string HasherSHA256Impl::hexdigest(const char* src, size_t size) {
