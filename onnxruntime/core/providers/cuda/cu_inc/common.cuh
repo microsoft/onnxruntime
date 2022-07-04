@@ -75,10 +75,30 @@ __device__ __forceinline__ bool operator>=(const half& lh, const half& rh) { ret
 __device__ __forceinline__ bool operator<=(const half& lh, const half& rh) { return (float)lh <= (float)rh; }
 
 // support half2 arithmetic for cuda architecture < 5.3
-__device__ __forceinline__ half2 operator+(const half2& lh, const half2& rh) { half2 r; r.x = lh.x + rh.x; r.y = lh.y + rh.y; return r; }
-__device__ __forceinline__ half2 operator-(const half2& lh, const half2& rh) { half2 r; r.x = lh.x - rh.x; r.y = lh.y - rh.y; return r; }
-__device__ __forceinline__ half2 operator*(const half2& lh, const half2& rh) { half2 r; r.x = lh.x * rh.x; r.y = lh.y * rh.y; return r; }
-__device__ __forceinline__ half2 operator/(const half2& lh, const half2& rh) { half2 r; r.x = lh.x / rh.x; r.y = lh.y / rh.y; return r; }
+__device__ __forceinline__ half2 operator+(const half2& lh, const half2& rh) {
+  half2 r;
+  r.x = lh.x + rh.x;
+  r.y = lh.y + rh.y;
+  return r;
+}
+__device__ __forceinline__ half2 operator-(const half2& lh, const half2& rh) {
+  half2 r;
+  r.x = lh.x - rh.x;
+  r.y = lh.y - rh.y;
+  return r;
+}
+__device__ __forceinline__ half2 operator*(const half2& lh, const half2& rh) {
+  half2 r;
+  r.x = lh.x * rh.x;
+  r.y = lh.y * rh.y;
+  return r;
+}
+__device__ __forceinline__ half2 operator/(const half2& lh, const half2& rh) {
+  half2 r;
+  r.x = lh.x / rh.x;
+  r.y = lh.y / rh.y;
+  return r;
+}
 #endif
 
 /// Arithmetic for BFloat16
@@ -359,6 +379,23 @@ __device__ __inline__ T _Gelu(T a) {
   return a * _Normcdf(a);
 }
 
+template <typename T>
+__device__ __inline__ T _Fma(T a, T b, T c);
+
+template <>
+__device__ __inline__ float _Fma(float a, float b, float c) { return fmaf(a, b, c); }
+
+template <>
+__device__ __inline__ double _Fma(double a, double b, double c) { return fma(a, b, c); }
+
+template <>
+__device__ __inline__ half _Fma(half a, half b, half c) { return half(fmaf((float)a, (float)b, (float)c)); }
+
+template <>
+__device__ __inline__ BFloat16 _Fma(BFloat16 a, BFloat16 b, BFloat16 c) {
+  return fmaf(static_cast<float>(a), static_cast<float>(b), static_cast<float>(c));
+}
+
 // We would like to use 64-bit integer to support large matrices. However, CUDA seems to support only 32-bit integer
 // For now, use int32_t to ensure that both Linux and Windows see this as 32 bit integer type.
 #ifndef CUDA_LONG
@@ -379,7 +416,7 @@ struct GridDim {
 };
 
 // aligned vector generates vectorized load/store on CUDA
-template<typename T, int vec_size>
+template <typename T, int vec_size>
 struct alignas(sizeof(T) * vec_size) aligned_vector {
   T val[vec_size];
 };

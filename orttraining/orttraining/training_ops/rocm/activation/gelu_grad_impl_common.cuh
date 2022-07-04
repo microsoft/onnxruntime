@@ -12,7 +12,7 @@ namespace rocm {
 template <typename T>
 __device__ __inline__ T ComputeGeluGradScalar(T dY, T X, gelu_computation_mode::Default) {
   const T kAlpha = T(M_2_SQRTPI) * T(M_SQRT1_2) * T(0.5);
-  return dY * (_Normcdf(X) + X * kAlpha * _Exp(-T(0.5) * X * X));
+  return dY * _Fma(X * kAlpha, _Exp(-T(0.5) * X * X), _Normcdf(X));
 }
 
 template <typename T>
@@ -24,19 +24,20 @@ __device__ __inline__ T ComputeGeluGradScalar(T dY, T X, gelu_computation_mode::
 
   const float sqrt_param = 0.79788456080286535587989211986876f;
   const float mul_param = 0.044715f;
-  
+
   constexpr float one = 1.0;
   constexpr float two = 2.0;
 
   float x2mul = X_float * X_float * mul_param;
 
   // float tan_h = tanhf(sqrt_param * (X_float + X_float * x2mul));
-  float u = two * sqrt_param * (X_float + X_float * x2mul);
+  float u = two * sqrt_param * _Fma(X_float, x2mul, X_float);
   float emu = __expf(-u);
-  float tan_h = two/(one + emu) - one;
+  float tan_h = two / (one + emu) - one;
 
-  float dg1 = 0.5f * (1.0f + tan_h);
-  float dg2 = X_float * 0.5f * sqrt_param * (1 - tan_h * tan_h);
+  float dg1 = _Fma(0.5f, tan_h, 0.5f);
+  float dg2_scaler = X_float * 0.5f * sqrt_param;
+  float dg2 = _Fma(dg2_scaler, -tan_h * tan_h, dg2_scaler);
   float dg3 = dg2 * 3 * x2mul;
 
   return dY * static_cast<T>(dg1 + dg2 + dg3);

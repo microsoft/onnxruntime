@@ -12,7 +12,7 @@ namespace cuda {
 template <typename T>
 __device__ __inline__ T ComputeGeluGradScalar(T dY, T X, gelu_computation_mode::Default) {
   const T kAlpha = T(M_2_SQRTPI) * T(M_SQRT1_2) * T(0.5);
-  return dY * (_Normcdf(X) + X * kAlpha * _Exp(-T(0.5) * X * X));
+  return dY * _Fma(X * kAlpha, _Exp(-T(0.5) * X * X), _Normcdf(X));
 }
 
 template <typename T>
