@@ -108,7 +108,7 @@ common::Status TvmSoExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
     if (options_.check_hash) {
-      ORT_ENFORCE(checkHash(fused_node.ModelPath().ToPathString()),
+      ORT_ENFORCE(checkHash(ToUTF8String(fused_node.ModelPath().ToPathString())),
                   "Hash check shows that used tuning files were not obtained for the given onnx-model");
     }
     const std::string func_name = fused_node.Name();
