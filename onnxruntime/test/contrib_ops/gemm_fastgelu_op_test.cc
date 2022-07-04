@@ -70,6 +70,7 @@ TEST(GemmFastGeluTest, GemmFastGeluWithoutBiasFloat32) {
     -0.1323, -0.0953,  0.0778,  0.2152,  0.6715, -0.0240
   };
 
+
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};
   std::vector<int64_t> bias_dims = {dense_size};
@@ -115,95 +116,122 @@ TEST(GemmFastGeluTest, GemmFastGeluWithBiasFloat32) {
 }
 
 
-// // CUDA and ROCm only for Float16 and BFloat16 type.
-// #if defined(USE_ROCM)
-// TEST(GemmFastGeluTest, GemmFastGeluWithBiasFloat16) {
-//   int batch_size = 1;
-//   int sequence_length = 2;
-//   int hidden_size = 4;
+// CUDA and ROCm only for Float16 and BFloat16 type.
+#if defined(USE_ROCM)
+TEST(GemmFastGeluTest, GemmFastGeluWithoutBiasFloat16) {
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int dense_size = 6;
 
-//   std::vector<float> input_data = {
-//       0.8f, -0.5f, 0.0f, 1.f,
-//       0.5f, 0.2f, 0.3f, -0.6f};
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
 
-//   std::vector<float> bias_data = {
-//       -0.5f, 0.6f, 1.2f, 2.1f};
+  std::vector<float> weight_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f,
+      0.7f, -0.5f, 0.7f, 1.2f,
+      0.3f, 0.1f, 0.8f, -1.6f,
+      0.9f, -0.1f, 3.0f, 2.f,
+      0.4f, -0.7f, -0.3f, 0.6f};
 
-//   std::vector<float> output_data = {
-//       0.1851806640625f, 0.054046630859375f, 1.0615234375f, 3.095703125f,
-//       0, 0.63037109375f, 1.3984375f, 1.3984375f};
+  std::vector<float> bias_data = {};
 
-//   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
-//   std::vector<int64_t> bias_dims = {hidden_size};
-//   std::vector<int64_t> output_dims = input_dims;
+  std::vector<float> output_data = {
+    3.4902,  1.8467,  0.0259,  0.2227, -0.1005,  0.0901,
+    -0.1324, -0.0955,  0.0778,  0.2156,  0.6714, -0.0241
+  };
 
-//   RunGemmFastGeluGpuTest(input_data, bias_data, output_data, input_dims, bias_dims, output_dims, true, true);
-// }
 
-// TEST(GemmFastGeluTest, GemmFastGeluWithoutBiasFloat16) {
-//   int batch_size = 1;
-//   int sequence_length = 2;
-//   int hidden_size = 4;
+  std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
+  std::vector<int64_t> weight_dims = {hidden_size, dense_size};
+  std::vector<int64_t> bias_dims = {dense_size};
+  std::vector<int64_t> output_dims = {batch_size, sequence_length, dense_size};
+  RunGemmFastGeluGpuTest(input_data, weight_data, bias_data, output_data, input_dims, weight_dims, bias_dims, output_dims, false);
+}
 
-//   std::vector<float> input_data = {
-//       0.8f, -0.5f, 0.0f, 1.f,
-//       0.5f, 0.2f, 0.3f, -0.6f};
+TEST(GemmFastGeluTest, GemmFastGeluWithBiasFloat16) {
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int dense_size = 6;
 
-//   std::vector<float> bias_data = {};
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
 
-//   std::vector<float> output_data = {
-//       0.63037109375f, -0.154296875f, 0.0f, 0.8408203125f,
-//       0.345703125f, 0.11578369140625f, 0.1854248046875f, -0.1646728515625f };
+  std::vector<float> weight_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f,
+      0.7f, -0.5f, 0.7f, 1.2f,
+      0.3f, 0.1f, 0.8f, -1.6f,
+      0.9f, -0.1f, 3.0f, 2.f,
+      0.4f, -0.7f, -0.3f, 0.6f};
 
-//   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
-//   std::vector<int64_t> bias_dims = {};
-//   std::vector<int64_t> output_dims = input_dims;
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, -0.6f, 0.4f};
 
-//   RunGemmFastGeluGpuTest(input_data, bias_data, output_data, input_dims, bias_dims, output_dims, false, true);
-// }
+  std::vector<float> output_data = {
+    2.9883,  2.4844,  1.1182,  2.4316, -0.1680,  0.3984,
+    -0.0701, -0.1633,  1.2178,  2.4219,  0.1426,  0.2227
+  };
 
-// TEST(FastGeluTest, FastGeluWithBias_BFloat16) {
-// #ifdef USE_CUDA
-//   int min_cuda_architecture = 530;
-//   if (!HasCudaEnvironment(min_cuda_architecture)) {
-//     LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
-//     return;
-//   }
-// #endif
-//   OpTester tester("FastGelu", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
+  std::vector<int64_t> weight_dims = {hidden_size, dense_size};
+  std::vector<int64_t> bias_dims = {dense_size};
+  std::vector<int64_t> output_dims = {batch_size, sequence_length, dense_size};
+  RunGemmFastGeluGpuTest(input_data, weight_data, bias_data, output_data, input_dims, weight_dims, bias_dims, output_dims, true);
+}
 
-//   int batch_size = 1;
-//   int sequence_length = 2;
-//   int hidden_size = 4;
+TEST(GemmFastGeluTest, GemmFastGeluWithBias_BFloat16) {
+  OpTester tester("GemmFastGelu", 1, onnxruntime::kMSDomain);
 
-//   std::vector<float> X = {
-//       0.8f, -0.5f, 0.0f, 1.f,
-//       0.5f, 0.2f, 0.3f, -0.6f};
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int dense_size = 6;
 
-//   std::vector<float> B = {
-//       -0.5f, 0.6f, 1.2f, 2.1f};
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
 
-//   std::vector<float> Y = {
-//       0.1851806640625f, 0.054046630859375f, 1.0615234375f, 3.095703125f,
-//       0, 0.63037109375f, 1.3984375f, 1.3984375f};
+  std::vector<float> weight_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f,
+      0.7f, -0.5f, 0.7f, 1.2f,
+      0.3f, 0.1f, 0.8f, -1.6f,
+      0.9f, -0.1f, 3.0f, 2.f,
+      0.4f, -0.7f, -0.3f, 0.6f};
 
-//   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
-//   std::vector<int64_t> bias_dims = {hidden_size};
-//   std::vector<int64_t> output_dims = input_dims;
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, -0.6f, 0.4f};
 
-//   std::vector<BFloat16> f_X = FloatsToBFloat16s(X);
-//   std::vector<BFloat16> f_B = FloatsToBFloat16s(B);
-//   std::vector<BFloat16> f_Y = FloatsToBFloat16s(Y);
+  std::vector<float> output_data = {
+    2.9883,  2.4844,  1.1182,  2.4316, -0.1680,  0.3984,
+    -0.0701, -0.1633,  1.2178,  2.4219,  0.1426,  0.2227
+  };
 
-//   tester.AddInput<BFloat16>("X", input_dims, f_X);
-//   tester.AddInput<BFloat16>("bias", bias_dims, f_B);
-//   tester.AddOutput<BFloat16>("Y", output_dims, f_Y);
+  std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
+  std::vector<int64_t> weight_dims = {hidden_size, dense_size};
+  std::vector<int64_t> bias_dims = {dense_size};
+  std::vector<int64_t> output_dims = {batch_size, sequence_length, dense_size};
 
-//   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-//   execution_providers.push_back(DefaultRocmExecutionProvider());
-//   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-// }
-// #endif
+  std::vector<BFloat16> f_X = FloatsToBFloat16s(input_data);
+  std::vector<BFloat16> f_W = FloatsToBFloat16s(weight_data);
+  std::vector<BFloat16> f_B = FloatsToBFloat16s(bias_data);
+  std::vector<BFloat16> f_Y = FloatsToBFloat16s(output_data);
+
+  tester.AddInput<BFloat16>("X", input_dims, f_X);
+  tester.AddInput<BFloat16>("W", weight_dims, f_W);
+  tester.AddInput<BFloat16>("bias", bias_dims, f_B);
+  tester.AddOutput<BFloat16>("Y", output_dims, f_Y);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
 
 }  // namespace gemmfastgelu
 }  // namespace test

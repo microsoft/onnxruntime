@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/rocm/bert/gemm_fast_gelu.h"
-#include "core/providers/cpu/math/gemm_helper.h"
+#include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
 #include "contrib_ops/rocm/bert/fast_gelu_impl.h"
@@ -33,6 +33,50 @@ GemmFastGelu<T>::GemmFastGelu(const OpKernelInfo& op_kernel_info) : RocmKernel(o
   use_half2_ = !options->DisableHalf2();
 }
 
+// StridedBatchedGemm can be used for the following GEMM computation
+// C[pnm] = A[pnk]*B[km] or C[pnm] = A[pnk]*B[pkm]
+static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const TensorShape& right_shape,
+                                     bool transa, bool transb, bool trans_batch_a, bool trans_batch_b,
+                                     int64_t& stride_A, int64_t& stride_B, int64_t& stride_C, int64_t& batch_count) {
+  size_t left_num_dims = left_shape.NumDimensions();
+  size_t right_num_dims = right_shape.NumDimensions();
+
+  if (!(left_num_dims >= 3 && right_num_dims >= 2)) {
+    return false;
+  }
+
+  size_t left_leading_axis = trans_batch_a ? 0 : left_num_dims - 2;
+  size_t right_leading_axis = trans_batch_b ? 0 : right_num_dims - 2;
+  int64_t left_p = left_shape.SizeToDimension(left_num_dims - 2);
+  if (trans_batch_a) {
+    left_p = left_p * left_shape[left_num_dims - 2] / left_shape[0];
+  }
+  int64_t left_k = transa ? left_shape[left_leading_axis] : left_shape[left_num_dims - 1];
+
+  if (right_num_dims >= 3) {
+    int64_t right_p = right_shape.SizeToDimension(right_num_dims - 2);
+    if (trans_batch_b) {
+      right_p = right_p * right_shape[right_num_dims - 2] / right_shape[0];
+    }
+    if (left_p != right_p) {
+      return false;
+    }
+  }
+
+  int64_t right_k = transb ? right_shape[right_num_dims - 1] : right_shape[right_leading_axis];
+  if (left_k != right_k) {
+    return false;
+  }
+
+  int64_t n = transa ? left_shape[left_num_dims - 1] : left_shape[left_leading_axis];
+  int64_t m = transb ? right_shape[right_leading_axis] : right_shape[right_num_dims - 1];
+  stride_A = n * left_k / (trans_batch_a ? left_shape[0] : 1);
+  stride_B = right_num_dims == 2 ? 0 : right_k * m / (trans_batch_b ? right_shape[0] : 1);
+  stride_C = n * m;
+  batch_count = left_p;
+  return true;
+}
+
 template <typename T>
 Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToHipType<T>::MappedType HipT;
@@ -41,38 +85,101 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto* W = ctx->Input<Tensor>(1);
   const auto* bias = ctx->Input<Tensor>(2);
 
-  GemmHelper helper(X->Shape(), 0, W->Shape(), 0, TensorShape({}));
+  MatMulComputeHelper helper;
+  ORT_RETURN_IF_ERROR(helper.Compute(X->Shape(), W->Shape(), false, false, false, false, false));
 
-  if (!helper.State().IsOK())
-    return helper.State();
+  const int N = static_cast<int>(helper.N());
+  const int M = static_cast<int>(helper.M());
+  const int K = static_cast<int>(helper.K());
 
-  int M = gsl::narrow_cast<int>(helper.M());
-  int N = gsl::narrow_cast<int>(helper.N());
-  int K = gsl::narrow_cast<int>(helper.K());
-  auto* Y = ctx->Output(0, {M, N});
-  auto gemm_buffer = GetScratchBuffer<T>(M * N);
+  auto gemm_buffer = GetScratchBuffer<T>(helper.OutputShape().Size());
+  Tensor* Y = ctx->Output(0, helper.OutputShape());
 
-  HipT zero = ToHipType<T>::FromFloat(0.0f);
-  HipT alpha = ToHipType<T>::FromFloat(1.0f);
-  // Gemm, note that HIP assumes col-major, so Y(N,M) = alpha * op(W) x op(X) + beta * Y
-  ROCBLAS_RETURN_IF_ERROR(rocblasGemmHelper(
+  // Bail out early if the output is going to be empty
+  if (Y->Shape().Size() == 0)
+    return Status::OK();
+
+  const HipT alpha = ToHipType<T>::FromFloat(1.0f);
+  const HipT zero = ToHipType<T>::FromFloat(0.0f);
+
+  bool transa = false;
+  bool transb = false;
+  const int lda = helper.Lda(transa);
+  const int ldb = helper.Ldb(transb);
+  const int ldc = helper.Ldc();
+  int64_t stride_A, stride_B, stride_C, batch_count;
+
+  if (helper.OutputOffsets().size() == 1) {
+    ROCBLAS_RETURN_IF_ERROR(rocblasGemmHelper(
+        RocblasHandle(),
+        rocblas_operation_none,
+        rocblas_operation_none,
+        N,
+        M,
+        K,
+        &alpha,
+        reinterpret_cast<const HipT*>(W->template Data<T>()),
+        ldb,
+        reinterpret_cast<const HipT*>(X->template Data<T>()),
+        lda,
+        &zero,
+        reinterpret_cast<HipT*>(gemm_buffer.get()),
+        ldc));
+  } else if (CanUseStridedBatchedGemm(X->Shape(), W->Shape(),
+                                      transa, transb, false, false, stride_A, stride_B, stride_C, batch_count)) {
+    ROCBLAS_RETURN_IF_ERROR(rocblasGemmStridedBatchedHelper(RocblasHandle(),
+                                                          rocblas_operation_none,
+                                                          rocblas_operation_none,
+                                                          N,
+                                                          M,
+                                                          K,
+                                                          &alpha,
+                                                          reinterpret_cast<const HipT*>(W->template Data<T>()),
+                                                          ldb,
+                                                          stride_B,
+                                                          reinterpret_cast<const HipT*>(X->template Data<T>()),
+                                                          lda,
+                                                          stride_A,
+                                                          &zero,
+                                                          reinterpret_cast<HipT*>(gemm_buffer.get()),
+                                                          ldc,
+                                                          stride_C,
+                                                          static_cast<int>(batch_count)));
+  } else {
+    // Fill offsets when needed.
+  helper.FillOffsets();
+  RocmAsyncBuffer<const HipT*> left_arrays(this, helper.LeftOffsets().size());
+  RocmAsyncBuffer<const HipT*> right_arrays(this, helper.RightOffsets().size());
+  RocmAsyncBuffer<HipT*> output_arrays(this, helper.OutputOffsets().size());
+  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const HipT*>(X->template Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
+  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const HipT*>(W->template Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
+  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<HipT*>(gemm_buffer.get()), helper.OutputOffsets(), output_arrays.CpuSpan());
+  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu());
+  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu());
+  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu());
+
+  // note that onnxruntime OrtValue is row major, while rocblas is column major,
+  // so swap left/right operands
+  ROCBLAS_RETURN_IF_ERROR(rocblasGemmBatchedHelper(
       RocblasHandle(),
       rocblas_operation_none,
       rocblas_operation_none,
-      N, M, K,
-      &alpha,
-      reinterpret_cast<const HipT*>(W->template Data<T>()),
       N,
-      reinterpret_cast<const HipT*>(X->template Data<T>()),
+      M,
       K,
-      // ideally we need to set the output buffer contents to 0 if bias is missing,
-      // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
+      &alpha,
+      right_arrays.GpuPtr(),
+      ldb,
+      left_arrays.GpuPtr(),
+      lda,
       &zero,
-      reinterpret_cast<HipT*>(gemm_buffer.get()), N));
+      output_arrays.GpuPtr(),
+      ldc,
+      static_cast<int>(helper.OutputOffsets().size())));
+  }
 
   int64_t fast_gelu_input_length = Y->Shape().Size();
   int64_t bias_length = (nullptr == bias) ? 0 : bias->Shape().Size();
-  typedef typename ToHipType<T>::MappedType HipT;
 
   if (!LaunchFastGeluKernel<HipT>(GetDeviceProp(),
                                    Stream(),
@@ -85,7 +192,6 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
     HIP_CALL(hipGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
-
   return Status::OK();
 }
 
