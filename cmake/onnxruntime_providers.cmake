@@ -1457,6 +1457,9 @@ endif()
 
 if (onnxruntime_USE_TVM)
   add_definitions(-DUSE_TVM=1)
+  if (onnxruntime_TVM_USE_HASH)
+    add_definitions(-DUSE_TVM_HASH=1)
+  endif()
 
   file (GLOB_RECURSE onnxruntime_providers_tvm_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.h"
@@ -1473,17 +1476,24 @@ if (onnxruntime_USE_TVM)
           ${TVM_INCLUDES}
           ${IPP_CRYPTO_INCLUDES}
           ${PYTHON_INLCUDE_DIRS})
-  onnxruntime_add_include_to_target(onnxruntime_providers_tvm onnxruntime_common onnx tvm ippcp_s)
+  onnxruntime_add_include_to_target(onnxruntime_providers_tvm onnxruntime_common onnx tvm)
+  if (onnxruntime_TVM_USE_HASH)
+    onnxruntime_add_include_to_target(onnxruntime_providers_tvm ippcp_s)
+  endif()
 
   add_dependencies(onnxruntime_providers_tvm ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
   target_link_libraries(onnxruntime_providers_tvm PRIVATE
       onnx
       tvm
-      ippcp_s
       onnxruntime_common
       onnxruntime_framework
   )
+  if (onnxruntime_TVM_USE_HASH)
+    target_link_libraries(onnxruntime_providers_tvm PRIVATE
+      ippcp_s
+    )
+  endif()
 
   set_target_properties(onnxruntime_providers_tvm PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_tvm PROPERTIES LINKER_LANGUAGE CXX)

@@ -4,7 +4,9 @@
 #ifndef ONNXRUNTIME_CORE_PROVIDERS_TVM_HASH_ALG_HASHER_IMPL_H_
 #define ONNXRUNTIME_CORE_PROVIDERS_TVM_HASH_ALG_HASHER_IMPL_H_
 
+#ifdef USE_TVM_HASH
 #include <ippcp.h>
+#endif
 #include <string>
 #include <iomanip>
 #include <sstream>
