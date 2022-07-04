@@ -3,7 +3,8 @@
 
 #include <pybind11/pybind11.h>
 #include "hip/hip_fp16.h"
-#include "vector_add_kernel.h"
+#include "kernels/vector_add_kernel.h"
+#include "kernels/vector_add_tunable_op.h"
 
 namespace py = pybind11;
 
@@ -26,6 +27,29 @@ class VectorAdd: public Operator<T> {
   T* y_;
   T* z_;
   int n_;
+};
+
+template <typename T>
+class VectorAddTunable: public Operator<T> {
+ public:
+  VectorAddTunable(DeviceArray& x, DeviceArray& y, DeviceArray& z, int n) :
+    x_(reinterpret_cast<T*>(x.ptr())),
+    y_(reinterpret_cast<T*>(y.ptr())),
+    z_(reinterpret_cast<T*>(z.ptr())),
+    n_(n),
+    Operator<T>() {}
+
+  void Run() {
+    VectorAddParams<T> op_params(x_, y_, z_, n_);
+    op_.Run(&op_params);
+  }
+
+ private:
+  T* x_;
+  T* y_;
+  T* z_;
+  int n_;
+  VectorAddTunableOp<T> op_;
 };
 
 #define REGISTER_OP(name, type, threads_per_block, vec_size)                                              \
@@ -55,4 +79,9 @@ class VectorAdd: public Operator<T> {
 void InitVectorAdd(py::module m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(VectorAdd, half);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(VectorAdd, float);
+  py::class_<VectorAddTunable<half>>(m, "VectorAdd_half_Tunable")
+    .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, int>())
+    .def("SetRepeats", &VectorAddTunable<half>::SetRepeats)
+    .def("Profile", &VectorAddTunable<half>::Profile)
+    .def("Run", &VectorAddTunable<half>::Run);
 }

@@ -5,6 +5,10 @@
 
 #include "hip/hip_runtime.h"
 
+namespace onnxruntime {
+namespace contrib {
+namespace rocm {
+
 class Timer {
  public:
   Timer();
@@ -16,3 +20,7 @@ class Timer {
  private:
   hipEvent_t start_, end_; 
 };
+
+}  // namespace rocm
+}  // namespace contrib
+}  // namespace onnxruntime

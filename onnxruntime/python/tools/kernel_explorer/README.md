@@ -1,5 +1,5 @@
 # Kernel Explorer 
-Kernel Explorer is a tool to help develop, test, and profile GPU kernels.
+Kernel Explorer hooks up GPU kernel code with a Python frontend to help develop, test, profile, and auto-tune GPU kernels.
 
 ## Example Usage
 ```
