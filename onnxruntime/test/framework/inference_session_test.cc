@@ -813,12 +813,17 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
 
   ASSERT_TRUE(have_log_entry_with_vlog_session_msg);
 
-  bool have_log_entry_with_vlog_run_msg =
-      (std::find_if(msgs.begin(), msgs.end(),
-                    [&](std::string msg) { return msg.find("Size of execution plan vector") != string::npos; }) !=
-       msgs.end());
+  //bool have_log_entry_with_vlog_run_msg =
+  //    (std::find_if(msgs.begin(), msgs.end(),
+  //                  [&](std::string msg) { return msg.find("Size of execution plan vector") != string::npos; }) !=
+  //     msgs.end());
 
-  ASSERT_TRUE(have_log_entry_with_vlog_run_msg);
+  //ASSERT_TRUE(have_log_entry_with_vlog_run_msg);
+
+  bool has_num_streams_msg =
+      (std::find_if(msgs.begin(), msgs.end(), [&](std::string msg) { return msg.find("Number of streams") != string::npos; }) != msgs.end());
+
+  ASSERT_TRUE(has_num_streams_msg);
 #endif
 }
 

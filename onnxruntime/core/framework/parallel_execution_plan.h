@@ -104,7 +104,7 @@ struct ExecutionPlanner {
 
   ~ExecutionPlanner();
 
-  std::unique_ptr<ExecutionPlan> CreatePlan();
+  onnxruntime::Status CreatePlan(ExecutionPlan& plan);
 
  private:
   std::unique_ptr<ExecutionPlannerImpl> planner_impl_;

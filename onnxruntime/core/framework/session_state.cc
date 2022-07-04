@@ -260,14 +260,13 @@ void Print(const std::string& type, const std::vector<AllocPlanPerValue>& alloc_
 }
 
 const std::vector<AllocPlanPerValue>& SessionState::GetPerAllocPlan() const {
-  //if (p_para_exec_plan_) {
-  //  // Print("seq plan", p_seq_exec_plan_->allocation_plan);
-  //  // Print("para plan", p_para_exec_plan_->GetAllocPlanPerValue());
-  //  return p_para_exec_plan_->GetAllocPlanPerValue();
-  //} else {
-  //  return p_seq_exec_plan_->allocation_plan;
-  //}
-  return p_exec_plan_->GetAllocationPlan();
+  if (p_exec_plan_) {
+    // Print("seq plan", p_seq_exec_plan_->allocation_plan);
+    // Print("para plan", p_para_exec_plan_->GetAllocPlanPerValue());
+    return p_exec_plan_->GetAllocationPlan();
+  } else {
+    return p_seq_exec_plan_->allocation_plan;
+  }
 }
 
 Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d,
@@ -1535,7 +1534,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                            provider_stream_map,
                            read_op_map_from_str(session_options.grouped_ops),
                            para_context);
-  p_exec_plan_ = planner.CreatePlan();
+  p_exec_plan_ = std::make_unique<ExecutionPlan>();
+  ORT_RETURN_IF_ERROR(planner.CreatePlan(*p_exec_plan_));
   LOGS(logger_, INFO) << "p_exec_plan initialized";
 
   //const Node* parent_node,

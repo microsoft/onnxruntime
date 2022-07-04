@@ -191,7 +191,8 @@ class PlannerTest : public ::testing::Test {
   std::unique_ptr<SessionState> state_;
   ShapeMap shape_map_;
   std::unique_ptr<SequentialExecutionPlan> plan_;
-  std::unique_ptr<ParallelExecutionPlan> para_plan_;
+  //std::unique_ptr<ParallelExecutionPlan> para_plan_;
+  std::unique_ptr<ExecutionPlan> para_plan_;
 
  public:
   PlannerTest()
@@ -317,7 +318,8 @@ class PlannerTest : public ::testing::Test {
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     SequentialPlannerTestContext test_context(&shape_map_);
     plan_ = std::make_unique<SequentialExecutionPlan>();
-    status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph_), outer_scope_node_args, execution_providers_,
+    onnxruntime::GraphViewer graph_viewer{graph_};
+    status = SequentialPlanner::CreatePlan(nullptr, graph_viewer, outer_scope_node_args, execution_providers_,
                                            kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), test_context,
                                            plan_);
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -328,21 +330,36 @@ class PlannerTest : public ::testing::Test {
     provider_stream_map["CUDAExecutionProvider"] = 1;
     OpStreamMap op_stream_map;
     ParalllelPlannerTestContext paral_test_context(&shape_map_);
-    para_plan_ = std::make_unique<ParallelExecutionPlan>(*state_.get(), provider_stream_map, op_stream_map);
-    std::unique_ptr<SequentialExecutionPlan> tmp_para_exec_plan_wrapper(para_plan_.get());
-    status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph_), outer_scope_node_args, execution_providers_,
-                                           kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), paral_test_context,
-                                           tmp_para_exec_plan_wrapper);
-    EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-    tmp_para_exec_plan_wrapper.release();
-    para_plan_->GenerateReusePlan(paral_test_context);
+
+    ExecutionPlanner para_planner(nullptr,
+                                  graph_viewer,
+                                  outer_scope_node_args,
+                                  execution_providers_,
+                                  kernel_create_info_map,
+                                  {},
+                                  {},
+                                  state_->GetOrtValueNameIdxMap(),
+                                  state_->GetStreamHandleRegistryInstance(),
+                                  provider_stream_map,
+                                  op_stream_map,
+                                  paral_test_context);
+    para_plan_ = std::make_unique<ExecutionPlan>();
+    ORT_ENFORCE(para_planner.CreatePlan(*para_plan_).IsOK(), "Failed to create execution plan");
+    //para_plan_ = std::make_unique<ParallelExecutionPlan>(*state_.get(), provider_stream_map, op_stream_map);
+    //std::unique_ptr<SequentialExecutionPlan> tmp_para_exec_plan_wrapper(para_plan_.get());
+    //status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph_), outer_scope_node_args, execution_providers_,
+    //                                       kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), paral_test_context,
+    //                                       tmp_para_exec_plan_wrapper);
+    //EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+    //tmp_para_exec_plan_wrapper.release();
+    //para_plan_->GenerateReusePlan(paral_test_context);
   }
 
   void CheckAllocKind(const std::string& name, AllocKind kind) {
     int id;
     index(name, id);
     EXPECT_EQ(plan_->allocation_plan[id].alloc_kind, kind) << "Error in allocation kind for " << name;
-    EXPECT_EQ(para_plan_->allocation_plan[id].alloc_kind, kind) << "Error in para allocation kind for " << name;
+    EXPECT_EQ(para_plan_->GetAllocationPlan()[id].alloc_kind, kind) << "Error in para allocation kind for " << name;
   }
 
   void CheckFreed(int step_number, std::initializer_list<std::string> freed_items) {
@@ -1633,13 +1650,16 @@ TEST_F(PlannerTest, ParaPlanCreation) {
 
   const auto& main_graph_session_state = sess.GetSessionState();
   const auto& main_graph_ort_value_index_map = main_graph_session_state.GetOrtValueNameIdxMap();
-  const auto* para_exe_plan = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetParalllelExecutionPlan();
+  //const auto* para_exe_plan = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetParalllelExecutionPlan();
+  //auto& per_value_plans = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetPerAllocPlan();
+  auto* exe_plan = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetTheExecutionPlan();
+  auto& per_value_plans = exe_plan->GetAllocationPlan();
   InlinedHashMap<std::string, std::string> reuse_pairs;
   reuse_pairs.emplace("conv_0_out", "relu_0_out");
   reuse_pairs.emplace("conv_1_out", "relu_1_out");
   reuse_pairs.emplace("conv_2_out", "relu_2_out");
-  for (OrtValueIndex i = 0; i < para_exe_plan->allocation_plan.size(); ++i) {
-    auto& per_value_plan = para_exe_plan->allocation_plan[i];
+  for (OrtValueIndex i = 0; i < per_value_plans.size(); ++i) {
+    auto& per_value_plan = per_value_plans[i];
     if (per_value_plan.alloc_kind == AllocKind::kReuse) {
       std::string reused;
       // std::string current;
