@@ -5,7 +5,7 @@
 
 #include "device_array.h"
 #include "operator.h"
-#include "fast_gelu_impl_kernel.h"
+#include "contrib_ops/rocm/bert/fast_gelu_impl_kernel.h"
 
 template <typename T, int ThreadsPerBlock, int VecSize>
 void LaunchFastGelu(const T* input, const T* bias, T* output, int input_length, int bias_length) {

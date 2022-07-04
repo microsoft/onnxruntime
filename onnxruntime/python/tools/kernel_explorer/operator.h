@@ -3,7 +3,9 @@
 
 #pragma once
 
-#include "timer.h"
+#include "contrib_ops/rocm/bert/timer.h"
+
+using onnxruntime::contrib::rocm::Timer;
 
 namespace onnxruntime {
 namespace rocm {
