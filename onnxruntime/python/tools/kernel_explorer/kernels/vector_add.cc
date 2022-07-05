@@ -3,8 +3,9 @@
 
 #include <hip/hip_fp16.h>
 #include <pybind11/pybind11.h>
-#include "kernels/vector_add_kernel.h"
-#include "kernels/vector_add_tunable_op.h"
+#include "python/tools/kernel_explorer/kernels/vector_add.h"
+#include "python/tools/kernel_explorer/kernels/vector_add_kernel.h"
+#include "python/tools/kernel_explorer/kernels/vector_add_tunable_op.h"
 
 namespace py = pybind11;
 

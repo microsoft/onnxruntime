@@ -4,8 +4,8 @@
 #pragma once
 
 #include <hip/hip_runtime.h>
-#include "device_array.h"
-#include "operator.h"
+#include "python/tools/kernel_explorer/device_array.h"
+#include "python/tools/kernel_explorer/operator.h"
 #include "contrib_ops/rocm/bert/util.h"
 
 template <typename T, int VecSize>
@@ -45,7 +45,7 @@ __global__ void VectorAddKernel(const T* __restrict__ x,
 template <typename T, int ThreadsPerBlock, int VecSize>
 void LaunchVectorAdd(hipStream_t stream, const T* x, const T* y, T* z, int n) {
   hipLaunchKernelGGL((VectorAddKernel<T, VecSize>), 
-                     dim3(ceil(float(n)/(float(ThreadsPerBlock)*VecSize))),
+                     dim3(ceil(static_cast<float>(n)/(static_cast<float>(ThreadsPerBlock)*VecSize))),
                      dim3(ThreadsPerBlock),
                      0, stream,
                      x, y, z, n);

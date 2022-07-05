@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 #include "contrib_ops/rocm/bert/tunable_op.h"
-#include "kernels/vector_add_kernel.h"
+#include "python/tools/kernel_explorer/kernels/vector_add_kernel.h"
 
 using onnxruntime::contrib::rocm::OpParams;
 using onnxruntime::contrib::rocm::Op;

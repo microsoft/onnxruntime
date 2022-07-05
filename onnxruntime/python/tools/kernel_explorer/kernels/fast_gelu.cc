@@ -3,8 +3,8 @@
 
 #include <pybind11/pybind11.h>
 #include <hip/hip_fp16.h>
-#include "device_array.h"
-#include "operator.h"
+#include "python/tools/kernel_explorer/device_array.h"
+#include "python/tools/kernel_explorer/operator.h"
 #include "contrib_ops/rocm/bert/fast_gelu_impl_kernel.h"
 #include "contrib_ops/rocm/bert/fast_gelu_tunable_op.h"
 

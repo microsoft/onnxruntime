@@ -40,7 +40,7 @@ class TransformerOptions {
   bool disable_half2_{false};
 
   bool initialized_{false};
-  
+ 
   bool tuning_{false};
 
   static TransformerOptions instance;

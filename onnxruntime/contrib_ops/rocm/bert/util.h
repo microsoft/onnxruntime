@@ -3,9 +3,9 @@
 
 #pragma once
 
+#include <hip/hip_runtime.h>
 #include <cstdlib>
 #include <iostream>
-#include <hip/hip_runtime.h>
 
 #define HIP_CHECK(expr)                      \
   do {                                       \
@@ -34,7 +34,7 @@ class Timer {
   ~Timer();
 
  private:
-  hipEvent_t start_, end_; 
+  hipEvent_t start_, end_;
 };
 
 }  // namespace rocm

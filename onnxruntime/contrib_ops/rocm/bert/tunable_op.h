@@ -15,8 +15,8 @@ namespace contrib {
 namespace rocm {
 
 struct OpParams {
+  explicit OpParams(hipStream_t stream) : stream(stream) {}
   virtual std::string signature() const = 0;
-  OpParams(hipStream_t stream) : stream(stream) {}
   hipStream_t stream;
 };
 
@@ -52,7 +52,7 @@ class Op {
 
 class TunableOp {
  public:
-  TunableOp(int default_id) : default_id_(default_id), tuning_(false) {}
+  explicit TunableOp(int default_id) : default_id_(default_id), tuning_(false) {}
 
   void Run(const OpParams* op_params) {
     int id;

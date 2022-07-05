@@ -3,10 +3,10 @@
 
 #pragma once
 
+#include <hip/hip_runtime.h>
 #include <memory>
 #include <string>
 #include <vector>
-#include <hip/hip_runtime.h>
 #include "contrib_ops/rocm/bert/tunable_op.h"
 #include "contrib_ops/rocm/bert/fast_gelu_impl_kernel.h"
 
@@ -33,8 +33,8 @@ struct FastGeluParams : OpParams {
 
 template <typename T, int ThreadsPerBlock, int VecSize>
 void LaunchFastGelu(hipStream_t stream, const T* input, const T* bias, T* output, int input_length, int bias_length) {
-  hipLaunchKernelGGL((FastGeluKernelVec<T, ThreadsPerBlock, VecSize>), 
-                  dim3(ceil(float(input_length)/(float(ThreadsPerBlock)*VecSize))),
+  hipLaunchKernelGGL((FastGeluKernelVec<T, ThreadsPerBlock, VecSize>),
+                  dim3(ceil(static_cast<float>(input_length)/(static_cast<float>(ThreadsPerBlock)*VecSize))),
                   dim3(ThreadsPerBlock),
                   0, stream,
                   input_length, bias_length, input, bias, output);

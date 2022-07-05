@@ -3,7 +3,7 @@
 #include <iostream>
 #include "core/providers/shared_library/provider_api.h"  // Include this otherwise Windows build complains Env::Default() missing
 #include "core/platform/env_var_utils.h"
-#include "transformer_common.h"
+#include "contrib_ops/rocm/bert/transformer_common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -35,3 +35,4 @@ const TransformerOptions* TransformerOptions::GetInstance() {
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime
+
