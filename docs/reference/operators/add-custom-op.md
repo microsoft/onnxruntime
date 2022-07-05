@@ -34,6 +34,8 @@ A new op can be registered with ONNX Runtime using the Custom Operator API in [o
 
 * [E2E example: Export PyTorch model with custom ONNX operators](../../tutorials/export-pytorch-model.md).
 
+* [Using Custom Ops with TF2ONNX](https://github.com/microsoft/onnxruntime-extensions/blob/main/tutorials/tf2onnx_custom_ops_tutorial.ipynb): This notebook covers converting a TF model using an existing custom op, defining new custom ops in Python to use in conversion, and defining new custom ops in C++.
+
 ## CUDA custom ops
 When a model is run on a GPU, ONNX Runtime will insert a `MemcpyToHost` op before a CPU custom op and append a `MemcpyFromHost` after it to make sure tensors are accessible throughout calling.
 
