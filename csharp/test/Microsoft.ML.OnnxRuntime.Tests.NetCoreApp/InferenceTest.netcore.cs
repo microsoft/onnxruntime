@@ -824,8 +824,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             //     custom_models
             //       custom_vision
             //         resnet.onnx
-            var path = Environment.GetEnvironmentVariable("ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH");
-            Assert.NotNull(path, "The environment variable ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH must be set. See comments in GetTestModelsDir(...) for details.");
+            var name = "ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH";
+            var path = Environment.GetEnvironmentVariable(name);
+            if (path == null) {
+              throw new Exception($"The environment variable {name} must be set. See comments in GetTestModelsDir(...) for details.");
+            }
             return path;
         }
     }

@@ -19,8 +19,6 @@ jobs:
     value: 'ON'
   - name: runCodesignValidationInjection
     value: false
-  - name: ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH
-    value: '$(Build.BinariesDirectory)/models'
 
   steps:
   - task: UsePythonVersion@0
@@ -73,7 +71,6 @@ jobs:
     displayName: 'Run End to End Test (C#) .Net Core x64'
     env:
       PACKAGENAME: ${{ parameters.NugetPackageName }}
-      ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH: ${ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH}
 
   - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
       - script: |
@@ -83,7 +80,6 @@ jobs:
         displayName: 'Run End to End Test (C#) .Net Core x86'
         env:
           PACKAGENAME: ${{ parameters.NugetPackageName }}
-          ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH: ${ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH}
 
   # TODO: Add .Net Framework AnyCPU test task
 
@@ -94,7 +90,6 @@ jobs:
     displayName: 'Run End to End Test (C#) .NetFramework x64'
     env:
       PACKAGENAME: ${{ parameters.NugetPackageName }}
-      ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH: ${ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH}
 
   - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
       - script: |
@@ -105,7 +100,6 @@ jobs:
         enabled: false
         env:
           PACKAGENAME: ${{ parameters.NugetPackageName }}
-          ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH: ${ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH}
 
   - template: ../../templates/component-governance-component-detection-steps.yml
     parameters :

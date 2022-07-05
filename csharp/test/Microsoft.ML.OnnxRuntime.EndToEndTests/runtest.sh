@@ -20,9 +20,9 @@ if [ $RunTestCsharp = "true" ]; then
   if [[ $IsMacOS == "True" || $IsMacOS == "true" ]]; then
     mkdir -p "${BUILD_BINARIESDIRECTORY}/models"
     ln -s "${ONNX_DIR}/onnx/backend/test/data/node" "${BUILD_BINARIESDIRECTORY}/models/onnx_node_tests"
-    export ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH="${BUILD_BINARIESDIRECTORY}/models"
   fi
   # Run C# tests
+  export ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH="${BUILD_BINARIESDIRECTORY}/models"
   dotnet restore $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj -s $LocalNuGetRepo -s https://api.nuget.org/v3/index.json
   if [ $? -ne 0 ]; then
     echo "Failed to restore nuget packages for the test project"
