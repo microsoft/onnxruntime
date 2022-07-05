@@ -413,7 +413,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Console.WriteLine($"Load ONNX models from folder: {modelsDir}");
             var modelsDirInfo = new DirectoryInfo(modelsDir);
             var skipModels = GetSkippedModels(modelsDirInfo);
-            // Iterate thgough all direct sub-folders in modelsDir.
+            // Iterate through all direct sub-folders in modelsDir.
             foreach (var modelGroupDir in modelsDirInfo.EnumerateDirectories())
             {
                 // Iterate thgough all ONNX model folder in every sub-folder.
