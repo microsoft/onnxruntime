@@ -3,7 +3,6 @@
 
 #pragma once
  
-#include <memory>
 #include "core/common/common.h"
 #include "core/providers/rocm/rocm_kernel.h"
 #include "contrib_ops/rocm/bert/fast_gelu_impl.h"
