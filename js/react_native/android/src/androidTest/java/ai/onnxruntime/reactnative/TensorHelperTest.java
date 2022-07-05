@@ -448,6 +448,11 @@ public class TensorHelperTest {
     }
   }
 
+  @Test
+  public void createOutputTensor_uint8() throws Exception {
+    // TODO: generate file test_types_uint8.ort and test
+  }
+
   private byte[] readBytesFromResourceFile(int resourceId) throws Exception {
     Context context = InstrumentationRegistry.getInstrumentation().getContext();
     InputStream inputStream = context.getResources().openRawResource(resourceId);
