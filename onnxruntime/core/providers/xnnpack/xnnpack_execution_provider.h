@@ -10,13 +10,13 @@
 #include "core/providers/providers.h"
 
 namespace onnxruntime {
+// placeholder for future use. no options currently
 struct XnnpackExecutionProviderInfo {
-  bool create_arena{true};
+  XnnpackExecutionProviderInfo() = default;
 
-  explicit XnnpackExecutionProviderInfo(bool use_arena = true)
-      : create_arena{use_arena} {}
-
-  XnnpackExecutionProviderInfo() = delete;
+  XnnpackExecutionProviderInfo(const ProviderOptions&) {
+    // future: parse ProviderOptions
+  }
 };
 
 class XnnpackExecutionProvider : public IExecutionProvider {
@@ -29,6 +29,8 @@ class XnnpackExecutionProvider : public IExecutionProvider {
       const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+
+  void RegisterAllocator(AllocatorManager& /*allocator_manager*/) override;
 
   DataLayout GetPreferredLayout() const override { return DataLayout::NHWC; }
 

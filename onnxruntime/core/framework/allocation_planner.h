@@ -76,14 +76,14 @@ class SequentialPlanner {
   // This API allows user to provide a custom planner context.
   static Status CreatePlan(
       const Node* parent_node, const onnxruntime::GraphViewer& graph,
-      const std::vector<const NodeArg*>& outer_scope_node_args,
+      gsl::span<const NodeArg* const> outer_scope_node_args,
       const ExecutionProviders& providers,
       const KernelCreateInfoMap& kernel_create_info_map,
       const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
-      const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_arg_to_location_map,
+      const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_arg_to_location_map,
       const OrtValueNameIdxMap& ort_value_name_idx_map,
       const ISequentialPlannerContext& context,
-      std::unique_ptr<SequentialExecutionPlan>& plan);
+      std::optional<SequentialExecutionPlan>& plan);
 };
 
 }  // namespace onnxruntime

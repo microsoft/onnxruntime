@@ -20,6 +20,14 @@
 
 namespace onnxruntime {
 
+static size_t EstimateInputsOutputs(gsl::span<const Node* const> nodes) {
+  size_t num = 0;
+  for (auto n : nodes) {
+    num += n->InputDefs().size() + n->OutputDefs().size();
+  }
+  return num;
+}
+
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const InitializedTensorSet& initialized_tensor_set,
                                     const Path& model_path,
@@ -35,7 +43,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   // Create MLValues related maps
   auto initialize_maps = [this, &initialized_tensor_set, &model_path](const NodeArg& arg, size_t /*index*/) -> Status {
     int idx = ort_value_name_idx_map_.Add(arg.Name());
-    ort_value_idx_nodearg_map_[idx] = &arg;
+    ort_value_idx_nodearg_map_.insert_or_assign(idx, &arg);
 
     // Only create OrtValue instances for initializers used by an array of nodes.
     InitializedTensorSet::const_iterator it = initialized_tensor_set.find(arg.Name());
@@ -60,6 +68,12 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   };
 
   // TODO: node->ImplicitInputDefs() need to be added here for control flow nodes.
+  auto num_inputs_outputs = EstimateInputsOutputs(nodes);
+  ort_value_name_idx_map_.Reserve(num_inputs_outputs);
+  ort_value_idx_nodearg_map_.reserve(num_inputs_outputs);
+  initializers_.reserve(initialized_tensor_set.size());
+  buffer_for_initialized_tensors_.reserve(initialized_tensor_set.size());
+
   for (auto* node : nodes) {
     ORT_THROW_IF_ERROR(onnxruntime::Node::ForEachWithIndex(node->InputDefs(), initialize_maps));
     ORT_THROW_IF_ERROR(onnxruntime::Node::ForEachWithIndex(node->OutputDefs(), initialize_maps));
@@ -84,10 +98,10 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   auto initialize_maps = [this, &initialized_tensor_set, &model_path](const NodeArg& arg, size_t /*index*/) -> Status {
     (void)model_path;
     int idx = ort_value_name_idx_map_.Add(arg.Name());
-    ort_value_idx_nodearg_map_[idx] = &arg;
+    ort_value_idx_nodearg_map_.insert_or_assign(idx, &arg);
 
     // Only create OrtValue instances for initializers used by an array of nodes.
-    std::unordered_map<std::string, OrtValue>::const_iterator it = initialized_tensor_set.find(arg.Name());
+    auto it = initialized_tensor_set.find(arg.Name());
     if (it != initialized_tensor_set.cend()) {
       initializers_[idx] = it->second;
     }
@@ -95,6 +109,11 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   };
 
   // TODO: node->ImplicitInputDefs() need to be added here for control flow nodes.
+  auto num_inputs_outputs = EstimateInputsOutputs(nodes);
+  ort_value_name_idx_map_.Reserve(num_inputs_outputs);
+  ort_value_idx_nodearg_map_.reserve(num_inputs_outputs);
+  initializers_.reserve(initialized_tensor_set.size());
+
   for (auto* node : nodes) {
     ORT_THROW_IF_ERROR(onnxruntime::Node::ForEachWithIndex(node->InputDefs(), initialize_maps));
     ORT_THROW_IF_ERROR(onnxruntime::Node::ForEachWithIndex(node->OutputDefs(), initialize_maps));
@@ -153,7 +172,7 @@ OptimizerExecutionFrame::OptimizerExecutionFrame(const Info& info,
                                                  const std::vector<OrtValue>& fetches)
     : IExecutionFrame(info.GetMLValueNameIdxMap(), info.GetNodeIndexInfo(), fetch_mlvalue_idxs),
       info_(info) {
-  Init(std::vector<int>(), std::vector<OrtValue>(), info.GetInitializers(), info.GetSparseInitializerLookupFunc(), fetches);
+  Init(gsl::span<const int>(), gsl::span<const OrtValue>(), info.GetInitializers(), info.GetSparseInitializerLookupFunc(), fetches);
 }
 
 AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {

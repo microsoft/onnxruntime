@@ -9,6 +9,7 @@
 #include "ort_util.h"
 #include "ort_ops.h"
 #include "ort_log.h"
+#include "ort_tensor.h"
 
 namespace torch_ort {
 namespace eager {
@@ -121,5 +122,16 @@ c10::optional<at::ScalarType> PromoteScalarTypesWithCategory(
 ONNX_NAMESPACE::TensorProto_DataType GetONNXTensorProtoDataType(at::ScalarType dtype);
 
 OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at::ScalarType type);
+
+void resize_output(
+  onnxruntime::ORTInvoker& invoker,
+  ORTTensorImpl* output,
+  at::IntArrayRef shape);
+
+void resize_impl_ort_(
+  onnxruntime::ORTInvoker& invoker,
+  ORTTensorImpl* self,
+  at::IntArrayRef size);
+
 } // namespace eager
 } // namespace torch_ort

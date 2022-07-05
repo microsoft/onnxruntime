@@ -60,7 +60,6 @@ for binary_op, onnx_op in {
                 type_promotion_ops.append(f"aten::{binary_op}{variant}.{dtype}")
 
 for unary_op in [
-    "abs",
     "acos",
     "acosh",
     "asinh",
@@ -100,6 +99,7 @@ for unary_op in [
         ops[f"{aten_name}_"] = onnx_op
 
 hand_implemented = {
+    "aten::abs.out": SignatureOnly(),
     "aten::empty.memory_format": SignatureOnly(),
     "aten::empty_strided": SignatureOnly(),
     "aten::zero_": SignatureOnly(),
@@ -107,6 +107,7 @@ hand_implemented = {
     "aten::_reshape_alias": SignatureOnly(),
     "aten::view": SignatureOnly(),
     "aten::_copy_from_and_resize": SignatureOnly(),
+    "aten::resize_": SignatureOnly(),
     "aten::as_strided": SignatureOnly(),
     # manually implement Slice using stride and offset.
     "aten::slice.Tensor": SignatureOnly(),
@@ -124,8 +125,8 @@ hand_implemented = {
     "aten::softshrink": Shrink("self", bias="lambd", lambd="lambd"),  # yes, bias is set to 'lambd'
     "aten::hardshrink": Shrink("self", bias=0, lambd="lambd"),
     "aten::gelu": Gelu("self"),
-    "aten::max": ReduceMax("self", keepdims=1),
-    "aten::min": ReduceMin("self", keepdims=1),
+    "aten::max": ReduceMax("self", keepdims=0),
+    "aten::min": ReduceMin("self", keepdims=0),
     "aten::_cat": Concat("tensors", "dim"),
     "aten::fill_.Scalar": ConstantOfShape("self", value="value"),
     "aten::ne.Scalar": MakeTorchFallback(),
@@ -137,7 +138,10 @@ hand_implemented = {
     "aten::masked_select": MakeTorchFallback(),
     "aten::_local_scalar_dense": MakeTorchFallback(),
     "aten::gt.Scalar_out": MakeTorchFallback(),
-    "aten::equal": MakeTorchFallback(),
+    "aten::lt.Scalar_out": MakeTorchFallback(),
+    "aten::equal": SignatureOnly(),
+    "aten::_softmax": Softmax("self", axis="dim"),
+    "aten::argmax.out": SignatureOnly(),
 }
 
 # Signature of gelu_backward was changed in this commit id 983ba5e585485ed61a0c0012ef6944f5685e3d97 and PR 61439

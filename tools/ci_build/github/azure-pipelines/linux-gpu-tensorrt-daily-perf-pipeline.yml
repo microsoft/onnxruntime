@@ -13,15 +13,16 @@ parameters:
 - name: RunNvidiaContainer
   displayName: Run in Nvidia Container (or set trtContainer Variable)
   type: boolean
-  default: true
+  default: false
 
 - name: TrtVersion
   displayName: TensorRT Version
   type: string
-  default: 8.2.1.8
+  default: 8.4.1.5
   values:
   - 8.2.1.8
   - 8.0.1.6
+  - 8.4.1.5
 
 - name: ConfigureEPs
   displayName: Configure EPs (set epList variable - separate by spaces)
@@ -81,7 +82,9 @@ jobs:
       ${{ if eq(parameters.RunNvidiaContainer, true) }}:
         value: $(dockerfile_path)/Dockerfile.tensorrt
       ${{ else }}:
-        ${{ if eq(parameters.TrtVersion, '8.2.1.8') }}:
+        ${{ if eq(parameters.TrtVersion, '8.4.1.5') }}:
+          value: $(dockerfile_path)/Dockerfile.ubuntu_cuda11_6_tensorrt8_4
+        ${{ elseif eq(parameters.TrtVersion, '8.2.1.8') }}:
           value: $(dockerfile_path)/Dockerfile.ubuntu_cuda11_4_tensorrt8_2
         ${{ elseif eq(parameters.TrtVersion, '8.0.1.6') }}:
           value: $(dockerfile_path)/Dockerfile.ubuntu_cuda11_4_tensorrt8_0
@@ -123,12 +126,12 @@ jobs:
           artifact: 'onnxruntime_gpu'
           targetPath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
       
-    - ${{ if eq(parameters.RunNvidiaContainer, true) }}:
-      - script: 'docker pull $(nvidia_dockerfile)'
-        displayName: 'Pull Nvidia Dockerfile'
-    - ${{ if eq(parameters.RunNvidiaContainer, false) }}:
-      - script: 'Can only run pip package in Nvidia Container'
-        displayName: 'Please Re-run'
+      - ${{ if eq(parameters.RunNvidiaContainer, true) }}:
+        - script: 'docker pull $(nvidia_dockerfile)'
+          displayName: 'Pull Nvidia Dockerfile'
+      - ${{ else }}:
+        - script: 'Can only run pip package in Nvidia Container'
+          displayName: 'Please Re-run'
 
     - ${{ if eq(parameters.BuildORT, true) }}:
       - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -o $(Build.SourcesDirectory)/$(dockerfile) -b $(branch) -t $(tensorrt_version) -i $(image) -c 75 '
@@ -182,7 +185,7 @@ jobs:
           inlineScript: |
             short_hash=$(git rev-parse --short HEAD) &&
             commit_date=$(git log -1 --date=iso-strict --pretty=format:%cd) &&
-            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)
+            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch) --kusto_conn $(kustoConn) --database $(database)
     
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
