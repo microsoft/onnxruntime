@@ -4,11 +4,49 @@
 # pylint: disable=missing-docstring
 
 import unittest
+from parameterized import parameterized
 
 import numpy as np
 import onnxruntime_pybind11_state as torch_ort
 import torch
 
+ops= [["abs",         torch.tensor([-1, -2, 3, -6, -7])],
+     ["acos",        ],
+     ["acosh",       torch.rand(6).uniform_(1,9999)],              ### limits[1,INF]
+     ["asinh",       ],
+     ["atanh",       torch.rand(6).uniform_(-1,1)],
+     ["asin",        torch.rand(6).uniform_(-1,1)],
+     ["atan",        ],
+     ["ceil",        ],
+     ["cos",         ],
+     ["cosh",        ],
+     ["erf",         ],
+     ["exp",          ],
+     ["floor",       ],
+     # ["isnan",       torch.tensor([1, float('nan'), 2])]]
+     ["log",         torch.abs(torch.rand(6))+0.5],
+     ["reciprocal",  ],
+     ["neg",         torch.randn(10)],
+     ["round",       ],
+     ["relu",        ],
+     #["selu",        torch.randn(10)]]
+     ["sigmoid",     ],
+     ["sin",         ],
+     ["sinh",        ],
+     ["sqrt",        torch.randn(10).uniform_(1,9999)],
+     ["tan",         ],
+     ["tanh",        ]]
+     #["nonzero",    torch.tensor([0, 2, 1, 3])]]
+     #["sign",        ]]
+     #["hardsigmoid", ],
+     # ["isinf",       ],
+     # ["det"          ]]
+
+def rename_func_to_op(testcase_func, param_num, param):
+    return "test_%s" %(parameterized.to_safe_name(str(param.args[0])))
+
+def rename_func_to_inplace(testcase_func, param_num, param):
+    return "test_%s_" %(parameterized.to_safe_name(str(param.args[0])))
 
 class OrtOpTests(unittest.TestCase):
     """test cases for supported eager ops"""
@@ -345,5 +383,40 @@ class OrtOpTests(unittest.TestCase):
             assert torch.equal(cpu_float_float_not_result, ort_float_float_not_result.to("cpu"))
 
 
+    @parameterized.expand(ops,name_func=rename_func_to_op)
+    def test_op(self, test_name, tensor_test=torch.rand(6)):
+        device = self.get_device()
+
+        cpu_tensor = tensor_test
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_result_func="torch."+test_name+"(cpu_tensor)"
+        ort_result_func="torch."+test_name+"(ort_tensor)"
+
+        cpu_result= eval(cpu_result_func)
+        ort_result= eval(ort_result_func)
+
+        assert torch.allclose(cpu_result, ort_result.cpu())
+
+    ## if we need to find a way to exclude parameter in the list.
+    ## I can chagnge the ops (here) to be a function(with excluding arguments), that does:
+    ##                  1. calling to exclude the tests
+    ##                  2. and in that fuction we loading the ops (ops can be in another file)
+
+    @parameterized.expand(ops, name_func=rename_func_to_inplace )
+    def test_op_inplace(self, test_name , tensor_test=torch.rand(6)):
+        device = self.get_device()
+
+        cpu_tensor = tensor_test
+        ort_tensor = cpu_tensor.to(device)
+
+        eval("torch."+test_name+"_(cpu_tensor)")
+        eval("torch."+test_name+"_(ort_tensor)")
+
+
+        assert torch.allclose(cpu_tensor, ort_tensor.cpu())
+
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(verbosity=2)
+    ##delocate the list
+    ops.clear()
