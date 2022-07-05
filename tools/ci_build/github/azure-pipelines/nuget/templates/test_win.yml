@@ -19,8 +19,8 @@ jobs:
     value: 'ON'
   - name: runCodesignValidationInjection
     value: false
-  - name: OnnxModelRootPath
-    value: '$(Build.BinariesDirectory)/model'
+  - name: ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH
+    value: '$(Build.BinariesDirectory)/models'
 
   steps:
   - task: UsePythonVersion@0

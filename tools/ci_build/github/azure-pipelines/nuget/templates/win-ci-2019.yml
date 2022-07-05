@@ -47,7 +47,7 @@ jobs:
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
     ${{ if eq(parameters.EnableLto, true) }}:
       build_py_lto_flag: --enable_lto
-    OnnxModelRootPath: '${{Build.BinariesDirectory)/models}}'
+    ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH: '${{Build.BinariesDirectory)/models}}'
 
   steps:
     - checkout: self
