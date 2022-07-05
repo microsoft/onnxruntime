@@ -812,7 +812,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             // Get test path from enviroment.
             // Expected folder structure:
-            //   OnnxModelRootPath
+            //   ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH
             //     modelsl_in_opset9
             //       test_add
             //         add.onnx
@@ -824,7 +824,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             //     custom_models
             //       custom_vision
             //         resnet.onnx
-            var path = Environment.GetEnvironmentVariable("OnnxModelRootPath");
+            var path = Environment.GetEnvironmentVariable("ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH");
+            Assert.NotNull(path, "The environment variable ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH must be set. See comments in GetTestModelsDir(...) for details.");
             return path;
         }
     }
