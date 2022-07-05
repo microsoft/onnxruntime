@@ -70,16 +70,15 @@ std::vector<std::string> glob(const std::string& dir, const std::string& extensi
   std::string pattern = dir + "/*." + extension;
   WIN32_FIND_DATA fd;
   HANDLE hFind = ::FindFirstFile(pattern.c_str(), &fd);
-  if(hFind != INVALID_HANDLE_VALUE) {
+  if (hFind != INVALID_HANDLE_VALUE) {
     do {
-      if(! (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ) {
+      if ( !(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ) {
         filenames.push_back(
           dir +
           ToUTF8String(PathString{k_preferred_path_separator}) +
-          fd.cFileName
-        );
+          fd.cFileName);
       }
-    } while(::FindNextFile(hFind, &fd));
+    } while (::FindNextFile(hFind, &fd));
     ::FindClose(hFind);
   }
 #else

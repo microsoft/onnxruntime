@@ -97,7 +97,7 @@ Type "help", "copyright", "credits" or "license" for more information.
 >>>
 ```
 Use `quit()` to exit from python interface.
-- LLVM: the compiler is not neccessary for pure ONNX Runtime installation but it is needed for TVM EP by default.
+- LLVM: the compiler is not necessary for pure ONNX Runtime installation but it is needed for TVM EP by default.
 ```cmd
 git clone --depth 1 --branch release/11.x https://github.com/llvm/llvm-project.git
 cmake -S llvm -B build -DLLVM_ENABLE_PROJECTS="clang;libcxx;libcxxabi" -DLLVM_TARGETS_TO_BUILD=X86 -Thost=x64 -DCMAKE_BUILD_TYPE=Release -G "Visual Studio 17 2022"
@@ -187,7 +187,7 @@ tvm_session = onnxruntime.InferenceSession(model_path, providers=["TvmExecutionP
 <br>
 
 - `executor` is executor type used by TVM. There is choice between two types: GraphExecutor and VirtualMachine which are corresponded to "graph" and "vm" tags. VirtualMachine is used by default.
-- `so_folder` is path to folder with set of files (.ro-, .so-files and weights) obtained after model tuning. It uses these files for executor compilation instead of onnx-model. But the latter is still needed for ONNX Runtime.
+- `so_folder` is path to folder with set of files (.ro-, .so/.dll-files and weights) obtained after model tuning. It uses these files for executor compilation instead of onnx-model. But the latter is still needed for ONNX Runtime.
 - `check_hash` means that it is necessary to perform a HASH check for the model obtained in the `so_folder` parameter. It is `False` by default.
 - `hash_file_path` is path to file that contains the pre-computed HASH for the ONNX model which result of tuning locates in the path passed by `so_folder` parameter.
   If an empty string was passed as this value, then the file will be searched in the folder that was passed in the `so_folder` parameter.
@@ -247,7 +247,7 @@ You can read more about these options in section [Configuration options](#config
 - [Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
 
 ## Known issues
-- At this moment, the TVM EP has only been verified on UNIX/Linux systems.
+- At this moment, the TVM EP has only been verified on UNIX/Linux and Windows systems.
 - Some compatibility issues have been found between ONNX and Google protobuf. `AttributeError: module 'google.protobuf.internal.containers' has no attribute 'MutableMapping'`. This usually occurss during `import onnx` in any python scripts for protobuf version >= 3.19.0 and ONNX version <= 1.8.1. To resolve the issue Google protobuf and ONNX can be reinstalled separately or together using:
 ```
 pip3 uninstall onnx -y

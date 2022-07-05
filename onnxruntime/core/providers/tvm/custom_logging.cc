@@ -26,7 +26,7 @@ std::string GetTimedLogMessage(const std::string& file, int lineno, const std::s
   sstream << "["
 #ifdef _WIN32
 // TODO(vvchernov): use #include <time.h> instead of <ctime> and localtime_s() approach for WIN32
-#pragma warning(disable : 4996) //_CRT_SECURE_NO_WARNINGS
+#pragma warning(disable : 4996)  // _CRT_SECURE_NO_WARNINGS
 #endif
           << std::put_time(std::localtime(&t), "%H:%M:%S")
 #ifdef _WIN32
