@@ -14,10 +14,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
-
 template<typename T>
 struct FastGeluParams : OpParams {
-  FastGeluParams(hipStream_t stream, const T* input, const T* bias, T* output, int input_length, int bias_length) : input(input), bias(bias), output(output), input_length(input_length), bias_length(bias_length), OpParams(stream) {}
+  FastGeluParams(hipStream_t stream, const T* input, const T* bias, T* output, int input_length, int bias_length) :
+    input(input), bias(bias), output(output), input_length(input_length), bias_length(bias_length), OpParams(stream) {}
 
   std::string signature() const {
     std::string sig = std::to_string(input_length) + "_" + std::to_string(bias_length);

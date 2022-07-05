@@ -4,7 +4,6 @@
 #pragma once
 
 #include <hip/hip_runtime.h>
-
 #include "device_array.h"
 #include "operator.h"
 #include "contrib_ops/rocm/bert/util.h"

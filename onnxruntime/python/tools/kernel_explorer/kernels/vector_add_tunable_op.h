@@ -15,7 +15,8 @@ using onnxruntime::contrib::rocm::TunableOp;
 
 template<typename T>
 struct VectorAddParams : OpParams {
-  VectorAddParams(hipStream_t stream, const T* x, const T* y, T* z, int n) : x(x), y(y), z(z), n(n), OpParams(stream) {}
+  VectorAddParams(hipStream_t stream, const T* x, const T* y, T* z, int n) :
+    x(x), y(y), z(z), n(n), OpParams(stream) {}
 
   std::string signature() const {
     return std::to_string(n);

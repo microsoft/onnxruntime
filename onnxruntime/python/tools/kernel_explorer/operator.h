@@ -8,7 +8,8 @@
 
 using onnxruntime::contrib::rocm::Timer; 
 
-// To be deleted after we remove the use of namespace onnxruntime::rocm in contrib_ops/rocm/bert/fast_gelu_impl_kernel.h
+// To be deleted after we remove the use of namespace onnxruntime::rocm
+// in contrib_ops/rocm/bert/fast_gelu_impl_kernel.h
 namespace onnxruntime {
 namespace rocm {
 }  // namespace rocm
