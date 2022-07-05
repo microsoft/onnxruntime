@@ -188,6 +188,8 @@ option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 # ATen fallback support
 option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
+option(onnxruntime_BUILD_KERNEL_EXPLORER "Build kernel_explorer for microbenchmark a small subset of important kernels" OFF)
+
 if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)
 endif()
@@ -1287,6 +1289,14 @@ function(onnxruntime_configure_target target_name)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
   endif()
 
+  if (onnxruntime_BUILD_KERNEL_EXPLORER)
+    get_target_property(target_type ${target_name} TYPE)
+    if (target_type STREQUAL "MODULE_LIBRARY" OR target_type STREQUAL "SHARED_LIBRARY")
+      set_property(TARGET ${target_name}
+        APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/tools/kernel_explorer/version_script.lds ")
+    endif()
+  endif()
+
   # Keep BinSkim happy
   if(MSVC AND NOT onnxruntime_target_platform MATCHES "ARM")
     target_link_options(${target_name} PRIVATE "/CETCOMPAT")
@@ -2105,6 +2115,11 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
 
   message(STATUS "WebAssembly Build is enabled")
   include(onnxruntime_webassembly.cmake)
+endif()
+
+if(onnxruntime_BUILD_KERNEL_EXPLORER)
+  message(STATUS "Kernel Explorer Build is enabled")
+  add_subdirectory(../onnxruntime/python/tools/kernel_explorer ${CMAKE_CURRENT_BINARY_DIR}/kernel_explorer EXCLUDE_FROM_ALL)
 endif()
 
 if (UNIX)
