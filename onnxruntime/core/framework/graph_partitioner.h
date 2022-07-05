@@ -3,8 +3,6 @@
 
 #pragma once
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
 #include "core/common/common.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/op_kernel.h"
@@ -31,11 +29,10 @@ class GraphPartitioner {
         providers_(providers) {
   }
 
-  // Run partitioning. Provide compiled_kernel_hashes if mode is kOrtFormatLoad.
+  // Run partitioning.
   Status Partition(Graph& graph, FuncManager& func_mgr, 
                    TransformLayoutFunction transform_layout_function,
-                   Mode mode = Mode::kNormal,
-                   std::unordered_map<std::string, HashValue>* compiled_kernel_hashes = nullptr) const;
+                   Mode mode = Mode::kNormal) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphPartitioner);
@@ -44,15 +41,12 @@ class GraphPartitioner {
   Status PartitionOnnxFormatModel(Graph& graph, FuncManager& func_mgr,
                                   KernelRegistry& fused_kernel_registry, Mode mode,
                                   int& fused_node_unique_id, TransformLayoutFunction transform_layout_function) const;
-#endif
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   Status PartitionOrtFormatModel(Graph& graph, FuncManager& func_mgr, KernelRegistry& fused_kernel_registry,
-                                 std::unordered_map<std::string, HashValue>& compiled_kernel_hashes,
                                  int& fused_node_unique_id, TransformLayoutFunction transform_layout_function) const;
 
   KernelRegistryManager& kernel_registry_mgr_;
   const ExecutionProviders& providers_;
 };
 }  // namespace onnxruntime
-
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

@@ -1066,7 +1066,7 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
   };
 
   // kernel hashes for model are in top level SessionState
-  const auto& compiled_kernel_hashes = GetCompiledKernelHashes();
+  const auto compiled_kernel_hashes = std::unordered_map<std::string, HashValue>{};  // TODO remove
 
   // process the nodes that existed when the model was created
   for (FbsSessionStateViewer::Index i = 0, end = fbs_session_state_viewer.GetNumNodeKernelInfos(); i < end; ++i) {
@@ -1235,7 +1235,6 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           const KernelRegistryManager& kernel_registry_manager,
                                           const SessionOptions& session_options,
-                                          const onnxruntime::fbs::SessionState* serialized_session_state,
                                           bool remove_initializers,
                                           bool saving_ort_format) {
   // recursively create the subgraph session state instances and populate the kernel create info in them.
@@ -1243,21 +1242,8 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   // so also do it recursively when calling PopulateKernelCreateInfo for consistency.
   ORT_RETURN_IF_ERROR(CreateSubgraphSessionState());
 
-  // TODO fix up this part - use PopulateKernelCreateInfo() unconditionally?
-  if (serialized_session_state) {
-    ORT_RETURN_IF_ERROR(LoadFromOrtFormat(*serialized_session_state, kernel_registry_manager));
-    // LoadFromOrtFormat() may assign node EPs so check afterwards
-    ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_));
-  } else {
-#if !defined(ORT_MINIMAL_BUILD)
-    ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_));
-    ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager, saving_ort_format));
-#else
-    ORT_UNUSED_PARAMETER(saving_ort_format);
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  "Serialized session state must be provided from an ORT format model in this build.");
-#endif
-  }
+  ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_));
+  ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager, saving_ort_format));
 
   InlinedHashMap<std::string, size_t> constant_initializers_use_count;
   ComputeConstantInitializerUseCount(graph_, constant_initializers_use_count);
