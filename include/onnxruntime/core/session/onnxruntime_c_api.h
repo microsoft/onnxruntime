@@ -227,6 +227,16 @@ typedef enum OrtErrorCode {
   ORT_EP_FAIL,
 } OrtErrorCode;
 
+typedef enum OrtOpAttrType {
+  ORT_OP_ATTR_UNDEFINED = 0,
+  ORT_OP_ATTR_INT,
+  ORT_OP_ATTR_INTS,
+  ORT_OP_ATTR_FLOAT,
+  ORT_OP_ATTR_FLOATS,
+  ORT_OP_ATTR_STRING,
+  ORT_OP_ATTR_STRINGS,
+} OrtOpAttrType;
+
 //! @}
 #define ORT_RUNTIME_CLASS(X) \
   struct Ort##X;             \
@@ -257,6 +267,8 @@ ORT_RUNTIME_CLASS(ArenaCfg);
 ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
 ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
+ORT_RUNTIME_CLASS(Op);
+ORT_RUNTIME_CLASS(OpAttr);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -503,7 +515,9 @@ typedef struct OrtMIGraphXProviderOptions {
 */
 typedef struct OrtOpenVINOProviderOptions {
 #ifdef __cplusplus
-  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{}, num_of_threads{}, use_compiled_network{}, blob_dump_path{}, context{}, enable_opencl_throttling{} {}
+  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{},
+                                 num_of_threads{}, use_compiled_network{}, blob_dump_path{},
+                                 context{}, enable_opencl_throttling{}, enable_dynamic_shapes{} {}
 #endif
   /** \brief Device type string
   *
@@ -517,6 +531,7 @@ typedef struct OrtOpenVINOProviderOptions {
   const char* blob_dump_path;          // path is set to empty by default
   void* context;
   unsigned char enable_opencl_throttling; ///< 0 = disabled, nonzero = enabled
+  unsigned char enable_dynamic_shapes;  ///< 0 = disabled, nonzero = enabled
 } OrtOpenVINOProviderOptions;
 
 struct OrtApi;
@@ -3329,6 +3344,148 @@ struct OrtApi {
   ORT_API2_STATUS(AddExternalInitializers, _In_ OrtSessionOptions* options,
                   _In_reads_(input_len) const char* const* initializer_names,
                   _In_reads_(input_len) const OrtValue* const* initializers, size_t initializers_num);
+
+  /** \brief: Create attribute of onnxruntime operator
+  * 
+  * \param[in] name Name of the attribute
+  * \param[in] data Data content of the attribute
+  * \param[in] len Number of bytes stored in data
+  * \param[in] type Data type
+  * \param[out] op_attr Attribute that has been created, which must be released by OrtApi::ReleaseOpAttr
+  * 
+  * \since Version 1.12.
+  */
+  ORT_API2_STATUS(CreateOpAttr,
+                  _In_ const char* name,
+                  _In_ const void* data,
+                  _In_ int len,
+                  _In_ OrtOpAttrType type,
+                  _Outptr_ OrtOpAttr** op_attr);
+
+  /* \brief: Release op attribute
+  *
+  * \param[in] opAttr Attribute created by OrtApi::CreateOpAttr
+  * 
+  * \since Version 1.12.
+  */
+  ORT_CLASS_RELEASE(OpAttr);
+
+  /** \brief: Create onnxruntime native operator
+  * 
+  * \param[in] info Kernel info 
+  * \param[in] op_name Operator name
+  * \param[in] domain Operator domain
+  * \param[in] version Operator opset version
+  * \param[in] type_constraint_names Name of the type contraints, such as "T" or "T1"
+  * \param[in] type_constraint_values Type of each contraints
+  * \param[in] type_constraint_count Number of contraints
+  * \param[in] attr_values Attributes used to initialize the operator
+  * \param[in] attr_count Number of the attributes
+  * \param[in] input_count Number of inputs
+  * \param[in] output_count Number of outputs
+  * \param[out] ort_op Operator that has been created
+  * 
+  * \since Version 1.12.
+  */
+  ORT_API2_STATUS(CreateOp,
+                  _In_ const OrtKernelInfo* info,
+                  _In_ const char* op_name,
+                  _In_ const char* domain,
+                  _In_ int version,
+                  _In_opt_ const char** type_constraint_names,
+                  _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
+                  _In_opt_ int type_constraint_count,
+                  _In_opt_ const OrtOpAttr* const* attr_values,
+                  _In_opt_ int attr_count,
+                  _In_ int input_count,
+                  _In_ int output_count,
+                  _Outptr_ OrtOp** ort_op);
+
+  /** \brief: Invoke the operator created by OrtApi::CreateOp
+  * The inputs must follow the order as specified in onnx specification
+  * 
+  * \param[in] context Kernel context
+  * \param[in] ort_op Operator that has been created
+  * \param[in] input_values Array of inputs
+  * \param[in] input_count Number of inputs
+  * \param[in] output_values Array of outputs
+  * \param[in] output_count Number of outputs
+  * 
+  * \since Version 1.12.
+  */
+  ORT_API2_STATUS(InvokeOp,
+                  _In_ const OrtKernelContext* context,
+                  _In_ const OrtOp* ort_op,
+                  _In_ const OrtValue* const* input_values,
+                  _In_ int input_count,
+                  _Inout_ OrtValue* const* output_values,
+                  _In_ int output_count);
+
+  /* \brief: Release an onnxruntime operator
+  *
+  * \param[in] Op Operator created by OrtApi::CreateOp
+  * 
+  * \since Version 1.12.
+  */
+  ORT_CLASS_RELEASE(Op);
+
+  /** \brief: Append execution provider to the session options.
+   * \param[in] provider_name - provider to add.
+   * \param[in] provider_options_keys - keys to configure the provider options
+   * \param[in] provider_options_values - values to configure the provider options
+   * \param[in] num_keys - number of keys passed in
+   *
+   * Currently supported providers:
+   *   SNPE
+   *   XNNPACK
+   *
+   * Note: If an execution provider has a dedicated SessionOptionsAppendExecutionProvider_<provider name> function
+   *       that should be used to add it.
+   *
+   * SNPE supported keys:
+   *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",
+   *   "DSP", "DSP_FIXED8_TF", "AIP_FIXED_TF", "AIP_FIXED8_TF".
+   *   Mapping to SNPE Runtime_t definition: CPU, CPU_FLOAT32 => zdl::DlSystem::Runtime_t::CPU;
+   *   GPU, GPU_FLOAT32_16_HYBRID => zdl::DlSystem::Runtime_t::GPU;
+   *   GPU_FLOAT16 => zdl::DlSystem::Runtime_t::GPU_FLOAT16;
+   *   DSP, DSP_FIXED8_TF => zdl::DlSystem::Runtime_t::DSP.
+   *   AIP_FIXED_TF, AIP_FIXED8_TF => zdl::DlSystem::Runtime_t::AIP_FIXED_TF.
+   *   SNPE Runtime_t refers to https://developer.qualcomm.com/docs/snpe/group__c__plus__plus__apis.html
+   *   "priority": execution priority, options: "low", "normal".
+   *   "buffer_type": ITensor or user buffers, options: "ITENSOR", user buffer with different types - "TF8", "TF16", "UINT8", "FLOAT".
+   *   "ITENSOR" -- default, ITensor which is float only.
+   *   "TF8" -- quantized model required, "FLOAT" -- for both quantized or non-quantized model
+   *   If SNPE is not available (due to a non Snpe enabled build or its dependencies not being installed), this function will fail.
+   *
+   * XNNPACK supported keys:
+   *   None currently
+   *
+   * \since Version 1.12.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider, _In_ OrtSessionOptions* options,
+                  _In_ const char* provider_name,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
+
+  /* \brief: Get a copy of kernel info
+  *
+  * \param[in] info Kernel info
+  * \param[out] info_copy Copy of kernel info
+  *
+  * \since Version 1.12.
+  */
+  ORT_API2_STATUS(CopyKernelInfo,
+                  _In_ const OrtKernelInfo* info,
+                  _Outptr_ OrtKernelInfo** info_copy);
+
+  /* \brief: Release kernel info
+  * 
+  * \param[in] KernelInfo A copy of kernel info returned by CopyKernelInfo
+  * 
+  * \since Version 1.12.
+  */
+  ORT_CLASS_RELEASE(KernelInfo);
 };
 
 /*
@@ -3398,6 +3555,7 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOpt
  * \param device_id HIP device id, starts from zero.
 */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id);
+
 #ifdef __cplusplus
 }
 #endif

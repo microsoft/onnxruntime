@@ -113,3 +113,16 @@ static const char* const kOrtSessionOptionsConfigNnapiEpPartitioningStopOps = "e
 // The feature will not function by default, specify any positive integer, e.g. "4", to enable it.
 // Available since version 1.11.
 static const char* const kOrtSessionOptionsConfigDynamicBlockBase = "session.dynamic_block_base";
+
+// This option allows to decrease CPU usage between infrequent
+// requests and forces any TP threads spinning stop immediately when the last of
+// concurrent Run() call returns.
+// Spinning is restarted on the next Run() call.
+// Applies only to internal thread-pools
+static const char* const kOrtSessionOptionsConfigForceSpinningStop = "session.force_spinning_stop";
+
+// "1": all inconsistencies encountered during shape and type inference
+// will result in failures.
+// "0": in some cases warnings will be logged but processing will continue. The default.
+// May be useful to expose bugs in models.
+static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "session.strict_shape_type_inference";

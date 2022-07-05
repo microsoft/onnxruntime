@@ -15,15 +15,16 @@ Let's use the API to compute the prediction
 of a simple logistic regression model.
 """
 import numpy as np
-from onnxruntime import datasets
-from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
-import onnxruntime.backend as backend
 from onnx import load
+
+import onnxruntime.backend as backend
 
 ########################################
 # The device depends on how the package was compiled,
 # GPU or CPU.
-from onnxruntime import get_device
+from onnxruntime import datasets, get_device
+from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
+
 device = get_device()
 
 name = datasets.get_example("logreg_iris.onnx")

@@ -108,6 +108,7 @@ void RegisterDmlSchemas() {
     .Attr("spatial", "", AttributeProto::INT, static_cast<int64_t>(1))
     .Attr("epsilon", "", AttributeProto::FLOAT, 1e-5f)
     .Attr("momentum", "", AttributeProto::FLOAT, 0.9f)
+    .Attr("training_mode", "", AttributeProto::INT, static_cast<int64_t>(0))
     .Input(0, "X", "", "T")
     .Input(1, "scale", "", "T")
     .Input(2, "B", "", "T")

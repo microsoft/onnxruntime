@@ -10,31 +10,51 @@ namespace ort_dnnl {
 DnnlTensor DnnlNode::empty_tensor_ = DnnlTensor("");
 
 DnnlTensor::DnnlTensor(const NodeArg* arg) {
-  arg_ = arg;
   if (!arg || !arg->Exists()) {
     tensor_name_ = "";
   } else {
     tensor_name_ = arg->Name();
   }
+  // because the passed in ort graph will be released after compile
+  // need to save the type/shape in dnnl IR
+  arg_type_ = arg->Type();
+  arg_type_proto_ = ONNX_NAMESPACE::TypeProto::Create();
+  arg_type_proto_->copy_from(arg->TypeAsProto());
 }
 
 DnnlTensor::DnnlTensor(std::string name) {
   tensor_name_ = name;
-  arg_ = nullptr;
+  arg_type_ = nullptr;
+  arg_type_proto_ = nullptr;
 }
 
 std::string DnnlTensor::Name() const {
   return tensor_name_;
 }
 
+const ONNX_NAMESPACE::TensorShapeProto* DnnlTensor::GetShape() const{
+  if (arg_type_proto_ == nullptr || arg_type_ == nullptr) {
+    return nullptr;
+  }
+
+  if (arg_type_proto_->value_case() != ONNX_NAMESPACE::TypeProto::ValueCase::kTensorType) {
+    return nullptr;
+  }
+  auto& tensor_type = arg_type_proto_->tensor_type();
+  if (tensor_type.has_shape()) {
+    return &tensor_type.shape();
+  }
+  return nullptr;
+}
+
 dnnl::memory::dims DnnlTensor::Dim() const {
-  if (arg_ == nullptr) {
+  if (arg_type_proto_ == nullptr || arg_type_ == nullptr) {
     return dnnl::memory::dims();
   }
-  auto shape_proto = arg_->Shape();
+  auto* shape_proto = GetShape();
   // a shape without any information
   if (shape_proto == nullptr) {
-    LOGS_DEFAULT(INFO) << "nullptr shape for " << arg_->Type() << ": " << arg_->Name();
+    LOGS_DEFAULT(INFO) << "nullptr shape for " << arg_type_ << ": " << tensor_name_;
     return dnnl::memory::dims();
   }
   std::vector<int64_t> shape;
@@ -42,7 +62,7 @@ dnnl::memory::dims DnnlTensor::Dim() const {
   for (const auto& dim : dims) {
     bool has_dim_value = dim.value_case() == dim.kDimValue;
     if (!has_dim_value) {
-      LOGS_DEFAULT(INFO) << "Dynamic shape for " << arg_->Type() << ": " << arg_->Name();
+      LOGS_DEFAULT(INFO) << "Dynamic shape for " << arg_type_ << ": " << tensor_name_;
       shape.push_back(DNNL_RUNTIME_DIM_VAL);
     } else {
       shape.push_back(dim.dim_value());
@@ -57,7 +77,10 @@ dnnl::memory::dims DnnlTensor::Dim() const {
 }
 
 dnnl::memory::data_type DnnlTensor::Type() const {
-  auto data_type = arg_->TypeAsProto()->tensor_type().elem_type();
+  if (arg_type_proto_ == nullptr) {
+    ORT_THROW("Invoke DnnlTensor's arg_type_proto_ not initialized yet.");
+  }
+  auto data_type = arg_type_proto_->tensor_type().elem_type();
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED:
       return dnnl::memory::data_type::undef;
@@ -80,6 +103,9 @@ dnnl::memory::data_type DnnlTensor::Type() const {
     case ONNX_NAMESPACE::TensorProto_DataType_INT8:
       return dnnl::memory::data_type::s8;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+      return dnnl::memory::data_type::u8;
+      // Same here, we use u8 as the handler for bool
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
       return dnnl::memory::data_type::u8;
     default:
       ORT_THROW("Unsupported data type: ", data_type);
@@ -123,7 +149,7 @@ void DnnlTensor::RemoveConsumer(const DnnlNodeArg& arg) {
 }
 
 DnnlNode::DnnlNode(const Node* node) {
-  onnx_node_ = node;
+  since_version_ = node->SinceVersion();
   name_ = node->Name();
   op_type_ = node->OpType();
   attr_->insert(node->GetAttributes());
@@ -176,11 +202,19 @@ NodeAttributes& DnnlNode::Attributes() {
 }
 
 int DnnlNode::SinceVersion() {
-  return onnx_node_->SinceVersion();
+  return since_version_;
 }
 
-DnnlSubgraph::DnnlSubgraph(const GraphViewer& graph_viewer) : graph_viewer_(graph_viewer) {
-  Build();
+void DnnlNode::AppendPostOp(std::string op) {
+  postops_.push_back(op);
+}
+
+const std::vector<std::string>& DnnlNode::GetPostOps() {
+  return postops_;
+}
+
+DnnlSubgraph::DnnlSubgraph(const GraphViewer& graph_viewer) {
+  Build(graph_viewer);
   is_dynamic_ = false;
   for (auto input : GetDnnlInputs()) {
     if (input->IsDynamic()) {
@@ -309,19 +343,11 @@ void DnnlSubgraph::AddNode(std::unique_ptr<DnnlNode> new_node) {
   dnnl_nodes_.back()->Index() = index;
 }
 
-bool DnnlSubgraph::GetInitializedTensor(const std::string& arg_name, const ONNX_NAMESPACE::TensorProto*& value) {
-  return graph_viewer_.GetInitializedTensor(arg_name, value);
-}
-
-bool DnnlSubgraph::IsConstantInitializer(const std::string& arg_name, bool check_outer_scope) {
-  return graph_viewer_.IsConstantInitializer(arg_name, check_outer_scope);
-}
-
-void DnnlSubgraph::Build() {
+void DnnlSubgraph::Build(const GraphViewer& graph_viewer) {
   //establish nodes, tensors and nodeargs
-  const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
+  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer_.GetNode(node_indices[i]));
+    const auto* node(graph_viewer.GetNode(node_indices[i]));
     AddNode(std::make_unique<DnnlNode>(node));
     auto dnnl_node = dnnl_nodes_.back().get();
     std::vector<DnnlTensor*> inputs;
@@ -361,15 +387,15 @@ void DnnlSubgraph::Build() {
   //graph inputs including initializers and outputs can be deleted by graph transformation (eg, gelu fusion)
   //delete unneeded inputs don't affect onnxruntime passing them as input data handle
   //delete unneeded outputs will cause ep to output to fewer data handles then expected
-  for (const auto* node_arg : graph_viewer_.GetInputsIncludingInitializers()) {
+  for (const auto* node_arg : graph_viewer.GetInputsIncludingInitializers()) {
     inputs_.push_back(dnnl_tensors_[node_arg->Name()].get());
   }
 
-  for (const auto* node_arg : graph_viewer_.GetOutputs()) {
+  for (const auto* node_arg : graph_viewer.GetOutputs()) {
     outputs_.push_back(dnnl_tensors_[node_arg->Name()].get());
   }
 
-  for (auto& initializer : graph_viewer_.GetAllInitializedTensors()) {
+  for (auto& initializer : graph_viewer.GetAllInitializedTensors()) {
     auto& name = initializer.first;
     initializers_.push_back(dnnl_tensors_[name].get());
   }

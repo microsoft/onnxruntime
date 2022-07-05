@@ -50,6 +50,10 @@ if (onnxruntime_USE_TENSORRT)
   STRING(APPEND CSHARP_PREPROCESSOR_DEFINES "USE_TENSORRT;")
 endif()
 
+if (onnxruntime_USE_XNNPACK)
+  STRING(APPEND CSHARP_PREPROCESSOR_DEFINES "USE_XNNPACK;")
+endif()
+
 include(CSharpUtilities)
 
 # generate Directory.Build.props

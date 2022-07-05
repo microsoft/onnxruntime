@@ -129,5 +129,47 @@ GetQDQTestCaseFn BuildQDQConcatTestCaseUnsupportedInputScaleZp() {
   };
 }
 
+GetQDQTestCaseFn BuildQDQMatMulTestCase(const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape) {
+  return [input1_shape, input2_shape](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input1_shape, -1.f, 1.f);
+    auto* output_arg = builder.MakeOutput();
+
+    using InputLimits = std::numeric_limits<uint8_t>;
+    using OutputTypeLimits = std::numeric_limits<uint8_t>;
+
+    // add QDQ input
+    auto* q1_output = builder.MakeIntermediate();
+    auto* dq1_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(input_arg,
+                                           .039f,
+                                           (InputLimits::max() + InputLimits::min()) / 2 + 1,
+                                           q1_output);
+    builder.AddDequantizeLinearNode<uint8_t>(q1_output,
+                                             .039f,
+                                             (InputLimits::max() + InputLimits::min()) / 2 + 1,
+                                             dq1_output);
+
+    // add input b initializer (NNAPI only supports case of MatMul A*B - B is an initializer)
+    auto* dq_2_output = builder.MakeIntermediate();
+    auto* input_b = builder.MakeInitializer<uint8_t>(input2_shape, InputLimits::min(), InputLimits::max());
+    builder.AddDequantizeLinearNode<uint8_t>(input_b, .04f, 0, dq_2_output);
+
+    // add MatMul operator
+    auto* matmul_op_output = builder.MakeIntermediate();
+    builder.AddNode("MatMul", {dq1_output, dq_2_output}, {matmul_op_output});
+
+    // add QDQ output
+    auto* q3_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(matmul_op_output,
+                                           .039f,
+                                           (OutputTypeLimits::max() + OutputTypeLimits::min()) / 2 + 1,
+                                           q3_output);
+    builder.AddDequantizeLinearNode<uint8_t>(q3_output,
+                                             .039f,
+                                             (OutputTypeLimits::max() + OutputTypeLimits::min()) / 2 + 1,
+                                             output_arg);
+  };
+}
+
 }  // namespace test
 }  // namespace onnxruntime

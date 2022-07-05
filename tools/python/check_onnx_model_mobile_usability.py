@@ -7,5 +7,5 @@
 # in the ORT python package (where it must use relative imports)
 from util.check_onnx_model_mobile_usability import check_usability
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     check_usability()

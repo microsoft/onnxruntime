@@ -12,14 +12,14 @@
 namespace onnxruntime {
 
 namespace {
-//It assumes max(OrtMemType) <= 1, min(OrtMemType) = -2
+// It assumes max(OrtMemType) <= 1, min(OrtMemType) = -2
 inline int MakeKey(int id, OrtMemType mem_type) {
   return id << 2 | (mem_type + 2);
 }
 }  // namespace
 
-AllocatorPtr IExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
-  auto iter = allocators_.find(MakeKey(id, mem_type));
+AllocatorPtr IExecutionProvider::GetAllocator(int device_id, OrtMemType mem_type) const {
+  auto iter = allocators_.find(MakeKey(device_id, mem_type));
   if (iter != allocators_.end()) {
     return iter->second;
   }
@@ -52,125 +52,69 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 #endif
 }
 
-// Returns true if an allocator was found and replaced
-static bool FindAndReplaceAllocator(const OrtMemoryInfo& mem_info,
-                                    const MemoryInfoSet& mem_info_set,
-                                    AllocatorMap& allocators,
-                                    AllocatorPtr replacing_allocator) {
-  auto ite = mem_info_set.find(mem_info);
-
-  if (ite != mem_info_set.end()) {
-    const int key = MakeKey(mem_info.id, mem_info.mem_type);
-    allocators[key] = replacing_allocator;
-    return true;
-  }
-
-  return false;
-}
-
 // Update allocator in the provider if already present; ignore if not.
+// We match using the device id, OrtMemType and OrtDevice info.
+// We ignore the allocator name, and OrtAllocatorType (whether internally an arena is used or not).
+// TODO: We should remove OrtAllocatorType from OrtMemoryInfo as it's an implementation detail of the allocator.
 void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
   const auto& info = allocator->Info();
 
-  if (FindAndReplaceAllocator(info, mem_info_set_, allocators_, allocator)) {
-    // We found an allocator corresponding to the provided
-    // allocator's OrtMemoryInfo and we replaced it with the
-    // provided allocator.
-    // We return back.
-    return;
-  }
+  // TODO: This only works on allocators that are stored in this class. If a derived class overrides GetAllocator
+  // (e.g. the CUDA EP) and stores AllocatorPtr instances in the derived class we know nothing about them.
+  // In theory we could call GetAllocator instead of allocators_.find, however the CUDA EP does things this way to
+  // return a per-thread allocator from the GetAllocator override, and it's not clear if that could/should be replaced.
+  auto iter = allocators_.find(MakeKey(info.id, info.mem_type));
+  if (iter != allocators_.end()) {
+    // check device as mem_type is relative to the device
+    // e.g. OrtMemTypeDefault is CPU for a CPU EP and GPU for a CUDA EP. An individual EP will only have one
+    // allocator for an OrtMemType value, so this check is to ensure we don't replace with an incompatible allocator.
+    if (iter->second->Info().device == info.device) {
+      IAllocator* existing_alloc = iter->second.get();
+      for (auto& entry : allocator_list_) {
+        if (entry.get() == existing_alloc) {
+          entry = allocator;
+          break;
+        }
+      }
 
-  else {
-    // If we can't find an allocator registered with the exact OrtMemoryInfo
-    // as that of the replacing allocator, we do a "loosened" check
-    // (i.e.) check if there is an allocator registered with OrtAllocatorType
-    // as OrtArenaAllocator because for external user provided allocator
-    // we only accept OrtAllocatorType as OrtDeviceAllocator.
-    // If we do find such a registered allocator, we can safely go ahead
-    // and replace that with the provided allocator. This may seem like
-    // we are replacing an arena allocator with a non-arena allocator
-    // but in reality any user provided allocator may still be an arena
-    // allocator. We don't allow users to use OrtAllocatorType as
-    // OrtArenaAllocator for their allocators because we reserve its usage
-    // for our internal BFCArena.
-    // TODO: Should we remove the OrtAllocatorType field from OrtMemoryInfo to
-    // avoid such problems and also remove the unintuitive phenomenon of binding
-    // the allocator type info to OrtMemoryInfo (which loosely is just device info) ?
-    const auto& original_info = allocator->Info();
-
-    // If the alloc_type was OrtArenaAllocator already, then it is a no-op
-    if (original_info.alloc_type == OrtAllocatorType::OrtArenaAllocator) {
-      return;
-    }
-
-    auto check_info = original_info;
-
-    // Mutate the alloc_type
-    check_info.alloc_type = OrtAllocatorType::OrtArenaAllocator;
-
-    if (FindAndReplaceAllocator(check_info, mem_info_set_,
-                                allocators_, allocator)) {
-      // We found an allocator corresponding to the mutated OrtMemoryInfo
-      // and we replaced it with the provided allocator.
-      // Before we return back, we need to do some house-keeping
-      // (i.e.) update the EP's OrtMemoryInfo set
-
-      // Delete the existing OrtMemoryInfo  corresponding to the allocator
-      // that was replaced
-      mem_info_set_.erase(check_info);
-
-      // Replace it with the provided allocator's OrtMemoryInfo
-      mem_info_set_.insert(allocator->Info());
+      iter->second = allocator;
     }
   }
 }
 
 void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   const OrtMemoryInfo& info = allocator->Info();
-  auto ite = mem_info_set_.find(info);
-  if (ite != mem_info_set_.end()) {
-    ORT_THROW("duplicated allocator");
-  }
   const int key = MakeKey(info.id, info.mem_type);
-  allocators_.insert({key, allocator});
-  mem_info_set_.insert(ite, info);
-  allocator_list_.push_back(allocator);
-}
 
-void IExecutionProvider::TryInsertAllocator(AllocatorPtr allocator) {
-  const OrtMemoryInfo& info = allocator->Info();
-  auto ite = mem_info_set_.find(info);
-  if (ite != mem_info_set_.end()) {
-    LOGS_DEFAULT(WARNING) << "duplicated allocator: " << info.ToString();
-    return;
+  auto iter = allocators_.find(key);
+  if (iter != allocators_.end()) {
+    ORT_THROW("Duplicate allocator for OrtMemType:", info.mem_type, " device:", info.device.ToString(),
+              " Existing allocator: ", iter->second->Info().name,
+              " New allocator: ", allocator->Info().name);
+  } else {
+    allocators_.insert({key, allocator});
+    allocator_list_.push_back(allocator);
   }
-  InsertAllocator(allocator);
 }
 
-void IExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager>) {
-  return;
+void IExecutionProvider::RegisterAllocator(AllocatorManager&) {
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+// !!!!This API will be deprecated soon. If your execution provider overrides this API
+// !!!!Please migrate it to the "Compile" API with FusedNodeAndGraph type.
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
   return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED,
                         "IExecutionProvider::Compile with fused Node is not implemented by " + type_);
 }
 
-common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
-                                           std::string& /*dll_path*/) {
-  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED,
-                        "IExecutionProvider::Compile with fused Node and dll path is not implemented by " + type_);
-}
-#endif
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& /*fused_nodes_and_graphs*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
   return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED,
                         "IExecutionProvider::Compile with FusedNodeAndGraph is not implemented by " + type_);
 }
+
 #endif
 
 int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_viewer,

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "precomp.h"
+#include "./precomp.h"
 
 namespace Dml
 {
@@ -13,7 +13,7 @@ class DmlOperatorRecurrentBase: public DmlOperator, public RecurrentHelper
 public:
     using Self = DmlOperatorRecurrentBase;
 
-    DmlOperatorRecurrentBase(const MLOperatorKernelCreationContext& kernelInfo):
+    explicit DmlOperatorRecurrentBase(const MLOperatorKernelCreationContext& kernelInfo):
         DmlOperator(kernelInfo),
         RecurrentHelper(kernelInfo, kernelInfo.GetTensorShapeDescription())
     {
@@ -403,6 +403,28 @@ private:
         OUT_CELL_SINGLE
     };
 };
+
+void CALLBACK QueryRecurrentNeuralNetwork(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
+{
+    // layout=1 for batchwise operation is unsupported, added in opset 14 for RNN, GRU, and LSTM
+    // (https://github.com/onnx/onnx/pull/3217, https://github.com/onnx/onnx/pull/2284).
+    // Currently (2022-05-27) the ORT CPU execution provider (lstm_base.h) does not support it either,
+    // with no models warranting it. When needed, it can be achieved with no new DML API's by just
+    // swapping the size and strides in the TensorDesc before filling in the *_OPERATOR_DESC, where:
+    //
+    // layout=0: (default, consistent with opset 7)
+    //      X.shape = [seq_length, batch_size, input_size]
+    //      Y.shape = [seq_length, num_directions, batch_size, hidden_size]
+    //      initial_h.shape = Y_h.shape = initial_c.shape = Y_c.shape = [num_directions, batch_size, hidden_size]
+    // layout=1:
+    //      X.shape = [batch_size, seq_length, input_size]
+    //      Y.shape = [batch_size, seq_length, num_directions, hidden_size]
+    //      initial_h.shape = Y_h.shape = initial_c.shape = Y_c.shape = [batch_size, num_directions, hidden_size]
+
+    MLOperatorAttributes attributes(context);
+    int32_t layout = attributes.GetOptionalAttribute<int32_t>(AttrName::Layout, 0);
+    *isSupported = (layout == 0);
+}
 
 DML_OP_DEFINE_CREATION_FUNCTION(RNN,  DmlOperatorRecurrentNeuralNetwork);
 DML_OP_DEFINE_CREATION_FUNCTION(GRU,  DmlOperatorGatedRecurrentUnit);
