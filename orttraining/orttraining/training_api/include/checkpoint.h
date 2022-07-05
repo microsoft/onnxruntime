@@ -81,6 +81,14 @@ Status SaveCheckpoint(CheckpointState& state,
 Status LoadCheckpoint(const PathString& checkpoint_path,
                       CheckpointState& checkpoint_state);
 
+/**
+ * @brief Load training states from ORT checkpoint and returns vector of tensorProto.
+ *
+ * @param checkpoint_path folder where checkpoint is stored.
+ * @return vector<TensorProto>
+ */
+std::vector<ONNX_NAMESPACE::TensorProto> LoadCheckpointToTensors(const PathString& checkpoint_path);
+
 }  // namespace api
 }  // namespace training
 }  // namespace onnxruntime

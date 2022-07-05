@@ -3,6 +3,7 @@
 # checkpoint_utils.py
 
 from onnxruntime.capi._pybind_state import save_checkpoint as _internal_save_checkpoint
+from onnxruntime.capi._pybind_state import load_checkpoint as _internal_load_checkpoint
 
 
 def save_checkpoint(parameters, path_to_checkpoint):
@@ -19,3 +20,10 @@ def save_checkpoint(parameters, path_to_checkpoint):
     _internal_save_checkpoint(
         trainable_params, non_trainable_params, path_to_checkpoint
     )
+
+def load_checkpoint(model, path_to_checkpoint):
+    """Loads the checkpoint to an onnx inference model."""
+
+    # Load the parameters from the checkpoint
+    parameters = _internal_load_checkpoint(path_to_checkpoint)
+

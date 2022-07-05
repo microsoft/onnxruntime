@@ -964,6 +964,12 @@ for every transfered tensor.
 
           ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(trainable_tensor_protos, non_trainable_tensor_protos, checkpoint_path));
         });
+  m.def("load_checkpoint",
+        [](const std::string& checkpoint_path) {
+
+          return onnxruntime::training::api::LoadCheckpointToTensors(checkpoint_path);
+        
+        });
 #endif
 }
 
