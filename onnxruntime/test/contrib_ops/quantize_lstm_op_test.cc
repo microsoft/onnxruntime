@@ -209,12 +209,12 @@ static void RunQuantLSTM(int64_t input_size,
   // X
   int64_t seq_len = 1;  // only use seq length 1 to model the test
   std::vector<int64_t> X_dims = {seq_len, batch_size, input_size};
-  std::vector<float> X_data = rand_gen.Gaussian<float>({seq_len, batch_size, input_size}, 0.0f, 0.25f);
+  std::vector<float> X_data = rand_gen.Gaussian<float>(std::array<int64_t, 3>{seq_len, batch_size, input_size}, 0.0f, 0.25f);
   test.AddInput<float>("X", X_dims, X_data);
 
   // W
   std::vector<int64_t> W_dims = {num_directions, input_size, 4 * hidden_size};
-  std::vector<float> W_data = rand_gen.Gaussian<float>({num_directions, 4 * hidden_size, input_size}, 0.0f, 0.25f);
+  std::vector<float> W_data = rand_gen.Gaussian<float>(std::array<int64_t, 3>{num_directions, 4 * hidden_size, input_size}, 0.0f, 0.25f);
 
   std::vector<float> w_scale;
   std::vector<QType> w_zp;
@@ -224,7 +224,7 @@ static void RunQuantLSTM(int64_t input_size,
 
   // R
   std::vector<int64_t> R_dims = {num_directions, hidden_size, 4 * hidden_size};
-  std::vector<float> R_data = rand_gen.Gaussian<float>({num_directions, 4 * hidden_size, hidden_size}, 0.0f, 0.25f);
+  std::vector<float> R_data = rand_gen.Gaussian<float>(std::array<int64_t, 3>{num_directions, 4 * hidden_size, hidden_size}, 0.0f, 0.25f);
 
   std::vector<float> r_scale;
   std::vector<QType> r_zp;
@@ -384,12 +384,12 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
   // X
   int64_t seq_len = 1;  // only use seq length 1 to model the test
   std::vector<int64_t> X_dims = {seq_len, batch_size, input_size};
-  std::vector<float> X_data = rand_gen.Gaussian<float>({seq_len, batch_size, input_size}, 0.0f, 0.25f);
+  std::vector<float> X_data = rand_gen.Gaussian<float>(std::array<const int64_t, 3>{seq_len, batch_size, input_size}, 0.0f, 0.25f);
   test.AddInput<float>("X", X_dims, X_data);
 
   // W
   std::vector<int64_t> W_dims = {num_directions, input_size, 4 * hidden_size};
-  std::vector<float> W_data = rand_gen.Gaussian<float>({num_directions, 4 * hidden_size, input_size}, 0.0f, 0.25f);
+  std::vector<float> W_data = rand_gen.Gaussian<float>(std::array<const int64_t, 3>{num_directions, 4 * hidden_size, input_size}, 0.0f, 0.25f);
 
   std::vector<float> w_scale;
   std::vector<int8_t> w_zp;
@@ -399,7 +399,7 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
 
   // R
   std::vector<int64_t> R_dims = {num_directions, hidden_size, 4 * hidden_size};
-  std::vector<float> R_data = rand_gen.Gaussian<float>({num_directions, 4 * hidden_size, hidden_size}, 0.0f, 0.25f);
+  std::vector<float> R_data = rand_gen.Gaussian<float>(std::array<const int64_t, 3>{num_directions, 4 * hidden_size, hidden_size}, 0.0f, 0.25f);
 
   std::vector<float> r_scale;
   std::vector<int8_t> r_zp;
@@ -452,19 +452,19 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
   std::vector<int64_t> Y_c_dims{num_directions, batch_size, hidden_size};
   test.AddOutput<float>("Y_c", Y_c_dims, Y_c_data);
 
-  auto W_quant_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<int8_t>(), TensorShape(W_dims),
-                                                 w_quant.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+  auto ml_int8 = DataTypeImpl::GetType<int8_t>();
+  OrtMemoryInfo cpu_info(CPU, OrtAllocatorType::OrtDeviceAllocator);
+
   OrtValue W;
+  Tensor::InitOrtValue(ml_int8, TensorShape(W_dims),
+                       w_quant.data(),
+                       cpu_info, W);
 
-  W.Init(W_quant_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-
-  auto R_quant_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<int8_t>(), TensorShape(R_dims),
-                                                 r_quant.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue R;
+  Tensor::InitOrtValue(ml_int8, TensorShape(R_dims),
+                       r_quant.data(),
+                       cpu_info, R);
 
-  R.Init(R_quant_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
   SessionOptions so;
 
   // Set up weight(s) as a shared initializer to be shared between sessions

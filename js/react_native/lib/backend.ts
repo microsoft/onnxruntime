@@ -3,6 +3,7 @@
 
 import {Buffer} from 'buffer';
 import {Backend, InferenceSession, SessionHandler, Tensor,} from 'onnxruntime-common';
+import {Platform} from 'react-native';
 
 import {binding, Binding} from './binding';
 
@@ -32,6 +33,15 @@ const tensorTypeToTypedArray = (type: Tensor.Type):|Float32ArrayConstructor|Int8
       }
     };
 
+const normalizePath = (path: string): string => {
+  // remove 'file://' prefix in iOS
+  if (Platform.OS === 'ios' && path.toLowerCase().startsWith('file://')) {
+    return path.substring(7);
+  }
+
+  return path;
+};
+
 class OnnxruntimeSessionHandler implements SessionHandler {
   #inferenceSession: Binding.InferenceSession;
   #key: string;
@@ -41,7 +51,7 @@ class OnnxruntimeSessionHandler implements SessionHandler {
 
   constructor(path: string) {
     this.#inferenceSession = binding;
-    this.#key = path;
+    this.#key = normalizePath(path);
     this.inputNames = [];
     this.outputNames = [];
   }
@@ -58,7 +68,7 @@ class OnnxruntimeSessionHandler implements SessionHandler {
       this.inputNames = results.inputNames;
       this.outputNames = results.outputNames;
     } catch (e) {
-      throw new Error(`Can't load a model: ${e.message}`);
+      throw new Error(`Can't load a model: ${(e as Error).message}`);
     }
   }
 

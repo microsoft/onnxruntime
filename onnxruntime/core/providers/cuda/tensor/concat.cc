@@ -35,7 +35,7 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
   auto input_count = Node().InputArgCount().front();
 
   // Hold pointers to the input tensors to be used in the PrepareForCompute() step
-  std::vector<const Tensor*> input_tensors;
+  InlinedTensorsVector input_tensors;
   input_tensors.reserve(input_count);
   for (int i = 0; i < input_count; ++i) {
     input_tensors.push_back(ctx->Input<Tensor>(i));
@@ -48,15 +48,16 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
   if (p.output_num_elements == 0)
     return Status::OK();
 
-  std::vector<int64_t> concat_sizes(input_count);
+  std::vector<int64_t> concat_sizes;
+  concat_sizes.reserve(input_count);
 
   CudaAsyncBuffer<const void*> input_ptr(this, input_count);
   gsl::span<const void*> input_ptr_cpuspan = input_ptr.CpuSpan();
   std::vector<int64_t> axis_dimension_input_output_mapping(p.output_tensor->Shape()[p.axis]);
   int index = 0;
   for (int i = 0; i < input_count; ++i) {
-    auto input = p.inputs[i];
-    concat_sizes[i] = input.tensor->Shape()[p.axis];
+    const auto& input = p.inputs[i];
+    concat_sizes.push_back(input.tensor->Shape()[p.axis]);
     input_ptr_cpuspan[i] = input.tensor->DataRaw();
     for (int j = 0; j < input.tensor->Shape()[p.axis]; ++j) {
       axis_dimension_input_output_mapping.at(index++) = i;
@@ -70,10 +71,10 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
   CudaAsyncBuffer<int64_t> concat_sizes_gpu(this, concat_sizes);
   CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, axis_dimension_input_output_mapping);
   CudaAsyncBuffer<int64_t> concat_sizes_range_gpu(this, concat_sizes_range);
-  concat_sizes_gpu.CopyToGpu();
-  axis_dimension_input_output_mapping_gpu.CopyToGpu();
-  concat_sizes_range_gpu.CopyToGpu();
-  input_ptr.CopyToGpu();
+  ORT_RETURN_IF_ERROR(concat_sizes_gpu.CopyToGpu());
+  ORT_RETURN_IF_ERROR(axis_dimension_input_output_mapping_gpu.CopyToGpu());
+  ORT_RETURN_IF_ERROR(concat_sizes_range_gpu.CopyToGpu());
+  ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu());
   int block_size_inside_axis_dim = static_cast<int>(p.output_axis_pitch / p.output_tensor->Shape()[p.axis]);
   int block_size_including_axis_dim = static_cast<int>(p.output_axis_pitch);
   auto element_bytes = p.output_tensor->DataType()->Size();

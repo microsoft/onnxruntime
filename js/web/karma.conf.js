@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+'use strict';
+
 const bundleMode = require('minimist')(process.argv)['bundle-mode'] || 'dev';  // 'dev'|'perf'|undefined;
 const karmaPlugins = require('minimist')(process.argv)['karma-plugins'] || undefined;
 const timeoutMocha = require('minimist')(process.argv)['timeout-mocha'] || 60000;
@@ -37,10 +39,11 @@ module.exports = function (config) {
   config.set({
     // global config of your BrowserStack account
     browserStack: {
-      username: process.env.BROWSER_STACK_USERNAME,
-      accessKey: process.env.BROWSER_STACK_ACCESS_KEY,
+      username: process.env.BROWSERSTACK_USERNAME,
+      accessKey: process.env.BROWSERSTACK_ACCESS_KEY,
       forceLocal: true,
       startTunnel: true,
+      idleTimeout: '300',
     },
     frameworks: ['mocha'],
     files: [
@@ -74,107 +77,94 @@ module.exports = function (config) {
     browserSocketTimeout: 60000,
     hostname: getMachineIpAddress(),
     customLaunchers: {
-      ChromeTest: { base: 'Chrome', flags: ['--window-size=1,1'] },
-      ChromeDebug: { debug: true, base: 'Chrome', flags: ['--remote-debugging-port=9333'] },
+      ChromeTest: { base: 'ChromeHeadless', flags: ['--window-size=1,1', '--enable-features=SharedArrayBuffer'] },
+      ChromeDebug: { debug: true, base: 'Chrome', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer'] },
+
       //
       // ==== BrowserStack browsers ====
       //
 
       // Windows
       //
-      BS_WIN_10_Chrome_73: {
+      BS_WIN_10_Chrome_91: {
         base: 'BrowserStack',
-        browser: 'Chrome',
-        browser_version: '73.0',
         os: 'Windows',
         os_version: '10',
+        browser: 'Chrome',
+        browser_version: '91'
       },
-      BS_WIN_10_Edge_18: {
+      BS_WIN_10_Edge_91: {
         base: 'BrowserStack',
         os: 'Windows',
         os_version: '10',
         browser: 'Edge',
-        browser_version: '18.0',
+        browser_version: '91'
       },
-      BS_WIN_10_Firefox_66: {
+      BS_WIN_10_Firefox_89: {
         base: 'BrowserStack',
         os: 'Windows',
         os_version: '10',
         browser: 'Firefox',
-        browser_version: '66.0',
-      },
-      BS_WIN_7_Chrome_63: {
-        base: 'BrowserStack',
-        browser: 'Chrome',
-        browser_version: '63.0',
-        os: 'Windows',
-        os_version: '7',
+        browser_version: '89'
       },
 
       // macOS
       //
-      BS_MAC_10_14_Safari_12: {
+      BS_MAC_11_Safari_14: {
         base: 'BrowserStack',
         os: 'OS X',
-        os_version: 'Mojave',
+        os_version: 'Big Sur',
         browser: 'Safari',
-        browser_version: '12.0',
+        browser_version: '14.0'
       },
-      BS_MAC_10_14_Chrome_73: {
+      BS_MAC_11_Chrome_91: {
         base: 'BrowserStack',
         os: 'OS X',
-        os_version: 'Mojave',
+        os_version: 'Big Sur',
         browser: 'Chrome',
-        browser_version: '73.0',
-      },
-      BS_MAC_10_13_Safari_11_1: {
-        base: 'BrowserStack',
-        os: 'OS X',
-        os_version: 'High Sierra',
-        browser: 'Safari',
-        browser_version: '11.1',
+        browser_version: '91'
       },
 
       // iPhone
       //
-      BS_IOS_12_1_iPhoneXS: {
+      BS_IOS_14_iPhoneXS: {
         base: 'BrowserStack',
         device: 'iPhone XS',
         real_mobile: true,
         os: 'ios',
-        os_version: '12.1',
+        os_version: '14'
       },
-      BS_IOS_11_iPhoneX: {
+      BS_IOS_13_iPhoneXS: {
         base: 'BrowserStack',
-        device: 'iPhone X',
+        device: 'iPhone XS',
         real_mobile: true,
         os: 'ios',
-        os_version: '11',
-      },
-      BS_IOS_10_3_iPhone7: {
-        base: 'BrowserStack',
-        device: 'iPhone 7',
-        real_mobile: true,
-        os: 'ios',
-        os_version: '10.3',
+        os_version: '13'
       },
 
       // Android
       //
-      BS_ANDROID_9_Pixel_3: {
+      BS_ANDROID_11_Pixel_5: {
         base: 'BrowserStack',
-        device: 'Google Pixel 3',
+        device: 'Google Pixel 5',
         real_mobile: true,
         os: 'android',
-        os_version: '9.0',
+        os_version: '11.0'
       },
-      BS_ANDROID_7_1_Galaxy_Note_8: {
+      BS_ANDROID_11_Galaxy_S_21: {
         base: 'BrowserStack',
-        device: 'Samsung Galaxy Note 8',
+        device: 'Samsung Galaxy S21',
         real_mobile: true,
         os: 'android',
-        os_version: '7.1',
+        os_version: '11.0'
       },
+      BS_ANDROID_10_Pixel_4: {
+        base: 'BrowserStack',
+        device: 'Google Pixel 4',
+        real_mobile: true,
+        os: 'android',
+        os_version: '10.0'
+      }
     }
   });
 };

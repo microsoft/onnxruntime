@@ -82,12 +82,12 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
   const auto* weights_data = static_cast<const uint8_t*>(weights.DataRaw());
   weights_is_signed_ = weights.IsDataType<int8_t>();
 
-  packed_weights_size_ = MlasGemmPackBSize(head_size, input_hidden_size, weights_is_signed_);
+  packed_weights_size_ = MlasGemmPackBSize(head_size, input_hidden_size, false /*AIsSigned*/, weights_is_signed_);
   if (packed_weights_size_ == 0) {
     return Status::OK();
   }
 
-  const size_t loop_len = 3 * num_heads_;
+  const size_t loop_len = 3 * static_cast<size_t>(num_heads_);
   size_t packed_weights_data_size = packed_weights_size_ * loop_len;
   auto* packed_weights_data = static_cast<uint8_t*>(alloc->Alloc(packed_weights_data_size));
 
@@ -99,7 +99,7 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
   packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
 
   for (size_t i = 0; i < loop_len; i++) {
-    MlasGemmPackB(head_size, input_hidden_size, weights_data, hidden_size_x3, weights_is_signed_, packed_weights_data);
+    MlasGemmPackB(head_size, input_hidden_size, weights_data, hidden_size_x3, false /*AIsSigned*/, weights_is_signed_, packed_weights_data);
     packed_weights_data += packed_weights_size_;
     weights_data += head_size;
   }
@@ -158,7 +158,8 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
                                                  weights_shape,
                                                  bias->Shape(),
                                                  mask_index,
-                                                 past_tensor));
+                                                 past_tensor,
+                                                 nullptr));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
@@ -214,8 +215,8 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
 
   auto Q = reinterpret_cast<T*>(gemm_data);
-  auto K = Q + batch_size * sequence_length * hidden_size;
-  auto V = K + batch_size * sequence_length * hidden_size;
+  auto K = Q + static_cast<int64_t>(batch_size) * sequence_length * hidden_size;
+  auto V = K + static_cast<int64_t>(batch_size) * sequence_length * hidden_size;
   T* QKV[3] = {Q, K, V};
 
   {
@@ -226,13 +227,13 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
     const auto* weights_data = packed_weights_ ? nullptr : static_cast<const uint8_t*>(weights->DataRaw());
     const bool weights_is_signed = packed_weights_ ? weights_is_signed_ : weights->IsDataType<int8_t>();
 
-    MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+    MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
     gemm_shape.M = sequence_length;
     gemm_shape.N = head_size;
     gemm_shape.K = input_hidden_size;
     gemm_shape.BIsSigned = weights_is_signed;
 
-    std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_data_vec(loop_len);
+    std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_data_vec(loop_len);
     std::vector<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR> scale_bias_procs;
     scale_bias_procs.reserve(loop_len);
 
@@ -271,7 +272,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
         gemm_params.BIsPacked = true;
       } else {
         gemm_params.B = weights_data + weights_offset;
-        gemm_params.ldb = 3 * hidden_size;
+        gemm_params.ldb = static_cast<int64_t>(3) * hidden_size;
       }
       gemm_params.ZeroPointB = nullptr != weight_zp_data ? weight_zp_data + weights_zp_offset : &weight_zp_default;
       gemm_params.PerColumnZeroPoints = is_weight_zp_per_column;
@@ -286,7 +287,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q, K, V, mask_index, past_tensor, output,
                         batch_size, sequence_length,
-                        head_size, hidden_size, context);
+                        head_size, head_size, hidden_size, nullptr, context);
 }
 
 }  // namespace contrib

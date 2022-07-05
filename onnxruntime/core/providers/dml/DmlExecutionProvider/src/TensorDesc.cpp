@@ -50,7 +50,7 @@ TensorDesc::TensorDesc(
     MLOperatorTensorDataType dataType,
     gsl::span<const uint32_t> dimensions, // Desired dimensions
     gsl::span<const uint32_t> nonBroadcastDimensions, // Actual physical dimensions
-    uint32_t coerceAxis,
+    int32_t coerceAxis,
     int32_t placement, // Adjustment offset of the passed dimensions within the minDimensionCount.
     int32_t leftAlignedDimensionCount, // Number of dimensions that remain left aligned when expanded to minimum count (INT32_MAX means all, 0 means all right aligned).
     uint32_t minDimensionCount,
@@ -62,18 +62,19 @@ TensorDesc::TensorDesc(
 
     m_bufferTensorDesc.DataType = GetDmlDataTypeFromMlDataType(dataType);
     ML_CHECK_VALID_ARGUMENT(ApiTraits::IsValidEnumValue(m_bufferTensorDesc.DataType));
+    ML_CHECK_VALID_ARGUMENT(coerceAxis >= 0);
 
     gsl::span<const uint32_t> sizes;
 
     // If needed, flatten the tensor dimensions to a 2D tensor of size [a_0 * ... * a_{coerceAxis-1}, a_{coerceAxis} * ... * a_{n-1}]
     // e.g. Flattening [1,2,3,4] with axis 2 yields [2,12].
     uint32_t coercedSizes[2];
-    if (dimensions.size() > 1 && coerceAxis < gsl::narrow_cast<uint32_t>(dimensions.size()))
+    if (dimensions.size() > 1 && coerceAxis < gsl::narrow_cast<int32_t>(dimensions.size()))
     {
         uint32_t dimension0 = 1u;
         uint32_t dimension1 = dimensions[coerceAxis];
 
-        for (uint32_t i = 0; i < coerceAxis; ++i)
+        for (int32_t i = 0; i < coerceAxis; ++i)
         {
             dimension0 *= dimensions[i];
         }
@@ -198,69 +199,6 @@ TensorDesc::TensorDesc(
         useStrides ? m_strides : nullptr
         );
     assert(m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType));
-}
-
-void TensorDesc::Remap64bitDmlDataTypeTo32bit()
-{
-    if (m_bufferTensorDesc.DataType != DML_TENSOR_DATA_TYPE_UINT64 &&
-        m_bufferTensorDesc.DataType != DML_TENSOR_DATA_TYPE_INT64)
-    {
-        return; // Nothing to do.
-    }
-
-    uint64_t endPaddingInBytes = 0;
-
-    // A workaround for older devices is to use strides to fake 64-bit memory access
-    // while only the lower 32 bits contains the data. This trick obviously doesn't
-    // work if the data element is genuine 64-bit. It also doesn't work if the data
-    // element is negative as the signed bit will be incorrectly interpreted.
-    m_bufferTensorDesc.DataType = Dml::Remap64bitDmlDataTypeTo32bit(m_bufferTensorDesc.DataType);
-
-    // If the strides haven't been calculated yet, initialize them as packed.
-    if (m_bufferTensorDesc.Strides == nullptr)
-    {
-        uint32_t stride = 1;
-        for (int i = m_bufferTensorDesc.DimensionCount - 1; i >= 0; i--)
-        {
-            m_strides[i] = stride;
-            stride *= m_sizes[i];
-        }
-    }
-
-    // Double the stride values to emulate 64-bit integer support.
-    for (uint32_t i = 0; i < m_bufferTensorDesc.DimensionCount; ++i)
-    {
-        m_strides[i] *= 2;
-    }
-
-    // The physical size of the tensor will have an extra 4 bytes at the end.
-    // DMLCalcBufferTensorSize calculates the minimum implied size, which is based on the last
-    // addressable element of the tensor plus the space for the last element. However, the size
-    // of the last element is now halved from 8 bytes to 4 bytes.
-    //
-    // Example:
-    // Original Tensor: size={2,3}, strides={3,1}, type=int64, size = (1+{1,2}*{3,1})*sizeof(int64) = 6 * 8 = 48
-    // Emulated Tensor: size={2,3}, strides={6,2}, type=int32, size = (1+{1,2}*{6,2})*sizeof(int32) = 11 * 4 = 44
-    //
-    // DirectML itself won't read/write the last 4 bytes, but we want the total size to be accurate
-    // so that the entire region can be zeroed.
-    endPaddingInBytes = sizeof(uint32_t);
-
-    m_bufferTensorDesc.Strides = m_strides;
-
-    m_bufferTensorDesc.TotalTensorSizeInBytes = DMLCalcBufferTensorSize(
-        m_bufferTensorDesc.DataType,
-        m_bufferTensorDesc.DimensionCount,
-        m_sizes,
-        m_strides
-        ) + endPaddingInBytes;
-}
-
-bool TensorDesc::WasRemapped64bitTo32bit() const
-{
-    bool was64BitIntType = (m_mlOperatorTensorDataType == MLOperatorTensorDataType::UInt64 || m_mlOperatorTensorDataType == MLOperatorTensorDataType::Int64);
-    bool is32BitIntType = (m_bufferTensorDesc.DataType == DML_TENSOR_DATA_TYPE_UINT32 || m_bufferTensorDesc.DataType == DML_TENSOR_DATA_TYPE_INT32);
-    return was64BitIntType && is32BitIntType;
 }
 
 gsl::span<const uint32_t> TensorDesc::GetStrides() const

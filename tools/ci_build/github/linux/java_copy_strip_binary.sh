@@ -9,7 +9,7 @@ a) ARTIFACT_NAME=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
 l) LIB_NAME=${OPTARG};;
 n) NATIVE_LIB_NAME=${OPTARG};;
-h) ARCH=${OPTARG};;
+h) ARCH=${OPTARG};; #must match the JAVA_OS_ARCH variable in onnxruntime_java.cmake
 v) VERSION_NUMBER=${OPTARG};;
 esac
 done
@@ -19,6 +19,9 @@ EXIT_CODE=1
 uname -a
 
 echo "Version: $VERSION_NUMBER"
+if [[ $LIB_NAME == *.dylib ]] && [[ $ARCH == 'osx-x86_64' ]]; then
+	ARCH='osx-x64'
+fi
 NATIVE_FOLDER=ai/onnxruntime/native/$ARCH
 
 mkdir -p $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER
@@ -49,6 +52,11 @@ then
     if [[ -f "$BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_cuda.so" ]]; then
         cp $BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_shared.so $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime_providers_shared.so
         cp $BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_cuda.so $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime_providers_cuda.so
+    fi
+    # Add tensorrt provider if it exists
+    if [[ -f "$BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_tensorrt.so" ]]; then
+        cp $BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_shared.so $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime_providers_shared.so
+        cp $BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_tensorrt.so $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime_providers_tensorrt.so
     fi
 fi
 

@@ -1,18 +1,18 @@
 /**
-* Copyright (c) 2016-present, Facebook, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Copyright (c) 2016-present, Facebook, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/nn/conv.h"
@@ -21,6 +21,7 @@
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
+using ConvPadVector = ConvAttributes::ConvPadVector;
 
 template <typename T>
 Status Conv<T>::Compute(OpKernelContext* context) const {
@@ -32,25 +33,25 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   const int64_t M = W->Shape()[0];
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
-  std::vector<int64_t> kernel_shape;
+  TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
 
-  std::vector<int64_t> pads(conv_attrs_.pads);
+  ConvPadVector pads(conv_attrs_.pads);
   if (pads.empty()) {
     pads.resize(kernel_shape.size() * 2, 0);
   }
-  std::vector<int64_t> dilations(conv_attrs_.dilations);
+  TensorShapeVector dilations(conv_attrs_.dilations);
   if (dilations.empty()) {
     dilations.resize(kernel_shape.size(), 1);
   }
-  std::vector<int64_t> strides(conv_attrs_.strides);
+  TensorShapeVector strides(conv_attrs_.strides);
   if (strides.empty()) {
     strides.resize(kernel_shape.size(), 1);
   }
 
-  std::vector<int64_t> Y_dims({N, M});
+  TensorShapeVector Y_dims({N, M});
   TensorShape input_shape = X->Shape().Slice(2);
-  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferPadsAndOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
   Tensor* Y = context->Output(0, Y_dims);
   TensorShape output_shape = Y->Shape().Slice(2);
 
@@ -153,33 +154,35 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 
 Status Conv<float>::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
-  const auto* X = context->Input<Tensor>(0);
-  const auto* W = context->Input<Tensor>(1);
-  const Tensor* B = num_inputs == 3 ? context->Input<Tensor>(2) : nullptr;
+  const Tensor* X = context->Input<Tensor>(0);
+  const Tensor* W = context->Input<Tensor>(1);
+  const Tensor* B = num_inputs >= 3 ? context->Input<Tensor>(2) : nullptr;
+  const Tensor* Sum = num_inputs >= 4 ? context->Input<Tensor>(3) : nullptr;
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
-  std::vector<int64_t> kernel_shape;
+  // kernel_shape is an optional attribute and has to be inferred from W if not provided
+  TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
 
-  std::vector<int64_t> pads(conv_attrs_.pads);
+  ConvPadVector pads(conv_attrs_.pads);
   if (pads.empty()) {
     pads.resize(kernel_shape.size() * 2, 0);
   }
-  std::vector<int64_t> dilations(conv_attrs_.dilations);
+  TensorShapeVector dilations(conv_attrs_.dilations);
   if (dilations.empty()) {
     dilations.resize(kernel_shape.size(), 1);
   }
-  std::vector<int64_t> strides(conv_attrs_.strides);
+  TensorShapeVector strides(conv_attrs_.strides);
   if (strides.empty()) {
     strides.resize(kernel_shape.size(), 1);
   }
 
-  std::vector<int64_t> Y_dims({N, M});
+  TensorShapeVector Y_dims({N, M});
   TensorShape input_shape = X->Shape().Slice(2);
-  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferPadsAndOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   TensorShape output_shape = Y->Shape().Slice(2);
 
@@ -194,7 +197,18 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const auto* Xdata = X->template Data<float>();
   const auto* Bdata = B != nullptr ? B->template Data<float>() : nullptr;
   auto* Ydata = Y->template MutableData<float>();
-
+  // Check for the optional Conv/Sum fusion.
+  float Beta = 0.0f;
+  if (Sum != nullptr) {
+    const auto& sum_shape = Sum->Shape();
+    ORT_RETURN_IF_NOT(Y->Shape() == sum_shape, "output and sum shape must match");
+    // If the output was not allocated inplace with the sum tensor, then copy here.
+    const auto* sum_data = Sum->template Data<float>();
+    if (Ydata != sum_data) {
+      memcpy(Ydata, sum_data, sum_shape.Size() * sizeof(float));
+    }
+    Beta = 1.0f;
+  }
   const size_t kernel_rank = kernel_shape.size();
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
@@ -215,6 +229,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     static_cast<size_t>(M / conv_attrs_.group),
                     &activation_,
                     &WorkingBufferSize,
+                    Beta,
                     thread_pool);
 
     auto* working_data = WorkingBufferSize > 0 ? alloc->Alloc(SafeInt<size_t>(sizeof(float)) * WorkingBufferSize)
@@ -265,7 +280,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             1,
             W->template Data<float>() + group_id * W_offset,
             col_buffer_data,
-            0,
+            Beta,
             Ydata + group_id * Y_offset,
             thread_pool);
       }

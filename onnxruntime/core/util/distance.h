@@ -3,7 +3,7 @@
 
 #pragma once
 #include <cmath>
-#include "math_cpuonly.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 

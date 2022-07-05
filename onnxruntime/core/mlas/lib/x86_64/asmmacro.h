@@ -125,3 +125,26 @@ Arguments:
 .endif
 
         .endm
+
+/*++
+
+Macro Description:
+
+    This macro emits the statement for each register listed in the register
+    list. The statement can use RegItem to access the current register.
+
+Arguments:
+
+    RegList - Supplies the list of registers.
+
+    Statement - Supplies the statement to emit.
+
+--*/
+
+        .macro EmitForEachRegister RegList, Statement
+
+        .irp    RegItem, \RegList\()
+        \Statement\()
+        .endr
+
+        .endm

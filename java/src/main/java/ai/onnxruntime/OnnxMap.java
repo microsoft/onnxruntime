@@ -77,6 +77,7 @@ public class OnnxMap implements OnnxValue {
           return OnnxMapValueType.LONG;
         case STRING:
           return OnnxMapValueType.STRING;
+        case UINT8:
         case INT8:
         case INT16:
         case INT32:
@@ -137,9 +138,9 @@ public class OnnxMap implements OnnxValue {
    */
   @Override
   public Map<Object, Object> getValue() throws OrtException {
-    HashMap<Object, Object> map = new HashMap<>();
     Object[] keys = getMapKeys();
     Object[] values = getMapValues();
+    HashMap<Object, Object> map = new HashMap<>(OrtUtil.capacityFromSize(keys.length));
     for (int i = 0; i < keys.length; i++) {
       map.put(keys[i], values[i]);
     }

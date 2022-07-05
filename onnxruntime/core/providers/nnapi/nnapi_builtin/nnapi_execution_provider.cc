@@ -3,22 +3,24 @@
 
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 
+#include "core/common/string_utils.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
+#include "core/platform/env.h"
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
+#include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "core/providers/partitioning_utils.h"
+#include "core/providers/shared/node_unit/node_unit.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
-#ifdef __ANDROID__
-#include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
-#include "core/providers/nnapi/nnapi_builtin/model.h"
-#endif
-
 namespace onnxruntime {
+
+namespace {
 
 constexpr const char* NNAPI = "Nnapi";
 
@@ -26,11 +28,29 @@ constexpr std::array kDefaultPartitioningStopOps{
     "NonMaxSuppression",
 };
 
-NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags)
+std::unordered_set<std::string> GetPartitioningStopOps(const optional<std::string>& partitioning_stop_ops_list) {
+  if (!partitioning_stop_ops_list.has_value()) {
+    LOGS_DEFAULT(VERBOSE) << "Using default partitioning stop ops list.";
+    return std::unordered_set<std::string>(kDefaultPartitioningStopOps.begin(), kDefaultPartitioningStopOps.end());
+  }
+
+  LOGS_DEFAULT(INFO) << "Using partitioning stop ops list from configuration: \""
+                     << partitioning_stop_ops_list.value() << "\".";
+  const auto stop_ops = utils::SplitString(partitioning_stop_ops_list.value(), ",");
+  std::unordered_set<std::string> stop_ops_set;
+  stop_ops_set.reserve(stop_ops.size());
+  std::transform(stop_ops.cbegin(), stop_ops.cend(), std::inserter(stop_ops_set, stop_ops_set.begin()),
+                 [](const std::string_view& sv) -> std::string { return std::string(sv); });
+  return stop_ops_set;
+}
+
+}  // namespace
+
+NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags,
+                                               const optional<std::string>& partitioning_stop_ops_list)
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider, true},
       nnapi_flags_(nnapi_flags),
-      // TODO make this configurable
-      partitioning_stop_ops_(kDefaultPartitioningStopOps.begin(), kDefaultPartitioningStopOps.end()) {
+      partitioning_stop_ops_(GetPartitioningStopOps(partitioning_stop_ops_list)) {
   AllocatorCreationInfo device_info(
       [](int) {
         return std::make_unique<CPUAllocator>(OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator));
@@ -87,12 +107,16 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     return result;
   }
 
-  // Disable NNAPI if the graph has any unsupported inputs
-  for (const auto* input : graph_viewer.GetInputs()) {
-    if (!nnapi::IsInputSupported(*input, "graph")) {
-      return result;
-    }
-  }
+  // Get all the NodeUnits in the graph_viewer
+  std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
+  std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
+
+  std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(graph_viewer);
+
+  // This holds the result of whether a NodeUnit is supported or not,
+  // to prevent nodes in a NodeUnit to be checked for multiple times
+  std::unordered_map<const NodeUnit*, bool> node_unit_supported_result;
+  node_unit_supported_result.reserve(node_unit_holder.size());
 
   const auto excluded_nodes = utils::CreateExcludedNodeSet(graph_viewer, partitioning_stop_ops_);
   const bool check_excluded_nodes = !excluded_nodes.empty();
@@ -100,14 +124,29 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   std::unordered_set<std::string> node_outputs_in_current_group{};
 
   const auto is_node_supported = [&](const Node& node) -> bool {
-    const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node);
-    const bool supported = !excluded &&
-                           nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
-                                                         node_outputs_in_current_group);
-    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.OpType()
+    const NodeUnit* node_unit = node_unit_map.at(&node);
+    bool supported = false;
+
+    // If we have visited one of the nodes in the node_unit, use the result directly
+    const auto it = node_unit_supported_result.find(node_unit);
+    if (it != node_unit_supported_result.cend()) {
+      supported = it->second;
+    } else {
+      // We only check the target node of the node unit for exclusion
+      const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node_unit->GetNode());
+      supported = !excluded &&
+                  nnapi::IsNodeSupportedInGroup(*node_unit, graph_viewer, params,
+                                                node_outputs_in_current_group);
+      node_unit_supported_result[node_unit] = supported;
+    }
+
+    LOGS_DEFAULT(VERBOSE) << "Node supported: [" << supported
+                          << "] Operator type: [" << node.OpType()
                           << "] index: [" << node.Index()
                           << "] name: [" << node.Name()
-                          << "] supported: [" << supported
+                          << "] as part of the NodeUnit type: [" << node_unit->OpType()
+                          << "] index: [" << node_unit->Index()
+                          << "] name: [" << node_unit->Name()
                           << "]";
 
     if (supported) {
@@ -128,20 +167,19 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   };
 
   const auto gen_metadef_name = [&]() {
-    uint64_t model_hash;
+    HashValue model_hash;
     int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
     return MakeString(NNAPI, "_", model_hash, "_", metadef_id);
   };
 
   result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
-                                            gen_metadef_name, NNAPI);
+                                            gen_metadef_name, NNAPI, kNnapiExecutionProvider);
 
   const auto num_of_partitions = result.size();
-  const auto num_of_supported_nodes = std::transform_reduce(
-      result.begin(), result.end(),
-      size_t{0}, std::plus<>{},
-      [](const auto& partition) -> size_t {
-        return partition && partition->sub_graph ? partition->sub_graph->nodes.size() : 0;
+  const auto num_of_supported_nodes = std::accumulate(
+      result.begin(), result.end(), size_t{0},
+      [](const auto& acc, const auto& partition) -> size_t {
+        return acc + (partition && partition->sub_graph ? partition->sub_graph->nodes.size() : 0);
       });
 
   const auto summary_msg = MakeString(
@@ -161,15 +199,11 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   return result;
 }
 
-#ifdef __ANDROID__
-static Status GetOutputBuffer(Ort::CustomOpApi& ort,
-                              OrtKernelContext* context,
-                              const nnapi::Model& model,
-                              const std::string& output_name,
-                              const std::vector<uint32_t>& output_shape,
-                              const android::nn::wrapper::Type output_type,
-                              void** output_buffer) ORT_MUST_USE_RESULT;
+DataLayout NnapiExecutionProvider::GetPreferredLayout() const {
+  return nnapi_flags_ & NNAPI_FLAG_USE_NCHW ? DataLayout::NCHW : DataLayout::NHWC;
+}
 
+#ifdef __ANDROID__
 static Status GetOutputBuffer(Ort::CustomOpApi& ort,
                               OrtKernelContext* context,
                               const nnapi::Model& model,
@@ -202,6 +236,7 @@ static Status GetOutputBuffer(Ort::CustomOpApi& ort,
 
   return Status::OK();
 }
+#endif  // __ANDROID__
 
 common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                std::vector<NodeComputeInfo>& node_compute_funcs) {
@@ -213,8 +248,15 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     nnapi::ModelBuilder builder(graph_viewer);
     builder.SetUseNCHW(nnapi_flags_ & NNAPI_FLAG_USE_NCHW);
     builder.SetUseFp16(nnapi_flags_ & NNAPI_FLAG_USE_FP16);
-    if (nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED) {
+
+    bool cpu_disabled = nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED;
+    bool cpu_only = nnapi_flags_ & NNAPI_FLAG_CPU_ONLY;
+    if (cpu_disabled && cpu_only) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Both NNAPI_FLAG_CPU_DISABLED and NNAPI_FLAG_CPU_ONLY are set");
+    } else if (cpu_disabled) {
       builder.SetTargetDeviceOption(nnapi::ModelBuilder::TargetDeviceOption::CPU_DISABLED);
+    } else if (cpu_only) {
+      builder.SetTargetDeviceOption(nnapi::ModelBuilder::TargetDeviceOption::CPU_ONLY);
     }
 
     std::unique_ptr<nnapi::Model> nnapi_model;
@@ -311,6 +353,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
       }
 
+#ifdef __ANDROID__
       // From this point we will need to take the exclusive lock on the model until the Predict is
       // performed, to block other threads to perform Predict on the same model
       // TODO, investigate concurrent runs for different executions from the same model
@@ -395,29 +438,17 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
           memcpy(onnx_output_buffer, model_output_buffer, output_buffer_byte_size);
         }
       }
+
       return Status::OK();
+#else
+      // we have a stubbed out NNAPI implementation, so at this point there's nothing else we can do.
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Model execution is not supported in this build.");
+#endif
     };
 
     node_compute_funcs.push_back(compute_info);
   }
   return Status::OK();
 }
-#else
-common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                               std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
-    ORT_UNUSED_PARAMETER(fused_node_and_graph);
-    NodeComputeInfo compute_info;
-    compute_info.create_state_func = [](ComputeContext* /*context*/, FunctionState* /*state*/) { return 0; };
-    compute_info.release_state_func = [](FunctionState /*state*/) {};
-    compute_info.compute_func = [](FunctionState /* state */, const OrtCustomOpApi* /* api */,
-                                   OrtKernelContext* /* context */) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Compute is not supported in this build.");
-    };
-    node_compute_funcs.push_back(compute_info);
-  }
-  return Status::OK();
-}
-#endif  // __ANDROID__
 
 }  // namespace onnxruntime

@@ -2,8 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/concat.h"
-#include "core/providers/common.h"
+
+#include "core/framework/element_type_lists.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/copy.h"
+#include "core/providers/common.h"
+#include "core/providers/op_kernel_type_control.h"
 
 namespace onnxruntime {
 
@@ -29,22 +33,40 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Concat);
 
+namespace op_kernel_type_control {
+// we're using one set of types for all opsets
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Concat, Input, 0,
+    element_type_lists::All);
+
+// Concat can be used with dimensions or indices so require int32_t and int64_t to be supported
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Concat, Input, 0, int32_t, int64_t);
+}  // namespace op_kernel_type_control
+
+namespace {
+using DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                 Concat, Input, 0);
+using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                        Concat, Input, 0);
+}  // namespace
+
 // this method will be shared between 'Concat' (CPU and GPU) and
 // 'ConcatFromSequence' ('concat' and 'stack' modes) to validate inputs
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
-                                     const std::vector<const Tensor*>& input_tensors,
+                                     const InlinedTensorsVector& input_tensors,
                                      Prepare& p) const {
   int input_count = static_cast<int>(input_tensors.size());
 
   // Must have atleast one input to concat
   ORT_RETURN_IF_NOT(input_count >= 1, "Must have 1 or more inputs");
 
-  std::vector<int64_t> reference_dims;
+  TensorShapeVector reference_dims;
   size_t reference_rank = 0;
 
   int reference_tensor_index = 0;
 
-  std::vector<int64_t> input_tensor_sizes;
+  InlinedVector<int64_t, Prepare::kExpectedNumberOfInputs> input_tensor_sizes;
   input_tensor_sizes.reserve(input_count);
 
   bool all_inputs_are_empty = true;
@@ -59,7 +81,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
     const auto& shape = input->Shape();
     const auto num_elements = shape.Size();
     if (num_elements > 0) {
-      reference_dims = shape.GetDims();
+      reference_dims = shape.AsShapeVector();
       reference_rank = reference_dims.size();
       reference_tensor_index = index;
       input_tensor_sizes.push_back(num_elements);
@@ -75,7 +97,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
     // No shape/rank validations will be done (as all inputs are empty).
     // But the rest of the execution flow (filling in the Prepare instance - p)
     // can use this info.
-    reference_dims = input_tensors[0]->Shape().GetDims();
+    reference_dims = input_tensors[0]->Shape().AsShapeVector();
     reference_rank = reference_dims.size();
   }
 
@@ -94,7 +116,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
     const auto* input = input_tensors[index];
     ORT_ENFORCE(input != nullptr, "input count mismatch");
     const auto& input_shape = input->Shape();
-    const auto& input_dims = input_shape.GetDims();
+    const auto input_dims = input_shape.GetDims();
 
     // Skip shape/rank validation for inputs that are empty.
     // The ONNX spec states that all dim values along axes not concatentated on
@@ -142,7 +164,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
   }
 
   // Calculate the shape of the output tensor
-  std::vector<int64_t> output_dims = reference_dims;
+  auto output_dims = reference_dims;
 
   if (!is_stack_) {  // 'Concat' mode
     // While concatenating, the rank of the output is the same as the input rank(s)
@@ -210,11 +232,32 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
   return Status::OK();
 }
 
+namespace {
+TensorShapeVector StridesForStack(const TensorShapeVector& full_strides, uint64_t axis) {
+  // if we are stacking, skip the dimension that will be stacked along in the output strides
+  // (the striding for that dimension is handled by the initial_output_offset)
+  const auto num_dims = full_strides.size();
+
+  TensorShapeVector strides;
+  strides.reserve(num_dims - 1);
+
+  for (size_t i = 0; i < num_dims - 1; i++) {
+    auto read_i = (i >= axis) ? i + 1 : i;
+    strides.push_back(full_strides[read_i]);
+  }
+  return strides;
+}
+}  // namespace
+
 // This method computes the output tensor for Concat/ConcatFromSequence ops
-Status ConcatBase::ComputeImpl(Prepare& p) const {
+Status ConcatBase::ComputeImpl(Prepare& p, OpKernelContext* ctx) const {
   int input_count = static_cast<int>(p.inputs.size());
   int64_t initial_output_offset = 0;  // initial offset for each input
-  auto element_bytes = p.output_tensor->DataType()->Size();
+
+  auto output_strides_full = StridesForTensor(*p.output_tensor);
+  // Note that output_strides_full is only used later when is_stack_ is true, so it's safe to move
+  auto output_strides_for_copy = is_stack_ ? StridesForStack(output_strides_full, p.axis) : std::move(output_strides_full);
+
   for (int input_index = 0; input_index < input_count; input_index++) {
     const auto& prep = p.inputs[input_index];
 
@@ -222,39 +265,22 @@ Status ConcatBase::ComputeImpl(Prepare& p) const {
     if (prep.num_elements == 0)
       continue;
 
-    auto input_axis_pitch = prep.axis_pitch;
-    const uint8_t* input = static_cast<const uint8_t*>(prep.tensor->DataRaw());
+    // parallel copy the data across
+    auto status = DispatchStridedCopy<EnabledDataTypes>(ctx->GetOperatorThreadPool(),
+                                                        *p.output_tensor,
+                                                        initial_output_offset,
+                                                        output_strides_for_copy,
+                                                        prep.tensor->Shape(),
+                                                        *prep.tensor,
+                                                        StridesForTensor(*prep.tensor));
+    ORT_RETURN_IF_ERROR(status);
 
-    auto input_size = prep.num_elements;
-
-    // Copy the data across. For every 'input_axis_pitch' values copied, we move over by the 'output_axis_pitch'
-    // TODO: Optimization possibility: There are cases where we simply need to "merge" raw buffers and this
-    // could be done without the pointer house-keeping as below. Some scenarios whether this is possible are:
-    // 1) Concatenating on input axis = 0
-    // 2) Stacking on output axis = 0
-    // 3) Stacking scalars
-    uint8_t* output = static_cast<uint8_t*>(p.output_tensor->MutableDataRaw());
-    int64_t cur_out_offset = 0;
-    int64_t cur_in_offset = 0;
-    for (size_t idx_copy = 0, end = input_size / input_axis_pitch; idx_copy < end; ++idx_copy) {
-      if (p.is_string_type) {
-        size_t out = initial_output_offset + cur_out_offset;
-        for (int idx_item = 0; idx_item < input_axis_pitch; ++idx_item) {
-          reinterpret_cast<std::string*>(output)[out + idx_item] =
-              reinterpret_cast<const std::string*>(input)[cur_in_offset + idx_item];
-        }
-      } else {
-        memcpy(
-            output + (initial_output_offset + cur_out_offset) * element_bytes,
-            input + cur_in_offset * element_bytes,
-            input_axis_pitch * element_bytes);
-      }
-
-      cur_out_offset += p.output_axis_pitch;
-      cur_in_offset += input_axis_pitch;
+    // advance along the axis that we are concatenating on (by the size of the axis of the tensor that we just copied)
+    if (is_stack_) {
+      initial_output_offset += output_strides_full[p.axis];
+    } else {
+      initial_output_offset += prep.tensor->Shape()[p.axis] * output_strides_for_copy[p.axis];
     }
-
-    initial_output_offset += input_axis_pitch;
   }
 
   return Status::OK();
@@ -266,7 +292,7 @@ Status Concat::Compute(OpKernelContext* ctx) const {
   auto input_count = Node().InputArgCount().front();
 
   // Hold pointers to the input tensors to be used in the PrepareForCompute() step
-  std::vector<const Tensor*> input_tensors;
+  InlinedTensorsVector input_tensors;
   input_tensors.reserve(input_count);
   for (int i = 0; i < input_count; ++i) {
     input_tensors.push_back(ctx->Input<Tensor>(i));
@@ -283,7 +309,7 @@ Status Concat::Compute(OpKernelContext* ctx) const {
     return Status::OK();
 
   // Compute values to be placed in the output tensor
-  return ComputeImpl(p);
+  return ComputeImpl(p, ctx);
 }
 
 }  // namespace onnxruntime

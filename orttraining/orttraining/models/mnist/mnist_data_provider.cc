@@ -49,7 +49,7 @@ void ConvertData(const vector<vector<float>>& images,
       OrtValue labelMLValue;
       TrainingUtil::CreateCpuMLValue(label_dims, labels[i], &labelMLValue);
 
-      data_set.AddData(make_unique<vector<OrtValue>>(vector<OrtValue>{imageMLValue, labelMLValue}));
+      ORT_THROW_IF_ERROR(data_set.AddData(make_unique<vector<OrtValue>>(vector<OrtValue>{imageMLValue, labelMLValue})));
     }
   }
 }

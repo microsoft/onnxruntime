@@ -45,32 +45,90 @@ TEST(TensorOpTest, Unsqueeze_3) {
   test.Run();
 }
 
+TEST(TensorOpTest, Unsqueeze_scalar) {
+  {
+    OpTester test("Unsqueeze");
+
+    test.AddAttribute("axes", std::vector<int64_t>{0});
+    test.AddInput<float>("input", {}, std::vector<float>{1.0f});
+    test.AddOutput<float>("output", {1}, std::vector<float>{1.0f});
+    test.Run();
+  }
+  {
+    OpTester test("Unsqueeze", 11);  // Negative axes added in version 11
+
+    test.AddAttribute("axes", std::vector<int64_t>{-1});
+    test.AddInput<float>("input", {}, std::vector<float>{1.0f});
+    test.AddOutput<float>("output", {1}, std::vector<float>{1.0f});
+    test.Run();
+  }
+
+  auto run_test = [](bool axes_is_initializer) {
+    {
+      OpTester test("Unsqueeze", 13);
+      test.AddInput<float>("input", {}, std::vector<float>{1.0f});
+      test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{0}, axes_is_initializer);
+      test.AddOutput<float>("output", {1}, std::vector<float>{1.0f});
+      test.Run();
+    }
+    {
+      OpTester test("Unsqueeze", 13);
+      test.AddInput<float>("input", {}, std::vector<float>{1.0f});
+      test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{-1}, axes_is_initializer);
+      test.AddOutput<float>("output", {1}, std::vector<float>{1.0f});
+      test.Run();
+    }
+  };
+  run_test(false);
+  run_test(true);
+}
+
+TEST(TensorOpTest, Unsqueeze_scalar_2) {
+  {
+    OpTester test("Unsqueeze");
+
+    test.AddAttribute("axes", std::vector<int64_t>{0, 1});
+    test.AddInput<float>("input", {}, std::vector<float>{1.0f});
+    test.AddOutput<float>("output", {1, 1}, std::vector<float>{1.0f});
+    test.Run();
+  }
+  auto run_test = [](bool axes_is_initializer) {
+    OpTester test("Unsqueeze", 13);
+    test.AddInput<float>("input", {}, std::vector<float>{1.0f});
+    test.AddInput<int64_t>("axes", {2}, std::vector<int64_t>{0, -1}, axes_is_initializer);
+    test.AddOutput<float>("output", {1, 1}, std::vector<float>{1.0f});
+    test.Run();
+  };
+  run_test(false);
+  run_test(true);
+}
+
 TEST(TensorOpTest, Unsqueeze_Duplicate) {
   {
-    OpTester test("Unsqueeze", 12); // opset 1-12 has axes attribute
+    OpTester test("Unsqueeze", 12);  // opset 1-12 has axes attribute
 
     test.AddAttribute("axes", std::vector<int64_t>{2, 1, 0, 2});
     test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     test.Run(OpTester::ExpectResult::kExpectFailure,
              "[ShapeInferenceError] 'axes' attribute must not contain any duplicates",
-             {kTensorrtExecutionProvider});  //TensorRT failed
+             {kTensorrtExecutionProvider});  // TensorRT failed
   }
   {
-    OpTester test("Unsqueeze", -1); // use latest opset with axis input
+    OpTester test("Unsqueeze", -1);  // use latest opset with axis input
 
     test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-    test.AddInput<int64_t>("axes", {4}, std::vector<int64_t>{2, 1, 0, 2}, true); //set as initializer to enable shape inference
+    test.AddInput<int64_t>("axes", {4}, std::vector<int64_t>{2, 1, 0, 2}, true);  // set as initializer to enable shape inference
     test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     test.Run(OpTester::ExpectResult::kExpectFailure,
              "[ShapeInferenceError] 'axes' attribute must not contain any duplicates",
-             {kTensorrtExecutionProvider});  //TensorRT failed
+             {kTensorrtExecutionProvider});  // TensorRT failed
   }
 }
 
 TEST(TensorOpTest, Unsqueeze_OutOfRange) {
   {
-    OpTester test("Unsqueeze", 12); // opset 1-12 has axes attribute
+    OpTester test("Unsqueeze", 12);  // opset 1-12 has axes attribute
     test.AddAttribute("axes", std::vector<int64_t>{4});
     test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     test.AddOutput<float>("output", {2, 1, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
@@ -80,12 +138,12 @@ TEST(TensorOpTest, Unsqueeze_OutOfRange) {
   {
     OpTester test("Unsqueeze", -1);  // use latest opset with axis input
     test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-    test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{4}, true); //set as initializer to enable shape inference
+    test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{4}, true);  // set as initializer to enable shape inference
     test.AddOutput<float>("output", {2, 1, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     // TensorRT does not support negative axis.
     test.Run(OpTester::ExpectResult::kExpectFailure,
              "[ShapeInferenceError] values in 'axes' are beyond the bounds of the computed output shape",
-             {kTensorrtExecutionProvider}); //TensorRT expects 'axes' attribute
+             {kTensorrtExecutionProvider});  // TensorRT expects 'axes' attribute
   }
 }
 
@@ -98,35 +156,45 @@ TEST(TensorOpTest, UnsqueezeNegAxis_3) {
     // TensorRT does not support negative axis.
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   }
-  {
+  auto run_test = [](bool axes_is_initializer) {
     OpTester test("Unsqueeze", 13);  // use latest opset with axis input
     test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-    test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{-4, 1, -6});
+    test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{-4, 1, -6}, axes_is_initializer);
     test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     // TensorRT does not support negative axis.
     // TODO: TensorRT, OpenVINO dont support "axes" input in opset 13, re-enable after
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", { kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
-  }
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  };
+  run_test(false);
+  run_test(true);
 }
 
 TEST(TensorOpTest, Unsqueeze_1_int32_axes_input) {
-  OpTester test("Unsqueeze", 13);
+  auto run_test = [](bool axes_is_initializer) {
+    OpTester test("Unsqueeze", 13);
 
-  test.AddInput<int32_t>("input", {2, 3, 4}, std::vector<int32_t>(2 * 3 * 4, 1));
-  test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{1});
-  test.AddOutput<int32_t>("output", {2, 1, 3, 4}, std::vector<int32_t>(2 * 3 * 4, 1));
-  // TODO: TensorRT and OpenVINO dont support "axes" input in opset 13, re-enable after
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+    test.AddInput<int32_t>("input", {2, 3, 4}, std::vector<int32_t>(2 * 3 * 4, 1));
+    test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{1}, axes_is_initializer);
+    test.AddOutput<int32_t>("output", {2, 1, 3, 4}, std::vector<int32_t>(2 * 3 * 4, 1));
+    // TODO: TensorRT and OpenVINO dont support "axes" input in opset 13, re-enable after
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  };
+  run_test(false);
+  run_test(true);
 }
 
 TEST(TensorOpTest, Unsqueeze_3_axes_input) {
-  OpTester test("Unsqueeze", 13);
+  auto run_test = [](bool axes_is_initializer) {
+    OpTester test("Unsqueeze", 13);
 
-  test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-  test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{2, 1, 0});
-  test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-  // TODO: TensorRT and OpenVINO dont support "axes" input in opset 13, re-enable after
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+    test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
+    test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{2, 1, 0}, axes_is_initializer);
+    test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
+    // TODO: TensorRT and OpenVINO dont support "axes" input in opset 13, re-enable after
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  };
+  run_test(false);
+  run_test(true);
 }
 
 }  // namespace test

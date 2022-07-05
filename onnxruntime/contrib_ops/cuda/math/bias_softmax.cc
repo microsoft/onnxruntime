@@ -24,7 +24,7 @@ void DispatchBiasSoftmaxForwardImpl(
     int bias_broadcast_size_per_batch);
 
 template <typename T>
-void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
+Status DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
     cudaStream_t stream,
     cudnnHandle_t cudaDnnHandle,
     int element_count,
@@ -68,7 +68,8 @@ Status BiasSoftmax::ComputeInternal(OpKernelContext* ctx) const {
     t_disp.Invoke<DispatchBiasSoftmaxForward>(Stream(), Y, X, B, D, N, D, broadcast_size);
   } else {
     // need to fallback to add kernel + CUDA DNN library softmax call :/
-    t_disp.Invoke<DispatchBiasSoftMaxForwardViaDnnLibrary>(Stream(), CudnnHandle(), D, N, broadcast_axis, softmax_axis, X_shape, X, B_shape, B, Y);
+    ORT_RETURN_IF_ERROR((t_disp.InvokeRet<Status, DispatchBiasSoftMaxForwardViaDnnLibrary>(
+        Stream(), CudnnHandle(), D, N, broadcast_axis, softmax_axis, X_shape, X, B_shape, B, Y)));
   }
 
   return Status::OK();
@@ -96,7 +97,7 @@ void DispatchBiasSoftmaxForward<T>::operator()(
 }
 
 template <typename T>
-void DispatchBiasSoftMaxForwardViaDnnLibrary<T>::operator()(
+Status DispatchBiasSoftMaxForwardViaDnnLibrary<T>::operator()(
     cudaStream_t stream,
     cudnnHandle_t cudaDnnHandle,
     int element_count,
@@ -108,7 +109,7 @@ void DispatchBiasSoftMaxForwardViaDnnLibrary<T>::operator()(
     const onnxruntime::TensorShape& B_shape,
     const onnxruntime::Tensor* B,
     onnxruntime::Tensor* Y) {
-  DispatchBiasSoftMaxForwardViaDnnLibraryImpl<T>(
+  return DispatchBiasSoftMaxForwardViaDnnLibraryImpl<T>(
       stream,
       cudaDnnHandle,
       element_count,

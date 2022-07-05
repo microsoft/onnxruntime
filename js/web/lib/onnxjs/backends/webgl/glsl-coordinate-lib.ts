@@ -7,9 +7,7 @@ import {GlslContext, GlslLib, GlslLibRoutine} from './glsl-definitions';
 import {getGlsl} from './glsl-source';
 import {squeezeShape} from './texture-layout-strategy';
 import {TextureLayout} from './types';
-import {generateShaderFuncNameFromInputSamplerName} from './utils';
-import {generateShaderFuncNameFromInputSamplerNameAtOutCoords,} from './utils';
-import {getCoordsDataType, getSqueezedParams, squeezeInputShape} from './utils';
+import {generateShaderFuncNameFromInputSamplerName, generateShaderFuncNameFromInputSamplerNameAtOutCoords, getCoordsDataType, getGlChannels, getSqueezedParams, squeezeInputShape} from './utils';
 
 /**
  * GLSL Library responsible for data types and routines for manipulating
@@ -77,7 +75,7 @@ export class CoordsGlslLib extends GlslLib {
    */
 
   protected getOutputSamplingSnippet(): {[name: string]: GlslLibRoutine} {
-    const outputLayout = this.context.programInfo.outputLayout;
+    const outputLayout = this.context.outputTextureLayout;
     if (outputLayout.isPacked) {
       return this.getPackedOutputSamplingSnippet(outputLayout);
     } else {
@@ -587,9 +585,9 @@ export class CoordsGlslLib extends GlslLib {
    */
   protected getInputsSamplingSnippets(): {[name: string]: GlslLibRoutine} {
     const result: {[name: string]: GlslLibRoutine} = {};
-    const outputLayout = this.context.programInfo.outputLayout;
-    this.context.programInfo.samplers.forEach((samplerName, i) => {
-      const inputLayout = this.context.programInfo.inputLayouts[i];
+    const outputLayout = this.context.outputTextureLayout;
+    this.context.programInfo.inputNames.forEach((samplerName, i) => {
+      const inputLayout = this.context.inputTextureLayouts[i];
       const funcName = generateShaderFuncNameFromInputSamplerName(samplerName);
       if (inputLayout.isPacked) {
         result[funcName] = this.getPackedSamplerFromInput(funcName, samplerName, inputLayout);
@@ -630,7 +628,7 @@ export class CoordsGlslLib extends GlslLib {
     const type = getCoordsDataType(outRank);
     const rankDiff = outRank - inRank;
     let coordsSnippet: string;
-    const fields = ['x', 'y', 'z', 'w', 'u', 'v'];
+    const fields = getGlChannels();
 
     if (inRank === 0) {
       coordsSnippet = '';
@@ -723,7 +721,7 @@ export class CoordsGlslLib extends GlslLib {
     const broadcastDims = BroadcastUtil.getBroadcastDims(inShape, outShape);
     const rankDiff = outRank - inRank;
     let coordsSnippet: string;
-    const fields = ['x', 'y', 'z', 'w', 'u', 'v'];
+    const fields = getGlChannels();
 
     if (inRank === 0) {
       coordsSnippet = '';
@@ -1242,7 +1240,7 @@ export class CoordsGlslLib extends GlslLib {
    * Also see coordsToOffset and offsetToIndices for input-specific versions
    */
   protected toVec(): {[name: string]: GlslLibRoutine} {
-    const output = this.context.programInfo.outputLayout;
+    const output = this.context.outputTextureLayout;
     const rank = output.shape.length;
     const strides = output.strides;
     const xScale = output.width;
@@ -1275,10 +1273,9 @@ export class CoordsGlslLib extends GlslLib {
    * input was transposed
    */
   protected valueFrom(): {[name: string]: GlslLibRoutine} {
-    const programInfo = this.context.programInfo;
     const result: {[name: string]: GlslLibRoutine} = {};
-    this.context.programInfo.samplers.forEach((name, i) => {
-      const layout = programInfo.inputLayouts[i];
+    this.context.programInfo.inputNames.forEach((name, i) => {
+      const layout = this.context.inputTextureLayouts[i];
       const shape = layout.unpackedShape.length > 0 ? layout.unpackedShape : layout.shape;
       const rank = shape.length;
       let funcName = `_${name}`;

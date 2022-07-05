@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {ProgramInfo} from './types';
+import {ProgramInfo, TextureLayout} from './types';
 import {WebGLContext} from './webgl-context';
 
 /* eslint-disable @typescript-eslint/naming-convention */
@@ -21,7 +21,9 @@ export interface GlslPositionalFunction extends GlslFunction<FunctionType.Positi
 }
 
 export class GlslContext {
-  constructor(public glContext: WebGLContext, public programInfo: ProgramInfo) {}
+  constructor(
+      public glContext: WebGLContext, public programInfo: ProgramInfo, public inputTextureLayouts: TextureLayout[],
+      public outputTextureLayout: TextureLayout) {}
 }
 export abstract class GlslLib {
   constructor(public context: GlslContext) {}

@@ -35,10 +35,8 @@
 #include "core/common/exceptions.h"
 #include "core/common/make_string.h"
 #include "core/common/status.h"
+#include "core/common/gsl_suppress.h"
 
-#ifdef USE_MIMALLOC_ARENA_ALLOCATOR
-#include <mimalloc.h>
-#endif
 
 namespace onnxruntime {
 
@@ -177,10 +175,13 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 // Check condition.
 // NOTE: The arguments get streamed into a string via ostringstream::operator<<
 // DO NOT use a printf format string, as that will not work as you expect.
-#define ORT_ENFORCE(condition, ...)                                           \
-  if (!(condition))                                                           \
-  throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition, \
-                                            ::onnxruntime::MakeString(__VA_ARGS__))
+#define ORT_ENFORCE(condition, ...)                                                      \
+  do {                                                                                   \
+    if (!(condition)) {                                                                  \
+      throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition,        \
+                                                ::onnxruntime::MakeString(__VA_ARGS__)); \
+    }                                                                                    \
+  } while (false)
 
 #define ORT_THROW_EX(ex, ...) \
   throw ex(__VA_ARGS__)
@@ -193,12 +194,14 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
                                 ::onnxruntime::MakeString(__VA_ARGS__))
 
 // Check condition. if met, return status.
-#define ORT_RETURN_IF(condition, ...)                                                                        \
-  if (condition) {                                                                                           \
-    return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,                                 \
-                                         ::onnxruntime::common::FAIL,                                        \
-                                         ::onnxruntime::MakeString(ORT_WHERE.ToString(), " ", __VA_ARGS__)); \
-  }
+#define ORT_RETURN_IF(condition, ...)                                                                          \
+  do {                                                                                                         \
+    if (condition) {                                                                                           \
+      return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,                                 \
+                                           ::onnxruntime::common::FAIL,                                        \
+                                           ::onnxruntime::MakeString(ORT_WHERE.ToString(), " ", __VA_ARGS__)); \
+    }                                                                                                          \
+  } while (false)
 
 // Check condition. if not met, return status.
 #define ORT_RETURN_IF_NOT(condition, ...) \
@@ -252,13 +255,6 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
     }                                  \
   } while (0)
 
-// C++ Core Guideline check suppression.
-#if defined(_MSC_VER) && !defined(__NVCC__)
-#define GSL_SUPPRESS(tag) [[gsl::suppress(tag)]]
-#else
-#define GSL_SUPPRESS(tag)
-#endif
-
 inline long long TimeDiffMicroSeconds(TimePoint start_time) {
   auto end_time = std::chrono::high_resolution_clock::now();
   return std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
@@ -269,13 +265,12 @@ inline long long TimeDiffMicroSeconds(TimePoint start_time, TimePoint end_time) 
 }
 
 struct null_type {};
-inline std::string ToMBString(const std::string& s) { return s; }
+inline std::string ToUTF8String(const std::string& s) { return s; }
 #ifdef _WIN32
 /**
- * Convert a wide character string into a narrow one, with local ANSI code page(like CP936)
- * DO NOT assume the result string is encoded in UTF-8
+ * Convert a wide character string to a UTF-8 string
  */
-std::string ToMBString(const std::wstring& s);
+std::string ToUTF8String(const std::wstring& s);
 
 std::wstring ToWideString(const std::string& s);
 inline std::wstring ToWideString(const std::wstring& s) { return s; }
@@ -290,5 +285,13 @@ inline std::string ToWideString(const std::string& s) { return s; }
 #endif
 
 constexpr size_t kMaxStrLen = 2048;
+
+// Returns whether `key` is in `container`.
+// Like C++20's map/set contains() member function.
+template <typename Key, typename... OtherContainerArgs,
+          template <typename...> typename AssociativeContainer>
+inline bool Contains(const AssociativeContainer<Key, OtherContainerArgs...>& container, const Key& key) {
+  return container.find(key) != container.end();
+}
 
 }  // namespace onnxruntime

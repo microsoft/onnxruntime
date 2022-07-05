@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {env} from 'onnxruntime-common';
+
 import {Backend, SessionHandler} from '../backend';
 import {Logger} from '../instrument';
 import {Session} from '../session';
@@ -46,6 +47,13 @@ export class WebGLBackend implements Backend {
     env.webgl.pack = value;
   }
 
+  get async(): boolean|undefined {
+    return env.webgl.async;
+  }
+  set async(value: boolean|undefined) {
+    env.webgl.async = value;
+  }
+
   initialize(): boolean {
     try {
       this.glContext = createWebGLContext(this.contextId);
@@ -58,13 +66,17 @@ export class WebGLBackend implements Backend {
       if (typeof this.pack !== 'boolean') {
         this.pack = false;
       }
+      if (typeof this.async !== 'boolean') {
+        this.async = false;
+      }
 
       Logger.setWithEnv(env);
 
       Logger.verbose(
           'WebGLBackend',
           `Created WebGLContext: ${typeof this.glContext} with matmulMaxBatchSize: ${
-              this.matmulMaxBatchSize}; textureCacheMode: ${this.textureCacheMode}; pack: ${this.pack}.`);
+              this.matmulMaxBatchSize}; textureCacheMode: ${this.textureCacheMode}; pack: ${this.pack}; async: ${
+              this.async}.`);
       return true;
     } catch (e) {
       Logger.warning('WebGLBackend', `Unable to initialize WebGLBackend. ${e}`);

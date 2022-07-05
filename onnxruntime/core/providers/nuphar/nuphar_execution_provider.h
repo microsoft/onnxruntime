@@ -23,11 +23,11 @@ class CodeGenTarget;
 constexpr const char* llvm_target_str = "llvm";
 constexpr const char* stackvm_target_str = "stackvm";
 
-#ifdef USE_TVM_WITH_LLVM
+#ifdef USE_NUPHAR_TVM_WITH_LLVM
 constexpr const char* default_nuphar_target_str = llvm_target_str;
 #else
 constexpr const char* default_nuphar_target_str = stackvm_target_str;
-#endif  // USE_TVM_WITH_LLVM
+#endif  // USE_NUPHAR_TVM_WITH_LLVM
 
 // Information needed to construct Nuphar execution providers.
 struct NupharExecutionProviderInfo {
@@ -116,6 +116,13 @@ class NupharExecutionProvider : public IExecutionProvider {
     if (iter == constant_initializers_used_in_compiled_nodes_.end())
       return nullptr;
     return iter->second.get();
+  }
+
+  onnxruntime::IExecutionProvider::FusionStyle GetFusionStyle() const override {
+    // existing EPs use this mode so default to it.
+    // newer EPs that can use the cheaper approach, or need to run in a minimal build, should override to return
+    // FilteredGraphViewer
+    return onnxruntime::IExecutionProvider::FusionStyle::Function;
   }
 
  private:

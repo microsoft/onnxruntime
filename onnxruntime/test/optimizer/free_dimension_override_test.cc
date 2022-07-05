@@ -10,6 +10,7 @@
 #include "gtest/gtest.h"
 #include "core/optimizer/free_dim_override_transformer.h"
 #include "core/session/inference_session.h"
+#include "asserts.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -42,10 +43,10 @@ void TestFreeDimensions(FreeDimensionOverrideType overrideType) {
   auto graph_transformer = std::make_unique<FreeDimensionOverrideTransformer>(overrides);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr(5);
-  graph_transformation_mgr.Register(std::move(graph_transformer), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(graph_transformer), TransformerLevel::Level1));
 
-  graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1,
-                                             DefaultLoggingManager().DefaultLogger());
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1,
+                                                              DefaultLoggingManager().DefaultLogger()));
 
   // Verify that the shape of the input graph has the correct values
 

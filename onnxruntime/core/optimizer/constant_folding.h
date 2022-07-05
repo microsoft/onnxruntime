@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/optimizer/graph_transformer.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include <memory>
 #include "core/framework/execution_provider.h"
 
@@ -24,14 +24,14 @@ class ConstantFolding : public GraphTransformer {
   */
   ConstantFolding(const IExecutionProvider& execution_provider,
                   bool skip_dequantize_linear,
-                  const std::unordered_set<std::string>& compatible_execution_providers = {},
-                  const std::unordered_set<std::string>& excluded_initializers = {}) noexcept;
+                  const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
+                  const InlinedHashSet<std::string>& excluded_initializers = {}) noexcept;
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
   bool skip_dequantize_linear_;
-  const std::unordered_set<std::string> excluded_initializers_;
+  const InlinedHashSet<std::string> excluded_initializers_;
   const IExecutionProvider& execution_provider_;
 };
 

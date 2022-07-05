@@ -87,11 +87,20 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
                                    If);
 
 // sequence tensors were also supported in addition to existing support for tensors in opset-13
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
+                                   13,
+                                   15,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                                   If);
+
+// optional type is supported starting opset-16
 ONNX_CPU_OPERATOR_KERNEL(If,
-                         13,
+                         16,
                          KernelDefBuilder()
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes()),
                          If);
 
 If::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in) : subgraph(subgraph_in) {
@@ -142,6 +151,14 @@ class IfImpl {
 
   // track where the fetches provided to subgraph execution were allocated.
   std::vector<std::pair<AllocationType, OrtValue>> outputs_;
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  // track which outputs are optional tensor types
+  std::vector<int> optional_tensor_type_subgraph_outputs_;
+
+  // track which outputs are optional tensor sequence types
+  std::vector<int> optional_tensor_sequence_type_subgraph_outputs_;
+#endif
 };
 
 void If::Init(const OpKernelInfo& info) {
@@ -193,7 +210,7 @@ common::Status If::SetupSubgraphExecutionInfo(const SessionState& session_state,
 
   // find the location all the feeds will be coming from
   std::vector<OrtDevice> feed_locations;
-  controlflow::detail::FindDevicesForValues(session_state, feed_names, feed_locations);
+  ORT_RETURN_IF_ERROR(controlflow::detail::FindDevicesForValues(session_state, feed_names, feed_locations));
 
   std::vector<const OrtMemoryInfo*> fetch_locations;
   fetch_locations.reserve(info->num_outputs);
@@ -264,10 +281,28 @@ Status IfImpl::AllocateOutputTensors() {
   Status status = Status::OK();
   int index = 0;
 
-  for (auto& graph_output : info_.subgraph.GetOutputs()) {
+  const auto& graph_outputs = info_.subgraph.GetOutputs();
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  // The number of optional type outputs can be atmost the total
+  // number of subgraph outputs (it is okay to over-allocate)
+  optional_tensor_type_subgraph_outputs_.reserve(graph_outputs.size());
+  optional_tensor_sequence_type_subgraph_outputs_.reserve(graph_outputs.size());
+#endif
+
+  for (auto& graph_output : graph_outputs) {
     const auto* graph_output_type = graph_output->TypeAsProto();
 
-    if (graph_output_type->has_tensor_type()) {
+#if !defined(DISABLE_OPTIONAL_TYPE)
+    bool is_optional_tensor = utils::HasOptionalTensorType(*graph_output_type);
+    bool is_optional_tensor_sequence = utils::HasOptionalTensorSequenceType(*graph_output_type);
+#endif
+
+    if (graph_output_type->has_tensor_type()
+#if !defined(DISABLE_OPTIONAL_TYPE)
+        || is_optional_tensor
+#endif
+    ) {
       auto* graph_output_shape = graph_output->Shape();
       bool symbolic_dim_in_shape = false;
 
@@ -291,15 +326,29 @@ Status IfImpl::AllocateOutputTensors() {
         // we still need a value to put in the feeds we give to the execution frame, so just use an empty MLValue
         outputs_.push_back({AllocationType::Delayed, {}});
       }
-    } else if (graph_output_type->has_sequence_type()) {
+    } else if (graph_output_type->has_sequence_type()
+#if !defined(DISABLE_OPTIONAL_TYPE)
+               || is_optional_tensor_sequence
+#endif
+    ) {
       auto* seq_tensor = context_.Output<TensorSeq>(index);
       if (!seq_tensor)
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for ", graph_output->Name());
       outputs_.push_back({AllocationType::IfOutput, *context_.GetOutputMLValue(index)});
     } else {
-      // Shouldn't hit this
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only tensors or sequence of tensors are suppported");
+      // Shouldn't hit this as the kernel assignment logic should check for the types before assigning this kernel
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Only tensors, tensor sequence, optional tensor, and optional tensor sequence types are supported");
     }
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+    // track optional type outputs - we will use them later
+    if (is_optional_tensor) {
+      optional_tensor_type_subgraph_outputs_.push_back(index);
+    } else if (is_optional_tensor_sequence) {
+      optional_tensor_sequence_type_subgraph_outputs_.push_back(index);
+    }
+#endif
 
     ++index;
   }
@@ -367,6 +416,25 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
                                   context_.Logger());
 
   ORT_RETURN_IF_ERROR(status);
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  // Deal with Nones in fetches
+  for (auto& output_index : optional_tensor_type_subgraph_outputs_) {
+    // "None" - reflect Nones in the output of If
+    // For non-Nones, we would have directly used the custom allocator
+    // to directly write-into If's outputs.
+    if (!fetches[output_index].IsAllocated()) {
+      context_.OutputOptionalWithoutData<Tensor>(output_index);
+    }
+  }
+
+  for (auto& output_index : optional_tensor_sequence_type_subgraph_outputs_) {
+    // "None" - reflect Nones in the output of If
+    if (!fetches[output_index].IsAllocated()) {
+      context_.OutputOptionalWithoutData<TensorSeq>(output_index);
+    }
+  }
+#endif
 
   return status;
 }

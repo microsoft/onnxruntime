@@ -3,9 +3,11 @@
 
 #include <core/providers/common.h>
 
+#ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
-#include "core/providers/coreml/builders/op_builder_factory.h"
+#endif
 #include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/builders/op_builder_factory.h"
 
 #include "base_op_builder.h"
 
@@ -15,16 +17,17 @@ namespace coreml {
 class BinaryOpBuilder : public BaseOpBuilder {
   // Add operator related
  private:
+#ifdef __APPLE__
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
-
+#endif
   // Operator support related
- private:
   int GetMinSupportedOpSet(const Node& node) const override;
 };
 
 // Add operator related
 
+#ifdef __APPLE__
 Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                               const logging::Logger& /* logger */) const {
   const auto& op_type(node.OpType());
@@ -46,6 +49,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
+#endif
 
 // Operator support related
 

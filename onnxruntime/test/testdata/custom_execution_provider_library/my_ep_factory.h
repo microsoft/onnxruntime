@@ -12,6 +12,8 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_MyEP, _In_ OrtSessionOpt
 
 ORT_API(onnxruntime::Provider*, GetProvider);
 
+ORT_API(size_t, ProviderHashFunc, const void* options);
+
 #ifdef __cplusplus
 }
 #endif

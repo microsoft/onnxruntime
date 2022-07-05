@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "gradient_control.h"
+#include "gradient_control_impl.h"
+
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "common.h"
-#include "gradient_control.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -28,11 +30,9 @@ REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(float, float)
 REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(float, MLFloat16)
 REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(MLFloat16, MLFloat16)
 REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(MLFloat16, float)
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(float, BFloat16)
 REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(BFloat16, BFloat16)
 REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(BFloat16, float)
-#endif
 
 template <typename T>
 Status ZeroGradient<T>::ComputeInternal(OpKernelContext* ctx) const {

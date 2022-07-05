@@ -3,16 +3,7 @@
 
 #import "ort_coreml_execution_provider.h"
 
-#if __has_include("coreml_provider_factory.h")
-#define ORT_OBJC_API_COREML_EP_AVAILABLE 1
-#else
-#define ORT_OBJC_API_COREML_EP_AVAILABLE 0
-#endif
-
-#if ORT_OBJC_API_COREML_EP_AVAILABLE
-#include "coreml_provider_factory.h"
-#endif
-
+#import "src/cxx_api.h"
 #import "src/error_utils.h"
 #import "src/ort_session_internal.h"
 

@@ -48,10 +48,10 @@ Routine Description:
 Arguments:
 
     A (r0) - Supplies the address of matrix A. The matrix data has been packed
-        using MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>.
+        using MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>.
 
     B (r1) - Supplies the address of matrix B. The matrix data has been packed
-        using MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_NEON>.
+        using MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_NEON>.
 
     C (r2) - Supplies the address of matrix C.
 

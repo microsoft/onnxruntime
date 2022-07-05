@@ -121,7 +121,7 @@ void DropoutGradWithRatio() {
   std::vector<int64_t> shape{16, 4, 4};
   testCase.AddInput<T>("dY", shape);
   testCase.AddInput<bool>("mask", shape);
-  testCase.AddInput("ratio", {}, {0.5f});
+  testCase.AddInput<float>("ratio", {}, {0.5f});
   testCase.AddOutput("dX");
   testCase.RunTest();
 }
@@ -132,8 +132,21 @@ TEST_F(FunExpansionTest, DropoutGrad_WithRatio) {
 }
 
 template <typename T>
+int DropoutGradOpset() {
+  return 13;
+}
+
+template <>
+int DropoutGradOpset<BFloat16>() {
+  return 16; // Need opset version 16 for Where op for BFloat16
+}
+
+template <typename T>
 void CheckDropoutGradWithoutRatio(bool inline_call) {
   FunctionTestCase testCase("DropoutGrad");
+  testCase.AddOpset(kOnnxDomain, DropoutGradOpset<T>());
+  testCase.AddOpset(kMSDomain, 1);
+  
   std::vector<int64_t> shape{16, 4, 4};
   testCase.AddInput<T, false>("dY", shape);
   testCase.AddInput<bool, false>("mask", shape);
@@ -141,57 +154,231 @@ void CheckDropoutGradWithoutRatio(bool inline_call) {
   auto model = testCase.CreateModel(inline_call);
   if (!inline_call) {
     auto& node = *model->MainGraph().Nodes().begin();
-    auto* fnbody = node.GetFunctionBody(true);
+    auto* fnbody = node.GetFunctionBody();
     EXPECT_EQ(fnbody, nullptr);
   }
 }
 
 TEST_F(FunExpansionTest, DropoutGrad_WithoutRatio2) {
-  // bfloat16 not yet supported by ONNX op Where
-  CheckDropoutGradWithoutRatio<BFloat16>(false);
+  CheckDropoutGradWithoutRatio<BFloat16>(true);
   CheckDropoutGradWithoutRatio<MLFloat16>(true);
 }
 
 template <typename T>
 void CheckDropoutGradWithRatio(bool inline_call) {
   FunctionTestCase testCase("DropoutGrad");
+  testCase.AddOpset(kOnnxDomain, DropoutGradOpset<T>());
+  testCase.AddOpset(kMSDomain, 1);
+
   std::vector<int64_t> shape{16, 4, 4};
   testCase.AddInput<T, false>("dY", shape);
   testCase.AddInput<bool, false>("mask", shape);
-  testCase.AddInput("ratio", {}, {0.5f});
+  testCase.AddInput<float>("ratio", {}, {0.5f});
   testCase.AddOutput("dX");
   testCase.CreateModel(inline_call);
 }
 
 TEST_F(FunExpansionTest, DropoutGrad_WithRatio2) {
-  // bfloat16 not yet supported by ONNX op Where
-  CheckDropoutGradWithRatio<BFloat16>(false);
+  CheckDropoutGradWithRatio<BFloat16>(true);
   CheckDropoutGradWithRatio<MLFloat16>(true);
 }
 
-TEST_F(FunExpansionTest, GeluGrad_2D) {
-  FunctionTestCase testCase("GeluGrad");
+template <typename T, bool RunTest = true>
+void TestUnaryOpGrad(const char* opname) {
+  FunctionTestCase testCase(opname);
   std::vector<int64_t> shape{16, 4};
-  testCase.AddInput<float>("dY", shape);
-  testCase.AddInput<float>("X", shape);
+  testCase.AddInput<T, RunTest>("dY", shape);
+  testCase.AddInput<T, RunTest>("X", shape);
+  testCase.AddOutput("dX");
+  if (RunTest)
+    testCase.RunTest();
+  else
+    // Test only expanded model creation and model checking.
+    testCase.CreateModel(true);
+}
+
+TEST_F(FunExpansionTest, GeluGrad_float) {
+  TestUnaryOpGrad<float, true>("GeluGrad");
+}
+
+TEST_F(FunExpansionTest, GeluGrad_HalfPrecision) {
+  TestUnaryOpGrad<BFloat16, false>("GeluGrad");
+  TestUnaryOpGrad<MLFloat16, false>("GeluGrad");
+}
+
+TEST_F(FunExpansionTest, FastGeluGrad) {
+  TestUnaryOpGrad<float, true>("FastGeluGrad");
+  TestUnaryOpGrad<BFloat16, false>("FastGeluGrad");
+  TestUnaryOpGrad<MLFloat16, false>("FastGeluGrad");
+}
+
+template <typename T, typename U, bool RunTest = true>
+void TestLayerNormGrad(std::vector<int64_t> prefix_shape, std::vector<int64_t> suffix_shape) {
+  FunctionTestCase testCase("LayerNormalizationGrad");
+  std::vector<int64_t> input_shape(prefix_shape);
+  for (auto d : suffix_shape)
+    input_shape.push_back(d);
+  std::vector<int64_t> stats_shape(prefix_shape);
+  for (auto d : suffix_shape) {
+    (void)d;
+    stats_shape.push_back(1);
+  }
+  testCase.AddInput<T, RunTest>("Y_grad", input_shape);
+  testCase.AddInput<T, RunTest>("X", input_shape);
+  testCase.AddInput<T, RunTest>("scale", suffix_shape);
+  testCase.AddInput<U, RunTest>("mean", stats_shape);
+  testCase.AddInput<U, RunTest>("inv_std_dev", stats_shape);
+  testCase.AddOutput("X_grad");
+  testCase.AddOutput("scale_grad");
+  testCase.AddOutput("bias_grad");
+  testCase.AddAttribute("axis", prefix_shape.size());
+  if (RunTest)
+    testCase.RunTest();
+  else
+    // Test only expanded model creation and model checking.
+    testCase.CreateModel(true);
+}
+
+TEST_F(FunExpansionTest, LayerNormalizationGrad) {
+  TestLayerNormGrad<float, float, true>({4, 1}, {8, 4});
+  TestLayerNormGrad<float, float, true>({}, {8, 4});
+  TestLayerNormGrad<BFloat16, float, false>({}, {8, 4});
+}
+
+TEST_F(FunExpansionTest, SigmoidGrad_float) {
+  TestUnaryOpGrad<float, true>("SigmoidGrad");
+}
+
+TEST_F(FunExpansionTest, TanhGrad_float) {
+  TestUnaryOpGrad<float, true>("TanhGrad");
+}
+
+void TestSoftmaxCrossEntropyLossGrad(bool not_internal, int reduction, int ignore_index, int use_weight, int num_d_dims) {
+  int64_t batchsize = 8, num_classes = 10, d1 = 4;
+  std::vector<int64_t> BCD{batchsize, num_classes};
+  std::vector<int64_t> BD{batchsize};
+  for (int i = 0; i < num_d_dims; ++i) {
+    BCD.push_back(d1);
+    BD.push_back(d1);
+  }
+
+  std::vector<int64_t> C{num_classes};
+  std::vector<int64_t> scalar; // empty vector
+
+  FunctionTestCase testCase(not_internal ? "SoftmaxCrossEntropyLossGrad" : "SoftmaxCrossEntropyLossInternalGrad");
+  testCase.opsets[kOnnxDomain] = 15;
+  testCase.opsets[kMSDomain] = 1;
+  testCase.AddInput<float>("dY", (reduction == 0) ? BD : scalar);
+  testCase.AddInput<float>("log_prob", BCD);
+  testCase.AddBoundedInput<int64_t>("label", BD, num_classes);
+  if (use_weight)
+    testCase.AddInput<float>("weight", C);
+  switch (reduction) {
+    case 0:
+      testCase.AddAttribute("reduction", "none");
+      break;
+    case 1:
+      testCase.AddAttribute("reduction", "mean");
+      break;
+    case 2:
+      testCase.AddAttribute("reduction", "sum");
+      break;
+    default:
+      break;
+  }
+  if (ignore_index != 0) {
+    if (not_internal)
+      testCase.AddAttribute("ignore_index", ignore_index);
+    else {
+      if (!use_weight)
+        testCase.AddInput<float, false>("", scalar); // Skip missing optional input
+      testCase.AddInput<int64_t>("ignore_index", scalar, std::vector<int64_t>{ignore_index});
+    }
+  }
   testCase.AddOutput("dX");
   testCase.RunTest();
 }
 
-template <typename T>
-void CheckGeluGrad() {
-  // Tests only expanded model creation and checking.
-  FunctionTestCase testCase("GeluGrad");
-  std::vector<int64_t> shape{16, 4};
-  testCase.AddInput<T, false>("dY", shape);
-  testCase.AddInput<T, false>("X", shape);
-  testCase.AddOutput("dX");
-  testCase.CreateModel(true);
+void TestSoftmaxCrossEntropyLossInternal(int reduction, int ignore_index, int use_weight, int num_d_dims) {
+  int64_t batchsize = 8, num_classes = 10, d1 = 4;
+  std::vector<int64_t> BCD{batchsize, num_classes};
+  std::vector<int64_t> BD{batchsize};
+  for (int i = 0; i < num_d_dims; ++i) {
+    BCD.push_back(d1);
+    BD.push_back(d1);
+  }
+
+  std::vector<int64_t> C{num_classes};
+  std::vector<int64_t> scalar; // empty vector
+
+  FunctionTestCase testCase("SoftmaxCrossEntropyLossInternal");
+  testCase.opsets[kOnnxDomain] = 15;
+  testCase.opsets[kMSDomain] = 1;
+
+  switch (reduction) {
+    case 0:
+      testCase.AddAttribute("reduction", "none");
+      break;
+    case 1:
+      testCase.AddAttribute("reduction", "mean");
+      break;
+    case 2:
+      testCase.AddAttribute("reduction", "sum");
+      break;
+    default:
+      break;
+  }
+
+  testCase.AddInput<float>("scores", BCD);
+  testCase.AddBoundedInput<int64_t>("labels", BD, num_classes);
+  if (use_weight)
+    testCase.AddInput<float>("weights", C);
+
+  if (ignore_index != 0) {
+    if (!use_weight)
+      testCase.AddInput<float, false>("", scalar);  // Skip missing optional input
+    testCase.AddInput<int64_t>("ignore_index", scalar, std::vector<int64_t>{ignore_index});
+  }
+  testCase.AddOutput("output");
+  testCase.AddOutput("logprob");
+  testCase.RunTest();
 }
 
-TEST_F(FunExpansionTest, GeluGrad_HalfPrecision) {
-  CheckGeluGrad<BFloat16>();
-  CheckGeluGrad<MLFloat16>();
+
+TEST_F(FunExpansionTest, SoftmaxCrossEntropyLossGrad) {
+  std::vector<int> reductions{0, 1, 2, 3};
+  std::vector<int> ignore_indices{0, 100};
+  std::vector<int> use_weights{0, 1};
+  std::vector<int> num_d_dims{0, 1, 2};
+  for (auto reduction : reductions)
+    for (auto ignore_index : ignore_indices)
+      for (auto use_weight: use_weights)
+        for (auto num_dim : num_d_dims)
+          TestSoftmaxCrossEntropyLossGrad(true, reduction, ignore_index, use_weight, num_dim);
+}
+
+TEST_F(FunExpansionTest, SoftmaxCrossEntropyLossInternalGrad) {
+  std::vector<int> reductions{0, 1, 2, 3};
+  std::vector<int> ignore_indices{0, 100};
+  std::vector<int> use_weights{0, 1};
+  std::vector<int> num_d_dims{0, 1, 2};
+  for (auto reduction : reductions)
+    for (auto ignore_index : ignore_indices)
+      for (auto use_weight: use_weights)
+        for (auto num_dim : num_d_dims)
+          TestSoftmaxCrossEntropyLossGrad(false, reduction, ignore_index, use_weight, num_dim);
+}
+
+TEST_F(FunExpansionTest, SoftmaxCrossEntropyLossInternal) {
+  std::vector<int> reductions{0, 1, 2, 3};
+  std::vector<int> ignore_indices{0, 100};
+  std::vector<int> use_weights{0, 1};
+  std::vector<int> num_d_dims{0, 1, 2};
+  for (auto reduction : reductions)
+    for (auto ignore_index : ignore_indices)
+      for (auto use_weight: use_weights)
+        for (auto num_dim : num_d_dims)
+          TestSoftmaxCrossEntropyLossInternal(reduction, ignore_index, use_weight, num_dim);
 }
 
 }  // namespace test

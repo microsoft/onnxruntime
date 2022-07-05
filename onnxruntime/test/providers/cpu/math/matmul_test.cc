@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "default_providers.h"
 
 namespace onnxruntime {
@@ -50,6 +51,13 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
        {1, 3, 5}});
 
   test_cases.push_back(
+      {"test left 1D right 2D",
+       {2},
+       {2, 3},
+       {3},
+       {3, 4, 5}});
+
+  test_cases.push_back(
       {"test scalar output",
        {3},
        {3},
@@ -95,16 +103,16 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
 }
 
 template <typename T>
-void RunMatMulTest(int32_t opset_version, bool is_b_constant = false) {
+void RunMatMulTest(int32_t opset_version, bool is_a_constant, bool is_b_constant) {
   std::vector<T> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   for (auto t : GenerateTestCases<T>()) {
     OpTester test("MatMul", opset_version);
 
-    int64_t size0 = TensorShape::ReinterpretBaseType(t.input0_dims).SizeHelper(0, t.input0_dims.size());
+    int64_t size0 = TensorShape::FromExistingBuffer(t.input0_dims).SizeHelper(0, t.input0_dims.size());
     std::vector<T> input0_vals(common_input_vals.cbegin(), common_input_vals.cbegin() + size0);
-    test.AddInput<T>("A", t.input0_dims, input0_vals);
+    test.AddInput<T>("A", t.input0_dims, input0_vals, is_a_constant);
 
-    int64_t size1 = TensorShape::ReinterpretBaseType(t.input1_dims).SizeHelper(0, t.input1_dims.size());
+    int64_t size1 = TensorShape::FromExistingBuffer(t.input1_dims).SizeHelper(0, t.input1_dims.size());
     std::vector<T> input1_vals(common_input_vals.cbegin(), common_input_vals.cbegin() + size1);
     test.AddInput<T>("B", t.input1_dims, input1_vals, is_b_constant);
 
@@ -121,13 +129,22 @@ void RunMatMulTest(int32_t opset_version, bool is_b_constant = false) {
   }
 }
 
+template <typename T>
+void RunMatMulTest(int32_t opset_version) {
+  RunMatMulTest<T>(opset_version, false, false);
+}
+
 TEST(MathOpTest, MatMulFloatType) {
-  RunMatMulTest<float>(7, false);
-  RunMatMulTest<float>(7, true);
+  RunMatMulTest<float>(7, false, false);
+  RunMatMulTest<float>(7, false, true);
 }
 
 TEST(MathOpTest, MatMulDoubleType) {
   RunMatMulTest<double>(7);
+}
+
+TEST(MathOpTest, MatMulFloatTypeInitializer) {
+  RunMatMulTest<float>(7, false, true);
 }
 
 TEST(MathOpTest, MatMulInt32Type) {
@@ -146,6 +163,61 @@ TEST(MathOpTest, MatMulUint64Type) {
   RunMatMulTest<uint64_t>(9);
 }
 
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(MathOpTest, MatMul_Float16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
+#endif
+  OpTester test("MatMul", 14);
+
+  std::vector<float> A{1.0f, 2.0f, 3.0f, 4.0f,
+                       -1.0f, -2.0f, -3.0f, -4.0f};
+  std::vector<float> B(12, 1.0f);
+  std::vector<float> Y{10.0f, 10.0f, 10.0f,
+                       -10.0f, -10.0f, -10.0f};
+
+  std::vector<MLFloat16> f_A(8);
+  std::vector<MLFloat16> f_B(12);
+  std::vector<MLFloat16> f_Y(6);
+  ConvertFloatToMLFloat16(A.data(), f_A.data(), 8);
+  ConvertFloatToMLFloat16(B.data(), f_B.data(), 12);
+  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
+
+  test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+  test.AddInput<MLFloat16>("B", {4, 3}, f_B);
+  test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: fp16 is not supported
+}
+#endif
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(MathOpTest, MatMul_BFloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+  OpTester test("MatMul", 14);
+
+  test.AddInput<BFloat16>("A", {2, 4}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f}));
+  test.AddInput<BFloat16>("B", {4, 3}, MakeBFloat16({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f}));
+  test.AddOutput<BFloat16>("Y", {2, 3}, MakeBFloat16({10.0f, 10.0f, 10.0f, -10.0f, -10.0f, -10.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
+
 #ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
 TEST(MathOpTest, MatMulSharedPrepackedWeights) {
   OpTester test("MatMul");
@@ -161,12 +233,9 @@ TEST(MathOpTest, MatMulSharedPrepackedWeights) {
                         {10.0f, 10.0f, 10.0f,
                          -10.0f, -10.0f, -10.0f});
 
-  auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape({4, 3}),
-                                           b_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue b;
-
-  b.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({4, 3}),
+                       b_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), b);
 
   SessionOptions so;
   // Set up B as a shared initializer to be shared between sessions

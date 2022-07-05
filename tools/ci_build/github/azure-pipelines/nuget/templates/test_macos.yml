@@ -1,14 +1,14 @@
 parameters:
   IsMacOS : 'true'
-
+  ArtifactSuffix: ''
 jobs:
 - job: NuGet_Test_MacOS
   workspace:
     clean: all
   pool:
-    vmImage: 'macOS-10.15'
+    vmImage: 'macOS-11'
   dependsOn:
-  - NuGet_Packaging
+  - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
   condition: succeeded()
   variables:
   - name: OnnxRuntimeBuildDirectory
@@ -17,13 +17,13 @@ jobs:
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - Signed NuGet'
     inputs:
-      artifactName: 'drop-signed-nuget'
+      artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download OsX CustomOp test data'
     inputs:
-      artifactName: 'drop-osx'
+      artifactName: 'onnxruntime-osx'
       targetPath: '$(Build.BinariesDirectory)/testdata'
 
   - template: get-nuget-package-version-as-variable.yml
@@ -31,6 +31,7 @@ jobs:
       packageFolder: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - script: |
+     mv $(Build.BinariesDirectory)/testdata/x86_64/* $(Build.BinariesDirectory)/testdata
      $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
                $(Build.BinariesDirectory)/nuget-artifact \
                $(NuGetPackageVersionNumber) \

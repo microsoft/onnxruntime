@@ -13,7 +13,7 @@ Fuse Softmax(Input + Bias))
 */
 class BiasSoftmaxFusion : public GraphTransformer {
  public:
-  BiasSoftmaxFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  BiasSoftmaxFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("BiasSoftmaxFusion", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;

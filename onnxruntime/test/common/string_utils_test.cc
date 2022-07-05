@@ -3,6 +3,9 @@
 
 #include "core/common/make_string.h"
 #include "core/common/parse_string.h"
+#include "core/common/string_utils.h"
+
+#include <algorithm>
 
 #include "gtest/gtest.h"
 
@@ -88,6 +91,50 @@ TEST(StringUtilsTest, MakeStringAndTryParseStringWithCustomType) {
   ASSERT_TRUE(TryParseStringWithClassicLocale(str, parsed_s));
   ASSERT_EQ(parsed_s, s);
 }
+
+TEST(StringUtilsTest, SplitString) {
+  auto run_test = [](const std::string& string_to_split, const std::string& delimiter,
+                     const std::vector<std::string>& expected_substrings_with_empty) {
+    SCOPED_TRACE(MakeString("string_to_split: \"", string_to_split, "\", delimiter: \"", delimiter, "\""));
+
+    auto test_split = [&](const std::vector<std::string>& expected_substrings, bool keep_empty) {
+      SCOPED_TRACE(MakeString("keep_empty: ", keep_empty));
+
+      const auto actual_substrings = utils::SplitString(string_to_split, delimiter, keep_empty);
+      ASSERT_EQ(actual_substrings.size(), expected_substrings.size());
+      for (size_t i = 0; i < actual_substrings.size(); ++i) {
+        EXPECT_EQ(actual_substrings[i], expected_substrings[i]) << "i=" << i;
+      }
+    };
+
+    test_split(expected_substrings_with_empty, true);
+
+    const std::vector<std::string> expected_substrings_without_empty = [&]() {
+      std::vector<std::string> result = expected_substrings_with_empty;
+      result.erase(std::remove_if(result.begin(), result.end(),
+                                  [](const std::string& value) { return value.empty(); }),
+                   result.end());
+      return result;
+    }();
+    test_split(expected_substrings_without_empty, false);
+  };
+
+  run_test("a,b,c", ",", {"a", "b", "c"});
+  run_test(",a,,b,,,c,", ",", {"", "a", "", "b", "", "", "c", ""});
+  run_test("one_delimiter_two_delimiter_", "_delimiter_", {"one", "two", ""});
+  run_test("aaaaaaa", "aa", {"", "", "", "a"});
+  run_test("abcabaabc", "abc", {"", "aba", ""});
+  run_test("leading,", ",", {"leading", ""});
+  run_test(",trailing", ",", {"", "trailing"});
+  run_test("", ",", {""});
+  run_test(",", ",", {"", ""});
+}
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(StringUtilsTest, SplitStringWithEmptyDelimiter) {
+  EXPECT_THROW(utils::SplitString("a", ""), OnnxRuntimeException);
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

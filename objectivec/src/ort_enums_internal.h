@@ -3,7 +3,7 @@
 
 #import "ort_enums.h"
 
-#include "onnxruntime_c_api.h"
+#import "src/cxx_api.h"
 
 OrtLoggingLevel PublicToCAPILoggingLevel(ORTLoggingLevel logging_level);
 

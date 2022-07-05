@@ -12,6 +12,7 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/reduction/reduction_utils.cuh"
+#include "core/providers/cuda/cu_inc/unary_elementwise_impl.cuh"
 
 namespace onnxruntime {
 namespace cuda {
@@ -347,6 +348,8 @@ INSTANTIATE_REDUCE_SUM(half, half);
 INSTANTIATE_REDUCE_SUM(half, float);
 INSTANTIATE_REDUCE_SUM(float, float);
 INSTANTIATE_REDUCE_SUM(double, double);
+INSTANTIATE_REDUCE_SUM(BFloat16, BFloat16);
+INSTANTIATE_REDUCE_SUM(BFloat16, float);
 #undef INSTANTIATE_REDUCE_SUM
 
 #define INSTANTIATE_REDUCE_SQUARE_SUM(TIn, TOut) \
@@ -354,9 +357,7 @@ INSTANTIATE_REDUCE_SUM(double, double);
 INSTANTIATE_REDUCE_SQUARE_SUM(half, float);
 INSTANTIATE_REDUCE_SQUARE_SUM(float, float);
 INSTANTIATE_REDUCE_SQUARE_SUM(double, double);
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-INSTANTIATE_REDUCE_SQUARE_SUM(nv_bfloat16, float);
-#endif
+INSTANTIATE_REDUCE_SQUARE_SUM(BFloat16, float);
 #undef INSTANTIATE_REDUCE_SQUARE_SUM
 
 #define INSTANTIATE_REDUCE_L2_NORM(TIn, TOut) \
@@ -458,6 +459,30 @@ Status call_reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* outp
 }
 }  // namespace detail
 
+template <typename T>
+struct OP_Div {
+  __device__ __inline__ T operator()(const T& a) const {
+    return a / v_;
+  }
+
+  OP_Div(T v) : v_(v) {}
+
+  T v_;
+};
+
+template <typename T>
+void UnaryDiv(cudaStream_t stream, const T* input, T* output, T denominator, size_t count) {
+  UnaryElementWiseImpl(stream, input, output, OP_Div<T>(denominator), count);
+}
+
+#define INSTANTIATE_UNARY_DIV(T) \
+  template void UnaryDiv<T>(cudaStream_t stream, const T* input, T* output, T denominator, size_t count)
+INSTANTIATE_UNARY_DIV(half);
+INSTANTIATE_UNARY_DIV(float);
+INSTANTIATE_UNARY_DIV(double);
+INSTANTIATE_UNARY_DIV(BFloat16);
+#undef INSTANTIATE_UNARY_DIV
+
 template <typename TIn, typename TOut>
 Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, bool reset_initial_output) {
   using TBuf = AccumulationType_t<TIn>;
@@ -469,9 +494,7 @@ Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, i
 INSTANTIATE_REDUCE_MATRIX_ROWS(half);
 INSTANTIATE_REDUCE_MATRIX_ROWS(float);
 INSTANTIATE_REDUCE_MATRIX_ROWS(double);
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-INSTANTIATE_REDUCE_MATRIX_ROWS(nv_bfloat16);
-#endif
+INSTANTIATE_REDUCE_MATRIX_ROWS(BFloat16);
 #undef INSTANTIATE_REDUCE_MATRIX_ROWS
 
 template <typename TIn, typename TOut>
@@ -485,9 +508,7 @@ Status reduce_matrix_columns(cudaStream_t stream, const TIn* input, TOut* output
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(half);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(float);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(double);
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-INSTANTIATE_REDUCE_MATRIX_COLUMNS(nv_bfloat16);
-#endif
+INSTANTIATE_REDUCE_MATRIX_COLUMNS(BFloat16);
 #undef INSTANTIATE_REDUCE_MATRIX_COLUMNS
 
 }  // namespace cuda

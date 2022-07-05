@@ -22,7 +22,7 @@ constexpr PathChar k_preferred_path_separator = ORT_TSTR('/');
 constexpr std::array<PathChar, 2> k_valid_path_separators{
     ORT_TSTR('/'), ORT_TSTR('\\')};
 
-bool IsPreferredPathSeparator(PathChar c) {
+constexpr bool IsPreferredPathSeparator(PathChar c) {
   return c == k_preferred_path_separator;
 }
 
@@ -81,9 +81,9 @@ Status ParsePathRoot(
     PathString::const_iterator component_end;
     bool has_trailing_separator;
     curr_it = ParsePathComponent(curr_it, path.end(), component_end, &has_trailing_separator);
-    ORT_RETURN_IF_NOT(has_trailing_separator, "Failed to parse path root: ", ToMBString(path));
+    ORT_RETURN_IF_NOT(has_trailing_separator, "Failed to parse path root: ", ToUTF8String(path));
     curr_it = ParsePathComponent(curr_it, path.end(), component_end, &has_trailing_separator);
-    ORT_RETURN_IF_NOT(has_trailing_separator, "Failed to parse path root: ", ToMBString(path));
+    ORT_RETURN_IF_NOT(has_trailing_separator, "Failed to parse path root: ", ToUTF8String(path));
 
     root.assign(path.begin(), component_end);
     has_root_dir = true;
@@ -113,7 +113,7 @@ Status ParsePathRoot(
     PathString::const_iterator component_end;
     bool has_trailing_separator;
     curr_it = ParsePathComponent(curr_it, path.end(), component_end, &has_trailing_separator);
-    ORT_RETURN_IF_NOT(has_trailing_separator, "Failed to parse path root: ", ToMBString(path));
+    ORT_RETURN_IF_NOT(has_trailing_separator, "Failed to parse path root: ", ToUTF8String(path));
 
     root.assign(path.begin(), component_end);
     has_root_dir = true;
@@ -262,7 +262,7 @@ Path& Path::Concat(const PathString& value) {
                                                    c) != k_valid_path_separators.end();
                                       });
   ORT_ENFORCE(first_separator == value.end(),
-              "Cannot concatenate with a string containing a path separator. String: ", ToMBString(value));
+              "Cannot concatenate with a string containing a path separator. String: ", ToUTF8String(value));
 
   if (components_.empty()) {
     components_.push_back(value);
@@ -276,8 +276,8 @@ Status RelativePath(const Path& src, const Path& dst, Path& rel) {
   ORT_RETURN_IF_NOT(
       src.GetRootPathString() == dst.GetRootPathString(),
       "Paths must have the same root to compute a relative path. ",
-      "src root: ", ToMBString(src.GetRootPathString()),
-      ", dst root: ", ToMBString(dst.GetRootPathString()));
+      "src root: ", ToUTF8String(src.GetRootPathString()),
+      ", dst root: ", ToUTF8String(dst.GetRootPathString()));
 
   const Path norm_src = src.NormalizedPath(), norm_dst = dst.NormalizedPath();
   const auto& src_components = norm_src.GetComponents();

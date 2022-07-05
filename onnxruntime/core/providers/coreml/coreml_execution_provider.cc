@@ -8,11 +8,13 @@
 #include "core/graph/graph_viewer.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
-
 #include "core/providers/coreml/builders/helper.h"
+
+#ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/model/model.h"
+#endif
 
 namespace onnxruntime {
 
@@ -61,13 +63,13 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   const auto supported_nodes = coreml::GetSupportedNodes(graph_viewer, logger);
 
   const auto gen_metadef_name = [&]() {
-    uint64_t model_hash;
+    HashValue model_hash;
     int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
     return MakeString(COREML, "_", model_hash, "_", metadef_id);
   };
 
   result = utils::CreateSupportedPartitions(graph_viewer, supported_nodes, {},
-                                            gen_metadef_name, COREML);
+                                            gen_metadef_name, COREML, kCoreMLExecutionProvider);
 
   const auto num_of_partitions = result.size();
   const auto num_of_supported_nodes = std::transform_reduce(
@@ -94,6 +96,7 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   return result;
 }
 
+#ifdef __APPLE__
 common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                 std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
@@ -232,5 +235,22 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
 
   return Status::OK();
 }
+#else
+common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                               std::vector<NodeComputeInfo>& node_compute_funcs) {
+  for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
+    ORT_UNUSED_PARAMETER(fused_node_and_graph);
+    NodeComputeInfo compute_info;
+    compute_info.create_state_func = [](ComputeContext* /*context*/, FunctionState* /*state*/) { return 0; };
+    compute_info.release_state_func = [](FunctionState /*state*/) {};
+    compute_info.compute_func = [](FunctionState /* state */, const OrtCustomOpApi* /* api */,
+                                   OrtKernelContext* /* context */) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Compute is not supported in this build.");
+    };
+    node_compute_funcs.push_back(compute_info);
+  }
+  return Status::OK();
+}
+#endif //__APPLE__
 
 }  // namespace onnxruntime

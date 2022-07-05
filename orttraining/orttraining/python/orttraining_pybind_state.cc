@@ -8,15 +8,26 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
+#include "core/common/parse_string.h"
+#include "core/graph/model.h"
 #include "core/session/environment.h"
+#include "core/dlpack/dlpack_converter.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/agent/training_agent.h"
+#include "orttraining/core/graph/gradient_config.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
+#include "orttraining/core/graph/gradient_definition_registry.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
+#include "orttraining/python/orttraining_pybind_common.h"
 
-PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+#include "orttraining/core/framework/torch/custom_function_register.h"
+#endif
+
+PYBIND11_MAKE_OPAQUE(onnxruntime::OrtValueCache);
 
 namespace onnxruntime {
 namespace python {
@@ -24,6 +35,35 @@ namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
+
+Environment& GetTrainingORTEnv();
+ORTTrainingPythonEnv& GetTrainingEnv();
+
+void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
+                                 const ProviderOptionsVector& original_provider_options_vector,
+                                 ProviderOptionsVector& merged_options) {
+  auto& training_env = GetTrainingEnv();
+  std::size_t j = 0;  // index for provider_options_vector
+  for (const std::string& type : provider_types) {
+    auto it = training_env.ext_execution_provider_info_map_.find(type);
+    if (it == training_env.ext_execution_provider_info_map_.end()) {
+      if (j < original_provider_options_vector.size() && !original_provider_options_vector[j].empty()) {
+        merged_options.push_back(original_provider_options_vector[j]);
+      }
+    } else {
+      ProviderOptions options = it->second.second;
+      options.insert({kExecutionProviderSharedLibraryPath, it->second.first});
+      if (j < original_provider_options_vector.size() && !original_provider_options_vector[j].empty()) {
+        for (auto [k, v] : original_provider_options_vector[j]) {
+          options.insert({k, v});
+        }
+      }
+      merged_options.push_back(options);
+    }
+
+    j += 1;
+  }
+}
 
 struct TrainingParameters {
   std::string loss_output_name;
@@ -58,7 +98,7 @@ struct TrainingParameters {
   int deepspeed_zero_stage = 0;
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
-  bool use_invertible_layernorm_grad = false;
+  bool use_memory_efficient_gradient = false;
 
   std::string pipeline_cut_info_string = {};
 
@@ -73,8 +113,7 @@ struct TrainingParameters {
   int propagate_cast_ops_level = 1;
   std::vector<std::string> propagate_cast_ops_allow;
   GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy propagate_cast_ops_strategy =
-      GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::None;
-  bool allow_layer_norm_mod_precision = false;
+      GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill;
 
   // graph dumping
   std::string model_after_graph_transforms_path;
@@ -86,10 +125,19 @@ struct TrainingConfigurationResult {
   optional<std::string> loss_scale_input_name;
 };
 
+struct PyGradientGraphBuilder {
+  std::unique_ptr<GradientGraphBuilder> builder;
+  std::shared_ptr<Model> model;
+  std::unique_ptr<logging::Logger> logger;
+  std::unique_ptr<GradientGraphConfiguration> gradient_graph_config;
+  PyGradientGraphBuilder(std::unique_ptr<GradientGraphBuilder> builder_, std::shared_ptr<Model> model_, std::unique_ptr<logging::Logger> logger_, std::unique_ptr<GradientGraphConfiguration> gradient_graph_config_)
+      : builder(std::move(builder_)), model(std::move(model_)), logger(std::move(logger_)), gradient_graph_config(std::move(gradient_graph_config_)) {}
+};
+
 // TODO: this method does not handle parallel optimization.
 TrainingConfigurationResult ConfigureSessionForTraining(
     training::PipelineTrainingSession* sess, TrainingParameters& parameters) {
-  //TODO tix, refactor the mpi related code to populate all fields correctly by default.
+  // TODO tix, refactor the mpi related code to populate all fields correctly by default.
   ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size, "data_parallel_size: ", parameters.data_parallel_size, ", world_size: ", parameters.world_size);
   ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size, "horizontal_parallel_size: ", parameters.horizontal_parallel_size, ", world_size: ", parameters.world_size);
   ORT_ENFORCE(parameters.pipeline_parallel_size <= parameters.world_size, "pipeline_parallel_size: ", parameters.pipeline_parallel_size, ", world_size: ", parameters.world_size);
@@ -231,7 +279,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     config.init_optimizer_states = parameters.optimizer_initial_state;
   }
 
-  config.gradient_graph_config.use_invertible_layernorm_grad = parameters.use_invertible_layernorm_grad;
+  config.gradient_graph_config.use_memory_efficient_gradient = parameters.use_memory_efficient_gradient;
   config.gradient_graph_config.set_gradients_as_graph_outputs = parameters.set_gradients_as_graph_outputs;
 
   config.graph_transformer_config.attn_dropout_recompute = parameters.attn_dropout_recompute;
@@ -241,7 +289,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.graph_transformer_config.propagate_cast_ops_config.strategy = parameters.propagate_cast_ops_strategy;
   config.graph_transformer_config.propagate_cast_ops_config.level = parameters.propagate_cast_ops_level;
   config.graph_transformer_config.propagate_cast_ops_config.allow = parameters.propagate_cast_ops_allow;
-  config.graph_transformer_config.allow_layer_norm_mod_precision = parameters.allow_layer_norm_mod_precision;
 
   if (!parameters.model_after_graph_transforms_path.empty()) {
     config.model_after_graph_transforms_path = ToPathString(parameters.model_after_graph_transforms_path);
@@ -276,13 +323,15 @@ void CopyMPIContextToTrainingParameters(TrainingParameters& parameters, const lo
   parameters.local_rank = MPIContext::GetInstance().GetLocalRank();
   parameters.local_size = MPIContext::GetInstance().GetLocalSize();
   if (parameters.world_rank != MPIContext::GetInstance().GetWorldRank()) {
-    if (parameters.world_rank != 0)
+    if (parameters.world_rank != 0) {
       LOGS(*logger, WARNING) << "TrainingParameters world_rank is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldRank();
+    }
     parameters.world_rank = MPIContext::GetInstance().GetWorldRank();
   }
   if (parameters.world_size != MPIContext::GetInstance().GetWorldSize()) {
-    if (parameters.world_size != 1)
+    if (parameters.world_size != 1) {
       LOGS(*logger, WARNING) << "TrainingParameters world_size is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldSize();
+    }
     parameters.world_size = MPIContext::GetInstance().GetWorldSize();
   }
 }
@@ -303,27 +352,28 @@ std::unordered_map<std::string, std::unordered_map<std::string, py::object>> Con
   return py_tensor_state;
 }
 
-void addObjectMethodsForTraining(py::module& m) {
-  py::class_<std::vector<OrtValue>>(m, "OrtValueVector")
+void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn) {
+  py::class_<OrtValueCache, OrtValueCachePtr>(m, "OrtValueCache")
       .def(py::init<>())
-      .def("push_back", [](std::vector<OrtValue>* v, const OrtValue& ortvalue) {
-        v->push_back(ortvalue);
+      .def("insert", [](const OrtValueCachePtr& cache_ptr, std::string node_arg_name, OrtValue& value) {
+        cache_ptr->emplace(node_arg_name, value);
       })
-      .def("push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) {
-        v->push_back(FromDlpack(dlpack_tensor.ptr(), is_bool_tensor));
+      .def("keys", [](const OrtValueCachePtr& cache_ptr) {
+        py::list keys;
+        for (auto kv : *cache_ptr.get()) {
+          keys.append(kv.first);
+        }
+        return keys;
       })
-      .def("reserve", [](std::vector<OrtValue>* v, const size_t len) { v->reserve(len); })
-      .def("shrink_to_fit", [](std::vector<OrtValue>* v) { v->shrink_to_fit(); })
-      .def("__len__", [](const std::vector<OrtValue>& v) { return v.size(); })
-      .def("__iter__", [](const std::vector<OrtValue>& v) {
-        return py::make_iterator(v.cbegin(), v.cend());
-      },
-           py::keep_alive<0, 1>())
-      .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) {
-        return v.at(idx);
+      .def("clear", [](const OrtValueCachePtr& cache_ptr) {
+        cache_ptr->clear();
       })
-      .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
-        return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx)));
+      .def("count", [](const OrtValueCachePtr& cache_ptr, std::string node_arg_name) {
+        return cache_ptr->count(node_arg_name);
+      })
+      .def("remove", [](const OrtValueCachePtr& cache_ptr, std::string node_arg_name) {
+        const auto& num_entries_erased = cache_ptr->erase(node_arg_name);
+        ORT_ENFORCE(num_entries_erased == 1, "NodeArg not found in cache: ", node_arg_name);
       });
 
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
@@ -354,7 +404,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("deepspeed_zero_stage", &TrainingParameters::deepspeed_zero_stage)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
       .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs)
-      .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad)
+      .def_readwrite("use_memory_efficient_gradient", &TrainingParameters::use_memory_efficient_gradient)
       .def_readwrite("attn_dropout_recompute", &TrainingParameters::attn_dropout_recompute)
       .def_readwrite("gelu_recompute", &TrainingParameters::gelu_recompute)
       .def_readwrite("transformer_layer_recompute", &TrainingParameters::transformer_layer_recompute)
@@ -386,8 +436,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("model_with_training_graph_path", &TrainingParameters::model_with_training_graph_path)
       .def_readwrite("enable_adasum", &TrainingParameters::enable_adasum)
       .def_readwrite("propagate_cast_ops_level", &TrainingParameters::propagate_cast_ops_level)
-      .def_readwrite("propagate_cast_ops_allow", &TrainingParameters::propagate_cast_ops_allow)
-      .def_readwrite("allow_layer_norm_mod_precision", &TrainingParameters::allow_layer_norm_mod_precision);
+      .def_readwrite("propagate_cast_ops_allow", &TrainingParameters::propagate_cast_ops_allow);
 
 #if defined(USE_MPI)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });
@@ -395,6 +444,39 @@ void addObjectMethodsForTraining(py::module& m) {
   m.def("get_mpi_context_world_rank", []() -> int { return MPIContext::GetInstance().GetWorldRank(); });
   m.def("get_mpi_context_world_size", []() -> int { return MPIContext::GetInstance().GetWorldSize(); });
 #endif
+
+  m.def("register_forward_runner", [](py::object obj) -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterForwardRunner(obj.ptr());
+#else
+        ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
+  m.def("register_backward_runner", [](py::object obj) -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterBackwardRunner(obj.ptr());
+#else
+        ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
+  m.def("register_torch_autograd_function", [](std::string key, py::object obj) -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterTorchAutogradFunction(key, obj.ptr());
+#else
+        ORT_UNUSED_PARAMETER(key);
+        ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
+  m.def("unregister_python_functions", []() -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    // Release all custom python functions registered.
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.UnRegisterFunctions();
+#endif
+  });
 
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
   config_result.def(py::init())
@@ -415,11 +497,11 @@ void addObjectMethodsForTraining(py::module& m) {
   py::class_<PyTrainingSession, PyInferenceSession> training_session(m, "TrainingSession");
   training_session
       .def(py::init([](const PySessionOptions& so) {
-        Environment& env = GetEnv();
+        Environment& env = GetTrainingORTEnv();
         return std::make_unique<PyTrainingSession>(env, so);
       }))
       .def(py::init([]() {
-        Environment& env = GetEnv();
+        Environment& env = GetTrainingORTEnv();
         return std::make_unique<PyTrainingSession>(env, GetDefaultCPUSessionOptions());
       }))
       .def("finalize", [](py::object) {
@@ -432,7 +514,7 @@ void addObjectMethodsForTraining(py::module& m) {
 #endif
 #endif
       })
-      .def("load_model", [](PyTrainingSession* sess, const std::string& path, TrainingParameters& parameters, const std::vector<std::string>& provider_types, const ProviderOptionsVector& provider_options) {
+      .def("load_model", [ep_registration_fn](PyTrainingSession* sess, const std::string& path, TrainingParameters& parameters, const std::vector<std::string>& provider_types, const ProviderOptionsVector& provider_options) {
         OrtPybindThrowIfError(sess->GetSessionHandle()->Load(path));
 
 #if defined(USE_MPI)
@@ -442,11 +524,14 @@ void addObjectMethodsForTraining(py::module& m) {
 #endif
         const auto config_result = ConfigureSessionForTraining(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle()), parameters);
 
-        InitializeSession(sess->GetSessionHandle(), provider_types, provider_options);
+        ProviderOptionsVector merged_options;
+        ResolveExtraProviderOptions(provider_types, provider_options, merged_options);
+
+        InitializeSession(sess->GetSessionHandle(), ep_registration_fn, provider_types, merged_options);
 
         return config_result;
       })
-      .def("read_bytes", [](PyTrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters, const std::vector<std::string>& provider_types, const ProviderOptionsVector& provider_options) {
+      .def("read_bytes", [ep_registration_fn](PyTrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters, const std::vector<std::string>& provider_types, const ProviderOptionsVector& provider_options) {
         std::istringstream buffer(serialized_model);
         OrtPybindThrowIfError(sess->GetSessionHandle()->Load(buffer));
 
@@ -456,8 +541,10 @@ void addObjectMethodsForTraining(py::module& m) {
           CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
 #endif
         const auto config_result = ConfigureSessionForTraining(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle()), parameters);
+        ProviderOptionsVector merged_options;
+        ResolveExtraProviderOptions(provider_types, provider_options, merged_options);
 
-        InitializeSession(sess->GetSessionHandle(), provider_types, provider_options);
+        InitializeSession(sess->GetSessionHandle(), ep_registration_fn, provider_types, merged_options);
 
         return config_result;
       })
@@ -465,7 +552,7 @@ void addObjectMethodsForTraining(py::module& m) {
         NameMLValMap state_tensors;
         ORT_THROW_IF_ERROR(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->GetStateTensors(state_tensors));
         auto& data_transfer_manager = sess->GetSessionHandle()->GetDataTransferManager();
-        //convert to numpy array
+        // convert to numpy array
         std::map<std::string, py::object> rmap;
         for (auto& kv : state_tensors) {
           if (kv.second.IsTensor()) {
@@ -523,12 +610,13 @@ void addObjectMethodsForTraining(py::module& m) {
       .def(py::init([](PyInferenceSession* session, const std::vector<std::string>& fw_feed_names,
                        const std::vector<OrtDevice>& fw_outputs_device_info,
                        const std::vector<std::string>& bw_fetches_names,
-                       const std::vector<OrtDevice>& bw_outputs_device_info) {
+                       const std::vector<OrtDevice>& bw_outputs_device_info,
+                       int local_rank) {
         return std::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_outputs_device_info,
-                                               bw_fetches_names, bw_outputs_device_info);
+                                               bw_fetches_names, bw_outputs_device_info, local_rank);
       }))
-      .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
-        Status status = agent->RunForward(feeds, fetches, *state);
+      .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state, OrtValueCachePtr cache) -> void {
+        Status status = agent->RunForward(feeds, fetches, *state, cache);
         if (!status.IsOK()) {
           throw std::runtime_error("Error in forward pass execution: " + status.ErrorMessage());
         }
@@ -544,7 +632,6 @@ void addObjectMethodsForTraining(py::module& m) {
       .value("NONE", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::None)
       .value("INSERT_AND_REDUCE", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce)
       .value("FLOOD_FILL", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill)
-      .value("REMOVE_INPUT_OUTPUT_UP_DOWN_CASTS", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::RemoveInputOutputUpDownCasts)
       .def("__or__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
                                        GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator|))
       .def("__and__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
@@ -578,7 +665,6 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("gelu_recompute", &TrainingGraphTransformerConfiguration::gelu_recompute)
       .def_readwrite("transformer_layer_recompute", &TrainingGraphTransformerConfiguration::transformer_layer_recompute)
       .def_readwrite("number_recompute_layers", &TrainingGraphTransformerConfiguration::number_recompute_layers)
-      .def_readwrite("allow_layer_norm_mod_precision", &TrainingGraphTransformerConfiguration::allow_layer_norm_mod_precision)
       .def_readwrite("propagate_cast_ops_config", &TrainingGraphTransformerConfiguration::GraphTransformerConfiguration::propagate_cast_ops_config);
 
   py::class_<OrtModuleGraphBuilderConfiguration> module_graph_builder_config(
@@ -596,8 +682,8 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("initializer_names", &OrtModuleGraphBuilderConfiguration::initializer_names)
       .def_readwrite("initializer_names_to_train", &OrtModuleGraphBuilderConfiguration::initializer_names_to_train)
       .def_readwrite("input_names_require_grad", &OrtModuleGraphBuilderConfiguration::input_names_require_grad)
-      .def_readwrite("use_invertible_layernorm_grad",
-                     &OrtModuleGraphBuilderConfiguration::use_invertible_layernorm_grad)
+      .def_readwrite("use_memory_efficient_gradient",
+                     &OrtModuleGraphBuilderConfiguration::use_memory_efficient_gradient)
       .def_readwrite("build_gradient_graph", &OrtModuleGraphBuilderConfiguration::build_gradient_graph)
       .def_readwrite("graph_transformer_config", &OrtModuleGraphBuilderConfiguration::graph_transformer_config)
       .def_readwrite("enable_caching", &OrtModuleGraphBuilderConfiguration::enable_caching)
@@ -616,6 +702,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("output_grad_indices_require_full_shape", &GraphInfo::output_grad_indices_require_full_shape)
       .def_readwrite("module_output_indices_requires_save_for_backward", &GraphInfo::module_output_indices_requires_save_for_backward)
       .def_readwrite("frontier_node_arg_map", &GraphInfo::frontier_node_arg_map)
+      .def_readwrite("cached_node_arg_names", &GraphInfo::cached_node_arg_names)
       .def_readwrite("module_output_gradient_name", &GraphInfo::module_output_gradient_name);
 
   py::class_<OrtModuleGraphBuilder> ortmodule_graph_builder(m, "OrtModuleGraphBuilder");
@@ -646,6 +733,78 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("get_graph_info", [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
         return ortmodule_graph_builder->GetGraphInfo();
       });
+
+  // Provide a convenient and well-documented way to make a gradient graph.
+  // It's possible to get the gradient graph through ORTModule by leveraging some "private" fields and not-so-well-documented APIs, so we provide this explicit and tested way to get the gradient graph.
+  py::class_<PyGradientGraphBuilder> gradient_graph_builder(m, "GradientGraphBuilder", R"pbdoc(A utility for making a gradient graph that can be used to help train a model.)pbdoc");
+  // Set up methods to match the C++ `GradientGraphBuilder` interface.
+  gradient_graph_builder.def(py::init([](
+                                          const py::bytes& serialized_model,
+                                          const std::unordered_set<std::string>& y_node_arg_names,
+                                          const std::unordered_set<std::string>& x_node_arg_names,
+                                          const std::string loss_node_arg_name) {
+                          std::shared_ptr<Model> model;
+                          auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
+                          logger_ptr->SetSeverity(logging::Severity::kINFO);
+                          ONNX_NAMESPACE::ModelProto model_proto;
+                          std::istringstream model_istream(serialized_model);
+                          ORT_THROW_IF_ERROR(Model::Load(model_istream, &model_proto));
+                          ORT_THROW_IF_ERROR(Model::Load(model_proto, model, nullptr, *logger_ptr));
+                          GradientGraphConfiguration gradient_graph_config{};
+                          gradient_graph_config.set_gradients_as_graph_outputs = true;
+                          // Save some objects, otherwise they get lost.
+                          auto gradient_graph_config_ptr = std::make_unique<GradientGraphConfiguration>(gradient_graph_config);
+
+                          auto builder = std::make_unique<GradientGraphBuilder>(
+                              &model->MainGraph(),
+                              y_node_arg_names,
+                              x_node_arg_names,
+                              loss_node_arg_name,
+                              *gradient_graph_config_ptr,
+                              *logger_ptr);
+
+                          return std::make_unique<PyGradientGraphBuilder>(std::move(builder), std::move(model), std::move(logger_ptr), std::move(gradient_graph_config_ptr));
+                        }))
+      .def("build", [](PyGradientGraphBuilder* gradient_graph_builder) {
+        ORT_THROW_IF_ERROR(gradient_graph_builder->builder->Build());
+      })
+      .def("save", [](PyGradientGraphBuilder* gradient_graph_builder, const std::string& path) {
+        ORT_THROW_IF_ERROR(Model::Save(*(gradient_graph_builder->model), path));
+      })
+      .def("get_model", [](PyGradientGraphBuilder* gradient_graph_builder) {
+        std::string model_str;
+        gradient_graph_builder->model->ToProto().SerializeToString(&model_str);
+        return py::bytes(model_str);
+      });
+
+  py::class_<GradientNodeAttributeDefinition> gradient_node_attribute_definition(
+      m, "GradientNodeAttributeDefinition", R"pbdoc(Attribute definition for gradient graph nodes.)pbdoc");
+
+  gradient_node_attribute_definition.def(py::init())
+      .def_readwrite("name", &GradientNodeAttributeDefinition::name)
+      .def_readwrite("value_json", &GradientNodeAttributeDefinition::value_json)
+      .def_readwrite("dtype", &GradientNodeAttributeDefinition::dtype)
+      .def_readwrite("is_tensor", &GradientNodeAttributeDefinition::is_tensor);
+
+  py::class_<GradientNodeDefinition> gradient_node_definition(m, "GradientNodeDefinition",
+                                                              R"pbdoc(Definition for gradient graph nodes.)pbdoc");
+
+  gradient_node_definition.def(py::init())
+      .def_readwrite("op_type", &GradientNodeDefinition::op_type)
+      .def_readwrite("domain", &GradientNodeDefinition::domain)
+      .def_readwrite("inputs", &GradientNodeDefinition::inputs)
+      .def_readwrite("outputs", &GradientNodeDefinition::outputs)
+      .def_readwrite("attributes", &GradientNodeDefinition::attributes);
+
+  m.def("register_gradient_definition",
+        [](const std::string& key, const std::vector<GradientNodeDefinition>& gradient_def) -> void {
+          GradientDefinitionRegistry::Instance().Register(key, gradient_def);
+        });
+
+  m.def("register_custom_stop_gradient_edges",
+        [](const std::string& key, const std::unordered_set<size_t> edges) -> void {
+          GradientDefinitionRegistry::Instance().SetStopGradientEdgesForNode(key, edges);
+        });
 }
 
 }  // namespace python

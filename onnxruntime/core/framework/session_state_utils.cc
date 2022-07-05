@@ -14,14 +14,14 @@
 #include "core/graph/graph_viewer.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/graph_partitioner.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
-#include "core/framework/arena.h"
+#include "core/framework/bfc_arena.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/framework/mem_buffer.h"
 #include "core/framework/tensor_allocator.h"
@@ -43,14 +43,12 @@ static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const T
   p_data = nullptr;
   if (shape_size > 0) {
     SafeInt<size_t> mem_size = 0;
-    if (!alloc->CalcMemSizeForArray(SafeInt<size_t>(shape_size), type->Size(), &mem_size))
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed memory size calculation");
 
-    if (alloc->Info().alloc_type == OrtArenaAllocator)
-      // Reserve() uses the device allocator to make the allocation
-      p_data = static_cast<IArenaAllocator*>(alloc.get())->Reserve(mem_size);
-    else
-      p_data = alloc->Alloc(mem_size);
+    if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(shape_size), type->Size(), &mem_size)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed memory size calculation");
+    }
+
+    p_data = alloc->Reserve(mem_size);
   }
 
   return Status::OK();
@@ -89,7 +87,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     }
   }
 
-  if (strcmp(p_tensor->Location().name, CPU) == 0) {
+  if (p_tensor->Location().device.Type() == OrtDevice::CPU) {
     // deserialize directly to CPU tensor
     ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_tensor));
   } else {  // non-cpu tensor
@@ -135,7 +133,7 @@ common::Status SaveInitializedTensors(
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const std::vector<OrtValueIndex>& initializer_allocation_order,
     ITensorAllocator& planner,
-    const std::function<Status(int idx, const OrtValue& value, const OrtCallback& d, bool constant)>& save_tensor_func,
+    const SaveTensorFunction& save_tensor_func,
     const logging::Logger& logger, const DataTransferManager& data_transfer_mgr,
     const ExecutionPlanBase& exec_plan,
     const SessionOptions& session_options) {
@@ -171,10 +169,12 @@ common::Status SaveInitializedTensors(
     return retval;
   };
 
-  //1. first plan the memory
+  // 1. first plan the memory
   const onnxruntime::InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
-  std::unordered_map<int, const ONNX_NAMESPACE::TensorProto*> id_to_initialized_tensor;
-  std::set<int> user_supplied_initializer_ids;  // set containing the ort value ids of all user supplied initializers
+  InlinedHashMap<int, const ONNX_NAMESPACE::TensorProto*> id_to_initialized_tensor;
+  id_to_initialized_tensor.reserve(initialized_tensor_set.size());
+  InlinedHashSet<int> user_supplied_initializer_ids;  // set containing the ort value ids of all user supplied initializers
+  user_supplied_initializer_ids.reserve(initialized_tensor_set.size());
   for (const auto& entry : initialized_tensor_set) {
     int ort_value_index;
     ORT_RETURN_IF_ERROR(ort_value_name_idx_map.GetIdx(entry.first, ort_value_index));
@@ -205,10 +205,10 @@ common::Status SaveInitializedTensors(
     }
     ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
   }
-  //2. allocate weight buffer on different locations
-  // planned_initializers_memory_size_in_byte is not actual physical size.
-  // It's the virtual size computed by planner.
-  std::unordered_map<std::string, size_t> planned_initializers_memory_sizes_in_byte;
+  // 2. allocate weight buffer on different locations
+  //  planned_initializers_memory_size_in_byte is not actual physical size.
+  //  It's the virtual size computed by planner.
+  InlinedHashMap<std::string, size_t> planned_initializers_memory_sizes_in_byte;
   ORT_RETURN_IF_ERROR(
       planner.FinalizePlan(planned_initializers_memory_sizes_in_byte));
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -224,7 +224,7 @@ common::Status SaveInitializedTensors(
 
   OrtCallback deleter{nullptr, nullptr};
 
-  //3. create weight tensors based on weights buffer
+  // 3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
     int ort_value_index = entry.first;
     const char* name = (entry.second->name().empty()) ? "" : entry.second->name().c_str();
@@ -236,14 +236,14 @@ common::Status SaveInitializedTensors(
     } else {
       const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
 
-      std::unique_ptr<MemBuffer> m;
+      std::optional<MemBuffer> m;
       AllocatorPtr alloc;
       // TODO: if the tensor need be copied, does it have enough room?
       ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, m, alloc));
       bool use_device_allocator_for_initializers =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
 
-      Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, m.get(), alloc, default_cpu_alloc, ort_value,
+      Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, (m.has_value()) ? &*m : nullptr, alloc, default_cpu_alloc, ort_value,
                                          data_transfer_mgr, use_device_allocator_for_initializers);
       if (!st.IsOK()) {
         std::ostringstream oss;
@@ -254,8 +254,13 @@ common::Status SaveInitializedTensors(
 
     // any outer scope value is shadowed by a local value and can't override it.
     // due to that check_outer_scope is false
-    bool constant = graph.IsConstantInitializer(name, /* check_outer_scope */ false);
-    ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant));
+    const bool constant = graph.IsConstantInitializer(name, /* check_outer_scope */ false);
+#if !defined(DISABLE_SPARSE_TENSORS)
+    const bool sparse = graph.GetGraph().IsSparseInitializer(name);
+    ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant, sparse));
+#else
+    ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant, false));
+#endif
 
     VLOGS(logger, 1) << "Added weight with name : " << name << " with index: " << ort_value_index;
   }
@@ -276,7 +281,7 @@ static bool IsArgNameInInputsOutputs(const std::string& name,
 
 common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer& graph,
                                                  SessionState& session_state,
-                                                 const std::vector<const NodeArg*>& implicit_inputs) {
+                                                 gsl::span<const NodeArg* const> implicit_inputs) {
   auto& graph_inputs = graph.GetInputsIncludingInitializers();
   auto& graph_outputs = graph.GetOutputs();
 
@@ -318,13 +323,21 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
     // implicit inputs to a node could come directly from a feed, so we need to make sure they have an entry too
     const auto& node_implicit_inputs = node.ImplicitInputDefs();
     if (!node_implicit_inputs.empty()) {
-      // nested subgraph. for now map them to this node (which will be CPU based as all the control flow nodes
-      // are currently CPU based and they're the only ones that have implicit inputs) as the inputs will be passed as a
-      // feed when executing the subgraph and need to be in the mapping.
-      // in the future we want to recurse and find where the implicit input is actually used to try and avoid a
-      // copy to/from CPU to go through the control flow nodes where possible/applicable.
-      // the processing for the subgraph where the implicit input is consumed will do the real check on whether any
-      // copy to a different device is required
+      // In the main graph, the location of the implicit input(s) is the location it
+      // is consumed in the main graph if there is an explicit consumer.
+      // If the only consumer(s) are implicit consumers (i.e.) other control flow nodes and
+      // all of them have been partitioned to the same EP, its location is the
+      // location of the non-CPU device corresponding to the EP.
+      // If multiple EPs are involved, then the planned location for such implicit inputs
+      // just default to CPU (as there is ambiguity involved as to which non-CPU device is
+      // most optimal)
+
+      // In nested subgraphs, the location of the implicit input(s) is the location it
+      // is consumed in the subgraph if there is an explicit consumer.
+      // If the only consumer(s) are implicit consumers (i.e.) other control flow nodes, its
+      // location is the location of the value in the enclosing outer scope.
+
+      // All this is setup in the planner, we just use the location from the plan here.
       for (const auto& input_def : node_implicit_inputs) {
         int arg_index;
         ORT_RETURN_IF_ERROR(name_to_id.GetIdx(input_def->Name(), arg_index));

@@ -1,12 +1,14 @@
 #!/bin/bash
 
-while getopts p:b:i: parameter
+while getopts o:b:i:t:c: parameter
 do case "${parameter}"
 in 
-p) PERF_DOCKERFILE_PATH=${OPTARG};;
+o) TRT_DOCKERFILE_PATH=${OPTARG};;
 b) ORT_BRANCH=${OPTARG};;
 i) IMAGE_NAME=${OPTARG};;
+t) TRT_CONTAINER=${OPTARG};;
+c) CMAKE_CUDA_ARCHITECTURES=${OPTARG};;
 esac
 done 
 
-sudo docker build --no-cache -t $IMAGE_NAME --build-arg ONNXRUNTIME_BRANCH=$ORT_BRANCH -f $PERF_DOCKERFILE_PATH ..
+docker build --no-cache -t $IMAGE_NAME --build-arg CMAKE_CUDA_ARCHITECTURES=$CMAKE_CUDA_ARCHITECTURES --build-arg TRT_CONTAINER_VERSION=$TRT_CONTAINER --build-arg ONNXRUNTIME_BRANCH=$ORT_BRANCH -f $TRT_DOCKERFILE_PATH . 

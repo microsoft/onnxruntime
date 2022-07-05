@@ -1,9 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// if we can't load an ORT format model we can't really test anything
-#if defined(ENABLE_ORT_FORMAT_LOAD)
-
 #include "core/framework/data_types.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
@@ -21,6 +18,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 
 #include "gtest/gtest.h"
+#include "test/util/include/asserts.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -37,13 +35,19 @@ struct OrtModelTestInfo {
   std::function<void(const std::vector<OrtValue>&)> output_verifier;
   std::vector<std::pair<std::string, std::string>> configs;
   bool run_use_buffer{false};
+  bool disable_copy_ort_buffer{false};
 };
 
 static void RunOrtModel(const OrtModelTestInfo& test_info) {
   SessionOptions so;
   so.session_logid = test_info.logid;
-  for (const auto& config : test_info.configs)
-    so.config_options.AddConfigEntry(config.first.c_str(), config.second.c_str());
+  for (const auto& config : test_info.configs) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(config.first.c_str(), config.second.c_str()));
+  }
+
+  if (test_info.disable_copy_ort_buffer) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "1"));
+  }
 
   std::vector<char> model_data;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
@@ -223,7 +227,7 @@ static void SaveAndCompareModels(const std::string& onnx_file, const std::basic_
   so.session_logid = "SerializeToOrtFormat";
   so.optimized_model_filepath = ort_file;
   // not strictly necessary - type should be inferred from the filename
-  so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT");
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT"));
   InferenceSessionWrapper session_object{so, GetEnvironment()};
 
   // create .ort file during Initialize due to values in SessionOptions
@@ -234,7 +238,7 @@ static void SaveAndCompareModels(const std::string& onnx_file, const std::basic_
   so2.session_logid = "LoadOrtFormat";
   // not strictly necessary - type should be inferred from the filename, but to be sure we're testing what we
   // think we're testing set it.
-  so2.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
+  ASSERT_STATUS_OK(so2.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
 
   // load serialized version
   InferenceSessionWrapper session_object2{so2, GetEnvironment()};
@@ -276,7 +280,7 @@ TEST(OrtModelOnlyTests, ValidateOrtFormatModelDoesNotRunOptimizersInFullBuild) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/mnist.onnx.test_output.ort");
   SaveAndCompareModels("testdata/mnist.onnx", ort_file);
 
-  // DumpOrtModelAsJson(ToMBString(ort_file));
+  // DumpOrtModelAsJson(ToUTF8String(ort_file));
 
   OrtModelTestInfo test_info;
   test_info.model_filename = ort_file;
@@ -303,7 +307,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/ort_github_issue_4031.onnx.test_output.ort");
   SaveAndCompareModels("testdata/ort_github_issue_4031.onnx", ort_file);
 
-  // DumpOrtModelAsJson(ToMBString(ort_file));
+  // DumpOrtModelAsJson(ToUTF8String(ort_file));
 
   OrtModelTestInfo test_info;
   test_info.model_filename = ort_file;
@@ -408,7 +412,7 @@ TEST(OrtModelOnlyTests, LoadSparseInitializersOrtFormat) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/ort_minimal_test_models/sparse_initializer_handling.onnx.ort");
   SessionOptions so;
   so.session_logid = "LoadOrtFormat";
-  so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
   InferenceSessionWrapper session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(ort_file));
   ASSERT_STATUS_OK(session_object.Initialize());
@@ -445,6 +449,14 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
 TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBuffer) {
   OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
   test_info.run_use_buffer = true;
+  RunOrtModel(test_info);
+}
+
+// Load the model from a buffer instead of a file path, and not copy the buffer in session creation
+TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBufferNoCopy) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
+  test_info.run_use_buffer = true;
+  test_info.disable_copy_ort_buffer = true;
   RunOrtModel(test_info);
 }
 
@@ -502,9 +514,35 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOpsFromBuffer) {
   RunOrtModel(test_info);
 }
 
+// Load the model from a buffer instead of a file path, and not copy the buffer in session creation
+TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOpsFromBufferNoCopy) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModelMLOps();
+  test_info.run_use_buffer = true;
+  test_info.disable_copy_ort_buffer = true;
+  RunOrtModel(test_info);
+}
+
+TEST(OrtModelOnlyTests, TestBackwardsCompat) {
+  auto v110_dir = ORT_TSTR("testdata/ort_backwards_compat/ORTv1.10/");
+  std::vector<std::string> models = {"gathernd9.basic.ort",
+                                     "not1.basic.ort",
+                                     "roialign10.basic.ort",
+                                     "scan9.basic.ort"};
+
+  SessionOptions session_options;
+  session_options.session_logid = "TestBackwardsCompat";
+
+  for (const auto& model : models) {
+    // test loading old model succeeds. if it does the hash replacement worked.
+    InferenceSession session{session_options, GetEnvironment()};
+    auto model_uri = v110_dir + ToPathString(model);
+
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+  }
+}
+
 #endif  // !defined(DISABLE_ML_OPS)
 
 }  // namespace test
 }  // namespace onnxruntime
-
-#endif  //  defined(ENABLE_ORT_FORMAT_LOAD)

@@ -90,12 +90,11 @@ optional<std::pair<int64_t, int64_t>> GetMinAndMaxContiguousAxes(
 
 ApplicableMatrixReduction get_applicable_matrix_reduction(
     const cudnnReduceTensorOp_t cudnn_reduce_op,
-    const std::vector<int64_t>& dims, const std::vector<int64_t>& original_axes,
+    gsl::span<const int64_t> dims, gsl::span<const int64_t> original_axes,
     int& m_out, int& n_out) {
-  if (cudnn_reduce_op != CUDNN_REDUCE_TENSOR_ADD) {
+  if (cudnn_reduce_op != CUDNN_REDUCE_TENSOR_ADD && cudnn_reduce_op != CUDNN_REDUCE_TENSOR_AVG) {
     return ApplicableMatrixReduction::None;
   }
-
 
   // Remove all dims with value 1. This can help to optimize case like:
   // dims=[2,3,1,4,1,5] and axes=[0,2,4], which is same as dims=[2,3,4,5] and axes=[0].
@@ -136,8 +135,8 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
     return ApplicableMatrixReduction::None;
   }
 
-  const auto& min_axis = min_and_max_axes.value().first;
-  const auto& max_axis = min_and_max_axes.value().second;
+  const auto& min_axis = min_and_max_axes->first;
+  const auto& max_axis = min_and_max_axes->second;
 
   // axes from beginning means row reduction, axes to end means column reduction
   // for axes from beginning to end, either works and we do row reduction
@@ -152,7 +151,7 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
   // the axis index right after the last flattened into matrix rows
   const int64_t m_end_axis = axes_from_beginning ? max_axis + 1 : min_axis;
 
-  const TensorShape& shape = TensorShape::ReinterpretBaseType(new_dims);
+  const auto shape=TensorShape::FromExistingBuffer(new_dims);
 
   const auto m = shape.SizeToDimension(m_end_axis);
   const auto n = shape.SizeFromDimension(m_end_axis);

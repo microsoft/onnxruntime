@@ -33,10 +33,12 @@ class ModelTestBuilder {
   }
 
   template <typename T>
-  NodeArg* MakeInput(const std::vector<int64_t>& shape, T min, T max) {
+  NodeArg* MakeInput(const std::vector<int64_t>& shape, const std::vector<T>& data) {
     ONNX_NAMESPACE::TypeProto type_proto;
     type_proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
 
+    // Set shape even if no dims (for scalar)
+    type_proto.mutable_tensor_type()->mutable_shape();
     for (auto& dim : shape) {
       type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
     }
@@ -44,11 +46,42 @@ class ModelTestBuilder {
     OrtValue input_value;
     CreateMLValue<T>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
                      shape,
-                     rand_gen_.Uniform<T>(shape, min, max),
+                     data,
                      &input_value);
     std::string name = graph_.GenerateNodeArgName("input");
     feeds_.insert(std::make_pair(name, input_value));
 
+    return &graph_.GetOrCreateNodeArg(name, &type_proto);
+  }
+
+  template <typename T>
+  NodeArg* MakeInput(const std::vector<int64_t>& shape, T min, T max) {
+    return MakeInput<T>(shape, rand_gen_.Uniform<T>(shape, min, max));
+  }
+
+  NodeArg* MakeInputBool(const std::vector<int64_t>& shape) {
+    std::vector<uint8_t> data_uint8 = rand_gen_.Uniform<uint8_t>(shape, 0, 1);
+    std::vector<bool> data;
+    for (uint8_t x : data_uint8) {
+      data.push_back(x != 0);
+    }
+    return MakeInput<bool>(shape, data);
+  }
+
+  template <typename T>
+  NodeArg* MakeInput(const std::optional<std::vector<int64_t>>& shape) {
+    ONNX_NAMESPACE::TypeProto type_proto;
+    type_proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
+    if (shape != std::nullopt) {
+      type_proto.mutable_tensor_type()->mutable_shape();
+      for (auto& d : *shape) {
+        auto dim = type_proto.mutable_tensor_type()->mutable_shape()->add_dim();
+        if (d != -1) {
+          dim->set_dim_value(d);
+        }
+      }
+    }
+    std::string name = graph_.GenerateNodeArgName("input");
     return &graph_.GetOrCreateNodeArg(name, &type_proto);
   }
 
@@ -156,11 +189,9 @@ class ModelTestBuilder {
     return AddNode("DequantizeLinear", input_args, {output_arg});
   }
 
-  template <typename T>
-  typename std::enable_if<IsTypeDequantLinearCompatible<T>::value, Node&>::type
-  AddDequantizeLinearNode(NodeArg* input_arg,
-                          float input_scale,
-                          NodeArg* output_arg) {
+  Node& AddDequantizeLinearNode(NodeArg* input_arg,
+                                float input_scale,
+                                NodeArg* output_arg) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
     input_args.push_back(MakeScalarInitializer<float>(input_scale));
@@ -267,7 +298,25 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        int opset_version = 12,
                        double per_sample_tolerance = 0.0,
                        double relative_per_sample_tolerance = 0.0,
-                       std::unique_ptr<GraphTransformer> transformer = nullptr);
+                       std::unique_ptr<GraphTransformer> transformer = nullptr,
+                       const std::function<void(SessionOptions&)>& add_session_options = {},
+                       const InlinedHashSet<std::string>& disabled_optimizers = {});
 
+/**
+ * @brief Apply a GraphTransformer to a graph, and run graph checkers before and after applying the transformer.
+ *
+ * @param build_test_case The function to build a graph for testing
+ * @param opset_version The OpSet version of the graph
+ * @param logger The logger
+ * @param transformer The GraphTransformer to be applied
+ * @param level The transformer level on which the transformer will be applied
+ * @param steps The step count of the GraphTransformerManager
+ * @param pre_graph_checker The graph checker function before applying the transformer
+ * @param post_graph_checker The graph checker function after applying the transformer
+ */
+void TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case, int opset_version,
+                          const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
+                          TransformerLevel level, unsigned steps, const std::function<void(Graph&)>& pre_graph_checker,
+                          const std::function<void(Graph&)>& post_graph_checker);
 }  // namespace test
 }  // namespace onnxruntime

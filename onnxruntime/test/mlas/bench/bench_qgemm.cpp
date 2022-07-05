@@ -12,10 +12,10 @@
 
 static const std::vector<std::string> qgemm_arg_names = {"M", "N", "K", "Batch", "Threads"};
 
-void QGEMM(benchmark::State& state, bool pack_b) {
-  const bool b_is_signed = true;
-  const uint8_t a_zero_point = 29;
-  const uint8_t b_zero_point = 179;
+void QGEMM(benchmark::State& state, bool pack_b, bool a_is_signed) {
+  constexpr bool b_is_signed = true;
+  constexpr uint8_t a_zero_point = 29;
+  constexpr uint8_t b_zero_point = 179;
 
   if (state.range(0) <= 0) throw std::invalid_argument("M must greater than 0!");
   if (state.range(1) <= 0) throw std::invalid_argument("N must greater than 0!");
@@ -44,20 +44,21 @@ void QGEMM(benchmark::State& state, bool pack_b) {
 
   size_t packed_b_size = 0;
   if (pack_b) {
-    packed_b_size = MlasGemmPackBSize(N, K, b_is_signed);
+    packed_b_size = MlasGemmPackBSize(N, K, a_is_signed, b_is_signed);
     pack_b_holder.resize(packed_b_size * batch);
   }
 
-  MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+  MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
 
   gemm_shape.M = static_cast<size_t>(M);
   gemm_shape.N = static_cast<size_t>(N);
   gemm_shape.K = static_cast<size_t>(K);
+  gemm_shape.AIsSigned = a_is_signed;
   gemm_shape.BIsSigned = b_is_signed;
 
 
-  std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_data_vec(batch);
-  for (int i = 0; i < batch; i++) {
+  std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_data_vec(batch);
+  for (size_t i = 0; i < batch; i++) {
     auto& gemm_params = gemm_data_vec[i];
     gemm_params.lda = gemm_shape.K;
     gemm_params.ZeroPointA = a_zero_point;
@@ -68,7 +69,7 @@ void QGEMM(benchmark::State& state, bool pack_b) {
     gemm_params.ldb = gemm_shape.N;
     gemm_params.C = C_holder.data() + M * N * i;
     if (pack_b) {
-      MlasGemmPackB(N, K, (const uint8_t*)gemm_params.B, N, b_is_signed, (void*)(pack_b_holder.data() + packed_b_size * i));
+      MlasGemmPackB(N, K, (const uint8_t*)gemm_params.B, N, a_is_signed, b_is_signed, (void*)(pack_b_holder.data() + packed_b_size * i));
       gemm_params.BIsPacked = true;
       gemm_params.B = (void*)(pack_b_holder.data() + packed_b_size * i);
     }
@@ -81,29 +82,37 @@ void QGEMM(benchmark::State& state, bool pack_b) {
 static void QGemmSize(benchmark::internal::Benchmark* b) {
   b->ArgNames(qgemm_arg_names);
   // Args for  "M", "N", "K", "Batch",
-  std::vector<std::vector<int64_t>> mnk_batch = {
-      {512, 64, 512, 12},
-      {512, 512, 64, 12},
-      {512, 768, 768, 1},
-      {512, 768, 3072, 1},
-      {128, 768, 2304, 1},
-      {128, 768, 2304, 6},
-      {128, 1024, 4096, 1},
-      {128, 1024, 4096, 6},
-      {128, 2048, 8192, 1},
-      {128, 4096, 16384, 1}
-  };
 
-  // Args for Threads
-  for (int64_t threads : {2, 4, 8, 16}) {
-    for (auto& shape : mnk_batch) {
-      std::vector<int64_t> copy(shape);
-      copy.push_back(threads);
-      b->Args(copy);
-    }
-  }
+  b->Args({512, 32128, 768, 1, 1});
+  b->Args({512, 32128, 768, 1, 4});
+  b->Args({512, 32128, 768, 1, 6});
+
+  b->Args({512, 3072, 768, 1, 1});
+  b->Args({512, 3072, 768, 1, 4});
+  b->Args({512, 3072, 768, 1, 6});
+
+  b->Args({512, 768, 3072, 1, 1});
+  b->Args({512, 768, 3072, 1, 4});
+  b->Args({512, 768, 3072, 1, 6});
+
+  b->Args({512, 768, 768, 1, 1});
+  b->Args({512, 768, 768, 1, 4});
+  b->Args({512, 768, 768, 1, 6});
+
+  b->Args({512, 64, 512, 1, 1});
+  b->Args({512, 64, 512, 1, 4});
+  b->Args({512, 64, 512, 1, 6});
+
+  b->Args({512, 512, 64, 12, 1});
+  b->Args({512, 512, 64, 12, 4});
+  b->Args({512, 512, 64, 12, 6});
+
+  b->Args({512, 64, 512, 12, 1});
+  b->Args({512, 64, 512, 12, 4});
+  b->Args({512, 64, 512, 12, 6});
 }
 
-
-BENCHMARK_CAPTURE(QGEMM, PackB, true)->Apply(QGemmSize)->UseRealTime();
-BENCHMARK_CAPTURE(QGEMM, NoPackB, false)->Apply(QGemmSize)->UseRealTime();
+BENCHMARK_CAPTURE(QGEMM, PackB, true, false)->Apply(QGemmSize)->UseRealTime();
+BENCHMARK_CAPTURE(QGEMM, NoPackB, false, false)->Apply(QGemmSize)->UseRealTime();
+BENCHMARK_CAPTURE(QGEMM, PackB, true, true)->Apply(QGemmSize)->UseRealTime();
+BENCHMARK_CAPTURE(QGEMM, NoPackB, false, true)->Apply(QGemmSize)->UseRealTime();

@@ -6,7 +6,7 @@
 #include <math.h>
 #include "constant.h"
 #include "core/framework/callback.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/framework_common.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 
@@ -115,7 +115,7 @@ class RandomDataSet : public DataSet {
 class TrainingUtil {
  public:
   template <typename T>
-  static void CreateCpuMLValue(const std::vector<int64_t>& dims,
+  static void CreateCpuMLValue(gsl::span<const int64_t> dims,
                                const std::vector<T>& value,
                                OrtValue* p_mlvalue,
                                AllocatorPtr alloc = nullptr) {
@@ -316,7 +316,7 @@ class PolyScheduler : public LearningRateScheduler {
       return cur_ratio / warmp_ratio;
     }
 
-    const float degree = 0.5f;
+    constexpr float degree = 0.5f;
     return std::pow(1.f - cur_ratio, degree);
   }
 };

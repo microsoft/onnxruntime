@@ -57,11 +57,10 @@ TEST(MemcpyTest, copy1) {
   AllocatorPtr allocator =
       execution_providers.Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault);
   auto* data_type = DataTypeImpl::GetType<float>();
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(data_type, TensorShape({3, 2}), allocator);
+  OrtValue input;
+  Tensor::InitOrtValue(data_type, TensorShape({3, 2}), std::move(allocator), input);
   float data[] = {1.f, 1.f, 0.f, 1.f, 1.f, 1.f};
-  memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
-  OrtValue input =
-      OrtValue{p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
+  memcpy(input.GetMutable<Tensor>()->MutableDataRaw(), data, sizeof(data));
 
   OrtValue output;
   st = utils::CopyOneInputAcrossDevices(s, "X", input, output);

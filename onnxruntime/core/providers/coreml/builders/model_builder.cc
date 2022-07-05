@@ -81,7 +81,7 @@ Status ModelBuilder::RegisterInitializers() {
                      [](int64_t dim) -> uint64_t { return SafeInt<uint64_t>(dim); });
     }
 
-    CreateCoreMLWeight(*constant_tensor->mutable_data(), tensor);
+    ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*constant_tensor->mutable_data(), tensor));
     *layer->mutable_output()->Add() = name;
     AddLayer(std::move(layer));
   }

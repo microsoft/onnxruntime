@@ -7,7 +7,7 @@
 #include <vector>
 
 #ifndef SHARED_PROVIDER
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #endif
 
 namespace onnxruntime {

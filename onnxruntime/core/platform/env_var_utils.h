@@ -38,7 +38,7 @@ template <typename T>
 T ParseEnvironmentVariableWithDefault(const std::string& name, const T& default_value) {
   const auto parsed = ParseEnvironmentVariable<T>(name);
   if (parsed.has_value()) {
-    return parsed.value();
+    return *parsed;
   }
 
   return default_value;

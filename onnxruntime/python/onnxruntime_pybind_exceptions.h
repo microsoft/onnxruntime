@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <pybind11/pybind11.h>
+#include "onnxruntime_pybind.h"  // must use this for the include of <pybind11/pybind11.h>
 #include <stdexcept>
 #include "core/common/status.h"
 

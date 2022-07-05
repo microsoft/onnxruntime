@@ -25,7 +25,7 @@ class DnnlOpManager {
   * @return true if the node is Supported by the DNNL execution provider
   *         false is returned otherwise.
   */
-  bool IsNodeSupported(const Node* node) const;
+  bool IsNodeSupported(const Node* node, const GraphViewer& graph_viewer) const;
 
   /**
   * Find out if the OpType is one of the OpTypes Supported by the DNNL execution provider

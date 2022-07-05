@@ -828,14 +828,11 @@ function webglConv(
   attributes.set('strides', 'ints', strides);
   const graph = createMockGraph('Conv', attributes);
   const op = webglSessionhandler!.resolve(graph.getNodes()[0], [{domain: '', version: 7}], graph);
-  if (!op.checkInputs([inputTensor, kernelTensor])) {
-    throw new Error('Invalid inputs');
-  }
   const inputs = [inputTensor, kernelTensor];
   if (biasTensor) {
     inputs.push(biasTensor);
   }
-  return (op.run(webglInferenceHandler!, inputs) as Tensor[])[0];
+  return (op.impl(webglInferenceHandler!, inputs, op.context))[0];
 }
 function cpuConv(
     inputTensor: Tensor, kernelTensor: Tensor, biasTensor: Tensor|null, autoPad: string|undefined, dilations: number[],

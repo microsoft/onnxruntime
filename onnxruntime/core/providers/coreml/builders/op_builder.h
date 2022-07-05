@@ -22,6 +22,7 @@ class IOpBuilder {
   virtual ~IOpBuilder() = default;
 
   // Add operator related
+#ifdef __APPLE__
  public:
   // Check if the initializers of this operator need preprocess
   // which will not be copied
@@ -30,6 +31,7 @@ class IOpBuilder {
   // Add the operator to CoreML model
   virtual Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
                                    const logging::Logger& logger) const ORT_MUST_USE_RESULT = 0;
+#endif
 
   // Operator support related
  public:

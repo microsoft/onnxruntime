@@ -1,4 +1,4 @@
-ARG BASEIMAGE=nvcr.io/nvidia/cuda:11.1.1-cudnn8-devel-ubuntu18.04
+ARG BASEIMAGE=nvcr.io/nvidia/cuda:11.3.1-cudnn8-devel-ubuntu18.04
 
 FROM $BASEIMAGE
 

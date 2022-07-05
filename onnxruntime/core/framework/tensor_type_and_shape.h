@@ -22,3 +22,5 @@ struct OrtTensorTypeAndShapeInfo {
 
   OrtStatus* Clone(OrtTensorTypeAndShapeInfo** out);
 };
+
+constexpr ONNXTensorElementDataType TensorDataTypeToOnnxRuntimeTensorElementDataType(int32_t dtype);

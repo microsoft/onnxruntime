@@ -5,7 +5,7 @@
 
 #include <optional>
 
-#include "onnxruntime_cxx_api.h"
+#import "src/cxx_api.h"
 
 #import "src/error_utils.h"
 #import "src/ort_enums_internal.h"

@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <exception>
 #include <ctime>
+#include <exception>
+#include <type_traits>
 #include <utility>
 
 #include "core/common/exceptions.h"
@@ -105,9 +106,9 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
       ORT_THROW("Only one instance of LoggingManager created with InstanceType::Default can exist at any point in time.");
     }
 
-    // This assertion passes, so using the atomic to validate calls to Log should
+    // If the following assertion passes, using the atomic to validate calls to Log should
     // be reasonably economical.
-    // assert(DefaultLoggerManagerInstance().is_lock_free());
+    static_assert(std::remove_reference_t<decltype(DefaultLoggerManagerInstance())>::is_always_lock_free);
     DefaultLoggerManagerInstance().store(this);
 
     CreateDefaultLogger(*default_logger_id);

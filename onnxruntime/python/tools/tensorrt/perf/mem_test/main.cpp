@@ -27,6 +27,7 @@ std::unique_ptr<OrtTensorRTProviderOptions> get_default_trt_provider_options() {
   tensorrt_options->trt_engine_decryption_enable = false;
   tensorrt_options->trt_engine_decryption_lib_path = "";
   tensorrt_options->trt_force_sequential_engine_build = false;
+  tensorrt_options->trt_context_memory_sharing_enable = false;
 
   return tensorrt_options;
 }
@@ -160,9 +161,7 @@ void ort_trt_run_with_default_options() {
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);
 
-  // If onnxruntime.dll is built with CUDA enabled, we can uncomment out this line to use CUDA for this
-  // session (we also need to include cuda_provider_factory.h above which defines it)
-  // #include "cuda_provider_factory.h"
+  // If onnxruntime.dll is built with CUDA enabled, we can uncomment out this line to use CUDA for this session
   // OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 1);
   OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0);
 

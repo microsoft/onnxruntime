@@ -23,8 +23,11 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Dropout)::Evaluate(
   // optional mask
   // Support skipped trailing outputs
   if (node.OutputDefs().size() > 1 && node.OutputDefs()[1]->Exists()) {
-    // A fake mask with all zeros
-    tvm::Tensor mask = MakeZeroTensor(inputs[0]->shape, inputs[0]->dtype, "mask");
+    // A fake mask with all ones
+    auto l = [&](const tvm::Array<tvm::Var>& /*indices*/) {
+      return tvm::make_const(tvm::UInt(8), 1);
+    };
+    tvm::Tensor mask = tvm::compute(inputs[0]->shape, l, "mask");
     outputs.push_back(mask);
   }
 

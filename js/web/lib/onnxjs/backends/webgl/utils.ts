@@ -88,3 +88,7 @@ export function getCoordsDataType(rank: number): string {
     throw Error(`GPU for rank ${rank} is not yet supported`);
   }
 }
+
+export function getGlChannels(rank = 6): string[] {
+  return ['x', 'y', 'z', 'w', 'u', 'v'].slice(0, rank);
+}

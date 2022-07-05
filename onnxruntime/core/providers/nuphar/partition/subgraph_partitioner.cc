@@ -182,7 +182,7 @@ Status SubgraphPartitioner::Partition(
     // set node
     subgraph.nodes.push_back(&node);
 
-    node.ForEachWithIndex(
+    ORT_RETURN_IF_ERROR(node.ForEachWithIndex(
         node.InputDefs(),
         [&](const NodeArg& def, size_t i) {
           const Tensor* t = find_initializer_func(def.Name());
@@ -202,7 +202,7 @@ Status SubgraphPartitioner::Partition(
             subgraph.inputs.push_back(&def);
           }
           return Status::OK();
-        });
+        }));
 
     // set real outputs
     for (const auto def : node.OutputDefs()) {
@@ -219,12 +219,12 @@ Status SubgraphPartitioner::Partition(
   ///////////////////////////////////
   const onnxruntime::GraphViewer& graph_viewer = GraphViewer(*onnx_subgraph);
   std::unordered_set<std::string> real_output_names;
-  node.ForEachWithIndex(
+  ORT_RETURN_IF_ERROR(node.ForEachWithIndex(
       node.OutputDefs(),
       [&real_output_names](const onnxruntime::NodeArg& def, size_t) {
         real_output_names.insert(def.Name());
         return Status::OK();
-      });
+      }));
 
   // shape infernece here
   std::shared_ptr<ShapeExprContext> whole_partition_shape_infer = std::make_shared<ShapeExprContext>();
@@ -284,7 +284,7 @@ Status SubgraphPartitioner::Partition(
       const Node* n = graph_viewer.GetNode(n_idx);
 
       // handle current graph's inputs
-      n->ForEachWithIndex(
+      ORT_RETURN_IF_ERROR(n->ForEachWithIndex(
           n->InputDefs(),
           [&](const onnxruntime::NodeArg& def, size_t) {
             const onnxruntime::Node* input_node = GetInputNode(*n, &def);
@@ -304,7 +304,7 @@ Status SubgraphPartitioner::Partition(
             }
 
             return Status::OK();
-          });
+          }));
 
       // Handle outouts
       // three cases are considerd as outputs
@@ -333,12 +333,12 @@ Status SubgraphPartitioner::Partition(
         const Node& out_node = p.GetNode();
 
         // preprocess for the case 1
-        out_node.ForEachWithIndex(
+        ORT_RETURN_IF_ERROR(out_node.ForEachWithIndex(
             out_node.InputDefs(),
             [&input_names_from_the_output_node](const onnxruntime::NodeArg& in_def, size_t) {
               input_names_from_the_output_node.insert(in_def.Name());
               return Status::OK();
-            });
+            }));
         // handle the case 2
         if (node_indices.count(out_node.Index()) == 0) {
           const NodeArg* def = n->OutputDefs()[p.GetSrcArgIndex()];
@@ -347,7 +347,7 @@ Status SubgraphPartitioner::Partition(
       }
 
       // handle case 1 and 3
-      n->ForEachWithIndex(
+      ORT_RETURN_IF_ERROR(n->ForEachWithIndex(
           n->OutputDefs(),
           [&](const onnxruntime::NodeArg& def, size_t) {
             if (input_names_from_the_output_node.count(def.Name()) == 0 ||
@@ -356,7 +356,7 @@ Status SubgraphPartitioner::Partition(
             }
 
             return Status::OK();
-          });
+          }));
     }
 
     // Handle immediate nested subgraphs
@@ -366,7 +366,7 @@ Status SubgraphPartitioner::Partition(
       auto immediate_nested_subgraph = GetSubgraph(*n);
       if (nullptr != immediate_nested_subgraph) {
         for (auto& nn : immediate_nested_subgraph->Nodes()) {
-          nn.ForEachWithIndex(
+          ORT_RETURN_IF_ERROR(nn.ForEachWithIndex(
               nn.InputDefs(),
               [&](const onnxruntime::NodeArg& def, size_t) {
                 const Tensor* t = find_initializer_func(def.Name());
@@ -377,7 +377,7 @@ Status SubgraphPartitioner::Partition(
                   subgraph.inputs.push_back(&def);
                 }
                 return Status::OK();
-              });
+              }));
         }
       }
     }

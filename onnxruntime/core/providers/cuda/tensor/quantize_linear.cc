@@ -30,7 +30,7 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.template Data<U>());
   const auto num_of_elements = x_shape.Size();
 
-  CudaQuantizeLinear(Stream(), input, output, scale, zero_point, num_of_elements);
+  ORT_RETURN_IF_ERROR(CudaQuantizeLinear(Stream(), input, output, scale, zero_point, num_of_elements));
 
   return Status::OK();
 }
@@ -57,7 +57,7 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.template Data<U>());
   const auto num_of_elements = x_shape.Size();
 
-  CudaDequantizeLinear(Stream(), input, output, scale, zero_point, num_of_elements);
+  ORT_RETURN_IF_ERROR(CudaDequantizeLinear(Stream(), input, output, scale, zero_point, num_of_elements));
 
   return Status::OK();
 }

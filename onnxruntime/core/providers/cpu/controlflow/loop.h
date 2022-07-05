@@ -37,6 +37,8 @@ class Loop : public controlflow::IControlFlowKernel {
 
     std::vector<std::string> subgraph_input_names;
     std::vector<std::string> subgraph_output_names;
+
+    std::vector<const ONNX_NAMESPACE::TypeProto*> loop_carried_vars_types;
   };
 
   // function to concatenate the OrtValue instances from each Loop iteration into a single output buffer.

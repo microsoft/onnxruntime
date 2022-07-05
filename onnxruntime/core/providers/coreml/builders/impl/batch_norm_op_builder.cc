@@ -4,7 +4,9 @@
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/helper.h"
+#ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
+#endif
 #include "core/providers/coreml/builders/op_builder_factory.h"
 
 #include "base_op_builder.h"
@@ -15,12 +17,14 @@ namespace coreml {
 
 class BatchNormalizationOpBuilder : public BaseOpBuilder {
   // Add operator related
+#ifdef __APPLE__
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+#endif
 
   // Operator support related
  private:
@@ -33,6 +37,7 @@ class BatchNormalizationOpBuilder : public BaseOpBuilder {
 
 // Add operator related
 
+#ifdef __APPLE__
 void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   // skip everything except input0 for BatchNormalization
   const auto& input_defs = node.InputDefs();
@@ -64,10 +69,10 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   coreml_batch_norm->set_computemeanvar(false);
   coreml_batch_norm->set_instancenormalization(false);
 
-  CreateCoreMLWeight(*coreml_batch_norm->mutable_gamma(), scale_tensor);   // scale
-  CreateCoreMLWeight(*coreml_batch_norm->mutable_beta(), bias_tensor);     // B
-  CreateCoreMLWeight(*coreml_batch_norm->mutable_mean(), mean_tensor);     // mean
-  CreateCoreMLWeight(*coreml_batch_norm->mutable_variance(), var_tensor);  // var
+  ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_batch_norm->mutable_gamma(), scale_tensor));   // scale
+  ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_batch_norm->mutable_beta(), bias_tensor));     // B
+  ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_batch_norm->mutable_mean(), mean_tensor));     // mean
+  ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_batch_norm->mutable_variance(), var_tensor));  // var
 
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
   *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
@@ -75,6 +80,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
+#endif
 
 // Operator support related
 

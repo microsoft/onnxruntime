@@ -10,6 +10,11 @@
 #define ORT_DEVICE __device__
 #define HelperMin(a, b) _Min(a, b)
 #define HelperMax(a, b) _Max(a, b)
+#elif defined(__HIPCC__)
+#include "core/providers/rocm/cu_inc/common.cuh"
+#define ORT_DEVICE __host__ __device__
+#define HelperMin(a, b) _Min(a, b)
+#define HelperMax(a, b) _Max(a, b)
 #else
 #include <algorithm>
 #define ORT_DEVICE
@@ -45,6 +50,8 @@ struct SelectedIndex {
 
 #ifdef __NVCC__
 namespace cuda {
+#elif defined(__HIPCC__)
+namespace rocm {
 #endif
 namespace nms_helpers {
 
@@ -141,8 +148,10 @@ inline bool SuppressByIOU(const float* boxes_data, int64_t box_index1, int64_t b
 
   return intersection_over_union > iou_threshold;
 }
+}  // namespace nms_helpers
 #ifdef __NVCC__
 }  // namespace cuda
+#elif defined(__HIPCC__)
+}  // namespace rocm
 #endif
-}  // namespace nms_helpers
 }  // namespace onnxruntime

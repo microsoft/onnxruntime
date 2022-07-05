@@ -34,11 +34,19 @@ __global__ void _ScatterNDKernel(
     // This would have been an error in the CPU kernel, but throwing in the CUDA EP
     // is hard. This is the approach taken by other frameworks for out of bound indices
     // in their corresponding GPU backends as well.
-    if (index < 0)
-      index = 0;
+    // index >= -dim_value && index < dim_value
 
-    else if (index >= dim_value)
-      index = dim_value - 1;
+    if (index >= 0) {
+      if (index >= dim_value) {
+        index = dim_value - 1;
+      }
+    } else {
+      if (index < -dim_value) {
+        index = 0;
+      } else {
+        index += dim_value;
+      }
+    }
 
     data_offset += (index * element_count_dim);
   }

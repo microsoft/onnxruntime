@@ -76,7 +76,7 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, Alloca
     transposed_filter_ = BufferUniquePtr(packed_filter_data, BufferDeleter(alloc));
 
     for (int64_t group_id = 0; group_id < conv_transpose_attrs_.group; ++group_id) {
-      MlasTranspose(tensor.Data<float>() + (N * K * group_id),
+      MlasTranspose(tensor.Data<float>() + (group_id * N * K),
                     ((float*)packed_filter_data) + (group_id * packed_elements_per_group),
                     K, N);
     }

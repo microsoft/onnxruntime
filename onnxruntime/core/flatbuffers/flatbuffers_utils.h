@@ -25,12 +25,9 @@ class Vector;
 
 namespace onnxruntime {
 
-namespace experimental {
-
 namespace fbs {
 struct OperatorSetId;
 struct ValueInfo;
-}  // namespace fbs
 
 namespace utils {
 
@@ -42,8 +39,6 @@ flatbuffers::Offset<flatbuffers::String> SaveStringToOrtFormat(flatbuffers::Flat
 onnxruntime::common::Status SaveValueInfoOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::ValueInfoProto& value_info_proto,
     flatbuffers::Offset<fbs::ValueInfo>& fbs_value_info);
-
-#if defined(ENABLE_ORT_FORMAT_LOAD)
 
 void LoadStringFromOrtFormat(std::string& dst, const flatbuffers::String* fbs_string);
 
@@ -62,8 +57,6 @@ onnxruntime::common::Status LoadOpsetImportOrtFormat(
     const flatbuffers::Vector<flatbuffers::Offset<fbs::OperatorSetId>>* fbs_op_set_ids,
     std::unordered_map<std::string, int>& domain_to_version);
 
-#endif
-
 // check if filename ends in .ort
 template <typename T>
 bool IsOrtFormatModel(const std::basic_string<T>& filename) {
@@ -79,5 +72,5 @@ bool IsOrtFormatModel(const std::basic_string<T>& filename) {
 bool IsOrtFormatModelBytes(const void* bytes, int num_bytes);
 
 }  // namespace utils
-}  // namespace experimental
+}  // namespace fbs
 }  // namespace onnxruntime

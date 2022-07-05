@@ -10,21 +10,9 @@
 
 namespace onnxruntime {
 namespace contrib {
-
-Status LongformerAttentionBase__CheckInputs(const LongformerAttentionBase* p,
-                                            const TensorShape& input_shape,
-                                            const TensorShape& weights_shape,
-                                            const TensorShape& bias_shape,
-                                            const TensorShape& mask_shape,
-                                            const TensorShape& global_weights_shape,
-                                            const TensorShape& global_bias_shape,
-                                            const TensorShape& global_shape) {
-  return p->CheckInputs(input_shape, weights_shape, bias_shape, mask_shape, global_weights_shape, global_bias_shape, global_shape);
-}
-
 namespace embed_layer_norm {
 
-Status CheckInputs(const OpKernelContext* context) {
+Status CheckInputs(const OpKernelContext* context, bool quantizedVersion) {
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* segment_ids = context->Input<Tensor>(1);  // optional. nullptr if it's distill-bert
   const Tensor* word_embedding = context->Input<Tensor>(2);
@@ -33,6 +21,15 @@ Status CheckInputs(const OpKernelContext* context) {
   const Tensor* gamma = context->Input<Tensor>(5);
   const Tensor* beta = context->Input<Tensor>(6);
   const Tensor* mask = context->Input<Tensor>(7);  // optional. nullptr if not provided
+
+  if (!quantizedVersion) {
+    const Tensor* position_ids = context->Input<Tensor>(8); // optional. nullptr if not provided
+
+    if (nullptr != position_ids && input_ids->Shape() != position_ids->Shape()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "input_ids and position_ids shall have same shape");
+    }
+  }
 
   if (nullptr != segment_ids && input_ids->Shape() != segment_ids->Shape()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

@@ -41,7 +41,7 @@ int EMSCRIPTEN_KEEPALIVE OrtInit(int num_threads, int logging_level);
  * @param enable_cpu_mem_arena enable or disable cpu memory arena
  * @param enable_mem_pattern enable or disable memory pattern
  * @param execution_mode sequential or parallel execution mode
- * @param enable_profiling enable or disable profiling. it's a no-op and for a future use.
+ * @param enable_profiling enable or disable profiling.
  * @param profile_file_prefix file prefix for profiling data. it's a no-op and for a future use.
  * @param log_id logger id for session output
  * @param log_severity_level verbose, info, warning, error or fatal
@@ -185,4 +185,12 @@ int EMSCRIPTEN_KEEPALIVE OrtRun(ort_session_handle_t session,
                                 size_t output_count,
                                 ort_tensor_handle_t* outputs,
                                 ort_run_options_handle_t run_options);
+
+/**
+ * end profiling.
+ * @param session handle of the specified session
+ * @returns a pointer to a buffer which contains C-style string of profile filename.
+ * Caller must release the C style string after use by calling OrtFree().
+ */
+char* EMSCRIPTEN_KEEPALIVE OrtEndProfiling(ort_session_handle_t session);
 };

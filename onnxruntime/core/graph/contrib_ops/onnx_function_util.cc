@@ -7,6 +7,10 @@ namespace ONNX_NAMESPACE {
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#elif defined(_MSC_VER) && !defined(__clang__)
+// VC++ suggests we can attempt to make 'onnx::float_to_bits' constexpr, but it is not valid.
+#pragma warning(disable : 26497)
+#pragma warning(disable : 26450)
 #endif
 
 static uint32_t float_to_bits(float f) { return *reinterpret_cast<uint32_t*>(&f); }
@@ -20,10 +24,10 @@ static float bits_to_float(uint32_t bits) { return *reinterpret_cast<float*>(&bi
 static uint16_t floatToHalf(float ff) {
   uint32_t floatbits = float_to_bits(ff);
 
-  const uint32_t f32infty = {255 << 23};
-  const uint32_t f16max = {(127 + 16) << 23};
-  const uint32_t denorm_magic = {((127 - 15) + (23 - 10) + 1) << 23};
-  const uint32_t sign_mask = 0x80000000u;
+  constexpr uint32_t f32infty = {255 << 23};
+  constexpr uint32_t f16max = {(127 + 16) << 23};
+  constexpr uint32_t denorm_magic = {((127 - 15) + (23 - 10) + 1) << 23};
+  constexpr uint32_t sign_mask = 0x80000000u;
 
   uint16_t result = static_cast<uint16_t>(0x0u);
 
@@ -79,31 +83,4 @@ TensorProto ToTensor(double value, TensorProto_DataType elem_type) {
 
   return t;
 }
-
-void BuildNodes(FunctionProto& functionProto, const std::vector<FunctionBodyHelper::NodeDef>& node_defs) {
-  for (size_t i = 0; i < node_defs.size(); i++) {
-    const FunctionBodyHelper::NodeDef& node = node_defs[i];
-    auto* np = functionProto.add_node();
-
-    np->set_op_type(node.op_type);
-    for (const auto& inp : node.inputs) {
-      np->add_input(inp);
-    }
-    for (const auto& o : node.outputs) {
-      np->add_output(o);
-    }
-    for (const auto& attr : node.attributes) {
-      *(np->add_attribute()) = attr.proto;
-    }
-  }
-}
-
-bool BuildFunctionProto(FunctionProto& functionProto, const OpSchema& schema,
-                        const std::vector<FunctionBodyHelper::NodeDef>& node_defs,
-                        const std::vector<OperatorSetIdProto>& relied_opsets) {
-  BuildNodes(functionProto, node_defs);
-  schema.BuildFunction(functionProto, relied_opsets);
-  return true;
-}
-
 }  // namespace ONNX_NAMESPACE

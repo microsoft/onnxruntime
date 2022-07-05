@@ -4,17 +4,23 @@ In order to reduce the compiled binary size of ONNX Runtime (ORT), the operator 
 
 A configuration file must be created with details of the kernels that are required.
 
-Following that, ORT must be manually built, providing the configuration file in the `--include_ops_by_config` parameter. The build process will update the ORT kernel registration source files to exclude the unused kernels.
+Following that, ORT must be manually built, providing the configuration file in the [build.py](../tools/ci_build/build.py) `--include_ops_by_config` argument.
 
 See the [build instructions](https://www.onnxruntime.ai/docs/how-to/build.html#build-instructions) for more details on building ORT.
 
-When building ORT with a reduced set of kernel registrations, `--skip_tests` **MUST** be specified as the kernel reduction will render many of the unit tests invalid.
+The build process will generate updated ORT kernel registration and type reduction source files to exclude unused kernel implementations.
+The generated files will be under the build directory and the original source files that they are based on are not directly modified.
+When building, the generated files will be used instead of the original files.
 
-NOTE: The operator exclusion logic when building with an operator reduction configuration file will only disable kernel registrations each time it runs. It will NOT re-enable previously disabled kernels. If you wish to change the list of kernels included, it is best to revert the repository to a clean state (e.g. via `git reset --hard`) before building ORT again.
+The operator exclusion logic only runs during the build file generation (or "update") phase of the build process, i.e., when invoking build.py with no build phase arguments or explicitly with `--update`.
+
+Note: It is also possible to run the operator exclusion logic independently with [reduce_op_kernels.py](../tools/ci_build/reduce_op_kernels.py). This may be useful when building ORT without using build.py.
+As the generated files will go into a build directory, the build directory must be provided with the reduce_op_kernels.py `--cmake_build_dir` argument.
+Note that this argument is slightly different from the build.py `--build_dir` argument - build.py will append an additional directory for the build configuration to its `--build_dir` value to get the equivalent of `--cmake_build_dir`.
 
 ## Creating a configuration file with the required kernels
 
-The script in `<ORT Root>/tools/python/create_reduced_build_config.py` should be used to create the configuration file. This file can be manually edited as needed. The configuration can be created from either ONNX or ORT format models.
+The [create_reduced_build_config.py](../tools/python/create_reduced_build_config.py) script should be used to create the configuration file. This file can be manually edited as needed. The configuration can be created from either ONNX or ORT format models.
 
 ```
 create_reduced_build_config.py --help
@@ -35,7 +41,7 @@ optional arguments:
 
 ### Type reduction
 
-If the configuration file is created using ORT format models, the input/output types that individual operators require can be tracked if `--enable_type_reduction` is specified. This can be used to further reduce the build size if `--enable_reduced_operator_type_support` is specified when building ORT.
+If the configuration file is created using ORT format models, the input/output types that individual operators require can be tracked if the `--enable_type_reduction` argument is specified. This can be used to further reduce the build size if the build.py `--enable_reduced_operator_type_support` argument is specified when building ORT.
 
 ONNX format models are not guaranteed to include the required per-node type information, so cannot be used with this option.
 

@@ -5,7 +5,7 @@
 
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "core/common/common.h"
-#include "core/profile/context.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 #include "core/providers/cuda/cuda_check_memory.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
@@ -360,7 +360,7 @@ void NcclService::Terminate() {
   WaitForLaunch();
   {
     std::unique_lock<std::mutex> lock(mutex_);
-    cv_.wait(lock, [this] { return schedule_.empty() || total_time_ > 0 && time_ == 0; });
+    cv_.wait(lock, [this] { return schedule_.empty() || (total_time_ > 0 && time_ == 0); });
   }
 
   CUDA_CALL(cudaStreamDestroy(stream_));

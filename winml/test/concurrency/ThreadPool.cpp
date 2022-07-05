@@ -2,7 +2,7 @@
 #include "ThreadPool.h"
 #include <ctime>
 
-ThreadPool::ThreadPool(unsigned int initial_pool_size): m_threads(), m_destruct_pool(false) {
+ThreadPool::ThreadPool(unsigned int initial_pool_size) : m_destruct_pool(false), m_threads() {
     for (unsigned int i = 0; i < initial_pool_size; i++) {
         m_threads.emplace_back([this]() {
             while (true) {

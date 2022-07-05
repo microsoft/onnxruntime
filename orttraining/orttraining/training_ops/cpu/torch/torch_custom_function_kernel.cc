@@ -3,8 +3,8 @@
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel.h"
-#include "core/language_interop_ops/torch/custom_function_register.h"
-#include "core/language_interop_ops/torch/refcount_tracker.h"
+#include "orttraining/core/framework/torch/custom_function_register.h"
+#include "orttraining/core/framework/torch/refcount_tracker.h"
 
 using namespace onnxruntime::language_interop_ops::torch;
 

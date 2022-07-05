@@ -9,7 +9,6 @@ set (TRAINING_OPS_DIR ${ORTTRAINING_ROOT}/orttraining/core/graph)
 file(GLOB_RECURSE contrib_ops_schema_src
    "${CONTRIB_OPS_DIR}/*.cc"
    "${TRAINING_OPS_DIR}/training_op_defs.cc"
-   "${ORTTRAINING_ROOT}/orttraining/training_ops/cpu/aten_ops/aten_op_config.cc"
 )
 
 # The nchwc op schemas are platform-specific and not currently required.
@@ -25,8 +24,10 @@ endif()
 
 onnxruntime_add_static_library(ort_opschema_lib ${contrib_ops_schema_src})
 target_compile_options(ort_opschema_lib PRIVATE -D_OPSCHEMA_LIB_=1)
-
-set (OPSCHEMA_LIB_DEPENDENCIES onnx onnx_proto protobuf::libprotobuf flatbuffers)
+if(NOT MSVC)
+  target_compile_options(ort_opschema_lib PRIVATE "-Wno-parentheses")
+endif()
+set (OPSCHEMA_LIB_DEPENDENCIES onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
 
 # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" is found
 target_include_directories(ort_opschema_lib PRIVATE ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${CMAKE_CURRENT_BINARY_DIR})

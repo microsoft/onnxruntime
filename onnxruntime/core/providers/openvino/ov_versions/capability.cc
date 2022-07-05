@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
 #include "core/providers/shared_library/provider_api.h"
@@ -30,12 +30,14 @@ GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string 
                 graph_viewer_(graph_viewer_param), device_type_(device_type_param){
   if (version_param == "V_2021_2") {
     data_ops_ = new DataOps(graph_viewer_, V_2021_2, device_type_);
-  } else if (version_param == "V_2021_1") {
-    data_ops_ = new DataOps(graph_viewer_, V_2021_1, device_type_);
   } else if (version_param == "V_2021_3") {
     data_ops_ = new DataOps(graph_viewer_, V_2021_3, device_type_);
+  } else if (version_param == "V_2021_4") {
+    data_ops_ = new DataOps(graph_viewer_, V_2021_4, device_type_);
+  } else if (version_param == "V_2022_1") {
+    data_ops_ = new DataOps(graph_viewer_, V_2022_1, device_type_);
   } else {
-    data_ops_ = new DataOps(graph_viewer_, V_2021_3, device_type_);
+    data_ops_ = new DataOps(graph_viewer_, V_2022_1, device_type_);
   }
 }
 
@@ -48,6 +50,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     return result;
   }
 
+#if defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3)
   // Need access to model_path_
   for (const auto& tensor : graph_viewer_.GetAllInitializedTensors()) {
     if (tensor.second->has_data_location() && tensor.second->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
@@ -55,6 +58,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
       return result;
     }
   }
+#endif
 
   // This is a list of initializers that nGraph considers as constants. Example weights, reshape shape etc.
   std::unordered_set<std::string> ng_required_initializers;
@@ -108,10 +112,20 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     AppendClusterToSubGraph(graph_viewer_.GetNodesInTopologicalOrder(), inputs, outputs, result);
 
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is fully supported by OpenVINO";
+    //Enable CI Logs
+    if(backend_utils::IsCILogEnabled()) {
+      std::cout << "Model is fully supported on OpenVINO" << std::endl;
+    }
     openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph = true;
 
   } else {  // unsupported_nodes_idx.empty()
-   
+
+  #if defined(OPENVINO_DISABLE_GRAPH_PARTITION) // disables graph partition at build time
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DISABLE_GRAPH_PARTITION option is set";
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is not fully supported by OpenVINO, so making the full model fall back to default CPU Execution Provider";
+    return result;
+  #endif
+
     std::vector<NodeIndex> modified_unsupported_nodes;
     for (const auto& node_idx : graph_viewer_.GetNodesInTopologicalOrder()) {
       if (find(unsupported_nodes.begin(), unsupported_nodes.end(), node_idx) != unsupported_nodes.end()) {

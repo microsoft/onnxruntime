@@ -56,7 +56,7 @@ class FgemmPackedContext<float, false> {
   }
 };
 
-#ifdef MLAS_TARGET_AMD64
+#if defined(MLAS_TARGET_AMD64) || defined (MLAS_TARGET_POWER)
 template <>
 class FgemmPackedContext<double, false> {
  public:
@@ -128,8 +128,6 @@ class FgemmPackedContext<float, true> {
       data[i].beta = beta;
     }
     MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool);
-
-    MlasGemm(TransA, M, N, K, alpha, A, lda, PackedB, beta, C, ldc, threadpool);
   }
 
  private:

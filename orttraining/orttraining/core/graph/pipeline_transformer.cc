@@ -587,7 +587,7 @@ Status TransformGraphForPipeline(
         pipeline_tensor_names.forward_recv_waited_event_name,
         pipeline_tensor_names.forward_recv_wait_output_name);
     ORT_ENFORCE(forward_recv_wait);
-    ResolveForTraining(graph, weights_to_train);
+    ORT_RETURN_IF_ERROR(ResolveForTraining(graph, weights_to_train));
 
     // Insert Record after Forward-Recv.
     forward_recv_record = &AppendEventNode(
@@ -597,7 +597,7 @@ Status TransformGraphForPipeline(
         pipeline_tensor_names.forward_recv_recorded_event_name,
         pipeline_tensor_names.forward_recv_record_output_name);
     ORT_ENFORCE(forward_recv_record);
-    ResolveForTraining(graph, weights_to_train);
+    ORT_RETURN_IF_ERROR(ResolveForTraining(graph, weights_to_train));
   }
 
   // Forward Send
@@ -610,7 +610,7 @@ Status TransformGraphForPipeline(
         pipeline_tensor_names.forward_send_waited_event_name,
         pipeline_tensor_names.forward_send_wait_output_name);
     ORT_ENFORCE(forward_send_wait);
-    ResolveForTraining(graph, weights_to_train);
+    ORT_RETURN_IF_ERROR(ResolveForTraining(graph, weights_to_train));
 
     // Insert Record after Forward-Send.
     forward_send_record = &AppendEventNode(
@@ -620,7 +620,7 @@ Status TransformGraphForPipeline(
         pipeline_tensor_names.forward_send_recorded_event_name,
         pipeline_tensor_names.forward_send_record_output_name);
     ORT_ENFORCE(forward_send_record);
-    ResolveForTraining(graph, weights_to_train);
+    ORT_RETURN_IF_ERROR(ResolveForTraining(graph, weights_to_train));
   }
 
   // Backward Recv
@@ -633,7 +633,7 @@ Status TransformGraphForPipeline(
         pipeline_tensor_names.backward_recv_waited_event_name,
         pipeline_tensor_names.backward_recv_wait_output_name);
     ORT_ENFORCE(backward_recv_wait);
-    ResolveForTraining(graph, weights_to_train);
+    ORT_RETURN_IF_ERROR(ResolveForTraining(graph, weights_to_train));
 
     // Insert Record after Forward-Recv.
     backward_recv_record = &AppendEventNode(
@@ -643,7 +643,7 @@ Status TransformGraphForPipeline(
         pipeline_tensor_names.backward_recv_recorded_event_name,
         pipeline_tensor_names.backward_recv_record_output_name);
     ORT_ENFORCE(backward_recv_record);
-    ResolveForTraining(graph, weights_to_train);
+    ORT_RETURN_IF_ERROR(ResolveForTraining(graph, weights_to_train));
   }
 
   // Backward Send
@@ -656,7 +656,7 @@ Status TransformGraphForPipeline(
         pipeline_tensor_names.backward_send_waited_event_name,
         pipeline_tensor_names.backward_send_wait_output_name);
     ORT_ENFORCE(backward_send_wait);
-    ResolveForTraining(graph, weights_to_train);
+    ORT_RETURN_IF_ERROR(ResolveForTraining(graph, weights_to_train));
 
     // Insert Record after Backward-Send and all nodes.
     backward_send_record = &AppendEventNode(
@@ -666,7 +666,7 @@ Status TransformGraphForPipeline(
         pipeline_tensor_names.backward_send_recorded_event_name,
         pipeline_tensor_names.backward_send_record_output_name);
     ORT_ENFORCE(backward_send_record);
-    ResolveForTraining(graph, weights_to_train);
+    ORT_RETURN_IF_ERROR(ResolveForTraining(graph, weights_to_train));
   }
 
   // Forward-Compute Wait.
@@ -679,7 +679,7 @@ Status TransformGraphForPipeline(
         pipeline_tensor_names.forward_compute_waited_event_name,
         pipeline_tensor_names.forward_compute_wait_output_name);
     ORT_ENFORCE(forward_compute_wait);
-    ResolveForTraining(graph, weights_to_train);
+    ORT_RETURN_IF_ERROR(ResolveForTraining(graph, weights_to_train));
   } else {
     // Insert one Wait after Forward-Recv Record.
     forward_compute_wait = &AppendEventNode(
@@ -689,7 +689,7 @@ Status TransformGraphForPipeline(
         pipeline_tensor_names.forward_compute_waited_event_name,
         pipeline_tensor_names.forward_compute_wait_output_name);
     ORT_ENFORCE(forward_compute_wait);
-    ResolveForTraining(graph, weights_to_train);
+    ORT_RETURN_IF_ERROR(ResolveForTraining(graph, weights_to_train));
   }
 
   // Forward-Compute Record
@@ -702,7 +702,7 @@ Status TransformGraphForPipeline(
         pipeline_tensor_names.forward_compute_recorded_event_name,
         pipeline_tensor_names.forward_compute_record_output_name);
     ORT_ENFORCE(forward_compute_record);
-    ResolveForTraining(graph, weights_to_train);
+    ORT_RETURN_IF_ERROR(ResolveForTraining(graph, weights_to_train));
   }
 
   // Backward-Compute Wait.
@@ -715,7 +715,7 @@ Status TransformGraphForPipeline(
         pipeline_tensor_names.backward_compute_waited_event_name,
         pipeline_tensor_names.backward_compute_wait_output_name);
     ORT_ENFORCE(backward_compute_wait);
-    ResolveForTraining(graph, weights_to_train);
+    ORT_RETURN_IF_ERROR(ResolveForTraining(graph, weights_to_train));
   }
 
   // Backward-Compute Record.
@@ -728,7 +728,7 @@ Status TransformGraphForPipeline(
         pipeline_tensor_names.backward_compute_recorded_event_name,
         pipeline_tensor_names.backward_compute_record_output_name);
     ORT_ENFORCE(backward_compute_record);
-    ResolveForTraining(graph, weights_to_train);
+    ORT_RETURN_IF_ERROR(ResolveForTraining(graph, weights_to_train));
   } else {
     // Insert one Record before Backward-Send Wait.
     backward_compute_record = &PrependEventNode(
@@ -738,7 +738,7 @@ Status TransformGraphForPipeline(
         pipeline_tensor_names.backward_compute_recorded_event_name,
         pipeline_tensor_names.backward_compute_record_output_name);
     ORT_ENFORCE(backward_compute_record);
-    ResolveForTraining(graph, weights_to_train);
+    ORT_RETURN_IF_ERROR(ResolveForTraining(graph, weights_to_train));
   }
 
   // If user wants to keep original outputs, we add fake outputs if the
@@ -803,7 +803,7 @@ void SetDataDependency(
   graph.AddNode(graph.GenerateNodeName("OrderingPassThrough"),
                 "PassThrough", "", pass_through_inputs, pass_through_outputs, nullptr, kMSDomain);
 
-  graph.Resolve();
+  ORT_THROW_IF_ERROR(graph.Resolve());
 }
 
 // This function is used when you want to create a scalar constant in a graph.
@@ -1238,13 +1238,13 @@ void UpdateInputsOfConsumers(Graph& graph,
 
 // Checks whether the tensor is produced and consumed in the forward stage of
 // the computation.
-bool IsForwardComputation(const int producer_stage, const int consumer_stage) {
+constexpr bool IsForwardComputation(const int producer_stage, const int consumer_stage) {
   return producer_stage < consumer_stage;
 };
 
 // Checks whether the tensor is produced and consumed in the backward stage of
 // the computation.
-bool IsBackwardComputation(const int producer_stage, const int consumer_stage) {
+constexpr bool IsBackwardComputation(const int producer_stage, const int consumer_stage) {
   return producer_stage > consumer_stage;
 };
 
@@ -1423,7 +1423,7 @@ common::Status SplitGraphWithOperatorToStageMap(Graph& graph,
 
   for (auto& message : messages) {
     auto current_stage = message.first;
-    auto next_stage = message.second;
+    int next_stage = message.second;
 
     // for each pair of stages, record the inserted input/output args.
     std::vector<NodeArg*> send_input_args;
@@ -1465,7 +1465,7 @@ common::Status SplitGraphWithOperatorToStageMap(Graph& graph,
     // Update the inputs of the next_stage consumers with the right replicas.
     UpdateInputsOfConsumers(graph, tensor_replicas, op_to_stage, next_stage);
 
-    const int num_attributes = 2;  // two attributes: tag and element_types
+    constexpr int num_attributes = 2;  // two attributes: tag and element_types
     NodeAttributes attributes;
     attributes.reserve(num_attributes);
     attributes[tag.name()] = tag;
@@ -1488,7 +1488,8 @@ common::Status SplitGraphWithOperatorToStageMap(Graph& graph,
                 "Stage cannot send message to itself.");
     if (current_stage < next_stage) {
       send_nodes.at(current_stage) = &send_node;
-      receive_nodes.at(next_stage - 1) = &receive_node;
+      assert(next_stage > 0);
+      receive_nodes.at(static_cast<size_t>(next_stage) - 1) = &receive_node;
     }
     // TODO(jufranc): consider backward sends and receives.
     // else if (current_stage > next_stage) {
@@ -1565,8 +1566,11 @@ void GenerateSubgraph(Graph& graph, const int num_stages,
 Status ApplyPipelinePartitionToMainGraph(Graph& graph,
                                          const std::map<const Node*, int>& op_to_stage,
                                          const int pipeline_stage_id,
-                                         const int num_stages,
+                                         const int num_stages_input,
                                          const std::vector<int32_t>& rank_ids) {
+  if (num_stages_input <= 0)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "invalid value of num_stages");
+  const size_t num_stages = static_cast<size_t>(num_stages_input);
   // TODO(jufranc): in order to support more general pipeline shapes, we need to
   // do some analysis on the graph and assignment of operators to stages, to
   // find which messages will be sent. For now, we assume that 1) there are
@@ -1574,10 +1578,10 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
   // partition of training graphs, we need to let tensors be copied from s+1 to
   // s, as well.
   std::vector<int> stage_to_rank(num_stages);
-  ORT_ENFORCE(static_cast<int>(rank_ids.size()) == num_stages);
+  ORT_ENFORCE(rank_ids.size() == num_stages);
   std::vector<std::pair<int, int>> messages;
-  for (int s = 0; s < num_stages - 1; ++s) {
-    messages.emplace_back(s, s + 1);
+  for (size_t s = 0; s < num_stages - 1; ++s) {
+    messages.emplace_back(static_cast<int>(s), static_cast<int>(s + 1));
     stage_to_rank.at(s) = rank_ids.at(s);
   }
   stage_to_rank.at(num_stages - 1) = rank_ids.at(num_stages - 1);
@@ -1607,7 +1611,7 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
   // Split the graph into disconnected sub-graphs given the mapping of
   // operations to stages.
   ORT_RETURN_IF_ERROR(SplitGraphWithOperatorToStageMap(graph, op_to_stage,
-                                                       num_stages, messages,
+                                                       static_cast<int>(num_stages), messages,
                                                        send_nodes, recv_nodes,
                                                        stage_to_rank));
 
@@ -1615,13 +1619,13 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
   ORT_RETURN_IF_ERROR(HandleSharedInitializer(graph, send_nodes, recv_nodes));
 
   std::set<const NodeArg*> visited_outputs;
-  GenerateSubgraph(graph, num_stages, op_to_stage, pipeline_stage_id,
+  GenerateSubgraph(graph, static_cast<int>(num_stages), op_to_stage, pipeline_stage_id,
                    send_nodes, recv_nodes, node_topology_list, visited_outputs);
 
-  graph.SetOutputs({visited_outputs.begin(), visited_outputs.end()});
+  graph.SetOutputs(InlinedVector<const NodeArg*>{visited_outputs.begin(), visited_outputs.end()});
   graph.SetGraphResolveNeeded();
   graph.SetGraphProtoSyncNeeded();
-  graph.Resolve();
+  ORT_RETURN_IF_ERROR(graph.Resolve());
 
   // TODO(jufranc): once we allow partition of training graphs, we need to add
   // some code to make sure that the backward receive starts after the forward

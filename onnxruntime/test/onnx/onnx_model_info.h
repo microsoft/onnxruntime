@@ -18,9 +18,7 @@ class OnnxModelInfo : public TestModelInfo {
   void InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url);
 #endif
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
   void InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url);
-#endif
 
  public:
   OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url, bool is_ort_model = false);

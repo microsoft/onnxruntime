@@ -230,6 +230,6 @@ void PadNCHWInputWithPaddingAlongHAndWImpl(
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)
 SPECIALIZED_IMPL(half)
-
+SPECIALIZED_IMPL(bool)
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -83,7 +83,8 @@ class MlasActivationTest : public MlasTestBase {
 
       for (unsigned i = 0; i < _countof(TestData); i++) {
         // Sensitive to comparing positive/negative zero and NaNs.
-        EXPECT_TRUE(Buffer[i].u == TestData[i][kind].u || Buffer[i].f == TestData[i][kind].f)
+        float error = std::min(std::fabs((Buffer[i].f - TestData[i][kind].f) / TestData[i][kind].f), std::fabs(Buffer[i].f - TestData[i][kind].f));
+        EXPECT_TRUE(Buffer[i].u == TestData[i][kind].u || Buffer[i].f == TestData[i][kind].f || error < 0.000001f)
             << ", Scalar Activation Kind:" << (int)kind << ", i=" << i << ", value:"
             << std::setw(8) << std::setfill('0') <<std::hex << Buffer[i].u << ", expecting:"
             << std::setw(8) << std::setfill('0') <<std::hex << TestData[i][kind].u;

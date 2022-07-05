@@ -3,6 +3,7 @@
 
 import {Logger} from '../../instrument';
 import {assert} from '../../util';
+
 /** Layout preferences */
 export interface WidthHeightPrefs {
   breakAxis?: number;
@@ -67,7 +68,9 @@ export class PreferLogicalStrategy implements TextureLayoutStrategy {
       wh[0] /= 2;
       wh[1] /= 2;
     }
-
+    if (prefs && prefs.reverseWH) {
+      return [wh[1], wh[0]];
+    }
     return wh;
   }
 

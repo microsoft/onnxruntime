@@ -18,11 +18,12 @@ from onnxruntime.training.ortmodule import ORTModule
 
 
 def setup(rank, world_size):
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12355"
 
     # initialize the process group
     dist.init_process_group("gloo", rank=rank, world_size=world_size)
+
 
 def cleanup():
     dist.destroy_process_group()
@@ -48,9 +49,9 @@ def demo_basic(rank, world_size, use_ort_module):
     model = ToyModel().to(rank)
     if use_ort_module:
         model = ORTModule(model)
-        print(f"  Rank {rank} uses ORTModule.");
+        print(f"  Rank {rank} uses ORTModule.")
     else:
-        print(f"  Rank {rank} uses Pytorch's nn.Module.");
+        print(f"  Rank {rank} uses Pytorch's nn.Module.")
 
     ddp_model = DDP(model, device_ids=[rank])
 
@@ -74,11 +75,14 @@ def demo_basic(rank, world_size, use_ort_module):
             loss_history.append(torch.unsqueeze(loss, 0))
 
     loss_history = torch.cat(loss_history).cpu()
-    expected_loss_history = torch.FloatTensor([1.4909229278564453, 1.432194471359253, 1.39592707157135, 1.367714762687683, 1.3445055484771729])
+    expected_loss_history = torch.FloatTensor(
+        [1.4909229278564453, 1.432194471359253, 1.39592707157135, 1.367714762687683, 1.3445055484771729]
+    )
 
     assert torch.allclose(expected_loss_history, loss_history)
 
     cleanup()
+
 
 def demo_checkpoint(rank, world_size, use_ort_module):
     torch.manual_seed(rank)
@@ -86,11 +90,11 @@ def demo_checkpoint(rank, world_size, use_ort_module):
     setup(rank, world_size)
 
     if use_ort_module:
-        print(f"  Rank {rank} uses ORTModule.");
+        print(f"  Rank {rank} uses ORTModule.")
         model = ToyModel().to(rank)
         model = ORTModule(model)
     else:
-        print(f"  Rank {rank} uses Pytorch's nn.Module.");
+        print(f"  Rank {rank} uses Pytorch's nn.Module.")
         model = ToyModel().to(rank)
 
     ddp_model = DDP(model, device_ids=[rank])
@@ -109,9 +113,8 @@ def demo_checkpoint(rank, world_size, use_ort_module):
     # 0 saves it.
     dist.barrier()
     # configure map_location properly
-    map_location = {'cuda:%d' % 0: 'cuda:%d' % rank}
-    ddp_model.load_state_dict(
-        torch.load(CHECKPOINT_PATH, map_location=map_location))
+    map_location = {"cuda:%d" % 0: "cuda:%d" % rank}
+    ddp_model.load_state_dict(torch.load(CHECKPOINT_PATH, map_location=map_location))
 
     optimizer.zero_grad()
     outputs = ddp_model(torch.randn(20, 10))
@@ -143,16 +146,16 @@ def demo_checkpoint(rank, world_size, use_ort_module):
 
     cleanup()
 
+
 def run_demo(demo_fn, world_size, use_ort_module):
-    mp.spawn(demo_fn,
-             args=(world_size, use_ort_module),
-             nprocs=world_size,
-             join=True)
+    mp.spawn(demo_fn, args=(world_size, use_ort_module), nprocs=world_size, join=True)
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--use_ort_module', action='store_true')
+    parser.add_argument("--use_ort_module", action="store_true")
     return parser.parse_args()
+
 
 if __name__ == "__main__":
     args = parse_args()

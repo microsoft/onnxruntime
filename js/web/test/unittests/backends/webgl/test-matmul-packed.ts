@@ -6,13 +6,11 @@ import {env} from 'onnxruntime-common';
 
 import {Backend, InferenceHandler, resolveBackend, SessionHandler} from '../../../../lib/onnxjs/backend';
 import {WebGLInferenceHandler} from '../../../../lib/onnxjs/backends/webgl/inference-handler';
-import {WebGLMatMulPacked} from '../../../../lib/onnxjs/backends/webgl/ops/matmul-pack';
-import {TextureData} from '../../../../lib/onnxjs/backends/webgl/types';
+import {createPackedMatmulProgramInfoLoader} from '../../../../lib/onnxjs/backends/webgl/ops/matmul-pack';
 import {Profiler} from '../../../../lib/onnxjs/instrument';
 import {Tensor} from '../../../../lib/onnxjs/tensor';
-import {ShapeUtil} from '../../../../lib/onnxjs/util';
 
-import {createAscendingArray, createTextureFromArray} from './test-utils';
+import {createAscendingArray} from './test-utils';
 
 interface TestData {
   elementCountA: number;
@@ -70,8 +68,6 @@ function getTestData(): TestData[] {
       inputTextureShapeB: [1, 2],
       outputTextureShape: [1, 1],
       expectedOutput: new Float32Array([22, 28, 49, 64]),
-      rawInputA: new Float32Array([1, 2, 4, 5, 3, 0, 6, 0]),
-      rawInputB: new Float32Array([1, 2, 3, 4, 5, 6, 0, 0]),
     },
     {
       elementCountA: 6,
@@ -84,8 +80,6 @@ function getTestData(): TestData[] {
       outputTextureShape: [1, 1],
       expectedOutput: new Float32Array([23, 29, 50, 65]),
       biasValue: 1,
-      rawInputA: new Float32Array([1, 2, 4, 5, 3, 0, 6, 0]),
-      rawInputB: new Float32Array([1, 2, 3, 4, 5, 6, 0, 0]),
     },
     {
       elementCountA: 16,
@@ -96,8 +90,6 @@ function getTestData(): TestData[] {
       inputTextureShapeA: [2, 2],
       inputTextureShapeB: [2, 2],
       outputTextureShape: [2, 2],
-      rawInputA: new Float32Array([1, 2, 5, 6, 3, 4, 7, 8, 9, 10, 13, 14, 11, 12, 15, 16]),
-      rawInputB: new Float32Array([1, 2, 5, 6, 3, 4, 7, 8, 9, 10, 13, 14, 11, 12, 15, 16]),
       biasValue: 2,
       expectedOutput: new Float32Array([92, 102, 112, 122, 204, 230, 256, 282, 316, 358, 400, 442, 428, 486, 544, 602]),
     },
@@ -112,8 +104,8 @@ function getTestData(): TestData[] {
       outputTextureShape: [2, 1],
       expectedOutput: new Float32Array([23, 29, 50, 65, 23, 29, 50, 65]),
       biasValue: 1,
-      rawInputA: new Float32Array([1, 2, 4, 5, 3, 0, 6, 0, 1, 2, 4, 5, 3, 0, 6, 0]),
-      rawInputB: new Float32Array([1, 2, 3, 4, 5, 6, 0, 0, 1, 2, 3, 4, 5, 6, 0, 0]),
+      rawInputA: new Float32Array([1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6]),
+      rawInputB: new Float32Array([1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6]),
     },
     // test bcast
     {
@@ -127,8 +119,7 @@ function getTestData(): TestData[] {
       outputTextureShape: [2, 1],
       expectedOutput: new Float32Array([23, 29, 50, 65, 23, 29, 50, 65]),
       biasValue: 1,
-      rawInputA: new Float32Array([1, 2, 4, 5, 3, 0, 6, 0, 1, 2, 4, 5, 3, 0, 6, 0]),
-      rawInputB: new Float32Array([1, 2, 3, 4, 5, 6, 0, 0]),
+      rawInputA: new Float32Array([1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6]),
     },
     {
       elementCountA: 12,
@@ -140,8 +131,7 @@ function getTestData(): TestData[] {
       inputTextureShapeB: [1, 2],
       outputTextureShape: [2, 1],
       expectedOutput: new Float32Array([22, 28, 49, 64, 22, 28, 49, 64]),
-      rawInputA: new Float32Array([1, 2, 4, 5, 3, 0, 6, 0, 1, 2, 4, 5, 3, 0, 6, 0]),
-      rawInputB: new Float32Array([1, 2, 3, 4, 5, 6, 0, 0]),
+      rawInputA: new Float32Array([1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6]),
     },
   ];
 }
@@ -161,8 +151,7 @@ describe('#UnitTest# - packed matmul - Tensor matmul', () => {
   const testDataSet = getTestData();
   for (let k = 0; k < testDataSet.length; ++k) {
     const testData = testDataSet[k];
-    describe(`Test matmul ${JSON.stringify(testData)}`, () => {});
-    it('Test packed matmul kernel ', () => {
+    it(`Test packed matmul kernel [${testData.inputShapeA}]x[${testData.inputShapeB}]`, () => {
       const webglInferenceHandler = inferenceHandler as WebGLInferenceHandler;
 
       if (!env.webgl.pack) {
@@ -170,101 +159,27 @@ describe('#UnitTest# - packed matmul - Tensor matmul', () => {
         return;
       }
 
-      const op = new WebGLMatMulPacked();
-
       const elementCountA = testData.elementCountA;
       const elementCountB = testData.elementCountB;
 
       const inputTensorShapeA = testData.inputShapeA;
-      const inputTextureShapeA = testData.inputTextureShapeA;
-
       const inputTensorShapeB = testData.inputShapeB;
-      const inputTextureShapeB = testData.inputTextureShapeB;
 
       // create input data and tensor. The input data will be used to verify if the output tensor contains the
       // same value but possibly different order depending on our packing algorithm.
-      const inputDataA = createAscendingArray(elementCountA);
-      const inputDataB = createAscendingArray(elementCountB);
+      const inputDataA = testData.rawInputA ?? createAscendingArray(elementCountA);
+      const inputDataB = testData.rawInputB ?? createAscendingArray(elementCountB);
       const inputTensorA = new Tensor(inputTensorShapeA, 'float32', undefined, undefined, inputDataA);
       const inputTensorB = new Tensor(inputTensorShapeB, 'float32', undefined, undefined, inputDataB);
       const biasTensor = testData.biasValue ?
           new Tensor([1], 'float32', undefined, undefined, new Float32Array([testData.biasValue])) :
           undefined;
+      const inputs = biasTensor ? [inputTensorA, inputTensorB, biasTensor] : [inputTensorA, inputTensorB];
 
-      // manually creat packed texture from inputTensor, and insert in cache
-      const gl = webglInferenceHandler.session.textureManager.glContext.gl;
-
-      webglInferenceHandler.session.textureManager.glContext.checkError();
-      const webglTextureA = createTextureFromArray(
-          webglInferenceHandler.session.textureManager.glContext, testData.rawInputA ? testData.rawInputA : inputDataA,
-          gl.RGBA, inputTextureShapeA[0], inputTextureShapeA[1]);
-      const webglTextureB = createTextureFromArray(
-          webglInferenceHandler.session.textureManager.glContext, testData.rawInputB ? testData.rawInputB : inputDataB,
-          gl.RGBA, inputTextureShapeB[0], inputTextureShapeB[1]);
-
-      const webglTextureBias = biasTensor && testData.biasValue ?
-          createTextureFromArray(
-              webglInferenceHandler.session.textureManager.glContext, new Float32Array([testData.biasValue, 0, 0, 0]),
-              gl.RGBA, 1, 1) :
-          undefined;
-
-      webglInferenceHandler.session.textureManager.glContext.checkError();
-      const packedShapeA = inputTextureShapeA;
-      const textureDataA = {
-        width: inputTextureShapeA[0],
-        height: inputTextureShapeA[1],
-        channels: 4 as const,
-        isPacked: true,
-        shape: packedShapeA,
-        strides: ShapeUtil.computeStrides(packedShapeA),
-        unpackedShape: inputTensorShapeA,
-        tensor: inputTensorA,
-        texture: webglTextureA!
-      };
-
-      const packedShapeB = inputTextureShapeB;
-      const textureDataB = {
-        width: inputTextureShapeB[0],
-        height: inputTextureShapeB[1],
-        channels: 4 as const,
-        isPacked: true,
-        shape: packedShapeB,
-        strides: ShapeUtil.computeStrides(packedShapeB),
-        unpackedShape: inputTensorShapeB,
-        tensor: inputTensorB,
-        texture: webglTextureB!
-      };
-
-      const packedShapeBias = [1];
-      webglInferenceHandler.setTextureData(inputTensorA.dataId, textureDataA, true);
-      webglInferenceHandler.setTextureData(inputTensorB.dataId, textureDataB, true);
-      if (biasTensor && webglTextureBias) {
-        const textureDataBias: TextureData = {
-          width: 1,
-          height: 1,
-          channels: 4 as const,
-          isPacked: true,
-          shape: packedShapeBias,
-          strides: ShapeUtil.computeStrides(packedShapeBias),
-          unpackedShape: [1],
-          tensor: biasTensor,
-          texture: webglTextureBias
-        };
-
-        webglInferenceHandler.setTextureData(biasTensor.dataId, textureDataBias, true);
-      }
-      const inputList = biasTensor ? [inputTensorA, inputTensorB, biasTensor] : [inputTensorA, inputTensorB];
-
-      // compile shader code
-      const programInfo = op.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, inputList);
-
-      const artifact = webglInferenceHandler.session.programManager.build(programInfo);
-      webglInferenceHandler.session.programManager.setArtifact(op, artifact);
-
-      // run kernal and get output
-      const runData = op.createRunData(webglInferenceHandler, artifact.programInfo, inputList);
-      webglInferenceHandler.session.programManager.run(artifact, runData);
-      const result = runData.outputTextureData.tensor.data;
+      const output = webglInferenceHandler.run(
+          createPackedMatmulProgramInfoLoader(webglInferenceHandler, inputs, {activation: '', activationCacheKey: ''}),
+          inputs);
+      const result = output.data;
 
       webglInferenceHandler.session.textureManager.glContext.checkError();
       // verify result.

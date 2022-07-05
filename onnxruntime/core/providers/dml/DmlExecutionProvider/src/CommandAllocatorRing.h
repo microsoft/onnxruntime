@@ -20,9 +20,9 @@ namespace Dml
         {
             for (auto& info : m_commandAllocators)
             {
-                THROW_IF_FAILED(device->CreateCommandAllocator(
+                ORT_THROW_IF_FAILED(device->CreateCommandAllocator(
                     commandListType,
-                    IID_PPV_ARGS(&info.allocator)));
+                    IID_GRAPHICS_PPV_ARGS(info.allocator.ReleaseAndGetAddressOf())));
 
                 info.completionEvent = initialEvent;
             }
@@ -35,7 +35,7 @@ namespace Dml
             // Take the opportunity to reset the command allocator if possible.
             if (allocatorInfo.completionEvent.IsSignaled())
             {
-                THROW_IF_FAILED(allocatorInfo.Get()->Reset());
+                ORT_THROW_IF_FAILED(allocatorInfo.Get()->Reset());
             }
 
             return m_commandAllocators[m_currentCommandAllocator].Get();

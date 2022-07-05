@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+'use strict';
+
 module.exports = {
   root: true,
   ignorePatterns: ['**/*.js', 'node_modules/', 'types/', 'dist/'],
@@ -64,7 +69,7 @@ module.exports = {
     'eqeqeq': ['error', 'smart'],
     'guard-for-in': 'error',
     'id-match': 'error',
-    'max-len': ['error', { 'code': 120 }],
+    'max-len': ['error', { 'code': 120, 'ignorePattern': '^import\\s.+\\sfrom\\s.+;$' }],
     'new-parens': 'error',
     'no-bitwise': 'error',
     'no-caller': 'error',
@@ -155,7 +160,7 @@ module.exports = {
       '@typescript-eslint/naming-convention': 'off'
     }
   }, {
-    files: ['react_native/example/src/**/*.ts', 'react_native/example/src/**/*.tsx'], rules: {
+    files: ['react_native/e2e/src/**/*.ts', 'react_native/e2e/src/**/*.tsx'], rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-unnecessary-type-assertion': 'off',
       'unicorn/filename-case': 'off',

@@ -39,8 +39,8 @@ class BatchNorm final : public CudaKernel {
     const auto& node = op_kernel_info.node();
     auto opset = node.SinceVersion();
 
-    // batch norm opset 14 is not implemented for training mode
-    ORT_ENFORCE(!(is_training_mode_ && opset==14), "Training mode does not support BN opset 14 yet.");
+    // batch norm opset 14 (or higher) is not implemented for training mode
+    ORT_ENFORCE(!(is_training_mode_ && opset >= 14), "Training mode does not support BN opset 14 (or higher) yet.");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -50,7 +50,7 @@ class BatchNorm final : public CudaKernel {
   int64_t spatial_ = 1;  // default as per spec
   cudnnBatchNormMode_t cudnn_batch_norm_mode_;
   double momentum_;
-  bool is_training_mode_ = 0; //default as per spec
+  bool is_training_mode_ = 0;  //default as per spec
 };
 
 }  // namespace cuda

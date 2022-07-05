@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2022 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -15,17 +15,15 @@
 
 // Providers
 #include "onnxruntime/core/providers/cpu/cpu_provider_factory.h"
-#include "onnxruntime/core/providers/cuda/cuda_provider_factory.h"
 #include "onnxruntime/core/providers/dnnl/dnnl_provider_factory.h"
 #include "onnxruntime/core/providers/nnapi/nnapi_provider_factory.h"
 #include "onnxruntime/core/providers/nuphar/nuphar_provider_factory.h"
+#include "onnxruntime/core/providers/tvm/tvm_provider_factory.h"
 #include "onnxruntime/core/providers/openvino/openvino_provider_factory.h"
 #include "onnxruntime/core/providers/tensorrt/tensorrt_provider_factory.h"
-#include "onnxruntime/core/providers/migraphx/migraphx_provider_factory.h"
 #include "onnxruntime/core/providers/acl/acl_provider_factory.h"
 #include "onnxruntime/core/providers/armnn/armnn_provider_factory.h"
 #include "onnxruntime/core/providers/coreml/coreml_provider_factory.h"
-#include "onnxruntime/core/providers/rocm/rocm_provider_factory.h"
 #ifdef USE_DML
 #include "onnxruntime/core/providers/dml/dml_provider_factory.h"
 #endif
@@ -119,6 +117,10 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_creat
     OrtSessionOptions* opts;
     checkOrtStatus(jniEnv,api,api->CreateSessionOptions(&opts));
     checkOrtStatus(jniEnv,api,api->SetInterOpNumThreads(opts, 1));
+#ifdef ENABLE_EXTENSION_CUSTOM_OPS
+    // including all custom ops from onnxruntime-extensions
+    checkOrtStatus(jniEnv,api,api->EnableOrtCustomOps(opts));
+#endif
     // Commented out due to constant OpenMP warning as this API is invalid when running with OpenMP.
     // Not sure how to detect that from within the C API though.
     //checkOrtStatus(jniEnv,api,api->SetIntraOpNumThreads(opts, 1));
@@ -384,6 +386,23 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCUD
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addCUDAV2
+ * Signature: (JJJ)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCUDAV2
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong optsHandle) {
+    (void)jobj;
+  #ifdef USE_CUDA
+    const OrtApi* api = (OrtApi*) apiHandle;
+    checkOrtStatus(jniEnv,api,api->SessionOptionsAppendExecutionProvider_CUDA_V2((OrtSessionOptions*) handle, (const OrtCUDAProviderOptionsV2*) optsHandle));
+  #else
+    (void)apiHandle;(void)handle;(void)optsHandle; // Parameters used when CUDA is defined.
+    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with CUDA support.");
+  #endif
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    addDnnl
  * Signature: (JJI)V
  */
@@ -434,6 +453,23 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addTen
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addTensorrtV2
+ * Signature: (JJJ)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addTensorrtV2
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong optsHandle) {
+    (void)jobj;
+  #ifdef USE_TENSORRT
+    const OrtApi* api = (OrtApi*) apiHandle;
+    checkOrtStatus(jniEnv,api,api->SessionOptionsAppendExecutionProvider_TensorRT_V2((OrtSessionOptions*) handle, (const OrtTensorRTProviderOptionsV2*) optsHandle));
+  #else
+    (void)apiHandle;(void)handle;(void)optsHandle; // Parameters used when TensorRT is defined.
+    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with TensorRT support.");
+  #endif
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    addNnapi
  * Signature: (JJI)V
  */
@@ -463,6 +499,24 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addNup
   #else
     (void)apiHandle;(void)handle;(void)allowUnalignedBuffers;(void)settingsString; // Parameters used when Nuphar is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with Nuphar support.");
+  #endif
+}
+
+/*
+ * Class::    ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addTvm
+ * Signature: (JILjava/lang/String)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addTvm
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jstring settingsString) {
+    (void)jobj;
+  #ifdef USE_TVM
+    const char* settings = (*jniEnv)->GetStringUTFChars(jniEnv, settingsString, NULL);
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Tvm((OrtSessionOptions*) handle, settings));
+    (*jniEnv)->ReleaseStringUTFChars(jniEnv,settingsString,settings);
+  #else
+    (void)apiHandle;(void)handle;(void)settingsString; // Parameters used when TVM is defined.
+    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with TVM support.");
   #endif
 }
 
@@ -552,12 +606,12 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCor
  * Signature: (JJI)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addROCM
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceID, jlong memLimit) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceID) {
     (void)jobj;
   #ifdef USE_ROCM
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_ROCM((OrtSessionOptions*) handle, deviceID, (size_t) memLimit));
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_ROCM((OrtSessionOptions*) handle, deviceID));
   #else
-    (void)apiHandle;(void)handle;(void)deviceID;(void)memLimit; // Parameters used when ROCM is defined.
+    (void)apiHandle;(void)handle;(void)deviceID; // Parameters used when ROCM is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with ROCM support.");
   #endif
 }

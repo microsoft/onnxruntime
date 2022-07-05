@@ -15,7 +15,7 @@ import {WEBGL_OP_RESOLVE_RULES} from './op-resolve-rules';
 import {ProgramManager} from './program-manager';
 import {PreferLogicalStrategy, TextureLayoutStrategy} from './texture-layout-strategy';
 import {TextureManager} from './texture-manager';
-import {TextureData, WebGLOperator} from './types';
+import {TextureData} from './types';
 
 export class WebGLSessionHandler implements SessionHandler {
   programManager: ProgramManager;
@@ -26,8 +26,6 @@ export class WebGLSessionHandler implements SessionHandler {
   pack2unpackMap: Map<Tensor.Id, Tensor.Id>;
   unpack2packMap: Map<Tensor.Id, Tensor.Id>;
   initializers: Set<Tensor.Id>;
-  packOpCache: Map<string, WebGLOperator>;
-  unpackOpCache: Map<string, WebGLOperator>;
   pack?: boolean;
 
   constructor(public readonly backend: WebGLBackend, public readonly context: Session.Context) {
@@ -38,8 +36,6 @@ export class WebGLSessionHandler implements SessionHandler {
         {reuseTextures: backend.textureCacheMode === 'full'});
     this.packedTextureDataCache = new Map();
     this.unpackedTextureDataCache = new Map();
-    this.packOpCache = new Map();
-    this.unpackOpCache = new Map();
     this.pack = backend.pack;
     this.pack2unpackMap = new Map();
     this.unpack2packMap = new Map();
@@ -83,7 +79,6 @@ export class WebGLSessionHandler implements SessionHandler {
   }
   resolve(node: Graph.Node, opsets: readonly OpSet[], graph: Graph): Operator {
     const op = resolveOperator(node, opsets, WEBGL_OP_RESOLVE_RULES);
-    op.initialize(node.attributes, node, graph);
-    return op;
+    return {impl: op.opImpl, context: op.opInit ? op.opInit(node, graph) : node};
   }
 }
