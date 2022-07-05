@@ -4,7 +4,7 @@
 
 #pragma once
 
-#if (defined(_M_AMD64) && !defined(_M_ARM64EC)) || defined(_M_IX86) || defined(__x86_64__) || defined(__i386__)
+#if (defined(_M_AMD64) && !defined(_M_ARM64EC)) || defined(_M_IX86) || defined(__x86_64__) || defined(__i386__) || !defined(DISABLE_CONTRIB_OPS)
 
 #include "core/common/common.h"
 #include "core/optimizer/graph_transformer.h"

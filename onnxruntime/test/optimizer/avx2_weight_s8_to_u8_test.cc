@@ -19,6 +19,7 @@
 
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
+#ifndef DISABLE_CONTRIB_OPS
 
 namespace onnxruntime {
 namespace test {
@@ -899,3 +900,5 @@ TEST(CPU_U8S8_Precision_Tests, QAttention) {
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  // DISABLE_CONTRIB_OPS
