@@ -410,23 +410,22 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public static IEnumerable<object[]> GetModelsForTest()
         {
             var modelsDir = GetTestModelsDir();
-            Console.WriteLine($"modelsDir: {modelsDir}");
+            Console.WriteLine($"Load ONNX models from folder: {modelsDir}");
             var modelsDirInfo = new DirectoryInfo(modelsDir);
-            Console.WriteLine($"1 modelsDirInfo.FullName: {modelsDirInfo.FullName}");
             var skipModels = GetSkippedModels(modelsDirInfo);
-            Console.WriteLine($"2 modelsDirInfo.FullName: {modelsDirInfo.FullName}");
+            // Iterate thgough all direct sub-folders in modelsDir.
             foreach (var modelGroupDir in modelsDirInfo.EnumerateDirectories())
             {
-                Console.WriteLine($"3 modelGroupDir: {modelGroupDir}");
+                // Iterate thgough all ONNX model folder in every sub-folder.
                 foreach (var modelDir in modelGroupDir.EnumerateDirectories())
                 {
-                    Console.WriteLine($"modelDir: {modelDir.FullName}");
+                    Console.WriteLine($"Found ONNX model: {modelDir.FullName}");
                     if (!skipModels.ContainsKey(modelDir.Name))
                     {
                         yield return new object[] { modelDir.FullName };
                     }
-                } //model
-            } //opset
+                } //model folder.
+            } //model group folder, e.g., opset9, opset10, etc.
         }
 
         public static IEnumerable<object[]> GetSkippedModelForTest()
@@ -811,9 +810,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
         static string GetTestModelsDir()
         {
+            // Get test path from enviroment.
+            // Expected folder structure:
+            //   OnnxModelRootPath
+            //     modelsl_in_opset9
+            //       test_add
+            //         add.onnx
+            //     modelsl_in_opset17
+            //       test_add
+            //         add.onnx
+            //       test_layernorm
+            //         layer_norm.onnx
+            //     custom_models
+            //       custom_vision
+            //         resnet.onnx
             var path = Environment.GetEnvironmentVariable("OnnxModelRootPath");
-            //var path = "C:\\Users\\wechi\\repos\\onnxruntime\\build\\Windows\\models";
-            Console.WriteLine($"OnnxModelRootPath: {path}");
             return path;
         }
     }
