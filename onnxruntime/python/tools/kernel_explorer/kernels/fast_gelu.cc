@@ -2,13 +2,19 @@
 // Licensed under the MIT License.
 
 #include <pybind11/pybind11.h>
-#include "hip/hip_fp16.h"
-#include "fast_gelu_kernel.h"
+#include <hip/hip_fp16.h>
+#include "device_array.h"
+#include "operator.h"
+#include "contrib_ops/rocm/bert/fast_gelu_impl_kernel.h"
+#include "contrib_ops/rocm/bert/fast_gelu_tunable_op.h"
 
 namespace py = pybind11;
+using onnxruntime::contrib::rocm::LaunchFastGelu;
+using onnxruntime::contrib::rocm::FastGeluParams;
+using onnxruntime::contrib::rocm::FastGeluTunableOp;
 
 template <typename T, int ThreadsPerBlock, int VecSize>
-class FastGelu: public Operator<T> {
+class FastGelu: public Operator {
  public:
   FastGelu(DeviceArray& input, DeviceArray& bias, DeviceArray& output, int input_length, int bias_length) :
     input_(reinterpret_cast<T*>(input.ptr())),
@@ -16,10 +22,10 @@ class FastGelu: public Operator<T> {
     output_(reinterpret_cast<T*>(output.ptr())),
     input_length_(input_length),
     bias_length_(bias_length),
-    Operator<T>() {}
+    Operator() {}
 
   void Run() {
-    LaunchFastGelu<T, ThreadsPerBlock, VecSize>(input_, bias_, output_, input_length_, bias_length_);
+    LaunchFastGelu<T, ThreadsPerBlock, VecSize>(stream_, input_, bias_, output_, input_length_, bias_length_);
   }
 
  private:
@@ -28,6 +34,33 @@ class FastGelu: public Operator<T> {
   T* output_;
   int input_length_;
   int bias_length_;
+};
+
+template <typename T>
+class FastGeluTunable: public Operator {
+ public:
+  FastGeluTunable(DeviceArray& input, DeviceArray& bias, DeviceArray& output, int input_length, int bias_length) :
+    input_(reinterpret_cast<T*>(input.ptr())),
+    bias_(reinterpret_cast<T*>(bias.ptr())),
+    output_(reinterpret_cast<T*>(output.ptr())),
+    input_length_(input_length),
+    bias_length_(bias_length),
+    Operator() {
+    op_.EnableTuning();
+  }
+
+  void Run() {
+    FastGeluParams<T> op_params(stream_, input_, bias_, output_, input_length_, bias_length_);
+    op_.Run(&op_params);
+  }
+
+ private:
+  T* input_;
+  T* bias_;
+  T* output_;
+  int input_length_;
+  int bias_length_;
+  FastGeluTunableOp<T> op_;
 };
 
 #define REGISTER_OP(name, type, threads_per_block, vec_size)                                              \
@@ -58,4 +91,9 @@ void InitFastGelu(py::module m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, half);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, float);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, double);
+  py::class_<FastGeluTunable<half>>(m, "FastGelu_half_Tunable")
+    .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, int, int>())
+    .def("SetRepeats", &FastGeluTunable<half>::SetRepeats)
+    .def("Profile", &FastGeluTunable<half>::Profile)
+    .def("Run", &FastGeluTunable<half>::Run);
 }

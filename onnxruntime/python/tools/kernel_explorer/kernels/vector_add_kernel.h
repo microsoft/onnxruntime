@@ -3,15 +3,18 @@
 
 #pragma once
 
+#include <hip/hip_runtime.h>
+
 #include "device_array.h"
 #include "operator.h"
+#include "contrib_ops/rocm/bert/util.h"
 
 template <typename T, int VecSize>
 __global__ void VectorAddKernel(const T* __restrict__ x,
                                   const T* __restrict__ y,
                                   T* __restrict__ z, int n) {
   int i = hipBlockDim_x * hipBlockIdx_x + hipThreadIdx_x;
-  using LoadT = onnxruntime::rocm::aligned_vector<T, VecSize>;
+  using LoadT = onnxruntime::contrib::rocm::AlignedVector<T, VecSize>;
 
   if (VecSize * i + VecSize - 1 < n) {
     T x_vec[VecSize];
@@ -41,10 +44,10 @@ __global__ void VectorAddKernel(const T* __restrict__ x,
 }
 
 template <typename T, int ThreadsPerBlock, int VecSize>
-void LaunchVectorAdd(const T* x, const T* y, T* z, int n) {
+void LaunchVectorAdd(hipStream_t stream, const T* x, const T* y, T* z, int n) {
   hipLaunchKernelGGL((VectorAddKernel<T, VecSize>), 
-                  dim3(ceil(float(n)/(float(ThreadsPerBlock)*VecSize))),
-                  dim3(ThreadsPerBlock),
-                  0, 0,
-                  x, y, z, n);
+                     dim3(ceil(float(n)/(float(ThreadsPerBlock)*VecSize))),
+                     dim3(ThreadsPerBlock),
+                     0, stream,
+                     x, y, z, n);
 }
