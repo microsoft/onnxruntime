@@ -24,6 +24,10 @@ Abstract:
 
 #pragma once
 
+#include <cstdint>
+
+#include "core/common/cpuid_arch_definition.h"
+
 namespace onnxruntime {
 
 enum CPUIDINFOuarch {

@@ -3,7 +3,7 @@
 
 #include "core/common/cpuid_uarch.h"
 
-#include "core/common/common.h"
+#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 
