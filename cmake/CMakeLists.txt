@@ -1632,10 +1632,13 @@ set(onnxruntime_DELAYLOAD_FLAGS "")
 include_directories(
   ${ONNXRUNTIME_INCLUDE_DIR}
   ${REPO_ROOT}/include/onnxruntime/core/session
-  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-    ${REPO_ROOT}/orttraining/orttraining/training_api/include/
-  endif()
 )
+
+if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+  include_directories(
+    ${REPO_ROOT}/orttraining/orttraining/training_api/include/
+  )
+endif()
 
 if (onnxruntime_USE_OPENVINO)
 

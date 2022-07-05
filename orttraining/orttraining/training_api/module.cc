@@ -109,7 +109,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
     ORT_ENFORCE(params_iter != named_parameters_.end());
 
     // Retrieve the target device for "param_name"
-    std::vector<SessionState::NodeInfo> node_info_vec;
+    InlinedVector<SessionState::NodeInfo> node_info_vec;
     ORT_THROW_IF_ERROR(train_sess_state.GetInputNodeInfo(param_name, node_info_vec));
     const auto& node_info = node_info_vec.front();
     const auto target_device = *node_info.device;
