@@ -377,6 +377,16 @@ std::string Shape2String(const std::vector<uint32_t>& shape) {
   return os.str();
 }
 
+uint32_t ShapeSize(const Shape& shape) {
+  return ShapeSize(shape, 0, shape.size());
+}
+
+uint32_t ShapeSize(const Shape& shape, size_t begin_idx, size_t end_idx) {
+  ORT_ENFORCE(begin_idx <= end_idx && end_idx <= shape.size(), "invalid indices");
+  auto begin = shape.begin() + begin_idx, end = shape.begin() + end_idx;
+  return std::accumulate(begin, end, SafeInt<uint32_t>{1}, std::multiplies{});
+}
+
 bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                         const std::string& input_name, const char* input_description) {
   if (!Contains(initializers, input_name)) {

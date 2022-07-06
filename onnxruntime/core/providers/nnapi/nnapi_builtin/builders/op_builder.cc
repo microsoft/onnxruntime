@@ -235,6 +235,9 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
 // and input B is signed int8), in this case, since NNAPI requires A and B to be same type,
 // the initializer tensor B will be converted from int8 to uint8 by flip each byte by XOR 0x80
 // byte ^ 0x80 == byte + 128
+//
+// If source has more than two dimensions, transposes the last two dimensions only and flattens the leading dimensions
+// of the transposed shape into the second to last dimension. E.g., [A, B, C, D] -> [A*B*D, C].
 static Status AddInitializerTransposed(ModelBuilder& model_builder,
                                        const OperandType& source_operand_type,
                                        const std::string& name,
@@ -242,8 +245,8 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
   const auto& tensor = *model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
 
-  ORT_RETURN_IF_NOT(shape.size() == 2,
-                    "The initializer is not 2D: ", name, " actual dim ", shape.size());
+  ORT_RETURN_IF_NOT(shape.size() >= 2,
+                    "The initializer does not have at least two dimensions: ", name, " actual rank ", shape.size());
 
   // TODO support other data types
   const uint8_t* src = nullptr;
@@ -264,18 +267,22 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
                              " doesn't have valid type: ", tensor.data_type());
   }
 
-  const auto x_t = shape[0], y_t = shape[1];
-  Shape dest_shape = {y_t, x_t};
-  OperandType operand_type = source_operand_type;
-  operand_type.SetDimensions(dest_shape);
+  const auto x_t = shape[shape.size() - 2], y_t = shape[shape.size() - 1];
+  const auto block_size = x_t * y_t;
+  const auto num_blocks = ShapeSize(shape, 0, shape.size() - 2);
+  Shape dest_shape = {num_blocks * y_t, x_t};
+  OperandType operand_type{source_operand_type.type, dest_shape};
   std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[operand_type.GetOperandBlobByteSize()]);
   uint8_t* buffer = buffer_holder.get();
   size_t element_size = operand_type.GetElementByteSize();
   uint8_t bit_flip_val = is_per_tensor_u8s8 ? 0x80 : 0;
-  for (uint32_t x = 0; x < x_t; x++) {
-    for (uint32_t y = 0; y < y_t; y++) {
-      for (size_t i = 0; i < element_size; i++) {
-        buffer[element_size * (y * x_t + x) + i] = src[element_size * (x * y_t + y) + i] ^ bit_flip_val;
+  for (uint32_t block_idx = 0; block_idx < num_blocks; ++block_idx) {
+    for (uint32_t x = 0; x < x_t; x++) {
+      for (uint32_t y = 0; y < y_t; y++) {
+        for (size_t i = 0; i < element_size; i++) {
+          buffer[block_size * block_idx + element_size * (y * x_t + x) + i] =
+              src[block_size * block_idx + element_size * (x * y_t + y) + i] ^ bit_flip_val;
+        }
       }
     }
   }
@@ -826,7 +833,7 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
     }
 
     // Now the dest node is Gemm/Matmul, we want to make sure it is supported
-    if (!BaseOpBuilder::IsOpSupported(model_builder, node_unit)) {
+    if (!BaseOpBuilder::IsOpSupported(model_builder, dest_node_unit)) {
       return false;
     }
 
@@ -846,6 +853,9 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
                             << ", the actual output_rank, " << output_rank;
       return false;
     }
+
+    // TODO should we verify that reshape is actually flattening leading dimensions?
+    // e.g., [2, 3, 4] -> [6, 4] is ok but [2, 3, 4] -> [4, 6] is not
   }
 
   LOGS_DEFAULT(VERBOSE) << "Skipping Reshape/Flatten node ["
@@ -1630,6 +1640,32 @@ class GemmOpBuilder : public BaseOpBuilder {
  private:
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+  static Status AddReshape(ModelBuilder& model_builder, const std::string& node_name,
+                           const std::string& input, const std::vector<int32_t>& shape,
+                           const std::string& output) {
+    auto& shaper = model_builder.GetShaper();
+    const auto& operand_indices = model_builder.GetOperandIndices();
+    const auto& operand_types = model_builder.GetOperandTypes();
+
+    ORT_RETURN_IF_ERROR(shaper.Reshape(input, shape, output));
+
+    const OperandType output_operand_type{operand_types.at(input).type, shaper[output]};
+
+    std::vector<uint32_t> input_indices;
+    // Add input
+    input_indices.push_back(operand_indices.at(input));
+    // Add new shape
+    const Shape shape_dimen = {static_cast<uint32_t>(shape.size())};
+    const std::string shape_name = model_builder.GetUniqueName(node_name + input + "newshape");
+    const OperandType shape_operand_type(Type::TENSOR_INT32, shape_dimen);
+    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type));
+    input_indices.push_back(operand_indices.at(shape_name));
+
+    ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_RESHAPE, input_indices, {output}, {output_operand_type}));
+
+    return Status::OK();
+  }
 };
 
 bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
@@ -1719,7 +1755,6 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
                                                      w_scales, is_per_tensor_u8s8));
   }
 
-  uint32_t input_2_idx;
   if (transB == 0) {
     Type onnx_mat_b_type;
     if (!is_quant_matmul && !is_quant_gemm)
@@ -1736,7 +1771,6 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     ORT_RETURN_IF_ERROR(AddInitializerTransposed(model_builder, onnx_mat_b_operand_type, input2, is_per_tensor_u8s8));
   }
 
-  input_2_idx = operand_indices.at(input2);
   // Verify if the scale and zero point matchs from onnx input and nnapi input
   if (is_quant_matmul || is_quant_gemm) {
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input1, a_scale, a_zero_point));
@@ -1800,17 +1834,44 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     bias_idx = operand_indices.at(bias);
   }
 
+  const auto input_1_idx = operand_indices.at(input1);
+  const auto input_2_idx = operand_indices.at(input2);
+
   std::vector<uint32_t> input_indices;
-  input_indices.push_back(operand_indices.at(input1));  // A
-  input_indices.push_back(input_2_idx);                 // B
-  input_indices.push_back(bias_idx);                    // C
+  input_indices.push_back(input_1_idx);  // A
+  input_indices.push_back(input_2_idx);  // B'
+  input_indices.push_back(bias_idx);     // C
   int32_t fuse_code = model_builder.FindActivation(node_unit);
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
-  ORT_RETURN_IF_ERROR(shaper.FC(input1, input2, output));
-  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output], y_scale, y_zero_point);
+  const auto& input_1_shape = shaper[input1];
+  // If A has more than two dimensions, ANEURALNETWORKS_FULLY_CONNECTED will flatten it to the last two and the output
+  // will have two dimensions.
+  // In that case, we will reshape the output to have the leading dimensions of A.
+  const bool reshape_needed = input_1_shape.size() > 2;
+  std::optional<std::string> result_to_reshape;
+  if (reshape_needed) {
+    result_to_reshape = model_builder.GetUniqueName(node_unit.Name() + "_result_to_reshape");
+  }
+
+  const auto& fc_output = reshape_needed ? *result_to_reshape : output;
+  ORT_RETURN_IF_ERROR(shaper.FC(input1, input2, fc_output));
+  const OperandType fc_output_operand_type(operand_types.at(input1).type, shaper[fc_output], y_scale, y_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_FULLY_CONNECTED, input_indices,
-                                                 {output}, {output_operand_type}));
+                                                 {fc_output}, {fc_output_operand_type}));
+
+  if (reshape_needed) {
+    const auto& input_2_shape = shaper[input2];
+    LOGS_DEFAULT(VERBOSE) << "input1 shape: " << Shape2String(input_1_shape) << ", input2 shape: " << Shape2String(input_2_shape);
+    std::vector<int32_t> new_shape{};
+    new_shape.reserve(input_1_shape.size());
+    for (size_t i = 0; i < input_1_shape.size() - 1; ++i) {
+      new_shape.push_back(SafeInt<int32_t>(input_1_shape[i]));
+    }
+    new_shape.push_back(SafeInt<int32_t>(input_2_shape[0]));
+    ORT_RETURN_IF_ERROR(AddReshape(model_builder, node_unit.Name(), fc_output, new_shape, output));
+  }
+
   return Status::OK();
 }
 

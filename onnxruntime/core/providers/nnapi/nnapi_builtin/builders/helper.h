@@ -158,6 +158,9 @@ bool IsValidSupportedNodeGroup(const std::vector<const Node*>& supported_node_gr
 // Get string representation of a Shape
 std::string Shape2String(const std::vector<uint32_t>& shape);
 
+uint32_t ShapeSize(const Shape& shape);
+uint32_t ShapeSize(const Shape& shape, size_t begin_idx, size_t end_idx);
+
 // Check the given input is an initializer tensor
 // input_name is the name of the initializer
 // input_description is the string describing the input in the output message (if any)

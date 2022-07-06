@@ -1400,23 +1400,45 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
   const bool is_quant_gemm = quant_type == QuantizedOpType::QDQGemm;
 
   Shape a_shape;
-  {
-    if (!GetShape(inputs[0].node_arg, a_shape))
-      return false;
-
-    if (a_shape.size() != 2) {
-      LOGS_DEFAULT(VERBOSE) << "A must be 2D";
-      return false;
-    }
-  }
+  if (!GetShape(inputs[0].node_arg, a_shape))
+    return false;
 
   Shape b_shape;
-  {
-    if (!GetShape(inputs[1].node_arg, b_shape))
+  if (!GetShape(inputs[1].node_arg, b_shape))
       return false;
 
+  LOGS_DEFAULT(VERBOSE) << "A shape: " << Shape2String(a_shape) << ", B shape: " << Shape2String(b_shape);
+
+  if (op_type == "MatMul") {
+    // A can be 2-4D
+    // B can be 2D or have the same rank (N) and leading N-2 dimensions as A
+    // Note: could possibly also let QLinearMatMul's A have more than two dimensions
+    if (a_shape.size() < 2 || a_shape.size() > 4) {
+      LOGS_DEFAULT(VERBOSE) << "A must be 2-4D, it is " << a_shape.size() << "D";
+      return false;
+    }
+
     if (b_shape.size() != 2) {
-      LOGS_DEFAULT(VERBOSE) << "B must be 2D";
+      if (b_shape.size() != a_shape.size()) {
+        LOGS_DEFAULT(VERBOSE) << "B rank [" << b_shape.size() << "] does not match A rank [" << a_shape.size() << "]";
+        return false;
+      }
+      for (size_t i = 0; i < b_shape.size() - 2; ++i) {
+        if (a_shape[i] != b_shape[i]) {
+          LOGS_DEFAULT(VERBOSE) << "Leading dimension mismatch at index " << i << ": B dim [" << b_shape[i]
+                                << "] and A dim [" << a_shape[i] << "]";
+          return false;
+        }
+      }
+    }
+  } else {
+    if (a_shape.size() != 2) {
+      LOGS_DEFAULT(VERBOSE) << "A must be 2D, it is " << a_shape.size() << "D";
+      return false;
+    }
+
+    if (b_shape.size() != 2) {
+      LOGS_DEFAULT(VERBOSE) << "B must be 2D, it is " << b_shape.size() << "D";
       return false;
     }
   }

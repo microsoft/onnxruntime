@@ -279,7 +279,7 @@ Status Shaper::ReshapeImpl(const std::string& input_name,
     capacity *= output_dimen[unk_dim_idx];
   }
 
-  ORT_RETURN_IF_NOT(capacity == input_size, "Invalid shape is given!");
+  ORT_RETURN_IF_NOT(capacity == input_size, "Invalid shape is given!", " capacity ", capacity, " != input_size ", input_size);
 
   shape_map_[output_name] = output_dimen;
   return Status::OK();
@@ -343,9 +343,11 @@ Status Shaper::IdentityImpl(const std::string& input_name,
 Status Shaper::FCImpl(const std::string& input1_name, const std::string& input2_name,
                       const std::string& output_name) {
   // Currently we only support A*B'+C
-  const Shape& input1_dimen = shape_map_.at(input1_name);
-  const Shape& input2_dimen = shape_map_.at(input2_name);  // num_units, input_size
-  Shape output_dimen{input1_dimen[0], input2_dimen[0]};
+  const Shape& input1_dimen = shape_map_.at(input1_name);  // A: batch_size (flattened as needed), input_size
+  const Shape& input2_dimen = shape_map_.at(input2_name);  // B': num_units, input_size
+  const uint32_t batch_size = std::accumulate(input1_dimen.begin(), input1_dimen.end() - 1,
+                                              uint32_t{1}, std::multiplies<uint32_t>{});
+  Shape output_dimen{batch_size, input2_dimen[0]};
   shape_map_[output_name] = output_dimen;
   return Status::OK();
 }

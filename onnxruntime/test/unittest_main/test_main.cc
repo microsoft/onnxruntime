@@ -20,9 +20,23 @@
 #include "test/test_environment.h"
 
 std::unique_ptr<Ort::Env> ort_env;
-void ortenv_setup(){
+void ortenv_setup(OrtLoggingLevel logging_level){
   OrtThreadingOptions tpo;
-  ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));
+  ort_env.reset(new Ort::Env(&tpo, logging_level, "Default"));
+}
+
+struct Args{
+  OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
+};
+
+static Args ParseArgs(int argc, const char* const* argv) {
+  Args args{};
+  for (int i = 0; i < argc; ++i) {
+    if (strcmp(argv[i], "-v") == 0) {
+      args.logging_level = ORT_LOGGING_LEVEL_VERBOSE;
+    }
+  }
+  return args;
 }
 
 #define TEST_MAIN main
@@ -40,8 +54,9 @@ int TEST_MAIN(int argc, char** argv) {
 
   ORT_TRY {
     ::testing::InitGoogleTest(&argc, argv);
+    const auto args = ParseArgs(argc, argv);
 
-    ortenv_setup();
+    ortenv_setup(args.logging_level);
     status = RUN_ALL_TESTS();
   }
   ORT_CATCH(const std::exception& ex) {

@@ -106,6 +106,9 @@ template <typename T>
 void RunMatMulTest(int32_t opset_version, bool is_a_constant, bool is_b_constant) {
   std::vector<T> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   for (auto t : GenerateTestCases<T>()) {
+    SCOPED_TRACE(MakeString("name: ", t.name,
+                            ", is A constant: ", is_a_constant,
+                            ", is B constant: ", is_b_constant));
     OpTester test("MatMul", opset_version);
 
     int64_t size0 = TensorShape::FromExistingBuffer(t.input0_dims).SizeHelper(0, t.input0_dims.size());
@@ -121,8 +124,9 @@ void RunMatMulTest(int32_t opset_version, bool is_a_constant, bool is_b_constant
     // OpenVINO EP: Disabled temporarily matmul broadcasting not fully supported
     // Disable TensorRT because of unsupported data type
     std::unordered_set<std::string> excluded_providers{kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
-    if (is_b_constant) {
+    if (t.name == "test 2D empty input") {
       // NNAPI: currently fails for the "test 2D empty input" case
+      // TODO handle empty input?
       excluded_providers.insert(kNnapiExecutionProvider);
     }
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
@@ -136,7 +140,7 @@ void RunMatMulTest(int32_t opset_version) {
 
 TEST(MathOpTest, MatMulFloatType) {
   RunMatMulTest<float>(7, false, false);
-  RunMatMulTest<float>(7, false, true);
+  RunMatMulTest<float>(7, false, true);  // duplicate of MatMulFloatTypeInitializer?
 }
 
 TEST(MathOpTest, MatMulDoubleType) {
@@ -213,7 +217,7 @@ TEST(MathOpTest, MatMul_BFloat16) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif 
+#endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
