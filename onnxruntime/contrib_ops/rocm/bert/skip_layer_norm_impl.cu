@@ -28,9 +28,9 @@ limitations under the License.
 // Copyright (c) Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 
+#include <hip/hip_fp16.h>
 #include "contrib_ops/rocm/bert/layer_norm.cuh"
 #include "contrib_ops/rocm/bert/skip_layer_norm_impl.h"
-#include <hip/hip_fp16.h>
 
 namespace onnxruntime {
 namespace contrib {
@@ -126,55 +126,55 @@ bool LaunchSkipLayerNormKernel(
     const int grid_size = element_count / ld;
     if (ld <= 32) {
       constexpr int block_size = 32;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size, 0, stream, ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 64) {
       constexpr int block_size = 64 / 2;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 2>), grid_size, block_size, 0, stream, ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 2>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 128) {
       constexpr int block_size = 128 / 4;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 4>), grid_size, block_size, 0, stream, ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 4>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 384) {
       constexpr int block_size = 384 / 4;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 4>), grid_size, block_size, 0, stream, ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 4>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 768) {
       constexpr int block_size = 768 / 4;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 4>), grid_size, block_size, 0, stream, ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 4>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 1024) {
       constexpr int block_size = 1024 / 4;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 4>), grid_size, block_size, 0, stream, ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 4>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else {
       constexpr int block_size = 256;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), grid_size, block_size, 0, stream, ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output);
     }
   } else {
     const int grid_size = element_count / ld;
     if (ld <= 32) {
       constexpr int block_size = 32;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size, 0, stream, ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 64) {
       constexpr int block_size = 64;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size, 0, stream, ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 128) {
       constexpr int block_size = 128;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size, 0, stream, ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld == 384) {
       constexpr int block_size = 384;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size, 0, stream, ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else {
       constexpr int block_size = 256;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), grid_size, block_size, 0, stream, ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output);
     }
   }
   return HIP_CALL(hipPeekAtLastError());

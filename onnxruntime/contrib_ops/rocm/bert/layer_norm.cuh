@@ -22,15 +22,14 @@ limitations under the License.
 // Licensed under the MIT License.
 #pragma once
 
-#include "core/providers/rocm/rocm_common.h"
-#include "core/providers/rocm/cu_inc/common.cuh"
-#include "core/providers/rocm/shared_inc/rocm_call.h"
 #include <hip/hip_fp16.h>
 #include <hipblas.h>
 #include <hipcub/hipcub.hpp>
+#include "core/providers/rocm/rocm_common.h"
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/shared_inc/rocm_call.h"
 
 using namespace onnxruntime::rocm;
-using namespace hipcub;
 
 namespace onnxruntime {
 namespace contrib {
@@ -49,7 +48,7 @@ __device__ inline half Rsqrt(const half& x) {
 #if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
   return hrsqrt(x);
 #else
-  return half(rsqrtf(float(x)));
+  return half(rsqrtf(static_cast<float>(x)));
 #endif
 }
 
