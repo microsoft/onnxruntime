@@ -413,12 +413,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var modelsDirInfo = new DirectoryInfo(modelsDir);
             var skipModels = GetSkippedModels(modelsDirInfo);
 
+            Console.WriteLine($"modeltDir.Name: {modelsDir}");
             foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
             {
                 //var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opsetDir.Name));
+                Console.WriteLine($"opsetDir.Name: {opsetDir.FullName}");
                 foreach (var modelDir in opsetDir.EnumerateDirectories())
                 {
-                    Console.WriteLine($"modelDir.Name: {modelDir.Name}");
+                    Console.WriteLine($"modelDir.Name: {modelDir.FullName}");
                     if (!skipModels.ContainsKey(modelDir.Name))
                     {
                         yield return new object[] { modelDir.Parent.Name, modelDir.Name };
