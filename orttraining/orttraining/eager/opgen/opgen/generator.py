@@ -193,6 +193,8 @@ class ORTGen:
         writer.writeline('#include "ort_aten.h"')
         writer.writeline('#include "ort_log.h"')
         writer.writeline()
+        writer.writeline('#define CHECK_STATUS(status) if(!status.IsOK()) { std::stringstream err; err << "ORT return failure (line " << __LINE__ << "): " << status.ErrorMessage(); throw std::runtime_error(err.str()); }')
+        writer.writeline()
         writer.push_namespace("torch_ort")
         writer.push_namespace("eager")
         writer.writeline()
@@ -334,7 +336,7 @@ class ORTGen:
                 if isinstance(op_input, Outputs):
                     continue
                 cpp_param = cpp_func.get_parameter(op_input)
-                writer.write(f"auto ort_input_{op_input} = ")
+                writer.write(f"auto ort_input_{onnx_op_index}_{op_input} = ")
                 writer.writeline(f"create_ort_value(invoker, {op_input});")
                 if need_type_promotion:
                     type_func_str = (
@@ -346,7 +348,7 @@ class ORTGen:
                     writer.writeline("{")
                     writer.push_indent()
                     writer.writeline(
-                        f"ort_input_{op_input} = CastToType(invoker, ort_input_{op_input}, *promoted_type);"
+                        f"ort_input_{onnx_op_index}_{op_input} = CastToType(invoker, ort_input_{onnx_op_index}_{op_input}, *promoted_type);"
                     )
                     writer.pop_indent()
                     writer.writeline("}")
@@ -409,7 +411,7 @@ class ORTGen:
                                         and output_alias.is_writable
                                     ):
                                         writer.writeline(
-                                            f"{onnx_op.outputs}[{output_index}] = ort_input_{onnx_op.inputs[input_index]};"
+                                            f"{onnx_op.outputs}[{output_index}] = ort_input_{onnx_op_index}_{onnx_op.inputs[input_index]};"
                                         )
                                         in_place_params[output_index] = cpp_param.identifier.value
                                         break
@@ -420,7 +422,7 @@ class ORTGen:
                                     and self._get_alias_info(torch_p) == output_alias
                                     and output_alias.is_writable
                                 ):
-                                    writer.writeline(f"{onnx_op.outputs}[0] = ort_input_{onnx_op.inputs[input_index]};")
+                                    writer.writeline(f"{onnx_op.outputs}[0] = ort_input_{onnx_op_index}_{onnx_op.inputs[input_index]};")
                                     in_place_params[0] = cpp_param.identifier.value
                                     break
 
@@ -444,23 +446,14 @@ class ORTGen:
                         raise FunctionGenerationError(cpp_func, "multiple outputs not supported")
                     op_input = f"{op_input}[0]"
                 else:
-                    op_input = f"ort_input_{op_input}"
+                    op_input = f"ort_input_{onnx_op_index}_{op_input}"
                 writer.writeline(f"std::move({op_input}),")
             writer.pop_indent()
             writer.write(f"}}, {onnx_op.outputs}, {attrs_arg}")
             if onnx_op.domain:
                 writer.write(f", {onnx_op.domain}")
             writer.writeline(");")
-            writer.writeline()
-
-            # Assert invocation
-            writer.writeline("if (!status.IsOK())")
-            writer.push_indent()
-            writer.writeline("throw std::runtime_error(")
-            writer.push_indent()
-            writer.writeline('"ORT return failure status:" + status.ErrorMessage());')
-            writer.pop_indent()
-            writer.pop_indent()
+            writer.writeline('CHECK_STATUS(status);')
             writer.writeline()
 
             # We'll potentially return back to Torch from this op
