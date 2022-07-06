@@ -98,8 +98,16 @@ for unary_op in [
     if unary_op not in ["isnan", "nonzero", "min", "max", "isinf", "det"]:
         ops[f"{aten_name}_"] = onnx_op
 
+# Notes on Onnx op mapping
+#
+# Equal - Onnx spec has the return as a bool tensor, but aten will keep the tensor
+#         return type matching that of the "out" tensor if one is passed. To support this behavior
+#         we will CAST the Equal result to match the "out" as seen in eq and ne below.
+#
+# ---------------------------
+
 hand_implemented = {
-    "aten::abs.out": SignatureOnly(),
+    "aten::abs.out": Abs("self"),
     "aten::empty.memory_format": SignatureOnly(),
     "aten::empty_strided": SignatureOnly(),
     "aten::zero_": SignatureOnly(),
@@ -129,11 +137,10 @@ hand_implemented = {
     "aten::min": ReduceMin("self", keepdims=0),
     "aten::_cat": Concat("tensors", "dim"),
     "aten::fill_.Scalar": ConstantOfShape("self", value="value"),
-    "aten::ne.Scalar": MakeTorchFallback(),
-    "aten::ne.Scalar_out": MakeTorchFallback(),
-    "aten::ne.Tensor_out": MakeTorchFallback(),
-    "aten::eq.Tensor": MakeTorchFallback(),
-    "aten::eq.Tensor_out": MakeTorchFallback(),
+    "aten::ne.Scalar_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
+    "aten::ne.Tensor_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
+    "aten::eq.Tensor_out": Cast(Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
+    "aten::eq.Scalar_out": Cast(Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
     "aten::bitwise_and.Tensor_out": MakeTorchFallback(),
     "aten::masked_select": MakeTorchFallback(),
     "aten::_local_scalar_dense": MakeTorchFallback(),
