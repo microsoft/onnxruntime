@@ -9,6 +9,8 @@
 
 namespace py = pybind11;
 
+namespace onnxruntime {
+
 template <typename T, int ThreadsPerBlock, int VecSize>
 class VectorAdd: public Operator {
  public:
@@ -88,3 +90,5 @@ void InitVectorAdd(py::module m) {
     .def("Profile", &VectorAddTunable<half>::Profile)
     .def("Run", &VectorAddTunable<half>::Run);
 }
+
+}  // namespace onnxruntime

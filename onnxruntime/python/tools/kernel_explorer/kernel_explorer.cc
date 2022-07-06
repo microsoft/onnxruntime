@@ -9,6 +9,8 @@
 
 namespace py = pybind11;
 
+namespace onnxruntime {
+
 PYBIND11_MODULE(kernel_explorer, m) {
   py::class_<DeviceArray>(m, "DeviceArray")
     .def(py::init<py::array>())
@@ -16,3 +18,5 @@ PYBIND11_MODULE(kernel_explorer, m) {
   InitVectorAdd(m);
   InitFastGelu(m);
 }
+
+}  // namespace onnxruntime

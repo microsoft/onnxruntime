@@ -11,6 +11,8 @@
 using onnxruntime::contrib::rocm::CeilingDivision;
 using onnxruntime::contrib::rocm::AlignedVector;
 
+namespace onnxruntime {
+
 template <typename T, int VecSize>
 __global__ void VectorAddKernel(const T* __restrict__ x,
                                   const T* __restrict__ y,
@@ -53,3 +55,5 @@ void LaunchVectorAdd(hipStream_t stream, const T* x, const T* y, T* z, int n) {
                      0, stream,
                      x, y, z, n);
 }
+
+}  // namespace onnxruntime

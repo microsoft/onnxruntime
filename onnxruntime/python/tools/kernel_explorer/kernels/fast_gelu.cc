@@ -13,6 +13,8 @@ using onnxruntime::contrib::rocm::LaunchFastGelu;
 using onnxruntime::contrib::rocm::FastGeluParams;
 using onnxruntime::contrib::rocm::FastGeluTunableOp;
 
+namespace onnxruntime {
+
 template <typename T, int ThreadsPerBlock, int VecSize>
 class FastGelu: public Operator {
  public:
@@ -97,3 +99,5 @@ void InitFastGelu(py::module m) {
     .def("Profile", &FastGeluTunable<half>::Profile)
     .def("Run", &FastGeluTunable<half>::Run);
 }
+
+}  // namespace onnxruntime

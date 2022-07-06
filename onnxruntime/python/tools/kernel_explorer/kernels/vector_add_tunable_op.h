@@ -13,6 +13,8 @@ using onnxruntime::contrib::rocm::OpParams;
 using onnxruntime::contrib::rocm::Op;
 using onnxruntime::contrib::rocm::TunableOp;
 
+namespace onnxruntime {
+
 template<typename T>
 struct VectorAddParams : OpParams {
   VectorAddParams(hipStream_t stream, const T* x, const T* y, T* z, int n) :
@@ -68,3 +70,5 @@ class VectorAddTunableOp : public TunableOp {
     return true;
   }
 };
+
+}  // namespace onnxruntime
