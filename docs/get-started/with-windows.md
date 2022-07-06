@@ -1,12 +1,13 @@
 ---
-title: WinRT
+title: Windows
 parent: Get Started
 toc: true
+description: Get Started with Onnx Runtime with Windows. Windows OS Integration and requirements to install and build ORT for Windows are given.  
 nav_order: 8
 ---
 
 
-# Get started with ORT for Windows Machine Learning WinRT
+# Get started with ONNX Runtime for Windows 
 {: .no_toc }
 
 The ONNX Runtime Nuget package provides the ability to use the full [WinML API](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference).
@@ -14,7 +15,7 @@ This allows scenarios such as passing a [Windows.Media.VideoFrame](https://docs.
 
 The WinML API is a WinRT API that shipped inside the Windows OS starting with build 1809 (RS5) in the Windows.AI.MachineLearning namespace. It embedded a version of the ONNX Runtime.
 
-In addition to using the in-box version of WinML, WinML can also be installed as an application redistributable package (see [layered architecture](../reference/high-level-design#windows-os-integration) for technical details).
+In addition to using the in-box version of WinML, WinML can also be installed as an application re-distributable package (see [Direct ML Windows](../execution-providers/DirectML-ExecutionProvider) for technical details).
 
 ## Contents
 {: .no_toc }
@@ -22,8 +23,40 @@ In addition to using the in-box version of WinML, WinML can also be installed as
 * TOC placeholder
 {:toc}
 
+
+## Windows OS integration
+
+ONNX Runtime is available in Windows 10 versions >= 1809 and all versions of Windows 11. It is embedded inside Windows.AI.MachineLearning.dll and exposed via the WinRT API (WinML for short). It includes the CPU execution provider and the [DirectML execution provider](../execution-providers/DirectML-ExecutionProvider) for GPU support.
+
+The high level design looks like this:
+
+![ONNX + WinML layered architecture](../../images/layered-architecture.png)
+
+### API choice
+{: .no_toc }
+
+You can choose to use either the WinRT API or the C API.
+
+||WinRT|C API|
+|--|--|--|
+|Type system| Integration with Windows RT types| Platform neutral types|
+|Language support| Language support via WinRT Projections| Language support via per language projections|
+|Tensorization| Accepts VideoFrames and converts to tensors (support for CPU and GPU)| Accepts tensors|
+
+### Using the NuGet WinRT API with other C-API distributions
+{: .no_toc }
+
+The WinRT API NuGet package is distributed with a specific version of ONNX Runtime, but apps can include their own version of ONNX Runtime (either a [released version](../install/#cccwinml-installs) or [a custom build](../build/)). You may wish to do this to use non-default execution providers.
+To use your own version of ONNX Runtime, replace onnxruntime.dll with your desired version.
+
+<p><a href="#">Back to top</a></p>
+
 ## Supported Versions
 Windows 8.1+
+
+
+
+<p><a href="#">Back to top</a></p>
 
 ## Builds
 
@@ -59,3 +92,4 @@ If the OS does not have the runtime you need you can switch to use the redist bi
 |ORT release 1.4| 3|
 
 See [here](https://docs.microsoft.com/en-us/windows/ai/windows-ml/onnx-versions) for more about opsets and ONNX version details in Windows OS distributions.
+<p><a href="#">Back to top</a></p>
