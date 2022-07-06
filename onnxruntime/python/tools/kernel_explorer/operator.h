@@ -3,7 +3,20 @@
 
 #pragma once
 
-#include "timer.h"
+#include "contrib_ops/rocm/bert/timer.h"
+
+using onnxruntime::contrib::rocm::Timer;
+
+namespace onnxruntime {
+namespace rocm {
+
+template<typename T, int vec_size>
+struct alignas(sizeof(T) * vec_size) aligned_vector {
+  T val[vec_size];
+};
+
+}
+}
 
 template <typename T>
 class Operator {

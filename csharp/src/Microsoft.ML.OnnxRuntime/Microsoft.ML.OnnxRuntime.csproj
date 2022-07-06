@@ -37,7 +37,7 @@
        we can add .net6 support to other packages later as needed -->
   <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR 
                              '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu')">
-    <Net6Targets>net6.0;net6.0-android;net6.0-ios;net6.0-maccatalyst;net6.0-macos</Net6Targets>
+    <Net6Targets>net6.0;net6.0-android;net6.0-ios;net6.0-macos</Net6Targets>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(SelectedTargets)'=='PreNet6'">

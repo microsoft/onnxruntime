@@ -328,6 +328,36 @@ class ORTGen:
                 )
                 writer.writeline()
 
+        # Gather return info on the torch func, such as Tensor(a! -> a)
+        # which implies the return value is writeable tensor (Tensor&)
+        return_info = cpp_func.torch_func.return_type if cpp_func.torch_func else None
+
+        # if the torch func has a return ref tensor, out is the last param, and self param is the first input
+        # then we need to update and return out.
+        set_out_tensor = False
+        last_param = cpp_func.parameters[-1].member
+        if (
+            return_info
+            and last_param
+            and last_param.identifier.value == "out"
+            and first_param.identifier.value == "self"
+        ):
+
+            # output_alias is how the return tensor is marked, normally (a! -> a)
+            output_alias = self._get_alias_info(return_info)
+
+            for torch_p in last_param.torch_param:
+                # Confirm we have an output alias and that it is writable (!)
+                # and the current param (torch_p/last_param) is marked with the output alias
+                if output_alias and output_alias.is_writable and self._get_alias_info(torch_p) == output_alias:
+                    set_out_tensor = True
+                    writer.writeline("// resize the output and then create output ort value to be updated.")
+                    writer.writeline(
+                        "resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), self.sizes());"
+                    )
+                    writer.writeline("auto ort_input_out = create_ort_value(invoker, out);")
+                    writer.writeline()
+
         for onnx_op_index, onnx_op in enumerate(ctx.ops):
             # Torch -> ORT inputs
             for op_input in onnx_op.inputs:
@@ -385,7 +415,6 @@ class ORTGen:
             writer.write(f"std::vector<OrtValue> {onnx_op.outputs}")
             writer.writeline(f"({onnx_op.outputs.count});")
 
-            return_info = cpp_func.torch_func.return_type if cpp_func.torch_func else None
             in_place_params = {}
 
             if return_info:
@@ -423,6 +452,11 @@ class ORTGen:
                                     writer.writeline(f"{onnx_op.outputs}[0] = ort_input_{onnx_op.inputs[input_index]};")
                                     in_place_params[0] = cpp_param.identifier.value
                                     break
+
+                # if no in_place_params found and there is an out input to set
+                # and this is the last onnx op, we set the out to be written to
+                if len(in_place_params) == 0 and set_out_tensor and onnx_op_index == (len(ctx.ops) - 1):
+                    writer.writeline(f"{onnx_op.outputs}[0] = ort_input_out;")
 
                 if len(in_place_params) != 0 and len(in_place_params) != (
                     len(return_info.elements) if isinstance(return_info, ast.TupleType) else 1
@@ -472,6 +506,10 @@ class ORTGen:
 
         if len(in_place_params) == 0:
             # tensor options
+            if set_out_tensor:
+                writer.writeline(f"return {last_param.identifier.value};")
+                return
+
             writer.write(f"at::TensorOptions tensor_options = {first_param.identifier.value}")
             if first_param.parameter_type.desugar().identifier_tokens[0].value == "TensorList":
                 writer.write("[0]")
