@@ -9,6 +9,7 @@
 # --------------------------------------------------------------------------
 
 import torch
+import warnings
 from numpy import inf
 from ._multi_tensor_apply import MultiTensorApply
 
@@ -32,12 +33,16 @@ class FP16OptimizerModifier(object):
             if require_torch_non_finite_check is True:
                 _ = torch._amp_foreach_non_finite_check_and_unscale_
         except Exception as _:
+            warnings.warn("Skip modifying optimizer because of Apex or torch_non_finite_check not found.", UserWarning)
             return False
 
         if required_funcs:
             for func_name in required_funcs:
                 func = getattr(self._optimizer, func_name, None)
                 if not func or not callable(func):
+                    warnings.warn(
+                        "Skip modifying optimizer because of specific function not found in optimizer.", UserWarning
+                    )
                     return False
         return True
 

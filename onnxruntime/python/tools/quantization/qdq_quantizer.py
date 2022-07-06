@@ -229,7 +229,7 @@ class QDQQuantizer(ONNXQuantizer):
 
                 if data_found == False:
                     raise ValueError(
-                        "Quantization parameters are not specified for param {}."
+                        "Quantization parameters are not specified for param {}. "
                         "In static mode quantization params for inputs and outputs of nodes to be quantized are required.".format(
                             tensor_name
                         )

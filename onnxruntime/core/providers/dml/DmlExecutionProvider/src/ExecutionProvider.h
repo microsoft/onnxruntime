@@ -108,7 +108,7 @@ namespace Dml
             IUnknown* data,
             bool isInternalOperator) override;
 
-        void GetABIExecutionInterface(
+        void GetABIExecutionInterfaceAndInvalidateState(
             bool isInternalOperator,
             IUnknown** abiExecutionObject) const override; 
 

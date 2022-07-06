@@ -1,6 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+# pylint: disable=missing-docstring
+
 import unittest
 
 import numpy as np
@@ -9,6 +11,8 @@ import torch
 
 
 class OrtOpTests(unittest.TestCase):
+    """test cases for supported eager ops"""
+
     def get_device(self):
         return torch_ort.device()
 
@@ -101,22 +105,44 @@ class OrtOpTests(unittest.TestCase):
     def test_max(self):
         cpu_tensor = torch.rand(10, 10)
         ort_tensor = cpu_tensor.to("ort")
-        y = ort_tensor.max()
-        x = cpu_tensor.max()
-        assert torch.allclose(x, y.cpu())
+        ort_min = ort_tensor.max()
+        cpu_min = cpu_tensor.max()
+        assert torch.allclose(cpu_min, ort_min.cpu())
+        assert cpu_min.dim() == ort_min.dim()
 
     def test_min(self):
         cpu_tensor = torch.rand(10, 10)
         ort_tensor = cpu_tensor.to("ort")
-        y = ort_tensor.min()
-        x = cpu_tensor.min()
-        assert torch.allclose(x, y.cpu())
+        ort_min = ort_tensor.min()
+        cpu_min = cpu_tensor.min()
+        assert torch.allclose(cpu_min, ort_min.cpu())
+        assert cpu_min.dim() == ort_min.dim()
 
     def test_equal(self):
         device = self.get_device()
-        cpu_x = torch.ones(3, 3, dtype=torch.float32)
-        cpu_y = torch.ones(3, 3, dtype=torch.float32)
-        assert torch.equal(cpu_x.to(device), cpu_y.to(device))
+        cpu_a = torch.Tensor([1.0, 1.5])
+        ort_a = cpu_a.to(device)
+        cpu_b = torch.Tensor([1.0, 1.5])
+        ort_b = cpu_b.to(device)
+        cpu_c = torch.Tensor([1.0, 1.8])
+        ort_c = cpu_c.to(device)
+        cpu_d = torch.Tensor([1.0, 1.5, 2.1])
+        ort_d = cpu_d.to(device)
+        cpu_e = torch.Tensor([[1.0, 1.5]])
+        ort_e = cpu_e.to(device)
+
+        # a = b
+        assert torch.equal(cpu_a, cpu_b)
+        assert torch.equal(ort_a, ort_b)
+        # a != c based on one value
+        assert not torch.equal(cpu_a, cpu_c)
+        assert not torch.equal(ort_a, ort_c)
+        # a != d because size of dim 1 is not equal
+        assert not torch.equal(cpu_a, cpu_d)
+        assert not torch.equal(ort_a, ort_d)
+        # a != e because dim does not match
+        assert not torch.equal(cpu_a, cpu_e)
+        assert not torch.equal(ort_a, ort_e)
 
     def test_torch_ones(self):
         device = self.get_device()
@@ -151,6 +177,117 @@ class OrtOpTests(unittest.TestCase):
         cpu_result = torch.softmax(cpu_tensor, dim=1)
         ort_result = torch.softmax(ort_tensor, dim=1)
         assert torch.allclose(cpu_result, ort_result.cpu())
+
+    def test_addmm(self):
+        device = self.get_device()
+        size = 4
+        ort_tensor = torch.ones([size, size]).to(device)
+        input_bias = torch.ones([size]).to(device)
+        output = torch.addmm(input_bias, ort_tensor, ort_tensor)
+        expected = torch.ones([size, size]) * 5
+        assert torch.equal(output.to("cpu"), expected)
+
+    def test_argmax(self):
+        device = self.get_device()
+        cpu_tensor = torch.rand(3, 5)
+        ort_tensor = cpu_tensor.to(device)
+        cpu_result = torch.argmax(cpu_tensor, dim=1)
+        ort_result = torch.argmax(ort_tensor, dim=1)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert cpu_result.dim() == ort_result.dim()
+
+    def test_resize(self):
+        device = self.get_device()
+
+        sizes = [[1], [1, 1], [2, 2], [1, 4]]
+
+        # Basic resize from empty Tensor
+        for size in sizes:
+            torch_size = torch.Size(size)
+            cpu_tensor = torch.tensor([])
+            ort_tensor = torch.tensor([]).to(device)
+
+            cpu_tensor.resize_(torch_size)
+            ort_tensor.resize_(torch_size)
+
+            self.assertEqual(cpu_tensor.size(), ort_tensor.size())
+
+        # Validate cases where we resize from a non-empty tensor
+        # to a larger tensor
+        cpu_tensor = torch.tensor([1.0, 2.0])
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_tensor.resize_(torch.Size([3]))
+        ort_tensor.resize_(torch.Size([3]))
+
+        self.assertEqual(cpu_tensor.size(), ort_tensor.size())
+        self.assertTrue(torch.allclose(cpu_tensor[:2], ort_tensor.cpu()[:2]))
+
+        # Validate case when calling resize with current shape & size
+        cpu_tensor = torch.tensor([1.0, 2.0])
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_tensor.resize_(torch.Size([2]))
+        ort_tensor.resize_(torch.Size([2]))
+
+        self.assertEqual(cpu_tensor.size(), ort_tensor.size())
+        self.assertTrue(torch.allclose(cpu_tensor, ort_tensor.cpu()))
+
+        # Validate case when calling resize with different shape but same size
+        cpu_tensor = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_tensor.resize_(torch.Size([1, 4]))
+        ort_tensor.resize_(torch.Size([1, 4]))
+
+        self.assertEqual(cpu_tensor.size(), ort_tensor.size())
+        self.assertTrue(torch.allclose(cpu_tensor, ort_tensor.cpu()))
+
+        # Validate cases where we resize from a non-empty tensor
+        # to a smaller tensor
+        cpu_tensor = torch.tensor([1.0, 2.0])
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_tensor.resize_(torch.Size([1]))
+        ort_tensor.resize_(torch.Size([1]))
+
+        self.assertEqual(cpu_tensor.size(), ort_tensor.size())
+        self.assertTrue(torch.allclose(cpu_tensor, ort_tensor.cpu()))
+
+    def test_abs(self):
+        device = self.get_device()
+        cpu_tensor = torch.tensor([-1, -2, 3, -6, -7])
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_result = torch.abs(cpu_tensor)
+        ort_result = torch.abs(ort_tensor)
+
+        assert torch.equal(cpu_result, ort_result.cpu())
+
+    def test_abs_(self):
+        device = self.get_device()
+        cpu_tensor = torch.tensor([-1, -2, 3, -6, -7])
+        ort_tensor = cpu_tensor.to(device)
+
+        torch.abs_(cpu_tensor)
+        torch.abs_(ort_tensor)
+
+        assert torch.equal(cpu_tensor, ort_tensor.cpu())
+
+    def test_abs_out(self):
+        device = self.get_device()
+        cpu_tensor = torch.tensor([-1, -2, 3, -6, -7])
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_out_tensor = torch.tensor([], dtype=torch.long)
+        ort_out_tensor = cpu_out_tensor.to(device)
+
+        cpu_result = torch.abs(cpu_tensor, out=cpu_out_tensor)
+        ort_result = torch.abs(ort_tensor, out=ort_out_tensor)
+
+        assert torch.equal(cpu_result, ort_result.cpu())
+        assert torch.equal(cpu_out_tensor, ort_out_tensor.cpu())
+        assert torch.equal(ort_result.cpu(), ort_out_tensor.cpu())
 
 
 if __name__ == "__main__":

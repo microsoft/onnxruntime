@@ -547,10 +547,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   output_names_.resize(output_count);
   Ort::AllocatorWithDefaultOptions a;
   for (size_t i = 0; i != output_count; ++i) {
-    char* output_name = session_.GetOutputName(i, a);
+    auto output_name = session_.GetOutputNameAllocated(i, a);
     assert(output_name != nullptr);
-    output_names_[i] = output_name;
-    a.Free(output_name);
+    output_names_[i] = output_name.get();
   }
   output_names_raw_ptr.resize(output_count);
   for (size_t i = 0; i != output_count; ++i) {
