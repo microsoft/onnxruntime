@@ -198,7 +198,7 @@ class OrtOpTests(unittest.TestCase):
 
     def test_masked_select(self):
         device = self.get_device()
-        cpu_tensor = torch.randn(3,4)
+        cpu_tensor = torch.randn(3, 4)
         cpu_mask = cpu_tensor.ge(0.5)
         ort_tensor = cpu_tensor.to(device)
         ort_mask = cpu_mask.to(device)
