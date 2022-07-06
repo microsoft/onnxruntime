@@ -258,12 +258,65 @@ class OrtOpTests(unittest.TestCase):
 
     def test_argmax(self):
         device = self.get_device()
-        cpu_tensor = torch.rand(3, 5)
+        cpu_tensor = torch.rand(3, 5, 7, 8)
         ort_tensor = cpu_tensor.to(device)
+
+        # Setup test
         cpu_result = torch.argmax(cpu_tensor, dim=1)
         ort_result = torch.argmax(ort_tensor, dim=1)
         assert torch.allclose(cpu_result, ort_result.cpu())
         assert cpu_result.dim() == ort_result.dim()
+
+        # Setup test
+        cpu_result = torch.argmax(cpu_tensor, dim=1, keepdim=True)
+        ort_result = torch.argmax(ort_tensor, dim=1, keepdim=True)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert cpu_result.dim() == ort_result.dim()
+
+        # Setup test
+        cpu_result = torch.argmax(cpu_tensor)
+        ort_result = torch.argmax(ort_tensor)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert cpu_result.dim() == ort_result.dim()
+
+        # Setup test
+        cpu_result = torch.argmax(cpu_tensor)
+        ort_result = torch.argmax(ort_tensor)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert cpu_result.dim() == ort_result.dim()
+
+        # Setup test
+        cpu_out_tensor = torch.tensor([], dtype=torch.long)
+        ort_out_tensor = cpu_out_tensor.to(device)
+
+        cpu_result = torch.argmax(cpu_tensor, out=cpu_out_tensor)
+        ort_result = torch.argmax(ort_tensor, out=ort_out_tensor)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert cpu_result.dim() == ort_result.dim()
+        assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
+        assert cpu_out_tensor.dim() == ort_out_tensor.dim()
+
+        # Setup test
+        cpu_out_tensor = torch.tensor([], dtype=torch.long)
+        ort_out_tensor = cpu_out_tensor.to(device)
+
+        cpu_result = torch.argmax(cpu_tensor, dim=1, out=cpu_out_tensor)
+        ort_result = torch.argmax(ort_tensor, dim=1, out=ort_out_tensor)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert cpu_result.dim() == ort_result.dim()
+        assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
+        assert cpu_out_tensor.dim() == ort_out_tensor.dim()
+
+        # Setup test
+        cpu_out_tensor = torch.tensor([], dtype=torch.long)
+        ort_out_tensor = cpu_out_tensor.to(device)
+
+        cpu_result = torch.argmax(cpu_tensor, dim=1, keepdim=True, out=cpu_out_tensor)
+        ort_result = torch.argmax(ort_tensor, dim=1, keepdim=True, out=ort_out_tensor)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert cpu_result.dim() == ort_result.dim()
+        assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
+        assert cpu_out_tensor.dim() == ort_out_tensor.dim()
 
     def test_masked_select(self):
         device = self.get_device()
