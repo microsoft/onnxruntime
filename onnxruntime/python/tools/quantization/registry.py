@@ -74,6 +74,16 @@ QDQRegistry = {
     "MatMul": QDQMatMul,
 }
 
+QDQDynamicRegistry = {
+    "Conv": QDQConv,
+    "Gemm": QDQGemm,
+    "MatMul": QDQMatMul,
+    "Attention": QDQOperatorBase,
+    "LSTM": QDQOperatorBase,
+    "Resize": QDQResize, # TODO: We want this here?
+}
+IntegerOpsRegistry.update(CommonOpsRegistry) # Is this ok?
+
 
 def CreateDefaultOpQuantizer(onnx_quantizer, node):
     return QuantOperatorBase(onnx_quantizer, node)
@@ -87,6 +97,8 @@ def CreateOpQuantizer(onnx_quantizer, node):
 
 
 def CreateQDQQuantizer(onnx_quantizer, node):
-    if node.op_type in QDQRegistry.keys():
+    if onnx_quantizer.static and node.op_type in QDQRegistry.keys():
         return QDQRegistry[node.op_type](onnx_quantizer, node)
+    elif not onnx_quantizer.static and node.op_type in QDQDynamicRegistry.keys():
+        return QDQDynamicRegistry[node.op_type](onnx_quantizer, node)
     return QDQOperatorBase(onnx_quantizer, node)

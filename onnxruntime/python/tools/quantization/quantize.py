@@ -26,7 +26,7 @@ from .quant_utils import (
     get_mul_node,
     load_model,
 )
-from .registry import IntegerOpsRegistry, QLinearOpsRegistry
+from .registry import IntegerOpsRegistry, QDQRegistry, QLinearOpsRegistry, QDQDynamicRegistry
 
 
 def check_static_quant_arguments(quant_format: QuantFormat, activation_type: QuantType, weight_type: QuantType):
@@ -200,6 +200,8 @@ def quantize_dynamic(
     nodes_to_exclude=[],
     optimize_model=True,
     use_external_data_format=False,
+    quant_format=QuantFormat.QOperator, # TODO: ADDED THIS OPTION
+    activation_type=QuantType.QUInt8,
     extra_options={},
 ):
     """
@@ -239,28 +241,54 @@ def quantize_dynamic(
 
     mode = QuantizationMode.IntegerOps
 
-    if not op_types_to_quantize or len(op_types_to_quantize) == 0:
-        op_types_to_quantize = list(IntegerOpsRegistry.keys())
-
     model = load_model(Path(model_input), optimize_model)
 
     if "MatMulConstBOnly" not in extra_options:
         extra_options["MatMulConstBOnly"] = True
 
-    quantizer = ONNXQuantizer(
-        model,
-        per_channel,
-        reduce_range,
-        mode,
-        False,  # static
-        weight_type,
-        QuantType.QUInt8,  # dynamic activation only supports uint8
-        None,
-        nodes_to_quantize,
-        nodes_to_exclude,
-        op_types_to_quantize,
-        extra_options,
-    )
+    if quant_format is QuantFormat.QOperator:
+        if not op_types_to_quantize or len(op_types_to_quantize) == 0:
+            op_types_to_quantize = list(IntegerOpsRegistry.keys())
+        quantizer = ONNXQuantizer(
+            model,
+            per_channel,
+            reduce_range,
+            mode,
+            False,  # static
+            weight_type,
+            QuantType.QUInt8,  # dynamic activation only supports uint8
+            None,
+            nodes_to_quantize,
+            nodes_to_exclude,
+            op_types_to_quantize,
+            extra_options,
+        )
+
+    ### NEW QDQ Quantizer added to dynamic_quantize
+    # TODO Add an if for this: quant_format=QuantFormat.QDQ
+    else:
+        if not op_types_to_quantize or len(op_types_to_quantize) == 0:
+            op_types_to_quantize = list(QDQDynamicRegistry.keys())
+        # if "OpTypesToExcludeOutputQuantizatioin" not in extra_options: # TODO Is this a good default?
+        #     extra_options['OpTypesToExcludeOutputQuantizatioin'] = op_types_to_quantize # ['Conv', 'Matmul', 'MatMul', 'Gemm', 'Attention']
+        if "OpTypesToExcludeOutputQuantizatioin" not in extra_options: # TODO Is this a good default?
+            extra_options['OpTypesToExcludeOutputQuantizatioin'] = ['Conv', 'Matmul', 'MatMul', 'Gemm', 'Attention']
+        quantizer = QDQQuantizer(
+            model,
+            per_channel,
+            reduce_range,
+            mode,
+            False,  # static-only?
+            weight_type,
+            activation_type, # TODO: DOES THIS WORK
+            None,
+            nodes_to_quantize,
+            nodes_to_exclude,
+            op_types_to_quantize,
+            extra_options,
+        )
+        
+    ### ###
 
     quantizer.quantize_model()
     quantizer.model.save_model_to_file(model_output, use_external_data_format)

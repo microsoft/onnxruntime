@@ -107,7 +107,7 @@ class ONNXQuantizer:
                 {
                     'Conv_3:0': [np.float32(0), np.float32(0.5)],
                     'Conv_4:0': [np.float32(1), np.float32(3.5)]
-                }
+                
         """
         self.tensors_range = tensors_range
         self.nodes_to_quantize = nodes_to_quantize  # specific nodes to quantize
@@ -533,26 +533,6 @@ class ONNXQuantizer:
         input_scale_name = input_name + "_scale"
         input_zp_name = input_name + "_zero_point"
 
-        reduce_min_name = input_name + "_ReduceMin"
-        reduce_min_node = onnx.helper.make_node(
-            "ReduceMin",
-            [input_name],
-            [reduce_min_name + ":0"],
-            reduce_min_name,
-            keepdims=0,
-        )
-        nodes_list.append(reduce_min_node)
-
-        reduce_max_name = input_name + "_ReduceMax"
-        reduce_max_node = onnx.helper.make_node(
-            "ReduceMax",
-            [input_name],
-            [reduce_max_name + ":0"],
-            reduce_max_name,
-            keepdims=0,
-        )
-        nodes_list.append(reduce_max_node)
-
         # Add tensors for quantize range and zero value.
         initializer_qrange = onnx.helper.make_tensor(
             self.fixed_qrange_uint8_name,
@@ -564,12 +544,43 @@ class ONNXQuantizer:
         initializer_qvalue = onnx.helper.make_tensor(self.fixed_zero_name, onnx_proto.TensorProto.FLOAT, [], [0.0])
         self.model.add_initializer(initializer_qvalue)
 
+        reduce_min_name = input_name + "_ReduceMin"
+        reduce_min_node = onnx.helper.make_node(
+            "ReduceMin",
+            [input_name],
+            [reduce_min_name + ":0"],
+            reduce_min_name,
+            keepdims=0,
+        )
+        nodes_list.append(reduce_min_node)
+
+        # TODO: This is ok or interferes with fusion or something?
+        zero_min_name = input_name + "_Min"
+        zero_min_node = onnx.helper.make_node(
+            "Min",
+            [reduce_min_name + ":0", self.fixed_zero_name],
+            [zero_min_name+":0"],
+            zero_min_name
+        )
+        nodes_list.append(zero_min_node)
+        # ^^^^^^^^^^^^^^
+
+        reduce_max_name = input_name + "_ReduceMax"
+        reduce_max_node = onnx.helper.make_node(
+            "ReduceMax",
+            [input_name],
+            [reduce_max_name + ":0"],
+            reduce_max_name,
+            keepdims=0,
+        )
+        nodes_list.append(reduce_max_node)
+
         # Compute Scale
         #   Subtract rmax and rmin
         scale_sub_name = input_name + "_scale_Sub"
         scale_sub_node = onnx.helper.make_node(
             "Sub",
-            [reduce_max_node.output[0], reduce_min_node.output[0]],
+            [reduce_max_node.output[0], zero_min_node.output[0]],
             [scale_sub_name + ":0"],
             scale_sub_name,
         )
@@ -589,7 +600,7 @@ class ONNXQuantizer:
         zp_sub_name = input_name + "_zero_point_Sub"
         zp_sub_node = onnx.helper.make_node(
             "Sub",
-            [self.fixed_zero_name, reduce_min_node.output[0]],
+            [self.fixed_zero_name, zero_min_node.output[0]],
             [zp_sub_name + ":0"],
             zp_sub_name,
         )
@@ -609,7 +620,7 @@ class ONNXQuantizer:
         nodes_list.append(zp_floor_node)
         #   Cast to integer
         zp_cast_name = input_name + "_zero_point_Cast"
-        zp_cast_node = onnx.helper.make_node("Cast", zp_floor_node.output, [input_zp_name], zp_cast_name, to=qType)
+        zp_cast_node = onnx.helper.make_node("Cast", zp_floor_node.output, [input_zp_name], zp_cast_name, to=qType) # TODO recast zp as int32 to avoid underflow...
         nodes_list.append(zp_cast_node)
 
         return input_scale_name, input_zp_name, [], []
@@ -748,8 +759,13 @@ class ONNXQuantizer:
             _, input_scale_name, _, _, _ = self._get_quantization_params(input_name)
         else:
             raise ValueError("Expected {} to be in quantized value map for static quantization".format(input_name))
-
+        
+        # TODO: sort this out correctly, what is scale to use for bias and why
         inputscale_initializer = find_by_name(input_scale_name, self.model.initializer())
+        # input_scale = 1.0
+        # if inputscale_initializer  is not None:
+        #     input_scale = self.tensor_proto_to_array(inputscale_initializer)
+        
         input_scale = self.tensor_proto_to_array(inputscale_initializer)
 
         # calcuate scale for bias
@@ -1084,7 +1100,7 @@ class ONNXQuantizer:
                 self.new_nodes.append(dequantize_node)
 
     def calculate_quantization_params(self):
-        if self.tensors_range is None:
+        if self.tensors_range is None: 
             return
 
         # adjust tensor_ranges for input of Clip and Relu node

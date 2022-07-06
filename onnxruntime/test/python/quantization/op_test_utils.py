@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import sys
+from tabnanny import check
 import numpy as np
 import onnx
 
@@ -79,6 +81,7 @@ def check_model_correctness(testcase, model_path_origin, model_path_to_check, in
         sess_options=sess_options,
         providers=["CPUExecutionProvider"],
     )
+    
     target_results = target_sess.run([], inputs)
     testcase.assertEqual(len(origin_results), len(target_results), "result count are different")
     for idx, ref_output in enumerate(origin_results):

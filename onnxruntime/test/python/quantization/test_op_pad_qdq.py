@@ -126,29 +126,33 @@ class TestOpQuatizerPad(unittest.TestCase):
         model_fp32_path,
         model_i8_path,
         data_reader=None,
+        is_qdq=True,
         activation_type=QuantType.QUInt8,
         weight_type=QuantType.QUInt8,
         extra_options={},
     ):
         if data_reader is not None:
+            extra_options['OpTypesToExcludeOutputQuantizatioin'] = ['Conv']
             quantize_static(
                 model_fp32_path,
                 model_i8_path,
                 data_reader,
                 reduce_range=True,
-                quant_format=QuantFormat.QOperator,
+                quant_format=QuantFormat.QDQ if is_qdq else QuantFormat.QOperator,
                 activation_type=activation_type,
                 weight_type=weight_type,
                 extra_options=extra_options,
+                op_types_to_quantize=['Conv'],
             )
         else:
             quantize_dynamic(
                 model_fp32_path,
                 model_i8_path,
                 reduce_range=True,
-                quant_format=QuantFormat.QOperator,
+                quant_format=QuantFormat.QDQ if is_qdq else QuantFormat.QOperator,
                 weight_type=weight_type,
                 extra_options=extra_options,
+                # op_types_to_quantize=['Pad', 'Conv']
             )
 
     def verify_should_not_trigger(self, quantize_mode="static"):
@@ -161,6 +165,7 @@ class TestOpQuatizerPad(unittest.TestCase):
             model_fp32_path,
             model_i8_path,
             None if quantize_mode != "static" else data_reader,
+            is_qdq=True,
         )
         data_reader.rewind()
         # DequantizeLinear=0 pad node is not been quantized as input is not quantized.
@@ -223,12 +228,13 @@ class TestOpQuatizerPad(unittest.TestCase):
             activation_type=activation_type,
             weight_type=weight_type,
             extra_options=extra_options,
+            is_qdq=True,
         )
         # DequantizeLinear=2 means there are one DequantizeLinear Node aftr both conv and pad,
         # which means pad node is running in quantized semantic.
         # In dynamic quantize mode, pad operator in fact not quantized as input is fp32.
         if quantize_mode != "static":
-            kwargs = {"DynamicQuantizeLinear": 1} if activation_type == QuantType.QUInt8 else {"QuantizeLinear": 1}
+            kwargs = {"DequantizeLinear": 2} # if activation_type == QuantType.QUInt8 else {"QuantizeLinear": 1}
         else:
             kwargs = {"DequantizeLinear": 2, "QuantizeLinear": 1}
         check_op_type_count(self, model_i8_path, **kwargs)
@@ -240,7 +246,7 @@ class TestOpQuatizerPad(unittest.TestCase):
             ]
         }
         qnode_io_qtypes.update({"DequantizeLinear": [["i", 2, activation_proto_qtype]]})
-        qnode_io_qtypes.update({"ConvInteger": [["i", 2, activation_proto_qtype]]})
+        # qnode_io_qtypes.update({"ConvInteger": [["i", 2, activation_proto_qtype]]}) # TODO: gone?
         check_qtype_by_node_type(self, model_i8_path, qnode_io_qtypes)
         data_reader.rewind()
         check_model_correctness(

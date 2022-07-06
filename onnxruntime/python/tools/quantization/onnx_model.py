@@ -4,6 +4,7 @@ from pathlib import Path
 import onnx
 
 from .quant_utils import attribute_to_kwarg, find_by_name
+# from transformers.onnx_model import OnnxModel as TransformerOnnxModel
 
 
 class ONNXModel:

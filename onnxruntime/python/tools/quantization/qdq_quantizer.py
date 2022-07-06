@@ -5,6 +5,7 @@
 # --------------------------------------------------------------------------
 import logging
 import os
+from pickletools import uint8
 import struct
 from pathlib import Path
 
@@ -228,20 +229,50 @@ class QDQQuantizer(ONNXQuantizer):
                     self.model.replace_input_of_all_nodes(tensor_name, tensor_name + "_DequantizeLinear")
             else:
                 data_found, scale_name, zp_name, _, _ = self._get_quantization_params(tensor_name)
+                nodes = []
 
                 if data_found == False:
-                    raise ValueError(
-                        "Quantization parameters are not specified for param {}."
-                        "In static mode quantization params for inputs and outputs of nodes to be quantized are required.".format(
-                            tensor_name
+                    if self.static:
+                        raise ValueError(
+                            "Quantization parameters are not specified for param {}."
+                            "In static mode quantization params for inputs and outputs of nodes to be quantized are required.".format(
+                                tensor_name
+                            )
                         )
-                    )
+                    # TODO: Here we can add dynamic subgraph, given that we found no static params
+                    # Scale and Zero Points not available for this input. Add nodes to dynamically compute it
+                    qType = self.input_qType
+                    # ql_node_name = tensor_name + "_QuantizeLinear"
+                    if self.model.is_graph_output(tensor_name): # TODO: Had to do this to output quantize properly
+                        (
+                            scale_name,
+                            zp_name,
+                            scale_shape,
+                            zp_shape,
+                        ) = self._get_dynamic_input_quantization_params(tensor_name + "_QuantizeLinearInput", nodes, qType)
+                    else:
+                        (
+                            scale_name,
+                            zp_name,
+                            scale_shape,
+                            zp_shape,
+                        ) = self._get_dynamic_input_quantization_params(tensor_name, nodes, qType)
+                    # qlinear_node = onnx.helper.make_node(
+                    #     "QuantizeLinear",
+                    #     [tensor_name, scale_name, zp_name],
+                    #     [output_name],
+                    #     ql_node_name,
+                    # )
+                    # self.quantized_value_map[tensor_name] = QuantizedValue(tensor_name, output_name, scale_name, zp_name, qType) # <- What do?
+                    # nodes + [qlinear_node]
+                    # ^^^^ NEW 
 
                 if (
                     self.dedicated_qdq_pair
                     and tensor_name in self.tensor_to_its_receiving_nodes
                     and len(self.tensor_to_its_receiving_nodes[tensor_name]) > 1
                 ):
+                    # TODO: this if block must be tested. no output check makes me think it will break
                     num_dedicated_qdq_pair = len(self.tensor_to_its_receiving_nodes[tensor_name])
                     for i in range(num_dedicated_qdq_pair):
                         postfix = str(i + 1)
@@ -263,7 +294,7 @@ class QDQQuantizer(ONNXQuantizer):
                             [dq_output],
                             dequant_node_name,
                         )
-                        self.model.add_nodes([qlinear_node, dequant_node])
+                        self.model.add_nodes([qlinear_node, dequant_node] + nodes)
 
                         node = self.tensor_to_its_receiving_nodes[tensor_name][i]
                         self.model.replace_node_input(node, tensor_name, dq_output)
@@ -284,6 +315,7 @@ class QDQQuantizer(ONNXQuantizer):
                     if self.model.is_graph_output(tensor_name):
                         q_input = tensor_name + "_QuantizeLinearInput"
                         dq_output = tensor_name
+                        # TODO: this replace output thing is broken
                         self.model.replace_output_of_all_nodes(tensor_name, q_input)
                     else:
                         self.model.replace_input_of_all_nodes(tensor_name, dq_output)
@@ -302,7 +334,7 @@ class QDQQuantizer(ONNXQuantizer):
                         [dq_output],
                         dequant_node_name,
                     )
-                    self.model.add_nodes([qlinear_node, dequant_node])
+                    self.model.add_nodes(nodes + [qlinear_node, dequant_node])
 
                     quantized_value = QuantizedValue(
                         tensor_name,
@@ -318,6 +350,17 @@ class QDQQuantizer(ONNXQuantizer):
             if bias_name in self.quantized_value_map.keys():
                 continue
             # Quantize the input
+            # TODO: check if we have an input_scale initializer and decide whether to quantize bias static based off of that
+            # get scale for input
+            if input_name in self.quantized_value_map:
+                input_scale_name = self.quantized_value_map[input_name].scale_name
+            elif input_name in self.quantization_params:
+                _, input_scale_name, _, _, _ = self._get_quantization_params(input_name)
+            inputscale_initializer = find_by_name(input_scale_name, self.model.initializer())
+            if inputscale_initializer  is None:
+                # self.model.remove_initializer(find_by_name(bias_name, self.model.initializer()))
+                continue
+            # ^ My workaround to avoid dynamic quantization of bias
             self.quantize_bias_static(bias_name, input_name, weight_name, beta)
             self.model.remove_initializer(find_by_name(bias_name, self.model.initializer()))
             quant_value = self.quantized_value_map[bias_name]
