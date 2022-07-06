@@ -12,15 +12,15 @@ namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+#define REGISTER_KERNEL_TYPED(T)                                     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                     \
       GemmFastGelu,                                                  \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kRocmExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      kMSDomain,                                                     \
+      1,                                                             \
+      T,                                                             \
+      kRocmExecutionProvider,                                        \
+      (*KernelDefBuilder::Create())                                  \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),    \
       GemmFastGelu<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -143,35 +143,35 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                           static_cast<int>(batch_count)));
   } else {
     // Fill offsets when needed.
-  helper.FillOffsets();
-  RocmAsyncBuffer<const HipT*> left_arrays(this, helper.LeftOffsets().size());
-  RocmAsyncBuffer<const HipT*> right_arrays(this, helper.RightOffsets().size());
-  RocmAsyncBuffer<HipT*> output_arrays(this, helper.OutputOffsets().size());
-  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const HipT*>(X->template Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
-  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const HipT*>(W->template Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
-  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<HipT*>(gemm_buffer.get()), helper.OutputOffsets(), output_arrays.CpuSpan());
-  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu());
-  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu());
-  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu());
+    helper.FillOffsets();
+    RocmAsyncBuffer<const HipT*> left_arrays(this, helper.LeftOffsets().size());
+    RocmAsyncBuffer<const HipT*> right_arrays(this, helper.RightOffsets().size());
+    RocmAsyncBuffer<HipT*> output_arrays(this, helper.OutputOffsets().size());
+    MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const HipT*>(X->template Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
+    MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const HipT*>(W->template Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
+    MatMulComputeHelper::OffsetToArrays(reinterpret_cast<HipT*>(gemm_buffer.get()), helper.OutputOffsets(), output_arrays.CpuSpan());
+    ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu());
+    ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu());
+    ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu());
 
-  // note that onnxruntime OrtValue is row major, while rocblas is column major,
-  // so swap left/right operands
-  ROCBLAS_RETURN_IF_ERROR(rocblasGemmBatchedHelper(
-      RocblasHandle(),
-      transB,
-      transA,
-      N,
-      M,
-      K,
-      &alpha,
-      right_arrays.GpuPtr(),
-      ldb,
-      left_arrays.GpuPtr(),
-      lda,
-      &zero,
-      output_arrays.GpuPtr(),
-      ldc,
-      static_cast<int>(helper.OutputOffsets().size())));
+    // note that onnxruntime OrtValue is row major, while rocblas is column major,
+    // so swap left/right operands
+    ROCBLAS_RETURN_IF_ERROR(rocblasGemmBatchedHelper(
+        RocblasHandle(),
+        transB,
+        transA,
+        N,
+        M,
+        K,
+        &alpha,
+        right_arrays.GpuPtr(),
+        ldb,
+        left_arrays.GpuPtr(),
+        lda,
+        &zero,
+        output_arrays.GpuPtr(),
+        ldc,
+        static_cast<int>(helper.OutputOffsets().size())));
   }
 
   int64_t fast_gelu_input_length = Y->Shape().Size();
