@@ -36,8 +36,7 @@ GemmFastGelu<T>::GemmFastGelu(const OpKernelInfo& op_kernel_info) : RocmKernel(o
 // StridedBatchedGemm can be used for the following GEMM computation
 // C[pnm] = A[pnk]*B[km] or C[pnm] = A[pnk]*B[pkm]
 static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const TensorShape& right_shape,
-                                     bool transa, bool transb, bool trans_batch_a, bool trans_batch_b,
-                                     int64_t& stride_A, int64_t& stride_B, int64_t& stride_C, int64_t& batch_count) {
+                                     bool transa, bool transb, int64_t& stride_A, int64_t& stride_B, int64_t& stride_C, int64_t& batch_count) {
   size_t left_num_dims = left_shape.NumDimensions();
   size_t right_num_dims = right_shape.NumDimensions();
 
@@ -45,19 +44,13 @@ static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const Tensor
     return false;
   }
 
-  size_t left_leading_axis = trans_batch_a ? 0 : left_num_dims - 2;
-  size_t right_leading_axis = trans_batch_b ? 0 : right_num_dims - 2;
+  size_t left_leading_axis = left_num_dims - 2;
+  size_t right_leading_axis = right_num_dims - 2;
   int64_t left_p = left_shape.SizeToDimension(left_num_dims - 2);
-  if (trans_batch_a) {
-    left_p = left_p * left_shape[left_num_dims - 2] / left_shape[0];
-  }
   int64_t left_k = transa ? left_shape[left_leading_axis] : left_shape[left_num_dims - 1];
 
   if (right_num_dims >= 3) {
     int64_t right_p = right_shape.SizeToDimension(right_num_dims - 2);
-    if (trans_batch_b) {
-      right_p = right_p * right_shape[right_num_dims - 2] / right_shape[0];
-    }
     if (left_p != right_p) {
       return false;
     }
@@ -70,8 +63,8 @@ static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const Tensor
 
   int64_t n = transa ? left_shape[left_num_dims - 1] : left_shape[left_leading_axis];
   int64_t m = transb ? right_shape[right_leading_axis] : right_shape[right_num_dims - 1];
-  stride_A = n * left_k / (trans_batch_a ? left_shape[0] : 1);
-  stride_B = right_num_dims == 2 ? 0 : right_k * m / (trans_batch_b ? right_shape[0] : 1);
+  stride_A = n * left_k;
+  stride_B = right_num_dims == 2 ? 0 : right_k * m;
   stride_C = n * m;
   batch_count = left_p;
   return true;
@@ -85,8 +78,11 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto* W = ctx->Input<Tensor>(1);
   const auto* bias = ctx->Input<Tensor>(2);
 
+  bool transa = false;
+  bool transb = false;
+
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(X->Shape(), W->Shape(), false, false, false, false, false));
+  ORT_RETURN_IF_ERROR(helper.Compute(X->Shape(), W->Shape(), transa, transb, false, false, false));
 
   const int N = static_cast<int>(helper.N());
   const int M = static_cast<int>(helper.M());
@@ -102,8 +98,8 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   const HipT alpha = ToHipType<T>::FromFloat(1.0f);
   const HipT zero = ToHipType<T>::FromFloat(0.0f);
 
-  bool transa = false;
-  bool transb = false;
+  rocblas_operation transA = transa ? rocblas_operation_transpose : rocblas_operation_none;
+  rocblas_operation transB = transb ? rocblas_operation_transpose : rocblas_operation_none;
   const int lda = helper.Lda(transa);
   const int ldb = helper.Ldb(transb);
   const int ldc = helper.Ldc();
@@ -112,8 +108,8 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (helper.OutputOffsets().size() == 1) {
     ROCBLAS_RETURN_IF_ERROR(rocblasGemmHelper(
         RocblasHandle(),
-        rocblas_operation_none,
-        rocblas_operation_none,
+        transB,
+        transA,
         N,
         M,
         K,
@@ -126,10 +122,10 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
         reinterpret_cast<HipT*>(gemm_buffer.get()),
         ldc));
   } else if (CanUseStridedBatchedGemm(X->Shape(), W->Shape(),
-                                      transa, transb, false, false, stride_A, stride_B, stride_C, batch_count)) {
+                                      transa, transb, stride_A, stride_B, stride_C, batch_count)) {
     ROCBLAS_RETURN_IF_ERROR(rocblasGemmStridedBatchedHelper(RocblasHandle(),
-                                                          rocblas_operation_none,
-                                                          rocblas_operation_none,
+                                                          transB,
+                                                          transA,
                                                           N,
                                                           M,
                                                           K,
@@ -162,8 +158,8 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   // so swap left/right operands
   ROCBLAS_RETURN_IF_ERROR(rocblasGemmBatchedHelper(
       RocblasHandle(),
-      rocblas_operation_none,
-      rocblas_operation_none,
+      transB,
+      transA,
       N,
       M,
       K,
