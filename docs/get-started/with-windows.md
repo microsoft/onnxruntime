@@ -7,7 +7,7 @@ nav_order: 8
 ---
 
 
-# Get started with Onnx Runtime for Windows 
+# Get started with ONNX Runtime for Windows 
 {: .no_toc }
 
 The ONNX Runtime Nuget package provides the ability to use the full [WinML API](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference).
