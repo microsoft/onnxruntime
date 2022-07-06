@@ -3,10 +3,12 @@
 # model.py
 
 from abc import abstractmethod
+
 import onnx
-import onnxruntime.training.onnxblock.model_accessor as accessor
-import onnxruntime.training.onnxblock.building_blocks as building_blocks
+
 import onnxruntime.training.onnxblock._graph_utils as graph_utils
+import onnxruntime.training.onnxblock.building_blocks as building_blocks
+import onnxruntime.training.onnxblock.model_accessor as accessor
 
 
 class Model(building_blocks.Block):
@@ -32,9 +34,7 @@ class Model(building_blocks.Block):
         output = self.build(*args, **kwargs)
 
         # Perform shape inference
-        model_with_shapes = onnx.shape_inference.infer_shapes(
-            accessor.global_accessor.model
-        )
+        model_with_shapes = onnx.shape_inference.infer_shapes(accessor.global_accessor.model)
         accessor.global_accessor.model.CopyFrom(model_with_shapes)
 
         # Build the graph outputs
@@ -85,10 +85,7 @@ class TrainingModel(building_blocks.Block):
         is built, an exception will be raised.
         """
         if self._parameters is None:
-            raise RuntimeError(
-                "Please build the training model first before trying to "
-                "retrieve the parameters."
-            )
+            raise RuntimeError("Please build the training model first before trying to " "retrieve the parameters.")
 
         return self._parameters
 
@@ -108,9 +105,7 @@ class TrainingModel(building_blocks.Block):
         output = self.build(*args, **kwargs)
 
         # Perform shape inference
-        model_with_shapes = onnx.shape_inference.infer_shapes(
-            accessor.global_accessor.model
-        )
+        model_with_shapes = onnx.shape_inference.infer_shapes(accessor.global_accessor.model)
         accessor.global_accessor.model.CopyFrom(model_with_shapes)
 
         # Build the graph outputs
@@ -122,6 +117,7 @@ class TrainingModel(building_blocks.Block):
             accessor.global_accessor.model, self._arg_not_requiring_grad
         )
 
+        # build the gradient graph
         all_args_requiring_gradient_names = graph_utils.build_gradient_graph(
             accessor.global_accessor,
             self._arg_requiring_grad,
@@ -130,9 +126,7 @@ class TrainingModel(building_blocks.Block):
         )
 
         # add gradient accumulation nodes
-        graph_utils.build_gradient_accumulation_graph(
-            accessor.global_accessor.model, all_args_requiring_gradient_names
-        )
+        graph_utils.build_gradient_accumulation_graph(accessor.global_accessor.model, all_args_requiring_gradient_names)
 
         # validate and check the model
         onnx.checker.check_model(accessor.global_accessor.model, True)

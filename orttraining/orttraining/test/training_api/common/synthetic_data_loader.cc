@@ -31,7 +31,7 @@ template <typename IntType>
 void RandomInts(std::vector<IntType>& rets, IntType low, IntType high) {
   static std::random_device rd;
   static std::mt19937 generator(rd());
-  std::uniform_int_distribution<> distribution(low, high);
+  std::uniform_int_distribution<IntType> distribution(low, high);
   std::for_each(rets.begin(), rets.end(),
                 [&distribution](IntType& value) { value = distribution(generator); });
 }
@@ -53,7 +53,20 @@ void SyntheticSampleBatch::AddFloatInput(const std::vector<int64_t>& shape) {
   RandomFloats(data_vector_.back()->GetData<float>());
 }
 
-bool SyntheticDataLoader::GetNextSampleBatch(std::vector<Ort::Value>& batches) {
+#define ORT_RETURN_ON_ERROR(expr)                                \
+  do {                                                           \
+    OrtStatus* onnx_status = (expr);                             \
+    if (onnx_status != NULL) {                                   \
+      auto code = ort_api->GetErrorCode(onnx_status);          \
+      const char* msg = ort_api->GetErrorMessage(onnx_status); \
+      ort_api->ReleaseStatus(onnx_status);                     \
+      printf("Run failed with error code :%d\n", code);          \
+      printf("Error message :%s\n", msg);                        \
+      return false;                                                 \
+    }                                                            \
+  } while (0);
+
+bool SyntheticDataLoader::GetNextSampleBatch(std::vector<OrtValue*>& batches) {
   if (sample_batch_iter_index_ >= num_of_sample_batches) {
     return false;
   }
@@ -62,31 +75,44 @@ bool SyntheticDataLoader::GetNextSampleBatch(std::vector<Ort::Value>& batches) {
 
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
   auto& sample = sample_batch_collections_[sample_batch_iter_index_];
+  const auto* ort_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   for (size_t i = 0; i < sample->NumOfInput(); ++i) {
     auto input_ptr = sample->GetInputAtIndex(i);
     auto shape_vector = input_ptr->ShapeVector();
-    // Be noted: the created Ort::Value won't clean the raw data after its lifetime ended.
+    // Be noted: the created OrtValue won't clean the raw data after its lifetime ended.
     auto ptr_flt = dynamic_cast<TypedSynctheticInput<float>*>(input_ptr);
     if (ptr_flt) {
-      batches.push_back(Ort::Value::CreateTensor<float>(
-          memory_info, input_ptr->GetData<float>().data(),
-          input_ptr->NumOfBytesPerSample(), shape_vector.data(), shape_vector.size()));
+      OrtValue* value = NULL;
+      ORT_RETURN_ON_ERROR(ort_api->CreateTensorWithDataAsOrtValue(memory_info,
+      input_ptr->GetData<float>().data(), (input_ptr->NumOfBytesPerSample() * sizeof(float)),
+      shape_vector.data(), shape_vector.size(),
+      ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+      &value));
+      batches.emplace_back(value);
       continue;
     }
 
     auto ptr_int = dynamic_cast<TypedSynctheticInput<int64_t>*>(input_ptr);
     if (ptr_int) {
-      batches.push_back(Ort::Value::CreateTensor<int64_t>(
-          memory_info, input_ptr->GetData<int64_t>().data(),
-          input_ptr->NumOfBytesPerSample(), shape_vector.data(), shape_vector.size()));
+      OrtValue* value = NULL;
+      ORT_RETURN_ON_ERROR(ort_api->CreateTensorWithDataAsOrtValue(memory_info,
+      input_ptr->GetData<int64_t>().data(), (input_ptr->NumOfBytesPerSample() * sizeof(int64_t)),
+      shape_vector.data(), shape_vector.size(),
+      ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,
+      &value));
+      batches.emplace_back(value);
       continue;
     }
 
     auto ptr_int32 = dynamic_cast<TypedSynctheticInput<int32_t>*>(input_ptr);
     if (ptr_int32) {
-      batches.push_back(Ort::Value::CreateTensor<int32_t>(
-          memory_info, input_ptr->GetData<int32_t>().data(),
-          input_ptr->NumOfBytesPerSample(), shape_vector.data(), shape_vector.size()));
+      OrtValue* value = nullptr;
+      ORT_RETURN_ON_ERROR(ort_api->CreateTensorWithDataAsOrtValue(memory_info,
+      input_ptr->GetData<int32_t>().data(), (input_ptr->NumOfBytesPerSample() * sizeof(int32_t)),
+      shape_vector.data(), shape_vector.size(),
+      ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32,
+      &value));
+      batches.emplace_back(value);
       continue;
     }
 

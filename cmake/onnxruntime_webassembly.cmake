@@ -105,6 +105,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       onnxruntime_mlas
       onnxruntime_optimizer
       onnxruntime_providers
+      ${PROVIDERS_XNNPACK}
       onnxruntime_session
       onnxruntime_util
       re2::re2
@@ -168,10 +169,14 @@ else()
     onnxruntime_mlas
     onnxruntime_optimizer
     onnxruntime_providers
+    ${PROVIDERS_XNNPACK}
     onnxruntime_session
     onnxruntime_util
     re2::re2
   )
+  if (onnxruntime_USE_XNNPACK)
+    target_link_libraries(onnxruntime_webassembly PRIVATE XNNPACK)
+  endif()
 
   if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
     target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)

@@ -50,6 +50,17 @@ struct CheckpointState {
 };
 
 /**
+ * @brief Save training states as ORT checkpoint.
+ *
+ * @param state parameter/optimizer and other user defined training states.
+ * @param checkpoint_path folder where checkpoint is saved.
+ * @return Status
+ * TODO: change state to const ref
+ */
+Status SaveCheckpoint(CheckpointState& state,
+                      const PathString& checkpoint_path);
+
+/**
  * @brief Save ONNX initializers as ORT checkpoint.
  *
  * @param trainable_tensor_protos trainable parameters in TensorProto format.
@@ -59,16 +70,6 @@ struct CheckpointState {
  */
 Status SaveCheckpoint(const std::vector<ONNX_NAMESPACE::TensorProto>& trainable_tensor_protos,
                       const std::vector<ONNX_NAMESPACE::TensorProto>& non_trainable_tensor_protos,
-                      const PathString& checkpoint_path);
-
-/**
- * @brief Save training states as ORT checkpoint.
- *
- * @param state parameter/optimizer and other user defined training states.
- * @param checkpoint_path folder where checkpoint is saved.
- * @return Status
- */
-Status SaveCheckpoint(CheckpointState& state,
                       const PathString& checkpoint_path);
 
 /**

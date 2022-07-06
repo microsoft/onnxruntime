@@ -27,7 +27,7 @@ struct ParameterOptimizerState {
  */
 struct GroupOptimizerState {
   int64_t step = 0;
-  float initial_lr = 0.001;         // Default value used in torch AdamW
+  float initial_lr = 0.001f;        // Default value used in torch AdamW
   float learning_rate{initial_lr};  // Adaptive learning rate as training proceeds.
   std::unordered_map<std::string, ParameterOptimizerState> param_named_optimizer_states;
 };
@@ -59,7 +59,8 @@ struct Optimizer {
   Optimizer(const std::string& optim_path_or_bytes,
             const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
             const onnxruntime::SessionOptions& session_options,
-            const Environment& env);
+            const Environment& env,
+            const std::vector<std::shared_ptr<IExecutionProvider>>& providers);
 
   Status Step();
 
@@ -86,7 +87,7 @@ struct Optimizer {
   // TODO: load this info from checkpoint
   OptimizerType optimizer_type_ = OptimizerType::AdamW;
   std::unique_ptr<onnxruntime::InferenceSession> optim_sess_;
-  std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters_;
+  const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters_;
   GroupOptimizerState optimizer_state_;
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;

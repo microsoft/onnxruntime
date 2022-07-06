@@ -36,7 +36,7 @@ stages:
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: true
-        
+
 - stage: x64_release_dnnl
   dependsOn: []
   jobs:
@@ -51,7 +51,22 @@ stages:
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: false
-        
+
+
+- stage: x64_release_xnnpack
+  dependsOn: []
+  jobs:
+    - template: templates/win-cpu-ci.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env.bat
+        buildArch: x64
+        additionalBuildFlags: --build_wheel --use_xnnpack
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_release
+        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        RunStaticCodeAnalysis: false
 
 - stage: x64_release_winml
   dependsOn: []

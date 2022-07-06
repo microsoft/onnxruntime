@@ -1005,22 +1005,6 @@ class PlannerImpl {
               }
             }
           }
-#if defined(ENABLE_TRAINING) && defined(ENABLE_TRAINING_ON_DEVICE)
-          // This is required because for the on-device training case,
-          // the InPlaceAccumulator produces graph
-          // outputs which will be re-allocated instead of re-using
-          // the input accumulation buffer
-          if (pnode->OpType() == "InPlaceAccumulator") {
-            const NodeArg* input = pnode->InputDefs()[0];
-            const auto& input_name = input->Name();
-            const auto input_index = Index(input_name);
-
-            const auto& alloc_plan = AllocPlan(input_index);
-            if (alloc_plan.alloc_kind == AllocKind::kPreExisting) {
-              Reuse(input_index, current, AllocKind::kShare);
-            }
-          }
-#endif
         } else if (!context_.IsParallelExecutionEnabled() &&
                    FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
           // Re-using inputs is applicable for tensors, sequence tensors,

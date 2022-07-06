@@ -95,7 +95,7 @@ struct SyntheticDataLoader {
     num_of_sample_batches += 1;
   }
 
-  bool GetNextSampleBatch(std::vector<Ort::Value>& batches);
+  bool GetNextSampleBatch(std::vector<OrtValue*>& batches);
 
   size_t NumOfSampleBatches() {
     return num_of_sample_batches;
@@ -106,9 +106,9 @@ struct SyntheticDataLoader {
   }
 
  private:
-  // Be noted: all raw data MUST remain during the training, because all Ort::Value created as session inputs
+  // Be noted: all raw data MUST remain during the training, because all OrtValue created as session inputs
   // did not explicitly copy the data in.
-  // And also, the created Ort::Value also won't clean the raw data pointer. The raw data should be removed when
+  // And also, the created OrtValue also won't clean the raw data pointer. The raw data should be removed when
   // the life time of this struct ends.
   std::vector<std::unique_ptr<SyntheticSampleBatch>> sample_batch_collections_;
   int64_t sample_batch_count_;

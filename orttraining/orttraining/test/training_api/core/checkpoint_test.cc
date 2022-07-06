@@ -19,7 +19,11 @@
 #include "core/platform/path_lib.h"
 
 #include "orttraining/core/framework/checkpoint_common.h"
-#include "orttraining/training_api/include/interfaces.h"
+#include "orttraining/training_api/include/module.h"
+#include "orttraining/training_api/include/optimizer.h"
+#include "orttraining/training_api/include/checkpoint_property.h"
+#include "orttraining/training_api/include/checkpoint.h"
+#include "orttraining/training_api/include/lr_scheduler.h"
 
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
@@ -27,6 +31,7 @@
 #include "test/util/include/test/test_environment.h"
 #include "orttraining/test/training_api/common/synthetic_data_loader.h"
 #include "orttraining/test/training_api/core/data_utils.h"
+#include "default_providers.h"
 
 using onnxruntime::test::TemporaryDirectory;
 using namespace onnxruntime::training::api;
@@ -97,7 +102,7 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   ASSERT_STATUS_OK(SaveCheckpoint(trainable_param_values, non_trainable_param_values, checkpoint_path));
 
   // Check the ckpt files in the directory.
-  std::set<PathString> expected_file_names{"paramfrozen_tensors.pbseq", "paramtrain_tensors.pbseq"};
+  std::set<PathString> expected_file_names{ORT_TSTR("paramfrozen_tensors.pbseq"), ORT_TSTR("paramtrain_tensors.pbseq")};
   std::set<PathString> valid_file_names;
   LoopDir(checkpoint_path,
           [&valid_file_names, &checkpoint_path](const PathChar* filename, OrtFileType file_type) -> bool {
@@ -159,7 +164,9 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
  * Save Optimizer states into ORT checkpoint files,
  * Then load it into ORT, compare with the initial optimizer states values.
  */
-TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
+#if defined(USE_CUDA) || defined(USE_ROCM)
+
+TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
   /// Phase 1 - Test Preparison
   /// Prepare the data and dest folder for saving checkpoint.
   /// Also cooked the data for test result comparison.
@@ -181,15 +188,14 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   sample->AddFloatInput(fc2_bias_shape);
   data_loader.AddSyntheticSampleBatch(std::move(sample));
 
-  std::vector<Ort::Value> all_weights_values;
+  std::vector<OrtValue*> all_weights_values;
   data_loader.GetNextSampleBatch(all_weights_values);
   ASSERT_EQ(all_weights_values.size(), 4);
-  Ort::Value* data_ptr = all_weights_values.data();
   NameMLValMap name_to_ort_value{
-      {"fc1.weight", **reinterpret_cast<::OrtValue**>(data_ptr)},
-      {"fc1.bias", **reinterpret_cast<::OrtValue**>(data_ptr + 1)},
-      {"fc2.weight", **reinterpret_cast<::OrtValue**>(data_ptr + 2)},
-      {"fc2.bias", **reinterpret_cast<::OrtValue**>(data_ptr + 3)},
+      {"fc1.weight", *all_weights_values[0]},
+      {"fc1.bias", *all_weights_values[1]},
+      {"fc2.weight", *all_weights_values[2]},
+      {"fc2.bias", *all_weights_values[3]},
   };
 
   // Module/Optimizer creation and trainable parameter name definitions.
@@ -202,15 +208,17 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
+  std::vector<std::shared_ptr<IExecutionProvider>> cuda_provider{onnxruntime::test::DefaultCudaExecutionProvider()};
   auto model = std::make_unique<Module>(model_uri, named_parameters, session_option,
-                                        *env);
-  auto optimizer = Optimizer(optim_uri, model->NamedParameters(), session_option, *env);
+                                        *env, cuda_provider);
+  auto optimizer = std::make_unique<Optimizer>(optim_uri, model->NamedParameters(), session_option,
+                                               *env, cuda_provider);
 
   /// Phase 2 - Run Optimizer.GetStateDict and call save checkpoint APIs.
   /// And check the result checkpoint files.
 
   CheckpointState checkpoint_state;
-  ORT_ENFORCE(optimizer.GetStateDict(checkpoint_state.optimizer_checkpoint_state).IsOK());
+  ORT_ENFORCE(optimizer->GetStateDict(checkpoint_state.optimizer_checkpoint_state).IsOK());
 
   // Remove the tempoprary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
@@ -226,9 +234,9 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
 
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{
-      "optim_group0_momentum0_tensors.pbseq",
-      "optim_group0_momentum1_tensors.pbseq",
-      "optim_group0_properties.pbseq",
+      ORT_TSTR("optim_group0_momentum0_tensors.pbseq"),
+      ORT_TSTR("optim_group0_momentum1_tensors.pbseq"),
+      ORT_TSTR("optim_group0_properties.pbseq"),
   };
 
   std::set<PathString> valid_file_names;
@@ -287,6 +295,8 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   }
 }
 
+#endif
+
 /**
  * Create PropertyBag with sets of properties,
  * Save properties into ORT checkpoint files,
@@ -328,7 +338,7 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
 
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{
-      "custom_properties.pbseq",
+      ORT_TSTR("custom_properties.pbseq"),
   };
 
   std::set<PathString> valid_file_names;

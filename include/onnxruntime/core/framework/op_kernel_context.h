@@ -212,7 +212,7 @@ class OpKernelContext {
   const OrtValue* GetImplicitInputMLValue(int index) const;
   OrtValue* GetOutputMLValue(int index);
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_ATEN
   Status SetOutputMLValue(int index, const OrtValue& ort_value);
 #endif
 

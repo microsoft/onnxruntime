@@ -44,7 +44,7 @@ struct Parameter {
   std::string gradient_name_;
 
   bool requires_grad_{true};
-  friend class Module;
+  friend struct Module;
 };
 
 struct ModuleCheckpointState {
@@ -58,9 +58,10 @@ struct Module {
   // Initialize a module from an ORT inference session with loaded
   // training ONNX model and load parameters
   Module(const std::string& train_model_path_or_bytes,
-         std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
+         const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
          const onnxruntime::SessionOptions& session_options,
          const Environment& env,
+         const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
          const std::optional<std::string>& eval_model_path_or_bytes = std::nullopt);
 
   // Return the trainable/nontrainable parameters
@@ -84,10 +85,15 @@ struct Module {
   // Return the states of the module as a map.
   Status GetStateDict(ModuleCheckpointState& module_checkpoint_states);
 
+  // Returns the output count for training graph
+  size_t GetTrainModeOutputCount() const noexcept;
+
+  // Returns the output count for eval graph
+  size_t GetEvalModeOutputCount() const noexcept;
+
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_{nullptr};
-  std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters_;
   std::vector<std::string> train_input_names_;
   std::vector<std::string> train_output_names_;
   std::vector<std::string> eval_input_names_;
@@ -95,6 +101,7 @@ struct Module {
   std::vector<OrtValue> weights_;
   std::vector<OrtValue> gradients_;
   bool accumulate_gradient_ = true;
+  const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters_;
 };
 
 }  // namespace api

@@ -51,9 +51,12 @@ class IExecutionFrame {
   const OrtValue* GetNodeInputOrOutputMLValue(int index) const;
   OrtValue* GetMutableNodeInputOrOutputMLValue(int index);
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_ATEN
   // Override the index-th output with ort_value
   Status SetOutputMLValue(int index, const OrtValue& ort_value);
+#endif
+
+#ifdef ENABLE_TRAINING
   void UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds);
   void UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                      const std::unordered_map<int, OrtValue>& initializers);
@@ -73,7 +76,7 @@ class IExecutionFrame {
 
   /**
    * write the output values to the 'fetches' vector
-   * Don't access the values after SessionState is destroyed 
+   * Don't access the values after SessionState is destroyed
    */
   Status GetOutputs(std::vector<OrtValue>& fetches);
 

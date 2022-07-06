@@ -11,7 +11,8 @@
 #include <algorithm>
 #include <thread>
 
-#include <gtest/gtest.h>
+#include "gtest/gtest.h"
+#include "gmock/gmock.h"
 
 #include "core/common/common.h"
 #include "core/graph/constants.h"
@@ -139,7 +140,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
     // Now run
     auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
-    //without preallocated output tensor
+    // without preallocated output tensor
     RunSession<OutT>(default_allocator.get(),
                      session,
                      inputs,
@@ -147,11 +148,11 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                      expected_dims_y,
                      expected_values_y,
                      nullptr);
-    //with preallocated output tensor
+    // with preallocated output tensor
     Ort::Value value_y = Ort::Value::CreateTensor<float>(default_allocator.get(),
                                                          expected_dims_y.data(), expected_dims_y.size());
 
-    //test it twice
+    // test it twice
     for (int i = 0; i != 2; ++i)
       RunSession<OutT>(default_allocator.get(),
                        session,
@@ -406,7 +407,7 @@ TEST(CApiTest, custom_op_handler) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(REDUCED_OPS_BUILD)
-//disable test in reduced-op-build since TOPK and GRU are excluded there
+// disable test in reduced-op-build since TOPK and GRU are excluded there
 TEST(CApiTest, instant_op_handler) {
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
@@ -513,7 +514,7 @@ TEST(CApiTest, test_enable_ort_customops_stringlower) {
 }
 #endif
 
-//test custom op which accepts float and double as inputs
+// test custom op which accepts float and double as inputs
 TEST(CApiTest, varied_input_custom_op_handler) {
   std::vector<Input> inputs(2);
   inputs[0].name = "X";
@@ -765,10 +766,10 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
 }
 #endif
 
-//It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
+// It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
 #if defined(__ANDROID__)
 TEST(CApiTest, DISABLED_test_custom_op_library) {
-//To accomodate a reduced op build pipeline
+// To accomodate a reduced op build pipeline
 #elif defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
 TEST(CApiTest, DISABLED_test_custom_op_library) {
 #else
@@ -915,7 +916,7 @@ TEST(ReducedOpsBuildTest, test_excluded_ops) {
   std::vector<float> expected_values_y = {0.1f, 0.1f, 0.1f};
   bool failed = false;
   try {
-    //only test model loading, exception expected
+    // only test model loading, exception expected
     TestInference<float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0,
                          nullptr, nullptr, nullptr, true);
   } catch (const Ort::Exception& e) {
@@ -1164,11 +1165,11 @@ TEST(CApiTest, cuda_graph) {
   // Enable cuda graph in cuda provider option.
   OrtCUDAProviderOptionsV2* cuda_options = nullptr;
   ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
-  std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)> rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
+  std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)>
+      rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
   std::vector<const char*> keys{"enable_cuda_graph"};
   std::vector<const char*> values{"1"};
-  ASSERT_TRUE(api.UpdateCUDAProviderOptions(
-                  rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
+  ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
 
   Ort::SessionOptions session_options;
   ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(
@@ -1225,20 +1226,22 @@ TEST(CApiTest, cuda_graph) {
   // Check the values against the bound raw memory (needs copying from device to host first)
   std::array<float, 3 * 2> y_values;
   cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
-  ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));
+  ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
 
   // Replay the captured CUDA graph
   session.Run(Ort::RunOptions(), binding);
   cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
-  ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));
+  ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
 
   // Change the input and replay the CUDA graph again.
   x_values = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
   cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+  binding.SynchronizeInputs();
+
   session.Run(Ort::RunOptions(), binding);
   cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
   expected_y = {10.0f, 40.0f, 90.0f, 160.0f, 250.0f, 360.0f};
-  ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));
+  ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
 
   // Clean up
   binding.ClearBoundInputs();
@@ -1951,7 +1954,7 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
   Ort::Session session(*ort_env, model_uri.c_str(), session_options);
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
-  //without preallocated output tensor
+  // without preallocated output tensor
   RunSession(default_allocator.get(),
              session,
              inputs,
