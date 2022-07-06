@@ -804,17 +804,16 @@ at::Tensor& out) {
   }
   auto& invoker = GetORTInvoker(self.device());
 
+  int64_t l_axis = dim.has_value() ? *dim : 0;
+  bool keep_dim_effective = dim.has_value() ? keepdim : false;
   auto ort_input_self =
     create_ort_value(invoker, dim.has_value() ? self : self.reshape({-1}));
 
-  // Remove this hand signature once the generator can support this one line below.
-  int64_t l_axis = dim.has_value() ? *dim : 0;
-
   NodeAttributes attrs(2);
   attrs["axis"] = create_ort_attribute(
-  "axis", l_axis, at::ScalarType::Int);
+    "axis", l_axis, at::ScalarType::Int);
   attrs["keepdims"] = create_ort_attribute(
-  "keepdims", keepdim, at::ScalarType::Bool);
+    "keepdims", keep_dim_effective, at::ScalarType::Bool);
 
   std::vector<OrtValue> ort_outputs_0_ArgMax(1);
 
