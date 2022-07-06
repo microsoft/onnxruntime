@@ -358,14 +358,7 @@ class ORTGen:
                     writer.writeline("auto ort_input_out = create_ort_value(invoker, out);")
                     writer.writeline()
 
-        cast_output_to_bool = False
         for onnx_op_index, onnx_op in enumerate(ctx.ops):
-            # equal onnx op only returns bool but that doesn't align with aten behavior,
-            # so we track if the Equal op is in the list and if so we'll do a cast at the end
-            # in the future if there are other ops like Equal we could add them here too.
-            if onnx_op.name == "Equal":
-                cast_output_to_bool = True
-
             # Torch -> ORT inputs
             for op_input in onnx_op.inputs:
                 if isinstance(op_input, Outputs):
@@ -463,16 +456,7 @@ class ORTGen:
                 # if no in_place_params found and there is an out input to set
                 # and this is the last onnx op, we set the out to be written to
                 if len(in_place_params) == 0 and set_out_tensor and onnx_op_index == (len(ctx.ops) - 1):
-                    if cast_output_to_bool:
-                        # if the out type is bool already we can still set it since no cast will be needed.
-                        writer.writeline("if (out.scalar_type() == at::kBool) {")
-                        writer.push_indent()
-                        writer.writeline(f"{onnx_op.outputs}[0] = ort_input_out;")
-                        writer.pop_indent()
-                        writer.writeline("}")
-                    else:
-                        # assign output ort value directly since we don't need special handling.
-                        writer.writeline(f"{onnx_op.outputs}[0] = ort_input_out;")
+                    writer.writeline(f"{onnx_op.outputs}[0] = ort_input_out;")
 
                 if len(in_place_params) != 0 and len(in_place_params) != (
                     len(return_info.elements) if isinstance(return_info, ast.TupleType) else 1
@@ -523,39 +507,30 @@ class ORTGen:
         if len(in_place_params) == 0:
             # tensor options
             if set_out_tensor:
-                if cast_output_to_bool:
-                    writer.writeline("if (out.scalar_type() != at::kBool) {")
-                    writer.push_indent()
-                    writer.writeline(f"auto temp = CastToType(invoker, {return_outputs}[0], out.scalar_type());")
-                    writer.writeline("copy(invoker, temp, ort_input_out);")
-                    writer.pop_indent()
-                    writer.writeline("}")
-
                 writer.writeline(f"return {last_param.identifier.value};")
                 return
 
-            else:
-                writer.write(f"at::TensorOptions tensor_options = {first_param.identifier.value}")
-                if first_param.parameter_type.desugar().identifier_tokens[0].value == "TensorList":
-                    writer.write("[0]")
-                writer.write(".options()")
-                if need_type_promotion:
-                    writer.write(".dtype(*promoted_type)")
-                writer.writeline(";")
+            writer.write(f"at::TensorOptions tensor_options = {first_param.identifier.value}")
+            if first_param.parameter_type.desugar().identifier_tokens[0].value == "TensorList":
+                writer.write("[0]")
+            writer.write(".options()")
+            if need_type_promotion:
+                writer.write(".dtype(*promoted_type)")
+            writer.writeline(";")
 
-                writer.writeline("return aten_tensor_from_ort(")
-                writer.push_indent()
-                if (
-                    isinstance(cpp_func.return_type, ast.TemplateType)
-                    and cpp_func.return_type.identifier_tokens[-1].value == "std::vector"
-                ):
-                    writer.writeline(f"{return_outputs},")
-                    writer.writeline("tensor_options);")
-                else:
-                    writer.writeline(f"std::move({return_outputs}[0]),")
-                    writer.writeline("tensor_options);")
-                writer.pop_indent()
-                return
+            writer.writeline("return aten_tensor_from_ort(")
+            writer.push_indent()
+            if (
+                isinstance(cpp_func.return_type, ast.TemplateType)
+                and cpp_func.return_type.identifier_tokens[-1].value == "std::vector"
+            ):
+                writer.writeline(f"{return_outputs},")
+                writer.writeline("tensor_options);")
+            else:
+                writer.writeline(f"std::move({return_outputs}[0]),")
+                writer.writeline("tensor_options);")
+            writer.pop_indent()
+            return
         else:
             if len(in_place_params) == 1:
                 writer.writeline(f"return {in_place_params[0]};")
