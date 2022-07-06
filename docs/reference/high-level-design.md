@@ -78,40 +78,4 @@ different representation if they choose to, but it is their responsibility to co
 * [Add a new graph transform](https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/graph_transformer.h)
 * [Add a new rewrite rule](https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/rewrite_rule.h)
 
-## Windows OS integration
-
-ONNX Runtime is available in Windows 10 versions >= 1809 and all versions of Windows 11. It is embedded inside Windows.AI.MachineLearning.dll and exposed via the WinRT API (WinML for short). It includes the CPU execution provider and the [DirectML execution provider](../execution-providers/DirectML-ExecutionProvider) for GPU support.
-
-The high level design looks like this:
-
-![ONNX + WinML layered architecture](../../images/layered-architecture.png)
-
-### API choice
-{: .no_toc }
-
-You can choose to use either the WinRT API or the C API.
-
-||WinRT|C API|
-|--|--|--|
-|Type system| Integration with Windows RT types| Platform neutral types|
-|Language support| Language support via WinRT Projections| Language support via per language projections|
-|Tensorization| Accepts VideoFrames and converts to tensors (support for CPU and GPU)| Accepts tensors|
-
-### Distribution choice
-{: .no_toc }
-
-You can choose to use the runtime included in Windows, or use the [NuGet package](https://docs.microsoft.com/en-us/nuget/what-is-nuget) to ship the runtime with the app.
-
-|Distribution|Inbox|App NuGet|
-|--|--|--|
-|Disk footprint| Included in the OS| Included in the App|
-|Servicing fixes| Serviced by OS updates| Serviced by the App|
-|Execution Providers| CPU & DirectML EP | App chosen EP|
-|Compatibility testing| Tested with OS flights against supported GPUs and CPU's | App performs compatibility testing|
-|Opset| Refreshed in OS updates| App chooses|
-
-### Using the NuGet WinRT API with other C-API distributions
-{: .no_toc }
-
-The WinRT API NuGet package is distributed with a specific version of ONNX Runtime, but apps can include their own version of ONNX Runtime (either a [released version](../install/#cccwinml-installs) or [a custom build](../build/)). You may wish to do this to use non-default execution providers.
-To use your own version of ONNX Runtime, replace onnxruntime.dll with your desired version.
+<p><a href="#">Back to top</a></p>
