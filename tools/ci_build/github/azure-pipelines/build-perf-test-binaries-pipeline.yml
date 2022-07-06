@@ -1,0 +1,16 @@
+parameters:
+- name: BuildAndroidBinaries
+  type: boolean
+  default: true
+
+jobs:
+- ${{ if parameters.BuildAndroidBinaries }}:
+  # build binaries for Android
+  - template: templates/android-java-api-aar.yml
+    parameters:
+      buildConfig: 'Release'
+      buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_full_aar_build_settings.json'
+      artifactName: 'onnxruntime-android-full-aar'
+      job_name_suffix: 'Full'
+      publish_executables: '1'
+      pool_name: 'Linux-CPU'
