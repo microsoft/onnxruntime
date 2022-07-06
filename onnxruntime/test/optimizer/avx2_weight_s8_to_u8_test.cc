@@ -345,6 +345,9 @@ TEST(CPU_U8S8_Precision_Tests, QGemm) {
   test.AddOptionalInputEdge<uint8_t>();
   test.AddOutput<float>("Y", {M, N}, std::vector<float>(matrix_output.data(), matrix_output.data() + M * N));
 
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+
   SessionOptions so;
   so.use_per_session_threads = false;
   so.session_logid = "QGemmAvx2PrecTransformer";
@@ -352,8 +355,8 @@ TEST(CPU_U8S8_Precision_Tests, QGemm) {
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
       kOrtSessionOptionsAvx2PrecisionMode, "1"));
   so.graph_optimization_level = TransformerLevel::Level2;
-  test.Run(so);
-
+  test.Run(so, OpTester::ExpectResult::kExpectSuccess, "",
+             {kTensorrtExecutionProvider}, nullptr, &execution_providers);
 }
 
 
@@ -397,6 +400,9 @@ TEST(CPU_U8S8_Precision_Tests, MatMulInteger) {
 
   test.AddOutput<int32_t>("T3", {M, N}, ToVector<int32_t>(matrix_c.data(), M * N));
 
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+
   SessionOptions so;
   so.use_per_session_threads = false;
   so.session_logid = "QGemmAvx2PrecTransformer";
@@ -404,7 +410,8 @@ TEST(CPU_U8S8_Precision_Tests, MatMulInteger) {
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
       kOrtSessionOptionsAvx2PrecisionMode, "1"));
   so.graph_optimization_level = TransformerLevel::Level2;
-  test.Run(so);
+  test.Run(so, OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider}, nullptr, &execution_providers);
 }
 
 
