@@ -236,7 +236,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxSequence_getStrings(JNIEn
           // bail out as exception has been thrown
           return NULL;
         }
-        (*jniEnv)->SetObjectArrayElement(jniEnv, outputArray, i, str);
+        (*jniEnv)->SetObjectArrayElement(jniEnv, outputArray, (jsize)i, str);
 
         api->ReleaseValue(element);
       } else {
