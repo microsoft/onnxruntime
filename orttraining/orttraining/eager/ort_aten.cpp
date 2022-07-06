@@ -366,6 +366,38 @@ OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at:
 }
 
 /*
+ * Utility method to calculate the resulting shape of tensor after a reduction operation.
+ *
+ * @param dimToReduce The dimension to reduce. If null, then flattens input vector to single dimension.
+ * @param keepdim Whether to retain dim or not. Ignored if dimToReduce is null.
+ */
+inline at::DimVector calculate_reduction_shape(
+  const at::Tensor& self,
+  c10::optional<int64_t> dimToReduce,
+  bool keepdim) {
+  auto shape = at::DimVector(self.sizes());
+
+  // If we have dim value, then reduce that dimension.
+  // else, flatten to a single dimension.
+  if (dimToReduce.has_value()) {
+    int64_t effectiveDimToReduce = *dimToReduce;
+    at::maybe_wrap_dims_n(&effectiveDimToReduce, 1, self.dim());
+
+    if (keepdim) {
+      shape[effectiveDimToReduce] = 1;
+    } else {
+      shape.erase(shape.begin() + effectiveDimToReduce);
+    }
+  } else {
+    for (int dim = shape.size() - 1; dim >= 0; dim--) {
+      shape.erase(shape.begin() + dim);
+    }
+  }
+
+  return shape;
+}
+
+/*
  * Utility function for resizing output tensor
  * Only resizes if:
  *   - The shape is different
@@ -807,16 +839,26 @@ at::Tensor& out) {
   auto ort_input_self =
     create_ort_value(invoker, dim.has_value() ? self : self.reshape({-1}));
 
-  // Remove this hand signature once the generator can support this one line below.
   int64_t l_axis = dim.has_value() ? *dim : 0;
+  bool keepdim_effective_value = dim.has_value() ? keepdim : false;
 
   NodeAttributes attrs(2);
   attrs["axis"] = create_ort_attribute(
-  "axis", l_axis, at::ScalarType::Int);
+    "axis", l_axis, at::ScalarType::Int);
   attrs["keepdims"] = create_ort_attribute(
-  "keepdims", keepdim, at::ScalarType::Int);
+    "keepdims", keepdim_effective_value, at::ScalarType::Bool);
 
   std::vector<OrtValue> ort_outputs_0_ArgMax(1);
+
+  // Calculate the size of the out tensor, based on self tensor, dimension input, and keepdim input
+  auto shape = calculate_reduction_shape(self, dim, keepdim);
+
+  resize_output(invoker,
+                dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()),
+                at::IntArrayRef{shape});
+
+  auto ort_input_out = create_ort_value(invoker, out);
+  ort_outputs_0_ArgMax[0] = ort_input_out;
 
   auto status = invoker.Invoke("ArgMax", {
   std::move(ort_input_self),
@@ -826,12 +868,6 @@ at::Tensor& out) {
   throw std::runtime_error(
   "ORT return failure status:" + status.ErrorMessage());
 
-  at::TensorOptions tensor_options = out.options();
-
-  // generator also needs to do this to handle the out param!
-  out = aten_tensor_from_ort(
-  std::move(ort_outputs_0_ArgMax[0]),
-  tensor_options);
   return out;
 }
 
