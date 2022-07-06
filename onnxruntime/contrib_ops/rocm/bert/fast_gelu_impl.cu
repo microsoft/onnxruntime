@@ -54,11 +54,11 @@ bool LaunchFastGeluKernel(hipStream_t stream, int input_length, int bias_length,
 template bool LaunchFastGeluKernel<float>(hipStream_t stream, int input_length, int bias_length,
                                           const float* input, const float* bias, float* output, bool tuning);
 
-template bool LaunchFastGeluKernel(hipStream_t stream, int input_length, int bias_length,
-                                   const BFloat16* input, const BFloat16* bias, BFloat16* output, bool tuning);
+template bool LaunchFastGeluKernel<BFloat16>(hipStream_t stream, int input_length, int bias_length,
+                                             const BFloat16* input, const BFloat16* bias, BFloat16* output, bool tuning);
 
-template bool LaunchFastGeluKernel(hipStream_t stream, int input_length, int bias_length,
-                                   const half* input, const half* bias, half* output, bool tuning);
+template bool LaunchFastGeluKernel<half>(hipStream_t stream, int input_length, int bias_length,
+                                         const half* input, const half* bias, half* output, bool tuning);
 
 }  // namespace rocm
 }  // namespace contrib
