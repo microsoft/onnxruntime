@@ -250,8 +250,8 @@ class OrtOpTests(unittest.TestCase):
         cpu_result_func = "torch." + test_name + "(cpu_tensor)"
         ort_result_func = "torch." + test_name + "(ort_tensor)"
 
-        cpu_result = eval(cpu_result_func)
-        ort_result = eval(ort_result_func)
+        cpu_result = eval(compile(cpu_result_func, "<string>", "eval"))
+        ort_result = eval(compile(ort_result_func, "<string>", "eval"))
 
         assert torch.allclose(cpu_result, ort_result.cpu())
 
@@ -262,8 +262,8 @@ class OrtOpTests(unittest.TestCase):
         cpu_tensor = tensor_test
         ort_tensor = cpu_tensor.to(device)
 
-        eval("torch." + test_name + "_(cpu_tensor)")
-        eval("torch." + test_name + "_(ort_tensor)")
+        eval(compile("torch." + test_name + "_(cpu_tensor)", "<string>", "eval"))
+        eval(compile("torch." + test_name + "_(ort_tensor)", "<string>", "eval"))
 
         assert torch.allclose(cpu_tensor, ort_tensor.cpu())
 
