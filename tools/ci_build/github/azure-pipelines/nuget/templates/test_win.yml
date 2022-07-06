@@ -62,6 +62,11 @@ jobs:
     parameters:
       packageFolder: '$(Build.BinariesDirectory)\nuget-artifact'
 
+  - script: |
+     mklink /D /J models C:\local\models
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Create models link'
+
   # TODO: Add .Net Core AnyCPU test task
 
   - script: |
