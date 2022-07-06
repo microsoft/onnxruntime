@@ -62,18 +62,21 @@ __device__ inline half2 AddHalf2(const half2 a, const half2 b) {
 }
 
 struct KeyValuePairSum {
-  __device__ inline hipcub::KeyValuePair<float, float> operator()(const hipcub::KeyValuePair<float, float>& a, const hipcub::KeyValuePair<float, float>& b) {
+  __device__ inline hipcub::KeyValuePair<float, float> operator()(const hipcub::KeyValuePair<float, float>& a,
+                                                                  const hipcub::KeyValuePair<float, float>& b) {
     return hipcub::KeyValuePair<float, float>(a.key + b.key, a.value + b.value);
   }
 
-  __device__ inline hipcub::KeyValuePair<half, half> operator()(const hipcub::KeyValuePair<half, half>& a, const hipcub::KeyValuePair<half, half>& b) {
+  __device__ inline hipcub::KeyValuePair<half, half> operator()(const hipcub::KeyValuePair<half, half>& a,
+                                                                const hipcub::KeyValuePair<half, half>& b) {
     const half2 a2 = __halves2half2(a.key, a.value);
     const half2 b2 = __halves2half2(b.key, b.value);
     const half2 res = AddHalf2(a2, b2);
     return hipcub::KeyValuePair<half, half>(__low2half(res), __high2half(res));
   }
 
-  __device__ inline hipcub::KeyValuePair<half2, half2> operator()(const hipcub::KeyValuePair<half2, half2>& a, const hipcub::KeyValuePair<half2, half2>& b) {
+  __device__ inline hipcub::KeyValuePair<half2, half2> operator()(const hipcub::KeyValuePair<half2, half2>& a,
+                                                                  const hipcub::KeyValuePair<half2, half2>& b) {
     return hipcub::KeyValuePair<half2, half2>(AddHalf2(a.key, b.key), AddHalf2(a.value, b.value));
   }
 };
