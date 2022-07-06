@@ -25,7 +25,8 @@ The DirectML Execution Provider currently uses DirectML version [1.8.0](https://
 {:toc}
 
 ## Install
-Pre-built packages of ORT with the DirectML EP is published on Nuget.org. See: [Install ORT](../install#cccwinml-installs).
+
+Pre-built packages of ORT with the DirectML EP is published on Nuget.org. See: [Install ONNX Runtime](../install#cccwinml-installs).
 
 ## Requirements
 
@@ -38,10 +39,10 @@ The DirectML execution provider requires a DirectX 12 capable device. Almost all
 
 DirectML was introduced in Windows 10, version 1903, and in the corresponding version of the [Windows SDK](https://docs.microsoft.com/en-us/windows/ai/directml/dml).
 
-
 ## Build
 
 Requirements for building the DirectML execution provider:
+
 1. Visual Studio 2017 toolchain
 2. [The Windows 10 SDK (10.0.18362.0) for Windows 10, version 1903](https://developer.microsoft.com/en-us/windows/downloads/windows-10-sdk) (or newer)
 
@@ -56,8 +57,6 @@ The DirectML execution provider supports building for both x64 (default) and x86
 
 Note that, you can build [ONNX Runtime with DirectML](https://docs.microsoft.com/en-us/windows/ai/windows-ml/onnx-versions). This allows DirectML re-distributable package download automatically as part of the build. Find additional license information on the NuGet docs.
 
-
-<p><a href="#">Back to top</a></p>
 
 ## Usage
 
@@ -88,8 +87,6 @@ OrtStatus* OrtSessionOptionsAppendExecutionProviderEx_DML(
     );
 ```
 
-<p><a href="#">Back to top</a></p>
-
 ## Configuration Options
 
 The DirectML execution provider does not support the use of memory pattern optimizations or parallel execution in onnxruntime. When supplying session options during InferenceSession creation, these options must be disabled or an error will be returned.
@@ -105,8 +102,6 @@ See [onnxruntime\include\onnxruntime\core\session\onnxruntime_c_api.h](https://g
 If creating the onnxruntime InferenceSession object directly, you must set the appropriate fields on the `onnxruntime::SessionOptions` struct. Specifically, `execution_mode` must be set to `ExecutionMode::ORT_SEQUENTIAL`, and `enable_mem_pattern` must be `false`.
 
 Additionally, as the DirectML execution provider does not support parallel execution, it does not support multi-threaded calls to `Run` on the same inference session. That is, if an inference session using the DirectML execution provider, only one thread may call `Run` at a time. Multiple threads are permitted to call `Run` simultaneously if they operate on different inference session objects.
-
-<p><a href="#">Back to top</a></p>
 
 ## Performance Tuning
 
@@ -125,11 +120,10 @@ However, if a model input contains a free dimension (such as for batch size), ad
 2. Specify values of named dimensions within model inputs when creating the session using the OnnxRuntime *AddFreeDimensionOverrideByName* ABI.
 3. Edit the model to ensure that an input's free dimension has a [denotation](https://github.com/onnx/onnx/blob/master/docs/DimensionDenotation.md) (such as "DATA_BATCH," or a custom denotation).  Then, when creating the session, specify the dimension size for each denotation. This can be done using the OnnxRuntime *AddFreeDimensionOverride* ABI.
 
-<p><a href="#">Back to top</a></p>
-
 ## Samples
 
-[The DirectML GitHub repo](https://github.com/microsoft/DirectML/blob/master/README.md#directml-samples) has sample models which can be executed by the DirectML Execution Provider.
+A complete sample of onnxruntime using the DirectML execution provider can be found under [samples/c_cxx/fns_candy_style_transfer](https://github.com/microsoft/onnxruntime/tree/master/samples//c_cxx/fns_candy_style_transfer)
+
 
 ## Additional Resources
 
