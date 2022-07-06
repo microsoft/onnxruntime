@@ -486,6 +486,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     var inMeta = session.InputMetadata;
                     string testDataDirNamePattern = "test_data*";
+                    if (onnxModelFileName.Contains("opset9") && onnxModelFileName.Contains("LSTM_Seq_lens_unpacked"))
+                    {
+                        Console.WriteLine($"Change data folder's pattern for LSTM_Seq_lens_unpacked in opset 9.");
+                        testDataDirNamePattern = "seq_lens*"; // discrepancy in data directory
+                    }
                     foreach (var testDataDir in modelDir.EnumerateDirectories(testDataDirNamePattern))
                     {
                         var inputContainer = new List<NamedOnnxValue>();
@@ -810,13 +815,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
         static string GetTestModelsDir()
         {
-            // Get test path from enviroment.
+            // Get test path from environment.
             // Expected folder structure:
             //   ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH
-            //     modelsl_in_opset9
+            //     models_in_opset9
             //       test_add
             //         add.onnx
-            //     modelsl_in_opset17
+            //     models_in_opset17
             //       test_add
             //         add.onnx
             //       test_layernorm
@@ -826,8 +831,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             //         resnet.onnx
             var name = "ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH";
             var path = Environment.GetEnvironmentVariable(name);
+            Console.WriteLine($"Load ONNX models from root folder: {path}");
             if (path == null) {
-              throw new Exception($"The environment variable {name} must be set. See comments in GetTestModelsDir(...) for details.");
+              throw new Exception($"The environment variable {name} must be set to a directory containing ONNX models to test. E.g., <the directory>/models_in_opset<n>/model/model.onnx. See comments in GetTestModelsDir(...) for details.");
             }
             return path;
         }

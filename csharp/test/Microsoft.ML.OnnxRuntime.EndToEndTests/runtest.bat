@@ -8,7 +8,7 @@ SET TargetFramework=netcoreapp5.0
 SET TargetArch=x64
 SET dn="C:\Program Files\dotnet\dotnet"
 SET CurrentOnnxRuntimeVersion=""
-SET ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH="%OnnxRuntimeBuildDirectory%/models"
+SET ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH=%OnnxRuntimeBuildDirectory%\models
 
 SET LocalNuGetRepo=%1
 IF NOT "%2"=="" (SET TargetFramework=%2)
