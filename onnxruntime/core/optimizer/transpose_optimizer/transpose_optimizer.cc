@@ -1975,11 +1975,18 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
         continue;
       }
 
-      auto consumers = ctx.graph.GetValueConsumers(transpose_node.Outputs()[0]);
-      bool is_part_of_qdq_group = std::find_if(consumers->nodes.cbegin(), consumers->nodes.cend(),
+      // Check if Transpose node is the only consumer of dq node
+      auto consumers_of_dq_node = ctx.graph.GetValueConsumers(dq_node->Outputs()[0]);
+      if (!consumers_of_dq_node->comprehensive || consumers_of_dq_node->nodes.size() > 1) {
+        continue;
+      }
+
+      auto consumers_of_transpose_node = ctx.graph.GetValueConsumers(transpose_node.Outputs()[0]);
+      bool is_part_of_qdq_group = std::find_if(consumers_of_transpose_node->nodes.cbegin(),
+                                               consumers_of_transpose_node->nodes.cend(),
                                                [](const std::unique_ptr<api::NodeRef>& node) {
                                                  return node->OpType() == "QuantizeLinear";
-                                               }) != consumers->nodes.cend();
+                                               }) != consumers_of_transpose_node->nodes.cend();
       if (is_part_of_qdq_group) {
         continue;
       }
