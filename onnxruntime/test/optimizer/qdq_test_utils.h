@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <vector>
+#include <string>
+
 #include "graph_transform_test_builder.h"
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
@@ -358,6 +361,8 @@ GetQDQTestCaseFn BuildQDQGemmTestCase(const std::vector<int64_t>& input1_shape,
     gemm_node->AddAttribute("transB", transB);
   };
 }
+
+std::vector<std::string> GetNodeOpTypesInTopologicalOrder(const Graph& graph);
 
 }  // namespace test
 }  // namespace onnxruntime
