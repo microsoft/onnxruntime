@@ -11,7 +11,7 @@ namespace py = pybind11;
 
 namespace onnxruntime {
 
-PYBIND11_MODULE(kernel_explorer, m) {
+PYBIND11_MODULE(_kernel_explorer, m) {
   py::class_<DeviceArray>(m, "DeviceArray")
       .def(py::init<py::array>())
       .def("UpdateHostNumpyArray", &DeviceArray::UpdateHostNumpyArray);

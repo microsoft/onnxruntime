@@ -23,7 +23,7 @@ onnxruntime_add_shared_library_module(kernel_explorer
   ${kernel_explorer_srcs}
   ${kernel_explorer_kernel_srcs}
   ${BERT_DIR}/timer.cc)
-set_target_properties(kernel_explorer PROPERTIES PREFIX "")
+set_target_properties(kernel_explorer PROPERTIES PREFIX "_")
 target_include_directories(kernel_explorer PUBLIC
   $<TARGET_PROPERTY:onnxruntime_pybind11_state,INCLUDE_DIRECTORIES>
   ${KERNEL_EXPLORER_ROOT})
