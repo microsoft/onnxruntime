@@ -54,6 +54,7 @@ void LaunchVectorAdd(hipStream_t stream, const T* x, const T* y, T* z, int n) {
                      dim3(ThreadsPerBlock),
                      0, stream,
                      x, y, z, n);
+  HIP_CALL_THROW(hipGetLastError());
 }
 
 }  // namespace onnxruntime
