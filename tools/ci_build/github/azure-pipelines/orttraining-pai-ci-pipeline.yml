@@ -347,20 +347,21 @@ jobs:
   # which is a release for internal use. This release will be available via Torch's download page. We can either continue 
   # to use the link below, or switch to the link from Torch's when it's published. Ideally, the AMD CI UTs above could also migrate to use
   # the same whl below.   
-  - task: CmdLine@2
-    inputs:
-      script: |-
-        cd ./build/RelWithDebInfo
-        unset PYTHONPATH
-        pip uninstall -y torch torchvision
-        pip install torch==1.11.0 torchvision==0.12.0 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-5.1.3/
-        pip install wget pytorch_lightning==1.6.0
-        rm -rf onnxruntime
-        pip install ./dist/onnxruntime*.whl
-        python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
-        python orttraining_ortmodule_tests.py \
-          --mnist /mnist \
-          --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw \
-          --transformers_cache /hf_models_cache/huggingface/transformers
-    displayName: 'Run orttraining_ortmodule_tests.py'
-    condition: succeededOrFailed()
+
+  # - task: CmdLine@2
+  #   inputs:
+  #     script: |-
+  #       cd ./build/RelWithDebInfo
+  #       unset PYTHONPATH
+  #       pip uninstall -y torch torchvision
+  #       pip install torch==1.11.0 torchvision==0.12.0 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-5.1.3/
+  #       pip install wget pytorch_lightning==1.6.0
+  #       rm -rf onnxruntime
+  #       pip install ./dist/onnxruntime*.whl
+  #       python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
+  #       python orttraining_ortmodule_tests.py \
+  #         --mnist /mnist \
+  #         --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw \
+  #         --transformers_cache /hf_models_cache/huggingface/transformers
+  #   displayName: 'Run orttraining_ortmodule_tests.py'
+  #   condition: succeededOrFailed()
