@@ -107,8 +107,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
           epsilon_,
           hidden_size,
           static_cast<int>(element_count),
-          element_size
-          )) {
+          element_size)) {
     // Get last error to reset it to hipSuccess.
     HIP_CALL(hipGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
@@ -117,7 +116,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-}  //namespace rocm
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime
 
