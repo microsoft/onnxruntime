@@ -15,8 +15,8 @@ namespace onnxruntime {
 
 template <typename T, int VecSize>
 __global__ void VectorAddKernel(const T* __restrict__ x,
-                                  const T* __restrict__ y,
-                                  T* __restrict__ z, int n) {
+                                const T* __restrict__ y,
+                                T* __restrict__ z, int n) {
   int i = hipBlockDim_x * hipBlockIdx_x + hipThreadIdx_x;
   using LoadT = AlignedVector<T, VecSize>;
 
@@ -31,7 +31,7 @@ __global__ void VectorAddKernel(const T* __restrict__ x,
 
     T z_vec[VecSize];
 
-    #pragma unroll
+#pragma unroll
     for (int j = 0; j < VecSize; j++) {
       z_vec[j] = x_vec[j] + y_vec[j];
     }
@@ -49,7 +49,7 @@ __global__ void VectorAddKernel(const T* __restrict__ x,
 
 template <typename T, int ThreadsPerBlock, int VecSize>
 void LaunchVectorAdd(hipStream_t stream, const T* x, const T* y, T* z, int n) {
-  hipLaunchKernelGGL((VectorAddKernel<T, VecSize>), 
+  hipLaunchKernelGGL((VectorAddKernel<T, VecSize>),
                      dim3(CeilingDivision(n, ThreadsPerBlock*VecSize)),
                      dim3(ThreadsPerBlock),
                      0, stream,

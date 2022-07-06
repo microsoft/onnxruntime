@@ -13,8 +13,8 @@ namespace onnxruntime {
 
 PYBIND11_MODULE(kernel_explorer, m) {
   py::class_<DeviceArray>(m, "DeviceArray")
-    .def(py::init<py::array>())
-    .def("UpdateHostNumpyArray", &DeviceArray::UpdateHostNumpyArray);
+      .def(py::init<py::array>())
+      .def("UpdateHostNumpyArray", &DeviceArray::UpdateHostNumpyArray);
   InitVectorAdd(m);
   InitFastGelu(m);
 }

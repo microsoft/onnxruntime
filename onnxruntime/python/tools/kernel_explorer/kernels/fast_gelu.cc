@@ -71,7 +71,7 @@ class FastGeluTunable: public Operator {
     .def("SetRepeats", &name<type, threads_per_block, vec_size>::SetRepeats)                              \
     .def("Profile", &name<type, threads_per_block, vec_size>::Profile)                                    \
     .def("Run", &name<type, threads_per_block, vec_size>::Run);
-  
+
 #define REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, threads_per_block)  \
   REGISTER_OP(name, type, threads_per_block, 1)                      \
   REGISTER_OP(name, type, threads_per_block, 2)                      \
@@ -79,16 +79,16 @@ class FastGeluTunable: public Operator {
   REGISTER_OP(name, type, threads_per_block, 8)                      \
   REGISTER_OP(name, type, threads_per_block, 16)
 
-#define REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(name, type)  \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 64)             \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 128)            \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 192)            \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 256)            \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 320)            \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 384)            \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 448)            \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 512)         
-  
+#define REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(name, type) \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 64)            \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 128)           \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 192)           \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 256)           \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 320)           \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 384)           \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 448)           \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 512)
+
 void InitFastGelu(py::module m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, half);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, float);
