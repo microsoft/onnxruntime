@@ -540,9 +540,8 @@ class ORTGen:
 
     def _write_custom_ops_registrations(self, writer: writer.SourceWriter, generated_funcs: List[MappedOpFunction]):
         writer.writeline()
-        writer.writeline("void GenerateCustomOpsBindings(pybind11::module_ m) {")
+        writer.writeline("TORCH_LIBRARY(ort, m) {")
         writer.push_indent()
-        writer.writeline('ORT_LOG_INFO << "GenerateCustomOpsBindings init";')
 
         for mapped_func in generated_funcs:
             cpp_func = mapped_func.cpp_func

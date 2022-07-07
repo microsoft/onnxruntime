@@ -83,7 +83,7 @@ class OrtOpTests(unittest.TestCase):
         cpu_ones = torch.Tensor([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
         ort_ones = cpu_ones.to(device)
         cpu_ans = cpu_ones * 4
-        ort_ans = torch_ort.custom_ops.gemm(ort_ones, ort_ones, ort_ones, 1.0, 1.0, 0, 0)
+        ort_ans = torch.ops.ort.gemm(ort_ones, ort_ones, ort_ones, 1.0, 1.0, 0, 0)
         assert torch.allclose(cpu_ans, ort_ans.cpu())
 
     def test_batchnormalization_inplace(self):
@@ -93,10 +93,17 @@ class OrtOpTests(unittest.TestCase):
         bias = torch.Tensor([0.0, 1.0]).to(device)
         mean = torch.Tensor([0.0, 3.0]).to(device)
         var = torch.Tensor([1.0, 1.5]).to(device)
-        y, mean_out, var_out = torch_ort.custom_ops.batchnorm_inplace(x, s, bias, mean, var, 1e-5, 0.9)
+        y, mean_out, var_out = torch.ops.ort.batchnorm_inplace(x, s, bias, mean, var, 1e-5, 0.9)
         assert torch.allclose(x.cpu(), y.cpu()), "x != y"
         assert torch.allclose(mean.cpu(), mean_out.cpu()), "mean != mean_out"
         assert torch.allclose(var.cpu(), var_out.cpu()), "var != var_out"
+
+    def test_variadic_inputs():
+        device = self.get_device()
+        tensor = torch.ones(2, 2).to(device)
+        expected = torch.ones(2, 6)
+        out = torch.ops.ort.my_cat([tensor, tensor, tensor], 1)
+        assert torch.allclose(expected, out)
 
     def test_max(self):
         cpu_tensor = torch.rand(10, 10)
