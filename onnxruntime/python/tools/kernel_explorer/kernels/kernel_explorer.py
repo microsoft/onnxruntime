@@ -23,7 +23,7 @@ search_paths = [build_dir]
 library_files_to_load = [
     "onnxruntime_pybind11_state.so",
     "libonnxruntime_providers_shared.so",
-    "libonnxruntime_providers_rocm.so"
+    "libonnxruntime_providers_rocm.so",
 ]
 
 library_to_load = []
