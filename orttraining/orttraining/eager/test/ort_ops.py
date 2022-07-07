@@ -103,7 +103,7 @@ class OrtOpTests(unittest.TestCase):
         tensor = torch.ones(2, 2).to(device)
         expected = torch.ones(2, 6)
         out = torch.ops.ort.my_cat([tensor, tensor, tensor], 1)
-        assert torch.allclose(expected, out)
+        assert torch.allclose(expected, out.cpu())
 
     def test_max(self):
         cpu_tensor = torch.rand(10, 10)
