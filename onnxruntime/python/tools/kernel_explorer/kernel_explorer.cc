@@ -3,9 +3,9 @@
 
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
-#include "device_array.h"
-#include "kernels/vector_add.h"
-#include "kernels/fast_gelu.h"
+#include "python/tools/kernel_explorer/device_array.h"
+#include "python/tools/kernel_explorer/kernels/vector_add.h"
+#include "python/tools/kernel_explorer/kernels/fast_gelu.h"
 
 namespace py = pybind11;
 
