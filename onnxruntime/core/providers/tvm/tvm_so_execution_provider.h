@@ -43,6 +43,7 @@ class TvmSoExecutionProvider : public IExecutionProvider {
 
  private:
   void printOptions();
+  bool checkHash(const std::string& onnx_path) const;
   std::shared_ptr<TvmModule> compileModel(const std::string& func_name,
                                           const GraphViewer& graph_viewer,
                                           InputsInfoMap& inputs_info);    // NOLINT

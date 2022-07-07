@@ -21,7 +21,7 @@ jobs:
          run: |
            set -e -x 
            sudo apt-get update
-           sudo apt-get install -y libtinfo-dev zlib1g-dev build-essential libedit-dev libxml2-dev
+           sudo apt-get install -y libtinfo-dev zlib1g-dev build-essential libedit-dev libxml2-dev nasm
            python3 -m pip install -r ${{ github.workspace }}/tools/ci_build/github/linux/tvm/requirements.txt
        - name: 'Build and Test'
          run: |

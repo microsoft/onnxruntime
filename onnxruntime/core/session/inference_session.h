@@ -349,13 +349,15 @@ class InferenceSession {
    *                              copy/checks.
    * @param cache Contains node arg name to OrtValue map stashed from previous run
    *              for frontier tensors
+   * @param partial_graph_index Index of the partial graph to run.
    */
   common::Status PartialRun(onnxruntime::RunOptions& run_options,
                             const std::vector<OrtValue>& feeds,
                             std::vector<OrtValue>& fetches,
                             PartialGraphExecutionState& state,
                             FeedsFetchesManager& feeds_fetches_manager,
-                            const OrtValueCachePtr& cache);
+                            const OrtValueCachePtr& cache,
+                            int32_t partial_graph_index);
 #endif
 
   /**
@@ -664,6 +666,12 @@ class InferenceSession {
   std::basic_string<ORTCHAR_T> thread_pool_name_;
   std::basic_string<ORTCHAR_T> inter_thread_pool_name_;
 
+  // This option allows to decrease CPU usage between infrequent
+  // requests and forces any TP threads spinning stop immediately when the last of
+  // concurrent ExecuteGraph() call returns.
+  // Spinning is restarted on the next Run()
+  bool force_spinning_stop_between_runs_ = false;
+
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
 
@@ -713,7 +721,7 @@ class InferenceSession {
   DataTransferManager data_transfer_mgr_;
 
   // Number of concurrently running executors
-  std::atomic<int> current_num_runs_;
+  std::atomic<int> current_num_runs_ = 0;
 
   mutable onnxruntime::OrtMutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
   bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)

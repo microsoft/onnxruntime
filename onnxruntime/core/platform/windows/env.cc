@@ -206,8 +206,9 @@ class WindowsEnv : public Env {
         ret.push_back(buffer[i].ProcessorMask);
       }
     }
-    if (ret.empty())
+    if (ret.empty()){
       return generate_vector_of_n(std::thread::hardware_concurrency());
+    }
     return ret;
   }
 

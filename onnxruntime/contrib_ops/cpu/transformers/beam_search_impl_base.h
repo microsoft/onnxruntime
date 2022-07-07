@@ -95,7 +95,7 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
     this->sequences.Init(this->sequences_space, static_cast<int>(batch_beam_size), sequence_length, max_length);
   }
 
-  // Copy input_ids to sequences[0]
+  // Copy expanded input_ids to sequences[0]
   void SetSequence(gsl::span<const int32_t> input_ids_in_cpu,
                    size_t batch_beam_size,
                    int max_length,
@@ -105,6 +105,21 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
       for (int j = 0; j < sequence_length; j++) {
         const size_t index = SafeInt<gsl::index>(i) * max_length + j;
         sequences_0[index] = input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j];
+      }
+    }
+  }
+
+  // Copy unexpanded input_ids to sequences[0]
+  void SetSequence(gsl::span<const int32_t> input_ids_in_cpu,
+                   size_t batch_beam_size,
+                   int beam_size,
+                   int max_length,
+                   int sequence_length) {
+    gsl::span<int32_t> sequences_0 = sequences_space;
+    for (size_t i = 0; i < batch_beam_size; i++) {
+      for (int j = 0; j < sequence_length; j++) {
+        const size_t index = SafeInt<gsl::index>(i) * max_length + j;
+        sequences_0[index] = input_ids_in_cpu[SafeInt<gsl::index>(i / beam_size) * sequence_length + j];
       }
     }
   }
@@ -220,7 +235,7 @@ Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
                            "Input 'input_ids' is expected to have 2 dimensions, got ", dims.size());
   }
 
-  const Tensor* vocab_mask = context.Input<Tensor>(8);
+  const Tensor* vocab_mask = context.Input<Tensor>(7);
   if (vocab_mask != nullptr) {  // vocab_mask is optional
     const auto& vocab_mask_dims = vocab_mask->Shape().GetDims();
     if (vocab_mask_dims.size() != 1) {
@@ -238,9 +253,8 @@ Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
     parameters_->vocab_mask = vocab_mask->DataAsSpan<int32_t>();
   }
 
-  const Tensor* prefix_vocab_mask = context.Input<Tensor>(9);
-  if (prefix_vocab_mask != nullptr) {
-    // prefix_vocab_mask is optional
+  const Tensor* prefix_vocab_mask = context.Input<Tensor>(8);
+  if (prefix_vocab_mask != nullptr) {  // prefix_vocab_mask is optional
     const auto& vocab_mask_dims = prefix_vocab_mask->Shape().GetDims();
     if (vocab_mask_dims.size() != 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -261,6 +275,19 @@ Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
 
     // store prefix vocab mask in parameters.
     parameters_->prefix_vocab_mask = prefix_vocab_mask->DataAsSpan<int32_t>();
+  }
+
+  const Tensor* attention_mask = context.Input<Tensor>(9);
+  if (attention_mask != nullptr) {
+    const auto& dims_attn = attention_mask->Shape().GetDims();
+    if (dims_attn.size() != 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'attention_mask' is expected to have 2 dimensions, got ", dims_attn.size());
+    }
+    if (dims_attn != dims) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'attention_mask' is expected to have same shape as input_ids");
+    }
   }
 
   return Status::OK();
@@ -289,9 +316,7 @@ Status BeamSearchBase<T>::Initialize() {
 
   CHECK_SCALAR_INPUT(num_return_sequences, 4, true);
 
-  CHECK_SCALAR_INPUT(temperature, 5, true);
-
-  CHECK_SCALAR_INPUT(length_penalty, 6, true);
+  CHECK_SCALAR_INPUT(length_penalty, 5, true);
 
   ORT_RETURN_IF(parameters_->num_return_sequences > parameters_->num_beams,
                 "'num_return_sequences' has to be smaller or equal to 'num_beams'.");

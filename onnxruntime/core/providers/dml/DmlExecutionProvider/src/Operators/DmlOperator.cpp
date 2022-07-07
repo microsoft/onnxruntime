@@ -13,7 +13,7 @@ namespace Dml
     }
 
     void DmlOperator::SetDmlOperatorDesc(
-        const DML_OPERATOR_DESC& operatorDesc, 
+        const DML_OPERATOR_DESC& operatorDesc,
         const MLOperatorKernelCreationContext& kernelInfo
         )
     {
@@ -99,7 +99,7 @@ namespace Dml
     }
 
     void DmlOperator::SetDmlOperatorDesc(
-        const DML_OPERATOR_DESC& operatorDesc, 
+        const DML_OPERATOR_DESC& operatorDesc,
         const MLOperatorKernelContext& kernelInfo
         )
     {

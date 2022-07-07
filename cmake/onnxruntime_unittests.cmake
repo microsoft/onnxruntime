@@ -861,7 +861,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   endif()
 endif()
 
-target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
+target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} nlohmann_json::nlohmann_json)
 target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
 if (onnxruntime_USE_ROCM)
   target_include_directories(onnx_test_runner PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)

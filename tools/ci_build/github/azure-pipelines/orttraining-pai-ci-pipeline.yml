@@ -19,7 +19,7 @@ jobs:
   container:
     image: onnxruntimecibuildenvironment.azurecr.io/rocm-ci-pipeline-env:rocm5.1.1
     endpoint: onnxruntimecibuildenvironmentforamd
-    options: --privileged -e HIP_VISIBLE_DEVICES --security-opt seccomp=unconfined --device=/dev/kfd --device=/dev/dri  --group-add $(video) --group-add $(render)
+    options: --privileged -e HIP_VISIBLE_DEVICES --security-opt seccomp=unconfined --shm-size=1024m --device=/dev/kfd --device=/dev/dri  --group-add $(video) --group-add $(render)
 
   steps:
   - checkout: self
@@ -49,6 +49,7 @@ jobs:
         python tools/ci_build/build.py \
         --config RelWithDebInfo \
         --enable_training \
+        --enable_training_torch_interop \
         --mpi_home /opt/ompi \
         --use_rocm \
         --rocm_version=5.1.1 \
@@ -288,8 +289,8 @@ jobs:
     inputs:
       script: |-
         python orttraining/tools/ci_test/run_batch_size_test.py \
-            --binary_dir build/RelWithDebInfo \
-            --model_root training_e2e_test_data/models \
+          --binary_dir build/RelWithDebInfo \
+          --model_root training_e2e_test_data/models \
           --gpu_sku MI100_32G
     displayName: 'Run C++ BERT-L batch size test'
     retryCountOnTaskFailure: 1
@@ -318,3 +319,49 @@ jobs:
     displayName: 'Run C++ BERT-L convergence test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
+
+  - script: |
+      sudo apt-get update
+      sudo apt install -y cifs-utils
+    displayName: 'Install filesystems util'
+
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
+    displayName: 'Mount MNIST'
+    condition: succeededOrFailed()
+
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"
+    displayName: 'Mount bert-data'
+    condition: succeededOrFailed()
+
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
+    displayName: 'Mount hf-models-cache'
+    condition: succeededOrFailed()
+
+
+  # Entry point for all ORTModule tests
+  # The onnxruntime folder is deleted in the build directory
+  # to enforce use of the onnxruntime wheel
+  # Uninstall torch 1.10 from the docker image above and install torch 1.11 before running tests.
+  #
+  # At this point, the best whl available with torch 1.11 (which supports autograd) is located in https://repo.radeon.com/rocm/manylinux/rocm-rel-5.1.3/ 
+  # which is a release for internal use. This release will be available via Torch's download page. We can either continue 
+  # to use the link below, or switch to the link from Torch's when it's published. Ideally, the AMD CI UTs above could also migrate to use
+  # the same whl below.   
+
+  # - task: CmdLine@2
+  #   inputs:
+  #     script: |-
+  #       cd ./build/RelWithDebInfo
+  #       unset PYTHONPATH
+  #       pip uninstall -y torch torchvision
+  #       pip install torch==1.11.0 torchvision==0.12.0 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-5.1.3/
+  #       pip install wget pytorch_lightning==1.6.0
+  #       rm -rf onnxruntime
+  #       pip install ./dist/onnxruntime*.whl
+  #       python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
+  #       python orttraining_ortmodule_tests.py \
+  #         --mnist /mnist \
+  #         --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw \
+  #         --transformers_cache /hf_models_cache/huggingface/transformers
+  #   displayName: 'Run orttraining_ortmodule_tests.py'
+  #   condition: succeededOrFailed()

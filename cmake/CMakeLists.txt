@@ -76,6 +76,7 @@ option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable 
 option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
 option(onnxruntime_USE_VITISAI "Build with Vitis-AI" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
+option(onnxruntime_TENSORRT_PLACEHOLDER_BUILDER "Instantiate Placeholder TensorRT Builder" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_GCOV_COVERAGE "Compile with options necessary to run code coverage" OFF)
@@ -434,6 +435,7 @@ if (onnxruntime_DISABLE_EXCEPTIONS)
   add_compile_definitions("ORT_NO_EXCEPTIONS")
   add_compile_definitions("MLAS_NO_EXCEPTION")
   add_compile_definitions("ONNX_NO_EXCEPTIONS")
+  add_compile_definitions("JSON_NOEXCEPTION")  # https://json.nlohmann.me/api/macros/json_noexception/
 
   if (MSVC)
     string(REGEX REPLACE "/EHsc" "/EHs-c-" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -1479,8 +1481,17 @@ if (onnxruntime_USE_TVM)
   if (NOT TARGET tvm)
     message(STATUS "Include TVM(*).")
     include(tvm)
+    message(STATUS "Include ipp-crypto(*).")
+    include(ipp-crypto)
   endif()
 
+  # ipp-crypto
+  set(ARCH intel64 CACHE STRING "Only defined for TVM")
+  add_subdirectory(${ipp_crypto_SOURCE_DIR} ${ipp_crypto_BINARY_DIR} EXCLUDE_FROM_ALL)
+  set_target_properties(ippcp_s PROPERTIES FOLDER ${ipp_crypto_SOURCE_DIR})
+  set(IPP_CRYPTO_INCLUDES ${ipp_crypto_INCLUDE_DIRS})
+
+  # TVM
   if (onnxruntime_USE_LLVM)
     set(USE_LLVM ON CACHE BOOL "Only defined for TVM")
   endif()
@@ -1512,8 +1523,8 @@ if (onnxruntime_USE_TVM)
       set(FS_STDLIB stdc++fs)
     endif()
   endif()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ${FS_STDLIB})
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ippcp_s ${FS_STDLIB})
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm ippcp_s)
 endif()
 
 # XNNPACK EP
@@ -1523,62 +1534,7 @@ if (onnxruntime_USE_XNNPACK)
                          "but onnxruntime_DISABLE_CONTRIB_OPS is ON")
   endif()
 
-  set(XNNPACK_DIR external/XNNPACK)
-  set(XNNPACK_INCLUDE_DIR ${XNNPACK_DIR}/include)
-  set(XNNPACK_USE_SYSTEM_LIBS ON CACHE INTERNAL "")
-  set(XNNPACK_BUILD_TESTS OFF CACHE INTERNAL "")
-  set(XNNPACK_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
-  set(FP16_BUILD_TESTS OFF CACHE INTERNAL "")
-  set(FP16_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
-  set(CLOG_SOURCE_DIR "${PYTORCH_CPUINFO_DIR}/deps/clog")
-  set(CPUINFO_SOURCE_DIR ${PYTORCH_CPUINFO_DIR})
-
-  add_subdirectory(external/FP16)
-  add_subdirectory(external/pthreadpool)
-  add_subdirectory(external/XNNPACK)
-
-  set_target_properties(fp16 PROPERTIES FOLDER "External/Xnnpack")
-  set_target_properties(pthreadpool PROPERTIES FOLDER "External/Xnnpack")
-  set_target_properties(XNNPACK PROPERTIES FOLDER "External/Xnnpack")
-
-  set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK XNNPACK pthreadpool)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK})
-
-  # the XNNPACK CMake setup doesn't include the WASM kernels so we have to manually set those up
-  if (onnxruntime_BUILD_WEBASSEMBLY)
-    if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-      target_compile_options(XNNPACK PRIVATE "-pthread")
-    endif()
-
-    message("Adding WebAssembly Source Files to XNNPACK")
-    set(wasm_src_patterns "${XNNPACK_DIR}/src/wasm-*.c"
-                          "${XNNPACK_DIR}/src/*-wasm-*.c"
-                          "${XNNPACK_DIR}/src/*-wasm.c")
-    set(wasm32_asm_src_patterns "${XNNPACK_DIR}/src/wasm_shr_*.S")
-
-    file(GLOB_RECURSE XNNPACK_WASM_MICROKERNEL_SRCS CONFIGURE_DEPENDS ${wasm_src_patterns})
-    file(GLOB_RECURSE XNNPACK_WASM32_ASM_MICROKERNEL_SRCS CONFIGURE_DEPENDS ${wasm32_asm_src_patterns})
-
-    message(DEBUG "XNNPACK_WASM_MICROKERNEL_SRCS:${XNNPACK_WASM_MICROKERNEL_SRCS}")
-    message(DEBUG "XNNPACK_WASM32_ASM_MICROKERNEL_SRCS:${XNNPACK_WASM32_ASM_MICROKERNEL_SRCS}")
-
-    target_sources(XNNPACK PRIVATE ${XNNPACK_WASM_MICROKERNEL_SRCS}
-                                    ${XNNPACK_WASM32_ASM_MICROKERNEL_SRCS})
-
-    if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-      target_compile_options(XNNPACK PRIVATE "-msimd128")
-
-      set(wasmsimd_src_patterns "${XNNPACK_DIR}/src/wasmsimd-*.c"
-                                "${XNNPACK_DIR}/src/*-wasmsimd-*.c"
-                                "${XNNPACK_DIR}/src/*-wasmsimd.c"
-                                "${XNNPACK_DIR}/src/*/wasmsimd.c")
-
-      file(GLOB_RECURSE XNNPACK_WASMSIMD_MICROKERNEL_SRCS CONFIGURE_DEPENDS ${wasmsimd_src_patterns})
-      message(DEBUG "XNNPACK_WASMSIMD_MICROKERNEL_SRCS:${XNNPACK_WASMSIMD_MICROKERNEL_SRCS}")
-
-      target_sources(XNNPACK PRIVATE ${XNNPACK_WASMSIMD_MICROKERNEL_SRCS})
-    endif()
-  endif()
+  include(xnnpack)
 endif()
 
 # onnxruntime-extensions
@@ -2021,6 +1977,12 @@ if (onnxruntime_ENABLE_TRAINING)
   set(onnxruntime_ENABLE_ATEN ON)
 endif()
 
+# Default version parts for Microsoft.AI.MachineLearning.dll, onnxruntime.dll, onnxruntime_providers_openvino.dll and onnxruntime_providers_shared.dll in non-ADO pipeline local builds
+set(VERSION_MAJOR_PART   0 CACHE STRING "First part of numeric file/product version.")
+set(VERSION_MINOR_PART   0 CACHE STRING "Second part of numeric file/product version.")
+set(VERSION_BUILD_PART       0 CACHE STRING "Third part of numeric file/product version.")
+set(VERSION_PRIVATE_PART     0 CACHE STRING "Fourth part of numeric file/product version.")
+set(VERSION_STRING       "Internal Build" CACHE STRING "String representation of file/product version.")
 
 set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
 if (onnxruntime_USE_NUPHAR_TVM)
@@ -2069,12 +2031,6 @@ if (WIN32 AND NOT GDK_PLATFORM)
   endif()
 endif()
 
-# Default version parts for Microsoft.AI.MachineLearning.dll and onnxruntime.dll in non-ADO pipeline local builds
-set(VERSION_MAJOR_PART   0 CACHE STRING "First part of numeric file/product version.")
-set(VERSION_MINOR_PART   0 CACHE STRING "Second part of numeric file/product version.")
-set(VERSION_BUILD_PART       0 CACHE STRING "Third part of numeric file/product version.")
-set(VERSION_PRIVATE_PART     0 CACHE STRING "Fourth part of numeric file/product version.")
-set(VERSION_STRING       "Internal Build" CACHE STRING "String representation of file/product version.")
 include(wil.cmake)
 
 if (onnxruntime_USE_WINML)

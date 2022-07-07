@@ -100,143 +100,25 @@ stages:
                 /onnxruntime_src/tools/ci_build/build.py \
                   --config Release \
                   --use_rocm \
-                    --rocm_version=$(RocmVersion) \
-                    --rocm_home=/opt/rocm \
-                    --nccl_home=/opt/rocm \
+                  --rocm_version=$(RocmVersion) \
+                  --rocm_home=/opt/rocm \
+                  --nccl_home=/opt/rocm \
                   --update \
                   --parallel \
                   --build_dir /build \
                   --build \
                   --build_wheel \
                   --skip_tests \
-                  --enable_training
+                  --enable_training \
+                  --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF \
+                  --enable_training_torch_interop
           workingDirectory: $(Build.SourcesDirectory)
         displayName: 'Build onnxruntime (in container)'
 
-      - script: |-
-          python3 orttraining/tools/ci_test/download_azure_blob_archive.py \
-            --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip?snapshot=2020-06-15T23:17:35.8314853Z \
-            --target_dir $(Build.SourcesDirectory)/training_e2e_test_data \
-            --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
-        displayName: 'Download onnxruntime_training_data.zip data'
-
-      - script: |-
-          echo "Tests will run using HIP_VISIBLES_DEVICES=$HIP_VISIBLE_DEVICES"
-          video_gid=$(getent group | awk '/video/ {split($0,a,":"); print(a[3])}')
-          echo "Found video_gid=$video_gid; attempting to set as pipeline variable"
-          echo "##vso[task.setvariable variable=video]$video_gid"
-          render_gid=$(getent group | awk '/render/ {split($0,a,":"); print(a[3])}')
-          echo "Found render_gid=$render_gid; attempting to set as pipeline variable"
-          echo "##vso[task.setvariable variable=render]$render_gid"
-        displayName: 'Find video and render gid to be mapped into container'
-
-      - script: |-
-          echo "video=$video"
-          echo "render=$render"
-          docker run --rm \
-            --device=/dev/kfd \
-            --device=/dev/dri \
-            --group-add $(video) \
-            --group-add $(render) \
-            --privileged \
-            --ipc=host \
-            --network=host \
-            --cap-add=SYS_PTRACE \
-            --security-opt seccomp=unconfined \
-            --volume $(Build.SourcesDirectory):/onnxruntime_src \
-            --volume $(Build.BinariesDirectory):/build \
-            --workdir /build/Release \
-            --entrypoint /bin/bash \
-            -e HIP_VISIBLE_DEVICES \
-            -e NIGHTLY_BUILD \
-            -e BUILD_BUILDNUMBER \
-            --user onnxruntimedev \
-            onnxruntimetrainingrocmbuild-rocm$(RocmVersion) \
-               /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh
-        displayName: 'Run onnxruntime unit tests (in container)'
-
-      - script: |-
-          docker run --rm \
-            --device=/dev/kfd \
-            --device=/dev/dri \
-            --group-add $(video) \
-            --group-add $(render) \
-            --privileged \
-            --ipc=host \
-            --network=host \
-            --cap-add=SYS_PTRACE \
-            --security-opt seccomp=unconfined \
-            --volume $(Build.SourcesDirectory):/onnxruntime_src \
-            --volume $(Build.BinariesDirectory):/build \
-            --workdir /onnxruntime_src \
-            --entrypoint $(PythonManylinuxDir)/bin/python3 \
-            -e HIP_VISIBLE_DEVICES \
-            -e NIGHTLY_BUILD \
-            -e BUILD_BUILDNUMBER \
-            --user onnxruntimedev \
-            onnxruntimetrainingrocmbuild-rocm$(RocmVersion) \
-              orttraining/tools/ci_test/run_batch_size_test.py \
-                --binary_dir /build/Release \
-                --model_root training_e2e_test_data/models \
-                --gpu_sku MI100_32G
-        displayName: 'Run C++ BERT-L batch size test (in container)'
-        condition: succeededOrFailed() # ensure all tests are run
-
-      - script: |-
-          docker run --rm \
-            --device=/dev/kfd \
-            --device=/dev/dri \
-            --group-add $(video) \
-            --group-add $(render) \
-            --privileged \
-            --ipc=host \
-            --network=host \
-            --cap-add=SYS_PTRACE \
-            --security-opt seccomp=unconfined \
-            --volume $(Build.SourcesDirectory):/onnxruntime_src \
-            --volume $(Build.BinariesDirectory):/build \
-            --workdir /onnxruntime_src \
-            --entrypoint $(PythonManylinuxDir)/bin/python3 \
-            -e HIP_VISIBLE_DEVICES \
-            -e NIGHTLY_BUILD \
-            -e BUILD_BUILDNUMBER \
-            --user onnxruntimedev \
-            onnxruntimetrainingrocmbuild-rocm$(RocmVersion) \
-              orttraining/tools/ci_test/run_bert_perf_test.py \
-                --binary_dir /build/Release \
-                --model_root training_e2e_test_data/models \
-                --training_data_root training_e2e_test_data/data \
-                --gpu_sku MI100_32G
-        displayName: 'Run C++ BERT-L performance test (in container)'
-        condition: succeededOrFailed() # ensure all tests are run
-
-      - script: |-
-          docker run --rm \
-            --device=/dev/kfd \
-            --device=/dev/dri \
-            --group-add $(video) \
-            --group-add $(render) \
-            --privileged \
-            --ipc=host \
-            --network=host \
-            --cap-add=SYS_PTRACE \
-            --security-opt seccomp=unconfined \
-            --volume $(Build.SourcesDirectory):/onnxruntime_src \
-            --volume $(Build.BinariesDirectory):/build \
-            --workdir /onnxruntime_src \
-            --entrypoint $(PythonManylinuxDir)/bin/python3 \
-            -e HIP_VISIBLE_DEVICES \
-            -e NIGHTLY_BUILD \
-            -e BUILD_BUILDNUMBER \
-            --user onnxruntimedev \
-            onnxruntimetrainingrocmbuild-rocm$(RocmVersion) \
-              orttraining/tools/ci_test/run_convergence_test.py \
-                --binary_dir /build/Release \
-                --model_root training_e2e_test_data/models \
-                --training_data_root training_e2e_test_data/data \
-                --gpu_sku MI100_32G
-        displayName: 'Run C++ BERT-L convergence test (in container)'
-        condition: succeededOrFailed() # ensure all tests are run
+      # All UTs were here are now covered in AMD CI - see orttraining-pai-ci-pipeline.yml
+      # This CI is mainly responsible for packaging. The uploaded whl could be used in the downstream CIs (if any).
+      # For example, docker image build (e.g., PTCA), reporting CI, etc. to further verify the whl as needed.  
+      # To view the UTs disabled from this CI - see https://github.com/microsoft/onnxruntime/pull/11945 for examples
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
