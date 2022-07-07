@@ -8,12 +8,15 @@
 #include "python/tools/kernel_explorer/operator.h"
 #include "contrib_ops/rocm/bert/util.h"
 
+using onnxruntime::contrib::rocm::CeilingDivision;
+using onnxruntime::contrib::rocm::AlignedVector;
+
 template <typename T, int VecSize>
 __global__ void VectorAddKernel(const T* __restrict__ x,
                                   const T* __restrict__ y,
                                   T* __restrict__ z, int n) {
   int i = hipBlockDim_x * hipBlockIdx_x + hipThreadIdx_x;
-  using LoadT = onnxruntime::contrib::rocm::AlignedVector<T, VecSize>;
+  using LoadT = AlignedVector<T, VecSize>;
 
   if (VecSize * i + VecSize - 1 < n) {
     T x_vec[VecSize];
