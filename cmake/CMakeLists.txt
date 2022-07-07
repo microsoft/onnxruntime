@@ -2119,7 +2119,7 @@ endif()
 
 if(onnxruntime_BUILD_KERNEL_EXPLORER)
   message(STATUS "Kernel Explorer Build is enabled")
-  add_subdirectory(../onnxruntime/python/tools/kernel_explorer ${CMAKE_CURRENT_BINARY_DIR}/kernel_explorer EXCLUDE_FROM_ALL)
+  include(onnxruntime_kernel_explorer.cmake)
 endif()
 
 if (UNIX)

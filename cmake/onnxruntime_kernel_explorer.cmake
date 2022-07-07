@@ -1,15 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-project(kernel_explorer)
-cmake_minimum_required(VERSION 3.21)
-
 if(CMAKE_CXX_COMPILER MATCHES ".*hipcc$")
   message(FATAL_ERROR "don't use hipcc!")
-endif()
-
-if(CMAKE_PROJECT_NAME STREQUAL "kernel_explorer")
-  message(FATAL_ERROR "kernel explorer cannot be built as a top-level project at the moment")
 endif()
 
 if(NOT onnxruntime_ENABLE_PYTHON)
@@ -20,12 +13,20 @@ if(NOT HIP_FOUND)
   message(FATAL_ERROR "hip is required but is not found")
 endif()
 
-set(BERT_DIR ${REPO_ROOT}/onnxruntime/contrib_ops/rocm/bert/)
+set(KERNEL_EXPLORER_ROOT ${ONNXRUNTIME_ROOT}/python/tools/kernel_explorer)
+set(BERT_DIR ${ONNXRUNTIME_ROOT}/contrib_ops/rocm/bert)
 
-file(GLOB kernel_srcs CONFIGURE_DEPENDS "kernels/*.cc")
-add_library(kernel_explorer SHARED kernel_explorer.cc ${BERT_DIR}/timer.cc ${kernel_srcs})
+file(GLOB kernel_explorer_srcs CONFIGURE_DEPENDS "${KERNEL_EXPLORER_ROOT}/*.cc")
+file(GLOB kernel_explorer_kernel_srcs CONFIGURE_DEPENDS "${KERNEL_EXPLORER_ROOT}/kernels/*.cc")
+
+onnxruntime_add_shared_library_module(kernel_explorer
+  ${kernel_explorer_srcs}
+  ${kernel_explorer_kernel_srcs}
+  ${BERT_DIR}/timer.cc)
 set_target_properties(kernel_explorer PROPERTIES PREFIX "")
-target_include_directories(kernel_explorer PUBLIC $<TARGET_PROPERTY:onnxruntime_pybind11_state,INCLUDE_DIRECTORIES> ".")
+target_include_directories(kernel_explorer PUBLIC
+  $<TARGET_PROPERTY:onnxruntime_pybind11_state,INCLUDE_DIRECTORIES>
+  ${KERNEL_EXPLORER_ROOT})
 target_link_libraries(kernel_explorer
   PRIVATE
     $<TARGET_PROPERTY:onnxruntime_pybind11_state,LINK_LIBRARIES>
