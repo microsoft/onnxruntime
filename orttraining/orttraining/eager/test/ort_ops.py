@@ -10,11 +10,11 @@ import onnxruntime_pybind11_state as torch_ort
 import torch
 from parameterized import parameterized
 
-### OPS - is a list of list of [test_operator, test_tensor]
+# OPS - is a list of  list of [test_operator, the tested_tensor]
 ops = [
     ["abs", torch.tensor([-1, -2, 3, -6, -7])],
     ["acos"],
-    ["acosh", torch.rand(6).uniform_(1, 9999)],  ### limits[1,INF]
+    ["acosh", torch.rand(6).uniform_(1, 9999)],  # limits[1,INF]
     ["asinh"],
     ["atanh", torch.rand(6).uniform_(-1, 1)],
     ["asin", torch.rand(6).uniform_(-1, 1)],
@@ -47,11 +47,11 @@ ops = [
 
 
 def rename_func_to_op(testcase_func, param_num, param):
-    return "test_%s" % (parameterized.to_safe_name(str(param.args[0])))
+    return f"test_{parameterized.to_safe_name(str(param.args[0]))}"
 
 
 def rename_func_to_inplace(testcase_func, param_num, param):
-    return "test_%s_" % (parameterized.to_safe_name(str(param.args[0])))
+    return f"test_{parameterized.to_safe_name(str(param.args[0]))}_"
 
 
 class OrtOpTests(unittest.TestCase):
@@ -242,17 +242,8 @@ class OrtOpTests(unittest.TestCase):
 
     @parameterized.expand(ops, name_func=rename_func_to_op)
     def test_op(self, test_name, tensor_test=torch.rand(6)):
-        device = self.get_device()
-
-        cpu_tensor = tensor_test
-        ort_tensor = cpu_tensor.to(device)
-
-        cpu_result_func = "torch." + test_name + "(cpu_tensor)"
-        ort_result_func = "torch." + test_name + "(ort_tensor)"
-
-        cpu_result = eval(compile(cpu_result_func, "<string>", "eval"))
-        ort_result = eval(compile(ort_result_func, "<string>", "eval"))
-
+        cpu_result = eval(compile("torch." + test_name + "(tensor_test)", "<string>", "eval"))
+        ort_result = eval(compile("torch." + test_name + "(tensor_test.to(self.get_device()))", "<string>", "eval"))
         assert torch.allclose(cpu_result, ort_result.cpu())
 
     @parameterized.expand(ops, name_func=rename_func_to_inplace)
