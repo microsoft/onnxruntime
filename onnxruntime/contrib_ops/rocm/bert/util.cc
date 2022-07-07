@@ -7,7 +7,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
-int CeilingDividision(int n, int m) {
+int CeilingDivision(int n, int m) {
   int r = (n - 1) / m + 1;
   return r;
 }

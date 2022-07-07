@@ -20,7 +20,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
-int CeilingDividision(int n, int m);
+int CeilingDivision(int n, int m);
 
 template<typename T, int VecSize>
 struct alignas(sizeof(T) * VecSize) AlignedVector {
