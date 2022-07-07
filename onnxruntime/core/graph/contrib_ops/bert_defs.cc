@@ -304,7 +304,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GemmFastGelu, 1,
                                 .Input(1, "W", "input tensor", "T")
                                 .Input(2, "bias", "bias tensor", "T", OpSchema::Optional)
                                 .Output(0, "Y", "output tensor", "T")
-                                .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float or half tensors.")
+                                .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                                                "Constrain input and output types to float or half tensors.")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
                                   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
                                   ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);

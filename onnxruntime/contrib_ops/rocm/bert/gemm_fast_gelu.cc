@@ -30,13 +30,15 @@ REGISTER_KERNEL_TYPED(BFloat16)
 template <typename T>
 GemmFastGelu<T>::GemmFastGelu(const OpKernelInfo& op_kernel_info) : RocmKernel(op_kernel_info) {
   const TransformerOptions* options = TransformerOptions::GetInstance();
-  use_half2_ = !options->DisableHalf2();
+  tuning_ = options->IsTuningEnabled();
 }
 
 // StridedBatchedGemm can be used for the following GEMM computation
 // C[pnm] = A[pnk]*B[km] or C[pnm] = A[pnk]*B[pkm]
 static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const TensorShape& right_shape,
-                                     bool transa, bool transb, int64_t& stride_A, int64_t& stride_B, int64_t& stride_C, int64_t& batch_count) {
+                                     bool transa, bool transb,
+                                     int64_t& stride_A, int64_t& stride_B,
+                                     int64_t& stride_C, int64_t& batch_count) {
   size_t left_num_dims = left_shape.NumDimensions();
   size_t right_num_dims = right_shape.NumDimensions();
 
@@ -147,9 +149,12 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
     RocmAsyncBuffer<const HipT*> left_arrays(this, helper.LeftOffsets().size());
     RocmAsyncBuffer<const HipT*> right_arrays(this, helper.RightOffsets().size());
     RocmAsyncBuffer<HipT*> output_arrays(this, helper.OutputOffsets().size());
-    MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const HipT*>(X->template Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
-    MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const HipT*>(W->template Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
-    MatMulComputeHelper::OffsetToArrays(reinterpret_cast<HipT*>(gemm_buffer.get()), helper.OutputOffsets(), output_arrays.CpuSpan());
+    MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const HipT*>(X->template Data<T>()),
+                                        helper.LeftOffsets(), left_arrays.CpuSpan());
+    MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const HipT*>(W->template Data<T>()),
+                                        helper.RightOffsets(), right_arrays.CpuSpan());
+    MatMulComputeHelper::OffsetToArrays(reinterpret_cast<HipT*>(gemm_buffer.get()),
+                                        helper.OutputOffsets(), output_arrays.CpuSpan());
     ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu());
     ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu());
     ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu());
@@ -177,14 +182,13 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t fast_gelu_input_length = Y->Shape().Size();
   int64_t bias_length = (nullptr == bias) ? 0 : bias->Shape().Size();
 
-  if (!LaunchFastGeluKernel<HipT>(GetDeviceProp(),
-                                   Stream(),
+  if (!LaunchFastGeluKernel<HipT>(Stream(),
                                    static_cast<int>(fast_gelu_input_length),
                                    static_cast<int>(bias_length),
                                    reinterpret_cast<HipT*>(gemm_buffer.get()),
                                    (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->template Data<T>()) : nullptr,
                                    reinterpret_cast<HipT*>(Y->template MutableData<T>()),
-                                   use_half2_)) {
+                                   false)) {
     HIP_CALL(hipGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
   }

@@ -16,9 +16,9 @@ class GemmFastGelu final : public RocmKernel {
  public:
   GemmFastGelu(const OpKernelInfo& op_kernel_info);
   Status ComputeInternal(OpKernelContext* ctx) const override;
-  
+
  private:
-  bool use_half2_;
+  bool tuning_;
 };
 
 }  // namespace rocm
