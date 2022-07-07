@@ -18,7 +18,7 @@ jobs:
   - name: OnnxRuntimeBuildDirectory
     value: '$(Build.BinariesDirectory)'
   - name: ORT_CSHARP_TEST_ONNX_MODEL_ROOT_PATH
-    value: '$(Build.BinariesDirectory)/model'
+    value: '$(Build.BinariesDirectory)/models'
 
   steps:
   - task: DownloadPipelineArtifact@0
