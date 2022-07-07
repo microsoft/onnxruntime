@@ -1382,17 +1382,31 @@ ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetCustomMetadataMapKeys,
     // To guard against overflow in the next step where we compute bytes to allocate
     SafeInt<size_t> alloc_count(count);
 
+    InlinedVector<Ort::AllocatedStringPtr> string_holders;
+    string_holders.reserve(count);
+
+    auto deletor = Ort::detail::AllocatedFree(allocator);
     // alloc_count * sizeof(...) will throw if there was an overflow which will be caught in API_IMPL_END
     // and be returned to the user as a status
     char** p = reinterpret_cast<char**>(allocator->Alloc(allocator, alloc_count * sizeof(char*)));
     assert(p != nullptr);
-    auto map_iter = custom_metadata_map.cbegin();
+
+    // StrDup may throw
+    std::unique_ptr<void, decltype(deletor)> array_guard(p, deletor);
+
     int64_t i = 0;
-    while (map_iter != custom_metadata_map.cend()) {
-      p[i++] = StrDup(map_iter->first, allocator);
-      ++map_iter;
+    for (const auto& e : custom_metadata_map) {
+      auto* s = StrDup(e.first, allocator);
+      string_holders.push_back(Ort::AllocatedStringPtr(s, deletor));
+      p[i++] = s;
     }
+
+    for (auto& s : string_holders) {
+      s.release();
+    }
+
     *keys = p;
+    array_guard.release();
   }
 
   *num_keys = static_cast<int64_t>(count);
@@ -2529,7 +2543,10 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::InvokeOp,
     &OrtApis::ReleaseOp,
     &OrtApis::SessionOptionsAppendExecutionProvider,
+    &OrtApis::CopyKernelInfo,
+    &OrtApis::ReleaseKernelInfo,
     // End of Version 12 - DO NOT MODIFY ABOVE (see above text for more information)
+
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
@@ -2545,7 +2562,7 @@ static_assert(offsetof(OrtApi, CreateSessionFromArrayWithPrepackedWeightsContain
 static_assert(offsetof(OrtApi, GetSparseTensorIndices) / sizeof(void*) == 191, "Size of version 9 API cannot change");
 static_assert(offsetof(OrtApi, SynchronizeBoundOutputs) / sizeof(void*) == 203, "Size of version 10 API cannot change");
 static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_MIGraphX) / sizeof(void*) == 209, "Size of version 11 API cannot change");
-static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider) / sizeof(void*) == 216, "Size of version 12 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void*) == 218, "Size of version 12 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.12.0", "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");

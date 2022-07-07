@@ -36,16 +36,6 @@
 namespace onnxruntime {
 namespace test {
 
-static std::vector<std::string> GetNodeOpTypesInTopologicalOrder(const Graph& graph) {
-  std::vector<std::string> op_types{};
-  GraphViewer graph_viewer{graph};
-  const auto& ordering = graph_viewer.GetNodesInTopologicalOrder();
-  for (const auto node_idx : ordering) {
-    op_types.push_back(graph.GetNode(node_idx)->OpType());
-  }
-  return op_types;
-}
-
 #if !defined(DISABLE_CONTRIB_OPS)
 
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
