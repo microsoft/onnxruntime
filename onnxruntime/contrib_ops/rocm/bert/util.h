@@ -20,6 +20,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
+int CeilingDividision(int n, int m);
+
 template<typename T, int VecSize>
 struct alignas(sizeof(T) * VecSize) AlignedVector {
   T val[VecSize];
@@ -34,7 +36,8 @@ class Timer {
   ~Timer();
 
  private:
-  hipEvent_t start_, end_;
+  hipEvent_t start_;
+  hipEvent_t end_;
 };
 
 }  // namespace rocm

@@ -7,6 +7,11 @@ namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
+int CeilingDividision(int n, int m) {
+  int r = (n - 1) / m + 1;
+  return r;
+}
+
 Timer::Timer() {
   HIP_CHECK(hipEventCreate(&start_));
   HIP_CHECK(hipEventCreate(&end_));
