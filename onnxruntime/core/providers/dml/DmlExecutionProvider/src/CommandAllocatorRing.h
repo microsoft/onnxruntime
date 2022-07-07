@@ -30,17 +30,17 @@ namespace Dml
 
         ID3D12CommandAllocator* GetNextAllocator(GpuEvent nextCompletionEvent)
         {
-            size_t earliestOtherAllocator = (m_currentCommandAllocator + 1) % AllocatorCount; 
+            size_t earliestOtherAllocator = (m_currentCommandAllocator + 1) % AllocatorCount;
 
             assert(!m_commandAllocators[m_currentCommandAllocator].completionEvent.IsSignaled() ||
                     m_commandAllocators[earliestOtherAllocator].completionEvent.IsSignaled());
 
             if (m_commandAllocators[earliestOtherAllocator].completionEvent.IsSignaled())
-            {                
+            {
                 ORT_THROW_IF_FAILED(m_commandAllocators[earliestOtherAllocator].Get()->Reset());
                 m_currentCommandAllocator = earliestOtherAllocator;
             }
-            
+
             // Set the completion event for the current allocator so it can be reset eventually.
             m_commandAllocators[m_currentCommandAllocator].completionEvent = nextCompletionEvent;
 
