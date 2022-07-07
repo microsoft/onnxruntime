@@ -4,11 +4,12 @@
 #include <type_traits>
 
 #include <pybind11/pybind11.h>
-#include <rocblas.h>
 
 #include "common.h"
 #include "device_array.h"
 #include "operator.h"
+
+#include "core/providers/rocm/shared_inc/fpgeneric.h"
 
 namespace py = pybind11;
 
@@ -84,37 +85,22 @@ class RocBlasGemm : public GemmBase<T> {
     rocblas_handle_ = nullptr;
   }
 
-  void Run() override;
+  void Run() {
+    ROCBLAS_CALL_THROW(
+        rocblasGemmHelper(this->rocblas_handle_, this->opa_, this->opb_,
+                          this->m_, this->n_, this->k_,
+                          &(this->alpha_),
+                          this->a_, this->lda_,
+                          this->b_, this->ldb_,
+                          &(this->beta_),
+                          this->c_, this->ldc_));
+  }
 
  private:
   rocblas_handle rocblas_handle_;
   rocblas_operation opa_;
   rocblas_operation opb_;
 };
-
-template <>
-void RocBlasGemm<float>::Run() {
-  ROCBLAS_CALL_THROW(
-      rocblas_sgemm(this->rocblas_handle_, this->opa_, this->opb_,
-                    this->m_, this->n_, this->k_,
-                    &(this->alpha_),
-                    this->a_, this->lda_,
-                    this->b_, this->ldb_,
-                    &(this->beta_),
-                    this->c_, this->ldc_));
-}
-
-template <>
-void RocBlasGemm<rocblas_half>::Run() {
-  ROCBLAS_CALL_THROW(
-      rocblas_hgemm(this->rocblas_handle_, this->opa_, this->opb_,
-                    this->m_, this->n_, this->k_,
-                    &(this->alpha_),
-                    this->a_, this->lda_,
-                    this->b_, this->ldb_,
-                    &(this->beta_),
-                    this->c_, this->ldc_));
-}
 
 void InitGemm(py::module mod) {
   auto blas_op = mod.def_submodule("blas_op");
@@ -132,11 +118,11 @@ void InitGemm(py::module mod) {
       .def("Run", &RocBlasGemm<float>::Run);
 
   // half
-  py::class_<RocBlasGemm<rocblas_half>>(mod, "RocblasGemm_half")
+  py::class_<RocBlasGemm<BFloat16>>(mod, "RocblasGemm_half")
       .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double, DeviceArray&, int64_t, DeviceArray&, int64_t, double, DeviceArray&, int64_t>())
-      .def("SetRepeats", &RocBlasGemm<rocblas_half>::SetRepeats)
-      .def("Profile", &RocBlasGemm<rocblas_half>::Profile)
-      .def("Run", &RocBlasGemm<rocblas_half>::Run);
+      .def("SetRepeats", &RocBlasGemm<BFloat16>::SetRepeats)
+      .def("Profile", &RocBlasGemm<BFloat16>::Profile)
+      .def("Run", &RocBlasGemm<BFloat16>::Run);
 }
 
 }  // namespace onnxruntime
