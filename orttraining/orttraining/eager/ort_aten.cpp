@@ -10,6 +10,16 @@
 #include <c10/util/irange.h>
 #include <ATen/WrapDimUtils.h>
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#endif
+
+#include <ATen/native/ReduceOpsUtils.h>
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 namespace torch_ort {
 namespace eager {
@@ -363,6 +373,25 @@ OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at:
     throw std::runtime_error(
     "ORT return failure status:" + status.ErrorMessage());
   return output[0];
+}
+
+/*
+ * Utility method to calculate the shape of the output from a reduction operation
+ * dim - the dimension to reduce
+ * keepdim - whether to retain dim or not. Ignored if dim=None
+ */
+at::DimVector get_reduction_shape(
+  const at::Tensor& self,
+  at::IntArrayRef dim_array,
+  bool keepdim)
+{
+  // dim can be specified with positive or negative numbers -
+  // Normalize the dim input to be positive value
+  at::DimVector dim_vector{dim_array};
+  at::maybe_wrap_dims(dim_vector, self.dim());
+
+  // Get shape of the output tensor after a reduction operation
+  return at::meta::get_reduction_shape(self, at::IntArrayRef{dim_vector}, keepdim);
 }
 
 /*
@@ -805,7 +834,8 @@ at::Tensor& out) {
   auto& invoker = GetORTInvoker(self.device());
 
   int64_t l_axis = dim.has_value() ? *dim : 0;
-  bool keep_dim_effective = dim.has_value() ? keepdim : false;
+  bool keepdim_effective_value = dim.has_value() ? keepdim : false;
+
   auto ort_input_self =
     create_ort_value(invoker, dim.has_value() ? self : self.reshape({-1}));
 
@@ -813,9 +843,20 @@ at::Tensor& out) {
   attrs["axis"] = create_ort_attribute(
     "axis", l_axis, at::ScalarType::Int);
   attrs["keepdims"] = create_ort_attribute(
-    "keepdims", keep_dim_effective, at::ScalarType::Bool);
+    "keepdims", keepdim_effective_value, at::ScalarType::Bool);
 
   std::vector<OrtValue> ort_outputs_0_ArgMax(1);
+
+  // Calculate the size of the out tensor, based on self tensor, dimension input, and keepdim input
+  at::IntArrayRef dim_array = dim.has_value() ? *dim : at::IntArrayRef{};
+  auto shape = get_reduction_shape(self, dim_array, keepdim);
+
+  resize_output(invoker,
+                dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()),
+                at::IntArrayRef{shape});
+
+  auto ort_input_out = create_ort_value(invoker, out);
+  ort_outputs_0_ArgMax[0] = ort_input_out;
 
   auto status = invoker.Invoke("ArgMax", {
   std::move(ort_input_self),
@@ -824,13 +865,6 @@ at::Tensor& out) {
   if (!status.IsOK())
   throw std::runtime_error(
   "ORT return failure status:" + status.ErrorMessage());
-
-  auto dims = ort_outputs_0_ArgMax[0].Get<onnxruntime::Tensor>().Shape().AsShapeVector();
-  resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), dims);
-
-  auto ort_input_out = create_ort_value(invoker, out);
-
-  copy(invoker, ort_outputs_0_ArgMax[0], ort_input_out);
 
   return out;
 }
