@@ -35,6 +35,10 @@ void GetGraphInputOutputNames(const std::unique_ptr<onnxruntime::InferenceSessio
 }
 
 bool GetParamNameFromSuffix(const std::string& name, const std::string& suffix, std::string& param_name) {
+  if (suffix.size() >= name.size()) {
+    param_name = "";
+    return false;
+  }
   bool endswith = std::equal(suffix.rbegin(), suffix.rend(), name.rbegin());
   if (endswith) {
     param_name = name.substr(0, name.length() - suffix.length());
