@@ -57,6 +57,7 @@ parameters:
 
 stages:
 - stage: Python_Packaging
+  dependsOn: []
 
   jobs:
   - ${{ if eq(parameters.enable_ubuntu_cpu, true) }}:
