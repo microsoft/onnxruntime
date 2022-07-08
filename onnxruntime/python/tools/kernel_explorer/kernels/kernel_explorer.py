@@ -40,7 +40,8 @@ for lib in library_files_to_load:
 # onnxruntime_pybind11_state and kernel_explorer
 sys.path.insert(0, build_dir)
 
-import onnxruntime_pybind11_state
+# pylint: disable=wrong-import-position, disable=unused-import, disable=wildcard-import
+import onnxruntime_pybind11_state  # noqa
 
 # We need to call some functions to properly initialize so pointers in the library
 onnxruntime_pybind11_state.get_available_providers()
@@ -48,5 +49,5 @@ onnxruntime_pybind11_state.get_available_providers()
 # use RTLD_GLOBAL to bring all symbols to global name space
 libraries = [ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL) for lib_path in library_to_load]
 
-import _kernel_explorer
-from _kernel_explorer import *
+import _kernel_explorer  # noqa
+from _kernel_explorer import *  # noqa
