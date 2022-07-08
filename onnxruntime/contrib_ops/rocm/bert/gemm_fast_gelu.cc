@@ -29,12 +29,6 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
-GemmFastGelu<T>::GemmFastGelu(const OpKernelInfo& op_kernel_info) : RocmKernel(op_kernel_info) {
-  const TransformerOptions* options = TransformerOptions::GetInstance();
-  tuning_ = options->IsTuningEnabled();
-}
-
-template <typename T>
 Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToHipType<T>::MappedType HipT;
 

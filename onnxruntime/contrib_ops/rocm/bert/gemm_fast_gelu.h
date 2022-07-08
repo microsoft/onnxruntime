@@ -14,7 +14,7 @@ using namespace onnxruntime::rocm;
 template <typename T>
 class GemmFastGelu final : public RocmKernel {
  public:
-  GemmFastGelu(const OpKernelInfo& op_kernel_info);
+  GemmFastGelu(const OpKernelInfo& op_kernel_info) : RocmKernel(op_kernel_info) {}
   Status ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
