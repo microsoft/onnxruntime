@@ -72,10 +72,10 @@ const createConcatProgramInfo =
 
       const indicesAxis = rank < 2 ? 'indices' : `indices[${axis}]`;
       const shaderSource = `
-  let WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+  const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
 
   ${inputStorageBuffersDeclarations.join('\n')}
-  @group(0) @binding(${inputs.length}) var<storage, write> output : array<${dataType}>;
+  @group(0) @binding(${inputs.length}) var<storage, read_write> output : array<${dataType}>;
 
   ${inputIndicesHelpers.map(i => i.i2oImpl).join('\n')}
   ${outputIndicesHelper.o2iImpl}
@@ -84,7 +84,7 @@ const createConcatProgramInfo =
   ${calculateInputIndexImpl(sizeInConcatAxis.length)}
   ${readBufferDataImpl(inputIndicesHelpers, rank, dataType)}
 
-  @stage(compute) @workgroup_size(WORKGROUP_SIZE)
+  @compute @workgroup_size(WORKGROUP_SIZE)
   fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
 
     // Guard against out-of-bounds work group sizes

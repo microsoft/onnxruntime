@@ -47,18 +47,18 @@ function createMatmulProgramInfo(
   const K = aShape[aShape.length - 1];
   const N = outputShape[outputShape.length - 1];
   const shaderSource = `
-  let WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
-  let M: u32 = ${M}u;
-  let N: u32 = ${N}u;
-  let K: u32 = ${K}u;
+  const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+  const M: u32 = ${M}u;
+  const N: u32 = ${N}u;
+  const K: u32 = ${K}u;
 
   @group(0) @binding(0) var<storage, read> a : array<${dataType}>;
   @group(0) @binding(1) var<storage, read> b : array<${dataType}>;
-  @group(0) @binding(2) var<storage, write> output : array<${dataType}>;
+  @group(0) @binding(2) var<storage, read_write> output : array<${dataType}>;
 
   ${activationFunction}
 
-  @stage(compute) @workgroup_size(WORKGROUP_SIZE)
+  @compute @workgroup_size(WORKGROUP_SIZE)
   fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
 
     // Guard against out-of-bounds work group sizes

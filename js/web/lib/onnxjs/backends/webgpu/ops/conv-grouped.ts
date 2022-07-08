@@ -49,19 +49,19 @@ const createGroupedConvProgramInfo =
       const wIndicesHelper = createIndicesHelper('w', wShape);
 
       const shaderSource = `
-  let WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
-  let strides: vec2<u32> = vec2(${attributes.strides[0]}u, ${attributes.strides[1]}u);
-  let pads: vec2<u32> = vec2(${attributes.pads[0]}u, ${attributes.pads[1]}u);
+  const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+  const strides: vec2<u32> = vec2(${attributes.strides[0]}u, ${attributes.strides[1]}u);
+  const pads: vec2<u32> = vec2(${attributes.pads[0]}u, ${attributes.pads[1]}u);
 
   ${inputStorageBuffersDeclarations.join('\n')}
-  @group(0) @binding(${inputStorageBuffersDeclarations.length}) var<storage, write> output : array<${dataType}>;
+  @group(0) @binding(${inputStorageBuffersDeclarations.length}) var<storage, read_write> output : array<${dataType}>;
 
   ${activationFunction}
   ${outputIndicesHelper.o2iImpl}
   ${xIndicesHelper.i2oImpl}
   ${wIndicesHelper.i2oImpl}
 
-  @stage(compute) @workgroup_size(WORKGROUP_SIZE)
+  @compute @workgroup_size(WORKGROUP_SIZE)
   fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
     // Guard against out-of-bounds work group sizes
     if (global_id.x >= ${outputSize}u) {

@@ -25,14 +25,14 @@ const createElementwiseProgramShader =
         expression = funcCall('a');
       }
       return `
-  let WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+  const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
 
   @group(0) @binding(0) var<storage, read> inputData : array<vec4<f32>>;
-  @group(0) @binding(1) var<storage, write> outputData : array<vec4<f32>>;
+  @group(0) @binding(1) var<storage, read_write> outputData : array<vec4<f32>>;
 
   ${additionalImplementation ?? ''}
 
-  @stage(compute) @workgroup_size(WORKGROUP_SIZE)
+  @compute @workgroup_size(WORKGROUP_SIZE)
   fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
 
     // Guard against out-of-bounds work group sizes

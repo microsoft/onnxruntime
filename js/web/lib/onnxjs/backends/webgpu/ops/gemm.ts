@@ -98,17 +98,17 @@ const createGemmProgramInfo =
         inputStorageBuffersDeclarations.push(`@group(0) @binding(2) var<storage, read> c : array<${dataType}>;`);
       }
       const shaderSource = `
-  let WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
-  let M: u32 = ${M}u;
-  let N: u32 = ${N}u;
-  let K: u32 = ${K}u;
-  let alpha = ${dataType}(${attributes.alpha});
-  let beta = ${dataType}(${attributes.beta});
+  const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+  const M: u32 = ${M}u;
+  const N: u32 = ${N}u;
+  const K: u32 = ${K}u;
+  const alpha = ${dataType}(${attributes.alpha});
+  const beta = ${dataType}(${attributes.beta});
 
   ${inputStorageBuffersDeclarations.join('\n')}
-  @group(0) @binding(${inputs.length}) var<storage, write> output : array<${dataType}>;
+  @group(0) @binding(${inputs.length}) var<storage, read_write> output : array<${dataType}>;
 
-  @stage(compute) @workgroup_size(WORKGROUP_SIZE)
+  @compute @workgroup_size(WORKGROUP_SIZE)
   fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
 
     // Guard against out-of-bounds work group sizes

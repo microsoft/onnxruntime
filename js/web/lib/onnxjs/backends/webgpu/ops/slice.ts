@@ -93,11 +93,11 @@ const createSliceProgramInfo = (input: Tensor, attributes: SliceAttributes, data
   const outputSize = ShapeUtil.size(outputShape);
   const outputStrides = ShapeUtil.computeStrides(outputShape);
   const shaderSource = `
-  let WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+  const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
   @group(0) @binding(0) var<storage, read> input : array<${dataType}>;
-  @group(0) @binding(1) var<storage, write> output : array<${dataType}>;
+  @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
 
-  @stage(compute) @workgroup_size(WORKGROUP_SIZE)
+  @compute @workgroup_size(WORKGROUP_SIZE)
   fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
 
     // Guard against out-of-bounds work group sizes
