@@ -188,7 +188,7 @@ option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 # ATen fallback support
 option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
-option(onnxruntime_BUILD_KERNEL_EXPLORER "Build kernel_explorer for microbenchmark a small subset of important kernels" OFF)
+option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
 
 if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)

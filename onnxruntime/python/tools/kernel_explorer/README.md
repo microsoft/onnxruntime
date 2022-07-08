@@ -2,7 +2,7 @@
 
 Kernel Explorer hooks up GPU kernel code with a Python frontend to help develop, test, profile, and auto-tune GPU kernels.
 
-Kernel explorer mainly target for attention based models and the purpose is specific to it at the moment.
+The initial scope is for BERT-like models with ROCM EP.
 
 ## Build
 

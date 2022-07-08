@@ -17,9 +17,8 @@ if not os.path.exists(build_dir):
 build_dir = os.path.realpath(build_dir)
 search_paths = [build_dir]
 
-# kernel explorer hooks up some underlaying functions for microbenchmark purpose. Some utility functions might also be
-# needed. We dlopen all this libraries to bring all those required symbols into global namespace so that we don't need
-# worry about linking.
+# As Kernel Explorer makes use of utility functions in ONNXRuntime, we dlopen all relevant libraries to bring required
+# symbols into global namespace, so that we don't need to worry about linking.
 library_files_to_load = [
     "onnxruntime_pybind11_state.so",
     "libonnxruntime_providers_shared.so",
