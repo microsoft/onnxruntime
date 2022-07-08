@@ -334,6 +334,9 @@ class ORTGen:
 
         # if the torch func has a return ref tensor, out is the last param, and self param is the first input
         # then we need to update and return out.
+        # TODO: make this more general to handle cases where the first param is not self such as
+        # - cat.out(Tensor[] tensors, int dim=0, *, Tensor(a!) out) -> Tensor(a!)
+        # - complex.out(Tensor real, Tensor imag, *, Tensor(a!) out) -> Tensor(a!)
         set_out_tensor = False
         last_param = cpp_func.parameters[-1].member
         if (
@@ -510,6 +513,7 @@ class ORTGen:
                 writer.writeline(f"return {last_param.identifier.value};")
                 return
 
+            # TODO: revisit the hardcoded use of TensorList.
             writer.write(f"at::TensorOptions tensor_options = {first_param.identifier.value}")
             if first_param.parameter_type.desugar().identifier_tokens[0].value == "TensorList":
                 writer.write("[0]")
