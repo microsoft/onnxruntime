@@ -15,10 +15,10 @@ namespace gemmfastgelu {
 
 #if defined(USE_ROCM)
 static void RunGemmFastGeluGpuTest(const std::vector<float>& input_data, const std::vector<float>& weight_data,
-                               const std::vector<float>& bias_data, const std::vector<float>& output_data,
-                               const std::vector<int64_t>& input_dims, const std::vector<int64_t>& weight_dims,
-                               const std::vector<int64_t>& bias_dims, const std::vector<int64_t>& output_dims,
-                               bool has_bias, bool use_float16 = false) {
+                                   const std::vector<float>& bias_data, const std::vector<float>& output_data,
+                                   const std::vector<int64_t>& input_dims, const std::vector<int64_t>& weight_dims,
+                                   const std::vector<int64_t>& bias_dims, const std::vector<int64_t>& output_dims,
+                                   bool has_bias, bool use_float16 = false) {
   OpTester tester("GemmFastGelu", 1, onnxruntime::kMSDomain);
 
   if (use_float16) {
@@ -64,10 +64,8 @@ TEST(GemmFastGeluTest, GemmFastGeluWithoutBiasFloat32) {
   std::vector<float> bias_data = {};
 
   std::vector<float> output_data = {
-    3.4894,  1.8455,  0.0260,  0.2229, -0.1003,  0.0902,
-    -0.1323, -0.0953,  0.0778,  0.2152,  0.6715, -0.0240
-  };
-
+      3.4894, 1.8455, 0.0260, 0.2229, -0.1003, 0.0902,
+      -0.1323, -0.0953, 0.0778, 0.2152, 0.6715, -0.0240};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};
@@ -102,9 +100,8 @@ TEST(GemmFastGeluTest, GemmFastGeluWithBiasFloat32) {
       -0.5f, 0.6f, 1.2f, 2.1f, -0.6f, 0.4f};
 
   std::vector<float> output_data = {
-    2.9862,  2.4849,  1.1177,  2.4329, -0.1681,  0.3988,
-    -0.0702, -0.1633,  1.2190,  2.4225,  0.1428,  0.2229
-  };
+      2.9862, 2.4849, 1.1177, 2.4329, -0.1681, 0.3988,
+      -0.0702, -0.1633, 1.2190, 2.4225, 0.1428, 0.2229};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};
@@ -116,7 +113,6 @@ TEST(GemmFastGeluTest, GemmFastGeluWithBiasFloat32) {
                          true);
 #endif
 }
-
 
 // CUDA and ROCm only for Float16 and BFloat16 type.
 #if defined(USE_ROCM)
@@ -141,10 +137,8 @@ TEST(GemmFastGeluTest, GemmFastGeluWithoutBiasFloat16) {
   std::vector<float> bias_data = {};
 
   std::vector<float> output_data = {
-    3.4902,  1.8467,  0.0259,  0.2227, -0.1005,  0.0901,
-    -0.1324, -0.0955,  0.0778,  0.2156,  0.6714, -0.0241
-  };
-
+      3.4902, 1.8467, 0.0259, 0.2227, -0.1005, 0.0901,
+      -0.1324, -0.0955, 0.0778, 0.2156, 0.6714, -0.0241};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};
@@ -177,9 +171,8 @@ TEST(GemmFastGeluTest, GemmFastGeluWithBiasFloat16) {
       -0.5f, 0.6f, 1.2f, 2.1f, -0.6f, 0.4f};
 
   std::vector<float> output_data = {
-    2.9883,  2.4844,  1.1182,  2.4316, -0.1680,  0.3984,
-    -0.0701, -0.1633,  1.2178,  2.4219,  0.1426,  0.2227
-  };
+      2.9883, 2.4844, 1.1182, 2.4316, -0.1680, 0.3984,
+      -0.0701, -0.1633, 1.2178, 2.4219, 0.1426, 0.2227};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};
@@ -214,9 +207,8 @@ TEST(GemmFastGeluTest, GemmFastGeluWithBias_BFloat16) {
       -0.5f, 0.6f, 1.2f, 2.1f, -0.6f, 0.4f};
 
   std::vector<float> output_data = {
-    2.9883,  2.4844,  1.1182,  2.4316, -0.1680,  0.3984,
-    -0.0701, -0.1633,  1.2178,  2.4219,  0.1426,  0.2227
-  };
+      2.9883, 2.4844, 1.1182, 2.4316, -0.1680, 0.3984,
+      -0.0701, -0.1633, 1.2178, 2.4219, 0.1426, 0.2227};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};

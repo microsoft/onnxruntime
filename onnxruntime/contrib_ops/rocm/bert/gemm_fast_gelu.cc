@@ -12,15 +12,15 @@ namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
-#define REGISTER_KERNEL_TYPED(T)                                     \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                     \
-      GemmFastGelu,                                                  \
-      kMSDomain,                                                     \
-      1,                                                             \
-      T,                                                             \
-      kRocmExecutionProvider,                                        \
-      (*KernelDefBuilder::Create())                                  \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),    \
+#define REGISTER_KERNEL_TYPED(T)                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      GemmFastGelu,                                               \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kRocmExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       GemmFastGelu<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -126,23 +126,23 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   } else if (CanUseStridedBatchedGemm(X->Shape(), W->Shape(),
                                       transa, transb, stride_A, stride_B, stride_C, batch_count)) {
     ROCBLAS_RETURN_IF_ERROR(rocblasGemmStridedBatchedHelper(RocblasHandle(),
-                                                          transB,
-                                                          transA,
-                                                          N,
-                                                          M,
-                                                          K,
-                                                          &alpha,
-                                                          reinterpret_cast<const HipT*>(W->template Data<T>()),
-                                                          ldb,
-                                                          stride_B,
-                                                          reinterpret_cast<const HipT*>(X->template Data<T>()),
-                                                          lda,
-                                                          stride_A,
-                                                          &zero,
-                                                          reinterpret_cast<HipT*>(gemm_buffer.get()),
-                                                          ldc,
-                                                          stride_C,
-                                                          static_cast<int>(batch_count)));
+                                                            transB,
+                                                            transA,
+                                                            N,
+                                                            M,
+                                                            K,
+                                                            &alpha,
+                                                            reinterpret_cast<const HipT*>(W->template Data<T>()),
+                                                            ldb,
+                                                            stride_B,
+                                                            reinterpret_cast<const HipT*>(X->template Data<T>()),
+                                                            lda,
+                                                            stride_A,
+                                                            &zero,
+                                                            reinterpret_cast<HipT*>(gemm_buffer.get()),
+                                                            ldc,
+                                                            stride_C,
+                                                            static_cast<int>(batch_count)));
   } else {
     // Fill offsets when needed.
     helper.FillOffsets();
@@ -183,12 +183,12 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t bias_length = (nullptr == bias) ? 0 : bias->Shape().Size();
 
   if (!LaunchFastGeluKernel<HipT>(Stream(),
-                                   static_cast<int>(fast_gelu_input_length),
-                                   static_cast<int>(bias_length),
-                                   reinterpret_cast<HipT*>(gemm_buffer.get()),
-                                   (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->template Data<T>()) : nullptr,
-                                   reinterpret_cast<HipT*>(Y->template MutableData<T>()),
-                                   false)) {
+                                  static_cast<int>(fast_gelu_input_length),
+                                  static_cast<int>(bias_length),
+                                  reinterpret_cast<HipT*>(gemm_buffer.get()),
+                                  (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->template Data<T>()) : nullptr,
+                                  reinterpret_cast<HipT*>(Y->template MutableData<T>()),
+                                  false)) {
     HIP_CALL(hipGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
