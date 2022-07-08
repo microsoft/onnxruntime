@@ -10,6 +10,7 @@ namespace Microsoft.ML.OnnxRuntime
     public struct OrtApiBase
     {
         public IntPtr GetApi;
+        public IntPtr GetTrainingApi;
         public IntPtr GetVersionString;
     };
 
@@ -250,12 +251,31 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SessionOptionsAppendExecutionProvider;
     }
 
+    // OrtTrainingApi  (onnxruntime_training_c_api.cc)
+    [StructLayout(LayoutKind.Sequential)]
+    public struct OrtTrainingApi
+    {
+        public IntPtr LoadCheckpoint;
+        public IntPtr SaveCheckpoint;
+        public IntPtr CreateTrainingSession;
+        public IntPtr TrainingSessionGetTrainModeOutputCount;
+        public IntPtr TrainingSessionGetEvalModeOutputCount;
+        public IntPtr ResetGrad;
+        public IntPtr TrainStep;
+        public IntPtr EvalStep;
+        public IntPtr OptimizerStep;
+        public IntPtr ReleaseTrainingSession;
+        public IntPtr ReleaseCheckpointState;
+    }
+
     internal static class NativeMethods
     {
         static OrtApi api_;
+        static OrtTrainingApi trainingApi_;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate ref OrtApi DOrtGetApi(UInt32 version);
+        public delegate ref OrtTrainingApi DOrtTrainingApi(UInt32 version);
 
         static NativeMethods()
         {
@@ -421,8 +441,24 @@ namespace Microsoft.ML.OnnxRuntime
             OrtReleaseCUDAProviderOptions = (DOrtReleaseCUDAProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseCUDAProviderOptions, typeof(DOrtReleaseCUDAProviderOptions));
             SessionOptionsAppendExecutionProvider
                 = (DSessionOptionsAppendExecutionProvider)Marshal.GetDelegateForFunctionPointer(
-                    api_.SessionOptionsAppendExecutionProvider, 
+                    api_.SessionOptionsAppendExecutionProvider,
                     typeof(DSessionOptionsAppendExecutionProvider));
+
+            DOrtTrainingApi OrtGetTrainingApi = (DOrtTrainingApi)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetTrainingApi, typeof(DOrtTrainingApi));
+            trainingApi_ = (OrtTrainingApi)OrtGetTrainingApi(4 /*ORT_API_VERSION*/);
+
+            OrtLoadCheckpoint = (DOrtLoadCheckpoint)Marshal.GetDelegateForFunctionPointer(trainingApi_.LoadCheckpoint, typeof(DOrtLoadCheckpoint));
+            OrtSaveCheckpoint = (DOrtSaveCheckpoint)Marshal.GetDelegateForFunctionPointer(trainingApi_.SaveCheckpoint, typeof(DOrtSaveCheckpoint));
+            OrtCreateTrainingSession = (DOrtCreateTrainingSession)Marshal.GetDelegateForFunctionPointer(trainingApi_.CreateTrainingSession, typeof(DOrtCreateTrainingSession));
+            OrtGetTrainModeOutputCount = (DOrtGetTrainModeOutputCount)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainingSessionGetTrainModeOutputCount, typeof(DOrtGetTrainModeOutputCount));
+            OrtGetEvalModeOutputCount = (DOrtGetEvalModeOutputCount)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainingSessionGetEvalModeOutputCount, typeof(DOrtGetEvalModeOutputCount));
+            OrtResetGrad = (DOrtResetGrad)Marshal.GetDelegateForFunctionPointer(trainingApi_.ResetGrad, typeof(DOrtResetGrad));
+            OrtTrainStep = (DOrtTrainStep)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainStep, typeof(DOrtTrainStep));
+            OrtEvalStep = (DOrtEvalStep)Marshal.GetDelegateForFunctionPointer(trainingApi_.EvalStep, typeof(DOrtEvalStep));
+            OrtOptimizerStep = (DOrtOptimizerStep)Marshal.GetDelegateForFunctionPointer(trainingApi_.OptimizerStep, typeof(DOrtOptimizerStep));
+            OrtReleaseTrainingSession = (DOrtReleaseTrainingSession)Marshal.GetDelegateForFunctionPointer(trainingApi_.ReleaseTrainingSession, typeof(DOrtReleaseTrainingSession));
+            OrtReleaseCheckpointState = (DOrtReleaseCheckpointState)Marshal.GetDelegateForFunctionPointer(trainingApi_.ReleaseCheckpointState, typeof(DOrtReleaseCheckpointState));
+
         }
 
         internal class NativeLib
@@ -443,7 +479,7 @@ namespace Microsoft.ML.OnnxRuntime
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern ref OrtApiBase OrtGetApiBase();
 
-        #region Runtime/Environment API
+#region Runtime/Environment API
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */DOrtCreateEnv(LogLevel default_warning_level, string logId, out IntPtr /*(OrtEnv*)*/ env);
@@ -462,9 +498,9 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /* OrtStatus* */DOrtDisableTelemetryEvents(IntPtr /*(OrtEnv*)*/ env);
         public static DOrtDisableTelemetryEvents OrtDisableTelemetryEvents;
 
-        #endregion Runtime/Environment API
+#endregion Runtime/Environment API
 
-        #region Provider Options API
+#region Provider Options API
 
         /// <summary>
         /// Creates native OrtTensorRTProviderOptions instance
@@ -553,9 +589,9 @@ namespace Microsoft.ML.OnnxRuntime
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate void DOrtReleaseCUDAProviderOptions(IntPtr /*(OrtCUDAProviderOptions*)*/ cudaProviderOptionsInstance);
         public static DOrtReleaseCUDAProviderOptions OrtReleaseCUDAProviderOptions;
-        #endregion
+#endregion
 
-        #region Status API
+#region Status API
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate ErrorCode DOrtGetErrorCode(IntPtr /*(OrtStatus*)*/status);
         public static DOrtGetErrorCode OrtGetErrorCode;
@@ -570,9 +606,9 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate void DOrtReleaseStatus(IntPtr /*(OrtStatus*)*/ statusPtr);
         public static DOrtReleaseStatus OrtReleaseStatus;
 
-        #endregion Status API
+#endregion Status API
 
-        #region InferenceSession API
+#region InferenceSession API
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */DOrtCreateSession(
@@ -589,7 +625,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="environment">Native OrtEnv instance</param>
         /// <param name="modelPath">UTF-8 bytes corresponding to model string path</param>
-        /// <param name="sessionOptions">Native SessionOptions instance</param>         
+        /// <param name="sessionOptions">Native SessionOptions instance</param>
         /// <param name="prepackedWeightsContainer">Native OrtPrepackedWeightsContainer instance</param>
         /// <param name="session">(Output) Created native OrtSession instance</param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -617,7 +653,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="environment">Native OrtEnv instance</param>
         /// <param name="modelData">Byte array correspoonding to the model</param>
         /// <param name="modelSize">Size of the model in bytes</param>
-        /// <param name="sessionOptions">Native SessionOptions instance</param>         
+        /// <param name="sessionOptions">Native SessionOptions instance</param>
         /// <param name="prepackedWeightsContainer">Native OrtPrepackedWeightsContainer instance</param>
         /// <param name="session">(Output) Created native OrtSession instance</param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -748,9 +784,9 @@ namespace Microsoft.ML.OnnxRuntime
                                                 out UIntPtr /*(ulong* out)*/ startTime);
         public static DOrtSessionGetProfilingStartTimeNs OrtSessionGetProfilingStartTimeNs;
 
-        #endregion InferenceSession API
+#endregion InferenceSession API
 
-        #region SessionOptions API
+#region SessionOptions API
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateSessionOptions(out IntPtr /*(OrtSessionOptions**)*/ sessionOptions);
@@ -991,9 +1027,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Append an execution provider instance to the native OrtSessionOptions instance.
-        /// 
+        ///
         /// 'SNPE' and 'XNNPACK' are currently supported as providerName values.
-        /// 
+        ///
         /// The number of providerOptionsKeys must match the number of providerOptionsValues and equal numKeys.
         /// </summary>
         /// <param name="options">Native OrtSessionOptions instance</param>
@@ -1711,6 +1747,118 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtReleasePrepackedWeightsContainer OrtReleasePrepackedWeightsContainer;
 
 #endregion
+
+#region TrainingSession API
+
+        /// <summary>
+        /// Creates an instance of OrtSession with provided parameters
+        /// </summary>
+        /// <param name="checkpointPath">UTF-8 bytes corresponding to checkpoint string path</param>
+        /// <param name="checkpointState">(Output) Loaded OrtCheckpointState instance</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */DOrtLoadCheckpoint(
+                                        byte[] checkpointPath,
+                                        out IntPtr /* (OrtCheckpointState**) */ checkpointState);
+
+        public static DOrtLoadCheckpoint OrtLoadCheckpoint;
+
+        /// <summary>
+        /// Creates an instance of OrtSession with provided parameters
+        /// </summary>
+        /// <param name="checkpointPath">UTF-8 bytes corresponding to checkpoint string path</param>
+        /// <param name="checkpointState">(Output) Loaded OrtCheckpointState instance</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */DOrtSaveCheckpoint(
+                                        byte[] checkpointPath,
+                                        IntPtr /*(OrtTrainingSession*)*/ session,
+                                        bool saveOptimizerState);
+
+        public static DOrtSaveCheckpoint OrtSaveCheckpoint;
+
+        /// <summary>
+        /// Creates an instance of OrtSession with provided parameters
+        /// </summary>
+        /// <param name="environment">Native OrtEnv instance</param>
+        /// <param name="sessionOptions">Native SessionOptions instance</param>
+        /// <param name="checkpointState">Loaded OrtCheckpointState instance</param>
+        /// <param name="trainModelPath">UTF-8 bytes corresponding to model string path</param>
+        /// <param name="evalModelPath">UTF-8 bytes corresponding to model string path</param>
+        /// <param name="optimizerModelPath">UTF-8 bytes corresponding to model string path</param>
+        /// <param name="session">(Output) Created native OrtTrainingSession instance</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */DOrtCreateTrainingSession(
+                                        IntPtr /* (OrtEnv*) */ environment,
+                                        IntPtr /* (OrtSessionOptions*) */ sessionOptions,
+                                        IntPtr /* (OrtCheckpointState*) */ checkpointState,
+                                        byte[] trainModelPath,
+                                        byte[] evalModelPath,
+                                        byte[] optimizerModelPath,
+                                        out IntPtr /* (OrtTrainingSession**) */ session);
+
+        public static DOrtCreateTrainingSession OrtCreateTrainingSession;
+
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTrainModeOutputCount(
+                                                IntPtr /*(OrtSession*)*/ session,
+                                                out UIntPtr count);
+
+        public static DOrtGetTrainModeOutputCount OrtGetTrainModeOutputCount;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetEvalModeOutputCount(
+                                                IntPtr /*(OrtSession*)*/ session,
+                                                out UIntPtr count);
+
+        public static DOrtGetEvalModeOutputCount OrtGetEvalModeOutputCount;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtResetGrad(
+                                                IntPtr /*(OrtSession*)*/ session);
+
+        public static DOrtResetGrad OrtResetGrad;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(ONNStatus*)*/ DOrtTrainStep(
+                                                IntPtr /*(OrtTrainingSession*)*/ session,
+                                                IntPtr /*(OrtSessionRunOptions*)*/ runOptions,  // can be null to use the default options
+                                                UIntPtr inputCount,
+                                                IntPtr[] /* (OrtValue*[])*/ inputValues,
+                                                UIntPtr outputCount,
+                                                IntPtr[] outputValues /* An array of output value pointers. Array must be allocated by the caller */
+                                                );
+
+        public static DOrtTrainStep OrtTrainStep;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(ONNStatus*)*/ DOrtEvalStep(
+                                                IntPtr /*(OrtTrainingSession*)*/ session,
+                                                IntPtr /*(OrtSessionRunOptions*)*/ runOptions,  // can be null to use the default options
+                                                UIntPtr inputCount,
+                                                IntPtr[] /* (OrtValue*[])*/ inputValues,
+                                                UIntPtr outputCount,
+                                                IntPtr[] outputValues /* An array of output value pointers. Array must be allocated by the caller */
+                                                );
+
+        public static DOrtEvalStep OrtEvalStep;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(ONNStatus*)*/ DOrtOptimizerStep(
+                                                IntPtr /*(OrtTrainingSession*)*/ session,
+                                                IntPtr /*(OrtSessionRunOptions*)*/ runOptions  // can be null to use the default options
+                                                );
+
+        public static DOrtOptimizerStep OrtOptimizerStep;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void DOrtReleaseTrainingSession(IntPtr /*(OrtSession*)*/session);
+        public static DOrtReleaseTrainingSession OrtReleaseTrainingSession;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void DOrtReleaseCheckpointState(IntPtr /*(OrtSession*)*/session);
+        public static DOrtReleaseCheckpointState OrtReleaseCheckpointState;
+
+#endregion TrainingSession API
 
         public static byte[] GetPlatformSerializedString(string str)
         {
