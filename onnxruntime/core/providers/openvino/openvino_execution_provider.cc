@@ -30,56 +30,59 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   }
   //to check if target device is available
   //using ie_core capability GetAvailableDevices to fetch list of devices plugged in
-  bool device_found = false;
-  bool device_id_found = false;
-  auto available_devices = openvino_ep::BackendManager::GetGlobalContext().ie_core.GetAvailableDevices();
-  //Checking for device_type configuration
-  if (info.device_type_ != "") {
-    if(info.device_type_== "CPU" || info.device_type_== "GPU" || info.device_type_== "MYRIAD") {
-      for (auto device : available_devices){
-        if (device.rfind(info.device_type_, 0) == 0){
-          if(info.device_type_== "GPU" && (info.precision_ == "FP32" || info.precision_ == "FP16")) {
+  if (info.use_compiled_network_ == false) {
+    bool device_found = false;
+    bool device_id_found = false;
+    auto available_devices = openvino_ep::BackendManager::GetGlobalContext().ie_core.GetAvailableDevices();
+    //Checking for device_type configuration
+    if (info.device_type_ != "") {
+      if (info.device_type_ == "CPU" || info.device_type_ == "GPU" || info.device_type_ == "MYRIAD") {
+        for (auto device : available_devices) {
+          if (device.rfind(info.device_type_, 0) == 0) {
+            if (info.device_type_ == "GPU" && (info.precision_ == "FP32" || info.precision_ == "FP16")) {
               device_found = true;
               break;
-          }
-          if(info.device_type_== "CPU" && info.precision_ == "FP32") {
-            device_found = true;
-            break;
-          }
-          if(info.device_type_== "MYRIAD" && info.precision_ == "FP16") {
-            device_found = true;
-            break;
+            }
+            if (info.device_type_ == "CPU" && info.precision_ == "FP32") {
+              device_found = true;
+              break;
+            }
+            if (info.device_type_ == "MYRIAD" && info.precision_ == "FP16") {
+              device_found = true;
+              break;
+            }
           }
         }
-      }
-    } else {
-      device_found = true;
-    }
-  }
-  if (!device_found) {
-    std::string err_msg = std::string("Device Type not found : ") + info.device_type_ + "\nChoose the right precision with one of:\n";
-    for (auto device : available_devices) {
-      err_msg = err_msg + device + "\n";
-    }
-    ORT_THROW(err_msg);
-  }
-  //Checking for device_id configuration
-  if (info.device_id_ != "") {
-    for (auto device : available_devices) {
-      if (device.rfind(info.device_id_, 0) == 0){
-        if(info.device_id_== "MYRIAD" || info.device_id_== "CPU" || info.device_id_== "GPU"){
-          LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"<< "Switching to Device ID: " << info.device_id_;
-          device_id_found = true;
-          break;
-        }
+      } else {
+        device_found = true;
       }
     }
-    if (!device_id_found) {
-      std::string err_msg = std::string("Device ID not found : ") + info.device_id_ + "\nChoose one of:\n";
+    if (!device_found) {
+      std::string err_msg = std::string("Device Type not found : ") + info.device_type_ + "\nChoose the right precision with one of:\n";
       for (auto device : available_devices) {
         err_msg = err_msg + device + "\n";
       }
       ORT_THROW(err_msg);
+    }
+    //Checking for device_id configuration
+    if (info.device_id_ != "") {
+      for (auto device : available_devices) {
+        if (device.rfind(info.device_id_, 0) == 0) {
+          if (info.device_id_ == "MYRIAD" || info.device_id_ == "CPU" || info.device_id_ == "GPU") {
+            LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
+                               << "Switching to Device ID: " << info.device_id_;
+            device_id_found = true;
+            break;
+          }
+        }
+      }
+      if (!device_id_found) {
+        std::string err_msg = std::string("Device ID not found : ") + info.device_id_ + "\nChoose one of:\n";
+        for (auto device : available_devices) {
+          err_msg = err_msg + device + "\n";
+        }
+        ORT_THROW(err_msg);
+      }
     }
   }
   openvino_ep::BackendManager::GetGlobalContext().device_id = info.device_id_;
