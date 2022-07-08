@@ -289,6 +289,7 @@ The following table lists all the available configuration options and the Key-Va
 | blob_dump_path | string | Any valid string path on the hardware target | string | Explicitly specify the path where you would like to dump and load the blobs for the save/load blob feature when use_compiled_network setting is enabled . This overrides the default path.|
 | context | string | OpenCL Context | void* | This option is only alvailable when OpenVINO EP is built with OpenCL flags enabled. It takes in the remote context i.e the cl_context address as a void pointer.|
 | enable_opencl_throttling | string | True/False | boolean | This option enables OpenCL queue throttling for GPU devices (reduces CPU utilization when using GPU). |
+| enable_dynamic_shapes | string | True/False | boolean | This option if enabled works for dynamic shaped models whose shape will be set dynamically based on the infer input image/data shape at run time in CPU. This gives best result for running multiple inferences with varied shaped images/data. |
 
 Valid Hetero or Multi or Auto Device combinations:
 HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
@@ -569,7 +570,7 @@ In order to showcase what you can do with the OpenVINO™ Execution Provider for
 ### Tutorial on how to use OpenVINO™ Execution Provider for ONNX Runtime python wheel packages
 [Python Pip Wheel Packages](https://www.intel.com/content/www/us/en/artificial-intelligence/posts/openvino-execution-provider-for-onnx-runtime.html)
 
-### Accelerate inference for PyTorch models with OpenVINO Execution Provider (Preview)
+## Accelerate inference for PyTorch models with OpenVINO Execution Provider (Preview)
 
 ONNX Runtime for PyTorch is now extended to support PyTorch model inference using ONNX Runtime.
 It is available via the torch-ort-inference python package. This preview package enables OpenVINO™ Execution Provider for ONNX Runtime by default for accelerating inference on various Intel® CPUs, Intel® integrated GPUs, and Intel® Movidius™ Vision Processing Units - referred to as VPU. For more details, see [torch-ort-inference](https://github.com/pytorch/ort#accelerate-inference-for-pytorch-models-with-onnx-runtime-preview).
