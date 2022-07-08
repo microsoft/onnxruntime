@@ -18,25 +18,12 @@ struct ReleasePlan;
 struct AllocPlanPerValue;
 struct ParallelExecutionPlanImpl; 
 class ISequentialPlannerContext;
+class DeviceStreamColloection;
 
 // Specify how many logic streams for each provider type
 using ProviderStreamMap = std::unordered_map<std::string, int>;
 // Each set contains ops which should be grouped in an independent logic stream
 using OpStreamMap = std::vector<std::vector<std::string>>;
-
-class DeviceStreamColloectionImpl;
-class DeviceStreamColloection {
- public:
-  DeviceStreamColloection(size_t num_streams);
-  ~DeviceStreamColloection();
-  void SetDeviceStream(size_t, std::unique_ptr<Stream> stream);
-  void SetDeviceStream(size_t, Stream* stream);
-  const std::vector<Stream*>& GetStreams() const;
-  size_t NumStreams() const;
-
- private:
-  std::unique_ptr<DeviceStreamColloectionImpl> impl_;
-};
 
 class ParallelExecutionPlan : public SequentialExecutionPlan {
  public:

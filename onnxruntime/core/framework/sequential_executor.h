@@ -32,4 +32,20 @@ class SequentialExecutor : public IExecutor {
   const bool& terminate_flag_;
   const bool only_execute_path_to_fetches_;
 };
+
+onnxruntime::Status BindToDeviceStream(Stream* parent_stream,
+                                  const SequentialExecutionPlan& execution_plan,
+                                  DeviceStreamColloection& device_stream_map,
+                                  IStreamCommandHandleRegistry& stream_handle_registry);
+
+onnxruntime::Status ExecuteTheNewPlan(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
+                                      const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+                                      std::vector<OrtValue>& fetches,
+                                      const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                      const logging::Logger& logger,
+                                      const DeviceStreamColloection& device_streams,
+                                      const bool& terminate_flag,
+                                      const bool only_execute_path_to_fetches,
+                                      bool single_thread_mode);
+
 }  // namespace onnxruntime

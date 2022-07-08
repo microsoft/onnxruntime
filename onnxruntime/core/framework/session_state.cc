@@ -33,12 +33,12 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
  public:
   // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
   // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
-  WaitNotificationFn GetWaitHandle(const std::string& notification_owner_ep_type, const std::string& executor_ep_type) override {
+  WaitNotificationFn GetWaitHandle(const std::string& notification_owner_ep_type, const std::string& executor_ep_type) const override {
     auto it = notification_wait_map_.find(GetWaitKey(notification_owner_ep_type, executor_ep_type));
     return it == notification_wait_map_.end() ? nullptr : it->second;
   }
 
-  CreateStreamFn GetCreateStreamFn(const std::string& execution_provider_type) override {
+  CreateStreamFn GetCreateStreamFn(const std::string& execution_provider_type) const override {
     auto it = create_stream_map_.find(execution_provider_type);
     return it == create_stream_map_.end() ? nullptr : it->second;
   }
@@ -1475,15 +1475,6 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
   AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
 
-  //SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);
-  SequentialPlannerContext context(ExecutionMode::ORT_SEQUENTIAL, ExecutionOrder::DEFAULT, true);
-  p_seq_exec_plan_ = std::make_unique<SequentialExecutionPlan>();
-  ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
-                                                    execution_providers_, kernel_create_info_map_,
-                                                    subgraphs_kernel_create_info_maps,
-                                                    outer_scope_node_arg_to_location_map,
-                                                    ort_value_name_idx_map_, context, p_seq_exec_plan_));
-
   ProviderStreamMap provider_stream_map;
 
   // read stream configuration from session option
@@ -1504,11 +1495,11 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     }
   }
 
-  for (const auto& ep: execution_providers_.GetIds()) {
+  for (const auto& ep : execution_providers_.GetIds()) {
     if (provider_stream_map.count(ep)) {
       provider_stream_map[ep] = std::max(provider_stream_map[ep], 1);
     } else {
-      provider_stream_map.emplace(ep,1);
+      provider_stream_map.emplace(ep, 1);
     }
   }
 
@@ -1516,10 +1507,24 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     OpStreamMap op_stream_map;
     std::vector<std::string> groups = split(grouped_ops, ';');
     for (const auto& group : groups) {
-      op_stream_map.push_back(split(group,','));
+      op_stream_map.push_back(split(group, ','));
     }
     return op_stream_map;
   };
+  //SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);
+  SequentialPlannerContext context(ExecutionMode::ORT_SEQUENTIAL, ExecutionOrder::DEFAULT, true);
+  p_seq_exec_plan_ = std::make_unique<SequentialExecutionPlan>();
+  ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
+                                                    execution_providers_, kernel_create_info_map_,
+                                                    subgraphs_kernel_create_info_maps,
+                                                    outer_scope_node_arg_to_location_map,
+                                                    ort_value_name_idx_map_, context, 
+                                                    this->GetExecutionProviders(),
+                                                    this->GetStreamHandleRegistryInstance(),
+                                                    provider_stream_map,
+                                                    read_op_map_from_str(session_options.grouped_ops),
+                                                    p_seq_exec_plan_));
+
 
   ParalllelPlannerContext para_context;
   ExecutionPlanner planner(parent_node,

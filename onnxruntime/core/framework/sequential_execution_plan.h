@@ -73,6 +73,10 @@ struct AllocPlanPerValue {
   AllocPlanPerValue() : location(CPU, OrtInvalidAllocator) {}
 };
 
+using StepCommandFn = std::function<Status(void*, size_t, bool&)>;
+
+using NotificationIndex = size_t;
+
 // SequentialExecutionPlan: This is the data that is produced by a static
 // planner for a sequential execution, to be used by a SequentialExecutor.
 struct SequentialExecutionPlan : public ExecutionPlanBase {
@@ -89,28 +93,41 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   // The following vector contains any activation tensors that must be allocated sequentially.
   std::vector<OrtValueIndex> activation_allocation_order;
 
-  // The following indicates the order in which nodes should be executed and the
-  // ml-values to be free after each node's execution:
-
-  // NodeExecutionPlan: represents execution data for a single node
-  struct NodeExecutionPlan {
-    // node to be executed;
-    onnxruntime::NodeIndex node_index;
-
-    // ml-values to be freed after node execution:
-    // for (auto i = free_from_index; i <= free_to_index; i++)
-    //    free ml-value corresponding to ml-value-index to_be_freed[i]
-    int free_from_index;
-    int free_to_index;
-
-    explicit NodeExecutionPlan(onnxruntime::NodeIndex index) : node_index(index), free_from_index(1), free_to_index(0) {}
+  class ExecutionStep {
+  public: 
+   virtual StepCommandFn GetStepFun() = 0;
+   virtual std::string Dump() const = 0;
   };
 
-  // Execution_plan: represents the nodes in the sequential order to be executed
-  std::vector<NodeExecutionPlan> execution_plan;
+  struct LogicStream {
+    std::vector<std::unique_ptr<ExecutionStep>> steps_;
+    const IExecutionProvider* ep_ = nullptr;
+  };
 
-  // to_be_freed: vector elements represent indices of ml-values to be freed (as described above)
-  std::vector<OrtValueIndex> to_be_freed;
+  std::vector<std::unique_ptr<LogicStream>> execution_plan;
+
+  std::unordered_map<size_t, size_t> value_to_stream_map;
+
+  struct ReleaseAction {
+    OrtValueIndex value_index;
+    // 0 - no release needed
+    // 1 - can be statically determined where to release
+    // >1 - can't statically determined, need ref counting.
+    size_t ref_count{0};
+  };
+
+  std::vector<ReleaseAction> release_actions;
+
+  // for each node, which values need to be freed after kernel execution.
+  // indexed by node index
+  // elements in node_release_list[i] is the index in release_actions.
+  std::vector<std::vector<size_t>> node_release_list;
+
+  std::vector<size_t> notification_owners;
+
+  std::unordered_map<onnxruntime::NotificationIndex, std::vector<std::pair<int, int>>> downstream_map;
+
+  size_t num_barriers{0};
 
   const OrtMemoryInfo& GetLocation(size_t ort_value_index) const override {
     return allocation_plan[ort_value_index].location;

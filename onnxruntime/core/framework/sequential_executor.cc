@@ -11,6 +11,7 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/allocation_planner.h"
 #include "core/framework/execution_frame.h"
+#include "core/framework/execution_context.h"
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
@@ -138,7 +139,7 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
 
 static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan& seq_exec_plan,
-                                  const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
+                                  size_t node_index,
                                   const logging::Logger& logger);
 
 Status SequentialExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
@@ -219,7 +220,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
     }
 
-    auto node_index = node_exec_plan.node_index;
+    auto node_index = 0;
 
 #if !defined(ORT_MINIMAL_BUILD)
     // If it is not necessary to execute the node.
@@ -228,7 +229,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 #endif
 
-    const auto& node = *graph_viewer.GetNode(node_exec_plan.node_index);
+    const auto& node = *graph_viewer.GetNode(node_index);
 
 #ifdef CONCURRENCY_VISUALIZER
     series.write_flag(node.Name().c_str());
@@ -399,7 +400,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     // free ml-values corresponding to this node
     VLOGS(logger, 1) << "Releasing node ML values.";
-    ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
+    ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, 0, logger));
   }
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -467,14 +468,98 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
 static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan& seq_exec_plan,
-                                  const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
+                                  size_t node_index,
                                   const logging::Logger& logger) {
-  for (auto i = node_exec_plan.free_from_index; i <= node_exec_plan.free_to_index; ++i) {
-    auto ort_value_idx = seq_exec_plan.to_be_freed[i];
+  for (auto i : seq_exec_plan.node_release_list[node_index]) {
+    auto ort_value_idx = seq_exec_plan.release_actions[i].value_index;
     VLOGS(logger, 1) << "Releasing ort_value with index: " << ort_value_idx;
     ORT_RETURN_IF_ERROR(frame.ReleaseMLValue(ort_value_idx));
   }
 
   return Status::OK();
 }
+
+onnxruntime::Status ExecuteTheNewPlan(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
+                                      const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+                                      std::vector<OrtValue>& fetches,
+                                      const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                      const logging::Logger& logger,
+                                      const DeviceStreamColloection& device_streams,
+                                      const bool& terminate_flag,
+                                      const bool only_execute_path_to_fetches,
+                                      bool single_thread_mode) {
+  if (only_execute_path_to_fetches)
+    ORT_THROW("NOT IMPLEMENTED YET.");
+  auto* execution_plan = session_state.GetExecutionPlan();
+  int32_t valid_streams = 0;
+  for (auto& stream : execution_plan->execution_plan) {
+    if (stream && stream->steps_.size() > 0)
+      valid_streams++;
+  }
+  // prepare the execution context, notifications got initialized.
+  ExecutionContext ctx(session_state,
+                       valid_streams,
+                       execution_plan->notification_owners,
+                       feed_mlvalue_idxs,
+                       feeds,
+                       fetch_mlvalue_idxs,
+                       fetches,
+                       fetch_allocators,
+                       execution_plan->num_barriers,
+                       logger,
+                       device_streams,
+                       terminate_flag);
+
+  auto* tp = single_thread_mode ? nullptr : session_state.GetInterOpThreadPool();
+
+  for (int i = 0; i < execution_plan->execution_plan.size(); ++i) {
+    if (!execution_plan->execution_plan[i]->steps_.empty()) {
+      concurrency::ThreadPool::Schedule(tp, [i, &ctx]() {
+        RunSince(i, ctx, 0);
+      });
+    }
+  }
+
+  if (!single_thread_mode)
+    ctx.WaitAll();
+  ORT_RETURN_IF_ERROR(ctx.TaskStatus());
+  ORT_RETURN_IF_ERROR(ctx.GetExecutionFrame()->GetOutputs(fetches));
+  return Status::OK();
+}
+
+onnxruntime::Status BindToDeviceStream(Stream* parent_stream,
+    const SequentialExecutionPlan& execution_plan,
+    DeviceStreamColloection& device_stream_map,
+    IStreamCommandHandleRegistry& stream_handle_registry) {
+  for (size_t i = 0; i < execution_plan.execution_plan.size(); ++i) {
+    auto& logic_stream = execution_plan.execution_plan[i];
+    if (logic_stream->steps_.size() > 0) {
+      auto create_stream_fn = stream_handle_registry.GetCreateStreamFn(logic_stream->ep_->Type());
+      // TODO: in theory, we should make current subgraph's stream depends on parent stream.
+      // but in current code structure, it causing issues with the resource sharing and stream
+      // lifetime. it also may cause additional cost of stream sync for single stream case.
+      // In first phase, let's just put all the subgraph execution on the parent stream.
+      if (parent_stream) {
+        // if current logic stream is not on the same EP instance as parent stream
+        // and the EP instance does have async streams (not EP like CPU)
+        // throw error as we don't have the code to setup the dependency at this moment.
+        if (logic_stream->ep_ != parent_stream->provider && create_stream_fn) {
+          ORT_THROW("Subgraph has nodes running on EP: ", logic_stream->ep_->Type(),
+                    " while parent graph node running on EP: ", parent_stream->provider->Type(),
+                    ", this is not supported yet.");
+        }
+        device_stream_map.SetDeviceStream(i, parent_stream);
+      } else if (create_stream_fn) {
+        auto device_stream = create_stream_fn(logic_stream->ep_);
+        device_stream_map.SetDeviceStream(i, std::move(device_stream));
+      } else {
+        device_stream_map.SetDeviceStream(i, nullptr);
+      }
+    } else {
+      device_stream_map.SetDeviceStream(i, nullptr);
+    }
+  }
+  return Status::OK();
+}
+
 }  // namespace onnxruntime

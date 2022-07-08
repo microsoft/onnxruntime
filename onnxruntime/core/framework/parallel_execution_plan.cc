@@ -12,6 +12,7 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/execution_context.h"
 
 #ifdef USE_CUDA
 #include <nvtx3/nvToolsExtCuda.h>
@@ -35,7 +36,6 @@ struct Barrier {
 
 using NotificationIndex = size_t;
 
-struct ExecutionContext;
 struct ExecutionPlanContext;
 using CommandFn = std::function<Status(void*, bool&)>;
 
@@ -51,236 +51,14 @@ struct LogicStream {
   ~LogicStream() {}
 };
 
-struct ReleasePlan {
-  std::unique_ptr<std::atomic_int[]> value_ref_counts_;
-  std::unordered_map<OrtValueIndex, OrtValueIndex> reused_map_;
-  std::unordered_map<onnxruntime::NodeIndex, std::vector<OrtValueIndex>> node_value_map_;
-};
-
-class DeviceStreamColloectionImpl {
- public:
-  DeviceStreamColloectionImpl(size_t num_streams) : num_streams_(num_streams) {
-    device_streams_.resize(num_streams, nullptr);
-  }
-
-  virtual ~DeviceStreamColloectionImpl() {
-    for (auto& device_stream : device_streams_) {
-      if (device_stream) {
-        device_stream->Flush();
-      }
-    }
-    // only clean the streams that is owned by current context
-    for (auto& stream : device_streams_containers) {
-      if (stream) {
-        auto& allocators = stream->provider->GetAllocators();
-        for (auto& alloc : allocators) {
-          if (alloc->Info().alloc_type == OrtArenaAllocator) {
-            auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
-            auto* stream_aware_alloc = arena_alloc->AsStreamAwareAreana();
-            if (stream_aware_alloc) {
-              stream_aware_alloc->ReleaseStreamBuffers(stream.get());
-            }
-          }
-        }
-      }
-    }
-  }
-
-  void SetDeviceStream(size_t idx, std::unique_ptr<Stream> stream) {
-    ORT_ENFORCE(idx < num_streams_);
-    device_streams_[idx] = stream.get();
-    device_streams_containers.emplace_back(std::move(stream));
-  }
-
-  void SetDeviceStream(size_t idx, Stream* stream) {
-    ORT_ENFORCE(idx < num_streams_);
-    device_streams_[idx] = stream;
-  }
-
-  const std::vector<Stream*>& GetStreams() {
-    return device_streams_;
-  }
-
-  size_t NumStreams() { return num_streams_; }
-
- private:
-  size_t num_streams_;
-  std::vector<Stream*> device_streams_;
-  std::vector<std::unique_ptr<Stream>> device_streams_containers;
-};
-
-DeviceStreamColloection::DeviceStreamColloection(size_t num_streams) : impl_(std::make_unique<DeviceStreamColloectionImpl>(num_streams)) {}
-
-DeviceStreamColloection::~DeviceStreamColloection() {}
-
-void DeviceStreamColloection::SetDeviceStream(size_t idx, std::unique_ptr<Stream> stream) {
-  impl_->SetDeviceStream(idx, std::move(stream));
-}
-
-void DeviceStreamColloection::SetDeviceStream(size_t idx, Stream* stream) {
-  impl_->SetDeviceStream(idx, stream);
-}
-
-const std::vector<Stream*>& DeviceStreamColloection::GetStreams() const {
-  return impl_->GetStreams();
-}
-
-size_t DeviceStreamColloection::NumStreams() const {
-  return impl_->NumStreams();
-}
-
-/*
-* LIMITATION: 
-* CountDownBarrier is only for scenario that the v is set 
-* to the # of consumers and each consumer calls Dec() exactly once.
-*/
-class CountDownBarrier {
- public:
-  CountDownBarrier() : v_{0} {};
-
-  void Set(int32_t v) {
-    ORT_ENFORCE(v >= 0);
-    v_.store(v, std::memory_order_relaxed);
-  }
-
-  bool Dec() {
-    return v_.fetch_sub(1, std::memory_order_relaxed) == 1;
-  }
-
-  int32_t Get() { return v_.load(std::memory_order_relaxed); }
-
- private:
-  std::atomic_int_fast32_t v_;
-};
-
-// execution context that support to execute a command on stream.
-// The notifications got instantiated when execution context is constructed.
-// TODO: if we merge the notifications to execution frame, we might don't need this.
-struct ExecutionContext {
-  const SessionState* session_state;
-  std::unique_ptr<ExecutionFrame> frame;
-  const logging::Logger* logger;
-  std::vector<std::unique_ptr<synchronize::Notification>> notifications;
-  std::unique_ptr<ReleasePlan> release_plan;
-  const DeviceStreamColloection& device_stream_map_;
-  std::vector<CountDownBarrier> count_down_barriers_;
-  CountDownBarrier remain_tasks_;
-  const bool& terminate_flag_;
-  Status task_status_{Status::OK()};
-  std::vector<std::unique_ptr<LogicStream>>& logic_streams_;
-
-  ExecutionContext(const SessionState& sess_state,
-                   std::vector<std::unique_ptr<LogicStream>>& logic_streams,
-                   std::vector<size_t> notification_owners,
-                   const std::vector<int>& feed_mlvalue_idxs,
-                   const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
-                   std::vector<OrtValue>& fetches,
-                   const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                   size_t num_barriers,
-                   const logging::Logger& sess_logger,
-                   const DeviceStreamColloection& device_streams_map,
-                   const bool& terminate_flag) : session_state(&sess_state),
-                                                 logger(&sess_logger),
-                                                 device_stream_map_(device_streams_map),
-                                                 count_down_barriers_(num_barriers),
-                                                 terminate_flag_(terminate_flag),
-                                                 logic_streams_(logic_streams) {
-    int32_t valid_streams = 0;
-    //1. bind logic stream to device stream;
-    for (auto& logic_stream : logic_streams) {
-      if (logic_stream->commands_.size() > 0) {
-        valid_streams++;
-      }
-    }
-
-    auto& device_streams = device_stream_map_.GetStreams();
-
-    for (auto i = 0; i < notification_owners.size(); ++i) {
-      auto& stream = device_streams[notification_owners[i]];
-      if (stream)
-        notifications.push_back(std::move(stream->CreateNotification(/*TODO: calculate num of consumers*/ 0)));
-      else
-        notifications.push_back(nullptr);
-    }
-
-    // create frame
-    frame = std::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, sess_state, &device_streams);
-    // init barreris
-    for (auto i = 0; i < num_barriers; ++i) {
-      count_down_barriers_[i].Set(2);
-    }
-    remain_tasks_.Set(valid_streams);
-
-    auto* para_exe_plan = const_cast<SessionState&>(sess_state).GetParalllelExecutionPlan();
-    release_plan = para_exe_plan->GenerateReleasePlan();
-  }
-
-  bool DecCountDownBarrier(size_t barrier_id) {
-    return count_down_barriers_[barrier_id].Dec();
-  }
-
-  Stream* GetDeviceStream(size_t idx) {
-    ORT_ENFORCE(idx < device_stream_map_.NumStreams());
-    return device_stream_map_.GetStreams()[idx];
-  }
-
-  void CompleteTask() {
-    remain_tasks_.Dec();
-  }
-
-  void WaitAll() {
-    while (task_status_.IsOK() && remain_tasks_.Get()) {
-      onnxruntime::concurrency::SpinPause();
-    }
-  }
-
-  void SetStatus(Status& status) {
-    // TODO: if multiple worker report non-ok status,
-    // what is our strategy? currently we just keep
-    // a random one. as long as it is not OK, the
-    // execution will fail.
-    if (task_status_.IsOK() && !status.IsOK())
-      task_status_ = status;
-  }
-
-  ~ExecutionContext() {}
-
-  void RecycleNodeInputs(onnxruntime::NodeIndex node_index) {
-    ORT_ENFORCE(frame);
-    for (auto it : release_plan->node_value_map_[node_index]) {
-      if (--release_plan->value_ref_counts_[it] == 0) {
-        auto original_it = release_plan->reused_map_.find(it);
-        if (original_it == release_plan->reused_map_.end()) {
-          ORT_ENFORCE(frame->ReleaseMLValue(it).IsOK());
-          LOGS(*logger, INFO) << "ort value " << it << " released";
-        } else {
-          if (--release_plan->value_ref_counts_[original_it->second] == 0) {
-            ORT_ENFORCE(frame->ReleaseMLValue(original_it->second).IsOK());
-            LOGS(*logger, INFO) << "ort value " << original_it->second << " released";
-          }
-        }
-      }
-    }
-  }
-
-  //void ScheduleDownstream(onnxruntime::NotificationIndex notification_index) {
-  //  auto* tp = session_state->GetInterOpThreadPool();
-  //  for (auto downstream : downstream_map_[notification_index]) {
-  //    concurrency::ThreadPool::Schedule(tp, [this, downstream]() {
-  //      logic_streams_[downstream.first]->RunSince(*this, downstream.second);
-  //    });
-  //  }
-  //}
-};
-
 void LogicStream::RunSince(ExecutionContext& ctx, size_t since) {
-  if (!ctx.task_status_.IsOK()) {
+  if (!ctx.TaskStatus().IsOK()) {
     // already in bad status, terminate it
     ctx.CompleteTask();
     return;
   }
   while (since < commands_.size()) {
-    if (ctx.terminate_flag_) {
+    if (ctx.TerminateFlag()) {
       ctx.SetStatus(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true."));
       return;
     }
@@ -548,12 +326,12 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
             const std::string& upstream_node_name = it->Name();
             logic_streams_[i]->commands_.push_back([wait_handle, cur_stream_idx, notification_index, i, node, upstream_node_name](void* ctx, bool& continue_flag) {
               ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
-              wait_handle(*execution_context->GetDeviceStream(cur_stream_idx), *execution_context->notifications[notification_index]);
+              wait_handle(*execution_context->GetDeviceStream(cur_stream_idx), *execution_context->GetNotification(notification_index));
               // update streams clock status
               if (execution_context->GetDeviceStream(cur_stream_idx)) {
-                execution_context->GetDeviceStream(cur_stream_idx)->UpdateStreamClock(execution_context->notifications[notification_index]->stream_clock_);
+                execution_context->GetDeviceStream(cur_stream_idx)->UpdateStreamClock(execution_context->GetNotification(notification_index)->stream_clock_);
               }
-              LOGS(*execution_context->logger, INFO) << "stream " << i << " wait on " << upstream_node_name << " for " << node->Name();
+              LOGS(execution_context->GetLogger(), INFO) << "stream " << i << " wait on " << upstream_node_name << " for " << node->Name();
               continue_flag = true;
               return Status::OK();
             });
@@ -567,10 +345,12 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
       // push launch kernel command
       logic_streams_[i]->commands_.push_back([this, node, node_index, cur_stream_idx, i, &value_map](void* ctx, bool& continue_flag) {
         ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
-        auto* p_kernel = execution_context->session_state->GetKernel(node_index);
-        auto* intra_tp = execution_context->session_state->GetThreadPool();
+        auto* p_kernel = execution_context->GetSessionState().GetKernel(node_index);
+        auto* intra_tp = execution_context->GetSessionState().GetThreadPool();
         // TODO: set terminate flag from run_option
-        OpKernelContextInternal kernel_ctx(*execution_context->session_state, *execution_context->frame, *p_kernel, *execution_context->logger, execution_context->terminate_flag_, execution_context->GetDeviceStream(cur_stream_idx));
+        OpKernelContextInternal kernel_ctx(execution_context->GetSessionState(), 
+            *execution_context->GetExecutionFrame(), *p_kernel, execution_context->GetLogger(), 
+            execution_context->TerminateFlag(), execution_context->GetDeviceStream(cur_stream_idx));
         // a temporary hack
         /*if (p_kernel->Info().GetKernelDef().OpName() == "If" || p_kernel->Info().GetKernelDef().OpName() == "Loop" || p_kernel->Info().GetKernelDef().OpName() == "Scan")
           if (kernel_ctx.GetComputeStream()) {
@@ -598,7 +378,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
           nvtxRangePop();
 #endif
         }
-        LOGS(*execution_context->logger, INFO) << "stream " << i << " complete with " << node->Name();
+        LOGS(execution_context->GetLogger(), INFO) << "stream " << i << " complete with " << node->Name();
         continue_flag = true;
         return Status::OK();
       });
@@ -608,10 +388,10 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
         NotificationIndex notification_index = notification_it->second;
         logic_streams_[i]->commands_.push_back([notification_index, i, node](void* ctx, bool& continue_flag) {
           ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
-          if (execution_context->notifications[notification_index]) {
-            execution_context->notifications[notification_index]->ActivateAndUpdate();
+          if (execution_context->GetNotification(notification_index)) {
+            execution_context->GetNotification(notification_index)->ActivateAndUpdate();
           }
-          LOGS(*execution_context->logger, INFO) << "stream " << i << " send notification for " << node->Name();
+          LOGS(execution_context->GetLogger(), INFO) << "stream " << i << " send notification for " << node->Name();
           continue_flag = true;
           return Status::OK();
         });
@@ -698,9 +478,14 @@ common::Status ParallelExecutionPlanImpl::Execute(const SessionState& session_st
                                                   const bool only_execute_path_to_fetches) {
   if (only_execute_path_to_fetches)
     ORT_THROW("NOT IMPLEMENTED YET.");
+  int32_t valid_streams = 0;
+  for (auto& stream : logic_streams_) {
+    if (stream && stream->commands_.size() > 0)
+      valid_streams++;
+  }
   // prepare the execution context, notifications got initialized.
   ExecutionContext ctx(session_state,
-                       logic_streams_,
+                       valid_streams,
                        notification_owners_,
                        feed_mlvalue_idxs,
                        feeds,
@@ -723,8 +508,8 @@ common::Status ParallelExecutionPlanImpl::Execute(const SessionState& session_st
   }
 
   ctx.WaitAll();
-  ORT_RETURN_IF_ERROR(ctx.task_status_);
-  ORT_RETURN_IF_ERROR(ctx.frame->GetOutputs(fetches));
+  ORT_RETURN_IF_ERROR(ctx.TaskStatus());
+  ORT_RETURN_IF_ERROR(ctx.GetExecutionFrame()->GetOutputs(fetches));
   return Status::OK();
 }
 
@@ -792,21 +577,6 @@ std::unique_ptr<ReleasePlan> ParallelExecutionPlan::GenerateReleasePlan() const 
   auto release_plan = std::make_unique<ReleasePlan>();
   int num_values = impl_->session_state_.GetOrtValueNameIdxMap().MaxIdx() + 1;
   release_plan->value_ref_counts_.reset(new std::atomic_int[num_values]);
-  for (auto value_it : impl_->value_consumer_map_) {
-    // skip graph inputs, ouputs and weights
-    if (allocation_plan[value_it.first].alloc_kind != AllocKind::kAllocate &&
-        allocation_plan[value_it.first].alloc_kind != AllocKind::kReuse) {
-      continue;
-    }
-    for (auto node_it : value_it.second) {
-      release_plan->node_value_map_[node_it].push_back(value_it.first);
-    }
-  }
-  for (OrtValueIndex i = 0; i < allocation_plan.size(); ++i) {
-    if (allocation_plan[i].reused_buffer > 0) {
-      release_plan->reused_map_[i] = allocation_plan[i].reused_buffer;
-    }
-  }
   return release_plan;
 }
 
@@ -1157,21 +927,6 @@ struct ExecutionPlanImpl {
   std::unique_ptr<ReleasePlan> GenerateReleasePlan() const {
     auto release_plan = std::make_unique<ReleasePlan>();
     release_plan->value_ref_counts_.reset(new std::atomic_int[allocation_plan_.size()]);
-    for (auto value_it : value_consumer_map_) {
-      // skip graph inputs, ouputs and weights
-      if (allocation_plan_[value_it.first].alloc_kind != AllocKind::kAllocate &&
-          allocation_plan_[value_it.first].alloc_kind != AllocKind::kReuse) {
-        continue;
-      }
-      for (auto node_it : value_it.second) {
-        release_plan->node_value_map_[node_it].push_back(value_it.first);
-      }
-    }
-    for (OrtValueIndex i = 0; i < allocation_plan_.size(); ++i) {
-      if (allocation_plan_[i].reused_buffer > 0) {
-        release_plan->reused_map_[i] = allocation_plan_[i].reused_buffer;
-      }
-    }
     return release_plan;
   }
 };
@@ -1370,21 +1125,8 @@ struct ExecutionPlanContext {
 
   ~ExecutionPlanContext() {}
 
-  void RecycleNodeInputs(onnxruntime::NodeIndex node_index) {
-    for (auto it : release_plan_->node_value_map_[node_index]) {
-      if (--release_plan_->value_ref_counts_[it] == 0) {
-        auto original_it = release_plan_->reused_map_.find(it);
-        if (original_it == release_plan_->reused_map_.end()) {
-          ORT_ENFORCE(frame_.ReleaseMLValue(it).IsOK());
-          LOGS(logger_, INFO) << "ort value " << it << " released";
-        } else {
-          if (--release_plan_->value_ref_counts_[original_it->second] == 0) {
-            ORT_ENFORCE(frame_.ReleaseMLValue(original_it->second).IsOK());
-            LOGS(logger_, INFO) << "ort value " << original_it->second << " released";
-          }
-        }
-      }
-    }
+  void RecycleNodeInputs(onnxruntime::NodeIndex /*node_index*/) {
+    
   }
 
   onnxruntime::Status ExecuteKernel(onnxruntime::NodeIndex node_index, onnxruntime::HashValue stream_index) {
