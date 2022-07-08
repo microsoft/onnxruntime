@@ -10,17 +10,29 @@ namespace rocm {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
-      MatMul, kOnnxDomain, 1, 8, T, kRocmExecutionProvider,       \
+      MatMul,                                                     \
+      kOnnxDomain,                                                \
+      1, 8,                                                       \
+      T,                                                          \
+      kRocmExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       MatMul<T>);                                                 \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
-      MatMul, kOnnxDomain, 9, 12, T, kRocmExecutionProvider,      \
+      MatMul,                                                     \
+      kOnnxDomain,                                                \
+      9, 12,                                                      \
+      T,                                                          \
+      kRocmExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       MatMul<T>);                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      MatMul, kOnnxDomain, 13, T, kRocmExecutionProvider,         \
+      MatMul,                                                     \
+      kOnnxDomain,                                                \
+      13,                                                         \
+      T,                                                          \
+      kRocmExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       MatMul<T>);
