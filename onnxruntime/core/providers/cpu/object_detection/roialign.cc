@@ -181,19 +181,17 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
 
       T roi_width = roi_end_w - roi_start_w;
       T roi_height = roi_end_h - roi_start_h;
-      if (!half_pixel) {
-        // Note that 0 size ROI's are legal, meaning the sample a single point in the input.
-        roi_width = std::max(roi_end_w - roi_start_w, (T)0);
-        roi_height = std::max(roi_end_h - roi_start_h, (T)0);
-      }
+      // Note that 0 size ROI's are legal, meaning the sample a single point in the input.
+      // Even inverted ROI's are acceptable, meaning mirrored images.
 
       T bin_size_h = static_cast<T>(roi_height) / static_cast<T>(pooled_height);
       T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width);
 
       // We use roi_bin_grid to sample the grid and mimic integral
       int64_t roi_bin_grid_h = (sampling_ratio > 0) ? sampling_ratio : static_cast<int64_t>(std::ceil(roi_height / pooled_height));  // e.g., = 2
-      int64_t roi_bin_grid_w =
-          (sampling_ratio > 0) ? sampling_ratio : static_cast<int64_t>(std::ceil(roi_width / pooled_width));
+      int64_t roi_bin_grid_w = (sampling_ratio > 0) ? sampling_ratio : static_cast<int64_t>(std::ceil(roi_width / pooled_width));
+      roi_bin_grid_h = std::max(roi_bin_grid_h, (int64_t)1);
+      roi_bin_grid_w = std::max(roi_bin_grid_h, (int64_t)1);
 
       // We do average (integral) pooling inside a bin
       const int64_t count = std::max(roi_bin_grid_h * roi_bin_grid_w, static_cast<int64_t>(1)); // e.g. = 4
