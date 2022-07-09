@@ -11,6 +11,7 @@
 
 #include <assert.h>
 #include <functional>
+#include <string>
 #include "core/common/safeint.h"
 #include "core/providers/cpu/math/top_k.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -23,14 +24,13 @@
 #include "core/framework/utils.h"
 #include "core/framework/session_options.h"
 #include "core/framework/TensorSeq.h"
-#include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
 #include "gsl/gsl"
-#include "greedy_search.h"
-#include "logits_processor.h"
-#include "sequences.h"
-#include "dump_tensor.h"
-#include "greedy_search_impl_gpt.h"
+#include "contrib_ops/cpu/transformers/greedy_search.h"
+#include "contrib_ops/cpu/transformers/logits_processor.h"
+#include "contrib_ops/cpu/transformers/sequences.h"
+#include "contrib_ops/cpu/transformers/dump_tensor.h"
+#include "contrib_ops/cpu/transformers/greedy_search_impl_gpt.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -75,7 +75,8 @@ Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_stat
   const auto& node = Node();
   if (parameters_.model_type == 0) {  // GPT-2
     if (attribute_name == "decoder") {
-      ORT_ENFORCE(gpt_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
+      ORT_ENFORCE(gpt_subgraph_ == nullptr,
+                  "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
       gpt_subgraph_ = std::make_unique<GptSubgraph>(node, attribute_name, subgraph_session_state.GetGraphViewer());
       ORT_RETURN_IF_ERROR(gpt_subgraph_->Setup(session_state, subgraph_session_state));
       decoder_feeds_fetches_manager_ = gpt_subgraph_->GetFeedsFetchesManager();
@@ -86,13 +87,21 @@ Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_stat
     }
   } else if (parameters_.model_type == 1) {  // encoder-decoder like T5
     if (attribute_name == "encoder") {
-      ORT_ENFORCE(t5_encoder_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
-      t5_encoder_subgraph_ = std::make_unique<T5EncoderSubgraph>(node, attribute_name, subgraph_session_state.GetGraphViewer());
+      ORT_ENFORCE(t5_encoder_subgraph_ == nullptr,
+                  "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
+      t5_encoder_subgraph_ = std::make_unique<T5EncoderSubgraph>(
+                               node,
+                               attribute_name,
+                               subgraph_session_state.GetGraphViewer());
       ORT_RETURN_IF_ERROR(t5_encoder_subgraph_->Setup(session_state, subgraph_session_state));
       encoder_feeds_fetches_manager_ = t5_encoder_subgraph_->GetFeedsFetchesManager();
     } else if (attribute_name == "decoder") {
-      ORT_ENFORCE(t5_decoder_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
-      t5_decoder_subgraph_ = std::make_unique<T5DecoderSubgraph>(node, attribute_name, subgraph_session_state.GetGraphViewer());
+      ORT_ENFORCE(t5_decoder_subgraph_ == nullptr,
+                  "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
+      t5_decoder_subgraph_ = std::make_unique<T5DecoderSubgraph>(
+                               node,
+                               attribute_name,
+                               subgraph_session_state.GetGraphViewer());
       ORT_RETURN_IF_ERROR(t5_decoder_subgraph_->Setup(session_state, subgraph_session_state));
       decoder_feeds_fetches_manager_ = t5_decoder_subgraph_->GetFeedsFetchesManager();
       parameters_.SetSubgraphParameters(t5_decoder_subgraph_->vocab_size,
@@ -114,35 +123,47 @@ Status GreedySearch::Compute(OpKernelContext* ctx) const {
 
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
-  GreedySearchParameters parameters = parameters_;  // make a copy since we will update the parameters based on inputs later
+  // make a copy since we will update the parameters based on inputs later
+  GreedySearchParameters parameters = parameters_;
 
 if (parameters_.model_type == 0) {  // GPT-2
     // Subgraph has constraint that the output is either float or float16
     if (!gpt_subgraph_->IsOutputFloat16()) {
-      GreedySearchGpt<float> impl{*ctx_internal, *decoder_session_state, *gpt_subgraph_, thread_pool, cuda_stream_, dumper_, parameters,
-                                create_gpt_inputs_func_ ? create_gpt_inputs_func_ : BeamSearchCpuDeviceHelper::CreateGptInputs,
-                                add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
-                                topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
-                                process_logits_func_ ? process_logits_func_ : BeamSearchCpuDeviceHelper::GreedySearchProcessLogits<float>,
-                                init_greedy_state_func_ ? init_greedy_state_func_ : BeamSearchCpuDeviceHelper::InitGreedyState<float>,
-                                device_copy_func_ ? device_copy_func_ : BeamSearchCpuDeviceHelper::DeviceCopy<float>,
-                                update_gpt_feeds_func_ ? update_gpt_feeds_func_ : BeamSearchCpuDeviceHelper::UpdateGptFeeds<float>};
+      GreedySearchGpt<float> impl{
+        *ctx_internal,
+        *decoder_session_state,
+        *gpt_subgraph_,
+        thread_pool,
+        cuda_stream_,
+        dumper_,
+        parameters,
+        create_gpt_inputs_func_ ? create_gpt_inputs_func_ : BeamSearchCpuDeviceHelper::CreateGptInputs,
+        add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
+        topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
+        process_logits_func_ ? process_logits_func_ : BeamSearchCpuDeviceHelper::GreedySearchProcessLogits<float>,
+        init_greedy_state_func_ ? init_greedy_state_func_ : BeamSearchCpuDeviceHelper::InitGreedyState<float>,
+        device_copy_func_ ? device_copy_func_ : BeamSearchCpuDeviceHelper::DeviceCopy<float>,
+        update_gpt_feeds_func_ ? update_gpt_feeds_func_ : BeamSearchCpuDeviceHelper::UpdateGptFeeds<float>};
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(*decoder_feeds_fetches_manager_);
     } else {
-      ORT_THROW("Not Implemented");
-      // BeamSearchGpt<MLFloat16> impl{*ctx_internal, *decoder_session_state, *gpt_subgraph_, thread_pool, cuda_stream_, dumper_, parameters,
-      //                               create_gpt_inputs_func_ ? create_gpt_inputs_func_ : BeamSearchCpuDeviceHelper::CreateGptInputs,
-      //                               add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
-      //                               topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
-      //                               process_logits_fp16_func_,
-      //                               init_beam_state_fp16_func_,
-      //                               device_copy_func_,
-      //                               update_gpt_feeds_fp16_func_};
-      // ORT_RETURN_IF_ERROR(impl.Initialize());
-
-      // return impl.Execute(*decoder_feeds_fetches_manager_);
+      GreedySearchGpt<MLFloat16> impl{
+        *ctx_internal,
+        *decoder_session_state,
+        *gpt_subgraph_,
+        thread_pool,
+        cuda_stream_,
+        dumper_,
+        parameters,
+        create_gpt_inputs_func_ ? create_gpt_inputs_func_ : BeamSearchCpuDeviceHelper::CreateGptInputs,
+        add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
+        topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
+        process_logits_fp16_func_,
+        init_greedy_state_fp16_func_,
+        device_copy_func_,
+        update_gpt_feeds_fp16_func_};
+      ORT_RETURN_IF_ERROR(impl.Initialize());
     }
   }
 

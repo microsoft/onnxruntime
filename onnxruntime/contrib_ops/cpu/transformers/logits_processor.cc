@@ -224,12 +224,14 @@ void LogitsProcessorList::Init(const GreedySearchParameters& parameters) {
   processor_list_.clear();
 
   if (parameters.repetition_penalty != 1.0f) {  // 1.0 means no penalty
-    repetition_penalty_processor_ = std::make_unique<RepetitionPenaltyLogitsProcessor<float>>(parameters.repetition_penalty);
+    repetition_penalty_processor_ = std::make_unique<RepetitionPenaltyLogitsProcessor<float>>(
+                                      parameters.repetition_penalty);
     processor_list_.push_back(repetition_penalty_processor_.get());
   }
 
   if (parameters.min_length > 0) {
-    min_length_processor_ = std::make_unique<MinLengthLogitsProcessor<float>>(parameters.min_length, parameters.eos_token_id);
+    min_length_processor_ = std::make_unique<MinLengthLogitsProcessor<float>>(parameters.min_length,
+                                                                              parameters.eos_token_id);
     processor_list_.push_back(min_length_processor_.get());
   }
 

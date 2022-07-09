@@ -2,14 +2,16 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <memory>
+#include <string>
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/controlflow/utils.h"
-#include "greedy_search_parameters.h"
-#include "subgraph_gpt.h"
-#include "subgraph_t5_encoder.h"
-#include "subgraph_t5_decoder.h"
-#include "beam_search_device_helper.h"
+#include "contrib_ops/cpu/transformers/greedy_search_parameters.h"
+#include "contrib_ops/cpu/transformers/subgraph_gpt.h"
+#include "contrib_ops/cpu/transformers/subgraph_t5_encoder.h"
+#include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
+#include "contrib_ops/cpu/transformers/beam_search_device_helper.h"
 
 namespace onnxruntime {
 class FeedsFetchesManager;
@@ -22,7 +24,7 @@ using namespace onnxruntime::controlflow;  // namespace of IControlFlowKernel
 // bugbug: refactor
 class GreedySearch : public IControlFlowKernel {
  public:
-  GreedySearch(const OpKernelInfo& info)
+  explicit GreedySearch(const OpKernelInfo& info)
       : IControlFlowKernel(info),
         encoder_feeds_fetches_manager_(nullptr),
         decoder_feeds_fetches_manager_(nullptr),
@@ -49,16 +51,16 @@ class GreedySearch : public IControlFlowKernel {
       const BeamSearchDeviceHelper::TopkFunc& topk_func,
       const BeamSearchDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
       const BeamSearchDeviceHelper::GreedySearchProcessLogitsFunc<float>& process_logits_func,
-      const BeamSearchDeviceHelper::ProcessLogitsFunc<MLFloat16>& process_logits_fp16_func,
+      const BeamSearchDeviceHelper::GreedySearchProcessLogitsFunc<MLFloat16>& process_logits_fp16_func,
       const BeamSearchDeviceHelper::InitGreedyStateFunc<float>& init_greedy_state_func,
-      const BeamSearchDeviceHelper::InitBeamStateFunc<MLFloat16>& init_beam_state_fp16_func) {
+      const BeamSearchDeviceHelper::InitGreedyStateFunc<MLFloat16>& init_greedy_state_fp16_func) {
     add_to_feeds_func_ = add_to_feeds_func;
     topk_func_ = topk_func;
     device_copy_func_ = device_copy_func;
     process_logits_func_ = process_logits_func;
     process_logits_fp16_func_ = process_logits_fp16_func;
     init_greedy_state_func_ = init_greedy_state_func;
-    init_beam_state_fp16_func_ = init_beam_state_fp16_func;
+    init_greedy_state_fp16_func_ = init_greedy_state_fp16_func;
   }
 
   void SetDeviceHelpers_Gpt(
@@ -75,10 +77,10 @@ class GreedySearch : public IControlFlowKernel {
   BeamSearchDeviceHelper::DeviceCopyFunc<float> device_copy_func_;
 
   BeamSearchDeviceHelper::GreedySearchProcessLogitsFunc<float> process_logits_func_;
-  BeamSearchDeviceHelper::ProcessLogitsFunc<MLFloat16> process_logits_fp16_func_; //todo
+  BeamSearchDeviceHelper::GreedySearchProcessLogitsFunc<MLFloat16> process_logits_fp16_func_;
 
   BeamSearchDeviceHelper::InitGreedyStateFunc<float> init_greedy_state_func_;
-  BeamSearchDeviceHelper::InitBeamStateFunc<MLFloat16> init_beam_state_fp16_func_; //todo
+  BeamSearchDeviceHelper::InitGreedyStateFunc<MLFloat16> init_greedy_state_fp16_func_;
 
   //------------------------------------------------------------
   // Device specific functions for GPT

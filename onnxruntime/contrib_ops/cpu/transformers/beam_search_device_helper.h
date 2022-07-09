@@ -87,7 +87,6 @@ using ProcessLogitsFunc = std::function<Status(
     void* stream,                                           // cuda stream (for CUDA only)
     const transformers::IConsoleDumper* dumper)>;           // tensor dumper
 
-//TODO: change namespace
 template <typename T>
 using GreedySearchProcessLogitsFunc = std::function<Status(
     const OrtValue& logits,                                     // logits output of subgraph

@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <algorithm>
+#include <memory>
 #include "core/providers/cpu/math/top_k.h"
 #include "core/providers/cpu/math/softmax_shared.h"
 #include "core/common/safeint.h"
@@ -216,8 +217,6 @@ void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
                      gsl::span<int32_t>& sequence_lengths,
                      int batch_size,
                      void* /*stream*/) {
-
-  memset(greedy_state->next_token_logits.data(), 0, greedy_state->next_token_logits.size_bytes());
   memset(greedy_state->next_token_scores.data(), 0, greedy_state->next_token_scores.size_bytes());
   memset(greedy_state->next_tokens.data(), 0, greedy_state->next_tokens.size_bytes());
   memset(greedy_state->next_positions.data(), 0, greedy_state->next_positions.size_bytes());
@@ -391,16 +390,17 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 }
 
 template <typename T>
-Status GreedySearchProcessLogits(const OrtValue& logits,                                     // logits output of subgraph
-                                 transformers::IGreedySearchState<T>* greedy_state,          // state
-                                 transformers::ISequences* sequences,                        // sequences
-                                 AllocatorPtr& allocator,                                    // default allocator
-                                 onnxruntime::concurrency::ThreadPool* thread_pool,          // thread pool (for CPU only)
-                                 transformers::ILogitsProcessorList* logits_processors,      // logits processors
-                                 const transformers::IBeamSearchParameters* parameters,      // parameters
-                                 int step,                                                   // iteration counter
-                                 void* stream,                                               // cuda stream (for CUDA only)
-                                 const transformers::IConsoleDumper* dumper) {               // tensor dumper
+Status GreedySearchProcessLogits(
+  const OrtValue& logits,                                     // logits output of subgraph
+  transformers::IGreedySearchState<T>* greedy_state,          // state
+  transformers::ISequences* sequences,                        // sequences
+  AllocatorPtr& allocator,                                    // default allocator
+  onnxruntime::concurrency::ThreadPool* thread_pool,          // thread pool (for CPU only)
+  transformers::ILogitsProcessorList* logits_processors,      // logits processors
+  const transformers::IBeamSearchParameters* parameters,      // parameters
+  int step,                                                   // iteration counter
+  void* stream,                                               // cuda stream (for CUDA only)
+  const transformers::IConsoleDumper* dumper) {               // tensor dumper
 #ifndef DEBUG_BEAM_SEARCH
   ORT_UNUSED_PARAMETER(dumper);
 #endif
@@ -458,7 +458,7 @@ Status GreedySearchProcessLogits(const OrtValue& logits,                        
                        next_token_scores_shape,
                        next_token_scores.data(),
                        allocator->Info(),
-                        next_token_scores_value);
+                       next_token_scores_value);
   const Tensor& input = next_token_scores_value.Get<Tensor>();
 
   constexpr int axis = 1;

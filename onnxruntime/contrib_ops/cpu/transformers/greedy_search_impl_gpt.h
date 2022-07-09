@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "greedy_search_impl_base.h"
+#include "contrib_ops/cpu/transformers/greedy_search_impl_base.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -27,7 +27,15 @@ class GreedySearchGpt : public GreedySearchBase<T> {
                 const BeamSearchDeviceHelper::InitGreedyStateFunc<T>& init_greedy_state_func,
                 const BeamSearchDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
                 const BeamSearchDeviceHelper::UpdateGptFeedsFunc<T>& update_feeds_func)
-      : GreedySearchBase<T>(context, decoder_session_state, thread_pool, cuda_stream, cuda_dumper, params, topk_func, process_logits_func, device_copy_func),
+      : GreedySearchBase<T>(context,
+                            decoder_session_state,
+                            thread_pool,
+                            cuda_stream,
+                            cuda_dumper,
+                            params,
+                            topk_func,
+                            process_logits_func,
+                            device_copy_func),
         gpt_subgraph_(gpt_subgraph),
         create_inputs_func_(create_inputs_func),
         add_to_feeds_func_(add_to_feeds_func),
@@ -115,7 +123,6 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
   Tensor* output_sequences = this->context_.Output(0, sequences_shape);
 
   std::vector<OrtValue> feeds;
-  // TODO: allocate fetches. use ping-pong buffers for past state.
   std::vector<OrtValue> fetches;
 
   GreedySearchState<T> greedy_state;
@@ -127,9 +134,6 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
                     parameters->max_length,
                     this->IsCuda());
 
-  // buffer in GPU for input_ids, position_ids and attention_mask
-  // size_t buffer_bytes = SafeInt<size_t>(sizeof(int32_t) + sizeof(int32_t) + sizeof(int32_t)) * parameters->batch_size * parameters->num_beams * parameters->sequence_length;
-  // IAllocatorUniquePtr<char> buffer = gpt_subgraph_.GetProvider()->GetScratchBuffer<char>(buffer_bytes);
   IAllocatorUniquePtr<char> buffer;
   OrtValue expanded_input_ids_in_cpu;
   ORT_RETURN_IF_ERROR(CreateInitialFeeds(greedy_state.sequence_lengths, expanded_input_ids_in_cpu, feeds, buffer));
@@ -140,7 +144,10 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
                           this->cuda_stream_);
 
   gsl::span<const int32_t> input_ids = expanded_input_ids_in_cpu.Get<Tensor>().DataAsSpan<int32_t>();
-  greedy_state.SetSequence(input_ids, static_cast<size_t>(parameters->BatchBeamSize()), parameters->max_length, parameters->sequence_length);
+  greedy_state.SetSequence(input_ids,
+                           static_cast<size_t>(parameters->BatchBeamSize()),
+                           parameters->max_length,
+                           parameters->sequence_length);
 
 #ifdef DEBUG_BEAM_SEARCH
   const IConsoleDumper* dumper = this->GetConsoleDumper();
@@ -153,11 +160,11 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
   OrtValue position_ids;
   int64_t dims[] = {parameters->BatchBeamSize(), 1};
   TensorShape shape(&dims[0], 2);
-  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), shape, greedy_state.next_positions.data(), this->temp_space_allocator_->Info(), position_ids); //bugbug: next_positions
-
-#ifdef DEBUG_BEAM_SEARCH
-  dumper->Print("very first position_ids",position_ids);
-#endif
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(),
+                       shape,
+                       greedy_state.next_positions.data(),
+                       this->temp_space_allocator_->Info(),
+                       position_ids);
 
   int current_length = parameters->sequence_length;
   int iteration_counter = 0;
@@ -168,19 +175,29 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
     dumper->Print("***CurrentLength", cur_len, true);
 #endif
 
-    status = utils::ExecuteSubgraph(this->decoder_session_state_, feeds_fetches_manager, feeds, fetches, {},
-                                    ExecutionMode::ORT_SEQUENTIAL, this->context_.GetTerminateFlag(), this->context_.Logger());
+    status = utils::ExecuteSubgraph(this->decoder_session_state_,
+                                    feeds_fetches_manager,
+                                    feeds,
+                                    fetches,
+                                    {},
+                                    ExecutionMode::ORT_SEQUENTIAL,
+                                    this->context_.GetTerminateFlag(),
+                                    this->context_.Logger());
 
     ORT_RETURN_IF_ERROR(status);
 
     const OrtValue& logits = fetches[0];
     gsl::span<int32_t> next_tokens;
-    ORT_RETURN_IF_ERROR(this->GenerateNextToken(logits, next_tokens, greedy_state, iteration_counter, parameters->eos_token_id));
+    ORT_RETURN_IF_ERROR(this->GenerateNextToken(logits,
+                                                next_tokens,
+                                                greedy_state,
+                                                iteration_counter,
+                                                parameters->eos_token_id));
 
     // When all batches are finished, stop earlier to avoid wasting computation.
     gsl::span<bool>& eos_meet = greedy_state.eos_meet;
     size_t batch_id = 0;
-    while(batch_id < eos_meet.size()) {
+    while (batch_id < eos_meet.size()) {
       if (eos_meet[batch_id] == false) {
         break;
       }
@@ -194,10 +211,6 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
     // Increase sequence length after a new token is generated.
     ++current_length;
 
-#ifdef DEBUG_BEAM_SEARCH
-  dumper->Print("position_ids before updatefeeds",position_ids);
-#endif
-
     // Prepare inputs for next round of subgraph call.
     if (current_length < parameters->max_length) {
       ORT_RETURN_IF_ERROR(UpdateFeeds(fetches, feeds, current_length,
@@ -206,18 +219,15 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
     }
     fetches.clear();
   }
+
   // Copy the sequences to output
   gsl::span<int32_t> output = output_sequences->MutableDataAsSpan<int32_t>();
-  //gsl::span<int32_t>& sequence_lengths = greedy_state.sequence_lengths;
   std::fill_n(output.data(), output.size(), parameters->pad_token_id);
 
   for (int batch_id = 0; batch_id < parameters->batch_size; ++batch_id) {
     auto batch_output = output.subspan(batch_id * parameters->max_length,  parameters->max_length);
 
-    //int32_t sequence_length = sequence_lengths[batch_id];
     gsl::span<const int32_t> sequence_source = greedy_state.sequences.GetSequence(batch_id);
-    std::cout << sequence_source[0] << std::endl;
-    std::cout << batch_output[0] << std::endl;
     gsl::copy(sequence_source, batch_output);
 
   }

@@ -41,6 +41,12 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
                    void* stream);
 
 template <typename T>
+void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
+                     gsl::span<int32_t>& sequence_lengths,
+                     int batch_size,
+                     void* stream);
+
+template <typename T>
 Status ProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
                      transformers::IBeamSearchState<T>* beam_state,          // state
                      transformers::IBeamSearchCpuState* cpu_state,           // state in CPU
@@ -53,6 +59,18 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      int step,                                               // iteration counter
                      void* stream,                                           // cuda stream (for CUDA only)
                      const transformers::IConsoleDumper* dumper);            // tensor dumper
+
+template <typename T>
+Status GreedySearchProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
+                                 transformers::IGreedySearchState<T>* greedy_state,      // state
+                                 transformers::ISequences* sequences,                    // sequences
+                                 AllocatorPtr& allocator,                                // default allocator
+                                 onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
+                                 transformers::ILogitsProcessorList* logits_processors,  // logits processors
+                                 const transformers::IBeamSearchParameters* parameters,  // parameters
+                                 int step,                                               // iteration counter
+                                 void* stream,                                           // cuda stream (for CUDA only)
+                                 const transformers::IConsoleDumper* dumper);            // tensor dumper
 
 template <typename T>
 Status DeviceCopy(gsl::span<T> target,

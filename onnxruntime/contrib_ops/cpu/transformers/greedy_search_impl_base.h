@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-
+#include <vector>
 #include "contrib_ops/cpu/transformers/beam_search_shared.h"
 
 namespace onnxruntime {
@@ -22,7 +22,9 @@ struct GreedySearchState : public IGreedySearchState<T> {
             int max_length,
             bool is_cuda) {
     // below buffers are on cpu
-    this->sequences_space = AllocateBuffer<int32_t>(cpu_allocator, sequences_space_buffer_, SafeInt<size_t>(2) * batch_size * max_length);
+    this->sequences_space = AllocateBuffer<int32_t>(cpu_allocator,
+                                                    sequences_space_buffer_,
+                                                    SafeInt<size_t>(2) * batch_size * max_length);
     memset(this->sequences_space.data(), 0, this->sequences_space.size_bytes());
     this->sequences.Init(this->sequences_space, static_cast<int>(batch_size), sequence_length, max_length);
 
@@ -34,8 +36,7 @@ struct GreedySearchState : public IGreedySearchState<T> {
 
     // below buffers are on cpu or cuda
     size_t next_token_size = SafeInt<size_t>(batch_size) * vocab_size;
-    this->next_token_logits = AllocateBuffer<T>(allocator, next_token_logits_buffer_, next_token_size);
-    this->next_token_scores = AllocateBuffer<float>(allocator, next_token_scores_buffer_, next_token_size);
+    this->next_token_scores = AllocateBuffer<T>(allocator, next_token_scores_buffer_, next_token_size);
     this->next_tokens = AllocateBuffer<int32_t>(allocator, next_tokens_buffer_, SafeInt<size_t>(batch_size));
 
     if (is_cuda) {
@@ -44,11 +45,15 @@ struct GreedySearchState : public IGreedySearchState<T> {
     }
   }
 
-  void SetSequence(gsl::span<const int32_t> input_ids_in_cpu, size_t batch_beam_size, int max_length, int sequence_length) {
+  void SetSequence(gsl::span<const int32_t> input_ids_in_cpu,
+                   size_t batch_beam_size,
+                   int max_length,
+                   int sequence_length) {
     gsl::span<int32_t> sequences_0 = this->sequences_space;
     for (size_t i = 0; i < batch_beam_size; i++) {
       for (int j = 0; j < sequence_length; j++) {
-        sequences_0[SafeInt<gsl::index>(i) * max_length + j] = static_cast<int32_t>(input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j]);
+        sequences_0[SafeInt<gsl::index>(i) * max_length + j] = \
+        static_cast<int32_t>(input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j]);
       }
     }
   }
@@ -56,7 +61,6 @@ struct GreedySearchState : public IGreedySearchState<T> {
  private:
   BufferUniquePtr sequences_space_buffer_;
   BufferUniquePtr sequence_lengths_buffer_;
-  BufferUniquePtr next_token_logits_buffer_;
   BufferUniquePtr next_token_scores_buffer_;
   BufferUniquePtr next_tokens_buffer_;
   BufferUniquePtr next_positions_buffer_;
@@ -135,8 +139,6 @@ class GreedySearchBase {
   GreedySearchParameters* parameters_;
 
   LogitsProcessorList logits_processors_;
-
-  //std::unique_ptr<BeamSearchScorer> beam_scorer_;
 
   AllocatorPtr cpu_allocator_;
   AllocatorPtr temp_space_allocator_;

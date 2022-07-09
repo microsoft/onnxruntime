@@ -47,14 +47,13 @@ struct IBeamSearchCpuState {
 
 template <typename T>
 struct IGreedySearchState {
-  gsl::span<int32_t> sequences_space;  // shape (2, batch_size, max_length)
-  gsl::span<int32_t> sequence_lengths; // shape (batch_size)
-  gsl::span<int32_t> next_positions;   // shape (batch_size, num_beams). Next position value for position_ids.
-  gsl::span<bool> eos_meet;            // shape (batch_size)
+  gsl::span<int32_t> sequences_space;   // shape (2, batch_size, max_length)
+  gsl::span<int32_t> sequence_lengths;  // shape (batch_size)
+  gsl::span<int32_t> next_positions;    // shape (batch_size, num_beams). Next position value for position_ids.
+  gsl::span<bool> eos_meet;             // shape (batch_size)
 
-  gsl::span<T> next_token_logits;      // shape (batch_size, vocab_size)
-  gsl::span<float> next_token_scores;  // shape (batch_size, vocab_size)
-  gsl::span<int32_t> next_tokens;      // shape (batch_size)
+  gsl::span<T> next_token_scores;   // shape (batch_size, vocab_size)
+  gsl::span<int32_t> next_tokens;       // shape (batch_size)
 };
 
 class ISequences {
