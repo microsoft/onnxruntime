@@ -1938,7 +1938,7 @@ Status MatMulOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   const auto y = node_unit.Outputs()[0].node_arg.Name();
 
-  ORT_RETURN_IF_ERROR(shaper.FC(a, b, y));
+  ORT_RETURN_IF_ERROR(shaper.MatMul(a, b, y));
 
   const auto y_operand_type = OperandType{operand_types.at(a).type, shaper[y]};
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_BATCH_MATMUL,
