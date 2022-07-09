@@ -148,13 +148,13 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                    const logging::Logger& logger) {
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   TimePoint tp;
-  TimePoint sync_time_begin;
-  TimePoint kernel_begin_time;
-  size_t input_activation_sizes = 0;
-  size_t input_parameter_sizes = 0;
-  size_t total_output_sizes = 0;
-  std::string input_type_shape{};
-  std::string output_type_shape{};
+  //TimePoint sync_time_begin;
+  //TimePoint kernel_begin_time;
+  //size_t input_activation_sizes = 0;
+  //size_t input_parameter_sizes = 0;
+  //size_t total_output_sizes = 0;
+  //std::string input_type_shape{};
+  //std::string output_type_shape{};
 
   if (is_profiler_enabled) {
     tp = session_state.Profiler().Start();
@@ -261,9 +261,9 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     // TODO: log kernel inputs?
     OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, terminate_flag_);
     // TODO: log kernel outputs?
-    if (is_profiler_enabled) {
-      sync_time_begin = session_state.Profiler().Start();
-    }
+    //if (is_profiler_enabled) {
+    //  sync_time_begin = session_state.Profiler().Start();
+    //}
 
     // sync before compute
     int queue_id = p_op_kernel->KernelDef().ExecQueueId();
@@ -302,31 +302,32 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     utils::DumpNodeInputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
-    const std::string node_name_for_profiling = [&]() -> std::string {
-      if (!is_profiler_enabled) return {};
-      // Derive something meaningful for profile traces and logs if node name field is blank in execution graph
-      return node.Name().empty() ? MakeString(node.OpType(), "_", node_index) : node.Name();
-    }();
+    //const std::string node_name_for_profiling = [&]() -> std::string {
+    //  if (!is_profiler_enabled) return {};
+    //  // Derive something meaningful for profile traces and logs if node name field is blank in execution graph
+    //  return node.Name().empty() ? MakeString(node.OpType(), "_", node_index) : node.Name();
+    //}();
 
-    if (is_profiler_enabled) {
-      session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     node_name_for_profiling + "_fence_before",
-                                                     sync_time_begin,
-                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}});
-      concurrency::ThreadPool::StartProfiling(session_state.GetThreadPool());
-      // call compute on the kernel
-      VLOGS(logger, 1) << "Computing kernel: " << node_name_for_profiling;
+    //if (is_profiler_enabled) {
+    //  session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
+    //                                                 node_name_for_profiling + "_fence_before",
+    //                                                 sync_time_begin,
+    //                                                 {{"op_name", p_op_kernel->KernelDef().OpName()}});
+    //  concurrency::ThreadPool::StartProfiling(session_state.GetThreadPool());
+    //  // call compute on the kernel
+    //  VLOGS(logger, 1) << "Computing kernel: " << node_name_for_profiling;
 
-      kernel_begin_time = session_state.Profiler().Start();
+    //  kernel_begin_time = session_state.Profiler().Start();
 
-      // Calculate total input sizes for this operation.
-      CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
-                               input_activation_sizes, input_parameter_sizes,
-                               node_name_for_profiling, input_type_shape);
-    }
+    //  // Calculate total input sizes for this operation.
+    //  CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
+    //                           input_activation_sizes, input_parameter_sizes,
+    //                           node_name_for_profiling, input_type_shape);
+    //}
 
     Status compute_status;
     {
+      KernelProfileScope(session_state, op_kernel_context, *p_op_kernel);
 #ifdef CONCURRENCY_VISUALIZER
       diagnostic::span span(series, "%s.%d", node.OpType().c_str(), node.Index());
 #endif
@@ -341,7 +342,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
           ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context));
         }
 #endif
-
         compute_status = p_op_kernel->Compute(&op_kernel_context);
       }
       ORT_CATCH(const std::exception& ex) {
@@ -369,41 +369,41 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       return Status(compute_status.Category(), compute_status.Code(), msg_string);
     }
 
-    if (is_profiler_enabled) {
-      // Calculate total output sizes for this operation.
-      CalculateTotalOutputSizes(&op_kernel_context, total_output_sizes, node_name_for_profiling, output_type_shape);
-
-#if defined(TRACE_EXECUTION)
-      // Trace execution step.
-      const Node& node = p_op_kernel->Node();
-      std::cout << "Executed op kernel node " << node_name_for_profiling
-                << " Index=" << node.Index()
-                << " OpType=" << node.OpType()
-                << " Name=" << node.Name()
-                << " Activation_Size=" << input_activation_sizes
-                << " Parameter_Size=" << input_parameter_sizes
-                << " Output_Size=" << total_output_sizes
-                << "\n";
-#endif
-
-      session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     node_name_for_profiling + "_kernel_time",
-                                                     kernel_begin_time,
-                                                     // Log additional operation args / info.
-                                                     {
-                                                         {"op_name", p_op_kernel->KernelDef().OpName()},
-                                                         {"provider", p_op_kernel->KernelDef().Provider()},
-                                                         {"graph_index", std::to_string(p_op_kernel->Node().Index())},
-                                                         {"exec_plan_index", std::to_string(node_index)},
-                                                         {"activation_size", std::to_string(input_activation_sizes)},
-                                                         {"parameter_size", std::to_string(input_parameter_sizes)},
-                                                         {"output_size", std::to_string(total_output_sizes)},
-                                                         {"input_type_shape", input_type_shape},
-                                                         {"output_type_shape", output_type_shape},
-                                                         {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state.GetThreadPool())},
-                                                     });
-      sync_time_begin = session_state.Profiler().Start();
-    }
+//    if (is_profiler_enabled) {
+//      // Calculate total output sizes for this operation.
+//      CalculateTotalOutputSizes(&op_kernel_context, total_output_sizes, node_name_for_profiling, output_type_shape);
+//
+//#if defined(TRACE_EXECUTION)
+//      // Trace execution step.
+//      const Node& node = p_op_kernel->Node();
+//      std::cout << "Executed op kernel node " << node_name_for_profiling
+//                << " Index=" << node.Index()
+//                << " OpType=" << node.OpType()
+//                << " Name=" << node.Name()
+//                << " Activation_Size=" << input_activation_sizes
+//                << " Parameter_Size=" << input_parameter_sizes
+//                << " Output_Size=" << total_output_sizes
+//                << "\n";
+//#endif
+//
+//      session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
+//                                                     node_name_for_profiling + "_kernel_time",
+//                                                     kernel_begin_time,
+//                                                     // Log additional operation args / info.
+//                                                     {
+//                                                         {"op_name", p_op_kernel->KernelDef().OpName()},
+//                                                         {"provider", p_op_kernel->KernelDef().Provider()},
+//                                                         {"graph_index", std::to_string(p_op_kernel->Node().Index())},
+//                                                         {"exec_plan_index", std::to_string(node_index)},
+//                                                         {"activation_size", std::to_string(input_activation_sizes)},
+//                                                         {"parameter_size", std::to_string(input_parameter_sizes)},
+//                                                         {"output_size", std::to_string(total_output_sizes)},
+//                                                         {"input_type_shape", input_type_shape},
+//                                                         {"output_type_shape", output_type_shape},
+//                                                         {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state.GetThreadPool())},
+//                                                     });
+//      sync_time_begin = session_state.Profiler().Start();
+//    }
 
     // sync after compute for outputs
     if (seq_exec_plan.NodeHasFence(node_index)) {
@@ -441,12 +441,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                       TraceLoggingValue(p_op_kernel->KernelDef().OpName().c_str(), "op_name"),
                       TraceLoggingValue(elapsed.QuadPart, "time"));
 #endif
-    if (is_profiler_enabled) {
-      session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     node_name_for_profiling + "_fence_after",
-                                                     sync_time_begin,
-                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}});
-    }
+    //if (is_profiler_enabled) {
+    //  session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
+    //                                                 node_name_for_profiling + "_fence_after",
+    //                                                 sync_time_begin,
+    //                                                 {{"op_name", p_op_kernel->KernelDef().OpName()}});
+    //}
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
     utils::DumpNodeOutputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
@@ -532,4 +532,57 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
 
   return Status::OK();
 }
+
+KernelProfileScope::KernelProfileScope(const SessionState& session_state,
+                                       OpKernelContextInternal& kernel_context,
+                                       const OpKernel& kernel) : session_state_(session_state),
+                                                                 kernel_context_(kernel_context),
+                                                                 kernel_(kernel) {
+  if (!session_state_.Profiler().IsEnabled()) {
+    return;
+  }
+  auto& node = kernel.Node();
+  node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
+  auto& profiler = session_state.Profiler();
+  auto sync_time_begin = profiler.Start();
+  profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                 node_name_ + "_fence_before",
+                                 sync_time_begin,
+                                 {{"op_name", kernel_.KernelDef().OpName()}});
+  concurrency::ThreadPool::StartProfiling(session_state.GetThreadPool());
+  VLOGS(session_state.Logger(), 1) << "Computing kernel: " << node_name_;
+  kernel_begin_time_ = session_state.Profiler().Start();
+  CalculateTotalInputSizes(&kernel_context, &kernel_,
+                           input_activation_sizes_, input_parameter_sizes_,
+                           node_name_, input_type_shape_);
+}
+
+KernelProfileScope::~KernelProfileScope() {
+  if (!session_state_.Profiler().IsEnabled()) {
+    return;
+  }
+  auto& profiler = session_state_.Profiler();
+  CalculateTotalOutputSizes(&kernel_context_, total_output_sizes_, node_name_, output_type_shape_);
+  profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                 node_name_ + "_kernel_time",
+                                 kernel_begin_time_,
+                                 // Log additional operation args / info.
+                                 {
+                                     {"op_name", kernel_.KernelDef().OpName()},
+                                     {"provider", kernel_.KernelDef().Provider()},
+                                     {"node_index", std::to_string(kernel_.Node().Index())},
+                                     {"activation_size", std::to_string(input_activation_sizes_)},
+                                     {"parameter_size", std::to_string(input_parameter_sizes_)},
+                                     {"output_size", std::to_string(total_output_sizes_)},
+                                     {"input_type_shape", input_type_shape_},
+                                     {"output_type_shape", output_type_shape_},
+                                     {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPool())},
+                                 });
+  auto sync_time_begin = profiler.Start();
+  profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                 node_name_ + "_fence_after",
+                                 sync_time_begin,
+                                 {{"op_name", kernel_.KernelDef().OpName()}});
+}
+
 }  // namespace onnxruntime

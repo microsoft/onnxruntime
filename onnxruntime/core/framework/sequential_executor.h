@@ -16,6 +16,29 @@
 #include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
+
+class KernelProfileScope {
+ public:
+  KernelProfileScope(const SessionState& session_state,
+                     OpKernelContextInternal& kernel_context,
+                     const OpKernel& kernel);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelProfileScope);
+  ~KernelProfileScope();
+
+ private:
+  TimePoint kernel_begin_time_;
+  const SessionState& session_state_;
+  std::string node_name_;
+  OpKernelContextInternal& kernel_context_;
+  const OpKernel& kernel_;
+
+  size_t input_activation_sizes_{};
+  size_t input_parameter_sizes_{};
+  size_t total_output_sizes_{};
+  std::string input_type_shape_{};
+  std::string output_type_shape_{};
+};
+
 class SequentialExecutor : public IExecutor {
  public:
   SequentialExecutor(const bool& terminate_flag = false, const bool only_execute_path_to_fetches = false)
