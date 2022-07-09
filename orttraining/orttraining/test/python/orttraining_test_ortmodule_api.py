@@ -1318,7 +1318,7 @@ def test_gradient_correctness_reducesum(dim, keepdim):
         pt_prediction = run_step(pt_model, pt_input)
         ort_prediction = run_step(ort_model, ort_input)
 
-        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5, rtol=1e-4)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
 

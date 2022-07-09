@@ -76,6 +76,7 @@ option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable 
 option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
 option(onnxruntime_USE_VITISAI "Build with Vitis-AI" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
+option(onnxruntime_TENSORRT_PLACEHOLDER_BUILDER "Instantiate Placeholder TensorRT Builder" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_GCOV_COVERAGE "Compile with options necessary to run code coverage" OFF)
@@ -1486,8 +1487,17 @@ if (onnxruntime_USE_TVM)
   if (NOT TARGET tvm)
     message(STATUS "Include TVM(*).")
     include(tvm)
+    message(STATUS "Include ipp-crypto(*).")
+    include(ipp-crypto)
   endif()
 
+  # ipp-crypto
+  set(ARCH intel64 CACHE STRING "Only defined for TVM")
+  add_subdirectory(${ipp_crypto_SOURCE_DIR} ${ipp_crypto_BINARY_DIR} EXCLUDE_FROM_ALL)
+  set_target_properties(ippcp_s PROPERTIES FOLDER ${ipp_crypto_SOURCE_DIR})
+  set(IPP_CRYPTO_INCLUDES ${ipp_crypto_INCLUDE_DIRS})
+
+  # TVM
   if (onnxruntime_USE_LLVM)
     set(USE_LLVM ON CACHE BOOL "Only defined for TVM")
   endif()
@@ -1519,8 +1529,8 @@ if (onnxruntime_USE_TVM)
       set(FS_STDLIB stdc++fs)
     endif()
   endif()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ${FS_STDLIB})
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ippcp_s ${FS_STDLIB})
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm ippcp_s)
 endif()
 
 # XNNPACK EP
@@ -1973,6 +1983,12 @@ if (onnxruntime_ENABLE_TRAINING)
   set(onnxruntime_ENABLE_ATEN ON)
 endif()
 
+# Default version parts for Microsoft.AI.MachineLearning.dll, onnxruntime.dll, onnxruntime_providers_openvino.dll and onnxruntime_providers_shared.dll in non-ADO pipeline local builds
+set(VERSION_MAJOR_PART   0 CACHE STRING "First part of numeric file/product version.")
+set(VERSION_MINOR_PART   0 CACHE STRING "Second part of numeric file/product version.")
+set(VERSION_BUILD_PART       0 CACHE STRING "Third part of numeric file/product version.")
+set(VERSION_PRIVATE_PART     0 CACHE STRING "Fourth part of numeric file/product version.")
+set(VERSION_STRING       "Internal Build" CACHE STRING "String representation of file/product version.")
 
 set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
 if (onnxruntime_USE_NUPHAR_TVM)
@@ -2021,12 +2037,6 @@ if (WIN32 AND NOT GDK_PLATFORM)
   endif()
 endif()
 
-# Default version parts for Microsoft.AI.MachineLearning.dll and onnxruntime.dll in non-ADO pipeline local builds
-set(VERSION_MAJOR_PART   0 CACHE STRING "First part of numeric file/product version.")
-set(VERSION_MINOR_PART   0 CACHE STRING "Second part of numeric file/product version.")
-set(VERSION_BUILD_PART       0 CACHE STRING "Third part of numeric file/product version.")
-set(VERSION_PRIVATE_PART     0 CACHE STRING "Fourth part of numeric file/product version.")
-set(VERSION_STRING       "Internal Build" CACHE STRING "String representation of file/product version.")
 include(wil.cmake)
 
 if (onnxruntime_USE_WINML)

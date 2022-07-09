@@ -41,7 +41,7 @@ namespace GraphKernelHelper
     bool GetGraphInputConstness(
         uint32_t index,
         const onnxruntime::OpKernelInfo& kernelInfo,
-        const onnxruntime::ConstPointerContainer<std::vector<onnxruntime::NodeArg*>>& fusedNodeInputDefs,
+        const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
         const std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap);
 
     void ProcessInputData(
@@ -50,7 +50,7 @@ namespace GraphKernelHelper
         const std::vector<uint8_t>& inputsConstant,
         const onnxruntime::OpKernelInfo& kernelInfo,
         const Dml::GraphDescBuilder::GraphDesc& graphDesc,
-        const onnxruntime::ConstPointerContainer<std::vector<onnxruntime::NodeArg*>>& fusedNodeInputDefs,
+        const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
         _Out_ std::vector<bool>& inputsUsed,
         _Inout_ std::vector<DML_BUFFER_BINDING>& initInputBindings,
         _Inout_ std::vector<ComPtr<ID3D12Resource>>& initInputResources,
@@ -68,8 +68,6 @@ namespace GraphKernelHelper
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges);
-
-    std::string GetFusedNodeArgNameMatchingGraph(const std::string& fusedNodeArgeName);
-    
+  
 }  // namespace GraphKernelHelper
 }  // namespace Dml

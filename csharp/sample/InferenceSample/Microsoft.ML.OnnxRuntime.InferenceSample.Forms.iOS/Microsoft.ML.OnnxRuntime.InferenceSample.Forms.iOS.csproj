@@ -17,7 +17,7 @@
     <ProvisioningType>automatic</ProvisioningType>
   </PropertyGroup>
   <PropertyGroup>
-      <AutoGenerateBindingRedirects>True</AutoGenerateBindingRedirects>
+    <AutoGenerateBindingRedirects>True</AutoGenerateBindingRedirects>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|iPhoneSimulator' ">
     <DebugSymbols>true</DebugSymbols>
@@ -67,11 +67,11 @@
     <MtouchLink>SdkOnly</MtouchLink>
   </PropertyGroup>
   <PropertyGroup>
-      <OnnxNativeFrameworkPathPhone>..\..\..\..\build\iOS\iphoneos\Release\Release-iphoneos\onnxruntime.framework</OnnxNativeFrameworkPathPhone>
-      <OnnxNativeFrameworkPathSimulator>..\..\..\..\build\iOS\iphonesimulator\Release\Release-iphonesimulator\onnxruntime.framework</OnnxNativeFrameworkPathSimulator>
+    <OnnxNativeFrameworkPathPhone>..\..\..\..\build\iOS\iphoneos\Release\Release-iphoneos\onnxruntime.framework</OnnxNativeFrameworkPathPhone>
+    <OnnxNativeFrameworkPathSimulator>..\..\..\..\build\iOS\iphonesimulator\Release\Release-iphonesimulator\onnxruntime.framework</OnnxNativeFrameworkPathSimulator>
   </PropertyGroup>
   <PropertyGroup Condition="('$(Platform)' == 'iPhoneSimulator' AND Exists('$(OnnxNativeFrameworkPathSimulator)')) OR ('$(Platform)' == 'iPhone' AND Exists('$(OnnxNativeFrameworkPathPhone)'))">
-      <DefineConstants>__NATIVE_DEPENDENCIES_EXIST__</DefineConstants>
+    <DefineConstants>__NATIVE_DEPENDENCIES_EXIST__</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Main.cs" />
@@ -147,17 +147,17 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-      <PackageReference Include="System.Memory" Version="4.5.3" IncludeAssets="None" />
-      <NativeReference Condition=" '$(Platform)' == 'iPhoneSimulator' And Exists('$(OnnxNativeFrameworkPathSimulator)') " Include="$(OnnxNativeFrameworkPathSimulator)">
-          <Kind>Framework</Kind>
-          <ForceLoad>True</ForceLoad>
-          <IsCxx>True</IsCxx>
-        </NativeReference>
-        <NativeReference Condition=" '$(Platform)' == 'iPhone' And Exists('$(OnnxNativeFrameworkPathPhone)') " Include="$(OnnxNativeFrameworkPathPhone)">
-          <Kind>Framework</Kind>
-          <ForceLoad>True</ForceLoad>
-          <IsCxx>True</IsCxx>
-        </NativeReference>
+    <PackageReference Include="System.Memory" Version="4.5.3" IncludeAssets="None" />
+    <NativeReference Condition=" '$(Platform)' == 'iPhoneSimulator' And Exists('$(OnnxNativeFrameworkPathSimulator)') " Include="$(OnnxNativeFrameworkPathSimulator)">
+      <Kind>Framework</Kind>
+      <ForceLoad>True</ForceLoad>
+      <IsCxx>True</IsCxx>
+    </NativeReference>
+    <NativeReference Condition=" '$(Platform)' == 'iPhone' And Exists('$(OnnxNativeFrameworkPathPhone)') " Include="$(OnnxNativeFrameworkPathPhone)">
+      <Kind>Framework</Kind>
+      <ForceLoad>True</ForceLoad>
+      <IsCxx>True</IsCxx>
+    </NativeReference>
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath)\Xamarin\iOS\Xamarin.iOS.CSharp.targets" />
 </Project>

@@ -24,7 +24,7 @@ public:
         assert(inputDescs.size() <= 1);
         assert(outputDescs.size() == 1);
 
-        auto outputTensorShapeDescription = kernelCreationContext.GetTensorShapeDescription();;
+        auto outputTensorShapeDescription = kernelCreationContext.GetTensorShapeDescription();
         std::vector<DimensionType> outputDimensions = outputTensorShapeDescription.GetOutputTensorShape(0);
         ML_CHECK_VALID_ARGUMENT(outputDimensions.size() <= OperatorHelper::NchwDimensionCount);
 
