@@ -117,6 +117,11 @@ Status Shaper::FC(const std::string& input1_name, const std::string& input2_name
   SHAPER_FUNC(FC, input1_name, input2_name, output_name);
 }
 
+Status Shaper::MatMul(const std::string& input1_name, const std::string& input2_name,
+                      const std::string& output_name) {
+  SHAPER_FUNC(MatMul, input1_name, input2_name, output_name);
+}
+
 Status Shaper::Concat(const std::vector<std::string>& input_names,
                       const int32_t axis,
                       const std::string& output_name) {
@@ -352,6 +357,25 @@ Status Shaper::FCImpl(const std::string& input1_name, const std::string& input2_
   const Shape& input1_dimen = shape_map_.at(input1_name);
   const Shape& input2_dimen = shape_map_.at(input2_name);  // num_units, input_size
   Shape output_dimen{input1_dimen[0], input2_dimen[0]};
+  shape_map_[output_name] = output_dimen;
+  return Status::OK();
+}
+
+Status Shaper::MatMulImpl(const std::string& input1_name, const std::string& input2_name,
+                          const std::string& output_name) {
+  // no broadcasting support
+  // assumptions:
+  // input1 and input2 ranks are equal and at least 2
+  // input1 and input2 have the same dimensions except for the last two
+  const auto& input1_dimen = shape_map_.at(input1_name);  // [..., m, k]
+  const auto& input2_dimen = shape_map_.at(input2_name);  // [..., k, n]
+  Shape output_dimen{};                                   // [..., m, n]
+  const auto rank = input1_dimen.size();
+  output_dimen.reserve(rank);
+  for (size_t i = 0; i < rank - 2; ++i) {
+    output_dimen.push_back(input1_dimen[i]);
+  }
+  output_dimen.insert(output_dimen.end(), {input1_dimen[rank - 2], input2_dimen[rank - 1]});
   shape_map_[output_name] = output_dimen;
   return Status::OK();
 }

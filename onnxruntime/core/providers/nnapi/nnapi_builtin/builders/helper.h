@@ -117,8 +117,13 @@ bool IsQuantizedConv(QuantizedOpType quant_op_type);
 // If this is a quantized Pool (QLinearAveragePool or QDQAveragePool)
 bool IsQuantizedPool(QuantizedOpType quant_op_type);
 
-// If this is a quantized Gemm (QLinearMatMul or QDQMatMul/QDQGemm)
+// If this is a quantized MatMul (QLinearMatMul or QDQMatMul)
+bool IsQuantizedMatMul(QuantizedOpType quant_op_type);
+
 bool IsQuantizedGemm(QuantizedOpType quant_op_type);
+
+// If this is a quantized Gemm or MatMul (QLinearMatMul or QDQMatMul/QDQGemm)
+bool IsQuantizedGemmOrMatMul(QuantizedOpType quant_op_type);
 
 // This quantized op is an operator or qdq node unit takes 2 inputs and produces 1 output
 // Such as QLinearConv, QLinearMatMul, QLinearAdd, QDQConv,...

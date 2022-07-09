@@ -854,7 +854,7 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
     }
 
     // Now the dest node is Gemm/Matmul, we want to make sure it is supported
-    if (!BaseOpBuilder::IsOpSupported(model_builder, node_unit)) {
+    if (!BaseOpBuilder::IsOpSupported(model_builder, dest_node_unit)) {
       return false;
     }
 
@@ -1694,36 +1694,13 @@ Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, con
 
 #pragma endregion
 
-#pragma region op_gemm
+namespace {
+namespace gemm_matmul_helpers {
 
-class GemmOpBuilder : public BaseOpBuilder {
- public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
-  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-
- private:
-  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
-};
-
-bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
-  return IsQuantizedGemm(GetQuantizedOpType(node_unit));
-}
-
-/* static */ void GemmOpBuilder::CreateSharedOpBuilder(
-    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  CreateSharedOpBuilderImpl<GemmOpBuilder>(
-      op_type, op_registrations,
-      {
-          "Gemm",
-          "MatMul",
-          "QLinearMatMul",
-      });
-}
-
-void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+void AddInitializersToSkipForGemmOrMatMulUsingNnapiFullyConnected(ModelBuilder& model_builder,
+                                                                  const NodeUnit& node_unit) {
   const auto& inputs = node_unit.Inputs();
-  if (IsQuantizedOp(node_unit)) {
+  if (IsQuantizedGemmOrMatMul(GetQuantizedOpType(node_unit))) {
     if (node_unit.OpType() == "QLinearMatMul" || node_unit.OpType() == "MatMul") {                 // QLinearMatMul/QDQMatMul
       AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // a_scale, a_zp
       AddInputToSkip(model_builder, inputs[1]);                                                    // b, b_scale, b_zp
@@ -1757,7 +1734,8 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
   }
 }
 
-Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+Status AddGemmOrMatMulToModelBuilderUsingNnapiFullyConnected(ModelBuilder& model_builder,
+                                                             const NodeUnit& node_unit) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1830,7 +1808,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
                                          bias, bias_squeezed,
                                          {} /* axes */));
         bias_idx = operand_indices.at(bias_squeezed);
-        LOGS_DEFAULT(VERBOSE) << "GemmOpBuilder - Operand [" << bias << "] squeezed from "
+        LOGS_DEFAULT(VERBOSE) << "Operand [" << bias << "] squeezed from "
                               << Shape2String(shaper[bias])
                               << " to "
                               << Shape2String(shaper[bias_squeezed]);
@@ -1885,6 +1863,88 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output], y_scale, y_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_FULLY_CONNECTED, input_indices,
                                                  {output}, {output_operand_type}));
+  return Status::OK();
+}
+
+}  // namespace gemm_matmul_helpers
+}  // namespace
+
+#pragma region op_gemm
+
+class GemmOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+};
+
+void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  gemm_matmul_helpers::AddInitializersToSkipForGemmOrMatMulUsingNnapiFullyConnected(model_builder, node_unit);
+}
+
+Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  return gemm_matmul_helpers::AddGemmOrMatMulToModelBuilderUsingNnapiFullyConnected(model_builder, node_unit);
+}
+
+#pragma endregion
+
+#pragma region op_matmul
+
+class MatMulOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+  static bool IsNnapiBatchMatMulAvailable(int32_t nnapi_feature_level) {
+    return nnapi_feature_level >= ANEURALNETWORKS_FEATURE_LEVEL_6;
+  }
+};
+
+/* static */ void MatMulOpBuilder::CreateSharedOpBuilder(
+    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  CreateSharedOpBuilderImpl<MatMulOpBuilder>(
+      op_type, op_registrations,
+      {
+          "MatMul",
+          "QLinearMatMul",
+      });
+}
+
+void MatMulOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  if (IsQuantizedMatMul(node_unit) || !IsNnapiBatchMatMulAvailable(model_builder.GetNNAPIFeatureLevel())) {
+    gemm_matmul_helpers::AddInitializersToSkipForGemmOrMatMulUsingNnapiFullyConnected(model_builder, node_unit);
+  }
+
+  // no initializers to skip for ANEURALNETWORKS_BATCH_MATMUL
+}
+
+Status MatMulOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  if (IsQuantizedMatMul(node_unit) || !IsNnapiBatchMatMulAvailable(model_builder.GetNNAPIFeatureLevel())) {
+    return gemm_matmul_helpers::AddGemmOrMatMulToModelBuilderUsingNnapiFullyConnected(model_builder, node_unit);
+  }
+
+  // add ANEURALNETWORKS_BATCH_MATMUL
+
+  auto& shaper = model_builder.GetShaper();
+  const auto& operand_indices = model_builder.GetOperandIndices();
+  const auto& operand_types = model_builder.GetOperandTypes();
+
+  const auto a = node_unit.Inputs()[0].node_arg.Name();
+  const auto b = node_unit.Inputs()[1].node_arg.Name();
+
+  const auto y = node_unit.Outputs()[0].node_arg.Name();
+
+  ORT_RETURN_IF_ERROR(shaper.FC(a, b, y));
+
+  const auto y_operand_type = OperandType{operand_types.at(a).type, shaper[y]};
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_BATCH_MATMUL,
+                                                 {operand_indices.at(a), operand_indices.at(b)},
+                                                 {y}, {y_operand_type}));
+
   return Status::OK();
 }
 
@@ -2948,6 +3008,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Elu", EluOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Flatten", FlattenOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Gather", GatherOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Gemm", GemmOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Identity", IdentityOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("LRN", LRNOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Pad", PadOpBuilder);
@@ -2987,9 +3048,8 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   }
 
   {
-    NNAPI_EP_ADD_SHARED_OP_BUILDER("Gemm", GemmOpBuilder);
-    NNAPI_EP_ADD_SHARED_OP_BUILDER("MatMul", GemmOpBuilder);
-    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearMatMul", GemmOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("MatMul", MatMulOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearMatMul", MatMulOpBuilder);
   }
 
   {
