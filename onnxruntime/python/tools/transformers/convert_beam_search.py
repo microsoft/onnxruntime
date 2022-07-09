@@ -22,6 +22,9 @@ Example 3: convert T5 model with beam search. All in one step:
 
 Example 4: convert MT5 model with external data file like mt5-base-beamsearch.onnx.data in below example.
     python convert_beam_search.py -m google/mt5-base --model_type mt5 --output mt5-base-beamsearch.onnx -e
+
+Example 5: convert gpt2 model with greedy search:
+    python convert_beam_search.py -m gpt2 --output gpt2_beam_search.onnx --num_beams 1 --num_return_sequences 1
 """
 
 import argparse
@@ -938,6 +941,118 @@ def convert_model(args: argparse.Namespace):
         onnx.save(new_model, args.output)
     logger.info(f"model save to {args.output}")
 
+def convert_greedy_search_model(args: argparse.Namespace):
+    """Convert model according to command line arguments.
+
+    Args:
+        args (argparse.Namespace): arguments parsed from command line
+    """
+    is_gpt2: bool = args.model_type == "gpt2"
+    if is_gpt2:
+        if args.decoder_onnx and os.path.exists(args.decoder_onnx):
+            logger.info(f"skip convert_to_onnx since path existed: {args.decoder_onnx}")
+        else:
+            if not args.decoder_onnx:
+                onnx_filename = "gpt2_past_{}.onnx".format("fp16" if args.precision == Precision.FLOAT16 else "fp32")
+                args.decoder_onnx = Path(Path(args.output).parent, onnx_filename).as_posix()
+
+            logger.info(f"Convert GPT model {args.model_name_or_path} to onnx {args.decoder_onnx} ...")
+            gpt2_to_onnx(args)
+    else:  # t5 or mt5
+        raise NotImplementedError
+
+    if args.run_shape_inference:
+        logger.info(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
+        shape_inference(args.decoder_onnx, args.use_external_data_format)
+
+    if is_gpt2:
+        config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+    else:
+        raise NotImplementedError
+
+    if args.verbose:
+        logger.info(f"Config={config}")
+
+    eos_token_id = config.eos_token_id
+    pad_token_id = config.eos_token_id if is_gpt2 else config.pad_token_id
+    vocab_size = config.vocab_size
+
+    # if vocab_size is given in parameters use that.
+    if args.vocab_size != -1:
+        vocab_size = args.vocab_size
+
+    decoder_model = onnx.load_model(args.decoder_onnx, load_external_data=True)
+    decoder_model.graph.name = f"{args.model_type} decoder"
+
+    if args.model_type == "gpt2":
+        verify_gpt2_subgraph(decoder_model.graph, args.precision)
+    else:
+        raise NotImplementedError
+
+    inputs = [
+        "input_ids",
+        "max_length",
+        "min_length",
+        "repetition_penalty",
+    ]
+
+    outputs = ["sequences"]
+
+    node = onnx.helper.make_node(
+        "GreedySearch",
+        inputs=inputs,
+        outputs=outputs,
+        name=f"GreedySearch_{args.model_type}",
+    )
+    node.domain = "com.microsoft"
+    node.attribute.extend(
+        [
+            onnx.helper.make_attribute("eos_token_id", eos_token_id),
+            onnx.helper.make_attribute("pad_token_id", pad_token_id),
+            onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
+            onnx.helper.make_attribute("decoder", decoder_model.graph)
+        ]
+    )
+
+    initializers = []
+
+    from onnx import TensorProto
+
+    # graph inputs
+    input_ids = onnx.helper.make_tensor_value_info("input_ids", TensorProto.INT32, ["batch_size", "sequence_length"])
+    max_length = onnx.helper.make_tensor_value_info("max_length", TensorProto.INT32, [1])
+    min_length = onnx.helper.make_tensor_value_info("min_length", TensorProto.INT32, [1])
+    repetition_penalty = onnx.helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
+
+    graph_inputs = [
+        input_ids,
+        max_length,
+        min_length,
+        repetition_penalty,
+    ]
+
+    # graph outputs
+    sequences = onnx.helper.make_tensor_value_info(
+        "sequences",
+        TensorProto.INT32,
+        ["batch_size", "num_return_sequences", "max_length"],
+    )
+
+    graph_outputs = [sequences]
+
+    new_graph = onnx.helper.make_graph(
+        [node], f"{args.model_type} greedy search", graph_inputs, graph_outputs, initializers
+    )
+
+    # Create the model
+    new_model = onnx.helper.make_model(
+        new_graph,
+        producer_name="onnxruntime.transformers",
+        opset_imports=decoder_model.opset_import,
+    )
+
+    onnx.save(new_model, args.output)
+    logger.info(f"model save to {args.output}")
 
 def test_torch_performance(
     args: argparse.Namespace,
@@ -1153,6 +1268,168 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
             decoded_sequence = tokenizer.decode(sequences[i][j], skip_special_tokens=True)
             ort_decoded_sequences.append(decoded_sequence)
             print(f"batch {i} sequence {j}: {decoded_sequence}")
+
+    if beam_outputs:
+        torch_sequences = beam_outputs.sequences.reshape(batch_size, args.num_return_sequences, -1)
+        ort_sequences = torch.LongTensor(sequences)
+        print("-" * 50)
+        print("Torch Sequences:")
+        print(torch_sequences)
+        print(torch_decoded_sequences)
+        print("-" * 50)
+        print("ORT Sequences:")
+        print(ort_sequences)
+        print(ort_decoded_sequences)
+        print("-" * 50)
+        # Compare the generated text instead of word IDs since ORT pads to max sequence length but Torch not.
+        is_same = torch_decoded_sequences == ort_decoded_sequences
+        print("Torch and ORT result is ", "same" if is_same else "different")
+        output["parity"] = is_same
+
+    if args.torch_performance:
+        torch_latency_output = test_torch_performance(
+            args,
+            model,
+            input_ids,
+            attention_mask,
+            eos_token_id,
+            pad_token_id,
+            bad_words_ids,
+        )
+        print("Torch Latency", torch_latency_output)
+
+    print("ORT", output)
+
+    return output
+
+# bugbug:refactor
+def test_gpt_model_with_greedysearch(args: argparse.Namespace, sentences: Optional[List[str]] = None):
+    """Test GPT-2 model
+
+    Args:
+        args (argparse.Namespace): arguments parsed from command line
+        sentences (Optional[List[str]], optional): input text. Defaults to None.
+
+    Returns:
+        Union[Dict[str, Any], None]: A dictionary with string with metric name, and value can be integer or string.
+    """
+    assert args.model_type == "gpt2"
+
+    tokenizer = GPT2Tokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+    tokenizer.padding_side = "left"
+    tokenizer.pad_token = tokenizer.eos_token
+
+    model = GPT2LMHeadModel.from_pretrained(
+        args.model_name_or_path,
+        cache_dir=args.cache_dir,
+        pad_token_id=tokenizer.eos_token_id,
+    )
+
+    # Use different length sentences to test batching
+    if sentences is None:
+        sentences = [
+            "The product is released",
+            "I enjoy walking in the park",
+            "Test best way to invest",
+        ]
+
+    inputs = tokenizer(sentences, return_tensors="pt", padding=True)
+    input_ids = inputs["input_ids"]
+    attention_mask = inputs["attention_mask"]
+
+    bad_words = "walk in park"
+    bad_words_ids = tokenizer.encode(bad_words, add_prefix_space=True)
+    bad_words_ids = [[word_id] for word_id in bad_words_ids]  # Convert to list of list
+    if args.vocab_mask:
+        logger.debug("bad_words_ids", bad_words_ids)
+    else:
+        bad_words_ids = []
+
+    config = model.config
+    eos_token_id = config.eos_token_id
+    pad_token_id = config.eos_token_id
+    vocab_size = config.vocab_size
+
+    torch_decoded_sequences = []
+    beam_outputs = None
+    if not args.disable_parity:
+        print("-" * 50)
+        print("Test PyTorch model and beam search with huggingface transformers...")
+        beam_outputs = model.generate(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            max_length=args.max_length,
+            min_length=args.min_length,
+            num_beams=args.num_beams,
+            early_stopping=args.early_stopping,
+            no_repeat_ngram_size=args.no_repeat_ngram_size,
+            eos_token_id=eos_token_id,
+            pad_token_id=pad_token_id,
+            num_return_sequences=args.num_return_sequences,
+            length_penalty=args.length_penalty,
+            repetition_penalty=args.repetition_penalty,
+            bad_words_ids=bad_words_ids if bad_words_ids else None,
+            return_dict_in_generate=True,
+            output_scores=args.output_sequences_scores or args.output_token_scores,
+        )
+        print("input_ids", input_ids)
+        print("huggingface transformers outputs:")
+        print("sequences", beam_outputs.sequences)
+        if args.output_sequences_scores:
+            print("sequences_scores", beam_outputs.sequences_scores)
+        if args.output_token_scores:
+            print("scores", beam_outputs.scores)
+        for i, sequence in enumerate(beam_outputs.sequences):
+            decoded_sequence = tokenizer.decode(sequence, skip_special_tokens=True)
+            torch_decoded_sequences.append(decoded_sequence)
+            print(f"{i}: {decoded_sequence}")
+
+    print("-" * 50)
+    print("Testing beam search with onnxruntime...")
+
+    ort_session = create_ort_session(args.output, args.use_gpu)
+
+    inputs = {
+        "input_ids": input_ids.cpu().numpy().astype(np.int32),
+        "max_length": np.array([args.max_length], dtype=np.int32),
+        "min_length": np.array([args.min_length], dtype=np.int32),
+        "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
+    }
+
+    logger.debug("ORT inputs", inputs)
+    result = ort_session.run(None, inputs)
+
+    if args.save_test_data:
+        test_data_dir = Path(args.output).parent.as_posix()
+        logger.debug("test_data_dir", test_data_dir)
+        from bert_test_data import output_test_data
+
+        all_inputs = [inputs]
+        for i, inputs in enumerate(all_inputs):
+            dir = os.path.join(test_data_dir, "test_data_set_" + str(i))
+            output_test_data(dir, inputs)
+
+    # Test performance
+    latency = []
+    for _ in range(args.total_runs):
+        start = time.time()
+        _ = ort_session.run(None, inputs)
+        latency.append(time.time() - start)
+
+    from benchmark_helper import get_latency_result
+    batch_size = input_ids.shape[0]
+    output = get_latency_result(latency, batch_size)
+
+    print("ORT outputs:")
+    sequences = result[0]
+    print("sequences", sequences)
+
+    (batch_size, max_length) = sequences.shape
+    ort_decoded_sequences = []
+    for i in range(batch_size):
+        decoded_sequence = tokenizer.decode(sequences[i], skip_special_tokens=True)
+        ort_decoded_sequences.append(decoded_sequence)
+        print(f"batch {i} sequence: {decoded_sequence}")
 
     if beam_outputs:
         torch_sequences = beam_outputs.sequences.reshape(batch_size, args.num_return_sequences, -1)
@@ -1403,12 +1680,18 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
             args.decoder_onnx and not args.encoder_decoder_init_onnx
         ):
             raise ValueError("--decoder_onnx shall use together with --encoder_decoder_init_onnx")
+    is_greedy = args.num_beams ==1 and args.num_return_sequences == 1
 
-    convert_model(args)
+    if args.model_type == "gpt2" and is_greedy:
+        convert_greedy_search_model(args)
+    else:
+        convert_model(args)
 
     logger.info("start testing model...")
     if args.model_type in ["t5", "mt5"]:
         result = test_t5_model(args, sentences=sentences)
+    elif is_greedy:
+        result = test_gpt_model_with_greedysearch(args, sentences=sentences)
     else:
         result = test_gpt_model(args, sentences=sentences)
 
