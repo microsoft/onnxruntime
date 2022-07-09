@@ -901,42 +901,6 @@ const at::Tensor& resize_(
   return self;
 }
 
-// aten::abs.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
-at::Tensor& abs_out(
-  const at::Tensor& self,
-  // *,
-  at::Tensor& out) {
-  ORT_LOG_FN(self, out);
-
-  if (
-    !IsSupportedType(self, {at::kHalf,at::kByte,at::kInt,at::kBFloat16,at::kFloat,at::kDouble,at::kShort,at::kLong})) {
-    return at::native::call_fallback_fn<
-      &at::native::cpu_fallback,
-      ATEN_OP(abs_out)>::call(self, out);
-  }
-  auto& invoker = GetORTInvoker(self.device());
-
-  auto ort_input_self = create_ort_value(invoker, self);
-
-  resize_output(invoker,
-                dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()),
-                self.sizes());
-
-  auto ort_out = create_ort_value(invoker, out);
-  std::vector<OrtValue> ort_outputs_0_Abs{ort_out};
-
-  auto status = invoker.Invoke("Abs", {
-    std::move(ort_input_self),
-  }, ort_outputs_0_Abs, nullptr);
-
-  if (!status.IsOK()) {
-    throw std::runtime_error(
-      "ORT return failure status:" + status.ErrorMessage());
-  }
-
-  return out;
-}
-
 } // namespace aten
 
 //#pragma endregion

@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /*
  The implementation of this file is based on bert plugins in TensorRT demo:
  https://github.com/NVIDIA/TensorRT/tree/release/5.1/demo/BERT/
@@ -21,19 +22,18 @@ limitations under the License.
 // Licensed under the MIT License.
 #pragma once
 
-#include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cu_inc/common.cuh"
-#include "core/providers/cuda/shared_inc/cuda_call.h"
-#include <cuda_fp16.h>
-#include <cublas_v2.h>
-#include <cub/cub.cuh>
+#include <hip/hip_fp16.h>
+#include <hipblas.h>
+#include <hipcub/hipcub.hpp>
+#include "core/providers/rocm/rocm_common.h"
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/shared_inc/rocm_call.h"
 
-using namespace onnxruntime::cuda;
-using namespace cub;
+using namespace onnxruntime::rocm;
 
 namespace onnxruntime {
 namespace contrib {
-namespace cuda {
+namespace rocm {
 
 template <typename T>
 __device__ inline T Rsqrt(const T& x);
@@ -48,7 +48,7 @@ __device__ inline half Rsqrt(const half& x) {
 #if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
   return hrsqrt(x);
 #else
-  return half(rsqrtf(float(x)));
+  return half(rsqrtf(static_cast<float>(x)));
 #endif
 }
 
@@ -61,29 +61,32 @@ __device__ inline half2 AddHalf2(const half2 a, const half2 b) {
 }
 
 struct KeyValuePairSum {
-  __device__ inline cub::KeyValuePair<float, float> operator()(const cub::KeyValuePair<float, float>& a, const cub::KeyValuePair<float, float>& b) {
-    return cub::KeyValuePair<float, float>(a.key + b.key, a.value + b.value);
+  __device__ inline hipcub::KeyValuePair<float, float> operator()(const hipcub::KeyValuePair<float, float>& a,
+                                                                  const hipcub::KeyValuePair<float, float>& b) {
+    return hipcub::KeyValuePair<float, float>(a.key + b.key, a.value + b.value);
   }
 
-  __device__ inline cub::KeyValuePair<half, half> operator()(const cub::KeyValuePair<half, half>& a, const cub::KeyValuePair<half, half>& b) {
+  __device__ inline hipcub::KeyValuePair<half, half> operator()(const hipcub::KeyValuePair<half, half>& a,
+                                                                const hipcub::KeyValuePair<half, half>& b) {
     const half2 a2 = __halves2half2(a.key, a.value);
     const half2 b2 = __halves2half2(b.key, b.value);
     const half2 res = AddHalf2(a2, b2);
-    return cub::KeyValuePair<half, half>(__low2half(res), __high2half(res));
+    return hipcub::KeyValuePair<half, half>(__low2half(res), __high2half(res));
   }
 
-  __device__ inline cub::KeyValuePair<half2, half2> operator()(const cub::KeyValuePair<half2, half2>& a, const cub::KeyValuePair<half2, half2>& b) {
-    return cub::KeyValuePair<half2, half2>(AddHalf2(a.key, b.key), AddHalf2(a.value, b.value));
+  __device__ inline hipcub::KeyValuePair<half2, half2> operator()(const hipcub::KeyValuePair<half2, half2>& a,
+                                                                  const hipcub::KeyValuePair<half2, half2>& b) {
+    return hipcub::KeyValuePair<half2, half2>(AddHalf2(a.key, b.key), AddHalf2(a.value, b.value));
   }
 };
 
 template <typename T, int TPB>
 __device__ inline void LayerNorm(
-    const cub::KeyValuePair<T, T>& thread_data, const int ld, const int offset, const T* beta,
+    const hipcub::KeyValuePair<T, T>& thread_data, const int ld, const int offset, const T* beta,
     const T* gamma, const T epsilon, T* output) {
   // Assuming thread_data is already divided by ld
 
-  using BlockReduce = cub::BlockReduce<cub::KeyValuePair<T, T>, TPB>;
+  using BlockReduce = hipcub::BlockReduce<hipcub::KeyValuePair<T, T>, TPB>;
   __shared__ typename BlockReduce::TempStorage temp_storage;
   __shared__ T mu;      // mean
   __shared__ T rsigma;  // 1 / std.dev.
@@ -107,14 +110,14 @@ __device__ inline void LayerNorm(
 }
 
 template <typename T, int TPB, int ILP>
-__device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<T, T>& thread_data,
+__device__ inline void LayerNormSmall(const T* input_v, const hipcub::KeyValuePair<T, T>& thread_data,
                                       const int ld, const int idx, const T* beta, const T* gamma,
                                       const T epsilon, T* output) {
   // Assuming thread_data is already divided by ld
   // Small settings: the block covers the leading dimension TPB >= ld. The input
   // value is available in a register
   using VecT = aligned_vector<T, ILP>;
-  using BlockReduce = cub::BlockReduce<cub::KeyValuePair<T, T>, TPB>;
+  using BlockReduce = hipcub::BlockReduce<hipcub::KeyValuePair<T, T>, TPB>;
   __shared__ typename BlockReduce::TempStorage temp_storage;
   __shared__ T mu;      // mean
   __shared__ T rsigma;  // 1 / std.dev.
@@ -130,7 +133,7 @@ __device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<
   VecT* output_val = reinterpret_cast<VecT*>(&output_v);
 
   KeyValuePairSum pair_sum;
-  const cub::KeyValuePair<T, T> sum_kv = BlockReduce(temp_storage).Reduce(thread_data, pair_sum);
+  const hipcub::KeyValuePair<T, T> sum_kv = BlockReduce(temp_storage).Reduce(thread_data, pair_sum);
 
   if (threadIdx.x == 0) {
     mu = sum_kv.key;
@@ -148,7 +151,7 @@ __device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<
   }
 }
 
-}  // namespace cuda
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime
 

@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/cuda_common.h"
-#include "skip_layer_norm.h"
-#include "skip_layer_norm_impl.h"
+#include "core/providers/rocm/rocm_common.h"
+#include "contrib_ops/rocm/bert/skip_layer_norm.h"
+#include "contrib_ops/rocm/bert/skip_layer_norm_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
-namespace cuda {
+namespace rocm {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
@@ -15,7 +15,7 @@ namespace cuda {
       kMSDomain,                                                  \
       1,                                                          \
       T,                                                          \
-      kCudaExecutionProvider,                                     \
+      kRocmExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       SkipLayerNorm<T>);
@@ -26,7 +26,7 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 using namespace ONNX_NAMESPACE;
 
 template <typename T>
-SkipLayerNorm<T>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
+SkipLayerNorm<T>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) : RocmKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
   ORT_ENFORCE(epsilon_ >= 0);
 }
@@ -94,29 +94,29 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   int hidden_size = static_cast<int>(input_dims[2]);
   int64_t element_count = input_dims[0] * sequence_length * hidden_size;
   size_t element_size = sizeof(T);
-  typedef typename ToCudaType<T>::MappedType CudaT;
+  typedef typename ToHipType<T>::MappedType HipT;
 
-  if (!LaunchSkipLayerNormKernel<CudaT>(
+  if (!LaunchSkipLayerNormKernel<HipT>(
           Stream(),
-          reinterpret_cast<CudaT*>(output->template MutableData<T>()),
-          reinterpret_cast<const CudaT*>(input->template Data<T>()),
-          reinterpret_cast<const CudaT*>(skip->template Data<T>()),
-          reinterpret_cast<const CudaT*>(gamma->template Data<T>()),
-          (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->template Data<T>()) : nullptr,
-          (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->template Data<T>()) : nullptr,
+          reinterpret_cast<HipT*>(output->template MutableData<T>()),
+          reinterpret_cast<const HipT*>(input->template Data<T>()),
+          reinterpret_cast<const HipT*>(skip->template Data<T>()),
+          reinterpret_cast<const HipT*>(gamma->template Data<T>()),
+          (beta != nullptr) ? reinterpret_cast<const HipT*>(beta->template Data<T>()) : nullptr,
+          (bias != nullptr) ? reinterpret_cast<const HipT*>(bias->template Data<T>()) : nullptr,
           epsilon_,
           hidden_size,
           static_cast<int>(element_count),
           element_size)) {
-    // Get last error to reset it to cudaSuccess.
-    CUDA_CALL(cudaGetLastError());
+    // Get last error to reset it to hipSuccess.
+    HIP_CALL(hipGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
 
   return Status::OK();
 }
 
-}  //namespace cuda
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime
 

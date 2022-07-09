@@ -5,11 +5,11 @@
 
 namespace onnxruntime {
 namespace contrib {
-namespace cuda {
+namespace rocm {
 
 template <typename T>
 bool LaunchSkipLayerNormKernel(
-    cudaStream_t stream,
+    hipStream_t stream,
     T* output,        // output tensor
     const T* input,   // input tensor
     const T* skip,    // skip tensor
@@ -22,7 +22,7 @@ bool LaunchSkipLayerNormKernel(
     size_t element_size
 );
 
-}  // namespace cuda
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime
 

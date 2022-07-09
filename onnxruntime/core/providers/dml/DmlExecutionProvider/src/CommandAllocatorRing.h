@@ -28,26 +28,23 @@ namespace Dml
             }
         }
 
-        ID3D12CommandAllocator* GetCurrentAllocator()
+        ID3D12CommandAllocator* GetNextAllocator(GpuEvent nextCompletionEvent)
         {
-            CommandAllocatorInfo& allocatorInfo = m_commandAllocators[m_currentCommandAllocator];
+            size_t earliestOtherAllocator = (m_currentCommandAllocator + 1) % AllocatorCount;
 
-            // Take the opportunity to reset the command allocator if possible.
-            if (allocatorInfo.completionEvent.IsSignaled())
+            assert(!m_commandAllocators[m_currentCommandAllocator].completionEvent.IsSignaled() ||
+                    m_commandAllocators[earliestOtherAllocator].completionEvent.IsSignaled());
+
+            if (m_commandAllocators[earliestOtherAllocator].completionEvent.IsSignaled())
             {
-                ORT_THROW_IF_FAILED(allocatorInfo.Get()->Reset());
+                ORT_THROW_IF_FAILED(m_commandAllocators[earliestOtherAllocator].Get()->Reset());
+                m_currentCommandAllocator = earliestOtherAllocator;
             }
 
-            return m_commandAllocators[m_currentCommandAllocator].Get();
-        }
-
-        void AdvanceAllocator(GpuEvent completionEvent)
-        {
             // Set the completion event for the current allocator so it can be reset eventually.
-            m_commandAllocators[m_currentCommandAllocator].completionEvent = completionEvent;
+            m_commandAllocators[m_currentCommandAllocator].completionEvent = nextCompletionEvent;
 
-            // Advance to the next allocator.
-            m_currentCommandAllocator = (m_currentCommandAllocator + 1) % AllocatorCount;
+            return m_commandAllocators[m_currentCommandAllocator].Get();
         }
 
     private:

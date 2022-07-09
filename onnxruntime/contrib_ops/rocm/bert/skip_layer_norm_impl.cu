@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /*
  The implementation of this file is based on skipLayerNorm plugin in TensorRT demo:
  https://github.com/NVIDIA/TensorRT/tree/release/5.1/demo/BERT/
@@ -27,13 +28,13 @@ limitations under the License.
 // Copyright (c) Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cuda/bert/layer_norm.cuh"
-#include "contrib_ops/cuda/bert/skip_layer_norm_impl.h"
-#include <cuda_fp16.h>
+#include <hip/hip_fp16.h>
+#include "contrib_ops/rocm/bert/layer_norm.cuh"
+#include "contrib_ops/rocm/bert/skip_layer_norm_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
-namespace cuda {
+namespace rocm {
 
 template<typename T>
 T maybe2half(float x);
@@ -57,13 +58,13 @@ __global__ void SkipLayerNormKernel(
 
   KeyValuePairSum pair_sum;
   // reduce x and x^2
-  cub::KeyValuePair<T, T> thread_data(0, 0);
+  hipcub::KeyValuePair<T, T> thread_data(0, 0);
 
   for (int i = threadIdx.x; i < ld; i += TPB) {
     const int idx = offset + i;
     const T val = (bias == nullptr) ? input[idx] + skip[idx] : input[idx] + skip[idx] + bias[i];
     const T rldval = reverse_ld * val;
-    thread_data = pair_sum(thread_data, cub::KeyValuePair<T, T>(rldval, rldval * val));
+    thread_data = pair_sum(thread_data, hipcub::KeyValuePair<T, T>(rldval, rldval * val));
     output[idx] = val;
   }
 
@@ -95,7 +96,7 @@ __global__ void SkipLayerNormKernelSmall(
     *bias_val = *reinterpret_cast<const VecT*>(&bias[threadIdx.x * ILP]);
   }
 
-  cub::KeyValuePair<T, T> thread_data(T(0.f), T(0.f));
+  hipcub::KeyValuePair<T, T> thread_data(T(0.f), T(0.f));
 
   if (ILP * threadIdx.x < ld) {
     T rldval_sum = T(0.f);
@@ -107,14 +108,14 @@ __global__ void SkipLayerNormKernelSmall(
       rldval_sum += rldval;
       rldvalsq_sum += rldval * input_v[i];
     }
-    thread_data = cub::KeyValuePair<T, T>(rldval_sum, rldvalsq_sum);
+    thread_data = hipcub::KeyValuePair<T, T>(rldval_sum, rldvalsq_sum);
   }
   LayerNormSmall<T, TPB, ILP>(input_v, thread_data, ld, idx, beta, gamma, epsilon, output);
 }
 
 template <typename T>
 bool LaunchSkipLayerNormKernel(
-    cudaStream_t stream, T* output, const T* input, const T* skip, const T* gamma,
+    hipStream_t stream, T* output, const T* input, const T* skip, const T* gamma,
     const T* beta, const T* bias, float epsilon, const int ld, const int element_count,
     size_t element_size) {
 
@@ -125,83 +126,71 @@ bool LaunchSkipLayerNormKernel(
     const int grid_size = element_count / ld;
     if (ld <= 32) {
       constexpr int block_size = 32;
-      SkipLayerNormKernelSmall<T, block_size, 1>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 64) {
       constexpr int block_size = 64 / 2;
-      SkipLayerNormKernelSmall<T, block_size, 2>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 2>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 128) {
       constexpr int block_size = 128 / 4;
-      SkipLayerNormKernelSmall<T, block_size, 4>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 4>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 384) {
       constexpr int block_size = 384 / 4;
-      SkipLayerNormKernelSmall<T, block_size, 4>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 4>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 768) {
       constexpr int block_size = 768 / 4;
-      SkipLayerNormKernelSmall<T, block_size, 4>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 4>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 1024) {
       constexpr int block_size = 1024 / 4;
-      SkipLayerNormKernelSmall<T, block_size, 4>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 4>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else {
       constexpr int block_size = 256;
-      SkipLayerNormKernel<T, block_size>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output);
     }
   } else {
     const int grid_size = element_count / ld;
     if (ld <= 32) {
       constexpr int block_size = 32;
-      SkipLayerNormKernelSmall<T, block_size, 1>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 64) {
       constexpr int block_size = 64;
-      SkipLayerNormKernelSmall<T, block_size, 1>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 128) {
       constexpr int block_size = 128;
-      SkipLayerNormKernelSmall<T, block_size, 1>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld == 384) {
       constexpr int block_size = 384;
-      SkipLayerNormKernelSmall<T, block_size, 1>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output, hasBias);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else {
       constexpr int block_size = 256;
-      SkipLayerNormKernel<T, block_size>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-          maybe2half<T>(epsilon), output);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), grid_size, block_size,
+          0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output);
     }
   }
-  return CUDA_CALL(cudaPeekAtLastError());
+  return HIP_CALL(hipPeekAtLastError());
 }
 
-template bool LaunchSkipLayerNormKernel<float>(cudaStream_t stream, float* output, const float* input,
+template bool LaunchSkipLayerNormKernel<float>(hipStream_t stream, float* output, const float* input,
                                                const float* skip, const float* gamma, const float* beta,
                                                const float* bias, float epsilon, const int ld,
                                                const int element_count, size_t element_size);
 
-template bool LaunchSkipLayerNormKernel<half>(cudaStream_t stream, half* output, const half* input,
+template bool LaunchSkipLayerNormKernel<half>(hipStream_t stream, half* output, const half* input,
                                                const half* skip, const half* gamma, const half* beta,
                                                const half* bias, float epsilon, const int ld,
                                                const int element_count, size_t element_size);
 
-}  // namespace cuda
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime
 
