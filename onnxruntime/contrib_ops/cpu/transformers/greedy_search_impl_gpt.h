@@ -119,7 +119,7 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
 
   // Allocate output tensors.
   int64_t sequences_dims[] = {parameters->batch_size, parameters->max_length};
-  TensorShape sequences_shape(&sequences_dims[0], 2);
+  TensorShape sequences_shape(&sequences_dims[0], sizeof(sequences_dims) / sizeof(sequences_dims[0]));
   Tensor* output_sequences = this->context_.Output(0, sequences_shape);
 
   std::vector<OrtValue> feeds;

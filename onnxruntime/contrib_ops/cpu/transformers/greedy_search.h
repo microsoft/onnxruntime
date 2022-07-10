@@ -85,7 +85,6 @@ class GreedySearch : public IControlFlowKernel {
   //------------------------------------------------------------
   // Device specific functions for GPT
   //------------------------------------------------------------
-  BeamSearchDeviceHelper::CreateGptInputsFunc create_gpt_inputs_func_;
   BeamSearchDeviceHelper::UpdateGptFeedsFunc<float> update_gpt_feeds_func_;
   BeamSearchDeviceHelper::UpdateGptFeedsFunc<MLFloat16> update_gpt_feeds_fp16_func_;
 

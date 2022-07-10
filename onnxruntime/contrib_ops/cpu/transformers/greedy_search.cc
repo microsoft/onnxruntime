@@ -137,7 +137,7 @@ if (parameters_.model_type == 0) {  // GPT-2
         cuda_stream_,
         dumper_,
         parameters,
-        create_gpt_inputs_func_ ? create_gpt_inputs_func_ : BeamSearchCpuDeviceHelper::CreateGptInputs,
+        BeamSearchCpuDeviceHelper::CreateGptInputs,
         add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
         topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
         process_logits_func_ ? process_logits_func_ : BeamSearchCpuDeviceHelper::GreedySearchProcessLogits<float>,
@@ -156,7 +156,7 @@ if (parameters_.model_type == 0) {  // GPT-2
         cuda_stream_,
         dumper_,
         parameters,
-        create_gpt_inputs_func_ ? create_gpt_inputs_func_ : BeamSearchCpuDeviceHelper::CreateGptInputs,
+        BeamSearchCpuDeviceHelper::CreateGptInputs,
         add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
         topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
         process_logits_fp16_func_,
@@ -164,6 +164,8 @@ if (parameters_.model_type == 0) {  // GPT-2
         device_copy_func_,
         update_gpt_feeds_fp16_func_};
       ORT_RETURN_IF_ERROR(impl.Initialize());
+
+      return impl.Execute(*decoder_feeds_fetches_manager_);
     }
   }
 
