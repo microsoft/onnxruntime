@@ -6,6 +6,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/rocm/math/matmul_impl.h"
+
 #include "core/providers/rocm/rocm_allocator.h"
 #include "core/providers/rocm/rocm_kernel.h"
 
