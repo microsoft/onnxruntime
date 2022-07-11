@@ -2,12 +2,12 @@
 // Licensed under the MIT License.
 
 #include <gtest/gtest.h>
+#include "core/platform/threadpool.h"
 #include "core/util/math.h"
+#include "core/util/thread_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
-#include "core/platform/threadpool.h"
-#include "core/util/thread_utils.h"
 
 namespace onnxruntime {
 namespace test {

@@ -9,16 +9,13 @@ namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
-using namespace onnxruntime::rocm;
+using onnxruntime::rocm::RocmKernel;
 
 template <typename T>
 class GemmFastGelu final : public RocmKernel {
  public:
   GemmFastGelu(const OpKernelInfo& op_kernel_info) : RocmKernel(op_kernel_info) {}
   Status ComputeInternal(OpKernelContext* ctx) const override;
-
- private:
-  bool tuning_;
 };
 
 }  // namespace rocm

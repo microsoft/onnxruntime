@@ -2,16 +2,20 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/rocm/bert/gemm_fast_gelu.h"
-#include "core/providers/cpu/math/matmul_helper.h"
-#include "core/providers/rocm/rocm_common.h"
-#include "core/providers/rocm/shared_inc/fpgeneric.h"
+
 #include "contrib_ops/rocm/bert/fast_gelu_impl.h"
 #include "contrib_ops/rocm/bert/transformer_common.h"
+#include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/rocm/math/matmul_impl.h"
+#include "core/providers/rocm/rocm_common.h"
+#include "core/providers/rocm/shared_inc/fpgeneric.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
+
+using onnxruntime::rocm::MatMulImpl;
+using onnxruntime::rocm::ToHipType;
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
