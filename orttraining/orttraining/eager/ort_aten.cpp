@@ -155,14 +155,16 @@ std::vector<OrtValue> create_ort_value(
 onnx::AttributeProto create_ort_attribute(
   const char* name,
   at::Scalar value,
-  const bool isTensor) {
+  const bool isTensor,
+  at::ScalarType type) {
   if (isTensor){
     onnx::AttributeProto attr;
     attr.set_name(name);
-    at::ScalarType type = value.type();
     attr.set_type(onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR);
     auto* constant_attribute_tensor_proto = attr.mutable_t();
     constant_attribute_tensor_proto->mutable_dims()->Clear();
+    // Creating a 1 dim tensor of size 1, so add that dim now.
+    constant_attribute_tensor_proto->add_dims(1);
     switch (type) {
     case at::ScalarType::Float:
       constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
@@ -170,16 +172,16 @@ onnx::AttributeProto create_ort_attribute(
       break;
     case at::ScalarType::Double:
       constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
-      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<double>();
+      *constant_attribute_tensor_proto->mutable_double_data()->Add() = value.to<double>();
       break;
     case at::ScalarType::Bool:
     case at::ScalarType::Int:
       constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
-      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<int>();
+      *constant_attribute_tensor_proto->mutable_int32_data()->Add() = value.to<int>();
       break;
     case at::ScalarType::Long:
       constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<int64_t>();
+      *constant_attribute_tensor_proto->mutable_int64_data()->Add() = value.to<int64_t>();
       break;
     default:
       // For most at::ScalarType, it should be safe to just call value.to<>
@@ -192,6 +194,13 @@ onnx::AttributeProto create_ort_attribute(
   else{
     return create_ort_attribute(name, value, value.type());
   }
+}
+
+onnx::AttributeProto create_ort_attribute(
+  const char* name,
+  at::Scalar value,
+  const bool isTensor) {
+    return create_ort_attribute(name, value, isTensor, value.type());
 }
 
 onnx::AttributeProto create_ort_attribute(
@@ -900,6 +909,52 @@ const at::Tensor& resize_(
       size);
   return self;
 }
+
+// aten::fill_.Scalar(Tensor(a!) self, Scalar value) -> Tensor(a!)
+at::Tensor& fill__Scalar(
+  at::Tensor& self,
+  const at::Scalar& value) {
+  ORT_LOG_FN(self, value);
+
+  if (
+    !IsSupportedType(self, {at::kHalf,at::kFloat,at::kInt,at::kDouble,at::kByte,at::kShort,at::kLong,at::kBFloat16,at::kBool})) {
+    std::cout << "fill__Scalar - Fell back to cpu!\n";
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(fill__Scalar)>::call(self, value);
+  }
+  auto& invoker = GetORTInvoker(self.device());
+
+  auto ort_input_self = create_ort_value(invoker, self);
+
+  std::vector<OrtValue> ort_outputs_0_Shape(1);
+
+  auto status = invoker.Invoke("Shape", {
+    std::move(ort_input_self),
+  }, ort_outputs_0_Shape, nullptr);
+
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+
+  std::vector<OrtValue> ort_outputs_1_ConstantOfShape(1);
+  ort_outputs_1_ConstantOfShape[0] = ort_input_self;
+
+  NodeAttributes attrs(1);
+  attrs["value"] = create_ort_attribute(
+    "value", value, true, self.scalar_type());
+
+  status = invoker.Invoke("ConstantOfShape", {
+    std::move(ort_outputs_0_Shape[0]),
+  }, ort_outputs_1_ConstantOfShape, &attrs);
+
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+
+  return self;
+}
+
 
 } // namespace aten
 

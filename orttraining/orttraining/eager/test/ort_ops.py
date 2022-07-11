@@ -344,6 +344,17 @@ class OrtOpTests(unittest.TestCase):
             assert torch.equal(cpu_float_float_result, ort_float_float_result.to("cpu"))
             assert torch.equal(cpu_float_float_not_result, ort_float_float_not_result.to("cpu"))
 
+    def test_fill(self):
+        device = self.get_device()
+        for type in {torch.int, torch.float}:
+            cpu_tensor = torch.zeros(2, 2, dtype=type)
+            ort_tensor = cpu_tensor.to(device)
+            for value in {True, 1.1, -1, 0}:
+                cpu_tensor.fill_(value)
+                ort_tensor.fill_(value)
+                assert cpu_tensor.dtype == ort_tensor.dtype
+                assert torch.equal(cpu_tensor, ort_tensor.to("cpu"))
+
 
 if __name__ == "__main__":
     unittest.main()
