@@ -917,7 +917,9 @@ at::Tensor& fill__Scalar(
   ORT_LOG_FN(self, value);
 
   if (
-    !IsSupportedType(self, {at::kHalf,at::kFloat,at::kInt,at::kDouble,at::kByte,at::kShort,at::kLong,at::kBFloat16,at::kBool})) {
+    std::vector<at::ScalarType> supportedTypes =
+      {at::kHalf, at::kFloat, at::kInt, at::kDouble, at::kByte, at::kShort, at::kLong, at::kBFloat16, at::kBool};
+    !IsSupportedType(self, supportedTypes)) {
     std::cout << "fill__Scalar - Fell back to cpu!\n";
     return at::native::call_fallback_fn<
       &at::native::cpu_fallback,
