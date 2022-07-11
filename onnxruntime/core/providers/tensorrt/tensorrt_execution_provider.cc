@@ -984,6 +984,9 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::vector<size_t> filtered_nodes_vector;
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
 
+  // We currently exclude "If" and "Loop" control flow ops from original node vector before calling TensorRT parser.
+  // The reason is, these control flow ops have subgraph which might contain TRT fused node after ORT partition.
+  // If this is the case, TensorRT parser will complain the non-recognized TRT fused node and fail.
   for (const auto& index : nodes_vector) {
     const auto& node = graph.GetNode(node_index[index]);
     if (node->OpType() == "If" || node->OpType() == "Loop") {
