@@ -68,7 +68,6 @@ unary_ops_with_out = [
     "hardsigmoid",
     "log",
     "neg",
-    "nonzero",
     "reciprocal",
     "round",
     "sigmoid",
@@ -92,7 +91,6 @@ unary_ops = [
     "det",
     "isinf",
     "isnan",
-    "nonzero",
     "relu",
     "selu",
 ]
@@ -169,6 +167,8 @@ hand_implemented = {
     "aten::equal": SignatureOnly(),
     "aten::_softmax": Softmax("self", axis="dim"),
     "aten::argmax.out": SignatureOnly(),
+    "aten::nonzero": Transpose(NonZero("self")),
+    "aten::nonzero.out": SignatureOnly(),
 }
 
 # Signature of gelu_backward was changed in this commit id 983ba5e585485ed61a0c0012ef6944f5685e3d97 and PR 61439

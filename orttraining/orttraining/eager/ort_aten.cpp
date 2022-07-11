@@ -957,6 +957,57 @@ at::Tensor& fill__Scalar(
   return self;
 }
 
+// aten::nonzero.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+at::Tensor& nonzero_out(
+  const at::Tensor& self,
+  // *,
+  at::Tensor& out) {
+  ORT_LOG_FN(self, out);
+
+  if (
+    !IsSupportedType(self, {at::kBool,at::kBFloat16,at::kDouble,at::kHalf,at::kLong,at::kFloat,at::kByte,at::kShort,at::kInt})) {
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(nonzero_out)>::call(self, out);
+  }
+  auto& invoker = GetORTInvoker(self.device());
+
+  auto ort_input_self = create_ort_value(invoker, self);
+
+  std::vector<OrtValue> ort_outputs_0_NonZero(1);
+
+  auto status = invoker.Invoke("NonZero", {
+    std::move(ort_input_self),
+  }, ort_outputs_0_NonZero, nullptr);
+
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+
+  // We need to calculate the transpose output, get the original dims and a copy, then reverse the order in the copy.
+  auto originalDims =ort_outputs_0_NonZero[0].Get<onnxruntime::Tensor>().Shape();
+  auto transposeDims = ort_outputs_0_NonZero[0].Get<onnxruntime::Tensor>().Shape().AsShapeVector();
+  for (size_t i = 0; i < originalDims.NumDimensions(); i++) {
+    transposeDims[i] = originalDims[originalDims.NumDimensions() - i - 1];
+  }
+
+  // resize the output and then create output ort value to be updated.
+  resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), transposeDims);
+  auto ort_input_out = create_ort_value(invoker, out);
+
+  std::vector<OrtValue> ort_outputs_1_Transpose(1);
+  ort_outputs_1_Transpose[0] = ort_input_out;
+
+  status = invoker.Invoke("Transpose", {
+    std::move(ort_outputs_0_NonZero[0]),
+  }, ort_outputs_1_Transpose, nullptr);
+
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+
+  return out;
+}
 
 } // namespace aten
 

@@ -454,6 +454,20 @@ class OrtOpTests(unittest.TestCase):
                 assert cpu_tensor.dtype == ort_tensor.dtype
                 assert torch.equal(cpu_tensor, ort_tensor.to("cpu"))
 
+    def test_nonzero_out(self):
+        device = self.get_device()
+        cpu_tensor = torch.tensor([[[-1, 0, 1], [0, 1, 0]], [[0, 1, 0], [-1, 0, 1]]])
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_out_tensor = torch.tensor([], dtype=torch.long)
+        ort_out_tensor = cpu_out_tensor.to(device)
+
+        cpu_result = torch.nonzero(cpu_tensor, out=cpu_out_tensor)
+        ort_result = torch.nonzero(ort_tensor, out=ort_out_tensor)
+
+        assert torch.equal(cpu_out_tensor, ort_out_tensor.to("cpu"))
+        assert torch.equal(cpu_result, ort_result.to("cpu"))
+
 
 if __name__ == "__main__":
     unittest.main()
