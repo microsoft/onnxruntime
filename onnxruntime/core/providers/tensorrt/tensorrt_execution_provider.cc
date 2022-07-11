@@ -618,7 +618,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
         const auto& node_idx = it->GetNode().Index();
         const onnxruntime::NodeArg* output;
         // The dst_arg_index from GetDstArgIndex() could be the index for explicit/implicit input defs of the node.
-        // See Graph::BuildConnection() for more detail.
+        // We need to get the correct input index accordingly. (See Graph::BuildConnections() in graph.cc for more details)
         if (it->GetDstArgIndex() < static_cast<int>(it->GetNode().InputDefs().size())) {
           output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
         } else {
