@@ -142,7 +142,7 @@ hand_implemented = {
     "aten::addmm": Gemm("mat1", "mat2", "self", alpha="alpha", beta="beta"),
     "aten::add_.Tensor": SignatureOnly(),
     "aten::t": Transpose("self"),
-    "aten::mm": MatMul("self", "mat2"),
+    "aten::mm.out": MatMul("self", "mat2"),
     "aten::zeros_like": ConstantOfShape(
         Shape("self")
     ),  # the default constant is 0, so don't need to speicify attribute
@@ -156,7 +156,7 @@ hand_implemented = {
     "aten::max": ReduceMax("self", keepdims=0),
     "aten::min": ReduceMin("self", keepdims=0),
     "aten::_cat": Concat("tensors", "dim"),
-    "aten::fill_.Scalar": ConstantOfShape("self", value="value"),
+    "aten::fill_.Scalar": SignatureOnly(),
     "aten::ne.Scalar_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
     "aten::ne.Tensor_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
     "aten::eq.Tensor_out": Cast(Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
