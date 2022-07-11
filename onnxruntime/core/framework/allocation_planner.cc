@@ -18,6 +18,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/framework/op_kernel_context_internal.h"
+#include "core/framework/sequential_executor.h"
 
 using namespace onnxruntime::common;
 using namespace ONNX_NAMESPACE;
@@ -195,23 +196,26 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
  public:
   LaunchKernelStep(NodeIndex index) : SequentialExecutionPlan::ExecutionStep(),
                         node_index{index},
-                        func_([](NodeIndex idx, void* ctx, size_t stream_idx, bool& continue_flag) {
-                                        ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
-                                        auto* p_kernel = execution_context->GetSessionState().GetKernel(idx);
-                                        auto* intra_tp = execution_context->GetSessionState().GetThreadPool();
-                                        // TODO: set terminate flag from run_option
-                                        OpKernelContextInternal kernel_ctx(execution_context->GetSessionState(),
-                                                                           *execution_context->GetExecutionFrame(), *p_kernel, execution_context->GetLogger(),
-                                                                           execution_context->TerminateFlag(), execution_context->GetDeviceStream(stream_idx));
-                                        if (p_kernel->IsAsync()) {
-                                          ORT_THROW("Async Kernel Support is not implemented yet.");
-                                        } else {
-                                          ORT_RETURN_IF_ERROR(p_kernel->Compute(&kernel_ctx));
-                                          execution_context->RecycleNodeInputs(idx);
-                                        }
-                                        LOGS(execution_context->GetLogger(), INFO) << "stream " << stream_idx << " launch kernel with idx " << idx;
-                                        continue_flag = true;
-                                        return Status::OK();
+                        func_([](NodeIndex node_idx, void* ctx, size_t stream_idx, bool& continue_flag) {
+                                        //ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
+                                        //auto* p_kernel = execution_context->GetSessionState().GetKernel(idx);
+                                        //auto* intra_tp = execution_context->GetSessionState().GetThreadPool();
+                                        //// TODO: set terminate flag from run_option
+                                        //OpKernelContextInternal kernel_ctx(execution_context->GetSessionState(),
+                                        //                                   *execution_context->GetExecutionFrame(), *p_kernel, execution_context->GetLogger(),
+                                        //                                   execution_context->TerminateFlag(), execution_context->GetDeviceStream(stream_idx));
+                                        //if (p_kernel->IsAsync()) {
+                                        //  ORT_THROW("Async Kernel Support is not implemented yet.");
+                                        //} else {
+                                        //  ORT_RETURN_IF_ERROR(p_kernel->Compute(&kernel_ctx));
+                                        //  execution_context->RecycleNodeInputs(idx);
+                                        //}
+                                        //LOGS(execution_context->GetLogger(), INFO) << "stream " << stream_idx << " launch kernel with idx " << idx;
+                                        //continue_flag = true;
+                                        //return Status::OK();
+                                        onnxruntime::Status status = ExecuteKernel(*reinterpret_cast<ExecutionContext*>(ctx), node_idx, stream_idx);
+                                        continue_flag = status.IsOK();
+                                        return status;
                         }) {
   }
 

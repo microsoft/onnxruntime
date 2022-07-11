@@ -54,6 +54,8 @@ class CountDownBarrier {
   std::atomic_int_fast32_t v_;
 };
 
+class SessionScope;
+
 // execution context that support to execute a command on stream.
 // The notifications got instantiated when execution context is constructed.
 // TODO: if we merge the notifications to execution frame, we might don't need this.
@@ -97,7 +99,15 @@ public:
 
   ~ExecutionContext();
 
-private:
+  SessionScope* GetSessionScope() {
+    return session_scope_;
+  }
+
+  void SetSessionScope(SessionScope* session_scope) {
+    session_scope_ = session_scope;
+  }
+
+ private:
   const SessionState* session_state;
   std::unique_ptr<ExecutionFrame> frame;
   const logging::Logger* logger;
@@ -108,6 +118,7 @@ private:
   CountDownBarrier remain_tasks_;
   const bool& terminate_flag_;
   Status task_status_{Status::OK()};
+  SessionScope* session_scope_{};
 };
 
 using NotificationIndex = size_t;

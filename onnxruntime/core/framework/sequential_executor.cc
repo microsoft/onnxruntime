@@ -15,6 +15,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
+#include "core/framework/execution_context.h"
 
 #if defined DEBUG_NODE_INPUTS_OUTPUTS
 #include "core/framework/debug_node_inputs_outputs_utils.h"
@@ -73,10 +74,10 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
 #if defined(TRACE_EXECUTION)
       const TensorShape& tensor_shape = tensor.Shape();
       std::cout << node_name << " output[" << i << "]"
-                         << " size=" << tensor_size
-                         << " shape=" << tensor_shape.ToString()
-                         << " element_size=" << tensor.DataType()->Size()
-                         << "\n";
+                << " size=" << tensor_size
+                << " shape=" << tensor_shape.ToString()
+                << " element_size=" << tensor.DataType()->Size()
+                << "\n";
 #endif
       total_output_sizes += tensor_size;
       auto shape_str = tensor.Shape().ToString();
@@ -137,6 +138,224 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
   input_type_shape = ss.str();
 }
 
+class KernelScope;
+
+class SessionScope {
+ public:
+  friend class KernelScope;
+  SessionScope(const SessionState& session_state, const ExecutionFrame& frame) : session_state_(session_state), frame_(frame)
+#ifdef ENABLE_NVTX_PROFILE
+                                                    ,
+                                                    session_tag_(profile::Context::GetInstance().GetThreadTagOrDefault(std::this_thread::get_id())),
+                                                    forward_range_("Batch-" + tag + " Forward", profile::Color::White),
+                                                    backward_range("Batch-" + tag + " Backward", profile::Color::Black)
+#endif
+  {
+    if (session_state_.Profiler().IsEnabled()) {
+      session_start_ = session_state.Profiler().Start();
+    }
+
+    auto& logger = session_state_.Logger();
+    LOGS(logger, INFO) << "Begin execution";
+    const SequentialExecutionPlan& seq_exec_plan = *session_state_.GetExecutionPlan();
+
+// Enable TRACE_EXECUTION compile flag to dump execution plan
+#if defined(TRACE_EXECUTION)
+    std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
+#endif
+
+#ifdef CONCURRENCY_VISUALIZER
+    // need unique name for the series. number of nodes should be good enough for a subgraph
+    char series_name[MaxSeriesNameLengthInChars] = "MainGraph";
+    if (graph_viewer.IsSubgraph()) {
+      auto s = graph_viewer.ParentNode()->Name().substr(0, MaxSeriesNameLengthInChars - 1);
+      std::copy(s.cbegin(), s.cend(), series_name);
+    }
+
+    diagnostic::marker_series series(series_name);
+#endif
+
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    size_t program_counter = 0;
+    utils::NodeDumpContext dump_context{session_state.GetGraphExecutionCounter(), program_counter};
+#endif
+  }
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionScope);
+
+  ~SessionScope() {
+#ifdef ENABLE_NVTX_PROFILE
+    // Make sure forward Range object call Begin and End.
+    if (!forward_range_.IsBeginCalled()) {
+      forward_range_.Begin();
+    }
+    if (!forward_range_.IsEndCalled()) {
+      forward_range_.End();
+    }
+    // Make sure backward Range object call Begin and End.
+    if (!backward_range_.IsBeginCalled()) {
+      backward_range_.Begin();
+    }
+    if (!backward_range_.IsEndCalled()) {
+      backward_range_.End();
+    }
+#endif
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+    MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
+                                                MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
+    MemoryInfo::MemoryInfoProfile::Clear();
+#endif
+    if (session_state_.Profiler().IsEnabled()) {
+      session_state_.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
+    }
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+    auto& logger = session_state_.Logger();
+    for (auto i : frame_.GetStaticMemorySizeInfo()) {
+      LOGS(logger, INFO) << "[Memory] ExecutionFrame statically allocates "
+                         << i.second << " bytes for " << i.first << std::endl;
+    }
+
+    for (auto i : frame_.GetDynamicMemorySizeInfo()) {
+      LOGS(logger, INFO) << "[Memory] ExecutionFrame dynamically allocates "
+                         << i.second << " bytes for " << i.first << std::endl;
+    }
+#endif
+  }
+private:
+  const SessionState& session_state_;
+ const ExecutionFrame& frame_;
+  TimePoint session_start_;
+#ifdef ENABLE_NVTX_PROFILE
+  const std::string session_tag_;
+  profile::NvtxRangeCreator forward_range_;
+  profile::NvtxRangeCreator backward_range_;
+#endif
+};
+
+class KernelScope {
+ public:
+  KernelScope(SessionScope& session_scope,
+              OpKernelContextInternal& kernel_context,
+              const OpKernel& kernel) : session_scope_(session_scope),
+                                        session_state_(session_scope_.session_state_),
+                                        kernel_context_(kernel_context),
+                                        kernel_(kernel)
+#ifdef ENABLE_NVTX_PROFILE
+                                        ,
+                                        node_compute_range_(MakeString(node.OpType(),
+                                                                       ".",
+                                                                       node.Index(),
+                                                                       "(",
+                                                                       node.Name(),
+                                                                       ")"),
+                                                            profile::Color::Yellow);
+#endif
+  {
+
+#ifdef CONCURRENCY_VISUALIZER
+    series.write_flag(node.Name().c_str());
+#endif
+
+#ifdef ENABLE_NVTX_PROFILE
+    if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
+      // Start timing forward pass when encountering the first forward node.
+      forward_range.Begin();
+    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() && forward_range.IsBeginCalled()) {
+      // Start timing backward pass when encountering the first backward node.
+      // In the meanwhile, forward range ends.
+      forward_range.End();
+      backward_range.Begin();
+    }
+#endif
+
+#ifdef CONCURRENCY_VISUALIZER
+    diagnostic::span span(series, "%s.%d", node.OpType().c_str(), node.Index());
+#endif
+
+    if (!session_state_.Profiler().IsEnabled()) {
+      return;
+    }
+    auto& node = kernel.Node();
+    node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
+    auto& profiler = session_state_.Profiler();
+    auto sync_time_begin = profiler.Start();
+    profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                   node_name_ + "_fence_before",
+                                   sync_time_begin,
+                                   {{"op_name", kernel_.KernelDef().OpName()}});
+    concurrency::ThreadPool::StartProfiling(session_state_.GetThreadPool());
+    VLOGS(session_state_.Logger(), 1) << "Computing kernel: " << node_name_;
+    kernel_begin_time_ = session_state_.Profiler().Start();
+    CalculateTotalInputSizes(&kernel_context, &kernel_,
+                             input_activation_sizes_, input_parameter_sizes_,
+                             node_name_, input_type_shape_);
+  }
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelScope);
+
+  ~KernelScope() {
+    if (!session_state_.Profiler().IsEnabled()) {
+      return;
+    }
+    auto& profiler = session_state_.Profiler();
+    CalculateTotalOutputSizes(&kernel_context_, total_output_sizes_, node_name_, output_type_shape_);
+    profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                   node_name_ + "_kernel_time",
+                                   kernel_begin_time_,
+                                   // Log additional operation args / info.
+                                   {
+                                       {"op_name", kernel_.KernelDef().OpName()},
+                                       {"provider", kernel_.KernelDef().Provider()},
+                                       {"node_index", std::to_string(kernel_.Node().Index())},
+                                       {"activation_size", std::to_string(input_activation_sizes_)},
+                                       {"parameter_size", std::to_string(input_parameter_sizes_)},
+                                       {"output_size", std::to_string(total_output_sizes_)},
+                                       {"input_type_shape", input_type_shape_},
+                                       {"output_type_shape", output_type_shape_},
+                                       {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPool())},
+                                   });
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+    LARGE_INTEGER kernel_stop;
+    QueryPerformanceCounter(&kernel_stop);
+    LARGE_INTEGER elapsed;
+    elapsed.QuadPart = kernel_stop.QuadPart - kernel_start.QuadPart;
+    elapsed.QuadPart *= 1000000;
+    elapsed.QuadPart /= perf_freq.QuadPart;
+    // Log an event
+    TraceLoggingWrite(telemetry_provider_handle,  // handle to my provider
+                      "OpEnd",                    // Event Name that should uniquely identify your event.
+                      TraceLoggingValue(p_op_kernel->KernelDef().OpName().c_str(), "op_name"),
+                      TraceLoggingValue(elapsed.QuadPart, "time"));
+#endif
+    auto sync_time_begin = profiler.Start();
+    profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                   node_name_ + "_fence_after",
+                                   sync_time_begin,
+                                   {{"op_name", kernel_.KernelDef().OpName()}});
+#ifdef ENABLE_NVTX_PROFILE
+    node_compute_range_.End();
+#endif
+  }  //~KernelScope
+
+ private:
+  TimePoint kernel_begin_time_;
+  SessionScope& session_scope_;
+  const SessionState& session_state_;
+  std::string node_name_;
+  OpKernelContextInternal& kernel_context_;
+  const OpKernel& kernel_;
+
+  size_t input_activation_sizes_{};
+  size_t input_parameter_sizes_{};
+  size_t total_output_sizes_{};
+  std::string input_type_shape_{};
+  std::string output_type_shape_{};
+
+#ifdef ENABLE_NVTX_PROFILE
+  profile::NvtxRangeCreator node_compute_range_;
+#endif
+};
+
 static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan& seq_exec_plan,
                                   size_t node_index,
@@ -157,11 +376,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   std::string input_type_shape{};
   std::string output_type_shape{};
 
-  if (is_profiler_enabled) {
-    tp = session_state.Profiler().Start();
-  }
-
   ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state, nullptr};
+  SessionScope session_scope(session_state, frame);
 
 #if !defined(ORT_MINIMAL_BUILD)
   const auto* const to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
@@ -174,46 +390,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   ORT_UNUSED_PARAMETER(only_execute_path_to_fetches_);
 #endif
 
-  LOGS(logger, INFO) << "Begin execution";
+  const auto& graph_viewer = session_state.GetGraphViewer();
   const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
   const auto& exec_plan_vec = seq_exec_plan.execution_plan;
   VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
-
-// Enable TRACE_EXECUTION compile flag to dump execution plan
-#if defined(TRACE_EXECUTION)
-  std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
-#endif
-
-  const auto& graph_viewer = session_state.GetGraphViewer();
-
-#ifdef CONCURRENCY_VISUALIZER
-  // need unique name for the series. number of nodes should be good enough for a subgraph
-  char series_name[MaxSeriesNameLengthInChars] = "MainGraph";
-  if (graph_viewer.IsSubgraph()) {
-    auto s = graph_viewer.ParentNode()->Name().substr(0, MaxSeriesNameLengthInChars - 1);
-    std::copy(s.cbegin(), s.cend(), series_name);
-  }
-
-  diagnostic::marker_series series(series_name);
-#endif
-
-#ifdef ENABLE_NVTX_PROFILE
-  auto& profile_context = profile::Context::GetInstance();
-  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
-  profile::NvtxRangeCreator forward_range(
-      "Batch-" + tag + " Forward",
-      profile::Color::White);
-  profile::NvtxRangeCreator backward_range(
-      "Batch-" + tag + " Backward",
-      profile::Color::Black);
-#endif
-
-#ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    size_t program_counter = 0;
-    utils::NodeDumpContext dump_context { session_state.GetGraphExecutionCounter(), program_counter };
-#endif
-
-
   for (const auto& node_exec_plan : exec_plan_vec) {
     if (terminate_flag_) {
       LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
@@ -230,23 +410,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 
     const auto& node = *graph_viewer.GetNode(node_index);
-
-#ifdef CONCURRENCY_VISUALIZER
-    series.write_flag(node.Name().c_str());
-#endif
-
-#ifdef ENABLE_NVTX_PROFILE
-    if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
-      // Start timing forward pass when encountering the first forward node.
-      forward_range.Begin();
-    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() && forward_range.IsBeginCalled()) {
-      // Start timing backward pass when encountering the first backward node.
-      // In the meanwhile, forward range ends.
-      forward_range.End();
-      backward_range.Begin();
-    }
-#endif
-
     auto p_op_kernel = session_state.GetKernel(node_index);
 
     // if a kernel has been added in the session state, it better be NON-null.
@@ -262,55 +425,21 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     // TODO: log kernel inputs?
     OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, terminate_flag_, nullptr);
     // TODO: log kernel outputs?
-    if (is_profiler_enabled) {
-      sync_time_begin = session_state.Profiler().Start();
-    }
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
     dump_context.program_counter = program_counter++;
     utils::DumpNodeInputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
-    const std::string node_name_for_profiling = [&]() -> std::string {
-      if (!is_profiler_enabled) return {};
-      // Derive something meaningful for profile traces and logs if node name field is blank in execution graph
-      return node.Name().empty() ? MakeString(node.OpType(), "_", node_index) : node.Name();
-    }();
-
-    if (is_profiler_enabled) {
-      session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     node_name_for_profiling + "_fence_before",
-                                                     sync_time_begin,
-                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}});
-      concurrency::ThreadPool::StartProfiling(session_state.GetThreadPool());
-      // call compute on the kernel
-      VLOGS(logger, 1) << "Computing kernel: " << node_name_for_profiling;
-
-      kernel_begin_time = session_state.Profiler().Start();
-
-      // Calculate total input sizes for this operation.
-      CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
-                               input_activation_sizes, input_parameter_sizes,
-                               node_name_for_profiling, input_type_shape);
-    }
-
     Status compute_status;
     {
-#ifdef CONCURRENCY_VISUALIZER
-      diagnostic::span span(series, "%s.%d", node.OpType().c_str(), node.Index());
-#endif
-#ifdef ENABLE_NVTX_PROFILE
-      profile::NvtxRangeCreator node_compute_range(
-          MakeString(node.OpType(), ".", node.Index(), "(", node.Name(), ")"), profile::Color::Yellow);
-      node_compute_range.Begin();
-#endif
+      KernelScope kernel_scope(session_scope, op_kernel_context, *p_op_kernel);
       ORT_TRY {
 #ifdef ENABLE_TRAINING
         if (p_op_kernel->KernelDef().AllocateInputsContiguously()) {
           ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context));
         }
 #endif
-
         compute_status = p_op_kernel->Compute(&op_kernel_context);
       }
       ORT_CATCH(const std::exception& ex) {
@@ -338,62 +467,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       return Status(compute_status.Category(), compute_status.Code(), msg_string);
     }
 
-    if (is_profiler_enabled) {
-      // Calculate total output sizes for this operation.
-      CalculateTotalOutputSizes(&op_kernel_context, total_output_sizes, node_name_for_profiling, output_type_shape);
-
-#if defined(TRACE_EXECUTION)
-      // Trace execution step.
-      const Node& node = p_op_kernel->Node();
-      std::cout << "Executed op kernel node " << node_name_for_profiling
-                << " Index=" << node.Index()
-                << " OpType=" << node.OpType()
-                << " Name=" << node.Name()
-                << " Activation_Size=" << input_activation_sizes
-                << " Parameter_Size=" << input_parameter_sizes
-                << " Output_Size=" << total_output_sizes
-                << "\n";
-#endif
-
-      session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     node_name_for_profiling + "_kernel_time",
-                                                     kernel_begin_time,
-                                                     // Log additional operation args / info.
-                                                     {
-                                                         {"op_name", p_op_kernel->KernelDef().OpName()},
-                                                         {"provider", p_op_kernel->KernelDef().Provider()},
-                                                         {"graph_index", std::to_string(p_op_kernel->Node().Index())},
-                                                         {"exec_plan_index", std::to_string(node_index)},
-                                                         {"activation_size", std::to_string(input_activation_sizes)},
-                                                         {"parameter_size", std::to_string(input_parameter_sizes)},
-                                                         {"output_size", std::to_string(total_output_sizes)},
-                                                         {"input_type_shape", input_type_shape},
-                                                         {"output_type_shape", output_type_shape},
-                                                         {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state.GetThreadPool())},
-                                                     });
-      sync_time_begin = session_state.Profiler().Start();
-    }
-
-#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
-    LARGE_INTEGER kernel_stop;
-    QueryPerformanceCounter(&kernel_stop);
-    LARGE_INTEGER elapsed;
-    elapsed.QuadPart = kernel_stop.QuadPart - kernel_start.QuadPart;
-    elapsed.QuadPart *= 1000000;
-    elapsed.QuadPart /= perf_freq.QuadPart;
-    // Log an event
-    TraceLoggingWrite(telemetry_provider_handle,  // handle to my provider
-                      "OpEnd",                    // Event Name that should uniquely identify your event.
-                      TraceLoggingValue(p_op_kernel->KernelDef().OpName().c_str(), "op_name"),
-                      TraceLoggingValue(elapsed.QuadPart, "time"));
-#endif
-    if (is_profiler_enabled) {
-      session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     node_name_for_profiling + "_fence_after",
-                                                     sync_time_begin,
-                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}});
-    }
-
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
     utils::DumpNodeOutputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
@@ -403,33 +476,11 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, 0, logger));
   }
 
-#ifdef ENABLE_NVTX_PROFILE
-  // Make sure forward Range object call Begin and End.
-  if (!forward_range.IsBeginCalled()) {
-    forward_range.Begin();
-  }
-  if (!forward_range.IsEndCalled()) {
-    forward_range.End();
-  }
-  // Make sure backward Range object call Begin and End.
-  if (!backward_range.IsBeginCalled()) {
-    backward_range.Begin();
-  }
-  if (!backward_range.IsEndCalled()) {
-    backward_range.End();
-  }
-#endif
 
   VLOGS(logger, 1) << "Fetching output.";
   // ExecutionFrame::Finalize will update 'fetches' with the final output
   ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
   VLOGS(logger, 1) << "Done with execution.";
-
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                              MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
-  MemoryInfo::MemoryInfoProfile::Clear();
-#endif
 
   if (frame.HasMemoryPatternPlanner()) {
     bool all_tensors = true;
@@ -447,22 +498,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
   }
 
-  if (is_profiler_enabled) {
-    session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
-  }
-
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  for (auto i : frame.GetStaticMemorySizeInfo()) {
-    LOGS(logger, INFO) << "[Memory] ExecutionFrame statically allocates "
-                       << i.second << " bytes for " << i.first << std::endl;
-  }
-
-  for (auto i : frame.GetDynamicMemorySizeInfo()) {
-    LOGS(logger, INFO) << "[Memory] ExecutionFrame dynamically allocates "
-                       << i.second << " bytes for " << i.first << std::endl;
-  }
-#endif
-
   return Status::OK();
 }
 
@@ -476,6 +511,62 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
     ORT_RETURN_IF_ERROR(frame.ReleaseMLValue(ort_value_idx));
   }
 
+  return Status::OK();
+}
+
+onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t stream_idx) {
+  auto* p_kernel = ctx.GetSessionState().GetKernel(idx);
+  auto* intra_tp = ctx.GetSessionState().GetThreadPool();
+
+  // TODO: set terminate flag from run_option
+  OpKernelContextInternal kernel_ctx(ctx.GetSessionState(),
+                                     *ctx.GetExecutionFrame(),
+                                     *p_kernel,
+                                     ctx.GetLogger(),
+                                     ctx.TerminateFlag(),
+                                     ctx.GetDeviceStream(stream_idx));
+  onnxruntime::Status status;
+  auto& logger = ctx.GetLogger();
+  if (p_kernel->IsAsync()) {
+    ORT_THROW("Async Kernel Support is not implemented yet.");
+  } else {
+    auto session_scope = ctx.GetSessionScope();
+    ORT_ENFORCE(session_scope, "session scope uninitialized");
+    KernelScope kernel_scope(*session_scope, kernel_ctx, *p_kernel);
+    //ORT_RETURN_IF_ERROR(p_kernel->Compute(&kernel_ctx));
+    ORT_TRY {
+#ifdef ENABLE_TRAINING
+      if (p_op_kernel->KernelDef().AllocateInputsContiguously()) {
+        ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context));
+      }
+#endif
+      auto status = p_kernel->Compute(&kernel_ctx);
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
+      });
+    }
+  }
+  if (!status.IsOK()) {
+    std::ostringstream ss;
+    const auto& node = p_kernel->Node();
+    ss << "Non-zero status code returned while running " << node.OpType() << " node. Name:'" << node.Name()
+       << "' Status Message: " << status.ErrorMessage();
+    //If the computation failed, we still can record the memory consumption
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+    MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
+                                                MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
+#endif
+    const auto msg_string = ss.str();
+    LOGS(logger, ERROR) << msg_string;
+    return Status(status.Category(), status.Code(), msg_string);
+  }
+  ctx.RecycleNodeInputs(idx);
+  LOGS(logger, INFO) << "stream " << stream_idx << " launch kernel with idx " << idx;
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+  utils::DumpNodeOutputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
+#endif
   return Status::OK();
 }
 
@@ -496,6 +587,7 @@ onnxruntime::Status ExecuteTheNewPlan(const SessionState& session_state, const s
     if (stream && stream->steps_.size() > 0)
       valid_streams++;
   }
+
   // prepare the execution context, notifications got initialized.
   ExecutionContext ctx(session_state,
                        valid_streams,
@@ -510,6 +602,9 @@ onnxruntime::Status ExecuteTheNewPlan(const SessionState& session_state, const s
                        device_streams,
                        terminate_flag);
 
+  SessionScope session_scope(session_state, *reinterpret_cast<const ExecutionFrame*>(ctx.GetExecutionFrame()));
+  ctx.SetSessionScope(&session_scope);
+
   auto* tp = single_thread_mode ? nullptr : session_state.GetInterOpThreadPool();
 
   for (int i = 0; i < execution_plan->execution_plan.size(); ++i) {
@@ -520,8 +615,10 @@ onnxruntime::Status ExecuteTheNewPlan(const SessionState& session_state, const s
     }
   }
 
-  if (!single_thread_mode)
+  if (!single_thread_mode) {
     ctx.WaitAll();
+  }
+
   ORT_RETURN_IF_ERROR(ctx.TaskStatus());
   ORT_RETURN_IF_ERROR(ctx.GetExecutionFrame()->GetOutputs(fetches));
   return Status::OK();

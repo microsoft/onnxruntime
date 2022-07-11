@@ -16,6 +16,9 @@
 #include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
+
+class ExecutionContext;
+
 class SequentialExecutor : public IExecutor {
  public:
   SequentialExecutor(const bool& terminate_flag = false, const bool only_execute_path_to_fetches = false)
@@ -37,6 +40,8 @@ onnxruntime::Status BindToDeviceStream(Stream* parent_stream,
                                   const SequentialExecutionPlan& execution_plan,
                                   DeviceStreamColloection& device_stream_map,
                                   IStreamCommandHandleRegistry& stream_handle_registry);
+
+onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t stream_idx);
 
 onnxruntime::Status ExecuteTheNewPlan(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                                       const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
