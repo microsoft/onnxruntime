@@ -3,6 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+"""Wrapper for native _kernel_explorer.so library"""
+
 import ctypes
 import os
 import sys
