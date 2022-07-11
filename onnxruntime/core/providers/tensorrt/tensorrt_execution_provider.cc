@@ -617,10 +617,12 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
       for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
         const auto& node_idx = it->GetNode().Index();
         const onnxruntime::NodeArg* output;
+        // The dst_arg_index from GetDstArgIndex() could be the index for explicit/implicit input defs of the node.
+        // See Graph::BuildConnection() for more detail.
         if (it->GetDstArgIndex() < static_cast<int>(it->GetNode().InputDefs().size())) {
           output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
         } else {
-          output = (it->GetNode()).ImplicitInputDefs()[it->GetDstArgIndex()];
+          output = (it->GetNode()).ImplicitInputDefs()[it->GetDstArgIndex() - static_cast<int>(it->GetNode().InputDefs().size())];
         }
         if (node_set.find(node_idx) != node_set.end()) {
           const auto& iter = fused_inputs.find(output);
