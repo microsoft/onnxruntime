@@ -154,9 +154,9 @@ static void PreCalcForBilinearInterpolate(const int64_t height, const int64_t wi
 }
 
 template <typename T>
-void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, float spatial_scale, int64_t batch_size,
-                     int64_t height, int64_t width, int64_t sampling_ratio, const T* bottom_rois, int64_t num_roi_cols,
-                     T* top_data, RoiAlignMode mode, bool half_pixel, const int64_t* batch_indices_ptr, ThreadPool* ttp) {
+void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, float spatial_scale, int64_t height,
+                     int64_t width, int64_t sampling_ratio, const T* bottom_rois, int64_t num_roi_cols, T* top_data,
+                     RoiAlignMode mode, bool half_pixel, const int64_t* batch_indices_ptr, ThreadPool* ttp) {
   int64_t n_rois = output_shape[0];
   int64_t channels = output_shape[1];
   int64_t pooled_height = output_shape[2];
@@ -170,8 +170,7 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
       int64_t index_n = n * channels * pooled_width * pooled_height;
 
       const T* offset_bottom_rois = bottom_rois + n * num_roi_cols;
-      auto roi_batch_ind = batch_indices_ptr[n];
-      roi_batch_ind = (static_cast<uint64_t>(roi_batch_ind) < static_cast<uint64_t>(batch_size)) ? roi_batch_ind : 0;
+      const auto roi_batch_ind = batch_indices_ptr[n];
 
       // Do not using rounding; this implementation detail is critical
       T offset = half_pixel ? (T)0.5 : (T)0.0;
@@ -319,7 +318,6 @@ Status RoiAlign<T>::Compute(OpKernelContext* context) const {
   auto& Y = *context->Output(0, {num_rois, num_channels, this->output_height_, this->output_width_});
 
   RoiAlignForward<T>(Y.Shape(), X_ptr->Data<T>(), this->spatial_scale_,
-                     x_dims[0],  // batch
                      x_dims[2],  // height
                      x_dims[3],  // width
                      this->sampling_ratio_, rois_ptr->Data<T>(), num_roi_cols, Y.template MutableData<T>(), this->mode_, this->half_pixel_,
