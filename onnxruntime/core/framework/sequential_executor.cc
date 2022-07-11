@@ -140,15 +140,34 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
 
 class KernelScope;
 
+#ifdef CONCURRENCY_VISUALIZER
+std::string ComposeSeriesName(const GraphViewer& graph_viewer) {
+  char series_name[MaxSeriesNameLengthInChars] = "MainGraph";
+  if (graph_viewer.IsSubgraph()) {
+    auto s = graph_viewer.ParentNode()->Name().substr(0, MaxSeriesNameLengthInChars - 1);
+    std::copy(s.cbegin(), s.cend(), series_name);
+  }
+  return series_name;
+}
+#endif
+
 class SessionScope {
  public:
   friend class KernelScope;
   SessionScope(const SessionState& session_state, const ExecutionFrame& frame) : session_state_(session_state), frame_(frame)
+#ifdef CONCURRENCY_VISUALIZER
+                                                                                 ,
+                                                                                 series_(ComposeSeriesName(session_state.GetGraphViewer())
+#endif
 #ifdef ENABLE_NVTX_PROFILE
-                                                    ,
-                                                    session_tag_(profile::Context::GetInstance().GetThreadTagOrDefault(std::this_thread::get_id())),
-                                                    forward_range_("Batch-" + tag + " Forward", profile::Color::White),
-                                                    backward_range("Batch-" + tag + " Backward", profile::Color::Black)
+                                                                                 ,
+                                                                                 session_tag_(profile::Context::GetInstance().GetThreadTagOrDefault(std::this_thread::get_id())),
+                                                                                 forward_range_("Batch-" + tag + " Forward", profile::Color::White),
+                                                                                 backward_range("Batch-" + tag + " Backward", profile::Color::Black)
+#endif
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+                                                                                 ,
+                                                                                 dump_context_(session_state_.GetGraphExecutionCounter(), program_counter_)
 #endif
   {
     if (session_state_.Profiler().IsEnabled()) {
@@ -158,26 +177,12 @@ class SessionScope {
     auto& logger = session_state_.Logger();
     LOGS(logger, INFO) << "Begin execution";
     const SequentialExecutionPlan& seq_exec_plan = *session_state_.GetExecutionPlan();
+    const auto& exec_plan_vec = seq_exec_plan.execution_plan;
+    VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
 
 // Enable TRACE_EXECUTION compile flag to dump execution plan
 #if defined(TRACE_EXECUTION)
     std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
-#endif
-
-#ifdef CONCURRENCY_VISUALIZER
-    // need unique name for the series. number of nodes should be good enough for a subgraph
-    char series_name[MaxSeriesNameLengthInChars] = "MainGraph";
-    if (graph_viewer.IsSubgraph()) {
-      auto s = graph_viewer.ParentNode()->Name().substr(0, MaxSeriesNameLengthInChars - 1);
-      std::copy(s.cbegin(), s.cend(), series_name);
-    }
-
-    diagnostic::marker_series series(series_name);
-#endif
-
-#ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    size_t program_counter = 0;
-    utils::NodeDumpContext dump_context{session_state.GetGraphExecutionCounter(), program_counter};
 #endif
   }
 
@@ -223,12 +228,22 @@ class SessionScope {
   }
 private:
   const SessionState& session_state_;
- const ExecutionFrame& frame_;
+  const ExecutionFrame& frame_;
   TimePoint session_start_;
+
+#ifdef CONCURRENCY_VISUALIZER
+  diagnostic::marker_series series_;
+#endif
+
 #ifdef ENABLE_NVTX_PROFILE
   const std::string session_tag_;
   profile::NvtxRangeCreator forward_range_;
   profile::NvtxRangeCreator backward_range_;
+#endif
+
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+  size_t program_counter_{};
+  utils::NodeDumpContext dump_context_;
 #endif
 };
 
@@ -240,6 +255,10 @@ class KernelScope {
                                         session_state_(session_scope_.session_state_),
                                         kernel_context_(kernel_context),
                                         kernel_(kernel)
+#ifdef CONCURRENCY_VISUALIZER
+                                        ,
+                                        span_(session_scope_.series_, "%s.%d", kernel_.Node().OpType().c_str(), kernel_.Node().Index())
+#endif
 #ifdef ENABLE_NVTX_PROFILE
                                         ,
                                         node_compute_range_(MakeString(node.OpType(),
@@ -253,10 +272,12 @@ class KernelScope {
   {
 
 #ifdef CONCURRENCY_VISUALIZER
-    series.write_flag(node.Name().c_str());
+    session_scope_.series_.write_flag(node.Name().c_str());
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
+    profile::NvtxRangeCreator& forward_range = session_state_.forward_range_;
+    profile::NvtxRangeCreator& backward_range = session_state_.backward_range_;
     if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
       // Start timing forward pass when encountering the first forward node.
       forward_range.Begin();
@@ -268,52 +289,70 @@ class KernelScope {
     }
 #endif
 
-#ifdef CONCURRENCY_VISUALIZER
-    diagnostic::span span(series, "%s.%d", node.OpType().c_str(), node.Index());
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+    LARGE_INTEGER kernel_start;
+    QueryPerformanceCounter(&kernel_start);
 #endif
 
-    if (!session_state_.Profiler().IsEnabled()) {
-      return;
+ #ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    session_scope_.dump_context_.program_counter = program_counter_++;
+    utils::DumpNodeInputs(session_scope_.dump_context_, kernel_context_, kernel_.Node(), session_state_);
+#endif
+
+#ifdef ENABLE_NVTX_PROFILE
+    node_compute_range.Begin();
+#endif
+
+    if (session_state_.Profiler().IsEnabled()) {
+      auto& node = kernel.Node();
+      node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
+      auto& profiler = session_state_.Profiler();
+      auto sync_time_begin = profiler.Start();
+      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                     node_name_ + "_fence_before",
+                                     sync_time_begin,
+                                     {{"op_name", kernel_.KernelDef().OpName()}});
+      concurrency::ThreadPool::StartProfiling(session_state_.GetThreadPool());
+      VLOGS(session_state_.Logger(), 1) << "Computing kernel: " << node_name_;
+      kernel_begin_time_ = session_state_.Profiler().Start();
+      CalculateTotalInputSizes(&kernel_context, &kernel_,
+                               input_activation_sizes_, input_parameter_sizes_,
+                               node_name_, input_type_shape_);
     }
-    auto& node = kernel.Node();
-    node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
-    auto& profiler = session_state_.Profiler();
-    auto sync_time_begin = profiler.Start();
-    profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                   node_name_ + "_fence_before",
-                                   sync_time_begin,
-                                   {{"op_name", kernel_.KernelDef().OpName()}});
-    concurrency::ThreadPool::StartProfiling(session_state_.GetThreadPool());
-    VLOGS(session_state_.Logger(), 1) << "Computing kernel: " << node_name_;
-    kernel_begin_time_ = session_state_.Profiler().Start();
-    CalculateTotalInputSizes(&kernel_context, &kernel_,
-                             input_activation_sizes_, input_parameter_sizes_,
-                             node_name_, input_type_shape_);
   }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelScope);
 
   ~KernelScope() {
-    if (!session_state_.Profiler().IsEnabled()) {
-      return;
+#ifdef ENABLE_NVTX_PROFILE
+    node_compute_range_.End();
+#endif
+
+    if (session_state_.Profiler().IsEnabled()) {
+      auto& profiler = session_state_.Profiler();
+      CalculateTotalOutputSizes(&kernel_context_, total_output_sizes_, node_name_, output_type_shape_);
+      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                     node_name_ + "_kernel_time",
+                                     kernel_begin_time_,
+                                     // Log additional operation args / info.
+                                     {
+                                         {"op_name", kernel_.KernelDef().OpName()},
+                                         {"provider", kernel_.KernelDef().Provider()},
+                                         {"node_index", std::to_string(kernel_.Node().Index())},
+                                         {"activation_size", std::to_string(input_activation_sizes_)},
+                                         {"parameter_size", std::to_string(input_parameter_sizes_)},
+                                         {"output_size", std::to_string(total_output_sizes_)},
+                                         {"input_type_shape", input_type_shape_},
+                                         {"output_type_shape", output_type_shape_},
+                                         {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPool())},
+                                     });
+      auto sync_time_begin = profiler.Start();
+      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                     node_name_ + "_fence_after",
+                                     sync_time_begin,
+                                     {{"op_name", kernel_.KernelDef().OpName()}});
     }
-    auto& profiler = session_state_.Profiler();
-    CalculateTotalOutputSizes(&kernel_context_, total_output_sizes_, node_name_, output_type_shape_);
-    profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                   node_name_ + "_kernel_time",
-                                   kernel_begin_time_,
-                                   // Log additional operation args / info.
-                                   {
-                                       {"op_name", kernel_.KernelDef().OpName()},
-                                       {"provider", kernel_.KernelDef().Provider()},
-                                       {"node_index", std::to_string(kernel_.Node().Index())},
-                                       {"activation_size", std::to_string(input_activation_sizes_)},
-                                       {"parameter_size", std::to_string(input_parameter_sizes_)},
-                                       {"output_size", std::to_string(total_output_sizes_)},
-                                       {"input_type_shape", input_type_shape_},
-                                       {"output_type_shape", output_type_shape_},
-                                       {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPool())},
-                                   });
+
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
     LARGE_INTEGER kernel_stop;
     QueryPerformanceCounter(&kernel_stop);
@@ -327,13 +366,9 @@ class KernelScope {
                       TraceLoggingValue(p_op_kernel->KernelDef().OpName().c_str(), "op_name"),
                       TraceLoggingValue(elapsed.QuadPart, "time"));
 #endif
-    auto sync_time_begin = profiler.Start();
-    profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                   node_name_ + "_fence_after",
-                                   sync_time_begin,
-                                   {{"op_name", kernel_.KernelDef().OpName()}});
-#ifdef ENABLE_NVTX_PROFILE
-    node_compute_range_.End();
+
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    utils::DumpNodeOutputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
   }  //~KernelScope
 
@@ -350,6 +385,10 @@ class KernelScope {
   size_t total_output_sizes_{};
   std::string input_type_shape_{};
   std::string output_type_shape_{};
+
+#ifdef CONCURRENCY_VISUALIZER
+  diagnostic::span span_;
+#endif
 
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator node_compute_range_;
@@ -540,7 +579,7 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
         ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context));
       }
 #endif
-      auto status = p_kernel->Compute(&kernel_ctx);
+      status = p_kernel->Compute(&kernel_ctx);
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
