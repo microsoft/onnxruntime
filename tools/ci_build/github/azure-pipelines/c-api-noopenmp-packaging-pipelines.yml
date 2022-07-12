@@ -485,16 +485,16 @@ jobs:
     displayName: 'Create models link'
 
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 5.7.0
+    displayName: Use Nuget 6.2.1
     inputs:
-      versionSpec: 5.7.0
+      versionSpec: 6.2.1
 
   - task: PowerShell@2
     displayName: Install .NET 6 workloads
     inputs:
       targetType: 'inline'
       script: |
-        dotnet workload install android ios maccatalyst macos
+        dotnet workload install android ios macos
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
     
   - task: PowerShell@2

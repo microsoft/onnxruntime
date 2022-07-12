@@ -125,10 +125,14 @@ namespace Dml
         m_dmlRecorder.ResourceBarrier(barriers);
     }
 
-    void ExecutionContext::GetCommandListForRecording(ID3D12GraphicsCommandList** commandList)
+    void ExecutionContext::GetCommandListForRecordingAndInvalidateState(ID3D12GraphicsCommandList** commandList)
     {
         assert(!m_closed);
         SetCommandRecorder(&m_dmlRecorder);
+
+        // Ensure the descriptor heap is reset to D3D as something external may change it before recording
+        m_dmlRecorder.InvalidateDescriptorHeap();
+
         m_dmlRecorder.GetCommandList().CopyTo(commandList);
     }
 

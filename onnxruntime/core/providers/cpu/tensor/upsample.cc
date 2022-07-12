@@ -1173,7 +1173,6 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                            output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
         } else {
           if (use_extrapolation_) {
-#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
             if (!is_2D &&
                 (Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
                  Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
@@ -1183,17 +1182,13 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                   alloc, get_original_coordinate_,
                   output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
             } else {
-#endif
               NhwcUpsampleBilinear<T, true>(
                   batch_size, num_channels, input_height, input_width, output_height, output_width,
                   height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
                   alloc, get_original_coordinate_,
                   output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
-#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
             }
-#endif
           } else {
-#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
             if (!is_2D &&
                 (Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
                  Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
@@ -1203,15 +1198,12 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                   alloc, get_original_coordinate_,
                   output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
             } else {
-#endif
               NhwcUpsampleBilinear<T, false>(
                   batch_size, num_channels, input_height, input_width, output_height, output_width,
                   height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
                   alloc, get_original_coordinate_,
                   output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
-#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
             }
-#endif
           }
         }
         return Status::OK();

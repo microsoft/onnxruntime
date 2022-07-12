@@ -45,7 +45,7 @@ namespace Windows::AI::MachineLearning::Adapter
             IUnknown* data,
             bool isInternalOperator) = 0;
 
-        virtual void GetABIExecutionInterface(
+        virtual void GetABIExecutionInterfaceAndInvalidateState(
             bool isInternalOperator,
             IUnknown** abiExecutionObject) const = 0;
 
