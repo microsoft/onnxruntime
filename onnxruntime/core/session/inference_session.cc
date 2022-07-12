@@ -972,7 +972,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   if (execution_providers_.Get(kDmlExecutionProvider)) {
     ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph,
                                                          session_state.GetMutableFuncMgr(),
-                                                         layout_transformer::TransformLayoutForCompilingEP, mode));
+                                                         layout_transformer::TransformLayoutForEP, mode));
   }
 
   bool modified = false;
