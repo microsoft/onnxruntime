@@ -89,6 +89,7 @@ onx = onnx_linear_regression(lr.coef_.astype(np.float32), lr.intercept_.astype(n
 ########################################
 # Let's visualize it.
 
+
 def plot_dot(model):
     pydot_graph = GetPydotGraph(
         model.graph, name=model.graph.name, rankdir="TB", node_producer=GetOpNodeProducer("docstring")
@@ -352,6 +353,7 @@ class CustomTraining:
             by a heuristic proposed by Leon Bottou.
         * `"invscaling"`: `eta = eta0 / pow(t, power_t)`
     """
+
     def __init__(
         self,
         model_onnx,
@@ -483,6 +485,7 @@ print(before)
 
 #################################
 # Let's replace the initializer.
+
 
 def update_onnx_graph(model_onnx, new_weights):
     replace_weights = []
