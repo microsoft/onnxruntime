@@ -358,7 +358,7 @@ class ORTGen:
             # Torch kwargs -> ORT attributes
             attrs = {k: v for k, v in onnx_op.attributes.items() if v and v.value is not None}
             if len(attrs) > 0:
-                attrs_arg = "attrs"
+                attrs_arg = f"attrs_{onnx_op_index}"
                 writer.writeline()
                 writer.writeline(f"NodeAttributes {attrs_arg}({len(attrs)});")
 
