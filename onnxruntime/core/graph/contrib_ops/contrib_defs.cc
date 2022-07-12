@@ -1231,7 +1231,8 @@ activation and leaky_relu_alpha.)DOC")
                                     "C",
                                     "Input tensor C. "
                                     "The shape of C should be unidirectional broadcastable to (M, N).",
-                                    "T")
+                                    "T",
+                                    OpSchema::Optional)
                                 .Output(0, "Y", "Output tensor of shape (M, N).", "T")
                                 .TypeConstraint(
                                     "T",

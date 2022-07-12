@@ -98,7 +98,7 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToReference(cuda::provider_option_names::kCudnnConv1dPadToNc1d, info.cudnn_conv1d_pad_to_nc1d)
           .Parse(options));
 
-  CUDAExecutionProviderExternalAllocatorInfo alloc_info{alloc, free, empty_cache};
+  CUDAExecutionProviderExternalAllocatorInfo alloc_info{};
   info.external_allocator_info = alloc_info;
   return info;
 }
