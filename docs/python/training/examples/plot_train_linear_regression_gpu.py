@@ -26,8 +26,8 @@ with random coefficients.
 from pprint import pprint
 
 import numpy as np
-from onnx import helper, numpy_helper, TensorProto
-from onnx.tools.net_drawer import GetPydotGraph, GetOpNodeProducer
+from onnx import TensorProto, helper, numpy_helper
+from onnx.tools.net_drawer import GetOpNodeProducer, GetPydotGraph
 from pandas import DataFrame
 from pyquickhelper.helpgen.graphviz_helper import plot_graphviz
 from sklearn.datasets import make_regression

@@ -6,8 +6,9 @@
 # Configuration file for the Sphinx documentation builder.
 
 import os
-import sys
 import shutil
+import sys
+
 import onnxruntime
 
 # -- Project information -----------------------------------------------------
