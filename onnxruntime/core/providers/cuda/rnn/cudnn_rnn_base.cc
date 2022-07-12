@@ -301,6 +301,43 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     CudnnDataTensor y_desc1;
     ORT_RETURN_IF_ERROR(y_desc1.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, hidden_size_ * num_directions_, seq_len_array.data()));
 
+#if 1
+    // TODO: Do we ever want to use CUDNN_FWD_MODE_TRAINING?
+    cudnnForwardMode_t mode = CUDNN_FWD_MODE_INFERENCE;
+
+    // TODO: Do this once above vs calling cudnnGetRNNWorkspaceSize
+    size_t workspace_bytes2;
+    size_t reservespace_bytes;
+    CUDNN_RETURN_IF_ERROR(cudnnGetRNNTempSpaceSizes(CudnnHandle(), rnn_desc, mode, x_desc1, &workspace_bytes2, &reservespace_bytes));
+    auto reservespace_cuda = GetScratchBuffer<void>(reservespace_bytes);
+    if (workspace_bytes != workspace_bytes2) {
+      workspace_bytes = workspace_bytes2;
+      workspace_cuda = GetScratchBuffer<void>(workspace_bytes);
+    }
+
+    size_t weightspace_bytes;
+    CUDNN_RETURN_IF_ERROR(cudnnGetFilterSizeInBytes(weight_cached_ ? w_desc_cache_ : w_desc, &weightspace_bytes));
+
+    CUDNN_RETURN_IF_ERROR(cudnnRNNForward(CudnnHandle(),
+      rnn_desc,
+      mode,
+      seq_len_array.data(),
+      x_desc1,
+      x_data_input,
+      y_desc1,
+      y_data,
+      hx_desc,
+      hx_data, y_h_data,
+      cx_desc,
+      cx_data,
+      y_c_data,
+      weightspace_bytes,
+      weight_cached_ ? w_data_cache_.get() : w_data.get(),
+      workspace_bytes,
+      workspace_cuda.get(),
+      reservespace_bytes,
+      reservespace_cuda.get())); 
+#else
     CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInferenceEx(CudnnHandle(),
                                                      rnn_desc,
                                                      x_desc1,
@@ -317,10 +354,11 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                      y_h_data,
                                                      y_c_desc,
                                                      y_c_data,
-                                                     nullptr, nullptr, nullptr, nullptr,
-                                                     nullptr, nullptr, nullptr, nullptr,
+                                                     nullptr /*kDesc*/, nullptr /*keys*/, nullptr /*cDesc*/, nullptr /*cAttn*/,
+                                                     nullptr /*iDesc*/, nullptr /*iAttn*/, nullptr /*qDesc*/, nullptr /*queries*/,
                                                      workspace_cuda.get(),
                                                      workspace_bytes));
+#endif
 
     // Early terminate for this case since Y data is not required, and Y_h is obtained correctly, no need the following code to retrive Y_h from Y data.
     if (nullptr == Y) {
