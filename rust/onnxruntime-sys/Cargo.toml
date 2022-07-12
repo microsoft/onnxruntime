@@ -1,0 +1,43 @@
+[package]
+authors = ["Nicolas Bigaouette <nbigaouette@elementai.com>"]
+edition = "2018"
+name = "onnxruntime-sys"
+version = "0.0.14"
+
+links = "onnxruntime"
+
+description = "Unsafe wrapper around Microsoft's ONNX Runtime"
+documentation = "https://docs.rs/onnxruntime-sys"
+homepage = "https://github.com/microsoft/onnxruntime"
+license = "MIT OR Apache-2.0"
+readme = "../README.md"
+repository = "https://github.com/microsoft/onnxruntime"
+
+categories = ["science"]
+keywords = ["neuralnetworks", "onnx", "bindings"]
+
+[dependencies]
+
+[build-dependencies]
+bindgen = { version = "0.60", optional = true }
+ureq = "2.1"
+
+# Used on Windows
+zip = "0.5"
+
+# Used on unix
+flate2 = "1.0"
+tar = "0.4"
+
+[features]
+default = []
+
+# Disable build script, used to prevent issues with docs.rs
+disable-sys-build-script = []
+# Use bindgen to generate bindings in build.rs
+generate-bindings = ["bindgen"]
+
+[package.metadata.docs.rs]
+# Disable the build.rs on https://docs.rs since it can cause
+# issue there and it's not needed.
+features = ["disable-sys-build-script"]
