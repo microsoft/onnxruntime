@@ -39,47 +39,49 @@ VulkanInstance::VulkanInstance() {
       nullptr,
   };
 
-  VK_CALL(vkCreateInstance(&instanceCreateInfo, nullptr, &vulkan_instance));
+  VK_CALL(vkCreateInstance(&instanceCreateInfo, nullptr, &vulkan_instance_));
 }
 
 VulkanInstance::~VulkanInstance() {
-  if (VK_NULL_HANDLE != vulkan_instance) {
-    vkDestroyInstance(vulkan_instance, nullptr);
-    vulkan_instance = VK_NULL_HANDLE;
+  if (VK_NULL_HANDLE != vulkan_instance_) {
+    vkDestroyInstance(vulkan_instance_, nullptr);
+    vulkan_instance_ = VK_NULL_HANDLE;
   }
 }
 
 VkInstance VulkanInstance::Get() const {
-  return vulkan_instance;
+  return vulkan_instance_;
 }
 
 VulkanExecutionProvider::VulkanExecutionProvider() : IExecutionProvider{onnxruntime::kVulkanExecutionProvider} {
-  vulkan_instance = std::make_shared<VulkanInstance>();
+  vulkan_instance_ = std::make_shared<VulkanInstance>();
 
   // Look for physical devices that Vulkan can be used against
   // and ensure that it can perform compute (i.e.) it has a compute queue family
 
   uint32_t device_count = 0;
-  VK_CALL(vkEnumeratePhysicalDevices(vulkan_instance->Get(), &device_count, nullptr));
+  VK_CALL(vkEnumeratePhysicalDevices(vulkan_instance_->Get(), &device_count, nullptr));
 
   if (device_count == 0) {
     ORT_THROW("No Vulkan compatible device found");
   }
 
   VkPhysicalDevice vulkan_physical_devices[1] = {nullptr};
-  VK_CALL(vkEnumeratePhysicalDevices(vulkan_instance->Get(), &device_count, vulkan_physical_devices));
+  VK_CALL(vkEnumeratePhysicalDevices(vulkan_instance_->Get(), &device_count, vulkan_physical_devices));
 
   if (vulkan_physical_devices[0] != nullptr) {
-    ORT_THROW("Received nullptr for BVulkan Physical device");
+    ORT_THROW("Received nullptr for Vulkan Physical device");
   }
 
-  vulkan_physical_device = vulkan_physical_devices[0];
+  // TODO: Should the device id be made configurable ?
+  // Currently, we are picking the first one returned back in the enumeration
+  vulkan_physical_device_ = vulkan_physical_devices[0];
 
   // Poll the physical device to see if it contains a compute queue family
   uint32_t total_queue_families = 0;
   uint32_t queueFamilyIndex = 0;
 
-  VK_CALL_RETURNS_VOID(vkGetPhysicalDeviceQueueFamilyProperties(vulkan_physical_device, &total_queue_families, nullptr));
+  VK_CALL_RETURNS_VOID(vkGetPhysicalDeviceQueueFamilyProperties(vulkan_physical_device_, &total_queue_families, nullptr));
 
   if (total_queue_families == 0) {
     ORT_THROW("No queue families on the device at all !");
@@ -87,15 +89,15 @@ VulkanExecutionProvider::VulkanExecutionProvider() : IExecutionProvider{onnxrunt
 
   std::vector<VkQueueFamilyProperties> queue_family_properties(total_queue_families);
 
-  VK_CALL_RETURNS_VOID(vkGetPhysicalDeviceQueueFamilyProperties(vulkan_physical_device, &total_queue_families, queue_family_properties.data()));
+  VK_CALL_RETURNS_VOID(vkGetPhysicalDeviceQueueFamilyProperties(vulkan_physical_device_, &total_queue_families, queue_family_properties.data()));
 
-  for (vulkan_queue_family_index = 0; vulkan_queue_family_index < total_queue_families; vulkan_queue_family_index++) {
-    if (queue_family_properties[vulkan_queue_family_index].queueFlags & VK_QUEUE_COMPUTE_BIT) {
+  for (vulkan_queue_family_index_ = 0; vulkan_queue_family_index_ < total_queue_families; vulkan_queue_family_index_++) {
+    if (queue_family_properties[vulkan_queue_family_index_].queueFlags & VK_QUEUE_COMPUTE_BIT) {
       break;
     }
   }
 
-  if (vulkan_queue_family_index == total_queue_families) {
+  if (vulkan_queue_family_index_ == total_queue_families) {
     ORT_THROW("The Vulkan device does not have a compute queue family !");
   }
 
@@ -109,7 +111,7 @@ VulkanExecutionProvider::VulkanExecutionProvider() : IExecutionProvider{onnxrunt
       VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
       nullptr,
       0,
-      vulkan_queue_family_index,
+      vulkan_queue_family_index_,
       1,
       queue_priorities,
   };
@@ -133,23 +135,23 @@ VulkanExecutionProvider::VulkanExecutionProvider() : IExecutionProvider{onnxrunt
       &vulkan_device_features,
   };
 
-  VK_CALL(vkCreateDevice(vulkan_physical_device, &vulkan_device_creation_info,
-                         nullptr, &vulkan_logical_device));
-  VK_CALL_RETURNS_VOID(vkGetPhysicalDeviceProperties(vulkan_physical_device, &vulkan_device_properties));
-  VK_CALL_RETURNS_VOID(vkGetPhysicalDeviceMemoryProperties(vulkan_physical_device, &vulkan_device_memory_properties));
-  VK_CALL_RETURNS_VOID(vkGetDeviceQueue(vulkan_logical_device, vulkan_queue_family_index, 0, &vulkan_queue));
+  VK_CALL(vkCreateDevice(vulkan_physical_device_, &vulkan_device_creation_info,
+                         nullptr, &vulkan_logical_device_));
+  VK_CALL_RETURNS_VOID(vkGetPhysicalDeviceProperties(vulkan_physical_device_, &vulkan_device_properties_));
+  VK_CALL_RETURNS_VOID(vkGetPhysicalDeviceMemoryProperties(vulkan_physical_device_, &vulkan_device_memory_properties_));
+  VK_CALL_RETURNS_VOID(vkGetDeviceQueue(vulkan_logical_device_, vulkan_queue_family_index_, 0, &vulkan_queue_));
 }
 
 VulkanExecutionProvider::~VulkanExecutionProvider() {
   // NOTES:
   // Physical device is implicitly destroyed when the vulkan instance is destroyed
-  //  finally, so there is nothing to add here wrt to that
+  // finally, so there is nothing to add here wrt to that
 
   // Device queues are implicitly destroyed when logical device is destroyed
 
-  if (VK_NULL_HANDLE != vulkan_logical_device) {
-    vkDestroyDevice(vulkan_logical_device, nullptr);
-    vulkan_logical_device = VK_NULL_HANDLE;
+  if (VK_NULL_HANDLE != vulkan_logical_device_) {
+    vkDestroyDevice(vulkan_logical_device_, nullptr);
+    vulkan_logical_device_ = VK_NULL_HANDLE;
   }
 }
 
