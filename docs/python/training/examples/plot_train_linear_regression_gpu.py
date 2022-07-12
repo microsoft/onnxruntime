@@ -24,22 +24,18 @@ It creates a graph to train a linear regression initialized
 with random coefficients.
 """
 from pprint import pprint
+
 import numpy as np
-from pandas import DataFrame
 from onnx import helper, numpy_helper, TensorProto
 from onnx.tools.net_drawer import GetPydotGraph, GetOpNodeProducer
-from onnxruntime import (
-    __version__ as ort_version,
-    get_device,
-    OrtValue,
-    TrainingParameters,
-    SessionOptions,
-    TrainingSession,
-)
-import matplotlib.pyplot as plt
+from pandas import DataFrame
 from pyquickhelper.helpgen.graphviz_helper import plot_graphviz
 from sklearn.datasets import make_regression
 from sklearn.model_selection import train_test_split
+
+from onnxruntime import OrtValue, SessionOptions, TrainingParameters, TrainingSession
+from onnxruntime import __version__ as ort_version
+from onnxruntime import get_device
 
 X, y = make_regression(n_features=2, bias=2)
 X = X.astype(np.float32)
