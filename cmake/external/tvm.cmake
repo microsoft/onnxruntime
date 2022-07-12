@@ -12,7 +12,7 @@ if (onnxruntime_USE_TVM)
     FetchContent_Populate(tvm)
     if (WIN32)
       execute_process(
-        COMMAND ${CMAKE_COMMAND} -E create_symlink ${tvm_BINARY_DIR}/Release ${tvm_SOURCE_DIR}/build
+        COMMAND ${CMAKE_COMMAND} -E create_symlink ${tvm_BINARY_DIR}/${CMAKE_BUILD_TYPE} ${tvm_SOURCE_DIR}/build
       )
     else()
       file(CREATE_LINK ${tvm_BINARY_DIR} ${tvm_SOURCE_DIR}/build SYMBOLIC)
