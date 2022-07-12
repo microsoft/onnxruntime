@@ -36,7 +36,6 @@ from pyquickhelper.helpgen.graphviz_helper import plot_graphviz
 from sklearn.datasets import make_regression
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
-from tqdm import tqdm
 
 X, y = make_regression(n_features=2, bias=2)
 X = X.astype(np.float32)
@@ -95,7 +94,8 @@ def plot_dot(model):
         model.graph, name=model.graph.name, rankdir="TB", node_producer=GetOpNodeProducer("docstring")
     )
     return plot_graphviz(pydot_graph.to_string())
-    
+
+
 plot_dot(onx)
 
 ###################################
@@ -165,6 +165,7 @@ def onnx_linear_regression_training(coefs, intercept):
         opset_imports=[helper.make_operatorsetid("", 14)],
     )
     return model_def
+
 
 #######################################
 # We create a graph with random coefficients.
@@ -260,7 +261,6 @@ def create_training_session(
     ort_parameters.loss_output_name = loss_output_name
     ort_parameters.use_mixed_precision = False
 
-
     output_types = {}
     for output in training_onnx.graph.output:
         output_types[output.name] = output.type.tensor_type
@@ -351,7 +351,6 @@ class CustomTraining:
         * `"optimal"`: `eta = 1.0 / (alpha * (t + t0))` where *t0* is chosen
             by a heuristic proposed by Leon Bottou.
         * `"invscaling"`: `eta = eta0 / pow(t, power_t)`
-    :param verbose: use :epkg:`tqdm` to display the training progress
     """
     def __init__(
         self,
@@ -418,11 +417,8 @@ class CustomTraining:
         self.output_names_ = [o.name for o in self.train_session_.get_outputs()]
         self.loss_index_ = self.output_names_.index(self.loss_output_name)
 
-        loop = (
-            tqdm(range(self.max_iter))
-            if self.verbose else range(self.max_iter))
         train_losses = []
-        for it in loop:
+        for it in range(self.max_iter):
             loss = self._iteration(data_loader, lr)
             lr = self._update_learning_rate(it, lr)
             if self.verbose > 1:
@@ -449,6 +445,7 @@ class CustomTraining:
             res = self.train_session_.run(None, inputs)
             actual_losses.append(res[self.loss_index_])
         return np.array(actual_losses).mean()
+
 
 ###########################################
 # Let's now train the model in a very similar way

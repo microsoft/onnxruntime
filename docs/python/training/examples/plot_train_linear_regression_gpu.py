@@ -30,7 +30,8 @@ from onnx import helper, numpy_helper, TensorProto
 from onnx.tools.net_drawer import GetPydotGraph, GetOpNodeProducer
 from onnxruntime import (
     __version__ as ort_version,
-    get_device, OrtValue,
+    get_device,
+    OrtValue,
     TrainingParameters,
     SessionOptions,
     TrainingSession,
@@ -39,7 +40,6 @@ import matplotlib.pyplot as plt
 from pyquickhelper.helpgen.graphviz_helper import plot_graphviz
 from sklearn.datasets import make_regression
 from sklearn.model_selection import train_test_split
-from tqdm import tqdm
 
 X, y = make_regression(n_features=2, bias=2)
 X = X.astype(np.float32)
@@ -328,7 +328,6 @@ class CustomTraining:
         * `"invscaling"`: `eta = eta0 / pow(t, power_t)`
     :param device: `"cpu"` or `"cuda"`
     :param device_idx: device index
-    :param verbose: use :epkg:`tqdm` to display the training progress
     """
 
     def __init__(
@@ -451,6 +450,7 @@ class CustomTraining:
             actual_losses.append(outputs[self.loss_index_])
         return np.array(actual_losses).mean()
 
+
 ###########################################
 # Let's now train the model in a very similar way
 # that it would be done with *scikit-learn*.
@@ -467,4 +467,3 @@ df.set_index("iteration").plot(title="Training loss", logy=True)
 # The final coefficients.
 
 print("onnxruntime", trainer.trained_coef_)
-
