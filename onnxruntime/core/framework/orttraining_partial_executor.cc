@@ -22,7 +22,7 @@
 #ifdef ENABLE_NVTX_PROFILE
 // This header is for profile using Nvidia's visual profilier.
 #include "core/providers/cuda/nvtx_profile.h"
-#include "core/profile/context.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 #endif
 
 // #define TRACE_EXECUTION
@@ -157,7 +157,6 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 
 // Enable TRACE_EXECUTION compile flag to dump execution plan
 #if defined(TRACE_EXECUTION)
-  std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
 #endif
 
   const auto& graph_viewer = session_state.GetGraphViewer();
@@ -185,9 +184,8 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::NodeDumpContext dump_context { session_state.GetGraphExecutionCounter(), 0 };
+  utils::NodeDumpContext dump_context{session_state.GetGraphExecutionCounter(), 0};
 #endif
-
 
   for (size_t program_counter = state_.GetProgramCounterStart();
        program_counter < state_.GetProgramCounterEnd();
@@ -292,7 +290,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
       }
     }
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    dump_context.program_counter = program_counter; 
+    dump_context.program_counter = program_counter;
     utils::DumpNodeInputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
@@ -355,11 +353,14 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
       std::ostringstream ss;
       ss << "Non-zero status code returned while running " << node.OpType() << " node. Name:'" << node.Name()
          << "' Status Message: " << compute_status.ErrorMessage();
-//If the computation failed, we still can record the memory consumption
+// If the computation failed, we still can record the memory consumption
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-      MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                                  MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(),
-                                                  MemoryInfo::MapType::DynamicActivation, "", 0);
+      if (partial_graph_index_ == 1) {
+        // Only record memory consumption after backward partial graph execution.
+        MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
+                                                    MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(),
+                                                    MemoryInfo::MapType::DynamicActivation, "", 0);
+      }
 #endif
       const auto msg_string = ss.str();
       LOGS(logger, ERROR) << msg_string;
@@ -449,7 +450,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     utils::DumpNodeOutputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
-    // free ml-values corresponding to this node
+    // Free ml-values corresponding to this node
     VLOGS(logger, 1) << "Releasing node ML values.";
     ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
   }
@@ -477,28 +478,28 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
   VLOGS(logger, 1) << "Done with execution.";
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                              MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(),
-                                              MemoryInfo::MapType::DynamicActivation, "", 0);
-  MemoryInfo::MemoryInfoProfile::Clear();
+  if (partial_graph_index_ == 1) {
+    // Only record memory consumption after backward partial graph execution.
+    MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
+                                                MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(),
+                                                MemoryInfo::MapType::DynamicActivation, "", 0);
+    MemoryInfo::MemoryInfoProfile::Clear();
+  }
 #endif
 
   if (frame.HasMemoryPatternPlanner()) {
-    std::vector<std::reference_wrapper<const TensorShape>> input_shapes;
     bool all_tensors = true;
     for (const auto& feed : feeds) {
       if (!(feed.IsTensor())) {
         all_tensors = false;
         break;
       }
-      auto& tensor = feed.Get<Tensor>();
-      input_shapes.push_back(std::cref(tensor.Shape()));
     }
 
     if (all_tensors) {
-      auto mem_patterns = std::make_unique<MemoryPatternGroup>();
-      ORT_RETURN_IF_ERROR(frame.GeneratePatterns(mem_patterns.get()));
-      ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(input_shapes, std::move(mem_patterns)));
+      MemoryPatternGroup mem_patterns;
+      ORT_RETURN_IF_ERROR(frame.GeneratePatterns(mem_patterns));
+      ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(feeds, std::move(mem_patterns)));
     }
   }
 

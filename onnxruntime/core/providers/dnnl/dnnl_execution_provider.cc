@@ -10,7 +10,9 @@
 #include "dnnl_execution_provider.h"
 #include "dnnl_fwd.h"
 #include "dnnl_node_capability.h"
+#include "core/providers/dnnl/subgraph/dnnl_subgraph_transformer.h"
 
+#include <iomanip>
 #include <fstream>
 #include "gsl/gsl"
 #define ORT_API_MANUAL_INIT
@@ -49,6 +51,11 @@ DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& in
   if (!debug_log_env.empty()) {
     debug_log_ = (std::stoi(debug_log_env) == 0 ? false : true);
   }
+
+  const std::string fusion_env = onnxruntime::GetEnvironmentVar("ORT_DNNL_ENABLE_FUSION");
+  if (!fusion_env.empty()) {
+    enable_fusion_ = (std::stoi(fusion_env) == 0 ? false : true);
+  }
 }  // namespace onnxruntime
 
 DNNLExecutionProvider::~DNNLExecutionProvider() {
@@ -57,6 +64,10 @@ DNNLExecutionProvider::~DNNLExecutionProvider() {
 std::vector<std::vector<NodeIndex>> DNNLExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer) const {
   std::vector<std::vector<size_t>> supported_node_vecs;
   std::vector<size_t> supported_node_vec;
+  
+  std::unordered_map<std::string,int> all_nodes_count;
+  std::unordered_map<std::string,int> supported_nodes_count;
+
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     auto node_idx = node_indices[i];
@@ -64,7 +75,14 @@ std::vector<std::vector<NodeIndex>> DNNLExecutionProvider::GetSupportedNodes(con
 
     bool supported = opManager_.IsNodeSupported(node, graph_viewer);
 
-    if (debug_log_) {
+    //update count
+    if(debug_log_){
+      auto node_optype_ver = node->OpType() + "_" + std::to_string(node->SinceVersion());
+      all_nodes_count[node_optype_ver]++;
+      if (supported) {
+        supported_nodes_count[node_optype_ver]++;
+      }
+
       LOGS_DEFAULT(ERROR) << "Operator type: [" << node->OpType()
                           << "] index: [" << node_idx
                           << "] name: [" << node->Name()
@@ -86,34 +104,24 @@ std::vector<std::vector<NodeIndex>> DNNLExecutionProvider::GetSupportedNodes(con
     supported_node_vecs.push_back(supported_node_vec);
   }
 
+  //collect statistics and report
+  if (debug_log_) {
+    int all_counts = 0;
+    int support_counts = 0;
+    for(auto e: all_nodes_count){
+      auto optype_ver = e.first;
+      auto all_count = e.second;
+      auto support_count = supported_nodes_count[optype_ver];
+      all_counts += all_count;
+      support_counts += support_count;
+      LOGS_DEFAULT(ERROR) << "Operator type: [" << optype_ver << "] coverage: " << support_count << ":" << all_count << " percentage: " << (float)support_count / (float)all_count;
+    }
+    LOGS_DEFAULT(ERROR) << "Total coverge: " << support_counts << ":" << all_counts
+                          << " percentage: " << (float)support_counts / (float)all_counts;
+  }
+  
+
   return supported_node_vecs;
-}
-
-void ToGraphProtoInternal(const GraphViewer& graph, ONNX_NAMESPACE::GraphProto& graph_proto) {
-  for (const auto* input_arg : graph.GetInputs()) {
-    *(graph_proto.mutable_input()->Add()) = input_arg->ToProto();
-  }
-
-  // Add all graph's initializers to the subgraph
-  const auto& init_tensors = graph.GetAllInitializedTensors();
-  for (const auto& tensor : init_tensors) {
-    *(graph_proto.mutable_initializer()->Add()) = *(tensor.second);
-  }
-
-  for (const auto* output_arg : graph.GetOutputs()) {
-    *(graph_proto.mutable_output()->Add()) = output_arg->ToProto();
-  }
-
-  for (const auto* value_info : graph.GetValueInfo()) {
-    *(graph_proto.mutable_value_info()->Add()) = value_info->ToProto();
-  }
-
-  // Nodes must be sorted in Topological Order in the GraphProto per ONNX spec.
-  for (auto& node_idx : graph.GetNodesInTopologicalOrder()) {
-    const gsl::not_null<ONNX_NAMESPACE::NodeProto*> node_proto{graph_proto.add_node()};
-    const gsl::not_null<const Node*> p_node{graph.GetNode(node_idx)};
-    p_node->ToProto(*node_proto);
-  }
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapability(
@@ -165,6 +173,9 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
 
       for (const auto* input : node->InputDefs()) {
         // if the node input was not produced by this subgraph, add it to the subgraph inputs.
+        if (!input->Exists()) {
+          continue;
+        }
         if (node_outputs.count(input) == 0) {
           if (subgraph_inputs.count(input) == 0) {
             subgraph_inputs.insert(input);
@@ -175,6 +186,9 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
 
       const auto& output_defs = node->OutputDefs();
       for (const auto* output_def : output_defs) {
+        if (!output_def->Exists()) {
+          continue;
+        }
         node_outputs.insert(output_def);
         // if output is overall graph output we need to produce it.
         if (graph_outputs.count(output_def) != 0) {
@@ -195,7 +209,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
     }
 
     // Assign inputs and outputs to subgraph's meta_def
-    uint64_t model_hash;
+    HashValue model_hash;
     int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
     auto meta_def = ::onnxruntime::IndexedSubGraph_MetaDef::Create();
     meta_def->name() = "DNNL_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
@@ -217,18 +231,20 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
   }
 
   if (debug_log_) {
+    float percent_dnnl = 100.0f * (static_cast<float>(num_of_supported_nodes) / static_cast<float>(graph_viewer.NumberOfNodes()));
     LOGS_DEFAULT(ERROR) << "DNNLExecutionProvider::GetCapability,"
                         << " number of partitions supported by DNNL: " << result.size()
                         << " number of nodes in the graph: " << graph_viewer.NumberOfNodes()
-                        << " number of nodes supported by DNNL: " << num_of_supported_nodes;
+                        << " number of nodes supported by DNNL: " << num_of_supported_nodes
+                        << std::fixed << std::setprecision(2) << " (" << percent_dnnl << "%)";
   }
 
   if (dump_subgraphs_) {
     auto model = graph_viewer.CreateModel(*GetLogger());
     auto model_proto = model->ToProto();
-    ToGraphProtoInternal(graph_viewer, *model_proto->mutable_graph());
+    graph_viewer.ToProto(*model_proto->mutable_graph(), false, true);
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-    uint64_t model_hash;
+    HashValue model_hash;
     int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
     std::fstream dump("DNNL_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id) + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
     model_proto->SerializeToOstream(dump);
@@ -237,34 +253,34 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
   return result;
 }
 
-Status DNNLExecutionProvider::Compile(const std::vector<Node*>& fused_nodes,
+Status DNNLExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                       std::vector<NodeComputeInfo>& node_compute_funcs) {
   //follow from coreml ep's Compile
-  for (const auto* fused_node : fused_nodes) {
-    const auto* func_body = fused_node->GetFunctionBody();
-    if (!func_body) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
-    }
-    const Graph& graph_body = func_body->Body();
-    auto graph_body_viewer = graph_body.CreateGraphViewer();
-
+  for (auto& fused_node_graph : fused_nodes_and_graphs) {
+    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+    const Node& fused_node = fused_node_graph.fused_node;
     if (dump_subgraphs_) {
-      auto model = graph_body_viewer->CreateModel(*GetLogger());
+      auto model = graph_body_viewer.CreateModel(*GetLogger());
       auto model_proto = model->ToProto();
-      *model_proto->mutable_graph() = *graph_body.ToGraphProto();
+      graph_body_viewer.ToProto(*model_proto->mutable_graph(), false, true);
       model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-      std::fstream dump(fused_node->Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+      std::fstream dump(fused_node.Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
       model_proto->SerializeToOstream(dump);
     }
 
     //subgraph
-    auto dnnl_subgraph = std::make_unique<ort_dnnl::DnnlSubgraph>(ort_dnnl::DnnlSubgraph(*graph_body_viewer.get()));
-    subgraphs_.emplace(fused_node->Name(), std::move(dnnl_subgraph));
+    auto dnnl_subgraph = std::make_unique<ort_dnnl::DnnlSubgraph>(ort_dnnl::DnnlSubgraph(graph_body_viewer));
+    subgraphs_.emplace(fused_node.Name(), std::move(dnnl_subgraph));
+
+    //apply transformation to subgraph
+    if (enable_fusion_) {
+      ort_dnnl::DnnlGraphTransformer().Apply(*subgraphs_[fused_node.Name()].get(), graph_body_viewer);
+    }
 
     //subgraph primitive
-    auto dnnl_subgraph_primitive = std::make_unique<ort_dnnl::DnnlSubgraphPrimitive>(*subgraphs_[fused_node->Name()].get());
+    auto dnnl_subgraph_primitive = std::make_unique<ort_dnnl::DnnlSubgraphPrimitive>(*subgraphs_[fused_node.Name()].get());
     {
-      const auto& input_defs = fused_node->InputDefs();
+      const auto& input_defs = fused_node.InputDefs();
       std::vector<std::string> onnx_input_names(input_defs.size());
       for (size_t i = 0, end = input_defs.size(); i < end; ++i) {
         onnx_input_names[i] = input_defs[i]->Name();
@@ -272,7 +288,7 @@ Status DNNLExecutionProvider::Compile(const std::vector<Node*>& fused_nodes,
       dnnl_subgraph_primitive->SetOrderedInputs(std::move(onnx_input_names));
     }
     {
-      const auto& output_defs = fused_node->OutputDefs();
+      const auto& output_defs = fused_node.OutputDefs();
       std::vector<std::string> onnx_output_names(output_defs.size());
       for (size_t i = 0, end = output_defs.size(); i < end; ++i) {
         onnx_output_names[i] = output_defs[i]->Name();
@@ -280,7 +296,7 @@ Status DNNLExecutionProvider::Compile(const std::vector<Node*>& fused_nodes,
       dnnl_subgraph_primitive->SetOrderedOutputs(std::move(onnx_output_names));
     }
 
-    subgraph_primitives_.emplace(fused_node->Name(), std::move(dnnl_subgraph_primitive));
+    subgraph_primitives_.emplace(fused_node.Name(), std::move(dnnl_subgraph_primitive));
 
     NodeComputeInfo compute_info;
 
@@ -330,6 +346,11 @@ Status DNNLExecutionProvider::Compile(const std::vector<Node*>& fused_nodes,
           auto output_name = subgraph_primitive->GetOrderedOutputs()[i];
           auto output_md = subgraph_primitive->GetOutputInfo(output_name);
           auto output_shape = output_md.dims();
+          //if an output is a scaler, onednn internally uses tensor representation (eg, (1,1,...))
+          //but allocating an output with no shape instead of the equivalent tensorshape to avoid shape mismatch
+          if (subgraph_primitive->IsScalarOutput(output_name)) {
+            output_shape.clear();
+          }
           auto* output_tensor =
               ort.KernelContext_GetOutput(context, i, output_shape.data(), output_shape.size());
           auto* tensor_info = ort.GetTensorTypeAndShape(output_tensor);

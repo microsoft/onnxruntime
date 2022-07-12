@@ -20,7 +20,7 @@ class TestEP : public IExecutionProvider {
  public:
   TestEP() : IExecutionProvider{kEPType, true} {}
 
-  int GetId(const GraphViewer& viewer, uint64_t& model_hash) {
+  int GetId(const GraphViewer& viewer, HashValue& model_hash) {
     return GenerateMetaDefId(viewer, model_hash);
   }
 };
@@ -36,13 +36,13 @@ TEST(ExecutionProviderTest, MetadefIdGeneratorUsingModelPath) {
     GraphViewer viewer(graph);
 
     // check for stable non-zero model_hash, and incrementing id.
-    uint64_t model_hash;
+    HashValue model_hash;
     int id = ep.GetId(viewer, model_hash);
     ASSERT_EQ(id, 0);
     ASSERT_NE(model_hash, 0);
 
     for (int i = 1; i < 4; ++i) {
-      uint64_t cur_model_hash;
+      HashValue cur_model_hash;
       int cur_id = ep.GetId(viewer, cur_model_hash);
       ASSERT_EQ(cur_id, i);
       ASSERT_EQ(cur_model_hash, model_hash);
@@ -67,7 +67,7 @@ TEST(ExecutionProviderTest, MetadefIdGeneratorUsingModelHashing) {
   GraphViewer viewer(graph);
 
   // get the hash for the model when loaded from file
-  uint64_t model_hash;
+  HashValue model_hash;
   int id = ep.GetId(viewer, model_hash);
   ASSERT_EQ(id, 0);
   ASSERT_NE(model_hash, 0);
@@ -84,7 +84,7 @@ TEST(ExecutionProviderTest, MetadefIdGeneratorUsingModelHashing) {
   Graph& graph2 = model2->MainGraph();
   GraphViewer viewer2(graph2);
 
-  uint64_t model_hash2;
+  HashValue model_hash2;
   int id2 = ep.GetId(viewer2, model_hash2);
   ASSERT_EQ(id2, 0) << "Id for new model should always start at zero";
   ASSERT_NE(model_hash, model_hash2) << "Hash from model path should differ from hash based on model contents";

@@ -3,7 +3,10 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import warnings
+
 from ._modifier_registry import OptimizerModifierTypeRegistry
+
 
 def FP16_Optimizer(optimizer, **kwargs):
     """
@@ -53,6 +56,22 @@ def FP16_Optimizer(optimizer, **kwargs):
         >>>                                    get_tensor_model_parallel_rank=mpu.get_model_parallel_rank,
         >>>                                    get_tensor_model_parallel_group=mpu.get_model_parallel_group)
 
+        3. APEX AMP Override:
+
+        >>> from onnxruntime.training.optim.fp16_optimizer import FP16_Optimizer as ORT_FP16_Optimizer
+        >>> optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
+
+        >>> model, optimizer = amp.initialize(model, optimizer, opt_level="O2")
+        >>> optimizer = ORT_FP16_Optimizer(optimizer)
+        >>>
+        >>> # Wrap model with ORTModule tricks
+        >>> def patch_new_fwd(old_new_fwd):
+        >>>     def new_new_fwd(self, *args, **kwargs):
+        >>>         return old_new_fwd(*args, **kwargs)
+        >>>     return new_new_fwd
+
+        >>> model.forward = types.MethodType(patch_new_fwd(model.forward), model)
+        >>> model = ORTModule(model)
     Args:
         optimizer: the FP16_Optimizer instance
 
@@ -60,15 +79,20 @@ def FP16_Optimizer(optimizer, **kwargs):
         The modified FP16_Optimizer instance
 
     """
+
     def get_full_qualified_type_name(o):
+        if hasattr(optimizer, "_amp_stash"):
+            return "apex.amp.optimizer.unique_name_as_id"
+
         klass = o.__class__
         module = klass.__module__
-        if module == 'builtins':
+        if module == "builtins":
             return klass.__qualname__
-        return module + '.' + klass.__qualname__
+        return module + "." + klass.__qualname__
 
     optimizer_full_qualified_name = get_full_qualified_type_name(optimizer)
     if optimizer_full_qualified_name not in OptimizerModifierTypeRegistry:
+        warnings.warn("Skip modifying optimizer because of optimizer name not found in registry.", UserWarning)
         return optimizer
 
     modifier = OptimizerModifierTypeRegistry[optimizer_full_qualified_name](optimizer, **kwargs)

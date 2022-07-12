@@ -27,10 +27,10 @@ static const GUID WINML_PIX_EVAL_CAPTURABLE_WORK_GUID = __uuidof(guid_details::W
 
 namespace WINMLP {
 
-LearningModelSession::LearningModelSession(_winml::IEngine* engine) : model_(nullptr),
+LearningModelSession::LearningModelSession(_winml::IEngine* engine) : operator_registry_(nullptr, nullptr),
+                                                                      model_(nullptr),
                                                                       device_(LearningModelDeviceKind::Cpu),
-                                                                      session_options_(nullptr),
-                                                                      operator_registry_(nullptr, nullptr)
+                                                                      session_options_(nullptr)
 { 
     engine_.copy_from(engine);
 }
@@ -51,10 +51,10 @@ WINML_CATCH_ALL
 LearningModelSession::LearningModelSession(
     winml::LearningModel const& model,
     winml::LearningModelDevice const& deviceToRunOn,
-    winml::LearningModelSessionOptions const& learningModelSessionOptions) try : model_(model),
+    winml::LearningModelSessionOptions const& learningModelSessionOptions) try : operator_registry_(nullptr, nullptr),
+                                                                                 model_(model),
                                                                                  device_(deviceToRunOn),
-                                                                                 session_options_(learningModelSessionOptions),
-                                                                                 operator_registry_(nullptr, nullptr) {
+                                                                                 session_options_(learningModelSessionOptions) {
   Initialize();
 }
 WINML_CATCH_ALL
@@ -119,7 +119,8 @@ void LearningModelSession::Initialize() {
     WINML_THROW_IF_FAILED(engine_builder->SetMetacommandsEnabled(device_impl->MetacommandsEnabled()));
   }
 
-
+  auto num_intra_op_threads = device_impl->NumberOfIntraOpThreads();
+  auto allow_spinning = device_impl->AllowSpinning();
   // Make onnxruntime apply the batch size override, if any
   if (session_options_) {
     if (session_options_.BatchSizeOverride() != 0) {
@@ -128,23 +129,29 @@ void LearningModelSession::Initialize() {
 
     com_ptr<winmlp::LearningModelSessionOptions> session_options_impl = session_options_.as<winmlp::LearningModelSessionOptions>();
 
-    // Make Onnxruntime apply the number of intra op threads
-    uint32_t numIntraOpThreads = session_options_impl->GetIntraOpNumThreads();
-    WINML_THROW_IF_FAILED(engine_builder->SetIntraOpNumThreadsOverride(numIntraOpThreads));
-    
     // Make onnxruntime apply named dimension overrides, if any
     if (session_options_impl && session_options_impl->NamedDimensionOverrides().Size() > 0) {
       WINML_THROW_IF_FAILED(engine_builder->SetNamedDimensionOverrides(session_options_impl->NamedDimensionOverrides()));
     }
-    bool allowSpinning = session_options_impl->GetIntraOpThreadSpinning();
-    WINML_THROW_IF_FAILED(engine_builder->SetIntraOpThreadSpinning(allowSpinning));
 
+    allow_spinning = session_options_impl->GetIntraOpThreadSpinning();
+    num_intra_op_threads = session_options_impl->GetIntraOpNumThreads();
+  }
+  
+  bool create_local_thread_pool = allow_spinning != device_impl->AllowSpinning() ||
+                                  num_intra_op_threads != device_impl->NumberOfIntraOpThreads();
+  if (create_local_thread_pool) {
+    WINML_THROW_IF_FAILED(engine_builder->SetIntraOpThreadSpinning(allow_spinning));
+    WINML_THROW_IF_FAILED(engine_builder->SetIntraOpNumThreadsOverride(num_intra_op_threads));
   } else {
-    // Onnxruntime will use half the number of concurrent threads supported on the system
-    // by default. This causes MLAS to not exercise every logical core.
-    // If session options aren't provided, force the thread pool size to be maxxed out
-    // to ensure that WinML always runs the fastest.
-    WINML_THROW_IF_FAILED(engine_builder->SetIntraOpNumThreadsOverride(std::thread::hardware_concurrency()));
+    winrt::com_ptr<_winml::IThreading> thread_pool = nullptr;
+    WINML_THROW_IF_FAILED(device_impl->GetThreadPool(thread_pool.put()));
+    if (thread_pool == nullptr)
+    {
+      WINML_THROW_IF_FAILED(engine_factory_->CreateThreadPool(allow_spinning, num_intra_op_threads, thread_pool.put()));
+      WINML_THROW_IF_FAILED(device_impl->CacheThreadPool(thread_pool.get()));
+    }
+    WINML_THROW_IF_FAILED(engine_builder->SetThreadPool(thread_pool.get()));
   }
 
   com_ptr<_winml::IEngine> engine;

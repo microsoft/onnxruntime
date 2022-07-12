@@ -16,7 +16,7 @@
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
-OrtEnv* OrtEnv::p_instance_ = nullptr;
+std::unique_ptr<OrtEnv> OrtEnv::p_instance_;
 int OrtEnv::ref_count_ = 0;
 onnxruntime::OrtMutex OrtEnv::m_;
 
@@ -52,19 +52,19 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
     if (lm_info.logging_function) {
       std::unique_ptr<ISink> logger = std::make_unique<LoggingWrapper>(lm_info.logging_function,
                                                                        lm_info.logger_param);
-      lmgr.reset(new LoggingManager(std::move(logger),
-                                    static_cast<Severity>(lm_info.default_warning_level),
-                                    false,
-                                    LoggingManager::InstanceType::Default,
-                                    &name));
+      lmgr = std::make_unique<LoggingManager>(std::move(logger),
+                                              static_cast<Severity>(lm_info.default_warning_level),
+                                              false,
+                                              LoggingManager::InstanceType::Default,
+                                              &name);
     } else {
       auto sink = MakePlatformDefaultLogSink();
 
-      lmgr.reset(new LoggingManager(std::move(sink),
-                                    static_cast<Severity>(lm_info.default_warning_level),
-                                    false,
-                                    LoggingManager::InstanceType::Default,
-                                    &name));
+      lmgr = std::make_unique<LoggingManager>(std::move(sink),
+                                              static_cast<Severity>(lm_info.default_warning_level),
+                                              false,
+                                              LoggingManager::InstanceType::Default,
+                                              &name);
     }
     std::unique_ptr<onnxruntime::Environment> env;
     if (!tp_options) {
@@ -75,11 +75,11 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
     if (!status.IsOK()) {
       return nullptr;
     }
-    p_instance_ = new OrtEnv(std::move(env));
+    p_instance_ = std::make_unique<OrtEnv>(std::move(env));
   }
 
   ++ref_count_;
-  return p_instance_;
+  return p_instance_.get();
 }
 
 void OrtEnv::Release(OrtEnv* env_ptr) {
@@ -87,11 +87,10 @@ void OrtEnv::Release(OrtEnv* env_ptr) {
     return;
   }
   std::lock_guard<onnxruntime::OrtMutex> lock(m_);
-  ORT_ENFORCE(env_ptr == p_instance_);  // sanity check
+  ORT_ENFORCE(env_ptr == p_instance_.get());  // sanity check
   --ref_count_;
   if (ref_count_ == 0) {
-    delete p_instance_;
-    p_instance_ = nullptr;
+    p_instance_.reset();
   }
 }
 

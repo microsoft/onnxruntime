@@ -7,7 +7,7 @@ import {OnnxValue} from './onnx-value';
 /* eslint-disable @typescript-eslint/no-redeclare */
 
 export declare namespace InferenceSession {
-  //#region input/output types
+  // #region input/output types
 
   type OnnxValueMapType = {readonly [name: string]: OnnxValue};
   type NullableOnnxValueMapType = {readonly [name: string]: OnnxValue | null};
@@ -36,9 +36,9 @@ export declare namespace InferenceSession {
    */
   type ReturnType = OnnxValueMapType;
 
-  //#endregion
+  // #endregion
 
-  //#region session options
+  // #region session options
 
   /**
    * A set of configurations for session behavior.
@@ -153,7 +153,7 @@ export declare namespace InferenceSession {
     extra?: Record<string, unknown>;
   }
 
-  //#region execution providers
+  // #region execution providers
 
   // Currently, we have the following backends to support execution providers:
   // Backend Node.js binding: supports 'cpu' and 'cuda'.
@@ -189,11 +189,11 @@ export declare namespace InferenceSession {
     readonly name: 'webgl';
     // TODO: add flags
   }
-  //#endregion
+  // #endregion
 
-  //#endregion
+  // #endregion
 
-  //#region run options
+  // #region run options
 
   /**
    * A set of configurations for inference run behavior
@@ -248,23 +248,23 @@ export declare namespace InferenceSession {
     extra?: Record<string, unknown>;
   }
 
-  //#endregion
+  // #endregion
 
-  //#region value metadata
+  // #region value metadata
 
   // eslint-disable-next-line @typescript-eslint/no-empty-interface
   interface ValueMetadata {
     // TBD
   }
 
-  //#endregion
+  // #endregion
 }
 
 /**
  * Represent a runtime instance of an ONNX model.
  */
 export interface InferenceSession {
-  //#region run()
+  // #region run()
 
   /**
    * Execute the model asynchronously with the given feeds and options.
@@ -287,9 +287,9 @@ export interface InferenceSession {
   run(feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
       options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
 
-  //#endregion
+  // #endregion
 
-  //#region profiling
+  // #region profiling
 
   /**
    * Start profiling.
@@ -301,9 +301,9 @@ export interface InferenceSession {
    */
   endProfiling(): void;
 
-  //#endregion
+  // #endregion
 
-  //#region metadata
+  // #region metadata
 
   /**
    * Get input names of the loaded model.
@@ -325,11 +325,11 @@ export interface InferenceSession {
   //  */
   // readonly outputMetadata: ReadonlyArray<Readonly<InferenceSession.ValueMetadata>>;
 
-  //#endregion
+  // #endregion
 }
 
 export interface InferenceSessionFactory {
-  //#region create()
+  // #region create()
 
   /**
    * Create a new inference session and load model asynchronously from an ONNX model file.
@@ -370,7 +370,7 @@ export interface InferenceSessionFactory {
    */
   create(buffer: Uint8Array, options?: InferenceSession.SessionOptions): Promise<InferenceSession>;
 
-  //#endregion
+  // #endregion
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention

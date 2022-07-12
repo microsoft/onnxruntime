@@ -4,25 +4,26 @@
 import {execSync, spawnSync} from 'child_process';
 import * as fs from 'fs-extra';
 import minimist from 'minimist';
+import * as os from 'os';
 import * as path from 'path';
-
-// NPM configs (parsed via 'npm install --xxx')
-
-// skip build on install. usually used in CI where build will be another step.
-const SKIP = !!process.env.npm_config_ort_skip_build;
-if (SKIP) {
-  process.exit(0);
-}
 
 // command line flags
 const buildArgs = minimist(process.argv.slice(2));
 
-// currently only support Debug, Release and RelWithDebInfo
-const CONFIG: 'Debug'|'Release'|'RelWithDebInfo' = buildArgs.config || 'RelWithDebInfo';
+// --config=Debug|Release|RelWithDebInfo
+const CONFIG: 'Debug'|'Release'|'RelWithDebInfo' =
+    buildArgs.config || (os.platform() === 'win32' ? 'RelWithDebInfo' : 'Release');
 if (CONFIG !== 'Debug' && CONFIG !== 'Release' && CONFIG !== 'RelWithDebInfo') {
   throw new Error(`unrecognized config: ${CONFIG}`);
 }
+// --arch=x64|ia32|arm64|arm
+const ARCH: 'x64'|'ia32'|'arm64'|'arm' = buildArgs.arch || os.arch();
+if (ARCH !== 'x64' && ARCH !== 'ia32' && ARCH !== 'arm64' && ARCH !== 'arm') {
+  throw new Error(`unrecognized architecture: ${ARCH}`);
+}
+// --onnxruntime-build-dir=
 const ONNXRUNTIME_BUILD_DIR = buildArgs['onnxruntime-build-dir'];
+// --rebuild
 const REBUILD = !!buildArgs.rebuild;
 
 // build path
@@ -42,12 +43,23 @@ if (REBUILD) {
 const command = CMAKE_JS_FULL_PATH;
 const args = [
   (REBUILD ? 'reconfigure' : 'configure'),
-  '--arch=x64',
+  `--arch=${ARCH}`,
   '--CDnapi_build_version=3',
   `--CDCMAKE_BUILD_TYPE=${CONFIG}`,
 ];
 if (ONNXRUNTIME_BUILD_DIR && typeof ONNXRUNTIME_BUILD_DIR === 'string') {
   args.push(`--CDONNXRUNTIME_BUILD_DIR=${ONNXRUNTIME_BUILD_DIR}`);
+}
+
+// set CMAKE_OSX_ARCHITECTURES for macOS build
+if (os.platform() === 'darwin') {
+  if (ARCH === 'x64') {
+    args.push('--CDCMAKE_OSX_ARCHITECTURES=x86_64');
+  } else if (ARCH === 'arm64') {
+    args.push('--CDCMAKE_OSX_ARCHITECTURES=arm64');
+  } else {
+    throw new Error(`architecture not supported for macOS build: ${ARCH}`);
+  }
 }
 
 // launch cmake-js configure

@@ -2,23 +2,22 @@
 // Licensed under the MIT License.
 
 #pragma once
-
-#include <nonstd/optional.hpp>
+#include <optional>
 
 namespace onnxruntime {
 
-using nonstd::optional;
+using std::optional;
 
 #ifndef ORT_NO_EXCEPTIONS
-using nonstd::bad_optional_access;
+using std::bad_optional_access;
 #endif
 
-using nonstd::nullopt;
-using nonstd::nullopt_t;
+using std::nullopt;
+using std::nullopt_t;
 
-using nonstd::in_place;
-using nonstd::in_place_t;
+using std::in_place;
+using std::in_place_t;
 
-using nonstd::make_optional;
+using std::make_optional;
 
 }  // namespace onnxruntime

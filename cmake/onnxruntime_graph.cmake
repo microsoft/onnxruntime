@@ -17,13 +17,23 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/graph/schema_registry.cc"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*defs.h"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*defs.cc"
+    "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_deprecated_operators.cc"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.h"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.cc"
+    "${ONNXRUNTIME_ROOT}/core/graph/function_template.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/function_utils.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/function_utils.cc"
   )
 
   # no Function support initially
   list(APPEND onnxruntime_graph_src_exclude_patterns
     "${ONNXRUNTIME_ROOT}/core/graph/function*"
+  )
+
+  # remove graph proto serializer
+  list(APPEND onnxruntime_graph_src_exclude_patterns
+    "${ONNXRUNTIME_ROOT}/core/graph/graph_proto_serializer.cc"
+    "${ONNXRUNTIME_ROOT}/core/graph/graph_proto_serializer.h"
   )
 
   # no optimizer support in base minimal build
@@ -40,13 +50,6 @@ if (onnxruntime_DISABLE_CONTRIB_OPS)
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*.h"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*.cc"
     )
-endif()
-
-if(NOT onnxruntime_USE_FEATURIZERS)
-  list(APPEND onnxruntime_graph_src_exclude_patterns
-    "${ONNXRUNTIME_ROOT}/core/graph/featurizers_ops/*.h"
-    "${ONNXRUNTIME_ROOT}/core/graph/featurizers_ops/*.cc"
-  )
 endif()
 
 if(NOT onnxruntime_USE_DML)
@@ -123,12 +126,21 @@ if (WIN32)
   set_target_properties(onnxruntime_graph PROPERTIES
       STATIC_LIBRARY_FLAGS "${onnxruntime_graph_static_library_flags}")
 
-  if (NOT onnxruntime_DISABLE_EXCEPTIONS)  
+  if (NOT onnxruntime_DISABLE_EXCEPTIONS)
     target_compile_options(onnxruntime_graph PRIVATE
         /EHsc   # exception handling - C++ may throw, extern "C" will not
     )
   endif()
+endif()
 
-  # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
-  set_target_properties(onnxruntime_graph PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
+if (onnxruntime_ENABLE_ATEN)
+  target_compile_definitions(onnxruntime_graph PRIVATE ENABLE_ATEN)
+endif()
+
+if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_graph
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()

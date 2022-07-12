@@ -29,7 +29,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   Status OnRunStart() override;
 
-  Status OnRunEnd() override;
+  Status OnRunEnd(bool sync_stream) override;
 
   const void* GetExecutionHandle() const noexcept override {
     // The ROCM interface does not return anything interesting.
@@ -89,7 +89,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
     return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, true);
   }
 
-  void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
+  void RegisterAllocator(AllocatorManager& allocator_manager) override;
   static AllocatorPtr CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
 

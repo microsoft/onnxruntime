@@ -3,11 +3,13 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <Platforms>AnyCPU;x86</Platforms>
-    <TargetFramework>netcoreapp2.1</TargetFramework>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
     <OnnxRuntimeCsharpRoot>$(ProjectDir)..\..</OnnxRuntimeCsharpRoot>
     <SignAssembly>false</SignAssembly>
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
-    <IsLinuxBuild Condition="'$(IsLinuxBuild)' == ''">false</IsLinuxBuild>
+    <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild> 
+    <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild> 
+    <IsMacOSBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsMacOSBuild> 
     <ProtoSrc>$(OnnxRuntimeCsharpRoot)\..\cmake\external\onnx\onnx</ProtoSrc>
   </PropertyGroup>
 
@@ -19,7 +21,7 @@
     <ProtocExe>$(ProtocDirectory)\protoc</ProtocExe>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(IsLinuxBuild)'=='false'">
+  <PropertyGroup Condition="'$(IsWindowsBuild)'=='true'">
     <!--internal build related properties for Windows -->
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
     <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>    
@@ -27,16 +29,28 @@
     <ProtocExe>$(ProtocDirectory)\protoc.exe</ProtocExe>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(IsMacOSBuild)'=='true'">
+    <!--internal build related properties for OSX -->
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\MacOS</OnnxRuntimeBuildDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
+    <ProtocDirectory Condition="'$(ProtocDirectory)'==''">$(OnnxRuntimeBuildDirectory)\$(Configuration)\external\protobuf\cmake</ProtocDirectory>
+    <ProtocExe>$(ProtocDirectory)\protoc</ProtocExe>
+  </PropertyGroup>
+
   <ItemGroup>
     <None Include="$(NativeBuildOutputDir)\libonnxruntime.so" Condition="'$(IsLinuxBuild)'=='true'">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-    <None Include="$(NativeBuildOutputDir)\onnxruntime.dll" Condition="'$(IsLinuxBuild)'=='false'">
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.dll" Condition="'$(IsWindowsBuild)'=='true'">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-    <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb" Condition="'$(IsLinuxBuild)'=='false' And Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')">
+    <None Include="$(NativeBuildOutputDir)\libonnxruntime.dylib" Condition="'$(IsMacOSBuild)'=='true'">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb" Condition="'$(IsWindowsBuild)'=='true'And Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
@@ -44,7 +58,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-    <None Include="$(NativeBuildOutputDir)\onnxruntime_providers_*.dll" Condition="'$(IsLinuxBuild)'=='false' And Exists('$(NativeBuildOutputDir)\onnxruntime_providers_shared.dll')">
+    <None Include="$(NativeBuildOutputDir)\onnxruntime_providers_*.dll" Condition="'$(IsWindowsBuild)'=='true' And Exists('$(NativeBuildOutputDir)\onnxruntime_providers_shared.dll')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
@@ -66,7 +80,7 @@
   <ItemGroup>
     <ProjectReference Include="$(OnnxRuntimeCSharpRoot)\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj" />
     <PackageReference Include="CommandLineParser" Version="2.4.3" />
-    <PackageReference Include="Google.Protobuf" Version="3.13.0" />  
+    <PackageReference Include="Google.Protobuf" Version="3.16.0" /> <!-- match version ORT native build uses -->
   </ItemGroup>
 
   <!-- create OnnxMl.cs and add to project -->

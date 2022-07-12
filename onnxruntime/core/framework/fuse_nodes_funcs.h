@@ -8,15 +8,15 @@ namespace onnxruntime {
 class FuncManager {
  public:
   FuncManager()
-      : fused_funcs_(std::make_shared<std::unordered_map<std::string, FuncInfo> >()),
-        lib_loader_(std::make_unique<ExLibLoader>()) {
+      : fused_funcs_(std::make_shared<std::unordered_map<std::string, FuncInfo> >()) {
   }
 
   Status AddFuncInfo(const std::string& name, const std::string& dll_path);
 
   Status AddFuncInfo(const std::string& name, NodeComputeInfo&& compute_info);
 
-  Status GetFuncs(const std::string& name, NodeComputeInfo*& compute_info) const;
+  //Do not call AddFuncInfo after this function is called.
+  Status GetFuncs(const std::string& name, const NodeComputeInfo*& compute_info);
 
   size_t NumFuncs() const { return fused_funcs_->size(); }
 
@@ -38,7 +38,7 @@ class FuncManager {
   // because it's filled in by the time main graph is traversed,
   // while subgraph session state is created later
   std::shared_ptr<std::unordered_map<std::string, FuncInfo> > fused_funcs_;
-  std::unique_ptr<ExLibLoader> lib_loader_;
+  ExLibLoader lib_loader_;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(FuncManager);
 };
 }  // namespace onnxruntime

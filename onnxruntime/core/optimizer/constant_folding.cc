@@ -16,8 +16,8 @@ namespace onnxruntime {
 
 ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
                                  bool skip_dequantize_linear,
-                                 const std::unordered_set<std::string>& compatible_execution_providers,
-                                 const std::unordered_set<std::string>& excluded_initializers) noexcept
+                                 const InlinedHashSet<std::string_view>& compatible_execution_providers,
+                                 const InlinedHashSet<std::string>& excluded_initializers) noexcept
     : GraphTransformer("ConstantFolding", compatible_execution_providers),
       skip_dequantize_linear_(skip_dequantize_linear),
       excluded_initializers_(excluded_initializers),
@@ -196,11 +196,11 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       ORT_ENFORCE(fetches.size() == node->OutputDefs().size());
       converted_to_constant = true;
       for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
-        OrtValue& ort_value = fetches[fetch_idx];
+        const auto& constant_arg_out = *node->OutputDefs()[fetch_idx];
         // XXX: Add support for SparseTensors outputs when we have sparse outputs
-        if (!ort_value.IsTensor()) {
-          LOGS(logger, WARNING) << "Unsupported output type of " << ort_value.Type()
-                                << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
+        if (!utils::HasTensorType(*constant_arg_out.TypeAsProto())) {
+          LOGS(logger, INFO) << "Unsupported output type of " << constant_arg_out.Type()
+                             << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
           converted_to_constant = false;
           break;
         }

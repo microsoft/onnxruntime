@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "batch_norm_internal.h"
+#include "orttraining/training_ops/rocm/nn/batch_norm_internal.h"
 #include "core/providers/common.h"
 #include "core/providers/rocm/miopen_common.h"
 #include "core/providers/cpu/nn/batch_norm_helper.h"
@@ -67,6 +67,7 @@ Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* p_op_kerne
   vector<int64_t> new_dims;
   BatchNormHelper::NormalizeDims(x_shape, new_dims);
   ORT_RETURN_IF_ERROR(data_desc.Set(new_dims, MiopenTensor::GetDataType<HipT>()));
+  // for fp16 input, `bn_tensor_desc` will have a float type; otherwise it will be the same as input type.
   ORT_RETURN_IF_ERROR(bn_tensor_desc.Set(data_desc, miopen_batch_norm_mode_));
 
   auto running_mean_data = reinterpret_cast<HipT2*>(running_mean->template MutableData<T2>());
@@ -154,7 +155,6 @@ Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* p_op_kerne
 #define SPECIALIZED_COMPUTE(T, T1, T2) \
   REGISTER_KERNEL_TYPED(T, T1, T2)     \
   template Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* ctx) const;
-
 
 SPECIALIZED_COMPUTE(float, float, float)
 // MIOpen kernel does not support double, disable for now.

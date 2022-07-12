@@ -8,10 +8,10 @@
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
 #include "core/framework/element_type_lists.h"
+#include "core/framework/math.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/op_kernel_type_control.h"
 #include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
 
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;

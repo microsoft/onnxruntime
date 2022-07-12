@@ -56,7 +56,7 @@ class FgemmPackedContext<float, false> {
   }
 };
 
-#ifdef MLAS_TARGET_AMD64
+#if defined(MLAS_TARGET_AMD64) || defined (MLAS_TARGET_POWER)
 template <>
 class FgemmPackedContext<double, false> {
  public:

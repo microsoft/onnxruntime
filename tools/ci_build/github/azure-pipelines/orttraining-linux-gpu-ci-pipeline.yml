@@ -14,7 +14,7 @@ jobs:
       --enable_training
       --enable_training_torch_interop
       --config $(buildConfig)
-      --use_cuda --cuda_version=11.1 --cuda_home=/usr/local/cuda-11.1 --cudnn_home=/usr/local/cuda-11.1
+      --use_cuda --cuda_version=11.3 --cuda_home=/usr/local/cuda-11.3 --cudnn_home=/usr/local/cuda-11.3
       --build_wheel
       --enable_nvtx_profile
       --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70

@@ -41,15 +41,19 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   Tensor* output = ctx->Output(0, input->Shape());
 
+  if (input->Shape() != skip->Shape()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "skip is expected to have same shape as input");
+  }
+
+  if (input->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
   const auto& input_dims = input->Shape().GetDims();
   if (input_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "input is expected to have 3 dimensions, got ", input_dims.size());
-  }
-
-  if (input->Shape() != skip->Shape()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "skip is expected to have same shape as input");
   }
 
   const auto& gamma_dims = gamma->Shape().GetDims();
@@ -90,18 +94,19 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   int hidden_size = static_cast<int>(input_dims[2]);
   int64_t element_count = input_dims[0] * sequence_length * hidden_size;
   size_t element_size = sizeof(T);
+  typedef typename ToCudaType<T>::MappedType CudaT;
 
-  if (!LaunchSkipLayerNormKernel(
+  if (!LaunchSkipLayerNormKernel<CudaT>(
           Stream(),
-          output->template MutableData<T>(),
-          input->template Data<T>(),
-          skip->template Data<T>(),
-          gamma->template Data<T>(),
-          beta != nullptr ? beta->template Data<T>() : nullptr,
-          bias != nullptr ? bias->template Data<T>() : nullptr,
+          reinterpret_cast<CudaT*>(output->template MutableData<T>()),
+          reinterpret_cast<const CudaT*>(input->template Data<T>()),
+          reinterpret_cast<const CudaT*>(skip->template Data<T>()),
+          reinterpret_cast<const CudaT*>(gamma->template Data<T>()),
+          (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->template Data<T>()) : nullptr,
+          (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->template Data<T>()) : nullptr,
           epsilon_,
           hidden_size,
-          static_cast<int>(element_count),  //TODO: check range
+          static_cast<int>(element_count),
           element_size)) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
@@ -114,3 +119,4 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
 }  //namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
+

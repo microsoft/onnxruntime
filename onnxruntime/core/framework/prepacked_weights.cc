@@ -6,7 +6,7 @@
 
 namespace onnxruntime {
 
-uint64_t PrePackedWeights::GetHash() const {
+HashValue PrePackedWeights::GetHash() const {
   // Adaptation of the hashing logic of the KernelDef class
 
   uint32_t hash[4] = {0, 0, 0, 0};
@@ -22,7 +22,7 @@ uint64_t PrePackedWeights::GetHash() const {
     }
   }
 
-  uint64_t returned_hash = hash[0] & 0xfffffff8;  // save low 3 bits for hash version info in case we need it in the future
+  HashValue returned_hash = hash[0] & 0xfffffff8;  // save low 3 bits for hash version info in case we need it in the future
   returned_hash |= uint64_t(hash[1]) << 32;
 
   return returned_hash;

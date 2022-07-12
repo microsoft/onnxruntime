@@ -9,7 +9,6 @@
 #endif
 #include "onnx/onnx_pb.h"
 #include "onnx/onnx-operators_pb.h"
-#include "core/framework/tensorprotoutils.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -10,6 +10,10 @@ MANYLINUX_CFLAGS="-g -O2 -Wall -fdebug-prefix-map=/=. -fstack-protector-strong -
 MANYLINUX_CXXFLAGS="-g -O2 -Wall -fdebug-prefix-map=/=. -fstack-protector-strong -Wformat -Werror=format-security"
 MANYLINUX_LDFLAGS="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now"
 
+export BASE_POLICY=manylinux
+if [ "${AUDITWHEEL_POLICY:0:9}" == "musllinux" ]; then
+	export BASE_POLICY=musllinux
+fi
 
 function check_var {
     if [ -z "$1" ]; then
@@ -29,6 +33,7 @@ function fetch_source {
     if [ -f ${file} ]; then
         echo "${file} exists, skipping fetch"
     else
+        apt-get update && apt-get install -y curl gpg-agent
         curl -fsSL -o ${file} ${url}/${file}
     fi
 }

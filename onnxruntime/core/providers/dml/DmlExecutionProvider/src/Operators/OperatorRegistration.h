@@ -36,5 +36,5 @@ public:
 extern void CALLBACK Create##operatorName(IMLOperatorKernelCreationContext* kernelInfo, IMLOperatorKernel** opKernel)\
 {\
     using T = __VA_ARGS__; \
-    THROW_IF_FAILED(MLOperatorKernel<T>::CreateInstance(*kernelInfo, /*out*/ opKernel));\
+    ORT_THROW_IF_FAILED(MLOperatorKernel<T>::CreateInstance(*kernelInfo, /*out*/ opKernel));\
 }

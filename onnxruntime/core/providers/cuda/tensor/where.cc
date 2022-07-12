@@ -10,10 +10,21 @@ namespace cuda {
 
 // kernel builder functions
 #define WHERE_TYPED_KERNEL_WITH_TYPE_NAME(T, TName)                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                    \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                          \
       Where,                                                        \
       kOnnxDomain,                                                  \
       9,                                                            \
+      15,                                                           \
+      TName,                                                        \
+      kCudaExecutionProvider,                                       \
+      (*KernelDefBuilder::Create())                                 \
+          .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()) \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),   \
+      Where<T>);                                                    \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                    \
+      Where,                                                        \
+      kOnnxDomain,                                                  \
+      16,                                                           \
       TName,                                                        \
       kCudaExecutionProvider,                                       \
       (*KernelDefBuilder::Create())                                 \

@@ -52,7 +52,13 @@ struct CUDAExecutionProviderInfo {
   // If set to true, try to use as much as possible memory for algo search.
   bool cudnn_conv_use_max_workspace{false};
 
+  bool enable_cuda_graph{false};
+
+  // By default, for Conv1D, will pad [N,C,D] to [N,C,D,1], if turn on, will pad to [N,C,1,D].
+  bool cudnn_conv1d_pad_to_nc1d{false};
+
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);
+  static ProviderOptions ToProviderOptions(const OrtCUDAProviderOptionsV2& info);
 };
 }  // namespace onnxruntime

@@ -13,18 +13,17 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
-std::unique_ptr<OpKernel> KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
-                                                              const IExecutionProvider& execution_provider,
-                                                              const SessionState& session_state,
-                                                              const KernelCreateInfo& kernel_create_info) const {
+Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
+                                           const IExecutionProvider& execution_provider,
+                                           SessionState& session_state,
+                                           const KernelCreateInfo& kernel_create_info,
+                                           std::unique_ptr<OpKernel>& out) const {
   OpKernelInfo kernel_info(node, *kernel_create_info.kernel_def, execution_provider,
                            session_state.GetConstantInitializedTensors(),
                            session_state.GetOrtValueNameIdxMap(),
-                           session_state.GetFuncMgr(),
                            session_state.GetDataTransferMgr());
 
-  // OpKernel is abstract base class so can't use make_unique
-  return std::unique_ptr<OpKernel>(kernel_create_info.kernel_create_func(kernel_info));
+  return kernel_create_info.kernel_create_func(session_state.GetMutableFuncMgr(), kernel_info, out);
 }
 
 Status KernelRegistryManager::RegisterKernels(const ExecutionProviders& execution_providers) {
@@ -104,7 +103,7 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
 }
 #endif
 
-bool KernelRegistryManager::SearchKernelRegistriesByHash(uint64_t kernel_def_hash,
+bool KernelRegistryManager::SearchKernelRegistriesByHash(HashValue kernel_def_hash,
                                                          const KernelCreateInfo** kernel_create_info) const {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   for (const auto& registry : custom_kernel_registries_) {

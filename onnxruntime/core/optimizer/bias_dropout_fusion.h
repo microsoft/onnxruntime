@@ -15,7 +15,7 @@ Fuse Add + Dropout + optional Add to BiasDropoutFusion
 */
 class BiasDropoutFusion : public GraphTransformer {
  public:
-  BiasDropoutFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  BiasDropoutFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("BiasDropoutFusion", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;

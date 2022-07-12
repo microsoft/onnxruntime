@@ -23,7 +23,6 @@ class DnnlReshape{
   void CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node);
 
   private:
-  bool IsMemoryInExpectedOrtFormat(const dnnl::memory::desc& desc);
   bool GetAllowZero(DnnlNode& node);
 };
 

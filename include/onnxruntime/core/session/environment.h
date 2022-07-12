@@ -58,31 +58,31 @@ class Environment {
   /**
    * Registers an allocator for sharing between multiple sessions.
    * Return an error if an allocator with the same OrtMemoryInfo is already registered.
-  */
+   */
   Status RegisterAllocator(AllocatorPtr allocator);
 
   /**
    * Creates and registers an allocator for sharing between multiple sessions.
    * Return an error if an allocator with the same OrtMemoryInfo is already registered.
-  */
+   */
   Status CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg = nullptr);
 
   /**
    * Returns the list of registered allocators in this env.
-  */
+   */
   const std::vector<AllocatorPtr>& GetRegisteredSharedAllocators() const {
     return shared_allocators_;
   }
 
   /**
    * Removes registered allocator that was previously registered for sharing between multiple sessions.
-  */
+   */
   Status UnregisterAllocator(const OrtMemoryInfo& mem_info);
+
+  Environment() = default;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);
-
-  Environment() = default;
   Status Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
                     const OrtThreadingOptions* tp_options = nullptr,
                     bool create_global_thread_pools = false);

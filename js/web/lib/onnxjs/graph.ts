@@ -5,9 +5,10 @@ import {onnx} from 'onnx-proto';
 
 import {Attribute} from './attribute';
 import {onnxruntime} from './ort-schema/ort-generated';
-import ortFbs = onnxruntime.experimental.fbs;
 import {Tensor} from './tensor';
-import {LongUtil, ProtoUtil, MIN_CLIP, MAX_CLIP} from './util';
+import {LongUtil, MAX_CLIP, MIN_CLIP, ProtoUtil} from './util';
+
+import ortFbs = onnxruntime.experimental.fbs;
 
 export declare namespace Graph {
   export interface Shape {
@@ -758,23 +759,24 @@ class GraphImpl implements Graph, Graph.Transformer {
           if (child.opType === 'Clip') {
             if (child.inputs.length === 1) {
               try {
-                node.attributes.set('__clip_min', 'float', child.attributes.getFloat('min'));
-                node.attributes.set('__clip_max', 'float', child.attributes.getFloat('max'));
+                node.attributes.set(
+                    'activation_params', 'floats',
+                    [child.attributes.getFloat('min'), child.attributes.getFloat('max')]);
               } catch (e) {
-                node.attributes.set('__clip_min', 'float', MIN_CLIP);
-                node.attributes.set('__clip_max', 'float', MAX_CLIP);
+                node.attributes.set('activation_params', 'floats', [MIN_CLIP, MAX_CLIP]);
               }
             } else if (
                 child.inputs.length >= 3 && this._allData[child.inputs[1]].tensor !== undefined &&
                 this._allData[child.inputs[2]].tensor !== undefined) {
-              node.attributes.set('__clip_min', 'float', this._allData[child.inputs[1]].tensor!.floatData[0]);
-              node.attributes.set('__clip_max', 'float', this._allData[child.inputs[2]].tensor!.floatData[0]);
+              node.attributes.set('activation_params', 'floats', [
+                this._allData[child.inputs[1]].tensor!.floatData[0], this._allData[child.inputs[2]].tensor!.floatData[0]
+              ]);
             } else {
               // Skip fusion with clip node since clip min and clip max are not coming from initializer
               continue;
             }
           }
-          node.attributes.set('__internal_activation', 'string', (child.opType));
+          node.attributes.set('activation', 'string', (child.opType));
           this.deleteNode(next[0]);
         }
       }

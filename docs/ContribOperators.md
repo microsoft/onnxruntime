@@ -5,14 +5,19 @@ Do not modify directly.*
 * com.microsoft
   * <a href="#com.microsoft.Attention">com.microsoft.Attention</a>
   * <a href="#com.microsoft.AttnLSTM">com.microsoft.AttnLSTM</a>
+  * <a href="#com.microsoft.BeamSearch">com.microsoft.BeamSearch</a>
   * <a href="#com.microsoft.BiasDropout">com.microsoft.BiasDropout</a>
   * <a href="#com.microsoft.BiasGelu">com.microsoft.BiasGelu</a>
   * <a href="#com.microsoft.BiasSoftmax">com.microsoft.BiasSoftmax</a>
+  * <a href="#com.microsoft.BifurcationDetector">com.microsoft.BifurcationDetector</a>
+  * <a href="#com.microsoft.BitmaskBiasDropout">com.microsoft.BitmaskBiasDropout</a>
+  * <a href="#com.microsoft.BitmaskDropout">com.microsoft.BitmaskDropout</a>
   * <a href="#com.microsoft.CDist">com.microsoft.CDist</a>
   * <a href="#com.microsoft.ComplexMul">com.microsoft.ComplexMul</a>
   * <a href="#com.microsoft.ComplexMulConj">com.microsoft.ComplexMulConj</a>
   * <a href="#com.microsoft.ConvTransposeWithDynamicPads">com.microsoft.ConvTransposeWithDynamicPads</a>
   * <a href="#com.microsoft.CropAndResize">com.microsoft.CropAndResize</a>
+  * <a href="#com.microsoft.DecoderAttention">com.microsoft.DecoderAttention</a>
   * <a href="#com.microsoft.DequantizeLinear">com.microsoft.DequantizeLinear</a>
   * <a href="#com.microsoft.DynamicQuantizeLSTM">com.microsoft.DynamicQuantizeLSTM</a>
   * <a href="#com.microsoft.DynamicQuantizeMatMul">com.microsoft.DynamicQuantizeMatMul</a>
@@ -34,10 +39,8 @@ Do not modify directly.*
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
   * <a href="#com.microsoft.NGramRepeatBlock">com.microsoft.NGramRepeatBlock</a>
+  * <a href="#com.microsoft.NhwcConv">com.microsoft.NhwcConv</a>
   * <a href="#com.microsoft.NhwcMaxPool">com.microsoft.NhwcMaxPool</a>
-  * <a href="#com.microsoft.Optional">com.microsoft.Optional</a>
-  * <a href="#com.microsoft.OptionalGetElement">com.microsoft.OptionalGetElement</a>
-  * <a href="#com.microsoft.OptionalHasElement">com.microsoft.OptionalHasElement</a>
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
   * <a href="#com.microsoft.QAttention">com.microsoft.QAttention</a>
   * <a href="#com.microsoft.QGemm">com.microsoft.QGemm</a>
@@ -56,6 +59,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
+  * <a href="#com.microsoft.Snpe">com.microsoft.Snpe</a>
   * <a href="#com.microsoft.SparseToDenseMatMul">com.microsoft.SparseToDenseMatMul</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
   * <a href="#com.microsoft.TorchEmbedding">com.microsoft.TorchEmbedding</a>
@@ -114,7 +118,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (batch_size, append_length, hidden_size)</dd>
+<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>present</tt> (optional) : T</dt>
 <dd>present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)</dd>
 </dl>
@@ -338,6 +342,83 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.BeamSearch"></a><a name="com.microsoft.beamsearch">**com.microsoft.BeamSearch**</a>
+
+  Beam Search for text generation. Supports GPT-2 decoder.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>decoder</tt> : graph (required)</dt>
+<dd>Decoder subgraph to execute in a loop.</dd>
+<dt><tt>decoder_start_token_id</tt> : int</dt>
+<dd>The id of the token that indicates decoding starts.</dd>
+<dt><tt>early_stopping</tt> : int</dt>
+<dd>early stop or not</dd>
+<dt><tt>encoder</tt> : graph</dt>
+<dd>The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.</dd>
+<dt><tt>eos_token_id</tt> : int (required)</dt>
+<dd>The id of the end-of-sequence token</dd>
+<dt><tt>model_type</tt> : int</dt>
+<dd>model type: 0 for GPT-2; 1 for encoder decoder like T5</dd>
+<dt><tt>no_repeat_ngram_size</tt> : int</dt>
+<dd>no repeat ngrams size</dd>
+<dt><tt>pad_token_id</tt> : int (required)</dt>
+<dd>The id of the padding token</dd>
+</dl>
+
+#### Inputs (5 - 10)
+
+<dl>
+<dt><tt>input_ids</tt> : I</dt>
+<dd>The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)</dd>
+<dt><tt>max_length</tt> : I</dt>
+<dd>The maximum length of the sequence to be generated. Shape is (1)</dd>
+<dt><tt>min_length</tt> (optional) : I</dt>
+<dd>The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)</dd>
+<dt><tt>num_beams</tt> : I</dt>
+<dd>Number of beams for beam search. 1 means no beam search. Shape is (1)</dd>
+<dt><tt>num_return_sequences</tt> : I</dt>
+<dd>The number of returned sequences in the batch. Shape is (1)</dd>
+<dt><tt>length_penalty</tt> (optional) : T</dt>
+<dd>Exponential penalty to the length. Default value 1.0 means no penalty.Value > 1.0 encourages longer sequences, while values < 1.0 produces shorter sequences.Shape is (1,)</dd>
+<dt><tt>repetition_penalty</tt> (optional) : T</dt>
+<dd>The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)</dd>
+<dt><tt>vocab_mask</tt> (optional) : M</dt>
+<dd>Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)</dd>
+<dt><tt>prefix_vocab_mask</tt> (optional) : M</dt>
+<dd>Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)</dd>
+<dt><tt>attention_mask</tt> (optional) : I</dt>
+<dd>Custom attention mask. Shape is (batch_size, sequence_length)</dd>
+</dl>
+
+#### Outputs (1 - 3)
+
+<dl>
+<dt><tt>sequences</tt> : I</dt>
+<dd>Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)</dd>
+<dt><tt>sequences_scores</tt> (optional) : T</dt>
+<dd>Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)</dd>
+<dt><tt>scores</tt> (optional) : T</dt>
+<dd>Processed beam scores for each vocabulary token at each generation step.Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam.Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>I</tt> : tensor(int32)</dt>
+<dd>Constrain to integer types</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain mask to integer types</dd>
+</dl>
+
+
 ### <a name="com.microsoft.BiasDropout"></a><a name="com.microsoft.biasdropout">**com.microsoft.BiasDropout**</a>
 
   output, dropout_mask = Dropout(data + bias, ratio) + residual, Intended to specialize the dropout pattern commonly found in transformer models.
@@ -363,7 +444,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>residual</tt> (optional) : T</dt>
 <dd>The residual input, must have the same shape as data</dd>
 <dt><tt>ratio</tt> (optional) : T1</dt>
-<dd>The ratio of random dropout, with value in [0, 1). If this input was not set, or if it was set to 0, the output would be a simple copy of the input. If it's non-zero, output will be a random dropout of input, which is typically the case during training.</dd>
+<dd>The ratio of random dropout, with value in [0, 1). If this input was not set, or if it was set to 0, the output would be a simple copy of the input. If it's non-zero, output will be a random dropout of the scaled input, which is typically the case during training. It is an optional value, if not specified it will default to 0.5.</dd>
 <dt><tt>training_mode</tt> (optional) : T2</dt>
 <dd>If set to true then it indicates dropout is being used for training. It is an optional value hence unless specified explicitly, it is false. If it is false, ratio is ignored and the operation mimics inference mode where nothing will be dropped from the input data and if mask is requested as output it will contain all ones.</dd>
 </dl>
@@ -417,7 +498,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
 </dl>
 
@@ -460,6 +541,175 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.BifurcationDetector"></a><a name="com.microsoft.bifurcationdetector">**com.microsoft.BifurcationDetector**</a>
+
+  Component for aggressive decoding. Find the bifurcation index of predicted tokens, between source tokens,
+  starting from previous suffix match index, and predicted tokens.
+  Concat predicted tokens, starting from bifurcation index, to the back
+  of current tokens. This forms the output tokens.
+  Detect suffix match index in source tokens, between source tokens and output tokens.
+  Detection is based on finding the appearances of last n-gram in output tokens
+  in source tokens.
+  A match is considered found if source tokens contain a single matching n-gram.
+  Return the index of the start of the n-gram in source tokens.
+  No matching if found if src tokens contain multiple or zero matching n-grams. Return -1.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>max_ngram_size</tt> : int</dt>
+<dd>The maximum NGram size for suffix matching.</dd>
+<dt><tt>min_ngram_size</tt> : int</dt>
+<dd>The minimum NGram size for suffix matching.</dd>
+</dl>
+
+#### Inputs (3 - 4)
+
+<dl>
+<dt><tt>src_tokens</tt> : T</dt>
+<dd>Encoder input ids.</dd>
+<dt><tt>cur_tokens</tt> : T</dt>
+<dd>Decoder input ids.</dd>
+<dt><tt>prev_suffix_match_idx</tt> : T</dt>
+<dd>Previous suffix match index</dd>
+<dt><tt>pred_tokens</tt> (optional) : T</dt>
+<dd>Predicted token ids from aggressive decoding</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>tokens</tt> : T</dt>
+<dd>Decoder input ids after merging predicted tokens</dd>
+<dt><tt>suffix_match_idx</tt> : T</dt>
+<dd>new suffix match index</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(int64)</dt>
+<dd>Constrain to integer types.</dd>
+</dl>
+
+
+### <a name="com.microsoft.BitmaskBiasDropout"></a><a name="com.microsoft.bitmaskbiasdropout">**com.microsoft.BitmaskBiasDropout**</a>
+
+  output, dropout_bitmask = Dropout(data + bias, ratio) + residual, Intended to specialize the dropout pattern commonly found in transformer models.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>seed</tt> : int</dt>
+<dd>(Optional) Seed to the random generator, if not specified we will auto generate one.</dd>
+</dl>
+
+#### Inputs (2 - 5)
+
+<dl>
+<dt><tt>data</tt> : T</dt>
+<dd>The input data as Tensor.</dd>
+<dt><tt>bias</tt> : T</dt>
+<dd>The bias input, a vector with the same shape as last dim of data OR same shape with data</dd>
+<dt><tt>residual</tt> (optional) : T</dt>
+<dd>The residual input, must have the same shape as data</dd>
+<dt><tt>ratio</tt> (optional) : T1</dt>
+<dd>The ratio of random dropout, with value in [0, 1). If this input was not set, or if it was set to 0, the output would be a simple copy of the input. If it's non-zero, output will be a random dropout of the scaled input, which is typically the case during training. It is an optional value, if not specified it will default to 0.5.</dd>
+<dt><tt>training_mode</tt> (optional) : T2</dt>
+<dd>If set to true then it indicates dropout is being used for training. It is an optional value hence unless specified explicitly, it is false. If it is false, ratio is ignored and the operation mimics inference mode where nothing will be dropped from the input data and if mask is requested as output it will contain all ones.</dd>
+</dl>
+
+#### Outputs (1 - 2)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>The output.</dd>
+<dt><tt>mask</tt> (optional) : T3</dt>
+<dd>The output mask of dropout.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>T1</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
+<dd>Constrain input 'ratio' types to float tensors.</dd>
+<dt><tt>T2</tt> : tensor(bool)</dt>
+<dd>Constrain input 'training_mode' types to boolean tensors.</dd>
+<dt><tt>T3</tt> : tensor(uint32)</dt>
+<dd>Constrain output 'mask' types to uint32 tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.BitmaskDropout"></a><a name="com.microsoft.bitmaskdropout">**com.microsoft.BitmaskDropout**</a>
+
+  BitmaskDropout takes an input floating-point tensor, an optional input ratio (floating-point scalar) and an optional input training_mode (boolean scalar).
+  It produces two tensor outputs: output (floating-point tensor) and mask (optional `Tensor<uint32>`). If `training_mode` is true then the output Y will be a random dropout.
+  Note that this Dropout scales the masked input data by the following equation, so to convert the trained model into inference mode, the user can simply not pass `training_mode` input or set it to false.
+  ```
+  output = scale * data * mask,
+  ```
+  where
+  ```
+  scale = 1. / (1. - ratio).
+  ```
+  
+  This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt that the mask is output as a bit-packed uint32 tensor, instead of a boolean tensor.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>seed</tt> : int</dt>
+<dd>(Optional) Seed to the random generator, if not specified we will auto generate one.</dd>
+</dl>
+
+#### Inputs (1 - 3)
+
+<dl>
+<dt><tt>data</tt> : T</dt>
+<dd>The input data as Tensor.</dd>
+<dt><tt>ratio</tt> (optional) : T1</dt>
+<dd>The ratio of random dropout, with value in [0, 1). If this input was not set, or if it was set to 0, the output would be a simple copy of the input. If it's non-zero, output will be a random dropout of the scaled input, which is typically the case during training. It is an optional value, if not specified it will default to 0.5.</dd>
+<dt><tt>training_mode</tt> (optional) : T2</dt>
+<dd>If set to true then it indicates dropout is being used for training. It is an optional value hence unless specified explicitly, it is false. If it is false, ratio is ignored and the operation mimics inference mode where nothing will be dropped from the input data and if mask is requested as output it will contain all ones.</dd>
+</dl>
+
+#### Outputs (1 - 2)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>The output.</dd>
+<dt><tt>mask</tt> (optional) : T3</dt>
+<dd>The bit-packed output mask.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>T1</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
+<dd>Constrain input 'ratio' types to float tensors.</dd>
+<dt><tt>T2</tt> : tensor(bool)</dt>
+<dd>Constrain 'training_mode' to boolean tensor.</dd>
+<dt><tt>T3</tt> : tensor(uint32)</dt>
+<dd>Constrain output 'mask' types to bit-packed uint32 tensor.</dd>
 </dl>
 
 
@@ -663,6 +913,72 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.DecoderAttention"></a><a name="com.microsoft.decoderattention">**com.microsoft.DecoderAttention**</a>
+
+  This DecoderAttention supports self attention and cross attention, key and value cache, and key_padding_mask. The attention mask is not support at the moment.
+  Some boolean parameters are passed by runtime input for generic purpose
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>3D input tensor with shape (sequence_length, batch_size, hidden_size), hidden_size = num_heads * head_size</dd>
+<dt><tt>key</tt> : T</dt>
+<dd>3D input tensor with shape (total_sequence_length, batch_size, hidden_size)</dd>
+<dt><tt>q_weight</tt> : T</dt>
+<dd>2D input tensor with shape (hidden_size, hidden_size)</dd>
+<dt><tt>kv_weight</tt> : T</dt>
+<dd>2D input tensor with shape (hidden_size, 2 * hidden_size)</dd>
+<dt><tt>bias</tt> : T</dt>
+<dd>1D input tensor with shape (3 * hidden_size)</dd>
+<dt><tt>key_padding_mask</tt> (optional) : B</dt>
+<dd>2D input tensor with shape (batch_size, total_sequence_length)</dd>
+<dt><tt>key_cache</tt> (optional) : T</dt>
+<dd>input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)</dd>
+<dt><tt>value_cache</tt> (optional) : T</dt>
+<dd>input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)</dd>
+<dt><tt>static_kv</tt> : B</dt>
+<dd>If static_kv = true, cross-attention; else self-attention</dd>
+<dt><tt>use_past</tt> : B</dt>
+<dd>If use_past = true, use cache; else no cache</dd>
+<dt><tt>has_layer_state</tt> : B</dt>
+<dd>If has_layer_state = true, layer_state = {} or [a,b]; else layer_state = None</dd>
+<dt><tt>has_key_padding_mask</tt> : B</dt>
+<dd>has_key_padding_mask or not</dd>
+</dl>
+
+#### Outputs (1 - 3)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D output tensor with shape (sequence_length, batch_size, hidden_size)</dd>
+<dt><tt>new_key_cache</tt> (optional) : T</dt>
+<dd>output tensor with shape (batch_size, num_heads, new sequence_length, head_size)</dd>
+<dt><tt>new_value_cache</tt> (optional) : T</dt>
+<dd>output tensor with shape (batch_size, num_heads, new sequence_length, head_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float and float16 tensors.</dd>
+<dt><tt>B</tt> : tensor(bool)</dt>
+<dd>Constrain key_padding_mask to bool tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.DequantizeLinear"></a><a name="com.microsoft.dequantizelinear">**com.microsoft.DequantizeLinear**</a>
 
   The linear dequantization operator. It consumes a quantized data, a scale, a zero point and computes the full precision data.
@@ -842,7 +1158,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The epsilon value to use to avoid division by zero.</dd>
 </dl>
 
-#### Inputs (7 - 8)
+#### Inputs (7 - 9)
 
 <dl>
 <dt><tt>input_ids</tt> : T1</dt>
@@ -861,15 +1177,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>1D beta tensor for layer normalization  with shape (hidden_size)</dd>
 <dt><tt>mask</tt> (optional) : T1</dt>
 <dd>2D attention mask with shape (batch_size, sequence_length)</dd>
+<dt><tt>position_ids</tt> (optional) : T1</dt>
+<dd>2D position ids with shape (batch_size, sequence_length)</dd>
 </dl>
 
-#### Outputs
+#### Outputs (2 - 3)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>mask_index</tt> : T1</dt>
 <dd>1D mask_index tensor with shape (batch_size)</dd>
+<dt><tt>embedding_sum</tt> (optional) : T</dt>
+<dd>sum of word_embedding and position_embedding without layer normalization</dd>
 </dl>
 
 #### Type Constraints
@@ -1077,6 +1397,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Whether A should be transposed on the last two dimensions before doing multiplication</dd>
 <dt><tt>transB</tt> : int</dt>
 <dd>Whether B should be transposed on the last two dimensions before doing multiplication</dd>
+<dt><tt>transBatchA</tt> : int</dt>
+<dd>Whether A should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before doing multiplication</dd>
+<dt><tt>transBatchB</tt> : int</dt>
+<dd>Whether B should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before doing multiplication</dd>
 </dl>
 
 #### Inputs
@@ -1622,6 +1946,55 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.NhwcConv"></a><a name="com.microsoft.nhwcconv">**com.microsoft.NhwcConv**</a>
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>auto_pad</tt> : string</dt>
+<dd></dd>
+<dt><tt>dilations</tt> : list of ints</dt>
+<dd>dilation value along each spatial axis of the filter. If not present, the dilation defaults is 1 along each spatial axis.</dd>
+<dt><tt>group</tt> : int</dt>
+<dd>number of groups input channels and output channels are divided into.</dd>
+<dt><tt>kernel_shape</tt> : list of ints</dt>
+<dd>The shape of the convolution kernel. If not present, should be inferred from input W.</dd>
+<dt><tt>pads</tt> : list of ints</dt>
+<dd></dd>
+<dt><tt>strides</tt> : list of ints</dt>
+<dd>Stride along each spatial axis. If not present, the stride defaults is 1 along each spatial axis.</dd>
+</dl>
+
+#### Inputs (2 - 3)
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input data tensor from previous layer; has size (N x C x H x W), where N is the batch size, C is the number of channels, and H and W are the height and width. Note that this is for the 2D image. Otherwise the size is (N x C x D1 x D2 ... x Dn). Optionally, if dimension denotation is in effect, the operation expects input data tensor to arrive with the dimension denotation of [DATA_BATCH, DATA_CHANNEL, DATA_FEATURE, DATA_FEATURE ...].</dd>
+<dt><tt>W</tt> : T</dt>
+<dd>The weight tensor that will be used in the convolutions; has size (M x C/group x kH x kW), where C is the number of channels, and kH and kW are the height and width of the kernel, and M is the number of feature maps. For more than 2 dimensions, the kernel shape will be (M x C/group x k1 x k2 x ... x kn), where (k1 x k2 x ... kn) is the dimension of the kernel. Optionally, if dimension denotation is in effect, the operation expects the weight tensor to arrive with the dimension denotation of [FILTER_OUT_CHANNEL, FILTER_IN_CHANNEL, FILTER_SPATIAL, FILTER_SPATIAL ...]. Assuming zero based indices for the shape array, X.shape[1] == (W.shape[1] * group) == C and W.shape[0] mod G == 0. Or in other words FILTER_IN_CHANNEL multiplied by the number of groups should be equal to DATA_CHANNEL and the number of feature maps M should be a multiple of the number of groups G.</dd>
+<dt><tt>B</tt> (optional) : T</dt>
+<dd>Optional 1D bias to be added to the convolution, has size of M.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output data tensor that contains the result of the convolution. The output dimensions are functions of the kernel size, stride size, and pad lengths.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.NhwcMaxPool"></a><a name="com.microsoft.nhwcmaxpool">**com.microsoft.NhwcMaxPool**</a>
 
 #### Version
@@ -1664,114 +2037,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(int8), tensor(uint8)</dt>
 <dd></dd>
-</dl>
-
-
-### <a name="com.microsoft.Optional"></a><a name="com.microsoft.optional">**com.microsoft.Optional**</a>
-
-  Construct an optional type containing either an empty optional of a certain type specified by the attribute, "
-        "or an optional type containing the 'input' element."
-        
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>type</tt> : ???</dt>
-<dd>Type of the element in the optional output</dd>
-</dl>
-
-#### Inputs (0 - 1)
-
-<dl>
-<dt><tt>input</tt> (optional) : V</dt>
-<dd>The input element.</dd>
-</dl>
-
-#### Outputs
-
-<dl>
-<dt><tt>output</tt> : O</dt>
-<dd>The optional output enclosing the input element.</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>V</tt> : tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(int8), tensor(int16), tensor(int32), tensor(int64), tensor(float16), tensor(float), tensor(double), tensor(string), tensor(bool), tensor(complex64), tensor(complex128), seq(tensor(uint8)), seq(tensor(uint16)), seq(tensor(uint32)), seq(tensor(uint64)), seq(tensor(int8)), seq(tensor(int16)), seq(tensor(int32)), seq(tensor(int64)), seq(tensor(float16)), seq(tensor(float)), seq(tensor(double)), seq(tensor(string)), seq(tensor(bool)), seq(tensor(complex64)), seq(tensor(complex128))</dt>
-<dd>Constrains input type to all tensor and sequence types.</dd>
-<dt><tt>O</tt> : optional(tensor(uint8)), optional(tensor(uint16)), optional(tensor(uint32)), optional(tensor(uint64)), optional(tensor(int8)), optional(tensor(int16)), optional(tensor(int32)), optional(tensor(int64)), optional(tensor(float16)), optional(tensor(float)), optional(tensor(double)), optional(tensor(string)), optional(tensor(bool)), optional(tensor(complex64)), optional(tensor(complex128)), optional(seq(tensor(uint8))), optional(seq(tensor(uint16))), optional(seq(tensor(uint32))), optional(seq(tensor(uint64))), optional(seq(tensor(int8))), optional(seq(tensor(int16))), optional(seq(tensor(int32))), optional(seq(tensor(int64))), optional(seq(tensor(float16))), optional(seq(tensor(float))), optional(seq(tensor(double))), optional(seq(tensor(string))), optional(seq(tensor(bool))), optional(seq(tensor(complex64))), optional(seq(tensor(complex128)))</dt>
-<dd>Constrains output type to all optional tensor or optional sequence types.</dd>
-</dl>
-
-
-### <a name="com.microsoft.OptionalGetElement"></a><a name="com.microsoft.optionalgetelement">**com.microsoft.OptionalGetElement**</a>
-
-  Outputs the element in the optional-type input'. It is an error if the input value does not have an element "
-        "and the behavior is undefined in this case."
-        
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Inputs
-
-<dl>
-<dt><tt>input</tt> : O</dt>
-<dd>The optional input.</dd>
-</dl>
-
-#### Outputs
-
-<dl>
-<dt><tt>output</tt> : V</dt>
-<dd>Output element in the optional input.</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>O</tt> : optional(tensor(uint8)), optional(tensor(uint16)), optional(tensor(uint32)), optional(tensor(uint64)), optional(tensor(int8)), optional(tensor(int16)), optional(tensor(int32)), optional(tensor(int64)), optional(tensor(float16)), optional(tensor(float)), optional(tensor(double)), optional(tensor(string)), optional(tensor(bool)), optional(tensor(complex64)), optional(tensor(complex128)), optional(seq(tensor(uint8))), optional(seq(tensor(uint16))), optional(seq(tensor(uint32))), optional(seq(tensor(uint64))), optional(seq(tensor(int8))), optional(seq(tensor(int16))), optional(seq(tensor(int32))), optional(seq(tensor(int64))), optional(seq(tensor(float16))), optional(seq(tensor(float))), optional(seq(tensor(double))), optional(seq(tensor(string))), optional(seq(tensor(bool))), optional(seq(tensor(complex64))), optional(seq(tensor(complex128)))</dt>
-<dd>Constrains input type to optional tensor and optional sequence types.</dd>
-<dt><tt>V</tt> : tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(int8), tensor(int16), tensor(int32), tensor(int64), tensor(float16), tensor(float), tensor(double), tensor(string), tensor(bool), tensor(complex64), tensor(complex128), seq(tensor(uint8)), seq(tensor(uint16)), seq(tensor(uint32)), seq(tensor(uint64)), seq(tensor(int8)), seq(tensor(int16)), seq(tensor(int32)), seq(tensor(int64)), seq(tensor(float16)), seq(tensor(float)), seq(tensor(double)), seq(tensor(string)), seq(tensor(bool)), seq(tensor(complex64)), seq(tensor(complex128))</dt>
-<dd>Constrain output type to all tensor or sequence types.</dd>
-</dl>
-
-
-### <a name="com.microsoft.OptionalHasElement"></a><a name="com.microsoft.optionalhaselement">**com.microsoft.OptionalHasElement**</a>
-
-  Returns true if the optional-type input contains an element. If it is an empty optional-type, this op returns false.
-        
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Inputs
-
-<dl>
-<dt><tt>input</tt> : O</dt>
-<dd>The optional input.</dd>
-</dl>
-
-#### Outputs
-
-<dl>
-<dt><tt>output</tt> : B</dt>
-<dd>A scalar boolean tensor. If true, it indicates that optional-type input contains an element. Otherwise, it is empty.</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>O</tt> : optional(tensor(uint8)), optional(tensor(uint16)), optional(tensor(uint32)), optional(tensor(uint64)), optional(tensor(int8)), optional(tensor(int16)), optional(tensor(int32)), optional(tensor(int64)), optional(tensor(float16)), optional(tensor(float)), optional(tensor(double)), optional(tensor(string)), optional(tensor(bool)), optional(tensor(complex64)), optional(tensor(complex128)), optional(seq(tensor(uint8))), optional(seq(tensor(uint16))), optional(seq(tensor(uint32))), optional(seq(tensor(uint64))), optional(seq(tensor(int8))), optional(seq(tensor(int16))), optional(seq(tensor(int32))), optional(seq(tensor(int64))), optional(seq(tensor(float16))), optional(seq(tensor(float))), optional(seq(tensor(double))), optional(seq(tensor(string))), optional(seq(tensor(bool))), optional(seq(tensor(complex64))), optional(seq(tensor(complex128)))</dt>
-<dd>Constrains input type to optional tensor and optional sequence types.</dd>
-<dt><tt>B</tt> : tensor(bool)</dt>
-<dd>Constrains output to a boolean tensor.</dd>
 </dl>
 
 
@@ -2689,6 +2954,49 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float or half tensors.</dd>
 <dt><tt>U</tt> : tensor(float)</dt>
 <dd>Constrain mean and inv_std_var to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.Snpe"></a><a name="com.microsoft.snpe">**com.microsoft.Snpe**</a>
+
+  Onnx node for SNPE.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>DLC</tt> : string (required)</dt>
+<dd>payload of the SNPE DLC file.</dd>
+<dt><tt>notes</tt> : string</dt>
+<dd>(Optional) Some notes for the model</dd>
+<dt><tt>snpe_version</tt> : string</dt>
+<dd>(Optional) SNPE version used to convert the model.</dd>
+<dt><tt>target_device</tt> : string</dt>
+<dd>(Optional) Target device like CPU, DSP, etc.</dd>
+</dl>
+
+#### Inputs (1 - &#8734;)
+
+<dl>
+<dt><tt>inputs</tt> (variadic) : T</dt>
+<dd>List of tensors for SNPE DLC input</dd>
+</dl>
+
+#### Outputs (1 - &#8734;)
+
+<dl>
+<dt><tt>outputs</tt> (variadic) : T</dt>
+<dd>One or more outputs, list of tensors for DLC output</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(uint8), tensor(uint16), tensor(float)</dt>
+<dd>Constrain input and output types to uint8, uint16, float tensors.</dd>
 </dl>
 
 

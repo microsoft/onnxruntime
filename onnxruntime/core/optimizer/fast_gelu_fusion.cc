@@ -35,7 +35,7 @@ static bool CheckNode(Graph& graph, const Node& node, const std::string& op_name
 }
 
 MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
-                                              std::vector<std::reference_wrapper<Node>>& nodes_to_fuse) const {
+                                              InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) const {
   MatchResult matchResult{false, nullptr, nullptr};
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul1_node, "Mul", {7, 13, 14}) ||
       !graph_utils::IsSupportedProvider(mul1_node, GetCompatibleExecutionProviders()) ||
@@ -45,7 +45,7 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
   }
 
   int32_t input_index = -1;
-  const float mul_val = 0.044715f;
+  constexpr float mul_val = 0.044715f;
   for (auto i = 0; i < 2; i++) {
     if (optimizer_utils::IsInitializerWithExpectedValue(graph, *(mul1_node.InputDefs()[i]), mul_val, true)) {
       input_index = i;
@@ -89,7 +89,7 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
   }
 
   input_index = -1;
-  const float mul4_val = 0.7978845834732056f;
+  constexpr float mul4_val = 0.7978845834732056f;
   for (auto i = 0; i < 2; i++) {
     if (optimizer_utils::IsInitializerWithExpectedValue(graph, *(mul4_node.InputDefs()[i]), mul4_val, true)) {
       input_index = i;
@@ -108,7 +108,7 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
 }
 
 MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
-                                               std::vector<std::reference_wrapper<Node>>& nodes_to_fuse) const {
+                                               InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) const {
   MatchResult matchResult{false, nullptr, nullptr};
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow1_node, "Pow", {7, 12, 13}) ||
       !graph_utils::IsSupportedProvider(pow1_node, GetCompatibleExecutionProviders()) ||
@@ -203,7 +203,7 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
     Node& node = *p_node;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    std::vector<std::reference_wrapper<Node>> nodes_to_fuse;
+    InlinedVector<std::reference_wrapper<Node>> nodes_to_fuse;
     bool second_formula = false;
     MatchResult matchRet = CheckFirstFormula(graph, node, nodes_to_fuse);
     if (!matchRet.matched) {
@@ -285,7 +285,6 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
         continue;
     }
 
-    std::vector<NodeArg*> gelu_input_defs{matchRet.gelu_without_bias_input_arg};
     nodes_to_fuse.insert(nodes_to_fuse.end(), {tanh_node, add2_node, mul6_node, mul5_node});
 
     auto type_info = *node.MutableOutputDefs()[0]->TypeAsProto();
@@ -294,8 +293,8 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
     Node& fast_gelu_node = graph.AddNode(graph.GenerateNodeName("GPT2Gelu"),
                                          "FastGelu",
                                          "fused GPT2Gelu subgraphs ",
-                                         gelu_input_defs,
-                                         {&shape_output}, {}, kMSDomain);
+                                         std::array{matchRet.gelu_without_bias_input_arg},
+                                         std::array{&shape_output}, {}, kMSDomain);
 
     // assign provider to this new node, provider should be same as the provider for old node.
     fast_gelu_node.SetExecutionProviderType(node.GetExecutionProviderType());

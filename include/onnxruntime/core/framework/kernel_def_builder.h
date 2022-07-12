@@ -23,7 +23,7 @@ typedef std::map<size_t, OrtMemType> MemTypeMap;
 class KernelDef {
  private:
   // note that input/output might be on CPU implicitly when the node is from CPU execution provider
-  static inline bool MemTypeOnCpuExplicitly(OrtMemType mem_type) {
+  constexpr static inline bool MemTypeOnCpuExplicitly(OrtMemType mem_type) {
     return mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput;
   }
 
@@ -90,6 +90,11 @@ class KernelDef {
 
   bool HasExternalOutputs() const { return external_outputs_; }
 
+#ifdef ENABLE_TRAINING
+  const std::vector<int>& MayStridedInput() const { return may_strided_inputs_; }
+  const std::vector<std::pair<int, int>>& MayStridedOutput() const { return may_strided_output_map_; }
+#endif
+
   OrtMemType OutputMemoryType(size_t output_index) const {
     auto it = output_memory_type_args_.find(output_index);
     if (it == output_memory_type_args_.end())
@@ -103,7 +108,7 @@ class KernelDef {
 
   bool IsConflict(const KernelDef& other) const;
 
-  uint64_t GetHash() const noexcept {
+  HashValue GetHash() const noexcept {
     // if we need to support different hash versions we can update CalculateHash to take a version number
     // and calculate any non-default versions dynamically. we only use this during kernel lookup so
     // it's not performance critical
@@ -163,6 +168,14 @@ class KernelDef {
   // Whether the outputs are from external.
   bool external_outputs_ = false;
 
+#ifdef ENABLE_TRAINING
+  // An element i means i-th input can be strided tensor.
+  std::vector<int> may_strided_inputs_;
+
+  // An element <i, j> means j-th output can be a strided tensor, which share the data from i-th input.
+  std::vector<std::pair<int, int>> may_strided_output_map_;
+#endif
+
   // The memory types of inputs/outputs of this kernel
   MemTypeMap input_memory_type_args_;
   MemTypeMap output_memory_type_args_;
@@ -175,7 +188,7 @@ class KernelDef {
   OrtMemType default_outputs_mem_type_{OrtMemTypeDefault};
 
   // hash of kernel definition for lookup in minimal build
-  uint64_t hash_ = 0;
+  HashValue hash_ = 0;
 };
 
 class KernelDefBuilder {
@@ -183,7 +196,7 @@ class KernelDefBuilder {
   static std::unique_ptr<KernelDefBuilder> Create() { return std::make_unique<KernelDefBuilder>(); }
 
   explicit KernelDefBuilder()
-      : kernel_def_(new KernelDef()) {}
+      : kernel_def_(std::make_unique<KernelDef>()) {}
 
   KernelDefBuilder& SetName(const std::string& op_name);
   KernelDefBuilder& SetName(const char* op_name);
@@ -274,7 +287,7 @@ class KernelDefBuilder {
   KernelDefBuilder& Alias(int input_index, int output_index);
 
   /**
-     Apply variadic number of alias mapping from inputs to outputs. 
+     Apply variadic number of alias mapping from inputs to outputs.
      This is effectively applying Alias(i + input_offset, i + output_offset) for i >= 0
   */
   KernelDefBuilder& VariadicAlias(int input_offset, int output_offset);
@@ -290,13 +303,26 @@ class KernelDefBuilder {
   }
 
   /**
-     Specify that this kernel's output buffers are passed from external, 
+     Specify that this kernel's output buffers are passed from external,
      i.e. not created or managed by ORT's memory allocator.
   */
   KernelDefBuilder& ExternalOutputs() {
     kernel_def_->external_outputs_ = true;
     return *this;
   }
+
+#ifdef ENABLE_TRAINING
+  /**
+     Specify that the input_index-th input can be strided tensor.
+   */
+  KernelDefBuilder& MayStridedInput(int input_index);
+
+  /**
+     Specify that the output_index-th output can be strided tensor, and share the data
+     from input_index-th input.
+   */
+  KernelDefBuilder& MayStridedOutput(int input_index, int output_index);
+#endif
 
   /**
      Specify that this kernel requires an input arg
