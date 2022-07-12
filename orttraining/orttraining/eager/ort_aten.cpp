@@ -1009,6 +1009,48 @@ at::Tensor& nonzero_out(
   return out;
 }
 
+// aten::nonzero(Tensor self) -> Tensor
+at::Tensor nonzero(
+  const at::Tensor& self) {
+  ORT_LOG_FN(self);
+
+  if (
+    !IsSupportedType(self, {at::kByte,at::kLong,at::kInt,at::kDouble,at::kFloat,at::kBFloat16,at::kHalf,at::kShort,at::kBool})) {
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(nonzero)>::call(self);
+  }
+  auto& invoker = GetORTInvoker(self.device());
+
+  auto ort_input_self = create_ort_value(invoker, self);
+
+  std::vector<OrtValue> ort_outputs_0_NonZero(1);
+
+  auto status = invoker.Invoke("NonZero", {
+    std::move(ort_input_self),
+  }, ort_outputs_0_NonZero, nullptr);
+
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+
+  std::vector<OrtValue> ort_outputs_1_Transpose(1);
+
+  status = invoker.Invoke("Transpose", {
+    std::move(ort_outputs_0_NonZero[0]),
+  }, ort_outputs_1_Transpose, nullptr);
+
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+
+  // Once the generator can add .dtype(at::ScalarType::Long); this method can be generated
+  at::TensorOptions tensor_options = self.options().dtype(at::ScalarType::Long);
+  return aten_tensor_from_ort(
+    std::move(ort_outputs_1_Transpose[0]),
+    tensor_options);
+}
+
 } // namespace aten
 
 //#pragma endregion

@@ -42,7 +42,6 @@ ops = [
 # the following unary ops not been tested:
 # ["isnan",       torch.tensor([1, float('nan'), 2])]]
 # ["selu",        torch.randn(10)]]
-# ["nonzero",    torch.tensor([0, 2, 1, 3])]]
 # ["sign",        ]]
 # ["hardsigmoid", ],
 # ["isinf",       ],
@@ -454,19 +453,32 @@ class OrtOpTests(unittest.TestCase):
                 assert cpu_tensor.dtype == ort_tensor.dtype
                 assert torch.equal(cpu_tensor, ort_tensor.to("cpu"))
 
-    def test_nonzero_out(self):
+    # tests both nonzero and nonzero.out
+    def test_nonzero(self):
         device = self.get_device()
-        cpu_tensor = torch.tensor([[[-1, 0, 1], [0, 1, 0]], [[0, 1, 0], [-1, 0, 1]]])
-        ort_tensor = cpu_tensor.to(device)
 
-        cpu_out_tensor = torch.tensor([], dtype=torch.long)
-        ort_out_tensor = cpu_out_tensor.to(device)
+        for cpu_tensor in [
+            torch.tensor([[[-1, 0, 1], [0, 1, 0]], [[0, 1, 0], [-1, 0, 1]]], dtype=torch.long),
+            torch.tensor([[[-1, 0, 1], [0, 1, 0]], [[0, 1, 0], [-1, 0, 1]]], dtype=torch.float),
+        ]:
+            ort_tensor = cpu_tensor.to(device)
 
-        cpu_result = torch.nonzero(cpu_tensor, out=cpu_out_tensor)
-        ort_result = torch.nonzero(ort_tensor, out=ort_out_tensor)
+            cpu_out_tensor = torch.tensor([], dtype=torch.long)
+            ort_out_tensor = cpu_out_tensor.to(device)
 
-        assert torch.equal(cpu_out_tensor, ort_out_tensor.to("cpu"))
-        assert torch.equal(cpu_result, ort_result.to("cpu"))
+            # nonzero.out
+            cpu_result = torch.nonzero(cpu_tensor, out=cpu_out_tensor)
+            ort_result = torch.nonzero(ort_tensor, out=ort_out_tensor)
+            assert torch.equal(cpu_out_tensor, ort_out_tensor.to("cpu"))
+            assert torch.equal(cpu_result, ort_result.to("cpu"))
+
+            # nonzero
+            cpu_result = torch.nonzero(cpu_tensor)
+            ort_result = torch.nonzero(ort_tensor)
+            assert torch.equal(cpu_result, ort_result.to("cpu"))
+
+            # check result between nonzero.out and nonzero
+            assert torch.equal(ort_result.to("cpu"), ort_out_tensor.to("cpu"))
 
 
 if __name__ == "__main__":

@@ -167,7 +167,8 @@ hand_implemented = {
     "aten::equal": SignatureOnly(),
     "aten::_softmax": Softmax("self", axis="dim"),
     "aten::argmax.out": SignatureOnly(),
-    "aten::nonzero": Transpose(NonZero("self")),
+    # nonzero should be Transpose(NonZero("self")), but output must be type long which generator doesn't support yet
+    "aten::nonzero": SignatureOnly(),
     "aten::nonzero.out": SignatureOnly(),
 }
 
