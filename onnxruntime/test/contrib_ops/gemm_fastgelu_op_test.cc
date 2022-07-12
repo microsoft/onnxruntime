@@ -64,8 +64,8 @@ TEST(GemmFastGeluTest, GemmFastGeluWithoutBiasFloat32) {
   std::vector<float> bias_data = {};
 
   std::vector<float> output_data = {
-      3.4894, 1.8455, 0.0260, 0.2229, -0.1003, 0.0902,
-      -0.1323, -0.0953, 0.0778, 0.2152, 0.6715, -0.0240};
+      3.4894f, 1.8455f, 0.0260f, 0.2229f, -0.1003f, 0.0902f,
+      -0.1323f, -0.0953f, 0.0778f, 0.2152f, 0.6715f, -0.0240f};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};
@@ -100,8 +100,8 @@ TEST(GemmFastGeluTest, GemmFastGeluWithBiasFloat32) {
       -0.5f, 0.6f, 1.2f, 2.1f, -0.6f, 0.4f};
 
   std::vector<float> output_data = {
-      2.9862, 2.4849, 1.1177, 2.4329, -0.1681, 0.3988,
-      -0.0702, -0.1633, 1.2190, 2.4225, 0.1428, 0.2229};
+      2.9862f, 2.4849f, 1.1177f, 2.4329f, -0.1681f, 0.3988f,
+      -0.0702f, -0.1633f, 1.2190f, 2.4225f, 0.1428f, 0.2229f};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};
@@ -137,8 +137,8 @@ TEST(GemmFastGeluTest, GemmFastGeluWithoutBiasFloat16) {
   std::vector<float> bias_data = {};
 
   std::vector<float> output_data = {
-      3.4902, 1.8467, 0.0259, 0.2227, -0.1005, 0.0901,
-      -0.1324, -0.0955, 0.0778, 0.2156, 0.6714, -0.0241};
+      3.4902f, 1.8467f, 0.0259f, 0.2227f, -0.1005f, 0.0901f,
+      -0.1324f, -0.0955f, 0.0778f, 0.2156f, 0.6714f, -0.0241f};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};
@@ -171,8 +171,8 @@ TEST(GemmFastGeluTest, GemmFastGeluWithBiasFloat16) {
       -0.5f, 0.6f, 1.2f, 2.1f, -0.6f, 0.4f};
 
   std::vector<float> output_data = {
-      2.9883, 2.4844, 1.1182, 2.4316, -0.1680, 0.3984,
-      -0.0701, -0.1633, 1.2178, 2.4219, 0.1426, 0.2227};
+      2.9883f, 2.4844f, 1.1182f, 2.4316f, -0.1680f, 0.3984f,
+      -0.0701f, -0.1633f, 1.2178f, 2.4219f, 0.1426f, 0.2227f};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};
@@ -207,8 +207,8 @@ TEST(GemmFastGeluTest, GemmFastGeluWithBias_BFloat16) {
       -0.5f, 0.6f, 1.2f, 2.1f, -0.6f, 0.4f};
 
   std::vector<float> output_data = {
-      2.9883, 2.4844, 1.1182, 2.4316, -0.1680, 0.3984,
-      -0.0701, -0.1633, 1.2178, 2.4219, 0.1426, 0.2227};
+      2.9883f, 2.4844f, 1.1182f, 2.4316f, -0.1680f, 0.3984f,
+      -0.0701f, -0.1633f, 1.2178f, 2.4219f, 0.1426f, 0.2227f};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> weight_dims = {hidden_size, dense_size};
