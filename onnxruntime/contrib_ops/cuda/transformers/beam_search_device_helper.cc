@@ -196,11 +196,11 @@ void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
   cudaMemsetAsync(greedy_state->next_tokens.data(), 0, greedy_state->next_tokens.size_bytes(), cuda_stream);
   cudaMemsetAsync(greedy_state->next_positions.data(), 0, greedy_state->next_positions.size_bytes(), cuda_stream);
 
-  // greedy_state->next_positions is on cpu
-  gsl::span<int32_t>& next_position = greedy_state->next_positions;
   for (int i = 0; i < batch_size; i++) {
-    next_position[SafeInt<gsl::index>(i)] = sequence_lengths[i] - 1;
+    sequence_lengths[i] = sequence_lengths[i] - 1;
   }
+  cudaMemcpyAsync(greedy_state->next_positions.data(), sequence_lengths.data(), sequence_lengths.size_bytes(),
+                  cudaMemcpyHostToDevice, cuda_stream);
 }
 
 template <typename T>
@@ -537,14 +537,20 @@ Status GreedySearchProcessLogits(
 #endif
 
   const int64_t* next_token_indices = topk_indices->Data<int64_t>();
+  cuda::LaunchTypeCastKernel(next_token_indices, greedy_state->next_tokens.data(), batch_size, cuda_stream);
 
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens.data(),
-                                       next_token_indices,
-                                       topk_scores->Shape().Size() * sizeof(float),
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens_cpu.data(),
+                                       greedy_state->next_tokens.data(),
+                                       greedy_state->next_tokens_cpu.size_bytes(),
                                        cudaMemcpyDeviceToHost,
                                        cuda_stream));
+  std::cout << "device helper 546" << std::endl;
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+  std::cout << "device helper 548" << std::endl;
 
+#ifdef DEBUG_BEAM_SEARCH
+  dumper->Print("greedy_state->next_tokens", greedy_state->next_tokens.data(), 3, 1);
+#endif
   return Status::OK();
 }
 

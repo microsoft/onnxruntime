@@ -193,7 +193,6 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
                                                 greedy_state,
                                                 iteration_counter,
                                                 parameters->eos_token_id));
-
     // When all batches are finished, stop earlier to avoid wasting computation.
     gsl::span<bool>& eos_meet = greedy_state.eos_meet;
     size_t batch_id = 0;
@@ -203,7 +202,6 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
       }
       ++batch_id;
     }
-
     if (batch_id == eos_meet.size()) {
       break;
     }

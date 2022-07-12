@@ -32,16 +32,17 @@ struct GreedySearchState : public IGreedySearchState<T> {
     this->eos_meet = AllocateBuffer<bool>(cpu_allocator, eos_meet_buffer_, batch_size);
     memset(this->eos_meet.data(), 0, this->eos_meet.size_bytes());
 
-    this->next_positions = AllocateBuffer<int32_t>(cpu_allocator, next_positions_buffer_, batch_size);
+    this->next_tokens_cpu = AllocateBuffer<int32_t>(cpu_allocator, next_tokens_cpu_buffer_, SafeInt<size_t>(batch_size));
 
     // below buffers are on cpu or cuda
     size_t next_token_size = SafeInt<size_t>(batch_size) * vocab_size;
     this->next_token_scores = AllocateBuffer<T>(allocator, next_token_scores_buffer_, next_token_size);
-    this->next_tokens = AllocateBuffer<int32_t>(allocator, next_tokens_buffer_, SafeInt<size_t>(batch_size));
+    this->next_positions = AllocateBuffer<int32_t>(allocator, next_positions_buffer_, batch_size);
+
 
     if (is_cuda) {
       // buffers used by CUDA operator but not by CPU operator.
-      ORT_UNUSED_PARAMETER(is_cuda);
+      this->next_tokens = AllocateBuffer<int32_t>(allocator, next_tokens_buffer_, SafeInt<size_t>(batch_size));
     }
   }
 
@@ -63,6 +64,7 @@ struct GreedySearchState : public IGreedySearchState<T> {
   BufferUniquePtr sequence_lengths_buffer_;
   BufferUniquePtr next_token_scores_buffer_;
   BufferUniquePtr next_tokens_buffer_;
+  BufferUniquePtr next_tokens_cpu_buffer_;
   BufferUniquePtr next_positions_buffer_;
   BufferUniquePtr eos_meet_buffer_;
 };
@@ -220,9 +222,7 @@ Status GreedySearchBase<T>::GenerateNextToken(
     int eos_token_id) {
   // Process logits to get next token scores
   ORT_RETURN_IF_ERROR(ProcessLogits(logits, greedy_state, temp_space_allocator_, counter));
-
-  next_tokens = greedy_state.next_tokens;
-
+  next_tokens = greedy_state.next_tokens_cpu;
   greedy_state.sequences.AppendNextTokenToSequences(next_tokens);
 
 #ifdef DEBUG_BEAM_SEARCH

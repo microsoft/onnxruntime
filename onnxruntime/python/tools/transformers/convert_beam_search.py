@@ -24,7 +24,7 @@ Example 4: convert MT5 model with external data file like mt5-base-beamsearch.on
     python convert_beam_search.py -m google/mt5-base --model_type mt5 --output mt5-base-beamsearch.onnx -e
 
 Example 5: convert gpt2 model with greedy search:
-    python convert_beam_search.py -m gpt2 --output gpt2_beam_search.onnx --num_beams 1 --num_return_sequences 1
+    python convert_beam_search.py -m gpt2 --output gpt2_greedy_search.onnx --num_beams 1 --num_return_sequences 1
 """
 
 import argparse
