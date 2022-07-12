@@ -119,7 +119,7 @@ class ORTTrainer(object):
 
     .. deprecated:: 1.10
     Use :class:`ORTModule` instead.
-   """
+    """
 
     def __init__(self, model, model_desc, optim_config, loss_fn=None, options=None):
         assert model is not None, "'model' is required and must be either a 'torch.nn.Module' or ONNX model"

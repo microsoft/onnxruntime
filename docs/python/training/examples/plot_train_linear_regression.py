@@ -80,7 +80,7 @@ def onnx_linear_regression(coefs, intercept):
         producer_name="orttrainer",
         ir_version=7,
         producer_version=ort_version,
-        opset_imports=[helper.make_operatorsetid("", 14)]
+        opset_imports=[helper.make_operatorsetid("", 14)],
     )
     return model_def
 
@@ -92,8 +92,8 @@ onx = onnx_linear_regression(lr.coef_.astype(np.float32), lr.intercept_.astype(n
 
 def plot_dot(model):
     pydot_graph = GetPydotGraph(
-        model.graph, name=model.graph.name, rankdir="TB",
-        node_producer=GetOpNodeProducer("docstring"))
+        model.graph, name=model.graph.name, rankdir="TB", node_producer=GetOpNodeProducer("docstring")
+    )
     return plot_graphviz(pydot_graph.to_string())
     
 plot_dot(onx)
@@ -155,14 +155,14 @@ def onnx_linear_regression_training(coefs, intercept):
         "lrt",
         [X, label],
         [loss, Y],
-        [init_coefs, init_intercept]
+        [init_coefs, init_intercept],
     )
     model_def = helper.make_model(
         graph_def,
         producer_name="orttrainer",
         ir_version=7,
         producer_version=ort_version,
-        opset_imports=[helper.make_operatorsetid("", 14)]
+        opset_imports=[helper.make_operatorsetid("", 14)],
     )
     return model_def
 
@@ -172,7 +172,7 @@ def onnx_linear_regression_training(coefs, intercept):
 
 onx_train = onnx_linear_regression_training(
     np.random.randn(*lr.coef_.shape).astype(np.float32),
-    np.random.randn(*lr.intercept_.reshape((-1, )).shape).astype(np.float32)
+    np.random.randn(*lr.intercept_.reshape((-1,)).shape).astype(np.float32),
 )
 
 plot_dot(onx_train)
@@ -218,7 +218,7 @@ class DataLoader:
         while N < len(self):
             i = np.random.randint(0, b)
             N += self.batch_size
-            yield (self.X[i:i + self.batch_size], self.y[i:i + self.batch_size])
+            yield (self.X[i : i + self.batch_size], self.y[i : i + self.batch_size])
 
     @property
     def data(self):
@@ -245,7 +245,7 @@ for i, batch in enumerate(data_loader):
 
 
 def create_training_session(
-        training_onnx, weights_to_train, loss_output_name="loss", training_optimizer_name="SGDOptimizer"
+    training_onnx, weights_to_train, loss_output_name="loss", training_optimizer_name="SGDOptimizer"
 ):
     """
     Creates an instance of class `TrainingSession`.
@@ -311,11 +311,7 @@ pprint(state_tensors)
 ######################################
 # They changed. Another iteration to be sure.
 
-inputs = {
-    "X": X_train[:1],
-    "label": y_train[:1].reshape((-1, 1)),
-    "Learning_Rate": np.array([0.001], dtype=np.float32)
-}
+inputs = {"X": X_train[:1], "label": y_train[:1].reshape((-1, 1)), "Learning_Rate": np.array([0.001], dtype=np.float32)}
 res = train_session.run(None, inputs)
 state_tensors = train_session.get_state()
 pprint(state_tensors)
@@ -369,7 +365,7 @@ class CustomTraining:
         alpha=0.0001,
         power_t=0.25,
         learning_rate="invscaling",
-        verbose=0
+        verbose=0,
     ):
         # See https://scikit-learn.org/stable/modules/generated/
         # sklearn.linear_model.SGDRegressor.html
@@ -413,7 +409,7 @@ class CustomTraining:
             self.model_onnx,
             self.weights_to_train,
             loss_output_name=self.loss_output_name,
-            training_optimizer_name=self.training_optimizer_name
+            training_optimizer_name=self.training_optimizer_name,
         )
 
         data_loader = DataLoader(X, y, batch_size=self.batch_size)

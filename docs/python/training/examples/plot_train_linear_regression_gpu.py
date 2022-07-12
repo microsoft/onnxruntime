@@ -33,7 +33,7 @@ from onnxruntime import (
     get_device, OrtValue,
     TrainingParameters,
     SessionOptions,
-    TrainingSession
+    TrainingSession,
 )
 import matplotlib.pyplot as plt
 from pyquickhelper.helpgen.graphviz_helper import plot_graphviz
@@ -90,14 +90,14 @@ def onnx_linear_regression_training(coefs, intercept):
         "lrt",
         [X, label],
         [loss, Y],
-        [init_coefs, init_intercept]
+        [init_coefs, init_intercept],
     )
     model_def = helper.make_model(
         graph_def,
         producer_name="orttrainer",
         ir_version=7,
         producer_version=ort_version,
-        opset_imports=[helper.make_operatorsetid("", 14)]
+        opset_imports=[helper.make_operatorsetid("", 14)],
     )
     return model_def
 
@@ -126,7 +126,7 @@ print("device=%r get_device()=%r" % (device, get_device()))
 
 
 def create_training_session(
-        training_onnx, weights_to_train, loss_output_name="loss", training_optimizer_name="SGDOptimizer", device="cpu"
+    training_onnx, weights_to_train, loss_output_name="loss", training_optimizer_name="SGDOptimizer", device="cpu"
 ):
     """
     Creates an instance of class `TrainingSession`.
@@ -172,9 +172,7 @@ def create_training_session(
     else:
         raise ValueError("Unexpected device %r." % device)
 
-    session = TrainingSession(
-        training_onnx.SerializeToString(), ort_parameters, session_options,
-        providers=provider)
+    session = TrainingSession(training_onnx.SerializeToString(), ort_parameters, session_options, providers=provider)
     return session
 
 
@@ -202,7 +200,7 @@ bind.bind_input(
     device_id=0,
     element_type=np.float32,
     shape=bind_x.shape(),
-    buffer_ptr=bind_x.data_ptr()
+    buffer_ptr=bind_x.data_ptr(),
 )
 
 bind.bind_input(
@@ -211,7 +209,7 @@ bind.bind_input(
     device_id=0,
     element_type=np.float32,
     shape=bind_y.shape(),
-    buffer_ptr=bind_y.data_ptr()
+    buffer_ptr=bind_y.data_ptr(),
 )
 
 bind.bind_input(
@@ -220,7 +218,7 @@ bind.bind_input(
     device_id=0,
     element_type=np.float32,
     shape=bind_lr.shape(),
-    buffer_ptr=bind_lr.data_ptr()
+    buffer_ptr=bind_lr.data_ptr(),
 )
 
 bind.bind_output("loss")
@@ -262,8 +260,7 @@ class DataLoaderDevice:
         if len(y.shape) == 1:
             y = y.reshape((-1, 1))
         if X.shape[0] != y.shape[0]:
-            raise ValueError(
-                "Shape mismatch X.shape=%r, y.shape=%r." % (X.shape, y.shape))
+            raise ValueError("Shape mismatch X.shape=%r, y.shape=%r." % (X.shape, y.shape))
         self.X = np.ascontiguousarray(X)
         self.y = np.ascontiguousarray(y)
         self.batch_size = batch_size
@@ -285,8 +282,8 @@ class DataLoaderDevice:
             i = np.random.randint(0, b)
             N += self.batch_size
             yield (
-                OrtValue.ortvalue_from_numpy(self.X[i:i + self.batch_size], self.device, self.device_idx),
-                OrtValue.ortvalue_from_numpy(self.y[i:i + self.batch_size], self.device, self.device_idx)
+                OrtValue.ortvalue_from_numpy(self.X[i : i + self.batch_size], self.device, self.device_idx),
+                OrtValue.ortvalue_from_numpy(self.y[i : i + self.batch_size], self.device, self.device_idx),
             )
 
     @property
@@ -335,20 +332,20 @@ class CustomTraining:
     """
 
     def __init__(
-            self,
-            model_onnx,
-            weights_to_train,
-            loss_output_name="loss",
-            max_iter=100,
-            training_optimizer_name="SGDOptimizer",
-            batch_size=10,
-            eta0=0.01,
-            alpha=0.0001,
-            power_t=0.25,
-            learning_rate="invscaling",
-            device="cpu",
-            device_idx=0,
-            verbose=0
+        self,
+        model_onnx,
+        weights_to_train,
+        loss_output_name="loss",
+        max_iter=100,
+        training_optimizer_name="SGDOptimizer",
+        batch_size=10,
+        eta0=0.01,
+        alpha=0.0001,
+        power_t=0.25,
+        learning_rate="invscaling",
+        device="cpu",
+        device_idx=0,
+        verbose=0,
     ):
         # See https://scikit-learn.org/stable/modules/generated/
         # sklearn.linear_model.SGDRegressor.html
@@ -395,7 +392,7 @@ class CustomTraining:
             self.weights_to_train,
             loss_output_name=self.loss_output_name,
             training_optimizer_name=self.training_optimizer_name,
-            device=self.device
+            device=self.device,
         )
 
         data_loader = DataLoaderDevice(X, y, batch_size=self.batch_size, device=self.device)
@@ -426,7 +423,7 @@ class CustomTraining:
                 device_id=self.device_idx,
                 element_type=np.float32,
                 shape=data.shape(),
-                buffer_ptr=data.data_ptr()
+                buffer_ptr=data.data_ptr(),
             )
 
             bind.bind_input(
@@ -435,14 +432,16 @@ class CustomTraining:
                 device_id=self.device_idx,
                 element_type=np.float32,
                 shape=target.shape(),
-                buffer_ptr=target.data_ptr()
+                buffer_ptr=target.data_ptr(),
             )
 
             bind.bind_input(
                 name=self.input_names_[2],
-                device_type=learning_rate.device_name(), device_id=0,
-                element_type=np.float32, shape=learning_rate.shape(),
-                buffer_ptr=learning_rate.data_ptr()
+                device_type=learning_rate.device_name(),
+                device_id=0,
+                element_type=np.float32,
+                shape=learning_rate.shape(),
+                buffer_ptr=learning_rate.data_ptr(),
             )
 
             bind.bind_output("loss")

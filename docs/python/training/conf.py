@@ -56,6 +56,6 @@ intersphinx_mapping = {
 # -- Options for Sphinx Gallery ----------------------------------------------
 
 sphinx_gallery_conf = {
-     "examples_dirs": "examples",
-     "gallery_dirs": "auto_examples",
+    "examples_dirs": "examples",
+    "gallery_dirs": "auto_examples",
 }
