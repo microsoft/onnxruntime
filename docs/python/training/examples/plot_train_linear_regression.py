@@ -25,8 +25,12 @@ from pandas import DataFrame
 from onnx import helper, numpy_helper, TensorProto
 from onnx.tools.net_drawer import GetPydotGraph, GetOpNodeProducer
 from onnxruntime import (
-    InferenceSession, __version__ as ort_version,
-    TrainingParameters, SessionOptions, TrainingSession)
+    InferenceSession,
+    __version__ as ort_version,
+    TrainingParameters,
+    SessionOptions,
+    TrainingSession,
+)
 import matplotlib.pyplot as plt
 from pyquickhelper.helpgen.graphviz_helper import plot_graphviz
 from sklearn.datasets import make_regression
@@ -58,32 +62,30 @@ def onnx_linear_regression(coefs, intercept):
     coefs = coefs.T
 
     # input and output
-    X = helper.make_tensor_value_info(
-        'X', TensorProto.FLOAT, [None, coefs.shape[0]])
-    Y = helper.make_tensor_value_info(
-        'Y', TensorProto.FLOAT, [None, coefs.shape[1]])
+    X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [None, coefs.shape[0]])
+    Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [None, coefs.shape[1]])
 
     # inference
-    node_matmul = helper.make_node('MatMul', ['X', 'coefs'], ['y1'], name='N1')
-    node_add = helper.make_node('Add', ['y1', 'intercept'], ['Y'], name='N2')
+    node_matmul = helper.make_node("MatMul", ["X", "coefs"], ["y1"], name="N1")
+    node_add = helper.make_node("Add", ["y1", "intercept"], ["Y"], name="N2")
 
     # initializer
     init_coefs = numpy_helper.from_array(coefs, name="coefs")
     init_intercept = numpy_helper.from_array(intercept, name="intercept")
 
     # graph
-    graph_def = helper.make_graph(
-        [node_matmul, node_add], 'lr', [X], [Y],
-        [init_coefs, init_intercept])
+    graph_def = helper.make_graph([node_matmul, node_add], "lr", [X], [Y], [init_coefs, init_intercept])
     model_def = helper.make_model(
-        graph_def, producer_name='orttrainer', ir_version=7,
+        graph_def,
+        producer_name="orttrainer",
+        ir_version=7,
         producer_version=ort_version,
-        opset_imports=[helper.make_operatorsetid('', 14)])
+        opset_imports=[helper.make_operatorsetid("", 14)]
+    )
     return model_def
 
 
-onx = onnx_linear_regression(lr.coef_.astype(np.float32),
-                             lr.intercept_.astype(np.float32))
+onx = onnx_linear_regression(lr.coef_.astype(np.float32), lr.intercept_.astype(np.float32))
 
 ########################################
 # Let's visualize it.
@@ -100,7 +102,7 @@ plot_dot(onx)
 # We check it produces the same outputs.
 
 sess = InferenceSession(onx.SerializeToString())
-print(sess.run(None, {'X': X[:5]})[0])
+print(sess.run(None, {"X": X[:5]})[0])
 
 #####################################
 # It works.
@@ -123,30 +125,25 @@ def onnx_linear_regression_training(coefs, intercept):
     coefs = coefs.T
 
     # input
-    X = helper.make_tensor_value_info(
-        'X', TensorProto.FLOAT, [None, coefs.shape[0]])
+    X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [None, coefs.shape[0]])
 
     # expected input
-    label = helper.make_tensor_value_info(
-        'label', TensorProto.FLOAT, [None, coefs.shape[1]])
+    label = helper.make_tensor_value_info("label", TensorProto.FLOAT, [None, coefs.shape[1]])
 
     # output
-    Y = helper.make_tensor_value_info(
-        'Y', TensorProto.FLOAT, [None, coefs.shape[1]])
+    Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [None, coefs.shape[1]])
 
     # loss
-    loss = helper.make_tensor_value_info('loss', TensorProto.FLOAT, [])
+    loss = helper.make_tensor_value_info("loss", TensorProto.FLOAT, [])
 
     # inference
-    node_matmul = helper.make_node('MatMul', ['X', 'coefs'], ['y1'], name='N1')
-    node_add = helper.make_node('Add', ['y1', 'intercept'], ['Y'], name='N2')
+    node_matmul = helper.make_node("MatMul", ["X", "coefs"], ["y1"], name="N1")
+    node_add = helper.make_node("Add", ["y1", "intercept"], ["Y"], name="N2")
 
     # loss
-    node_diff = helper.make_node('Sub', ['Y', 'label'], ['diff'], name='L1')
-    node_square = helper.make_node(
-        'Mul', ['diff', 'diff'], ['diff2'], name='L2')
-    node_square_sum = helper.make_node(
-        'ReduceSum', ['diff2'], ['loss'], name='L3')
+    node_diff = helper.make_node("Sub", ["Y", "label"], ["diff"], name="L1")
+    node_square = helper.make_node("Mul", ["diff", "diff"], ["diff2"], name="L2")
+    node_square_sum = helper.make_node("ReduceSum", ["diff2"], ["loss"], name="L3")
 
     # initializer
     init_coefs = numpy_helper.from_array(coefs, name="coefs")
@@ -155,11 +152,18 @@ def onnx_linear_regression_training(coefs, intercept):
     # graph
     graph_def = helper.make_graph(
         [node_matmul, node_add, node_diff, node_square, node_square_sum],
-        'lrt', [X, label], [loss, Y], [init_coefs, init_intercept])
+        "lrt",
+        [X, label],
+        [loss, Y],
+        [init_coefs, init_intercept]
+    )
     model_def = helper.make_model(
-        graph_def, producer_name='orttrainer', ir_version=7,
+        graph_def,
+        producer_name="orttrainer",
+        ir_version=7,
         producer_version=ort_version,
-        opset_imports=[helper.make_operatorsetid('', 14)])
+        opset_imports=[helper.make_operatorsetid("", 14)]
+    )
     return model_def
 
 #######################################
@@ -168,7 +172,8 @@ def onnx_linear_regression_training(coefs, intercept):
 
 onx_train = onnx_linear_regression_training(
     np.random.randn(*lr.coef_.shape).astype(np.float32),
-    np.random.randn(*lr.intercept_.reshape((-1, )).shape).astype(np.float32))
+    np.random.randn(*lr.intercept_.reshape((-1, )).shape).astype(np.float32)
+)
 
 plot_dot(onx_train)
 
@@ -197,9 +202,7 @@ class DataLoader:
         if len(self.y.shape) == 1:
             self.y = self.y.reshape((-1, 1))
         if self.X.shape[0] != self.y.shape[0]:
-            raise ValueError(
-                "Shape mismatch X.shape=%r, y.shape=%r." % (
-                    self.X.shape, self.y.shape))
+            raise ValueError("Shape mismatch X.shape=%r, y.shape=%r." % (self.X.shape, self.y.shape))
 
     def __len__(self):
         "Returns the number of observations."
@@ -215,8 +218,7 @@ class DataLoader:
         while N < len(self):
             i = np.random.randint(0, b)
             N += self.batch_size
-            yield (self.X[i:i + self.batch_size],
-                   self.y[i:i + self.batch_size])
+            yield (self.X[i:i + self.batch_size], self.y[i:i + self.batch_size])
 
     @property
     def data(self):
@@ -243,8 +245,8 @@ for i, batch in enumerate(data_loader):
 
 
 def create_training_session(
-        training_onnx, weights_to_train, loss_output_name='loss',
-        training_optimizer_name='SGDOptimizer'):
+        training_onnx, weights_to_train, loss_output_name="loss", training_optimizer_name="SGDOptimizer"
+):
     """
     Creates an instance of class `TrainingSession`.
 
@@ -267,20 +269,17 @@ def create_training_session(
     ort_parameters.training_optimizer_name = training_optimizer_name
     # ort_parameters.lr_params_feed_name = lr_params_feed_name
 
-    ort_parameters.optimizer_attributes_map = {
-        name: {} for name in weights_to_train}
-    ort_parameters.optimizer_int_attributes_map = {
-        name: {} for name in weights_to_train}
+    ort_parameters.optimizer_attributes_map = {name: {} for name in weights_to_train}
+    ort_parameters.optimizer_int_attributes_map = {name: {} for name in weights_to_train}
 
     session_options = SessionOptions()
     session_options.use_deterministic_compute = True
 
-    session = TrainingSession(
-        training_onnx.SerializeToString(), ort_parameters, session_options)
+    session = TrainingSession(training_onnx.SerializeToString(), ort_parameters, session_options)
     return session
 
 
-train_session = create_training_session(onx_train, ['coefs', 'intercept'])
+train_session = create_training_session(onx_train, ["coefs", "intercept"])
 print(train_session)
 
 ######################################
@@ -303,9 +302,7 @@ pprint(state_tensors)
 ######################################
 # We can now check the coefficients are updated after one iteration.
 
-inputs = {'X': X_train[:1],
-          'label': y_train[:1].reshape((-1, 1)),
-          'Learning_Rate': np.array([0.001], dtype=np.float32)}
+inputs = {"X": X_train[:1], "label": y_train[:1].reshape((-1, 1)), "Learning_Rate": np.array([0.001], dtype=np.float32)}
 
 train_session.run(None, inputs)
 state_tensors = train_session.get_state()
@@ -314,9 +311,11 @@ pprint(state_tensors)
 ######################################
 # They changed. Another iteration to be sure.
 
-inputs = {'X': X_train[:1],
-          'label': y_train[:1].reshape((-1, 1)),
-          'Learning_Rate': np.array([0.001], dtype=np.float32)}
+inputs = {
+    "X": X_train[:1],
+    "label": y_train[:1].reshape((-1, 1)),
+    "Learning_Rate": np.array([0.001], dtype=np.float32)
+}
 res = train_session.run(None, inputs)
 state_tensors = train_session.get_state()
 pprint(state_tensors)
@@ -344,24 +343,34 @@ class CustomTraining:
     :param max_iter: number of training iterations
     :param training_optimizer_name: optimizing algorithm
     :param batch_size: batch size (see class *DataLoader*)
-    :param eta0: initial learning rate for the `'constant'`, `'invscaling'`
-        or `'adaptive'` schedules.
+    :param eta0: initial learning rate for the `"constant"`, `"invscaling"`
+        or `"adaptive"` schedules.
     :param alpha: constant that multiplies the regularization term,
         the higher the value, the stronger the regularization.
         Also used to compute the learning rate when set to *learning_rate*
-        is set to `'optimal'`.
+        is set to `"optimal"`.
     :param power_t: exponent for inverse scaling learning rate
     :param learning_rate: learning rate schedule:
-        * `'constant'`: `eta = eta0`
-        * `'optimal'`: `eta = 1.0 / (alpha * (t + t0))` where *t0* is chosen
+        * `"constant"`: `eta = eta0`
+        * `"optimal"`: `eta = 1.0 / (alpha * (t + t0))` where *t0* is chosen
             by a heuristic proposed by Leon Bottou.
-        * `'invscaling'`: `eta = eta0 / pow(t, power_t)`
+        * `"invscaling"`: `eta = eta0 / pow(t, power_t)`
     :param verbose: use :epkg:`tqdm` to display the training progress
     """
-    def __init__(self, model_onnx, weights_to_train, loss_output_name='loss',
-                 max_iter=100, training_optimizer_name='SGDOptimizer', batch_size=10, 
-                 eta0=0.01, alpha=0.0001, power_t=0.25, learning_rate='invscaling',
-                 verbose=0):
+    def __init__(
+        self,
+        model_onnx,
+        weights_to_train,
+        loss_output_name="loss",
+        max_iter=100,
+        training_optimizer_name="SGDOptimizer",
+        batch_size=10,
+        eta0=0.01,
+        alpha=0.0001,
+        power_t=0.25,
+        learning_rate="invscaling",
+        verbose=0
+    ):
         # See https://scikit-learn.org/stable/modules/generated/
         # sklearn.linear_model.SGDRegressor.html
         self.model_onnx = model_onnx
@@ -401,15 +410,16 @@ class CustomTraining:
         :return: self
         """
         self.train_session_ = create_training_session(
-            self.model_onnx, self.weights_to_train,
+            self.model_onnx,
+            self.weights_to_train,
             loss_output_name=self.loss_output_name,
-            training_optimizer_name=self.training_optimizer_name)
+            training_optimizer_name=self.training_optimizer_name
+        )
 
         data_loader = DataLoader(X, y, batch_size=self.batch_size)
         lr = self._init_learning_rate()
         self.input_names_ = [i.name for i in self.train_session_.get_inputs()]
-        self.output_names_ = [
-            o.name for o in self.train_session_.get_outputs()]
+        self.output_names_ = [o.name for o in self.train_session_.get_outputs()]
         self.loss_index_ = self.output_names_.index(self.loss_output_name)
 
         loop = (
@@ -439,9 +449,7 @@ class CustomTraining:
             if len(target.shape) == 1:
                 target = target.reshape((-1, 1))
 
-            inputs = {self.input_names_[0]: data,
-                      self.input_names_[1]: target,
-                      self.input_names_[2]: lr}
+            inputs = {self.input_names_[0]: data, self.input_names_[1]: target, self.input_names_[2]: lr}
             res = self.train_session_.run(None, inputs)
             actual_losses.append(res[self.loss_index_])
         return np.array(actual_losses).mean()
@@ -451,14 +459,12 @@ class CustomTraining:
 # that it would be done with *scikit-learn*.
 
 
-trainer = CustomTraining(onx_train, ['coefs', 'intercept'], verbose=1,
-                         max_iter=10)
+trainer = CustomTraining(onx_train, ["coefs", "intercept"], verbose=1, max_iter=10)
 trainer.fit(X, y)
 print("training losses:", trainer.train_losses_)
 
-df = DataFrame({"iteration": np.arange(len(trainer.train_losses_)),
-                "loss": trainer.train_losses_})
-df.set_index('iteration').plot(title="Training loss", logy=True)
+df = DataFrame({"iteration": np.arange(len(trainer.train_losses_)), "loss": trainer.train_losses_})
+df.set_index("iteration").plot(title="Training loss", logy=True)
 
 ######################################################
 # Let's compare scikit-learn trained coefficients and the coefficients
@@ -479,7 +485,7 @@ print("onnxruntime", trainer.trained_coef_)
 # Let's first check the output of the first model in ONNX.
 
 sess = InferenceSession(onx.SerializeToString())
-before = sess.run(None, {'X': X[:5]})[0]
+before = sess.run(None, {"X": X[:5]})[0]
 print(before)
 
 #################################
@@ -490,13 +496,12 @@ def update_onnx_graph(model_onnx, new_weights):
     replace_indices = []
     for i, w in enumerate(model_onnx.graph.initializer):
         if w.name in new_weights:
-            replace_weights.append(
-                numpy_helper.from_array(new_weights[w.name], w.name))
+            replace_weights.append(numpy_helper.from_array(new_weights[w.name], w.name))
             replace_indices.append(i)
     replace_indices.sort(reverse=True)
     for w_i in replace_indices:
         del model_onnx.graph.initializer[w_i]
-    model_onnx.graph.initializer.extend(replace_weights)    
+    model_onnx.graph.initializer.extend(replace_weights)
 
 
 update_onnx_graph(onx, trainer.trained_coef_)
@@ -505,7 +510,7 @@ update_onnx_graph(onx, trainer.trained_coef_)
 # Let's compare with the previous output.
 
 sess = InferenceSession(onx.SerializeToString())
-after = sess.run(None, {'X': X[:5]})[0]
+after = sess.run(None, {"X": X[:5]})[0]
 print(after)
 
 ######################################
