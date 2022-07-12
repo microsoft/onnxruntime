@@ -214,6 +214,9 @@ static Status GetInputDataType(
           initializers, *node_unit, name, scale, zero_point, ArgType::kInput));
       break;
     }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      type = Type::TENSOR_INT32;
+      break;
       // case ONNX_NAMESPACE::TensorProto_DataType_INT8:
       // We also do not consider ONNX_NAMESPACE::TensorProto_DataType_INT8 case here, since that can only
       // be input 2 of Qlinear[Conv/MatMul], which has to be an initializer tensor and will be added

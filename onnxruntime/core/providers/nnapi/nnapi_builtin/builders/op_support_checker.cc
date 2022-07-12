@@ -2118,7 +2118,7 @@ class GatherOpSupportChecker : public BaseOpSupportChecker {
                          const OpSupportCheckParams& params) const override;
 };
 
-bool GatherOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+bool GatherOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /*initializers*/, const NodeUnit& node_unit,
                                                const OpSupportCheckParams& /* params */) const {
   const auto& inputs = node_unit.Inputs();
   Shape input_shape;
@@ -2138,11 +2138,11 @@ bool GatherOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
     return false;
   }
 
-  const auto& indices_name = inputs[1].node_arg.Name();
+  /* const auto& indices_name = inputs[1].node_arg.Name();
   if (!Contains(initializers, indices_name)) {
     LOGS_DEFAULT(VERBOSE) << "Indices of Gather must be known";
     return false;
-  }
+  } */
 
   return true;
 }
