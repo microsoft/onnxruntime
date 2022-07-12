@@ -621,6 +621,7 @@ onnxruntime::Status ExecuteTheNewPlan(const SessionState& session_state, const s
   if (only_execute_path_to_fetches)
     ORT_THROW("NOT IMPLEMENTED YET.");
   auto* execution_plan = session_state.GetExecutionPlan();
+  LOGS(logger, INFO) << "Number of streams: " << execution_plan->execution_plan.size();
   int32_t valid_streams = 0;
   for (auto& stream : execution_plan->execution_plan) {
     if (stream && stream->steps_.size() > 0)
