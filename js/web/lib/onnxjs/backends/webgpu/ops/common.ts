@@ -36,8 +36,11 @@ export interface IndicesHelper {
   i2oExpression: (varIndices: string, isPtr?: boolean) => string;
   /**
    * WGSL code of indices variable declaration
+   *
+   * @param v - variable name.
+   * @param init - initial value.
    */
-  indicesVariableDeclaration: (v: string) => string;
+  indicesVariableDeclaration: (v: string, init?: string[]) => string;
   /**
    * data type of indices
    */

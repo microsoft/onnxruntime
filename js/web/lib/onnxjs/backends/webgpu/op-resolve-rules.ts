@@ -9,6 +9,7 @@ import {conv, parseConvAttributes} from './ops/conv';
 import {gather, parseGatherAttributes} from './ops/gather';
 import {gemm, parseGemmAttributesV11, parseGemmAttributesV7} from './ops/gemm';
 import {matMul, parseMatMulAttributes} from './ops/matmul';
+import {averagePool, globalAveragePool, globalMaxPool, maxPool, parseAveragePoolAttributes, parseGlobalAveragePoolAttributes, parseMaxPoolAttributes} from './ops/pool';
 import {reshape} from './ops/reshape';
 import {parseSliceAttributes, slice, sliceV10} from './ops/slice';
 import * as unaryOps from './ops/unary-op';
@@ -18,8 +19,8 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Abs', '', '6+', unaryOps.abs], ['Acos', '', '7+', unaryOps.acos], ['Add', '', '7+', binaryOps.add],
   // ['And', '', '7+', binaryOps.and],
   ['Asin', '', '7+', unaryOps.asin], ['Atan', '', '7+', unaryOps.atan],
-  // // TODO: support new attributes for AveragePool-10
-  // ['AveragePool', '', '7+', averagePool, parseAveragePoolAttributes],
+  // TODO: support new attributes for AveragePool-10
+  ['AveragePool', '', '7+', averagePool, parseAveragePoolAttributes],
   // ['BatchNormalization', '', '7+', batchNormalization, parseBatchNormalizationAttributes],
   // ['Cast', '', '6+', cast, parseCastAttributes],
   ['Ceil', '', '6+', unaryOps.ceil], ['Clip', '', '6-10', unaryOps.clip, unaryOps.parseClipAttributes],
@@ -34,8 +35,8 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // ['FusedConv', 'com.microsoft', '1+', conv, parseConvAttributes],
   ['Gather', '', '1+', gather, parseGatherAttributes], ['Gemm', '', '7-10', gemm, parseGemmAttributesV7],
   ['Gemm', '', '11+', gemm, parseGemmAttributesV11],
-  // ['GlobalAveragePool', '', '1+', globalAveragePool, parseGlobalAveragePoolAttributes],
-  // ['GlobalMaxPool', '', '1+', globalMaxPool],
+  ['GlobalAveragePool', '', '1+', globalAveragePool, parseGlobalAveragePoolAttributes],
+  ['GlobalMaxPool', '', '1+', globalMaxPool],
   // ['Greater', '', '7+', binaryOps.greater],
   // ['Identity', '', '1+', unaryOps.identity],
   // ['ImageScaler', '', '1+', imageScaler, parseImageScalerAttributes],
@@ -43,9 +44,9 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['LeakyRelu', '', '6+', unaryOps.leakyRelu, unaryOps.parseLeakyReluAttributes],
   // ['Less', '', '7+', binaryOps.less],
   ['Log', '', '6+', unaryOps.log], ['MatMul', '', '1+', matMul, parseMatMulAttributes],
-  // // TODO: support new attributes for MaxPool-8 and MaxPool-10
-  // ['MaxPool', '', '1+', maxPool, parseMaxPoolAttributes],
-  ['Mul', '', '7+', binaryOps.mul], ['Neg', '', '6+', unaryOps.neg],
+  // TODO: support new attributes for MaxPool-8 and MaxPool-10
+  ['MaxPool', '', '1+', maxPool, parseMaxPoolAttributes], ['Mul', '', '7+', binaryOps.mul],
+  ['Neg', '', '6+', unaryOps.neg],
   // ['Not', '', '1+', unaryOps.not],
   // ['Or', '', '7+', binaryOps.or],
   // ['Pad', '', '2-10', padV2, parsePadAttributesV2],
