@@ -118,7 +118,7 @@ class ORTGen:
         ops: Optional[Dict[str, ONNXOp]] = None,
         custom_ops: bool = False,
         type_promotion_ops: List = (),
-        aten_output_type: List = (),
+        aten_output_type: Dict = (),
     ):
         self._mapped_ops = {}
         if ops:
@@ -527,9 +527,8 @@ class ORTGen:
                 writer.write(".dtype(*promoted_type)")
 
             # do we need to set type on the returned value
-            aten_output_type = [v[1] for v in self.aten_output_type if v[0] == mapped_func.mapped_op_name]
-            if aten_output_type:
-                writer.write(f".dtype({aten_output_type.pop()})")
+            if mapped_func.mapped_op_name in self.aten_output_type:
+                writer.write(f".dtype({self.aten_output_type[mapped_func.mapped_op_name]})")
 
             writer.writeline(";")
 
