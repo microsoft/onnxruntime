@@ -11,8 +11,11 @@ import threading
 import unittest
 
 import numpy as np
+import onnx
+from onnx import parser
 from helper import get_name
 
+sys.path.append("c:/LiqunWA/ort/onnxruntime/build/Windows/RelWithDebInfo/RelWithDebInfo")
 import onnxruntime as onnxrt
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
 
@@ -639,6 +642,93 @@ class TestInferenceSession(unittest.TestCase):
             res = sess.run([], {"input:0": a})
 
         self.assertTrue("Model requires 2 inputs" in str(context.exception))
+
+    def testModelScriptWithOptionalInputs(self):
+        model_script = '''
+           <
+             ir_version: 7,
+             opset_import: [ "" : 15]
+           >
+           if_then_graph (x, min, max) => (y)
+           {
+               max_tensor = OptionalGetElement(max)
+               y = Clip(x, min, max_tensor)
+           }
+           if_else_graph (x, min) => (y)
+           {
+               y = Clip(x, min, max)
+           }
+
+           agraph (float[N] x, float min, optional(float) max) => (float[N] y)
+           {
+              has_max = OptionalHasElement(max)
+              y = If(has_max, then_branch=if_then_graph, else_branch=if_else_graph)
+           }
+           '''
+        model = onnx.parser.parse_model(model_script)
+        print(model)
+
+    def testModelWithOptionalInputs(self):
+        input = np.array([-2, 0, 2]).astype(np.float32)
+        min_val = np.float32(-1)
+        max_val = np.float32(1)
+        tensor_type_proto = onnx.helper.make_tensor_type_proto(elem_type=onnx.TensorProto.FLOAT, shape=input.shape)
+        scalar_type_proto = onnx.helper.make_tensor_type_proto(elem_type=onnx.TensorProto.FLOAT, shape=None)
+        optional_scalar_type_proto = onnx.helper.make_optional_type_proto(
+            onnx.helper.make_tensor_type_proto(elem_type=onnx.TensorProto.FLOAT, shape=None))
+
+        optional_has_element_node = onnx.helper.make_node('OptionalHasElement', inputs=['max', ], outputs=['has_max'])
+        optional_get_element_node = onnx.helper.make_node('OptionalGetElement', inputs=['max'], outputs=['max_tensor'])
+        clip_node = onnx.helper.make_node('Clip', inputs=['x', 'min', 'max_tensor'], outputs=['y'])
+        if_then_graph_proto = onnx.helper.make_graph(
+            [optional_get_element_node, clip_node],
+            'if_then_graph',
+            [
+            ],
+            [
+                onnx.helper.make_value_info(name='y', type_proto=tensor_type_proto),
+            ])
+
+        clip_node2 = onnx.helper.make_node('Clip', inputs=['x', 'min'], outputs=['y'])
+        if_else_graph_proto = onnx.helper.make_graph(
+            [clip_node2],
+            'if_else_graph',
+            [
+            ],
+            [
+                onnx.helper.make_value_info(name='y', type_proto=tensor_type_proto),
+            ])
+
+        if_node = onnx.helper.make_node(
+            'If',
+            ['has_max'],
+            ['y'],
+            then_branch=if_then_graph_proto,
+            else_branch=if_else_graph_proto)
+
+        graph = onnx.helper.make_graph(
+            [
+                optional_has_element_node,
+                if_node],
+            'clip_graph',
+            [
+                onnx.helper.make_value_info(name='x', type_proto=tensor_type_proto),
+                onnx.helper.make_value_info(name='min', type_proto=scalar_type_proto),
+                onnx.helper.make_value_info(name='max', type_proto=optional_scalar_type_proto),
+            ],
+            [
+                onnx.helper.make_value_info(name='y', type_proto=tensor_type_proto),
+            ])
+
+        model = onnx.helper.make_model(graph)
+
+        sess = onnxrt.InferenceSession(model.SerializeToString(), providers=onnxrt.get_available_providers())
+
+        res = sess.run([], {"x": input, "min": [min_val]})
+        print(res)
+
+        res = sess.run([], {"x": input, "min": [min_val], "max": [max_val]})
+        print(res)
 
     def testModelMeta(self):
         model_path = "../models/opset8/test_squeezenet/model.onnx"
