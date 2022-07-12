@@ -84,7 +84,7 @@ static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "ses
 // Available since version 1.11.
 static const char* const kOrtSessionOptionsQDQIsInt8Allowed = "session.qdqisint8allowed";
 
-// x64 AVX2/AVX512 has overflow problem with quantizied matrix multiplication with U8S8.
+// x64 SSE4.1/AVX2/AVX512(with no VNNI) has overflow problem with quantizied matrix multiplication with U8S8.
 // To avoid this we need to use slower U8U8 matrix multiplication instead. This option, if
 // turned on, use slower U8U8 matrix multiplications. Only effective with AVX2 or AVX512
 // platforms.
