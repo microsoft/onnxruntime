@@ -3,6 +3,7 @@
 
 #include "core/providers/rocm/math/matmul.h"
 
+#include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/rocm/math/matmul_impl.h"
 
 namespace onnxruntime {
