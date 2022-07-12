@@ -114,13 +114,18 @@ class ORTGen:
     _custom_ops: bool
 
     def __init__(
-        self, ops: Optional[Dict[str, ONNXOp]] = None, custom_ops: bool = False, type_promotion_ops: List = ()
+        self,
+        ops: Optional[Dict[str, ONNXOp]] = None,
+        custom_ops: bool = False,
+        type_promotion_ops: List = (),
+        aten_output_type: List = (),
     ):
         self._mapped_ops = {}
         if ops:
             self.register_many(ops)
         self._custom_ops = custom_ops
         self.type_promotion_ops = type_promotion_ops
+        self.aten_output_type = aten_output_type
 
     def register(self, aten_name: str, onnx_op: ONNXOp):
         self._mapped_ops[aten_name] = onnx_op
@@ -520,6 +525,12 @@ class ORTGen:
             writer.write(".options()")
             if need_type_promotion:
                 writer.write(".dtype(*promoted_type)")
+
+            # do we need to set type on the returned value
+            aten_output_type = [v[1] for v in self.aten_output_type if v[0] == mapped_func.mapped_op_name]
+            if aten_output_type:
+                writer.write(f".dtype({aten_output_type.pop()})")
+
             writer.writeline(";")
 
             writer.writeline("return aten_tensor_from_ort(")

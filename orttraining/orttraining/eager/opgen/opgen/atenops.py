@@ -45,6 +45,7 @@ class GeluGrad(ONNXOp):
 
 ops = {}
 type_promotion_ops = []
+aten_output_type = []
 
 # the following op list is for ops that have a .out version. Often this is the only op needing to be implemented
 # and the regular and inplace(_) version derive from the .out.
@@ -167,10 +168,13 @@ hand_implemented = {
     "aten::equal": SignatureOnly(),
     "aten::_softmax": Softmax("self", axis="dim"),
     "aten::argmax.out": SignatureOnly(),
-    # nonzero should be Transpose(NonZero("self")), but output must be type long which generator doesn't support yet
-    "aten::nonzero": SignatureOnly(),
+    "aten::nonzero": Transpose(NonZero("self")),
     "aten::nonzero.out": SignatureOnly(),
 }
+
+# If the aten op expects a specific output type that differs from self
+# add the op and type tuple to aten_output_type
+aten_output_type.append(("aten::nonzero", "at::ScalarType::Long"))
 
 # Signature of gelu_backward was changed in this commit id 983ba5e585485ed61a0c0012ef6944f5685e3d97 and PR 61439
 # This is done to make sure it is backward and future compatible
