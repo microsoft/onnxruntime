@@ -251,6 +251,28 @@ class OrtOpTests(unittest.TestCase):
         assert torch.allclose(cpu_result, ort_result.cpu())
         assert cpu_result.dim() == ort_result.dim()
 
+    def test_masked_select(self):
+        device = self.get_device()
+        cpu_tensor = torch.randn(3, 4)
+        cpu_mask = cpu_tensor.ge(0.5)
+        ort_tensor = cpu_tensor.to(device)
+        ort_mask = cpu_mask.to(device)
+        cpu_result = cpu_tensor.masked_select(cpu_mask)
+        ort_result = ort_tensor.masked_select(ort_mask)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert cpu_result.dim() == ort_result.dim()
+
+    def test_masked_select_broadcast(self):
+        device = self.get_device()
+        cpu_tensor = torch.randn(3, 4)
+        cpu_mask = torch.tensor([[0], [1], [1]], dtype=bool)
+        ort_tensor = cpu_tensor.to(device)
+        ort_mask = cpu_mask.to(device)
+        cpu_result = cpu_tensor.masked_select(cpu_mask)
+        ort_result = ort_tensor.masked_select(ort_mask)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert cpu_result.dim() == ort_result.dim()
+
     # @parameterized.expand generate test methods for ops and using name_func we renaming the test to be test_{ops}
     @parameterized.expand(ops, name_func=rename_func_to_op)
     def test_op(self, test_name, tensor_test=torch.rand(6)):

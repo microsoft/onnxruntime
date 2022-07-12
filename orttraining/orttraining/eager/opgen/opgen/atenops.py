@@ -162,7 +162,7 @@ hand_implemented = {
     "aten::eq.Tensor_out": Cast(Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
     "aten::eq.Scalar_out": Cast(Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
     "aten::bitwise_and.Tensor_out": MakeTorchFallback(),
-    "aten::masked_select": MakeTorchFallback(),
+    "aten::masked_select": GatherND("self", Transpose(NonZero(Expand("mask", Shape("self"))))),
     "aten::_local_scalar_dense": MakeTorchFallback(),
     "aten::gt.Scalar_out": MakeTorchFallback(),
     "aten::lt.Scalar_out": MakeTorchFallback(),
