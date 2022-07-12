@@ -8,8 +8,8 @@
 #pragma once
 
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
-#include "core/providers/rocm/rocm_kernel.h"
 #include "core/providers/cpu/math/matmul_helper.h"
+#include "core/providers/rocm/rocm_kernel.h"
 
 namespace onnxruntime {
 namespace rocm {
