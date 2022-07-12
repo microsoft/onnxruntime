@@ -26,7 +26,7 @@ onnxruntime::Status BindToDeviceStream(Stream* parent_stream,
 
 onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t stream_idx);
 
-onnxruntime::Status ExecuteTheNewPlan(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
+onnxruntime::Status ExecuteThePlan(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                                       const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                                       std::vector<OrtValue>& fetches,
                                       const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,

@@ -565,11 +565,22 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
   auto* execution_plan = session_state.GetExecutionPlan();
   DeviceStreamColloection device_stream_collection(execution_plan->execution_plan.size());
+  // since we will always register default cpu execution provider
+  // if num of providers is 1, it means only have cpu execution provider
+  bool single_stream = session_state.GetExecutionPlan()->execution_plan.size() == 1; 
+  bool is_subgraph = session_state.GetGraphViewer().ParentNode() != nullptr;
+  // in following two cases, we execute the workload in main thread:
+  // 1. only have 1 stream, it could be the CPU sequential inference scenario, or GPU case when all the nodes are running on GPU.
+  // 2. execute a subgraph. Because in current implmentation, the execute of subgraph is launched through parent kernel. 
+  //    the parent kernel will occupy a thread in thread pool. if we use multiple threads to execute subgraph, it may cause 
+  //    deadlock when we reach the limitation of thread pool. 
+  bool single_thread_mode = single_stream || is_subgraph;
+
   ORT_ENFORCE(BindToDeviceStream(parent_stream, *execution_plan, device_stream_collection, session_state.GetStreamHandleRegistryInstance()).IsOK());
   // see if we can skip copies due to the types of execution providers available
   if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
     // no device copies are needed so simple execute
-    auto ret = ExecuteTheNewPlan(session_state,
+    auto ret = ExecuteThePlan(session_state,
                                 feeds_fetches_info.feeds_mlvalue_idxs, feeds,
                                 feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
                                 logger,
@@ -577,7 +588,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                 terminate_flag,
                                 only_execute_path_to_fetches,
                                 // single thread mode
-                                false);
+                                single_thread_mode);
     ORT_RETURN_IF_ERROR(ret);
   } else {
     const std::vector<OrtValue>* p_feeds = &feeds;
@@ -612,14 +623,14 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
 
     // no device copies are needed so simple execute
     std::vector<Stream*> fetches_streams;
-    auto ret = ExecuteTheNewPlan(session_state,
+    auto ret = ExecuteThePlan(session_state,
                                      feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
                                      feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
                                      logger,
                                      device_stream_collection,
                                      terminate_flag,
                                      only_execute_path_to_fetches,
-                                     false);
+                                     single_thread_mode);
     ORT_RETURN_IF_ERROR(ret);
     auto& value_to_stream_map = execution_plan->value_to_stream_map;
     auto& device_streams = device_stream_collection.GetStreams();
