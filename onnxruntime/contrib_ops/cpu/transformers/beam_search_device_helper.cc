@@ -199,6 +199,12 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
   if (!beam_state->next_positions.empty()) {
     memset(beam_state->next_positions.data(), 0, beam_state->next_positions.size_bytes());
     gsl::copy(sequence_lengths, beam_state->next_positions);
+
+    // positions are starting from 0, not from 1, decrement by 1
+    gsl::span<int>& positions = beam_state->next_positions;
+    for (int i = 0; i < batch_size*num_beams; i++) {
+      positions[i]--;
+    }
   }
 
   // Initialize score of first beam of each group with 0 and the rest with -1e9.
