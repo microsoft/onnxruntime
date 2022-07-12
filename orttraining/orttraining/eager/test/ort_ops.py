@@ -10,30 +10,32 @@ import onnxruntime_pybind11_state as torch_ort
 import torch
 from parameterized import parameterized
 
-# OPS - is a list of  list of [test_operator, the tested_tensor]
+# OPS - is a list of  list of [test_operator, the tested_tensor].
+# The default value for tested_tensor is torch.rand (6)- size of 6 uniform distribution on the interval [0, 1).
+# for floor and erf the ort- produce a roundoff error for floor(NaN), compare to cpu- stay NaN.  thus, nan_to_num change nan to zero.
 ops = [
     ["abs", torch.tensor([-1, -2, 3, -6, -7])],
     ["acos"],
-    ["acosh", torch.rand(6).uniform_(1, 9999)],  # limits[1,INF]
+    ["acosh"],
     ["asinh"],
-    ["atanh", torch.rand(6).uniform_(-1, 1)],
-    ["asin", torch.rand(6).uniform_(-1, 1)],
+    ["atanh"],
+    ["asin"],
     ["atan"],
     ["ceil"],
     ["cos"],
     ["cosh"],
-    ["erf"],
+    ["erf", torch.nan_to_num(torch.rand(5))],
     ["exp"],
-    ["floor"],
-    ["log", torch.abs(torch.rand(6)) + 0.5],
+    ["floor", torch.nan_to_num(torch.rand(5))],
+    ["log"],
     ["reciprocal"],
-    ["neg", torch.randn(10)],
+    ["neg"],
     ["round"],
     ["relu"],
     ["sigmoid"],
     ["sin"],
     ["sinh"],
-    ["sqrt", torch.randn(10).uniform_(1, 9999)],
+    ["sqrt"],
     ["tan"],
     ["tanh"],
 ]
@@ -251,7 +253,7 @@ class OrtOpTests(unittest.TestCase):
         # compile eval- creates a code object that evaluates the operator (for example torch.abs(tensor_test)) and returns its result.
         cpu_result = eval(compile("torch." + test_name + "(tensor_test)", "<string>", "eval"))
         ort_result = eval(compile("torch." + test_name + "(tensor_test.to(self.get_device()))", "<string>", "eval"))
-        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert torch.allclose(cpu_result, ort_result.cpu(), equal_nan=True)
 
     @parameterized.expand(ops, name_func=rename_func_to_inplace)
     def test_op_inplace(self, test_name, tensor_test=torch.rand(6)):
@@ -263,7 +265,7 @@ class OrtOpTests(unittest.TestCase):
         eval(compile("torch." + test_name + "_(cpu_tensor)", "<string>", "eval"))
         eval(compile("torch." + test_name + "_(ort_tensor)", "<string>", "eval"))
 
-        assert torch.allclose(cpu_tensor, ort_tensor.cpu())
+        assert torch.allclose(cpu_tensor, ort_tensor.cpu(), equal_nan=True)
 
     @parameterized.expand(ops, name_func=rename_func_to_out)
     def test_op_out(self, test_name, tensor_test=torch.rand(6)):
@@ -282,12 +284,12 @@ class OrtOpTests(unittest.TestCase):
 
         st_cpu = f"torch.{test_name}(cpu_tensor, out=cpu_out_tensor)"
         st_ort = f"torch.{test_name}(ort_tensor, out=ort_out_tensor)"
-        cpu_result = eval(st_cpu)
-        ort_result = eval(st_ort)
+        cpu_result = eval(compile(st_cpu, "<string>", "eval"))
+        ort_result = eval(compile(st_ort, "<string>", "eval"))
 
-        assert torch.allclose(cpu_result, ort_result.cpu())
-        assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
-        assert torch.allclose(ort_result.cpu(), ort_out_tensor.cpu())
+        assert torch.allclose(cpu_result, ort_result.cpu(), equal_nan=True)
+        assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu(), equal_nan=True)
+        assert torch.allclose(ort_result.cpu(), ort_out_tensor.cpu(), equal_nan=True)
 
     def test_resize(self):
         device = self.get_device()
@@ -374,8 +376,12 @@ class OrtOpTests(unittest.TestCase):
                 print(f"Testing {func} with type {tensor_type}")
                 cpu_out_tensor = torch.tensor([], dtype=tensor_type)
                 ort_out_tensor = cpu_out_tensor.to(device)
-                cpu_a_b_eq_result = eval("torch." + func + "(cpu_a, cpu_b, out=cpu_out_tensor)")
-                ort_a_b_eq_result = eval("torch." + func + "(ort_a, ort_b, out=ort_out_tensor)")
+                cpu_a_b_eq_result = eval(
+                    compile("torch." + func + "(cpu_a, cpu_b, out=cpu_out_tensor)", "<string>", "eval")
+                )
+                ort_a_b_eq_result = eval(
+                    compile("torch." + func + "(ort_a, ort_b, out=ort_out_tensor)", "<string>", "eval")
+                )
                 assert torch.equal(cpu_a_b_eq_result.to(device), ort_a_b_eq_result)
                 assert torch.equal(cpu_out_tensor, ort_out_tensor.to("cpu"))
                 assert ort_out_tensor.dtype == tensor_type
@@ -401,15 +407,31 @@ class OrtOpTests(unittest.TestCase):
         ort_out_tensor = cpu_out_tensor.to(device)
 
         for func in {"eq", "ne"}:
-            cpu_int_int_result = eval("torch." + func + "(cpu_tensor_int, cpu_scalar_int, out=cpu_out_tensor)")
-            cpu_int_int_not_result = eval("torch." + func + "(cpu_tensor_int, cpu_scalar_int_not)")
-            cpu_float_float_result = eval("torch." + func + "(cpu_tensor_float, cpu_scalar_float)")
-            cpu_float_float_not_result = eval("torch." + func + "(cpu_tensor_float, cpu_scalar_float_not)")
+            cpu_int_int_result = eval(
+                compile("torch." + func + "(cpu_tensor_int, cpu_scalar_int, out=cpu_out_tensor)", "<string>", "eval")
+            )
+            cpu_int_int_not_result = eval(
+                compile("torch." + func + "(cpu_tensor_int, cpu_scalar_int_not)", "<string>", "eval")
+            )
+            cpu_float_float_result = eval(
+                compile("torch." + func + "(cpu_tensor_float, cpu_scalar_float)", "<string>", "eval")
+            )
+            cpu_float_float_not_result = eval(
+                compile("torch." + func + "(cpu_tensor_float, cpu_scalar_float_not)", "<string>", "eval")
+            )
 
-            ort_int_int_result = eval("torch." + func + "(ort_tensor_int, ort_scalar_int, out=ort_out_tensor)")
-            ort_int_int_not_result = eval("torch." + func + "(ort_tensor_int, ort_scalar_int_not)")
-            ort_float_float_result = eval("torch." + func + "(ort_tensor_float, ort_scalar_float)")
-            ort_float_float_not_result = eval("torch." + func + "(ort_tensor_float, ort_scalar_float_not)")
+            ort_int_int_result = eval(
+                compile("torch." + func + "(ort_tensor_int, ort_scalar_int, out=ort_out_tensor)", "<string>", "eval")
+            )
+            ort_int_int_not_result = eval(
+                compile("torch." + func + "(ort_tensor_int, ort_scalar_int_not)", "<string>", "eval")
+            )
+            ort_float_float_result = eval(
+                compile("torch." + func + "(ort_tensor_float, ort_scalar_float)", "<string>", "eval")
+            )
+            ort_float_float_not_result = eval(
+                compile("torch." + func + "(ort_tensor_float, ort_scalar_float_not)", "<string>", "eval")
+            )
 
             assert torch.equal(cpu_out_tensor, ort_out_tensor.to("cpu"))
             assert torch.equal(cpu_int_int_result, ort_int_int_result.to("cpu"))
