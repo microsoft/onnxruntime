@@ -131,7 +131,15 @@ export class Tensor {
    */
   async getData(): Promise<TensorData> {
     if (this.cache === undefined) {
-      this.cache = await this.asyncDataProvider!(this.dataId);
+      if (this.asyncDataProvider) {
+        const data = await this.asyncDataProvider(this.dataId);
+        if (data.length !== this.size) {
+          throw new Error('Length of data provided by the Data Provider is inconsistent with the dims of this Tensor.');
+        }
+        this.cache = data;
+      } else {
+        return this.data;
+      }
     }
     return this.cache;
   }

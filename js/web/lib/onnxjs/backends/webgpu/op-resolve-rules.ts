@@ -11,6 +11,7 @@ import {gemm, parseGemmAttributesV11, parseGemmAttributesV7} from './ops/gemm';
 import {matMul, parseMatMulAttributes} from './ops/matmul';
 import {averagePool, globalAveragePool, globalMaxPool, maxPool, parseAveragePoolAttributes, parseGlobalAveragePoolAttributes, parseMaxPoolAttributes} from './ops/pool';
 import {reshape} from './ops/reshape';
+import {shape} from './ops/shape';
 import {parseSliceAttributes, slice, sliceV10} from './ops/slice';
 import * as unaryOps from './ops/unary-op';
 import {parseUnsqueezeAttributes, unsqueeze, unsqueezeV13} from './ops/unsqueeze';
@@ -63,8 +64,7 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Relu', '', '6+', unaryOps.relu], ['Reshape', '', '5+', reshape],
   // ['Resize', '', '10', resize, parseResizeAttributesV10],
   // ['Resize', '', '11+', resize, parseResizeAttributesV11],
-  // ['Shape', '', '1+', shape],
-  ['Sigmoid', '', '6+', unaryOps.sigmoid], ['Sin', '', '7+', unaryOps.sin],
+  ['Shape', '', '1+', shape], ['Sigmoid', '', '6+', unaryOps.sigmoid], ['Sin', '', '7+', unaryOps.sin],
   ['Slice', '', '10+', sliceV10],  // TODO: support 'steps' for Slice-10
   ['Slice', '', '1-9', slice, parseSliceAttributes],
   // // The "semantic" meaning of axis has changed in opset-13.
