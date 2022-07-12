@@ -2,10 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-
 #include "core/common/common.h"
 #include "core/providers/rocm/rocm_kernel.h"
-#include "contrib_ops/rocm/bert/fast_gelu_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -14,13 +12,13 @@ namespace rocm {
 using namespace onnxruntime::rocm;
 
 template <typename T>
-class FastGelu final : public RocmKernel {
+class SkipLayerNorm final : public RocmKernel {
  public:
-  FastGelu(const OpKernelInfo& op_kernel_info);
-  Status ComputeInternal(OpKernelContext* ctx) const override;
+  SkipLayerNorm(const OpKernelInfo& op_kernel_info);
+  Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  bool tuning_;
+  float epsilon_;
 };
 
 }  // namespace rocm
