@@ -197,14 +197,7 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
 
   // T5 does not need position, so next_positions is empty for T5.
   if (!beam_state->next_positions.empty()) {
-    memset(beam_state->next_positions.data(), 0, beam_state->next_positions.size_bytes());
     gsl::copy(sequence_lengths, beam_state->next_positions);
-
-    // positions are starting from 0, not from 1, decrement by 1
-    gsl::span<int>& positions = beam_state->next_positions;
-    for (int i = 0; i < batch_size*num_beams; i++) {
-      positions[i]--;
-    }
   }
 
   // Initialize score of first beam of each group with 0 and the rest with -1e9.
@@ -434,12 +427,12 @@ Status UpdateGptFeeds(
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
+    bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx,
-    const transformers::IConsoleDumper* dumper) {
+    int gpt_subgraph_first_present_output_idx) {
   // last_outputs: logits, present_0, present_1, ...
   // next_inputs: input_ids, position_id, attention_mask, past_0, past_1
   ORT_UNUSED_PARAMETER(stream);
@@ -460,10 +453,12 @@ Status UpdateGptFeeds(
   }
   next_inputs[0] = input_ids;
 
-  // Update position IDs
-  int32_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int32_t>();
-  for (int i = 0; i < batch_beam_size; i++) {
-    position_data[i]++;
+  if (increase_position){
+    // Update position IDs
+    int32_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+    for (int i = 0; i < batch_beam_size; i++) {
+      position_data[i]++;
+    }
   }
   next_inputs[1] = position_ids;
 
@@ -482,14 +477,6 @@ Status UpdateGptFeeds(
     mask_data[i * current_length + current_length - 1] = 1;
   }
   next_inputs[2] = attention_mask;
-
-#ifdef DEBUG_BEAM_SEARCH
-  dumper->Print("input_ids", input_ids);
-  dumper->Print("position_ids", position_ids);
-  dumper->Print("attention_mask", attention_mask);
-#else
-  ORT_UNUSED_PARAMETER(dumper);
-#endif
 
   // Update past state
   if (num_beams == 1) {
@@ -731,12 +718,12 @@ template Status UpdateGptFeeds<float>(
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
+    bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx,
-    const transformers::IConsoleDumper* dumper);
+    int gpt_subgraph_first_present_output_idx);
 
 template Status UpdateDecoderFeeds<float>(
     AllocatorPtr allocator,

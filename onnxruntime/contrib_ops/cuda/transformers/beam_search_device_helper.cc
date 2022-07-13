@@ -500,12 +500,12 @@ Status UpdateGptFeeds(
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
+    bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx,
-    const transformers::IConsoleDumper* dumper) {
+    int gpt_subgraph_first_present_output_idx) {
   // Update input_ids with next tokens.
   int batch_beam_size = static_cast<int>(beam_next_tokens.length());
   int64_t dims[] = {batch_beam_size, 1};
@@ -519,7 +519,7 @@ Status UpdateGptFeeds(
   next_inputs[0] = input_ids;
 
   // Update position IDs
-  int32_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+  int32_t* position_data = increase_position ? position_ids.GetMutable<Tensor>()->MutableData<int32_t>() : nullptr;
   next_inputs[1] = position_ids;
 
   // Update attention mask
@@ -537,14 +537,6 @@ Status UpdateGptFeeds(
                               reinterpret_cast<cudaStream_t>(stream));
 
   next_inputs[2] = attention_mask;
-
-#ifdef DEBUG_BEAM_SEARCH
-  dumper->Print("input_ids", input_ids);
-  dumper->Print("position_ids", position_ids);
-  dumper->Print("attention_mask", attention_mask);
-#else
-  ORT_UNUSED_PARAMETER(dumper);
-#endif
 
   // Update past state
   if (num_beams == 1) {
@@ -714,12 +706,12 @@ template Status UpdateGptFeeds<float>(
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
+    bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx,
-    const transformers::IConsoleDumper* dumper);
+    int gpt_subgraph_first_present_output_idx);
 
 // Float16
 template void InitBeamState<MLFloat16>(transformers::IBeamSearchState<MLFloat16>* beam_state,
@@ -748,12 +740,12 @@ template Status UpdateGptFeeds<MLFloat16>(
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
+    bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx,
-    const transformers::IConsoleDumper* dumper);
+    int gpt_subgraph_first_present_output_idx);
 
 template Status UpdateDecoderFeeds<float>(
     AllocatorPtr allocator,
