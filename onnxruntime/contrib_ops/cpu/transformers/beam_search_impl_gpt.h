@@ -56,7 +56,7 @@ class BeamSearchGpt : public BeamSearchBase<T> {
       std::vector<OrtValue>& next_inputs,
       int current_length,
       OrtValue& position_ids,
-      bool update_feeds,
+      bool increase_position,
       gsl::span<const int32_t> beam_next_tokens,
       gsl::span<const int32_t> beam_indices);
 
