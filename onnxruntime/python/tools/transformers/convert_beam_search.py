@@ -1005,7 +1005,7 @@ def convert_greedy_search_model(args: argparse.Namespace):
             onnx.helper.make_attribute("eos_token_id", eos_token_id),
             onnx.helper.make_attribute("pad_token_id", pad_token_id),
             onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
-            onnx.helper.make_attribute("decoder", decoder_model.graph)
+            onnx.helper.make_attribute("decoder", decoder_model.graph),
         ]
     )
 
