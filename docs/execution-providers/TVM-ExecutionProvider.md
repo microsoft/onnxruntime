@@ -9,7 +9,7 @@ nav_order: 8
 {: .no_toc }
 
 TVM is an execution provider for ONNX Runtime that is built on top of Apache TVM. It enables ONNX Runtime users to leverage Apache TVM model optimizations.
-TVM EP is currently in "Preview". It's been tested to work on a handful of models on Linux or Windows, but not on MacOS.
+TVM EP is currently in "Preview". It's been tested to work on a handful of models on Linux and Windows, but not on MacOS.
 
 ## Contents
 {: .no_toc }
