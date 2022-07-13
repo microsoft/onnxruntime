@@ -1035,7 +1035,7 @@ def convert_greedy_search_model(args: argparse.Namespace):
     sequences = onnx.helper.make_tensor_value_info(
         "sequences",
         TensorProto.INT32,
-        ["batch_size", "num_return_sequences", "max_length"],
+        ["batch_size", "max_length"],
     )
 
     graph_outputs = [sequences]
@@ -1120,7 +1120,7 @@ def test_torch_performance(
     return get_latency_result(torch_latency, batch_size)
 
 
-def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = None):
+def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = None, is_greedy: bool = False):
     """Test GPT-2 model
 
     Args:
@@ -1206,68 +1206,113 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
 
     ort_session = create_ort_session(args.output, args.use_gpu)
 
-    inputs = {
-        "input_ids": input_ids.cpu().numpy().astype(np.int32),
-        "max_length": np.array([args.max_length], dtype=np.int32),
-        "min_length": np.array([args.min_length], dtype=np.int32),
-        "num_beams": np.array([args.num_beams], dtype=np.int32),
-        "num_return_sequences": np.array([args.num_return_sequences], dtype=np.int32),
-        "length_penalty": np.array([args.length_penalty], dtype=np.float32),
-        "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
-    }
+    if is_greedy:
+        inputs = {
+            "input_ids": input_ids.cpu().numpy().astype(np.int32),
+            "max_length": np.array([args.max_length], dtype=np.int32),
+            "min_length": np.array([args.min_length], dtype=np.int32),
+            "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
+        }
 
-    if args.vocab_mask:
-        vocab_mask = np.ones((vocab_size), dtype=np.int32)
-        if args.vocab_mask:
-            for bad_word_id in bad_words_ids:
-                vocab_mask[bad_word_id] = 0
-        inputs["vocab_mask"] = vocab_mask
+        logger.debug("ORT inputs", inputs)
+        result = ort_session.run(None, inputs)
 
-    batch_size = input_ids.shape[0]
-    if args.prefix_vocab_mask:
-        logger.info("Use prefix vocab mask with all ones in ORT, but no corresponding setting for Torch model.")
-        prefix_vocab_mask = np.ones((batch_size, vocab_size), dtype=np.int32)
-        inputs["prefix_vocab_mask"] = prefix_vocab_mask
+        if args.save_test_data:
+            test_data_dir = Path(args.output).parent.as_posix()
+            logger.debug("test_data_dir", test_data_dir)
+            from bert_test_data import output_test_data
 
-    logger.debug("ORT inputs", inputs)
-    result = ort_session.run(None, inputs)
+            all_inputs = [inputs]
+            for i, inputs in enumerate(all_inputs):
+                dir = os.path.join(test_data_dir, "test_data_set_" + str(i))
+                output_test_data(dir, inputs)
 
-    if args.save_test_data:
-        test_data_dir = Path(args.output).parent.as_posix()
-        logger.debug("test_data_dir", test_data_dir)
-        from bert_test_data import output_test_data
+        # Test performance
+        latency = []
+        for _ in range(args.total_runs):
+            start = time.time()
+            _ = ort_session.run(None, inputs)
+            latency.append(time.time() - start)
 
-        all_inputs = [inputs]
-        for i, inputs in enumerate(all_inputs):
-            dir = os.path.join(test_data_dir, "test_data_set_" + str(i))
-            output_test_data(dir, inputs)
+        from benchmark_helper import get_latency_result
+        batch_size = input_ids.shape[0]
+        output = get_latency_result(latency, batch_size)
 
-    # Test performance
-    latency = []
-    for _ in range(args.total_runs):
-        start = time.time()
-        _ = ort_session.run(None, inputs)
-        latency.append(time.time() - start)
+        print("ORT outputs:")
+        sequences = result[0]
+        print("sequences", sequences)
 
-    from benchmark_helper import get_latency_result
-
-    output = get_latency_result(latency, batch_size)
-
-    print("ORT outputs:")
-    sequences = result[0]
-    print("sequences", sequences)
-    if args.output_sequences_scores:
-        print("sequences_scores", result[1])
-    if args.output_token_scores:
-        print("scores", result[2])
-
-    (batch_size, num_sequences, max_length) = sequences.shape
-    ort_decoded_sequences = []
-    for i in range(batch_size):
-        for j in range(num_sequences):
-            decoded_sequence = tokenizer.decode(sequences[i][j], skip_special_tokens=True)
+        (batch_size, max_length) = sequences.shape
+        ort_decoded_sequences = []
+        for i in range(batch_size):
+            decoded_sequence = tokenizer.decode(sequences[i], skip_special_tokens=True)
             ort_decoded_sequences.append(decoded_sequence)
-            print(f"batch {i} sequence {j}: {decoded_sequence}")
+            print(f"batch {i} sequence: {decoded_sequence}")
+
+    else:
+
+        inputs = {
+            "input_ids": input_ids.cpu().numpy().astype(np.int32),
+            "max_length": np.array([args.max_length], dtype=np.int32),
+            "min_length": np.array([args.min_length], dtype=np.int32),
+            "num_beams": np.array([args.num_beams], dtype=np.int32),
+            "num_return_sequences": np.array([args.num_return_sequences], dtype=np.int32),
+            "length_penalty": np.array([args.length_penalty], dtype=np.float32),
+            "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
+        }
+
+        if args.vocab_mask:
+            vocab_mask = np.ones((vocab_size), dtype=np.int32)
+            if args.vocab_mask:
+                for bad_word_id in bad_words_ids:
+                    vocab_mask[bad_word_id] = 0
+            inputs["vocab_mask"] = vocab_mask
+
+        batch_size = input_ids.shape[0]
+        if args.prefix_vocab_mask:
+            logger.info("Use prefix vocab mask with all ones in ORT, but no corresponding setting for Torch model.")
+            prefix_vocab_mask = np.ones((batch_size, vocab_size), dtype=np.int32)
+            inputs["prefix_vocab_mask"] = prefix_vocab_mask
+
+        logger.debug("ORT inputs", inputs)
+        result = ort_session.run(None, inputs)
+
+        if args.save_test_data:
+            test_data_dir = Path(args.output).parent.as_posix()
+            logger.debug("test_data_dir", test_data_dir)
+            from bert_test_data import output_test_data
+
+            all_inputs = [inputs]
+            for i, inputs in enumerate(all_inputs):
+                dir = os.path.join(test_data_dir, "test_data_set_" + str(i))
+                output_test_data(dir, inputs)
+
+        # Test performance
+        latency = []
+        for _ in range(args.total_runs):
+            start = time.time()
+            _ = ort_session.run(None, inputs)
+            latency.append(time.time() - start)
+
+        from benchmark_helper import get_latency_result
+
+        output = get_latency_result(latency, batch_size)
+
+        print("ORT outputs:")
+        sequences = result[0]
+        print("sequences", sequences)
+        if args.output_sequences_scores:
+            print("sequences_scores", result[1])
+        if args.output_token_scores:
+            print("scores", result[2])
+
+        (batch_size, num_sequences, max_length) = sequences.shape
+        ort_decoded_sequences = []
+        for i in range(batch_size):
+            for j in range(num_sequences):
+                decoded_sequence = tokenizer.decode(sequences[i][j], skip_special_tokens=True)
+                ort_decoded_sequences.append(decoded_sequence)
+                print(f"batch {i} sequence {j}: {decoded_sequence}")
 
     if beam_outputs:
         torch_sequences = beam_outputs.sequences.reshape(batch_size, args.num_return_sequences, -1)
@@ -1690,10 +1735,8 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
     logger.info("start testing model...")
     if args.model_type in ["t5", "mt5"]:
         result = test_t5_model(args, sentences=sentences)
-    elif is_greedy:
-        result = test_gpt_model_with_greedysearch(args, sentences=sentences)
     else:
-        result = test_gpt_model(args, sentences=sentences)
+        result = test_gpt_model(args, sentences=sentences, is_greedy=is_greedy)
 
     if result:
         if args.use_external_data_format:

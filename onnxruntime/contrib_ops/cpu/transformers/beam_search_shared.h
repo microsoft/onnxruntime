@@ -9,9 +9,9 @@
 #include "core/common/safeint.h"
 #include "contrib_ops/cpu/transformers/beam_search_shared.h"
 
-//#ifndef NDEBUG
-#define DEBUG_BEAM_SEARCH 1  // uncomment it for debugging beam search
-//#endif
+#ifndef NDEBUG
+//#define DEBUG_BEAM_SEARCH 1  // uncomment it for debugging beam search
+#endif
 
 namespace onnxruntime {
 
