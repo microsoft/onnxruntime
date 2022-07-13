@@ -134,7 +134,7 @@ def _to_numpy(tensor):
     return tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
 
 
-def _get_models(device, N, D_in, H, D_out,zero_flag = False):
+def _get_models(device, N, D_in, H, D_out, zero_flag = False):
     """Returns the pt and onnx models for SimpleNet"""
     pt_model = SimpleNet(D_in, H, D_out).to(device)
 
@@ -562,7 +562,7 @@ def test_load_checkpoint():
     # Given
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10
-    _, zero_onnx_model = _get_models(device, N, D_in, H, D_out,zero_flag=True)
+    _, zero_onnx_model = _get_models(device, N, D_in, H, D_out, zero_flag=True)
     _, onnx_model = _get_models(device, N, D_in, H, D_out)
 
     # Copy of onnx_model for comparison
