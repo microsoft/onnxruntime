@@ -957,6 +957,24 @@ at::Tensor& fill__Scalar(
   return self;
 }
 
+// aten::nonzero.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+at::Tensor& nonzero_out(
+  const at::Tensor& self,
+  // *,
+  at::Tensor& out) {
+  ORT_LOG_FN(self, out);
+
+  auto temp = eager::aten::nonzero(self);
+
+  // resize out, then copy nonzero result into it.
+  auto& invoker = GetORTInvoker(self.device());
+  resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), temp.sizes());
+  auto ort_input_out = create_ort_value(invoker, out);
+  auto ort_temp = create_ort_value(invoker, temp);
+  copy(invoker, ort_temp, ort_input_out);
+
+  return out;
+}
 
 } // namespace aten
 
