@@ -84,8 +84,10 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--model_name_or_path",
         required=True,
         type=str,
-        help="Pytorch model checkpoint path, or pretrained model name in the list: "
-        + ", ".join(PRETRAINED_GPT2_MODELS + PRETRAINED_T5_MODELS + PRETRAINED_MT5_MODELS),
+        help=
+        "Pytorch model checkpoint path, or pretrained model name in the list: "
+        + ", ".join(PRETRAINED_GPT2_MODELS + PRETRAINED_T5_MODELS +
+                    PRETRAINED_MT5_MODELS),
     )
 
     input_group.add_argument(
@@ -94,7 +96,8 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         type=str,
         default="gpt2",
         choices=["gpt2", "t5", "mt5"],
-        help="Model type (default is gpt2) in the list: " + ", ".join(["gpt2", "t5", "mt5"]),
+        help="Model type (default is gpt2) in the list: " +
+        ", ".join(["gpt2", "t5", "mt5"]),
     )
 
     input_group.add_argument(
@@ -110,7 +113,8 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         required=False,
         type=str,
         default="",
-        help="Path of onnx model for decoder. Specify it when you have exported the model.",
+        help=
+        "Path of onnx model for decoder. Specify it when you have exported the model.",
     )
 
     input_group.add_argument(
@@ -118,7 +122,8 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         required=False,
         type=str,
         default="",
-        help="Path of ONNX model for encoder and decoder initialization. Specify it when you have exported the model.",
+        help=
+        "Path of ONNX model for encoder and decoder initialization. Specify it when you have exported the model.",
     )
 
     parser.add_argument(
@@ -145,7 +150,8 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         type=Precision,
         default=Precision.FLOAT32,
         choices=[Precision.FLOAT32, Precision.FLOAT16],
-        help="Precision of model to run. fp32 for full precision, fp16 for half or mixed precision",
+        help=
+        "Precision of model to run. fp32 for full precision, fp16 for half or mixed precision",
     )
 
     output_group.add_argument(
@@ -157,9 +163,11 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
     output_group.set_defaults(use_external_data_format=False)
 
-    output_group.add_argument(
-        "-s", "--run_shape_inference", required=False, action="store_true", help="run shape inference"
-    )
+    output_group.add_argument("-s",
+                              "--run_shape_inference",
+                              required=False,
+                              action="store_true",
+                              help="run shape inference")
     output_group.set_defaults(run_shape_inference=False)
 
     output_group.add_argument(
@@ -167,11 +175,13 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--disable_shared_initializers",
         required=False,
         action="store_true",
-        help="do not share initializers in encoder and decoder. It will increase memory usage of t5/mt5 models.",
+        help=
+        "do not share initializers in encoder and decoder. It will increase memory usage of t5/mt5 models.",
     )
     output_group.set_defaults(disable_shared_initializers=False)
 
-    model_group = parser.add_argument_group("Beam search parameters that stored in the output model")
+    model_group = parser.add_argument_group(
+        "Beam search parameters that stored in the output model")
 
     model_group.add_argument(
         "--output_sequences_scores",
@@ -189,7 +199,9 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
     model_group.set_defaults(output_token_scores=False)
 
-    model_group.add_argument("--early_stopping", required=False, action="store_true")
+    model_group.add_argument("--early_stopping",
+                             required=False,
+                             action="store_true")
     model_group.set_defaults(early_stopping=False)
 
     model_group.add_argument(
@@ -204,7 +216,8 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--vocab_mask",
         required=False,
         action="store_true",
-        help="Enable vocab_mask. This mask applies only to every generated token to filter some bad words.",
+        help=
+        "Enable vocab_mask. This mask applies only to every generated token to filter some bad words.",
     )
     model_group.set_defaults(vocab_mask=False)
 
@@ -212,7 +225,8 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--prefix_vocab_mask",
         required=False,
         action="store_true",
-        help="Enable prefix_vocab_mask. This mask can be used to filter bad words in the first generated token only",
+        help=
+        "Enable prefix_vocab_mask. This mask can be used to filter bad words in the first generated token only",
     )
     model_group.set_defaults(prefix_vocab_mask=False)
 
@@ -220,11 +234,23 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "Beam search parameters not stored in the output model, for testing parity and performance"
     )
 
-    beam_parameters_group.add_argument("--min_length", type=int, required=False, default=1, help="Min sequence length")
+    beam_parameters_group.add_argument("--min_length",
+                                       type=int,
+                                       required=False,
+                                       default=1,
+                                       help="Min sequence length")
 
-    beam_parameters_group.add_argument("--max_length", type=int, required=False, default=50, help="Max sequence length")
+    beam_parameters_group.add_argument("--max_length",
+                                       type=int,
+                                       required=False,
+                                       default=50,
+                                       help="Max sequence length")
 
-    beam_parameters_group.add_argument("--num_beams", type=int, required=False, default=4, help="Beam size")
+    beam_parameters_group.add_argument("--num_beams",
+                                       type=int,
+                                       required=False,
+                                       default=4,
+                                       help="Beam size")
 
     beam_parameters_group.add_argument(
         "--num_return_sequences",
@@ -255,14 +281,17 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         type=int,
         required=False,
         default=-1,
-        help="Vocab_size of the underlying model used to decide the shape of vocab mask",
+        help=
+        "Vocab_size of the underlying model used to decide the shape of vocab mask",
     )
 
-    test_group = parser.add_argument_group("Other options for testing parity and performance")
+    test_group = parser.add_argument_group(
+        "Other options for testing parity and performance")
 
-    test_group.add_argument(
-        "--use_gpu", required=False, action="store_true", help="use GPU for inference. Required for fp16."
-    )
+    test_group.add_argument("--use_gpu",
+                            required=False,
+                            action="store_true",
+                            help="use GPU for inference. Required for fp16.")
     test_group.set_defaults(use_gpu=False)
 
     test_group.add_argument(
@@ -335,7 +364,8 @@ def gpt2_to_onnx(args: argparse.Namespace):
         # TODO(tianleiwu): Use auto mixed precision for fp16 conversion: arguments.append('--auto_mixed_precision')
         #       Need change cuda kernel to support a combination of fp32 logits and fp16 past state.
         #       Currently logits and past state shall be same data type.
-        arguments.extend(["--op_block_list", "Add", "LayerNormalization", "FastGelu"])
+        arguments.extend(
+            ["--op_block_list", "Add", "LayerNormalization", "FastGelu"])
 
     if args.verbose:
         logger.info(f"arguments for convert_to_onnx:{arguments}")
@@ -383,9 +413,13 @@ def shape_inference(onnx_path: str, use_external_data_format: bool = True):
     from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
     model = onnx.load_model(onnx_path, load_external_data=True)
-    out = SymbolicShapeInference.infer_shapes(model, auto_merge=True, guess_output_rank=False)
+    out = SymbolicShapeInference.infer_shapes(model,
+                                              auto_merge=True,
+                                              guess_output_rank=False)
     if out:
-        OnnxModel.save(out, onnx_path, save_as_external_data=use_external_data_format)
+        OnnxModel.save(out,
+                       onnx_path,
+                       save_as_external_data=use_external_data_format)
     else:
         logger.warning("Failed to run symbolic shape inference on the model.")
 
@@ -405,14 +439,18 @@ def create_ort_session(model_path: str, use_gpu: bool) -> InferenceSession:
     """
     sess_options = SessionOptions()
     sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
-    execution_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"]
+    execution_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"
+                           ] if use_gpu else ["CPUExecutionProvider"]
     if use_gpu:
         if "CUDAExecutionProvider" not in get_available_providers():
-            raise RuntimeError("CUDAExecutionProvider is not available for --use_gpu!")
+            raise RuntimeError(
+                "CUDAExecutionProvider is not available for --use_gpu!")
         else:
             logger.info("use CUDAExecutionProvider")
 
-    ort_session = InferenceSession(model_path, sess_options, providers=execution_providers)
+    ort_session = InferenceSession(model_path,
+                                   sess_options,
+                                   providers=execution_providers)
     return ort_session
 
 
@@ -437,13 +475,18 @@ def verify_gpt2_subgraph(graph: onnx.GraphProto, precision: Precision):
     layer_count = input_count - 3
     assert layer_count >= 1
 
-    expected_inputs = ["input_ids", "position_ids", "attention_mask"] + [f"past_{i}" for i in range(layer_count)]
+    expected_inputs = ["input_ids", "position_ids", "attention_mask"
+                       ] + [f"past_{i}" for i in range(layer_count)]
     if len(graph.input) != len(expected_inputs):
-        raise ValueError(f"Number of inputs expected to be {len(expected_inputs)}. Got {len(graph.input)}")
+        raise ValueError(
+            f"Number of inputs expected to be {len(expected_inputs)}. Got {len(graph.input)}"
+        )
 
     for i, expected_input in enumerate(expected_inputs):
         if graph.input[i].name != expected_input:
-            raise ValueError(f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}")
+            raise ValueError(
+                f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}"
+            )
 
         expected_type = TensorProto.INT32
         if i >= 3:
@@ -451,21 +494,30 @@ def verify_gpt2_subgraph(graph: onnx.GraphProto, precision: Precision):
 
         input_type = graph.input[i].type.tensor_type.elem_type
         if input_type != expected_type:
-            raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}")
+            raise ValueError(
+                f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}"
+            )
     logger.info("Verifying GPT-2 graph inputs: name and data type are good.")
 
-    expected_outputs = ["logits"] + [f"present_{i}" for i in range(layer_count)]
+    expected_outputs = ["logits"
+                        ] + [f"present_{i}" for i in range(layer_count)]
     if len(graph.output) != len(expected_outputs):
-        raise ValueError(f"Number of outputs expected to be {len(expected_outputs)}. Got {len(graph.output)}")
+        raise ValueError(
+            f"Number of outputs expected to be {len(expected_outputs)}. Got {len(graph.output)}"
+        )
 
     for i, expected_output in enumerate(expected_outputs):
         if graph.output[i].name != expected_output:
-            raise ValueError(f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}")
+            raise ValueError(
+                f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}"
+            )
 
         expected_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
         output_type = graph.output[i].type.tensor_type.elem_type
         if output_type != expected_type:
-            raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {output_type}")
+            raise ValueError(
+                f"Input {i} is expected to have onnx data type {expected_type}. Got {output_type}"
+            )
     logger.info("Verifying GPT-2 graph outputs: name and data type are good.")
 
     # TODO(tianleiwu): verify shapes of inputs and outputs.
@@ -508,7 +560,9 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
     #   ... (for each cross attention layer)
 
     # TODO: encoder_hidden_states is optional
-    expected_inputs = ["input_ids", "encoder_attention_mask", "encoder_hidden_states"]
+    expected_inputs = [
+        "input_ids", "encoder_attention_mask", "encoder_hidden_states"
+    ]
     for i in range(layer_count):
         expected_inputs.append(f"past_key_self_{i}")
         expected_inputs.append(f"past_value_self_{i}")
@@ -517,16 +571,22 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
         expected_inputs.append(f"past_value_cross_{i}")
 
     if len(graph.input) != len(expected_inputs):
-        raise ValueError(f"Number of inputs expected to be {len(expected_inputs)}. Got {len(graph.input)}")
+        raise ValueError(
+            f"Number of inputs expected to be {len(expected_inputs)}. Got {len(graph.input)}"
+        )
 
     for i, expected_input in enumerate(expected_inputs):
         if graph.input[i].name != expected_input:
-            raise ValueError(f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}")
+            raise ValueError(
+                f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}"
+            )
 
         expected_type = TensorProto.INT32 if i < 2 else float_type
         input_type = graph.input[i].type.tensor_type.elem_type
         if input_type != expected_type:
-            raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}")
+            raise ValueError(
+                f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}"
+            )
 
     # Expect outputs:
     #   logits:               (B, 1, vocab_size)
@@ -539,17 +599,24 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
         expected_outputs.append(f"present_value_self_{i}")
 
     if len(graph.output) != len(expected_outputs):
-        raise ValueError(f"Number of outputs expected to be {len(expected_outputs)}. Got {len(graph.output)}")
+        raise ValueError(
+            f"Number of outputs expected to be {len(expected_outputs)}. Got {len(graph.output)}"
+        )
 
     for i, expected_output in enumerate(expected_outputs):
         if graph.output[i].name != expected_output:
-            raise ValueError(f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}")
+            raise ValueError(
+                f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}"
+            )
         output_type = graph.output[i].type.tensor_type.elem_type
         if output_type != float_type:
-            raise ValueError(f"Output {i} is expected to have onnx data type {float_type}. Got {output_type}")
+            raise ValueError(
+                f"Output {i} is expected to have onnx data type {float_type}. Got {output_type}"
+            )
 
 
-def verify_t5_encoder_decoder_init_subgraph(graph: onnx.GraphProto, precision: Precision):
+def verify_t5_encoder_decoder_init_subgraph(graph: onnx.GraphProto,
+                                            precision: Precision):
     """Verify T5 decoder subgraph
 
     Args:
@@ -572,18 +639,26 @@ def verify_t5_encoder_decoder_init_subgraph(graph: onnx.GraphProto, precision: P
     #   encoder_input_ids:      int32 (B, encode_sequence_length)
     #   encoder_attention_mask: int32 (B, encode_sequence_length)
     #   decoder_input_ids:      int32 (B, 1)
-    expected_inputs = ["encoder_input_ids", "encoder_attention_mask", "decoder_input_ids"]
+    expected_inputs = [
+        "encoder_input_ids", "encoder_attention_mask", "decoder_input_ids"
+    ]
     if len(graph.input) != len(expected_inputs):
-        raise ValueError(f"Number of inputs expected to be {len(expected_inputs)}. Got {len(graph.input)}")
+        raise ValueError(
+            f"Number of inputs expected to be {len(expected_inputs)}. Got {len(graph.input)}"
+        )
 
     for i, expected_input in enumerate(expected_inputs):
         if graph.input[i].name != expected_input:
-            raise ValueError(f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}")
+            raise ValueError(
+                f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}"
+            )
 
         expected_type = TensorProto.INT32
         input_type = graph.input[i].type.tensor_type.elem_type
         if input_type != expected_type:
-            raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}")
+            raise ValueError(
+                f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}"
+            )
 
     # Expected outputs:
     #   logits:                (B, 1, vocab_size)
@@ -603,18 +678,26 @@ def verify_t5_encoder_decoder_init_subgraph(graph: onnx.GraphProto, precision: P
         expected_outputs.append(f"present_value_cross_{i}")
 
     if len(graph.output) != len(expected_outputs):
-        raise ValueError(f"Number of outputs expected to be {len(expected_outputs)}. Got {len(graph.output)}")
+        raise ValueError(
+            f"Number of outputs expected to be {len(expected_outputs)}. Got {len(graph.output)}"
+        )
 
     for i, expected_output in enumerate(expected_outputs):
         if graph.output[i].name != expected_output:
-            raise ValueError(f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}")
+            raise ValueError(
+                f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}"
+            )
 
         expected_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
         output_type = graph.output[i].type.tensor_type.elem_type
         if output_type != expected_type:
-            raise ValueError(f"Output {i} is expected to have onnx data type {expected_type}. Got {output_type}")
+            raise ValueError(
+                f"Output {i} is expected to have onnx data type {expected_type}. Got {output_type}"
+            )
 
-    logger.info("T5 encoder graph verified: name and data type of inputs and outputs are good.")
+    logger.info(
+        "T5 encoder graph verified: name and data type of inputs and outputs are good."
+    )
 
 
 def remove_shared_initializers(
@@ -643,11 +726,13 @@ def remove_shared_initializers(
             continue
 
         for initializer2 in graph2.initializer:
-            if not (initializer2.dims and sum(initializer2.dims) > min_elements):
+            if not (initializer2.dims
+                    and sum(initializer2.dims) > min_elements):
                 continue
 
             if OnnxModel.has_same_value(initializer1, initializer2):
-                mapping_initializers_1[initializer1.name] = shared_prefix + initializer2.name
+                mapping_initializers_1[
+                    initializer1.name] = shared_prefix + initializer2.name
                 shared_initializers_1.append(initializer1)
 
                 if initializer2.name not in mapping_initializers_2:
@@ -663,13 +748,15 @@ def remove_shared_initializers(
     for node in graph1.node:
         for j in range(len(node.input)):
             if node.input[j] in shared_initializers_names:
-                raise RuntimeError(f"name is found in graph 1: {node.input[j]}")
+                raise RuntimeError(
+                    f"name is found in graph 1: {node.input[j]}")
 
     # Make sure new name does not exist in graph 2
     for node in graph2.node:
         for j in range(len(node.input)):
             if node.input[j] in shared_initializers_names:
-                raise RuntimeError(f"name is found in graph 2: {node.input[j]}")
+                raise RuntimeError(
+                    f"name is found in graph 2: {node.input[j]}")
 
     # Remove shared initializers from graph 2
     for initializer in shared_initializers_2:
@@ -685,7 +772,9 @@ def remove_shared_initializers(
         for j in range(len(node.input)):
             if node.input[j] in mapping_initializers_2:
                 new_name = mapping_initializers_2[node.input[j]]
-                logger.debug(f"graph 2 rename node {node.name} input {j} from {node.input[j]} to {new_name}")
+                logger.debug(
+                    f"graph 2 rename node {node.name} input {j} from {node.input[j]} to {new_name}"
+                )
                 node.input[j] = new_name
 
     #  Remove shared initializers from graph 1
@@ -702,7 +791,9 @@ def remove_shared_initializers(
         for j in range(len(node.input)):
             if node.input[j] in mapping_initializers_1:
                 new_name = mapping_initializers_1[node.input[j]]
-                logger.debug(f"graph 1 rename node {node.name} input {j} from {node.input[j]} to {new_name}")
+                logger.debug(
+                    f"graph 1 rename node {node.name} input {j} from {node.input[j]} to {new_name}"
+                )
                 node.input[j] = new_name
 
     # Rename shared initializers in graph 2
@@ -711,7 +802,8 @@ def remove_shared_initializers(
 
     for initializer in shared_initializers_2:
         shape = onnx.numpy_helper.to_array(initializer).shape
-        value_info = onnx.helper.make_tensor_value_info(initializer.name, initializer.data_type, shape)
+        value_info = onnx.helper.make_tensor_value_info(
+            initializer.name, initializer.data_type, shape)
         # Need add value_info for initializers moved to parent graph. Otherwise, ORT will fail.
         graph1.value_info.append(value_info)
         graph2.value_info.append(value_info)
@@ -719,14 +811,16 @@ def remove_shared_initializers(
     return shared_initializers_2
 
 
-def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto):
+def get_shared_initializers(encoder_model: ModelProto,
+                            decoder_model: ModelProto):
     encoder = OnnxModel(encoder_model)
     decoder = OnnxModel(decoder_model)
     encoder.add_prefix_to_names("e_")
     decoder.add_prefix_to_names("d_")
     encoder.remove_duplicated_initializer()
     decoder.remove_duplicated_initializer()
-    initializers = remove_shared_initializers(encoder.model.graph, decoder.model.graph, "s_")
+    initializers = remove_shared_initializers(encoder.model.graph,
+                                              decoder.model.graph, "s_")
     return initializers
 
 
@@ -739,13 +833,19 @@ def convert_model(args: argparse.Namespace):
     is_gpt2: bool = args.model_type == "gpt2"
     if is_gpt2:
         if args.decoder_onnx and os.path.exists(args.decoder_onnx):
-            logger.info(f"skip convert_to_onnx since path existed: {args.decoder_onnx}")
+            logger.info(
+                f"skip convert_to_onnx since path existed: {args.decoder_onnx}"
+            )
         else:
             if not args.decoder_onnx:
-                onnx_filename = "gpt2_past_{}.onnx".format("fp16" if args.precision == Precision.FLOAT16 else "fp32")
-                args.decoder_onnx = Path(Path(args.output).parent, onnx_filename).as_posix()
+                onnx_filename = "gpt2_past_{}.onnx".format(
+                    "fp16" if args.precision == Precision.FLOAT16 else "fp32")
+                args.decoder_onnx = Path(
+                    Path(args.output).parent, onnx_filename).as_posix()
 
-            logger.info(f"Convert GPT model {args.model_name_or_path} to onnx {args.decoder_onnx} ...")
+            logger.info(
+                f"Convert GPT model {args.model_name_or_path} to onnx {args.decoder_onnx} ..."
+            )
             gpt2_to_onnx(args)
     else:  # t5 or mt5
         if args.decoder_onnx and args.encoder_decoder_init_onnx:
@@ -757,15 +857,20 @@ def convert_model(args: argparse.Namespace):
             t5_to_onnx(args)
 
     if args.run_shape_inference:
-        logger.info(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
+        logger.info(
+            f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten."
+        )
         shape_inference(args.decoder_onnx, args.use_external_data_format)
 
     if is_gpt2:
-        config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+        config = GPT2Config.from_pretrained(args.model_name_or_path,
+                                            cache_dir=args.cache_dir)
     elif args.model_type == "t5":
-        config = T5Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+        config = T5Config.from_pretrained(args.model_name_or_path,
+                                          cache_dir=args.cache_dir)
     else:
-        config = MT5Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+        config = MT5Config.from_pretrained(args.model_name_or_path,
+                                           cache_dir=args.cache_dir)
 
     if args.verbose:
         logger.info(f"Config={config}")
@@ -821,52 +926,68 @@ def convert_model(args: argparse.Namespace):
         name=f"BeamSearch_{args.model_type}",
     )
     node.domain = "com.microsoft"
-    node.attribute.extend(
-        [
-            onnx.helper.make_attribute("eos_token_id", eos_token_id),
-            onnx.helper.make_attribute("pad_token_id", pad_token_id),
-            onnx.helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
-            onnx.helper.make_attribute("early_stopping", 1 if args.early_stopping else 0),
-            onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
-        ]
-    )
+    node.attribute.extend([
+        onnx.helper.make_attribute("eos_token_id", eos_token_id),
+        onnx.helper.make_attribute("pad_token_id", pad_token_id),
+        onnx.helper.make_attribute("no_repeat_ngram_size",
+                                   args.no_repeat_ngram_size),
+        onnx.helper.make_attribute("early_stopping",
+                                   1 if args.early_stopping else 0),
+        onnx.helper.make_attribute("model_type",
+                                   0 if args.model_type == "gpt2" else 1),
+    ])
 
     initializers = []
     if args.model_type in ["t5", "mt5"]:
         if args.run_shape_inference:
-            logger.info(f"Symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten.")
-            shape_inference(args.encoder_decoder_init_onnx, args.use_external_data_format)
-        encoder_model = onnx.load_model(args.encoder_decoder_init_onnx, load_external_data=True)
+            logger.info(
+                f"Symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten."
+            )
+            shape_inference(args.encoder_decoder_init_onnx,
+                            args.use_external_data_format)
+        encoder_model = onnx.load_model(args.encoder_decoder_init_onnx,
+                                        load_external_data=True)
         encoder_model.graph.name = f"{args.model_type} encoder and decoder init"
-        verify_t5_encoder_decoder_init_subgraph(encoder_model.graph, args.precision)
+        verify_t5_encoder_decoder_init_subgraph(encoder_model.graph,
+                                                args.precision)
 
         if not args.disable_shared_initializers:
-            initializers = get_shared_initializers(encoder_model, decoder_model)
-            logger.info(f"{len(initializers)} shared initializers in subgraphs are moved to the main graph")
+            initializers = get_shared_initializers(encoder_model,
+                                                   decoder_model)
+            logger.info(
+                f"{len(initializers)} shared initializers in subgraphs are moved to the main graph"
+            )
 
-        node.attribute.extend(
-            [
-                onnx.helper.make_attribute("encoder", encoder_model.graph),
-                onnx.helper.make_attribute("decoder", decoder_model.graph),
-                onnx.helper.make_attribute(
-                    "decoder_start_token_id",
-                    config.decoder_start_token_id if len(encoder_model.graph.input) == 3 else -1,
-                ),
-            ]
-        )
+        node.attribute.extend([
+            onnx.helper.make_attribute("encoder", encoder_model.graph),
+            onnx.helper.make_attribute("decoder", decoder_model.graph),
+            onnx.helper.make_attribute(
+                "decoder_start_token_id",
+                config.decoder_start_token_id
+                if len(encoder_model.graph.input) == 3 else -1,
+            ),
+        ])
     else:
-        node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
+        node.attribute.append(
+            onnx.helper.make_attribute("decoder", decoder_model.graph))
 
     from onnx import TensorProto
 
     # graph inputs
-    input_ids = onnx.helper.make_tensor_value_info("input_ids", TensorProto.INT32, ["batch_size", "sequence_length"])
-    max_length = onnx.helper.make_tensor_value_info("max_length", TensorProto.INT32, [1])
-    min_length = onnx.helper.make_tensor_value_info("min_length", TensorProto.INT32, [1])
-    num_beams = onnx.helper.make_tensor_value_info("num_beams", TensorProto.INT32, [1])
-    num_return_sequences = onnx.helper.make_tensor_value_info("num_return_sequences", TensorProto.INT32, [1])
-    length_penalty = onnx.helper.make_tensor_value_info("length_penalty", TensorProto.FLOAT, [1])
-    repetition_penalty = onnx.helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
+    input_ids = onnx.helper.make_tensor_value_info(
+        "input_ids", TensorProto.INT32, ["batch_size", "sequence_length"])
+    max_length = onnx.helper.make_tensor_value_info("max_length",
+                                                    TensorProto.INT32, [1])
+    min_length = onnx.helper.make_tensor_value_info("min_length",
+                                                    TensorProto.INT32, [1])
+    num_beams = onnx.helper.make_tensor_value_info("num_beams",
+                                                   TensorProto.INT32, [1])
+    num_return_sequences = onnx.helper.make_tensor_value_info(
+        "num_return_sequences", TensorProto.INT32, [1])
+    length_penalty = onnx.helper.make_tensor_value_info(
+        "length_penalty", TensorProto.FLOAT, [1])
+    repetition_penalty = onnx.helper.make_tensor_value_info(
+        "repetition_penalty", TensorProto.FLOAT, [1])
 
     graph_inputs = [
         input_ids,
@@ -879,13 +1000,13 @@ def convert_model(args: argparse.Namespace):
     ]
 
     if args.vocab_mask:
-        vocab_mask = onnx.helper.make_tensor_value_info("vocab_mask", TensorProto.INT32, [vocab_size])
+        vocab_mask = onnx.helper.make_tensor_value_info(
+            "vocab_mask", TensorProto.INT32, [vocab_size])
         graph_inputs.append(vocab_mask)
 
     if args.prefix_vocab_mask:
         prefix_vocab_mask = onnx.helper.make_tensor_value_info(
-            "prefix_vocab_mask", TensorProto.INT32, ["batch_size", vocab_size]
-        )
+            "prefix_vocab_mask", TensorProto.INT32, ["batch_size", vocab_size])
         graph_inputs.append(prefix_vocab_mask)
 
     # graph outputs
@@ -896,13 +1017,16 @@ def convert_model(args: argparse.Namespace):
     )
 
     sequences_scores = onnx.helper.make_tensor_value_info(
-        "sequences_scores", TensorProto.FLOAT, ["batch_size", "num_return_sequences"]
-    )
+        "sequences_scores", TensorProto.FLOAT,
+        ["batch_size", "num_return_sequences"])
 
     scores = onnx.helper.make_tensor_value_info(
         "scores",
         TensorProto.FLOAT,
-        ["max_length - sequence_length", "batch_size", "num_beams", vocab_size],
+        [
+            "max_length - sequence_length", "batch_size", "num_beams",
+            vocab_size
+        ],
     )
 
     graph_outputs = [sequences]
@@ -913,9 +1037,10 @@ def convert_model(args: argparse.Namespace):
     if args.output_token_scores:
         graph_outputs.append(scores)
 
-    new_graph = onnx.helper.make_graph(
-        [node], f"{args.model_type} beam search", graph_inputs, graph_outputs, initializers
-    )
+    new_graph = onnx.helper.make_graph([node],
+                                       f"{args.model_type} beam search",
+                                       graph_inputs, graph_outputs,
+                                       initializers)
 
     # Create the model
     new_model = onnx.helper.make_model(
@@ -941,6 +1066,7 @@ def convert_model(args: argparse.Namespace):
         onnx.save(new_model, args.output)
     logger.info(f"model save to {args.output}")
 
+
 def convert_greedy_search_model(args: argparse.Namespace):
     """Convert model according to command line arguments.
 
@@ -950,23 +1076,32 @@ def convert_greedy_search_model(args: argparse.Namespace):
     is_gpt2: bool = args.model_type == "gpt2"
     if is_gpt2:
         if args.decoder_onnx and os.path.exists(args.decoder_onnx):
-            logger.info(f"skip convert_to_onnx since path existed: {args.decoder_onnx}")
+            logger.info(
+                f"skip convert_to_onnx since path existed: {args.decoder_onnx}"
+            )
         else:
             if not args.decoder_onnx:
-                onnx_filename = "gpt2_past_{}.onnx".format("fp16" if args.precision == Precision.FLOAT16 else "fp32")
-                args.decoder_onnx = Path(Path(args.output).parent, onnx_filename).as_posix()
+                onnx_filename = "gpt2_past_{}.onnx".format(
+                    "fp16" if args.precision == Precision.FLOAT16 else "fp32")
+                args.decoder_onnx = Path(
+                    Path(args.output).parent, onnx_filename).as_posix()
 
-            logger.info(f"Convert GPT model {args.model_name_or_path} to onnx {args.decoder_onnx} ...")
+            logger.info(
+                f"Convert GPT model {args.model_name_or_path} to onnx {args.decoder_onnx} ..."
+            )
             gpt2_to_onnx(args)
     else:  # t5 or mt5
         raise NotImplementedError
 
     if args.run_shape_inference:
-        logger.info(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
+        logger.info(
+            f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten."
+        )
         shape_inference(args.decoder_onnx, args.use_external_data_format)
 
     if is_gpt2:
-        config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+        config = GPT2Config.from_pretrained(args.model_name_or_path,
+                                            cache_dir=args.cache_dir)
     else:
         raise NotImplementedError
 
@@ -1000,24 +1135,27 @@ def convert_greedy_search_model(args: argparse.Namespace):
         name=f"GreedySearch_{args.model_type}",
     )
     node.domain = "com.microsoft"
-    node.attribute.extend(
-        [
-            onnx.helper.make_attribute("eos_token_id", eos_token_id),
-            onnx.helper.make_attribute("pad_token_id", pad_token_id),
-            onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
-            onnx.helper.make_attribute("decoder", decoder_model.graph)
-        ]
-    )
+    node.attribute.extend([
+        onnx.helper.make_attribute("eos_token_id", eos_token_id),
+        onnx.helper.make_attribute("pad_token_id", pad_token_id),
+        onnx.helper.make_attribute("model_type",
+                                   0 if args.model_type == "gpt2" else 1),
+        onnx.helper.make_attribute("decoder", decoder_model.graph),
+    ])
 
     initializers = []
 
     from onnx import TensorProto
 
     # graph inputs
-    input_ids = onnx.helper.make_tensor_value_info("input_ids", TensorProto.INT32, ["batch_size", "sequence_length"])
-    max_length = onnx.helper.make_tensor_value_info("max_length", TensorProto.INT32, [1])
-    min_length = onnx.helper.make_tensor_value_info("min_length", TensorProto.INT32, [1])
-    repetition_penalty = onnx.helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
+    input_ids = onnx.helper.make_tensor_value_info(
+        "input_ids", TensorProto.INT32, ["batch_size", "sequence_length"])
+    max_length = onnx.helper.make_tensor_value_info("max_length",
+                                                    TensorProto.INT32, [1])
+    min_length = onnx.helper.make_tensor_value_info("min_length",
+                                                    TensorProto.INT32, [1])
+    repetition_penalty = onnx.helper.make_tensor_value_info(
+        "repetition_penalty", TensorProto.FLOAT, [1])
 
     graph_inputs = [
         input_ids,
@@ -1035,9 +1173,10 @@ def convert_greedy_search_model(args: argparse.Namespace):
 
     graph_outputs = [sequences]
 
-    new_graph = onnx.helper.make_graph(
-        [node], f"{args.model_type} greedy search", graph_inputs, graph_outputs, initializers
-    )
+    new_graph = onnx.helper.make_graph([node],
+                                       f"{args.model_type} greedy search",
+                                       graph_inputs, graph_outputs,
+                                       initializers)
 
     # Create the model
     new_model = onnx.helper.make_model(
@@ -1048,6 +1187,7 @@ def convert_greedy_search_model(args: argparse.Namespace):
 
     onnx.save(new_model, args.output)
     logger.info(f"model save to {args.output}")
+
 
 def test_torch_performance(
     args: argparse.Namespace,
@@ -1076,7 +1216,8 @@ def test_torch_performance(
         Dict[str, Any]: A dictionary with string with metric name, and value can be integer or string.
     """
     if args.use_gpu and not torch.cuda.is_available():
-        raise RuntimeError("Please install PyTorch with Cuda for testing gpu performance.")
+        raise RuntimeError(
+            "Please install PyTorch with Cuda for testing gpu performance.")
 
     if args.precision == Precision.FLOAT16:
         model.half()
@@ -1106,7 +1247,8 @@ def test_torch_performance(
             repetition_penalty=args.repetition_penalty,
             bad_words_ids=bad_words_ids,
             return_dict_in_generate=True,
-            output_scores=args.output_sequences_scores or args.output_token_scores,
+            output_scores=args.output_sequences_scores
+            or args.output_token_scores,
         )
         torch_latency.append(time.time() - start)
     batch_size = input_ids.shape[0]
@@ -1115,7 +1257,9 @@ def test_torch_performance(
     return get_latency_result(torch_latency, batch_size)
 
 
-def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = None, is_greedy: bool = False):
+def test_gpt_model(args: argparse.Namespace,
+                   sentences: Optional[List[str]] = None,
+                   is_greedy: bool = False):
     """Test GPT-2 model
 
     Args:
@@ -1127,7 +1271,8 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
     """
     assert args.model_type == "gpt2"
 
-    tokenizer = GPT2Tokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+    tokenizer = GPT2Tokenizer.from_pretrained(args.model_name_or_path,
+                                              cache_dir=args.cache_dir)
     tokenizer.padding_side = "left"
     tokenizer.pad_token = tokenizer.eos_token
 
@@ -1151,7 +1296,8 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
 
     bad_words = "walk in park"
     bad_words_ids = tokenizer.encode(bad_words, add_prefix_space=True)
-    bad_words_ids = [[word_id] for word_id in bad_words_ids]  # Convert to list of list
+    bad_words_ids = [[word_id]
+                     for word_id in bad_words_ids]  # Convert to list of list
     if args.vocab_mask:
         logger.debug("bad_words_ids", bad_words_ids)
     else:
@@ -1166,7 +1312,9 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
     beam_outputs = None
     if not args.disable_parity:
         print("-" * 50)
-        print("Test PyTorch model and beam search with huggingface transformers...")
+        print(
+            "Test PyTorch model and beam search with huggingface transformers..."
+        )
         beam_outputs = model.generate(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -1182,7 +1330,8 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
             repetition_penalty=args.repetition_penalty,
             bad_words_ids=bad_words_ids if bad_words_ids else None,
             return_dict_in_generate=True,
-            output_scores=args.output_sequences_scores or args.output_token_scores,
+            output_scores=args.output_sequences_scores
+            or args.output_token_scores,
         )
         print("input_ids", input_ids)
         print("huggingface transformers outputs:")
@@ -1192,7 +1341,8 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
         if args.output_token_scores:
             print("scores", beam_outputs.scores)
         for i, sequence in enumerate(beam_outputs.sequences):
-            decoded_sequence = tokenizer.decode(sequence, skip_special_tokens=True)
+            decoded_sequence = tokenizer.decode(sequence,
+                                                skip_special_tokens=True)
             torch_decoded_sequences.append(decoded_sequence)
             print(f"{i}: {decoded_sequence}")
 
@@ -1203,10 +1353,14 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
 
     if is_greedy:
         inputs = {
-            "input_ids": input_ids.cpu().numpy().astype(np.int32),
-            "max_length": np.array([args.max_length], dtype=np.int32),
-            "min_length": np.array([args.min_length], dtype=np.int32),
-            "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
+            "input_ids":
+            input_ids.cpu().numpy().astype(np.int32),
+            "max_length":
+            np.array([args.max_length], dtype=np.int32),
+            "min_length":
+            np.array([args.min_length], dtype=np.int32),
+            "repetition_penalty":
+            np.array([args.repetition_penalty], dtype=np.float32),
         }
 
         logger.debug("ORT inputs", inputs)
@@ -1240,20 +1394,28 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
         (batch_size, max_length) = sequences.shape
         ort_decoded_sequences = []
         for i in range(batch_size):
-            decoded_sequence = tokenizer.decode(sequences[i], skip_special_tokens=True)
+            decoded_sequence = tokenizer.decode(sequences[i],
+                                                skip_special_tokens=True)
             ort_decoded_sequences.append(decoded_sequence)
             print(f"batch {i} sequence: {decoded_sequence}")
 
     else:
 
         inputs = {
-            "input_ids": input_ids.cpu().numpy().astype(np.int32),
-            "max_length": np.array([args.max_length], dtype=np.int32),
-            "min_length": np.array([args.min_length], dtype=np.int32),
-            "num_beams": np.array([args.num_beams], dtype=np.int32),
-            "num_return_sequences": np.array([args.num_return_sequences], dtype=np.int32),
-            "length_penalty": np.array([args.length_penalty], dtype=np.float32),
-            "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
+            "input_ids":
+            input_ids.cpu().numpy().astype(np.int32),
+            "max_length":
+            np.array([args.max_length], dtype=np.int32),
+            "min_length":
+            np.array([args.min_length], dtype=np.int32),
+            "num_beams":
+            np.array([args.num_beams], dtype=np.int32),
+            "num_return_sequences":
+            np.array([args.num_return_sequences], dtype=np.int32),
+            "length_penalty":
+            np.array([args.length_penalty], dtype=np.float32),
+            "repetition_penalty":
+            np.array([args.repetition_penalty], dtype=np.float32),
         }
 
         if args.vocab_mask:
@@ -1265,8 +1427,11 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
 
         batch_size = input_ids.shape[0]
         if args.prefix_vocab_mask:
-            logger.info("Use prefix vocab mask with all ones in ORT, but no corresponding setting for Torch model.")
-            prefix_vocab_mask = np.ones((batch_size, vocab_size), dtype=np.int32)
+            logger.info(
+                "Use prefix vocab mask with all ones in ORT, but no corresponding setting for Torch model."
+            )
+            prefix_vocab_mask = np.ones((batch_size, vocab_size),
+                                        dtype=np.int32)
             inputs["prefix_vocab_mask"] = prefix_vocab_mask
 
         logger.debug("ORT inputs", inputs)
@@ -1305,12 +1470,14 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
         ort_decoded_sequences = []
         for i in range(batch_size):
             for j in range(num_sequences):
-                decoded_sequence = tokenizer.decode(sequences[i][j], skip_special_tokens=True)
+                decoded_sequence = tokenizer.decode(sequences[i][j],
+                                                    skip_special_tokens=True)
                 ort_decoded_sequences.append(decoded_sequence)
                 print(f"batch {i} sequence {j}: {decoded_sequence}")
 
     if beam_outputs:
-        torch_sequences = beam_outputs.sequences.reshape(batch_size, args.num_return_sequences, -1)
+        torch_sequences = beam_outputs.sequences.reshape(
+            batch_size, args.num_return_sequences, -1)
         ort_sequences = torch.LongTensor(sequences)
         print("-" * 50)
         print("Torch Sequences:")
@@ -1343,7 +1510,8 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
     return output
 
 
-def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = None):
+def test_t5_model(args: argparse.Namespace,
+                  sentences: Optional[List[str]] = None):
     """Test T5 or MT5 model
 
     Args:
@@ -1356,10 +1524,13 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
     assert args.model_type in ["t5", "mt5"]
 
     if args.prefix_vocab_mask:
-        logger.debug("Skipping parity test as prefix vocab mask is not implemented by Hugging Face")
+        logger.debug(
+            "Skipping parity test as prefix vocab mask is not implemented by Hugging Face"
+        )
         return None
 
-    tokenizer = T5Tokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+    tokenizer = T5Tokenizer.from_pretrained(args.model_name_or_path,
+                                            cache_dir=args.cache_dir)
     tokenizer.padding_side = "left"
 
     if args.model_type == "t5":
@@ -1378,7 +1549,8 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
         sentences = [
             "translate English to French: The product is released",
             "summarize: research continues to show that pets bring real health benefits to their owners."
-            + "Having a dog around can lead to lower levels of stress for both adults and kids.",
+            +
+            "Having a dog around can lead to lower levels of stress for both adults and kids.",
             # "summarize: I enjoy walking in the park. It makes my mind feel calm and refreshed. "
             # + "I enjoy looking at the trees, flowers, and wildlife around me, and listening to sound from natural.",
         ]
@@ -1388,8 +1560,10 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
     attention_mask = inputs["attention_mask"]
 
     bad_words = "walk in park"
-    bad_words_ids = tokenizer.encode(bad_words)[:-1]  # exclude the last token (EOS)
-    bad_words_ids = [[word_id] for word_id in bad_words_ids]  # Convert to list of list
+    bad_words_ids = tokenizer.encode(
+        bad_words)[:-1]  # exclude the last token (EOS)
+    bad_words_ids = [[word_id]
+                     for word_id in bad_words_ids]  # Convert to list of list
     if args.vocab_mask:
         logger.debug("bad_words_ids", bad_words_ids)
     else:
@@ -1399,12 +1573,16 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
     eos_token_id = config.eos_token_id
     pad_token_id = config.pad_token_id
     vocab_size = config.vocab_size
-    logger.debug(f"eos_token_id:{eos_token_id}, pad_token_id:{pad_token_id}, vocab_size:{vocab_size}")
+    logger.debug(
+        f"eos_token_id:{eos_token_id}, pad_token_id:{pad_token_id}, vocab_size:{vocab_size}"
+    )
 
     torch_decoded_sequences = []
     if not args.disable_parity:
         print("-" * 50)
-        print("Test PyTorch model and beam search with huggingface transformers...")
+        print(
+            "Test PyTorch model and beam search with huggingface transformers..."
+        )
         beam_outputs = model.generate(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -1420,7 +1598,8 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
             repetition_penalty=args.repetition_penalty,
             bad_words_ids=bad_words_ids if bad_words_ids else None,
             return_dict_in_generate=True,
-            output_scores=args.output_sequences_scores or args.output_token_scores,
+            output_scores=args.output_sequences_scores
+            or args.output_token_scores,
         )
 
         print("input_ids", input_ids)
@@ -1431,7 +1610,8 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
         if args.output_token_scores:
             print("scores", beam_outputs.scores)
         for i, sequence in enumerate(beam_outputs.sequences):
-            decoded_sequence = tokenizer.decode(sequence, skip_special_tokens=True)
+            decoded_sequence = tokenizer.decode(sequence,
+                                                skip_special_tokens=True)
             torch_decoded_sequences.append(decoded_sequence)
             print("{}: {}".format(i, decoded_sequence))
 
@@ -1446,13 +1626,20 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
             vocab_mask[bad_word_id] = 0
 
     inputs = {
-        "input_ids": input_ids.cpu().numpy().astype(np.int32),
-        "max_length": np.array([args.max_length], dtype=np.int32),
-        "min_length": np.array([args.min_length], dtype=np.int32),
-        "num_beams": np.array([args.num_beams], dtype=np.int32),
-        "num_return_sequences": np.array([args.num_return_sequences], dtype=np.int32),
-        "length_penalty": np.array([args.length_penalty], dtype=np.float32),
-        "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
+        "input_ids":
+        input_ids.cpu().numpy().astype(np.int32),
+        "max_length":
+        np.array([args.max_length], dtype=np.int32),
+        "min_length":
+        np.array([args.min_length], dtype=np.int32),
+        "num_beams":
+        np.array([args.num_beams], dtype=np.int32),
+        "num_return_sequences":
+        np.array([args.num_return_sequences], dtype=np.int32),
+        "length_penalty":
+        np.array([args.length_penalty], dtype=np.float32),
+        "repetition_penalty":
+        np.array([args.repetition_penalty], dtype=np.float32),
     }
 
     if args.vocab_mask:
@@ -1493,12 +1680,14 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
     ort_decoded_sequences = []
     for i in range(batch_size):
         for j in range(num_sequences):
-            decoded_sequence = tokenizer.decode(sequences[i][j], skip_special_tokens=True)
+            decoded_sequence = tokenizer.decode(sequences[i][j],
+                                                skip_special_tokens=True)
             ort_decoded_sequences.append(decoded_sequence)
             print(f"batch {i} sequence {j}: {decoded_sequence}")
 
     if not args.disable_parity:
-        torch_sequences = beam_outputs.sequences.reshape(batch_size, args.num_return_sequences, -1)
+        torch_sequences = beam_outputs.sequences.reshape(
+            batch_size, args.num_return_sequences, -1)
         ort_sequences = torch.LongTensor(sequences)
         print("-" * 50)
         print("Torch Sequences:")
@@ -1530,7 +1719,8 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
     return output
 
 
-def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None):
+def main(argv: Optional[List[str]] = None,
+         sentences: Optional[List[str]] = None):
     """Main entry function
 
     Args:
@@ -1550,14 +1740,19 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
     setup_logger(args.verbose)
 
     if args.model_type in ["t5", "mt5"]:
-        if args.encoder_decoder_init_onnx and not os.path.exists(args.encoder_decoder_init_onnx):
-            raise ValueError(f"Path does not exist: --encoder_decoder_init_onnx {args.encoder_decoder_init_onnx}")
+        if args.encoder_decoder_init_onnx and not os.path.exists(
+                args.encoder_decoder_init_onnx):
+            raise ValueError(
+                f"Path does not exist: --encoder_decoder_init_onnx {args.encoder_decoder_init_onnx}"
+            )
         if args.decoder_onnx and not os.path.exists(args.decoder_onnx):
-            raise ValueError(f"Path does not exist: --decoder_onnx {args.decoder_onnx}")
+            raise ValueError(
+                f"Path does not exist: --decoder_onnx {args.decoder_onnx}")
         if (args.encoder_decoder_init_onnx and not args.decoder_onnx) or (
-            args.decoder_onnx and not args.encoder_decoder_init_onnx
-        ):
-            raise ValueError("--decoder_onnx shall use together with --encoder_decoder_init_onnx")
+                args.decoder_onnx and not args.encoder_decoder_init_onnx):
+            raise ValueError(
+                "--decoder_onnx shall use together with --encoder_decoder_init_onnx"
+            )
     is_greedy = args.num_beams == 1 and args.num_return_sequences == 1
 
     if args.model_type == "gpt2" and is_greedy:
