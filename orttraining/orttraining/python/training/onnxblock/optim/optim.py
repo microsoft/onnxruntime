@@ -2,6 +2,8 @@
 # Licensed under the MIT License.
 # optim.py
 
+import typing
+
 import onnx
 
 import onnxruntime.training.onnxblock._graph_utils as graph_utils
@@ -11,13 +13,19 @@ import onnxruntime.training.onnxblock.model_accessor as accessor
 
 # TODO: Find a better place for these constants
 _PRODUCER_NAME = "onnxblock offline tooling"
-_OPSET_IMPORTS = [onnx.helper.make_opsetid("com.microsoft", 1), onnx.helper.make_opsetid("", 14)]
+_OPSET_IMPORTS = (onnx.helper.make_opsetid("com.microsoft", 1), onnx.helper.make_opsetid("", 14))
 
 
 class AdamWOptimizer(building_blocks.Block):
     """Adds an AdamWOptimizer node to the onnx model."""
 
-    def __init__(self, bias_correction=True, betas=(0.9, 0.999), eps=1e-6, weight_decay=0.0):
+    def __init__(
+        self,
+        bias_correction: typing.Optional[bool] = True,
+        betas: typing.Tuple[float, float] = (0.9, 0.999),
+        eps: typing.Optional[float] = 1e-6,
+        weight_decay: typing.Optional[float] = 0.0,
+    ):
         super().__init__()
 
         self._bias_correction = bias_correction
@@ -27,12 +35,12 @@ class AdamWOptimizer(building_blocks.Block):
 
     def build(  # pylint: disable=too-many-arguments
         self,
-        learning_rate_name,
-        step_name,
-        parameter_sequence_name,
-        gradient_sequence_name,
-        first_order_moment_sequence_name,
-        second_order_moment_sequence_name,
+        learning_rate_name: str,
+        step_name: str,
+        parameter_sequence_name: str,
+        gradient_sequence_name: str,
+        first_order_moment_sequence_name: str,
+        second_order_moment_sequence_name: str,
     ):
         """Adds the AdamWOptimizer node to the model."""
 
@@ -86,7 +94,7 @@ class ClipGradNorm(building_blocks.Block):
         Returns a string of the output names of the gradients after clipping.
     """
 
-    def __init__(self, max_norm):
+    def __init__(self, max_norm: float):
         super().__init__()
 
         self._max_norm = max_norm
@@ -139,7 +147,12 @@ class AdamW(model.Model):
     """
 
     def __init__(
-        self, bias_correction=True, betas=(0.9, 0.999), eps=1e-6, weight_decay=0.0, clip_grad=None
+        self,
+        bias_correction: typing.Optional[bool] = True,
+        betas: typing.Tuple[float, float] = (0.9, 0.999),
+        eps: typing.Optional[float] = 1e-6,
+        weight_decay: typing.Optional[float] = 0.0,
+        clip_grad=None,
     ):  # pylint: disable=too-many-arguments
         super().__init__()
 

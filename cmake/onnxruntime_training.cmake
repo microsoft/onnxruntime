@@ -235,7 +235,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   # Currently disable it by default for internal development usage.
   if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
     # Only files in the trainer and common folder will be compiled into test trainer.
-    file(GLOB_RECURSE training_api_test_trainer_src
+    file(GLOB training_api_test_trainer_src
       "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
       "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.h"
       "${ORTTRAINING_SOURCE_DIR}/test/training_api/trainer/*.cc"
@@ -243,27 +243,18 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     )
     onnxruntime_add_executable(onnxruntime_test_trainer ${training_api_test_trainer_src})
 
-    if(UNIX AND NOT APPLE)
-      if (HAS_NO_MAYBE_UNINITIALIZED)
-        target_compile_options(onnxruntime_test_trainer PUBLIC "-Wno-maybe-uninitialized")
-      endif()
-    endif()
-
     onnxruntime_add_include_to_target(onnxruntime_test_trainer onnxruntime_training
       onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
 
-    target_include_directories(onnxruntime_test_trainer PUBLIC
+    target_include_directories(onnxruntime_test_trainer PRIVATE
       ${CMAKE_CURRENT_BINARY_DIR}
       ${ONNXRUNTIME_ROOT}
       ${ORTTRAINING_ROOT}
-      ${MPI_CXX_INCLUDE_DIRS}
       ${eigen_INCLUDE_DIRS}
       ${CXXOPTS}
       ${extra_includes}
       ${onnxruntime_graph_header}
       ${onnxruntime_exec_src_dir}
-      ${CMAKE_CURRENT_BINARY_DIR}
-      ${CMAKE_CURRENT_BINARY_DIR}/onnx
     )
 
     target_link_libraries(onnxruntime_test_trainer PRIVATE

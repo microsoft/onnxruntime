@@ -133,10 +133,10 @@ def _to_numpy(tensor):
     return tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
 
 
-def _get_models(device, N, D_in, H, D_out):
+def _get_models(device, batch_size, input_size, hidden_size, output_size):
     """Returns the pt and onnx models for SimpleNet"""
-    pt_model = SimpleNet(D_in, H, D_out).to(device)
-    x = torch.randn(N, D_in, device=device)
+    pt_model = SimpleNet(input_size, hidden_size, output_size).to(device)
+    x = torch.randn(batch_size, input_size, device=device)
     onnx_model = _get_onnx_model(pt_model, (x,))
 
     return pt_model, onnx_model
@@ -187,8 +187,8 @@ def _get_training_ort_inputs(x, target, pt_model, onnx_model, target_type=None):
 def test_loss_composition(graph):
     # Given
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
-    _, onnx_model = _get_models(device, N, D_in, H, D_out)
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    _, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     # When / Then no error occurs
     simple_model = graph()
@@ -199,11 +199,11 @@ def test_loss_composition(graph):
 def test_mse_loss_execution():
     # Given
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
-    pt_model, onnx_model = _get_models(device, N, D_in, H, D_out)
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
-    x = torch.randn(N, D_in, device=device)
-    target = torch.randn(N, D_out, device=device)
+    x = torch.randn(batch_size, input_size, device=device)
+    target = torch.randn(batch_size, output_size, device=device)
 
     # Build the onnx model with loss
     simple_model = SimpleModelWithMSELoss()
@@ -235,11 +235,11 @@ def test_mse_loss_execution():
 def test_crossentropy_loss_execution():
     # Given
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
-    pt_model, onnx_model = _get_models(device, N, D_in, H, D_out)
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
-    x = torch.randn(N, D_in, device=device)
-    target = torch.randint(high=D_out, size=(N,), dtype=torch.int64, device=device)
+    x = torch.randn(batch_size, input_size, device=device)
+    target = torch.randint(high=output_size, size=(batch_size,), dtype=torch.int64, device=device)
 
     # Build the onnx model with loss
     simple_model = SimpleModelWithCrossEntropyLoss()
@@ -271,11 +271,11 @@ def test_crossentropy_loss_execution():
 def test_bcewithlogits_loss_execution():
     # Given
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
-    pt_model, onnx_model = _get_models(device, N, D_in, H, D_out)
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
-    x = torch.randn(N, D_in, device=device)
-    target = torch.randn(N, D_out, device=device)
+    x = torch.randn(batch_size, input_size, device=device)
+    target = torch.randn(batch_size, output_size, device=device)
 
     # Build the onnx model with loss
     simple_model = SimpleModelWithBCEWithLogitsLoss()
@@ -307,11 +307,11 @@ def test_bcewithlogits_loss_execution():
 def test_mse_loss_training_graph_execution():
     # Given
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
-    pt_model, onnx_model = _get_models(device, N, D_in, H, D_out)
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
-    x = torch.randn(N, D_in, device=device)
-    target = torch.randn(N, D_out, device=device)
+    x = torch.randn(batch_size, input_size, device=device)
+    target = torch.randn(batch_size, output_size, device=device)
 
     # Build the onnx trainingmodel with loss
     simple_model = SimpleTrainingModelWithMSELoss()
@@ -346,11 +346,11 @@ def test_mse_loss_training_graph_execution():
 def test_crossentropy_loss_training_graph_execution():
     # Given
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
-    pt_model, onnx_model = _get_models(device, N, D_in, H, D_out)
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
-    x = torch.randn(N, D_in, device=device)
-    target = torch.randint(high=D_out, size=(N,), dtype=torch.int64, device=device)
+    x = torch.randn(batch_size, input_size, device=device)
+    target = torch.randint(high=output_size, size=(batch_size,), dtype=torch.int64, device=device)
 
     # Build the onnx trainingmodel with loss
     simple_model = SimpleTrainingModelWithCrossEntropyLoss()
@@ -385,11 +385,11 @@ def test_crossentropy_loss_training_graph_execution():
 def test_bcewithlogits_loss_training_graph_execution():
     # Given
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
-    pt_model, onnx_model = _get_models(device, N, D_in, H, D_out)
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
-    x = torch.randn(N, D_in, device=device)
-    target = torch.randn(N, D_out, device=device)
+    x = torch.randn(batch_size, input_size, device=device)
+    target = torch.randn(batch_size, output_size, device=device)
 
     # Build the onnx model with loss
     simple_model = SimpleTrainingModelWithBCEWithLogitsLoss()
@@ -429,8 +429,8 @@ def test_bcewithlogits_loss_training_graph_execution():
 def test_adamw_optimizer_composition(graph, grad_clipping):
     # Given
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
-    _, onnx_model = _get_models(device, N, D_in, H, D_out)
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    _, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     # When / Then no error occurs
     simple_model = graph()
@@ -449,11 +449,11 @@ def test_adamw_optimizer_composition(graph, grad_clipping):
 def test_adamw_optimizer_execution():
     # Given
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
-    pt_model, onnx_model = _get_models(device, N, D_in, H, D_out)
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
-    x = torch.randn(N, D_in, device=device)
-    target = torch.randn(N, D_out, device=device)
+    x = torch.randn(batch_size, input_size, device=device)
+    target = torch.randn(batch_size, output_size, device=device)
 
     simple_model = SimpleTrainingModelWithMSELoss()
     with onnxblock.onnx_model(onnx_model):
@@ -500,8 +500,8 @@ def test_adamw_optimizer_execution():
 def test_retrieve_parameters():
     # Given
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
-    pt_model, onnx_model = _get_models(device, N, D_in, H, D_out)
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     simple_model = SimpleTrainingModelWithMSELoss()
     with onnxblock.onnx_model(onnx_model):
@@ -523,8 +523,8 @@ def test_retrieve_parameters():
 def test_retrieve_parameters_before_building_gradient_graph():
     # Given
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
-    _, onnx_model = _get_models(device, N, D_in, H, D_out)
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    _, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     simple_model = SimpleTrainingModelWithMSELoss()
 
@@ -537,8 +537,8 @@ def test_retrieve_parameters_before_building_gradient_graph():
 def test_save_checkpoint():
     # Given
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
-    _, onnx_model = _get_models(device, N, D_in, H, D_out)
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    _, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     simple_model = SimpleTrainingModelWithMSELoss()
     with onnxblock.onnx_model(onnx_model):
@@ -557,8 +557,8 @@ def test_save_checkpoint():
 def test_set_requires_grad_on_parameters():
     # Given
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
-    _, onnx_model = _get_models(device, N, D_in, H, D_out)
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    _, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     simple_model = SimpleTrainingModelWithMSELoss()
 
@@ -582,8 +582,8 @@ def test_set_requires_grad_on_parameters():
 def test_set_requires_grad_on_inputs():
     # Given
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
-    _, onnx_model = _get_models(device, N, D_in, H, D_out)
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    _, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     # When
     simple_model = SimpleTrainingModelWithMSELoss()
@@ -592,13 +592,13 @@ def test_set_requires_grad_on_inputs():
         _ = simple_model(onnx_model.graph.output[0].name)
 
     # Then
-    expected_input_gradient_buffer_name = "input-0_grad.accumulation.buffer"
-    expected_input_gradient_output_name = "input-0_grad.accumulation.out"
+    expecteinput_sizeput_gradient_buffer_name = "input-0_grad.accumulation.buffer"
+    expecteinput_sizeput_gradient_output_name = "input-0_grad.accumulation.out"
     graph_input_names = {graph_input.name for graph_input in onnx_model.graph.input}
     graph_output_names = {graph_output.name for graph_output in onnx_model.graph.output}
 
-    assert expected_input_gradient_buffer_name in graph_input_names
-    assert expected_input_gradient_output_name in graph_output_names
+    assert expecteinput_sizeput_gradient_buffer_name in graph_input_names
+    assert expecteinput_sizeput_gradient_output_name in graph_output_names
 
 
 @pytest.mark.parametrize("model_type", [onnxblock.Model, onnxblock.TrainingModel])
@@ -639,10 +639,10 @@ def test_weighted_average_model_composition(model_type):
             )
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
-    pt_model = TwoOutputNet(D_in, H, D_out).to(device)
-    x1 = torch.randn(N, D_in, device=device)
-    x2 = torch.randn(N, D_in, device=device)
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    pt_model = TwoOutputNet(input_size, hidden_size, output_size).to(device)
+    x1 = torch.randn(batch_size, input_size, device=device)
+    x2 = torch.randn(batch_size, input_size, device=device)
     onnx_model = _get_onnx_model(pt_model, (x1, x2))
 
     # When / Then no error occurs
@@ -654,10 +654,10 @@ def test_weighted_average_model_composition(model_type):
 def test_grad_clipping_execution():
     # Given
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
-    pt_model, _ = _get_models(device, N, D_in, H, D_out)
-    x = torch.randn(N, D_in, device=device)
-    target = torch.randn(N, D_out, device=device)
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    pt_model, _ = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    x = torch.randn(batch_size, input_size, device=device)
+    target = torch.randn(batch_size, output_size, device=device)
 
     # Prepare the onnx model with only grad clipping
     onnx_model = onnx.ModelProto()

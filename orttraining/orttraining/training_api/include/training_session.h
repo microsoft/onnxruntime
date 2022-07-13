@@ -40,13 +40,13 @@ class TrainingSession {
 
   Status EvalStep(const RunOptions& run_options,
                   const std::vector<OrtValue>& inputs,
-                  std::vector<OrtValue>& fetches);
+                  std::vector<OrtValue>& fetches) const;
 
   Status ResetGrad();
 
   Status OptimizerStep(const RunOptions& run_options);
 
-  Status CreateCheckpointState(CheckpointState& chkpt_state, bool save_optimizer_state);
+  Status CreateCheckpointState(CheckpointState& chkpt_state, bool save_optimizer_state) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TrainingSession);

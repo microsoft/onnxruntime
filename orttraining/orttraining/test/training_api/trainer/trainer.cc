@@ -30,9 +30,9 @@ struct TestRunnerParameters {
   std::string synthetic_input_type;
 
   // Data configs.
-  std::string train_data_dir;
-  std::string test_data_dir;
-  std::string output_dir;  // Output of training, e.g., trained model files.
+  PathString train_data_dir;
+  PathString test_data_dir;
+  PathString output_dir;  // Output of training, e.g., trained model files.
 
   // Training configs.
   int64_t train_batch_size;
@@ -90,9 +90,12 @@ bool ParseArguments(int argc, char* argv[], TestRunnerParameters& params) {
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>())
       ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>())
       ("num_train_epochs", "Total number of training epochs to perform.", cxxopts::value<int>()->default_value("100"))
-      ("eval_interval", "Number of training steps before doing evaluation.", cxxopts::value<int>()->default_value("1000"))
-      ("checkpoint_interval", "Number of training steps before saving checkpoint.", cxxopts::value<int>()->default_value("1000"))
-      ("gradient_accumulation_steps", "The number of gradient accumulation steps before performing a backward/update pass.",
+      ("eval_interval", "Number of training steps before doing evaluation.", cxxopts::value<int>()->
+      default_value("1000"))
+      ("checkpoint_interval", "Number of training steps before saving checkpoint.", cxxopts::value<int>()->
+      default_value("1000"))
+      ("gradient_accumulation_steps", "The number of gradient accumulation steps before performing a "
+      "backward/update pass.",
         cxxopts::value<int>()->default_value("1"));
 
   // clang-format on
@@ -127,13 +130,12 @@ bool ParseArguments(int argc, char* argv[], TestRunnerParameters& params) {
     EnforceCheck(params.gradient_accumulation_steps >= 1,
                  "Invalid gradient_accumulation_steps parameter: should be >= 1");
 
-    params.train_data_dir = flags["train_data_dir"].as<std::string>();
-    params.test_data_dir = flags["test_data_dir"].as<std::string>();
-    params.output_dir = flags["output_dir"].as<std::string>();
+    params.train_data_dir = ToPathString(flags["train_data_dir"].as<std::string>());
+    params.test_data_dir = ToPathString(flags["test_data_dir"].as<std::string>());
+    params.output_dir = ToPathString(flags["output_dir"].as<std::string>());
     if (params.output_dir.empty()) {
       printf("No output directory specified. Trained model files will not be saved.\n");
     }
-
   } catch (const std::exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
     std::cerr << msg << ": " << e.what() << "\n"
@@ -175,7 +177,7 @@ void InitSyntheticDataLoader(
 
 int RunTraining(const TestRunnerParameters& params) {
   g_ort_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-  g_ort_training_api = OrtGetApiBase()->GetTrainingApi(ORT_API_VERSION);
+  g_ort_training_api = g_ort_api->GetTrainingApi(ORT_API_VERSION);
 
   // Create Env
   OrtEnv* env;
@@ -202,10 +204,11 @@ int RunTraining(const TestRunnerParameters& params) {
 
   OrtTrainingSession* session;
   bool do_eval = params.model_evaluation_graph_path.has_value();
-  ORT_RETURN_ON_ERROR(g_ort_training_api->CreateTrainingSession(env, soptions, checkpoint_state,
-                                                                params.model_training_graph_path.c_str(), do_eval ? params.model_evaluation_graph_path.value().c_str() : nullptr,
-                                                                params.optimizer_training_graph_path.size() > 0 ? params.optimizer_training_graph_path.c_str() : nullptr,
-                                                                &session));
+  ORT_RETURN_ON_ERROR(g_ort_training_api->CreateTrainingSession(
+      env, soptions, checkpoint_state,
+      params.model_training_graph_path.c_str(), do_eval ? params.model_evaluation_graph_path.value().c_str() : nullptr,
+      params.optimizer_training_graph_path.size() > 0 ? params.optimizer_training_graph_path.c_str() : nullptr,
+      &session));
 
   size_t train_mode_output_count, eval_mode_output_count = 0;
   ORT_RETURN_ON_ERROR(g_ort_training_api->TrainingSessionGetTrainModeOutputCount(session, &train_mode_output_count));
@@ -215,7 +218,8 @@ int RunTraining(const TestRunnerParameters& params) {
   }
 
   int64_t sample_batch_count_per_epoch = 4;
-  if (sample_batch_count_per_epoch < params.train_batch_size || sample_batch_count_per_epoch % params.train_batch_size != 0) {
+  if (sample_batch_count_per_epoch < params.train_batch_size ||
+      sample_batch_count_per_epoch % params.train_batch_size != 0) {
     throw std::runtime_error("sample_count cannot be divisible by batch_size");
   }
   int64_t num_of_batches_per_epoch = sample_batch_count_per_epoch / params.train_batch_size;
@@ -251,14 +255,14 @@ int RunTraining(const TestRunnerParameters& params) {
 
       std::vector<OrtValue*> fetches(train_mode_output_count);
       ORT_RETURN_ON_ERROR(g_ort_training_api->TrainStep(session, nullptr,
-                                                        inputs.size(), (const OrtValue* const*)inputs.data(),
+                                                        inputs.size(), inputs.data(),
                                                         train_mode_output_count, fetches.data()));
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
       train_step_range.End();
 #endif
 
       float* loss;
-      ORT_RETURN_ON_ERROR(g_ort_api->GetTensorMutableData(fetches[0], (void**)&loss));
+      ORT_RETURN_ON_ERROR(g_ort_api->GetTensorMutableData(fetches[0], reinterpret_cast<void**>(&loss)));
       std::cout << "Batch # : " << batch_idx << " Loss: " << loss[0] << std::endl;
 
       if ((batch_idx + 1) % params.gradient_accumulation_steps == 0) {
@@ -301,7 +305,8 @@ int RunTraining(const TestRunnerParameters& params) {
 
       if ((batch_idx + 1) % params.checkpoint_interval == 0) {
         // Save trained weights
-        PathString ckpt_file = ToPathString(params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx));
+        PathString ckpt_file = ToPathString(
+            params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx));
         ORT_RETURN_ON_ERROR(g_ort_training_api->SaveCheckpoint(ckpt_file.c_str(), session, true));
 
         // TODO(baiju): enable adding more properties to checkpoint
@@ -347,11 +352,6 @@ int RunTraining(const TestRunnerParameters& params) {
 }
 
 int main(int argc, char* argv[]) {
-  // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
-  // This is to mitigate the issue " Attempt to use DefaultLogger but none has been registered".
-  // Need understand why the public CreateEnv did not get default logger ready.
-  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "e2e_test_runner");
-
   TestRunnerParameters params;
   EnforceCheck(ParseArguments(argc, argv, params), "Parse arguments failed.");
 

@@ -73,37 +73,34 @@ struct PropertyBag {
 
   template <typename T>
   void AddProperty(std::string name, T val) {
-    ORT_ENFORCE(named_properties.find(name) == named_properties.end(),
+    static_assert(onnxruntime::training::api::PropertyBag::template IsSupportedDataType<T>(),
+      "Failed to add property: float, int64_t and std::string data types supported only.");
+    ORT_ENFORCE(named_properties_.find(name) == named_properties_.end(),
                 "Duplicated property named ", name);
 
-    if (!IsSupportedDataType<T>()) {
-      ORT_THROW("Failed to add property: float, int64_t and std::string data types supported only.");
-    }
-
-    named_properties.insert({name, std::make_shared<TypedCheckpointProperty<T>>(name, val)});
+    named_properties_.insert({name, std::make_shared<TypedCheckpointProperty<T>>(name, val)});
   }
 
   void AddProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
   template <typename T>
   T GetProperty(const std::string& name) const {
-    if (!IsSupportedDataType<T>()) {
-      ORT_THROW("Failed to get property: float, int64_t and std::string data types supported only.");
-    }
+    static_assert(onnxruntime::training::api::PropertyBag::template IsSupportedDataType<T>(),
+      "Failed to get property: float, int64_t and std::string data types supported only.");
 
-    auto it = named_properties.find(name);
-    ORT_ENFORCE(it != named_properties.end(), "No property named ", name);
+    auto it = named_properties_.find(name);
+    ORT_ENFORCE(it != named_properties_.end(), "No property named ", name);
     return it->second->GetData<T>();
   }
 
   void ToTensorProtos(std::vector<ONNX_NAMESPACE::TensorProto>& properties_tensor_protos) const {
-    for (auto it = named_properties.begin(); it != named_properties.end(); ++it) {
+    for (auto it = named_properties_.begin(); it != named_properties_.end(); ++it) {
       properties_tensor_protos.emplace_back((it->second)->ToTensorProto());
     }
   }
 
   size_t Size() const {
-    return named_properties.size();
+    return named_properties_.size();
   }
 
  private:
@@ -117,12 +114,12 @@ struct PropertyBag {
   }
 
   template <typename T>
-  bool IsSupportedDataType() const {
+  static constexpr bool IsSupportedDataType() {
     return (std::is_same<T, float>::value || std::is_same<T, int64_t>::value ||
             std::is_same<T, std::string>::value);
   }
 
-  std::unordered_map<std::string, std::shared_ptr<CheckpointProperty>> named_properties;
+  std::unordered_map<std::string, std::shared_ptr<CheckpointProperty>> named_properties_;
 };
 
 }  // namespace api

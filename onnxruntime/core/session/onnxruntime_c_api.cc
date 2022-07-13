@@ -2246,11 +2246,22 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
   API_IMPL_END
 }
 
+ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
+#ifdef ENABLE_TRAINING_ON_DEVICE
+  return OrtTrainingApis::GetTrainingApi(version);
+#endif
+
+  ORT_UNUSED_PARAMETER(version);
+  fprintf(stderr,
+          "Training APIs are not supported with this build. Please build onnxruntime "
+          "from source with the build flags enable_training and enable_training_on_device to "
+          "retrieve the training APIs.\n");
+
+  return nullptr;
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
-#ifdef ENABLE_TRAINING_ON_DEVICE
-    &OrtTrainingApis::GetTrainingApi,
-#endif
     &OrtApis::GetVersionString,
 };
 
@@ -2555,6 +2566,8 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::ReleaseKernelInfo,
     // End of Version 12 - DO NOT MODIFY ABOVE (see above text for more information)
 
+    // Start of Version 13 API in progress, safe to modify/rename/rearrange until we ship
+    &OrtApis::GetTrainingApi,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

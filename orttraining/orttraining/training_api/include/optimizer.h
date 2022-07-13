@@ -66,7 +66,7 @@ struct Optimizer {
 
   Status GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
 
-  Status LoadStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
+  Status LoadStateDict(const OptimizerCheckpointState& optimizer_checkpoint_states);
 
  private:
   int64_t GetStep() const {

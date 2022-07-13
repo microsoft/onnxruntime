@@ -8,6 +8,10 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
+#ifdef ENABLE_TRAINING_ON_DEVICE
+#include <google/protobuf/io/zero_copy_stream_impl.h>
+#endif
+
 #include "core/common/parse_string.h"
 #include "core/graph/model.h"
 #include "core/session/environment.h"
@@ -27,9 +31,8 @@
 #include "orttraining/core/framework/torch/custom_function_register.h"
 #endif
 
-#if defined(ENABLE_TRAINING) && defined(ENABLE_TRAINING_ON_DEVICE)
+#ifdef ENABLE_TRAINING_ON_DEVICE
 #include "orttraining/training_api/include/checkpoint.h"
-#include <google/protobuf/io/zero_copy_stream_impl.h>
 #endif
 
 PYBIND11_MAKE_OPAQUE(onnxruntime::OrtValueCache);
@@ -811,7 +814,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           GradientDefinitionRegistry::Instance().SetStopGradientEdgesForNode(key, edges);
         });
 
-#if defined(ENABLE_TRAINING) && defined(ENABLE_TRAINING_ON_DEVICE)
+#ifdef ENABLE_TRAINING_ON_DEVICE
   m.def("save_checkpoint",
         [](const std::vector<py::bytes>& trainable_tensor_protos_pybytes,
            const std::vector<py::bytes>& non_trainable_tensor_protos_pybytes,
@@ -825,7 +828,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                   std::istringstream tensor_proto_istream(tensor_protos_pybytes[i]);
                   ORT_ENFORCE(tensor_proto_istream.good(), "Broken tensor proto istream to read.");
                   google::protobuf::io::IstreamInputStream zero_copy_input(&tensor_proto_istream);
-                  const bool result = tensor_protos[i].ParseFromZeroCopyStream(&zero_copy_input) && tensor_proto_istream.eof();
+                  const bool result =
+                      tensor_protos[i].ParseFromZeroCopyStream(&zero_copy_input) && tensor_proto_istream.eof();
                   ORT_ENFORCE(result, "Parse tensor proto failed.");
                 }
               };
@@ -833,7 +837,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           parse_pybytes_to_tensor_proto(trainable_tensor_protos_pybytes, trainable_tensor_protos);
           parse_pybytes_to_tensor_proto(non_trainable_tensor_protos_pybytes, non_trainable_tensor_protos);
 
-          ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(trainable_tensor_protos, non_trainable_tensor_protos, checkpoint_path));
+          ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(trainable_tensor_protos,
+                                                                        non_trainable_tensor_protos, checkpoint_path));
         });
 #endif
 }
