@@ -9,6 +9,8 @@
 
 namespace py = pybind11;
 
+namespace onnxruntime {
+
 template <typename T, int ThreadsPerBlock, int VecSize>
 class VectorAdd: public Operator {
  public:
@@ -61,7 +63,7 @@ class VectorAddTunable: public Operator {
     .def("SetRepeats", &name<type, threads_per_block, vec_size>::SetRepeats)                              \
     .def("Profile", &name<type, threads_per_block, vec_size>::Profile)                                    \
     .def("Run", &name<type, threads_per_block, vec_size>::Run);
-  
+
 #define REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, threads_per_block)  \
   REGISTER_OP(name, type, threads_per_block, 1)                      \
   REGISTER_OP(name, type, threads_per_block, 2)                      \
@@ -77,14 +79,15 @@ class VectorAddTunable: public Operator {
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 384)            \
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 448)            \
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 512)
-  
 
 void InitVectorAdd(py::module m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(VectorAdd, half);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(VectorAdd, float);
   py::class_<VectorAddTunable<half>>(m, "VectorAdd_half_Tunable")
-    .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, int>())
-    .def("SetRepeats", &VectorAddTunable<half>::SetRepeats)
-    .def("Profile", &VectorAddTunable<half>::Profile)
-    .def("Run", &VectorAddTunable<half>::Run);
+      .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, int>())
+      .def("SetRepeats", &VectorAddTunable<half>::SetRepeats)
+      .def("Profile", &VectorAddTunable<half>::Profile)
+      .def("Run", &VectorAddTunable<half>::Run);
 }
+
+}  // namespace onnxruntime
