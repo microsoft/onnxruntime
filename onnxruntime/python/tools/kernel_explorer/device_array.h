@@ -3,9 +3,9 @@
 
 #pragma once
 
-#include "common.h"
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+#include "core/providers/rocm/rocm_common.h"
 #include "contrib_ops/rocm/bert/util.h"
 
 namespace py = pybind11;
