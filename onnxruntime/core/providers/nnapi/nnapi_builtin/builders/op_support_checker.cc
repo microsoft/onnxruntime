@@ -2118,7 +2118,7 @@ class GatherOpSupportChecker : public BaseOpSupportChecker {
                          const OpSupportCheckParams& params) const override;
 };
 
-bool GatherOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+bool GatherOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                                const OpSupportCheckParams& /* params */) const {
   const auto& inputs = node_unit.Inputs();
   Shape input_shape;
