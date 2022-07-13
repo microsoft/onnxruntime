@@ -8,6 +8,7 @@ import numpy as np
 import onnx
 import pytest
 import torch
+from onnx import load_model, save_model
 
 import onnxruntime
 import onnxruntime.training.onnxblock as onnxblock
@@ -133,9 +134,14 @@ def _to_numpy(tensor):
     return tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
 
 
-def _get_models(device, N, D_in, H, D_out):
+def _get_models(device, N, D_in, H, D_out,zero_flag = False):
     """Returns the pt and onnx models for SimpleNet"""
     pt_model = SimpleNet(D_in, H, D_out).to(device)
+
+    if zero_flag:
+        for param in pt_model.parameters():
+            param.zero_()
+
     x = torch.randn(N, D_in, device=device)
     onnx_model = _get_onnx_model(pt_model, (x,))
 
@@ -549,9 +555,45 @@ def test_save_checkpoint():
     with tempfile.TemporaryDirectory() as checkpoint_dir_name:
         checkpoint_file_path = os.path.join(checkpoint_dir_name, "checkpoint")
         onnxblock.save_checkpoint((trainable_params, non_trainable_params), checkpoint_file_path)
-
         # Then
         assert os.path.exists(checkpoint_file_path)
+
+def test_load_checkpoint():
+    # Given
+    device = "cuda"
+    N, D_in, H, D_out = 64, 784, 500, 10
+    _, zero_onnx_model = _get_models(device, N, D_in, H, D_out,zero_flag=True)
+    _, onnx_model = _get_models(device, N, D_in, H, D_out)
+
+    # Copy of onnx_model for comparison
+    onnx_model_copy = copy.deepcopy(onnx_model)
+
+    simple_model = SimpleTrainingModelWithMSELoss()
+
+    # When
+    simple_model.requires_grad("fc2.weight", False)
+    simple_model.requires_grad("fc1.bias", False)
+
+    with onnxblock.onnx_model(onnx_model):
+        _ = simple_model(onnx_model.graph.output[0].name)
+    trainable_params, non_trainable_params = simple_model.parameters()
+
+    with tempfile.TemporaryDirectory() as checkpoint_dir_name:
+        checkpoint_file_path = os.path.join(checkpoint_dir_name, "checkpoint")
+        onnxblock.save_checkpoint((trainable_params, non_trainable_params), checkpoint_file_path)
+
+        # Load checkpoint parameters to the new simple model
+        onnxblock.load_checkpoint(checkpoint_file_path, zero_onnx_model)
+
+        # Then
+        length = len(onnx_model_copy.graph.initializer)
+        onnx_model_copy.graph.initializer.sort(key=lambda x: x.name)
+        zero_onnx_model.graph.initializer.sort(key=lambda x: x.name)
+
+        for i in range(length):
+            onnx_np = onnx.numpy_helper.to_array(onnx_model_copy.graph.initializer[i])
+            zero_np = onnx.numpy_helper.to_array(zero_onnx_model.graph.initializer[i])
+            assert np.allclose(onnx_np, zero_np)
 
 
 def test_set_requires_grad_on_parameters():

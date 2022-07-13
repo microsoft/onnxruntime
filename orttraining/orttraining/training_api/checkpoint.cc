@@ -528,12 +528,35 @@ Status OrtLoadCustomPropertyInternal(const PathString& property_folder_path,
   return Status::OK();
 }
 
+Status OrtLoadInternal(std::vector<ONNX_NAMESPACE::TensorProto>& param_tensor_protos,
+                       const PathString& checkpoint_path) {
+  // Find tensor proto files.
+  std::vector<PathString> tensor_proto_filenames;
+  FilterFilesFromDirectory(
+      checkpoint_path,
+      [&tensor_proto_filenames](const PathChar* filename) -> bool {
+        PathString filename_str = filename;
+        if (StringEndsWith(filename_str, k_tensor_proto_file_name)) {
+          tensor_proto_filenames.push_back(filename_str);
+        }
+        return true;
+      });
 
-std::vector<ONNX_NAMESPACE::TensorProto> OrtLoadInternalToTensors(const PathString& folder_path) {
-  // Loading tensorProtos from checkpoint file
-  std::vector<ONNX_NAMESPACE::TensorProto> param_tensor_protos{};
-  LoadTensorProtoFromFile(folder_path, param_tensor_protos, "[params]");
-  return param_tensor_protos;
+  if (tensor_proto_filenames.empty()) {
+    return Status::OK();
+  }
+
+  // Load tensor protos to the tensorProto Vector
+  for (auto& tensor_file_path : tensor_proto_filenames) {
+    std::vector<ONNX_NAMESPACE::TensorProto> tensor_protos{};
+    auto tensor_file_full_path = ConcatPathComponent<PathChar>(checkpoint_path, tensor_file_path);
+    LoadTensorProtoFromFile(tensor_file_full_path, tensor_protos, "[params]");
+
+    for (auto& tensor_proto : tensor_protos) {
+      param_tensor_protos.push_back(tensor_proto);
+    }
+  }
+  return Status::OK();
 }
 
 Status OrtLoadInternal(const PathString& checkpoint_path, CheckpointState& state) {
@@ -560,8 +583,9 @@ Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointState& checkp
   return OrtLoadInternal(checkpoint_path, checkpoint_states);
 }
 
-std::vector<ONNX_NAMESPACE::TensorProto> LoadCheckpointToTensors(const PathString& checkpoint_path){
-  return OrtLoadInternalToTensors(checkpoint_path);
+Status LoadCheckpoint(std::vector<ONNX_NAMESPACE::TensorProto>& param_tensor_protos,
+                      const PathString& checkpoint_path) {
+  return OrtLoadInternal(param_tensor_protos, checkpoint_path);
 }
 
 }  // namespace api

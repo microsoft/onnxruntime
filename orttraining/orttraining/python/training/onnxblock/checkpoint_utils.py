@@ -2,6 +2,9 @@
 # Licensed under the MIT License.
 # checkpoint_utils.py
 
+import numpy as np
+from onnx import TensorProto
+
 from onnxruntime.capi._pybind_state import load_checkpoint as _internal_load_checkpoint
 from onnxruntime.capi._pybind_state import save_checkpoint as _internal_save_checkpoint
 
@@ -20,8 +23,18 @@ def save_checkpoint(parameters, path_to_checkpoint):
     _internal_save_checkpoint(trainable_params, non_trainable_params, path_to_checkpoint)
 
 
-def load_checkpoint(model, path_to_checkpoint):
+def load_checkpoint(path_to_checkpoint, model):
     """Loads the checkpoint to an onnx inference model."""
 
     # Load the parameters from the checkpoint
     parameters = _internal_load_checkpoint(path_to_checkpoint)
+
+    parameters_dict = {}
+    for (i,initializer) in enumerate(model.graph.initializer):
+        tensor_proto = TensorProto()
+        tensor_proto.ParseFromString(parameters[i])
+        parameters_dict[initializer.name] = tensor_proto
+
+
+    for initializer in model.graph.initializer:
+        initializer.CopyFrom(parameters_dict[initializer.name])
