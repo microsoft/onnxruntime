@@ -134,7 +134,7 @@ def _to_numpy(tensor):
     return tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
 
 
-def _get_models(device, N, D_in, H, D_out, zero_flag = False):
+def _get_models(device, N, D_in, H, D_out, zero_flag=False):
     """Returns the pt and onnx models for SimpleNet"""
     pt_model = SimpleNet(D_in, H, D_out).to(device)
 
