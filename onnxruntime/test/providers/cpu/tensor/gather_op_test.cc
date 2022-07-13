@@ -267,8 +267,8 @@ TEST(GatherOpTest, Gather_axis0_indicesInt32) {
     test.Run();
   };
 
-  run_test(true);
   run_test(false);
+  run_test(true);
 }
 
 TEST(GatherOpTest, Gather_axis0_indices2dInt32) {
@@ -291,25 +291,32 @@ TEST(GatherOpTest, Gather_axis0_indices2dInt32) {
     test.Run();
   };
 
-  run_test(true);
   run_test(false);
+  run_test(true);
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_int32) {
-  OpTester test("Gather");
-  test.AddAttribute<int64_t>("axis", 1LL);
-  test.AddInput<int32_t>("data", {3, 3},
-                         {0, 1, 2,
-                          10, 11, 12,
-                          20, 21, 22});
-  test.AddInput<int32_t>("indices", {2, 2},
-                         {1, 0,
-                          2, 1});
-  test.AddOutput<int32_t>("output", {3, 2, 2},
-                          {1, 0, 2, 1,
-                           11, 10, 12, 11,
-                           21, 20, 22, 21});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
+  // To test for NNAPI EP, we need the indices to be initializers
+  auto run_test = [](bool indices_is_initializer) {
+    OpTester test("Gather");
+    test.AddAttribute<int64_t>("axis", 1LL);
+    test.AddInput<int32_t>("data", {3, 3},
+                           {0, 1, 2,
+                            10, 11, 12,
+                            20, 21, 22});
+    test.AddInput<int32_t>("indices", {2, 2},
+                           {1, 0,
+                            2, 1},
+                           indices_is_initializer);
+    test.AddOutput<int32_t>("output", {3, 2, 2},
+                            {1, 0, 2, 1,
+                             11, 10, 12, 11,
+                             21, 20, 22, 21});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
+  };
+
+  run_test(false);
+  run_test(true);
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_uint32) {
