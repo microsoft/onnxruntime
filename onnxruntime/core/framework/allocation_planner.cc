@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <algorithm>
 #include <sstream>
+#include <ctime>
+#include <iomanip>
 #include "core/common/exceptions.h"
 #include "core/common/inlined_containers.h"
 #include "core/platform/env.h"
@@ -2053,6 +2055,73 @@ Status SequentialPlanner::CreatePlan(
                             stream_handle_registry,
                             provider_stream_map,
                             op_stream_map);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+std::unordered_map<std::string, INodePartitioner::NodePartitionerType> INodePartitioner::name_type_map = {{std::string{"DummyPartitioner"}, NodePartitionerType::DummyPartition}};
+
+INodePartitioner::INodePartitioner(const std::string& configuration_file) : configuration_file_(configuration_file) {}
+
+class DummyPartitioner : public INodePartitioner {
+ public:
+  DummyPartitioner(const std::string& configuration_file) : INodePartitioner(configuration_file) {
+    Initialize();
+  }
+  void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& stream_nodes) const override {
+  }
+  void DumpPartition() const override {
+  }
+  Status IsInitialized() const override {
+    return status_;
+  }
+ private:
+  void Initialize();
+  std::map<std::string, int> max_streams_;
+  std::vector<std::vector<NodeIndex>> stream_nodes_;
+  Status status_{};
+};
+
+void DummyPartitioner::Initialize() {
+  std::ifstream if_stream(configuration_file_);
+  if (if_stream.is_open()) {
+
+    if_stream.close();
+  } else {
+    status_ = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "cannot open partition configuration: ", configuration_file_.c_str());
+  }
+}
+
+std::unique_ptr<INodePartitioner> INodePartitioner::CreateNodePartitioner(const std::string& configuration_file) {
+  std::string cfg_file = configuration_file;
+  INodePartitioner::NodePartitionerType partitioner_type = INodePartitioner::NodePartitionerType::DummyPartition;
+  if (cfg_file.empty()) {
+    time_t t = std::time(nullptr);
+    struct tm buf;
+    localtime_s(&buf, &t);
+    std::stringstream ss;
+    ss << "partition_configuration_" << std::put_time(&buf, "%d_%m_%Y_%H_%M_%S") << ".csv";
+    cfg_file = ss.str();
+  } else {
+    std::ifstream if_stream(cfg_file);
+    if (if_stream.is_open()) {
+      std::string partitioner_name;
+      std::getline(if_stream, partitioner_name);
+      if_stream.close();
+      auto iter = name_type_map.find(partitioner_name);
+      ORT_ENFORCE(iter != name_type_map.end(), "invalid node partitioner name");
+      partitioner_type = iter->second;
+    }//if
+  }//else 
+  std::unique_ptr<INodePartitioner> node_partitioner;
+  switch (partitioner_type) {
+    case INodePartitioner::NodePartitionerType::DummyPartition:
+      node_partitioner.reset(new DummyPartitioner(cfg_file));
+      break;
+    default:
+      break;
+  }
+  return node_partitioner;
 }
 
 }  // namespace onnxruntime

@@ -80,6 +80,24 @@ class ParalllelPlannerContext : public SequentialPlannerContext {
   explicit ParalllelPlannerContext() : SequentialPlannerContext(ExecutionMode::ORT_PARALLEL, ExecutionOrder::DEFAULT, false) {}
 };
 
+class INodePartitioner {
+ public:
+  enum NodePartitionerType {
+    DummyPartition = 0,
+    Unknown,
+  };
+  virtual ~INodePartitioner(){};
+  static std::unique_ptr<INodePartitioner> CreateNodePartitioner(const std::string& configuration_file = "");
+  virtual void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& stream_nodes) const = 0;
+  virtual void DumpPartition() const = 0;
+  virtual Status IsInitialized() const = 0;
+
+ protected:
+  static std::unordered_map<std::string, NodePartitionerType> name_type_map;
+  INodePartitioner(const std::string& configuration_file);
+  std::string configuration_file_{};
+};
+
 class SequentialPlanner {
  public:
   // This API allows user to provide a custom planner context.
