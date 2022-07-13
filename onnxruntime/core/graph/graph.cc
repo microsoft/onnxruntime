@@ -561,14 +561,12 @@ bool Node::CanBeInlined() const {
   return func_body_ || func_template_ || op_ && (op_->HasFunction() || op_->HasContextDependentFunction());
 }
 
-Status Node::GetInstantiateFunctionBody(std::unique_ptr<Function>& output) const {
-  // Initialize function body
+bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_proto) const {
   if (func_template_) {
-    return function_utils::Instantiate(*graph_, index_, *func_template_->onnx_func_proto_, output);
-  } else if (op_ && (op_->HasFunction() || op_->HasContextDependentFunction())) {
-    // This node has a schema defined function proto. If it is a context dependent function
-    // then build it otherwise fetch the FunctionProto from schema.
-    ONNX_NAMESPACE::FunctionProto onnx_function_proto;
+    onnx_function_proto = *func_template_->onnx_func_proto_;
+    return true;
+  } else if (op_) {
+    // Check if this node has a schema defined function proto.
     if (op_->HasContextDependentFunction()) {
       NodeProto node_proto;
       ToProto(node_proto);
@@ -582,27 +580,13 @@ Status Node::GetInstantiateFunctionBody(std::unique_ptr<Function>& output) const
           input_types.emplace_back();
       }
       ONNX_NAMESPACE::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
-      if (!op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto)) {
-        // I don't know why but the existing behavior is ignore the failure here.
-        // keep the same.
-        return Status::OK();
-      }
-    } else {
+      return op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto);
+    } else if (op_->HasFunction()) {
       onnx_function_proto = *(op_->GetFunction());
+      return true;
     }
-    return function_utils::Instantiate(*graph_, index_, onnx_function_proto, output);
-  } else {
-    return Status::OK();
   }
-}
-
-Status Node::InstantiateFunctionBody() {
-  if (nullptr != func_body_) {
-    // already instantiated.
-    return Status::OK();
-  }
-
-  return GetInstantiateFunctionBody(func_body_);
+  return false;
 }
 
 void Node::SetFunctionTemplate(const FunctionTemplate& func_template) {
@@ -3989,113 +3973,124 @@ Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph,
   return fused_node;
 }
 
-Status Graph::InlineFunction(Node& node) {
-  // Remove the function node, add the nodes in function's subgraph into the
-  // main graph.
-  if (!node.GetFunctionBody())
-    ORT_RETURN_IF_ERROR(node.InstantiateFunctionBody());
-  const Graph& subgraph = node.GetFunctionBody()->Body();
-  auto output_edges = node.GetRelationships().output_edges;
+Status Graph::InlineFunction(Node& callnode) {
+  const auto& model_path = ModelPath();
+  auto output_edges = callnode.GetRelationships().output_edges;
   for (const auto& output_edge : output_edges) {
-    RemoveEdge(node.Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
-  }
-
-  // Map of function input outputs to nodes input/outputs
-  std::unordered_map<std::string, NodeArg*> remap_input_output;
-  // Set of node input output names as these names need to be preserved during inlining
-  std::unordered_set<std::string> func_input_output_names;
-
-  for (size_t i = 0; i < subgraph.GetInputsIncludingInitializers().size(); ++i) {
-    auto* input = subgraph.GetInputsIncludingInitializers()[i];
-    if (input->Name() != node.MutableInputDefs()[i]->Name()) {
-      remap_input_output[input->Name()] = node.MutableInputDefs()[i];
-    }
-    func_input_output_names.insert(input->Name());
-  }
-
-  for (size_t i = 0; i < subgraph.GetOutputs().size(); ++i) {
-    auto* output = subgraph.GetOutputs()[i];
-    if (output->Name() != node.MutableOutputDefs()[i]->Name()) {
-      remap_input_output[output->Name()] = node.MutableOutputDefs()[i];
-    }
-    func_input_output_names.insert(output->Name());
+    RemoveEdge(callnode.Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
   }
 
   // create a uniq_identifier to append to every node name and intermediate input\outputs
   // to make sure there are no unintended duplicates
   std::stringstream ss;
-  ss << static_cast<const void*>(&node);
+  ss << "_" << static_cast<const void*>(&callnode) << "_";
   auto uniq_identifier = ss.str();
 
-  const auto& model_path = ModelPath();
-  for (auto& init : subgraph.name_to_initial_tensor_) {
-    const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
-    *tensor = *init.second;
-    tensor->set_name(tensor->name() + uniq_identifier);
-    name_to_initial_tensor_[tensor->name()] = tensor;
-  }
-  for (const auto& subgraph_node : subgraph.Nodes()) {
-    if (subgraph_node.OpType() == kConstant) {
-      // Copy constant nodes _value to name_to_initial_tensor_
-      ONNX_NAMESPACE::NodeProto subgraph_node_proto{};
-      subgraph_node.ToProto(subgraph_node_proto);
+  // Replace a (function-call) node by an inlined graph.
+  if (!callnode.GetFunctionBody()) {
+    // This is the normal use-case: inlining a FunctionProto (representing
+    // a model-local function or a schema-defined function).
+    FunctionProto inlined_fp;
+    ORT_ENFORCE(callnode.TryGetFunctionProto(inlined_fp), "Node has no function body and cannot be inlined.");
+    function_utils::Specialize(inlined_fp, callnode, uniq_identifier);
+
+    auto to_node_arg = [this](const std::string& name) {
+      return &this->GetOrCreateNodeArg(name, nullptr);
+    };
+
+    for (const auto& inlined_node : inlined_fp.node()) {
+      if (inlined_node.op_type() == kConstant) {
+        // Copy constant nodes _value to name_to_initial_tensor_
+        const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
+        ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(inlined_node, model_path, *tensor, inlined_node.output(0)));
+        name_to_initial_tensor_[tensor->name()] = tensor;
+      } else {
+        InlinedVector<onnxruntime::NodeArg*> inputs;
+        InlinedVector<onnxruntime::NodeArg*> outputs;
+
+        for (const auto& tensor_name : inlined_node.input())
+          inputs.push_back(to_node_arg(tensor_name));
+
+        for (const auto& tensor_name : inlined_node.output())
+          outputs.push_back(to_node_arg(tensor_name));
+
+        onnxruntime::NodeAttributes new_attr_map;
+        new_attr_map.reserve(inlined_node.attribute_size());
+        for (const auto& node_attr : inlined_node.attribute()) {
+          onnx::AttributeProto attr_copy = node_attr;
+          new_attr_map[node_attr.name()] = std::move(attr_copy);
+        }
+        AddNode(inlined_node.name(), inlined_node.op_type(),
+                inlined_node.doc_string(), inputs, outputs, &new_attr_map, inlined_node.domain());
+      }
+    }
+
+  } else {
+    // Uncommon scenario. Inlining a node representing a fused sub-graph.
+    // TODO: Unclear that this feature is needed. Can this be removed?
+    const Graph& subgraph = callnode.GetFunctionBody()->Body();
+
+    // Map of function input outputs to nodes input/outputs
+    std::unordered_map<std::string, NodeArg*> remap_input_output;
+    // Set of node input output names as these names need to be preserved during inlining
+    std::unordered_set<std::string> func_input_output_names;
+
+    for (size_t i = 0; i < subgraph.GetInputsIncludingInitializers().size(); ++i) {
+      auto* input = subgraph.GetInputsIncludingInitializers()[i];
+      if (input->Name() != callnode.MutableInputDefs()[i]->Name()) {
+        remap_input_output[input->Name()] = callnode.MutableInputDefs()[i];
+      }
+      func_input_output_names.insert(input->Name());
+    }
+
+    for (size_t i = 0; i < subgraph.GetOutputs().size(); ++i) {
+      auto* output = subgraph.GetOutputs()[i];
+      if (output->Name() != callnode.MutableOutputDefs()[i]->Name()) {
+        remap_input_output[output->Name()] = callnode.MutableOutputDefs()[i];
+      }
+      func_input_output_names.insert(output->Name());
+    }
+
+    for (auto& init : subgraph.name_to_initial_tensor_) {
       const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
-      ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(subgraph_node_proto, model_path, *tensor, subgraph_node_proto.output(0) + uniq_identifier));
+      *tensor = *init.second;
+      tensor->set_name(tensor->name() + uniq_identifier);
       name_to_initial_tensor_[tensor->name()] = tensor;
-    } else {
-      std::vector<NodeArg*> inputs, outputs;
-      for (auto* input : subgraph_node.InputDefs()) {
-        if (input->Name().empty()) {
-          // This is a missing (optional) input. No need to rename.
+    }
+    for (const auto& subgraph_node : subgraph.Nodes()) {
+      if (subgraph_node.OpType() == kConstant) {
+        // Copy constant nodes _value to name_to_initial_tensor_
+        ONNX_NAMESPACE::NodeProto subgraph_node_proto{};
+        subgraph_node.ToProto(subgraph_node_proto);
+        const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
+        ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(subgraph_node_proto, model_path, *tensor, subgraph_node_proto.output(0)));
+        name_to_initial_tensor_[tensor->name()] = tensor;
+      } else {
+        std::vector<NodeArg*> inputs, outputs;
+        for (auto* input : subgraph_node.InputDefs()) {
           auto& n_input = GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
           inputs.push_back(&n_input);
-        } else if (func_input_output_names.find(input->Name()) != func_input_output_names.end()) {
-          auto it = remap_input_output.find(input->Name());
-          if (it != remap_input_output.end()) {
-            // This is a function input/output and needs to be remapped to node input for correctness
-            inputs.push_back(it->second);
-          } else {
-            // This is a function input/output so preserve the existing name
-            auto& n_input = GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-            inputs.push_back(&n_input);
-          }
-        } else {
-          // This is an intermediate input. Add a unique identifier as suffix to make sure
-          // there is no name collision with names in parent graph
-          auto& n_input = GetOrCreateNodeArg(input->Name() + uniq_identifier, input->TypeAsProto());
-          inputs.push_back(&n_input);
         }
-      }
-      for (auto* output : subgraph_node.OutputDefs()) {
-        if (output->Name().empty()) {
-          // Create empty arg (no renaming) for missing optional-outputs
+        for (auto* output : subgraph_node.OutputDefs()) {
           auto& n_output = GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
           outputs.push_back(&n_output);
-        } else if (func_input_output_names.find(output->Name()) != func_input_output_names.end()) {
-          auto it = remap_input_output.find(output->Name());
-          if (it != remap_input_output.end()) {
-            outputs.push_back(it->second);
-          } else {
-            auto& n_output = GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-            outputs.push_back(&n_output);
-          }
-        } else {
-          auto& n_output = GetOrCreateNodeArg(output->Name() + uniq_identifier, output->TypeAsProto());
-          outputs.push_back(&n_output);
         }
-      }
 
-      AddNode(subgraph_node.Name() + uniq_identifier, subgraph_node.OpType(), subgraph_node.Description(),
-              inputs,
-              outputs,
-              &subgraph_node.GetAttributes(),
-              subgraph_node.Domain());
+        AddNode(subgraph_node.Name() + uniq_identifier, subgraph_node.OpType(), subgraph_node.Description(),
+                inputs,
+                outputs,
+                &subgraph_node.GetAttributes(),
+                subgraph_node.Domain());
+      }
     }
   }
 
-  RemoveNode(node.Index());
+  RemoveNode(callnode.Index());
+
+  // std::cout << "Graph after inlining\n\n" << *this << std::endl << std::flush;
 
   ORT_RETURN_IF_ERROR(this->Resolve());
+
   return Status::OK();
 }
 

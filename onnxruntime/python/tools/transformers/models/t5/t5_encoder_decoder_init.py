@@ -9,7 +9,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import numpy
 import onnx
@@ -17,12 +17,13 @@ import torch
 from past_helper import PastKeyValuesHelper
 from t5_decoder import T5DecoderInit
 from t5_encoder import T5Encoder, T5EncoderInputs
-from transformers import T5Config
+from transformers import MT5Config, T5Config
 
 from onnxruntime import InferenceSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from torch_onnx_export_helper import torch_onnx_export
+from onnx_model import OnnxModel  # noqa: E402
+from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ class T5EncoderDecoderInit(torch.nn.Module):
         encoder: torch.nn.Module,
         decoder: torch.nn.Module,
         lm_head: torch.nn.Module,
-        config: T5Config,
+        config: Union[T5Config, MT5Config],
         decoder_start_token_id: Optional[int] = None,
     ):
         super().__init__()
@@ -64,7 +65,7 @@ class T5EncoderDecoderInitInputs:
 
     @staticmethod
     def create_dummy(
-        config: T5Config,
+        config: Union[T5Config, MT5Config],
         batch_size: int,
         encode_sequence_length: int,
         use_decoder_input_ids: int,
@@ -132,13 +133,13 @@ class T5EncoderDecoderInitHelper:
         #    input_ids: (batch_size, sequence_length)
         #    encoder_attention_mask: (batch_size, encode_sequence_length)
         #    encoder_hidden_states: (batch_size, encode_sequence_length, hidden_size)
-        #    past_self_*: (batch_size, num_heads, past_decode_sequence_length, hidden_size/num_heads)
-        #    past_cross_*: (batch_size, num_heads, encode_sequence_length, hidden_size/num_heads)
+        #    past_self_*: (batch_size, num_heads, past_decode_sequence_length, head_size)
+        #    past_cross_*: (batch_size, num_heads, encode_sequence_length, head_size)
 
         # Shape of output tensors:
         #    logits: (batch_size, sequence_length, vocab_size)
-        #    past_self_*: (batch_size, num_heads, past_decode_sequence_length + sequence_length, hidden_size/num_heads)
-        #    past_cross_*: (batch_size, num_heads, encode_sequence_length, hidden_size/num_heads)
+        #    past_self_*: (batch_size, num_heads, past_decode_sequence_length + sequence_length, head_size)
+        #    past_cross_*: (batch_size, num_heads, encode_sequence_length, head_size)
 
         input_names = ["encoder_input_ids", "encoder_attention_mask"]
 
@@ -147,7 +148,7 @@ class T5EncoderDecoderInitHelper:
         sequence_length = "1"
         num_heads = str(model.config.num_heads)
         hidden_size = str(model.config.d_model)
-        head_size = str(model.config.d_model // model.config.num_heads)
+        head_size = str(model.config.d_kv)
 
         dynamic_axes = {
             "encoder_input_ids": {0: "batch_size", 1: "encode_sequence_length"},
@@ -188,7 +189,7 @@ class T5EncoderDecoderInitHelper:
                 }
 
         with tempfile.TemporaryDirectory() as tmp_dir_name:
-            temp_onnx_model_path = os.path.join(tmp_dir_name, "model.onnx")
+            temp_onnx_model_path = os.path.join(tmp_dir_name, "encoder_decoder_init.onnx")
             Path(temp_onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
             torch_onnx_export(
                 model,
@@ -218,21 +219,17 @@ class T5EncoderDecoderInitHelper:
                         dim_proto.Clear()
                         dim_proto.dim_value = dim_value
 
-            Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
-            onnx.save_model(
+            OnnxModel.save(
                 model,
                 onnx_model_path,
                 save_as_external_data=use_external_data_format,
                 all_tensors_to_one_file=True,
-                location=onnx_model_path + ".data",
-                size_threshold=4096,
-                convert_attribute=False,
             )
 
     @staticmethod
     def onnxruntime_inference(ort_session, inputs: T5EncoderDecoderInitInputs):
         """Run inference of ONNX model."""
-        logger.debug(f"start onnxruntime_inference")
+        logger.debug("start onnxruntime_inference")
 
         ort_inputs = {
             "encoder_input_ids": numpy.ascontiguousarray(inputs.encoder_input_ids.cpu().numpy()),

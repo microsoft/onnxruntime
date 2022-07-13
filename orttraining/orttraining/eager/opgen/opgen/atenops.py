@@ -46,6 +46,57 @@ class GeluGrad(ONNXOp):
 ops = {}
 type_promotion_ops = []
 
+# the following op list is for ops that have a .out version. Often this is the only op needing to be implemented
+# and the regular and inplace(_) version derive from the .out.
+# Example: abs.out is the elementary op and abs and abs_ derive from that.
+# However, that is not alway the case. Example: nonzero has .out and a normal version which is not derived.
+# In this case nonzero will also be in the regular list.
+unary_ops_with_out = [
+    "abs",
+    "acos",
+    "acosh",
+    "asin",
+    "asinh",
+    "atan",
+    "atanh",
+    "ceil",
+    "cos",
+    "cosh",
+    "erf",
+    "exp",
+    "floor",
+    "hardsigmoid",
+    "log",
+    "neg",
+    "nonzero",
+    "reciprocal",
+    "round",
+    "sigmoid",
+    "sign",
+    "sin",
+    "sinh",
+    "sqrt",
+    "tan",
+    "tanh",
+]
+
+# the following ops have explicit inplace(_) needing to be implemented.
+unary_ops_with_inplace = [
+    "relu",
+    "selu",
+]
+
+# the following ops have the regular version needing to be implemented.
+# Note det, isinf, selu - are composite aten ops but have direct onnx ops.
+unary_ops = [
+    "det",
+    "isinf",
+    "isnan",
+    "nonzero",
+    "relu",
+    "selu",
+]
+
 for binary_op, onnx_op in {
     "add": Add("self", Mul("alpha", "other")),
     "sub": Sub("self", Mul("alpha", "other")),
@@ -59,45 +110,22 @@ for binary_op, onnx_op in {
                 ops[f"aten::{binary_op}{variant}.{dtype}"] = deepcopy(onnx_op)
                 type_promotion_ops.append(f"aten::{binary_op}{variant}.{dtype}")
 
-for unary_op in [
-    "abs",
-    "acos",
-    "acosh",
-    "asinh",
-    "atanh",
-    "asin",
-    "atan",
-    "ceil",
-    "cos",
-    "cosh",
-    "erf",
-    "exp",
-    "floor",
-    "isnan",
-    "log",
-    "reciprocal",
-    "neg",
-    "round",
-    "relu",
-    "selu",
-    "sigmoid",
-    "sin",
-    "sinh",
-    "sqrt",
-    "tan",
-    "tanh",
-    "nonzero",
-    "sign",
-    "hardsigmoid",
-    "isinf",
-    "det",
-]:
-    aten_name = f"aten::{unary_op}"
-    onnx_op = onnx_ops[unary_op]("self")
-    ops[aten_name] = onnx_op
-    # produce the in-place variant as well for ops that support it
-    if unary_op not in ["isnan", "nonzero", "min", "max", "isinf", "det"]:
-        ops[f"{aten_name}_"] = onnx_op
+for unary_op in unary_ops_with_out:
+    ops[f"aten::{unary_op}.out"] = onnx_ops[unary_op]("self")
+
+for unary_op in unary_ops_with_inplace:
+    ops[f"aten::{unary_op}_"] = onnx_ops[unary_op]("self")
+
+for unary_op in unary_ops:
+    ops[f"aten::{unary_op}"] = onnx_ops[unary_op]("self")
+
+# Notes on Onnx op mapping
+#
+# Equal - Onnx spec has the return as a bool tensor, but aten will keep the tensor
+#         return type matching that of the "out" tensor if one is passed. To support this behavior
+#         we will CAST the Equal result to match the "out" as seen in eq and ne below.
+#
+# ---------------------------
 
 hand_implemented = {
     "aten::empty.memory_format": SignatureOnly(),
@@ -107,13 +135,14 @@ hand_implemented = {
     "aten::_reshape_alias": SignatureOnly(),
     "aten::view": SignatureOnly(),
     "aten::_copy_from_and_resize": SignatureOnly(),
+    "aten::resize_": SignatureOnly(),
     "aten::as_strided": SignatureOnly(),
     # manually implement Slice using stride and offset.
     "aten::slice.Tensor": SignatureOnly(),
     "aten::addmm": Gemm("mat1", "mat2", "self", alpha="alpha", beta="beta"),
     "aten::add_.Tensor": SignatureOnly(),
     "aten::t": Transpose("self"),
-    "aten::mm": MatMul("self", "mat2"),
+    "aten::mm.out": MatMul("self", "mat2"),
     "aten::zeros_like": ConstantOfShape(
         Shape("self")
     ),  # the default constant is 0, so don't need to speicify attribute
@@ -124,21 +153,22 @@ hand_implemented = {
     "aten::softshrink": Shrink("self", bias="lambd", lambd="lambd"),  # yes, bias is set to 'lambd'
     "aten::hardshrink": Shrink("self", bias=0, lambd="lambd"),
     "aten::gelu": Gelu("self"),
-    "aten::max": ReduceMax("self", keepdims=1),
-    "aten::min": ReduceMin("self", keepdims=1),
+    "aten::max": ReduceMax("self", keepdims=0),
+    "aten::min": ReduceMin("self", keepdims=0),
     "aten::_cat": Concat("tensors", "dim"),
-    "aten::fill_.Scalar": ConstantOfShape("self", value="value"),
-    "aten::ne.Scalar": MakeTorchFallback(),
-    "aten::ne.Scalar_out": MakeTorchFallback(),
-    "aten::ne.Tensor_out": MakeTorchFallback(),
-    "aten::eq.Tensor": MakeTorchFallback(),
-    "aten::eq.Tensor_out": MakeTorchFallback(),
+    "aten::fill_.Scalar": SignatureOnly(),
+    "aten::ne.Scalar_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
+    "aten::ne.Tensor_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
+    "aten::eq.Tensor_out": Cast(Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
+    "aten::eq.Scalar_out": Cast(Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
     "aten::bitwise_and.Tensor_out": MakeTorchFallback(),
-    "aten::masked_select": MakeTorchFallback(),
+    "aten::masked_select": GatherND("self", Transpose(NonZero(Expand("mask", Shape("self"))))),
     "aten::_local_scalar_dense": MakeTorchFallback(),
     "aten::gt.Scalar_out": MakeTorchFallback(),
-    "aten::equal": MakeTorchFallback(),
+    "aten::lt.Scalar_out": MakeTorchFallback(),
+    "aten::equal": SignatureOnly(),
     "aten::_softmax": Softmax("self", axis="dim"),
+    "aten::argmax.out": SignatureOnly(),
 }
 
 # Signature of gelu_backward was changed in this commit id 983ba5e585485ed61a0c0012ef6944f5685e3d97 and PR 61439

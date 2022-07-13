@@ -8,6 +8,7 @@
 #include "graph_transform_test_builder.h"
 
 #include "core/graph/graph.h"
+#include "qdq_test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 
@@ -3586,6 +3587,42 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearNoAxis) {
 
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 10);
+}
+
+TEST(TransposeOptimizerTests, TestDequantizeLinearTransposePropagation) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<uint8_t>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0, 5);
+    auto* input1_arg = MakeInput<float>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {2.3f});
+    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {10});
+    auto* dequantizelinear_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_1_out_0 = builder.MakeOutput();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    builder.AddNode("DequantizeLinear", {input0_arg, input1_arg, input2_arg}, {dequantizelinear_1_out_0});
+
+    auto& transpose_1 = builder.AddNode("Transpose", {dequantizelinear_1_out_0}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+
+    auto& transpose_2 = builder.AddNode("Transpose", {dequantizelinear_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    std::vector<std::string> expected_op_types_in_order{
+        "DequantizeLinear",
+        "Transpose",
+        "Transpose"};
+
+    const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+    EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
+  };
+
+
+  TransformerTester(build_test_case_1,
+                    check_graph,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
                     /*opset_version*/ 10);
