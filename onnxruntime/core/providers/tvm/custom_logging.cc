@@ -8,6 +8,7 @@
 #include <ctime>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -22,7 +23,16 @@ std::string GetTimedLogMessage(const std::string& file, int lineno, const std::s
   std::stringstream sstream;
   std::string file_name = GetFileName(file);
   std::time_t t = std::time(nullptr);
-  sstream << "[" << std::put_time(std::localtime(&t), "%H:%M:%S") << "][TVM] "
+  sstream << "["
+#ifdef _WIN32
+// TODO(vvchernov): use #include <time.h> instead of <ctime> and localtime_s() approach for WIN32
+#pragma warning(disable : 4996)  // _CRT_SECURE_NO_WARNINGS
+#endif
+          << std::put_time(std::localtime(&t), "%H:%M:%S")
+#ifdef _WIN32
+#pragma warning(default : 4996)
+#endif
+          << "][TVM] "
           << file_name << ":" << lineno << ": " + message;
   return sstream.str();
 }
