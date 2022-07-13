@@ -1335,10 +1335,28 @@ bool SoftMaxOpSupportChecker::HasSupportedInputOutputsImpl(
 
 namespace gemm_matmul_helpers {
 
+namespace {
+
+bool GemmOrMatMulHasSupportedQuantizedInputsAndOutputs(const InitializedTensorSet& initializers,
+                                                       const NodeUnit& node_unit,
+                                                       const OpSupportCheckParams& params) {
+  // QLinearMatMul/QDQGemm/QDQMatMul
+  if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
+    return false;
+
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0, 1}, params, ArgType::kInput))
+    return false;
+
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kOutput))
+    return false;
+
+  return true;
+}
+
 // Get the bias size (C) of Gemm op
 // ANEURALNETWORKS_FULLY_CONNECTED only supports 1d bias
 // Will test if C of Gemm can be squeezed and return the 1d vector size after squeeze
-static bool GetGemmBiasSize(const Shape& c_shape, int32_t nnapi_feature_level, uint32_t& size) {
+bool GetGemmBiasSize(const Shape& c_shape, int32_t nnapi_feature_level, uint32_t& size) {
   // TODO add support of scalar C for Gemm
   size_t c_dim = c_shape.size();
   if (c_dim == 0) {
@@ -1367,6 +1385,8 @@ static bool GetGemmBiasSize(const Shape& c_shape, int32_t nnapi_feature_level, u
   size = c_shape[c_dim - 1];
   return true;
 }
+
+}  // namespace
 
 bool IsGemmOrMatMulSupportedByNnapiFullyConnected(const InitializedTensorSet& initializers,
                                                   const NodeUnit& node_unit,
@@ -1459,22 +1479,6 @@ bool IsGemmOrMatMulSupportedByNnapiFullyConnected(const InitializedTensorSet& in
       return false;
     }
   }
-
-  return true;
-}
-
-static bool GemmOrMatMulHasSupportedQuantizedInputsAndOutputs(const InitializedTensorSet& initializers,
-                                                              const NodeUnit& node_unit,
-                                                              const OpSupportCheckParams& params) {
-  // QLinearMatMul/QDQGemm/QDQMatMul
-  if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
-    return false;
-
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0, 1}, params, ArgType::kInput))
-    return false;
-
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kOutput))
-    return false;
 
   return true;
 }

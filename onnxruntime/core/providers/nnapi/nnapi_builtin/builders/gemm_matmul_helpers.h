@@ -18,6 +18,7 @@ inline bool IsNnapiBatchMatMulAvailable(int32_t nnapi_feature_level) {
   return nnapi_feature_level >= ANEURALNETWORKS_FEATURE_LEVEL_6;
 }
 
+// definition in op_support_checker.cc
 bool IsGemmOrMatMulSupportedByNnapiFullyConnected(const InitializedTensorSet& initializers,
                                                   const NodeUnit& node_unit,
                                                   int32_t nnapi_feature_level);
