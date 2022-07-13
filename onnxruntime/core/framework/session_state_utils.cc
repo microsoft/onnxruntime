@@ -62,7 +62,7 @@ struct ExtDataValueDeleter {
   Tensor* p_tensor;
   void operator()(void*) noexcept {
     this->ext_delete_cb.f(this->ext_delete_cb.param);
-    delete this->p_tensor;
+    delete p_tensor;
   }
 };
 
@@ -88,7 +88,8 @@ static inline common::Status ExtDataTensorProtoToTensor(const Env& env,
   std::vector<int64_t> tensor_shape_vec = utils::GetTensorShapeFromTensorProto(tensor_proto);
   TensorShape tensor_shape{tensor_shape_vec};
 
-  auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, ext_data_buf, OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+  auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, ext_data_buf, OrtMemoryInfo(CPU,
+              OrtAllocatorType::OrtDeviceAllocator));
   tensor = std::move(*p_tensor);
 
   return common::Status::OK();
@@ -242,7 +243,7 @@ common::Status SaveInitializedTensors(
 
   // tensors requiring a specific allocation order are traced first, to ensure they are allocated in order
   // NB1: vector with init allocation order may contain a subset of all tensors (or none at all)
-  // NB2: only skip tracing and planing memory when data is external (i.e mmap) and on CPU.
+  // NB2: only skip tracing and planning memory when data is external (i.e mmap) and on CPU.
   //    when data is external and on GPU, need to copy first to cpu memory, then to gpu memory.
   auto initialized_tensors_to_allocate = id_to_initialized_tensor;
   for (int ort_value_index : initializer_allocation_order) {
@@ -267,7 +268,7 @@ common::Status SaveInitializedTensors(
       continue;
     }
     if (utils::HasExternalData(*entry.second) && (strcmp(location, CPU) == 0)) {
-      // exernal data will be memory mapped, no need to plan for its allocation
+      // external data is memory mapped, no need to plan for its allocation
       continue;
     }
     if (entry.second->data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
