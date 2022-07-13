@@ -32,8 +32,11 @@ TEST(GatherOpTest, Gather_axis0) {
     test.Run();
   };
 
-  run_test(false);
+#if defined(USE_NNAPI)
   run_test(true);
+#elif
+  run_test(false);
+#endif
 }
 
 TEST(GatherOpTest, Gather_negative_axis) {
@@ -56,8 +59,11 @@ TEST(GatherOpTest, Gather_negative_axis) {
     test.Run();
   };
 
-  run_test(false);
+#if defined(USE_NNAPI)
   run_test(true);
+#elif
+  run_test(false);
+#endif
 }
 
 TEST(GatherOpTest, Gather_invalid_axis) {
@@ -81,8 +87,11 @@ TEST(GatherOpTest, Gather_invalid_axis) {
     test.Run(OpTester::ExpectResult::kExpectFailure, "axis must be in [-r, r-1]");
   };
 
-  run_test(false);
+#if defined(USE_NNAPI)
   run_test(true);
+#elif
+  run_test(false);
+#endif
 }
 
 TEST(GatherOpTest, Gather_invalid_index_cpu) {
@@ -101,7 +110,7 @@ TEST(GatherOpTest, Gather_invalid_index_cpu) {
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
   test.Run(so, OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds, idx=1000 must be within the inclusive range [-3,2]",
            // On Cuda it is impossible to dereference indices memory on CPU so the check can not run
-           {kCudaExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider, kNupharExecutionProvider, kTensorrtExecutionProvider});
+           {kCudaExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider, kNupharExecutionProvider, kTensorrtExecutionProvider, kNnapiExecutionProvider});
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
@@ -145,8 +154,11 @@ TEST(GatherOpTest, Gather_axis1) {
     test.Run();
   };
 
-  run_test(false);
+#if defined(USE_NNAPI)
   run_test(true);
+#elif
+  run_test(false);
+#endif
 }
 
 TEST(GatherOpTest, Gather_axis2) {
@@ -172,8 +184,11 @@ TEST(GatherOpTest, Gather_axis2) {
     test.Run();
   };
 
-  run_test(false);
+#if defined(USE_NNAPI)
   run_test(true);
+#elif
+  run_test(false);
+#endif
 }
 
 TEST(GatherOpTest, Gather_axis0_indices2d) {
@@ -195,8 +210,11 @@ TEST(GatherOpTest, Gather_axis0_indices2d) {
     test.Run();
   };
 
-  run_test(false);
+#if defined(USE_NNAPI)
   run_test(true);
+#elif
+  run_test(false);
+#endif
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d) {
@@ -219,8 +237,11 @@ TEST(GatherOpTest, Gather_axis1_indices2d) {
     test.Run();
   };
 
-  run_test(false);
+#if defined(USE_NNAPI)
   run_test(true);
+#elif
+  run_test(false);
+#endif
 }
 
 TEST(GatherOpTest, Gather_axis0_indicesInt32) {
@@ -246,8 +267,11 @@ TEST(GatherOpTest, Gather_axis0_indicesInt32) {
     test.Run();
   };
 
-  run_test(false);
+#if defined(USE_NNAPI)
   run_test(true);
+#elif
+  run_test(false);
+#endif
 }
 
 TEST(GatherOpTest, Gather_axis0_indices2dInt32) {
@@ -270,8 +294,11 @@ TEST(GatherOpTest, Gather_axis0_indices2dInt32) {
     test.Run();
   };
 
-  run_test(false);
+#if defined(USE_NNAPI)
   run_test(true);
+#elif
+  run_test(false);
+#endif
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_int32) {

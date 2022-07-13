@@ -2486,24 +2486,28 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 #pragma region op_gather
 
 class GatherOpBuilder : public BaseOpBuilder {
-  /* public:
-   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override; */
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
-/* void GatherOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  // Skip the second input `indices` for Gather
+void GatherOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& inputs = node_unit.Inputs();
-  model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());  // indices
-} */
+  const auto& indices_name = inputs[1].node_arg.Name();
+  if (Contains(model_builder.GetInitializerTensors(), indices_name)) {
+    std::cout << "indices is an initializer" << std::endl;
+    // Skip the second input `indices` for Gather if it is an initializer
+    model_builder.AddInitializerToSkip(indices_name);
+  }
+}
 
 Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
-  // const auto& initializers(model_builder.GetInitializerTensors());
+  const auto& initializers(model_builder.GetInitializerTensors());
   const auto& input1 = node_unit.Inputs()[0].node_arg.Name();
   const auto& input2 = node_unit.Inputs()[1].node_arg.Name();  // "indices"
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
@@ -2516,7 +2520,8 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   input_indices.push_back(operand_indices.at(input1));
   ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
 
-  /*   // Add indices operand into nnapi
+  if (Contains(model_builder.GetInitializerTensors(), input2)) {
+    // Add indices operand into nnapi
     const auto& indices_tensor = *initializers.at(input2);
     std::vector<uint8_t> unpacked_tensor;
     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(indices_tensor, unpacked_tensor));
@@ -2548,7 +2553,8 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     }
 
     OperandType indices_operand_type(Type::TENSOR_INT32, indices_dimen);
-    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(input2, indices.data(), indices_operand_type)); */
+    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(input2, indices.data(), indices_operand_type));
+  }
   input_indices.push_back(operand_indices.at(input2));
   ORT_RETURN_IF_ERROR(shaper.Gather(input1, input2, axis, output));
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
