@@ -2138,11 +2138,9 @@ bool GatherOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
     return false;
   }
 
-  /* const auto& indices_name = inputs[1].node_arg.Name();
-  if (!Contains(initializers, indices_name)) {
-    LOGS_DEFAULT(VERBOSE) << "Indices of Gather must be known";
-    return false;
-  } */
+  // Here in GatherOpSupportChecker::IsOpSupportedImpl, we removed the restriction that 2nd input "indices" must be an initializer
+  // to accomodate the support for some models such as modibleBERT.
+  // However, for other cases(such as int64 type), we still require indices of gather to be an initializer
 
   return true;
 }

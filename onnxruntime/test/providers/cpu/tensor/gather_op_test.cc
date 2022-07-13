@@ -34,7 +34,7 @@ TEST(GatherOpTest, Gather_axis0) {
 
 #if defined(USE_NNAPI)
   run_test(true);
-#elif
+#else
   run_test(false);
 #endif
 }
@@ -61,7 +61,7 @@ TEST(GatherOpTest, Gather_negative_axis) {
 
 #if defined(USE_NNAPI)
   run_test(true);
-#elif
+#else
   run_test(false);
 #endif
 }
@@ -89,7 +89,7 @@ TEST(GatherOpTest, Gather_invalid_axis) {
 
 #if defined(USE_NNAPI)
   run_test(true);
-#elif
+#else
   run_test(false);
 #endif
 }
@@ -156,7 +156,7 @@ TEST(GatherOpTest, Gather_axis1) {
 
 #if defined(USE_NNAPI)
   run_test(true);
-#elif
+#else
   run_test(false);
 #endif
 }
@@ -186,7 +186,7 @@ TEST(GatherOpTest, Gather_axis2) {
 
 #if defined(USE_NNAPI)
   run_test(true);
-#elif
+#else
   run_test(false);
 #endif
 }
@@ -212,7 +212,7 @@ TEST(GatherOpTest, Gather_axis0_indices2d) {
 
 #if defined(USE_NNAPI)
   run_test(true);
-#elif
+#else
   run_test(false);
 #endif
 }
@@ -239,7 +239,7 @@ TEST(GatherOpTest, Gather_axis1_indices2d) {
 
 #if defined(USE_NNAPI)
   run_test(true);
-#elif
+#else
   run_test(false);
 #endif
 }
@@ -267,11 +267,8 @@ TEST(GatherOpTest, Gather_axis0_indicesInt32) {
     test.Run();
   };
 
-#if defined(USE_NNAPI)
   run_test(true);
-#elif
   run_test(false);
-#endif
 }
 
 TEST(GatherOpTest, Gather_axis0_indices2dInt32) {
@@ -294,11 +291,8 @@ TEST(GatherOpTest, Gather_axis0_indices2dInt32) {
     test.Run();
   };
 
-#if defined(USE_NNAPI)
   run_test(true);
-#elif
   run_test(false);
-#endif
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_int32) {
