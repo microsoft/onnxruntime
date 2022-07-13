@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 /**
- * @brief Synthethic sample batch generator.
+ * @brief Synthetic sample batch generator.
  *
  * Avoid introducing non-public data structure dependencies here, as beside our internal unit tests, this header will
  * also be included by trainer which only use our public C API, has no hard dependencies on ORT internal libs.
@@ -23,12 +23,12 @@ namespace test {
 namespace training_api {
 
 template <typename T>
-struct TypedSynctheticInput;
+struct TypedSyntheticInput;
 
 struct SyntheticInput {
   explicit SyntheticInput(const std::vector<int64_t>& shape) : shape_(shape) {
     for (auto d : shape) {
-      num_of_bytes_per_sample_ *= d;
+      num_of_elements_ *= d;
     }
   }
 
@@ -36,12 +36,12 @@ struct SyntheticInput {
 
   template <typename T>
   std::vector<T>& GetData() {
-    auto ptr = dynamic_cast<TypedSynctheticInput<T>*>(this);
+    auto ptr = dynamic_cast<TypedSyntheticInput<T>*>(this);
     return ptr->Data();
   }
 
-  size_t NumOfBytesPerSample() {
-    return num_of_bytes_per_sample_;
+  size_t NumOfElements() {
+    return num_of_elements_;
   }
 
   std::vector<int64_t> ShapeVector() const {
@@ -50,14 +50,14 @@ struct SyntheticInput {
 
  protected:
   std::vector<int64_t> shape_;
-  size_t num_of_bytes_per_sample_{1};
+  size_t num_of_elements_{1};
 };
 
 template <typename T>
-struct TypedSynctheticInput : public SyntheticInput {
-  explicit TypedSynctheticInput(const std::vector<int64_t>& shape)
+struct TypedSyntheticInput : public SyntheticInput {
+  explicit TypedSyntheticInput(const std::vector<int64_t>& shape)
       : SyntheticInput(shape) {
-    data_.resize(num_of_bytes_per_sample_);
+    data_.resize(num_of_elements_);
   }
 
   std::vector<T>& Data() {
@@ -92,13 +92,12 @@ struct SyntheticDataLoader {
 
   void AddSyntheticSampleBatch(std::unique_ptr<SyntheticSampleBatch> samples) {
     sample_batch_collections_.emplace_back(std::move(samples));
-    num_of_sample_batches += 1;
   }
 
   bool GetNextSampleBatch(std::vector<OrtValue*>& batches);
 
   size_t NumOfSampleBatches() {
-    return num_of_sample_batches;
+    return sample_batch_collections_.size();
   }
 
   void ResetIterateIndex() {
@@ -111,9 +110,7 @@ struct SyntheticDataLoader {
   // And also, the created OrtValue also won't clean the raw data pointer. The raw data should be removed when
   // the life time of this struct ends.
   std::vector<std::unique_ptr<SyntheticSampleBatch>> sample_batch_collections_;
-  int64_t sample_batch_count_;
   size_t sample_batch_iter_index_{0};
-  size_t num_of_sample_batches{0};
 };
 
 }  // namespace training_api

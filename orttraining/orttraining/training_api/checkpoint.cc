@@ -30,8 +30,8 @@ const PathString k_optimizer_root_prefix = ORT_TSTR("optim");
 const PathString k_property_root_prefix = ORT_TSTR("custom");
 const PathString k_name_separator = ORT_TSTR("_");
 
-const std::string builtin_lr_property_name("builtin.initial_learning_rate");
-const std::string builtin_step_property_name("builtin.step");
+const char builtin_lr_property_name[] = "builtin.initial_learning_rate";
+const char builtin_step_property_name[] = "builtin.step";
 
 /**
  * @brief Create TensorProtos From OrtValue objects
@@ -233,8 +233,6 @@ Status OrtSaveModuleStatesInternal(ModuleCheckpointState& module_state,
 
     std::unordered_map<PathString, std::unordered_map<std::string, OrtValue>>
         parameter_ort_values;
-    parameter_ort_values[k_trainable_param_root_prefix] = {};
-    parameter_ort_values[k_non_trainable_param_root_prefix] = {};
     for (auto it = param_states.begin(); it != param_states.end(); ++it) {
       if (it->second->RequiresGrad()) {
         parameter_ort_values[k_trainable_param_root_prefix].insert({it->first, it->second->Data()});
@@ -272,7 +270,7 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
 
   // Write optimizer state tensors files.
   for (auto& group_named_optimizer_state : optimizer_state.group_named_optimizer_states) {
-    const PathString group_name = ToWideString(group_named_optimizer_state.first);
+    const PathString group_name = ToPathString(group_named_optimizer_state.first);
     const std::shared_ptr<GroupOptimizerState>& group_optimizer_state_ptr = group_named_optimizer_state.second;
     const PathString& cur_group_filename_prefix =
         StringConcat(k_optimizer_root_prefix, group_name);
@@ -302,7 +300,7 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
     // Save each optimizer state (of all parameters) into single file.
     // For example: save "momentum_1" of all parameters into one file.
     for (auto& pair : optimizer_state_ort_values) {
-      const PathString momentum_name = ToWideString(pair.first);
+      const PathString momentum_name = ToPathString(pair.first);
       const std::unordered_map<std::string, OrtValue>& param_name_to_ortvalue = pair.second;
       const PathString& cur_state_filename_prefix =
           StringConcat(cur_group_filename_prefix, momentum_name);
@@ -433,6 +431,7 @@ Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path,
   for (auto& filename : optim_state_filenames) {
     std::vector<PathString> results;
     StringSplit(filename, results);
+    ORT_ENFORCE(results.size() >= 3U, "Incorrect optimizer state filename.");
     const std::string& group_name = ToUTF8String(results[1]);
     const std::string& momentum_name = ToUTF8String(results[2]);
 
@@ -450,7 +449,8 @@ Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path,
     std::unordered_map<std::string, ParameterOptimizerState>&
         param_optimizer_states = group_optimizer_state->param_named_optimizer_states;
 
-    const PathString& tensor_file_path = GetTensorProtoFilePath(optimizer_folder_path, cur_momentum_state_filename_prefix);
+    const PathString& tensor_file_path = GetTensorProtoFilePath(optimizer_folder_path,
+                                                                cur_momentum_state_filename_prefix);
     std::vector<ONNX_NAMESPACE::TensorProto> param_optimizer_state_tensor_protos{};
     LoadTensorProtoFromFile(tensor_file_path, param_optimizer_state_tensor_protos, "[optimizer_state]");
 
@@ -470,6 +470,7 @@ Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path,
   for (auto& filename : optim_property_filenames) {
     std::vector<PathString> results;
     StringSplit(filename, results);
+    ORT_ENFORCE(results.size() >= 2U, "Incorrect optimizer property filename.");
     const std::string& group_name = ToUTF8String(results[1]);
 
     if (grouped_optimizer_states.find(group_name) == grouped_optimizer_states.end()) {
@@ -480,7 +481,8 @@ Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path,
 
     // Parse group-wise properties.
     const PathString cur_group_filename_prefix = StringConcat(k_optimizer_root_prefix, results[1]);
-    const PathString& tensor_file_path = GetTensorProtoPropertiesFilePath(optimizer_folder_path, cur_group_filename_prefix);
+    const PathString& tensor_file_path = GetTensorProtoPropertiesFilePath(optimizer_folder_path,
+                                                                          cur_group_filename_prefix);
     std::vector<ONNX_NAMESPACE::TensorProto> group_wise_property_protos{};
     LoadTensorProtoFromFile(tensor_file_path, group_wise_property_protos, "[optimizer_groupwise_property]");
 

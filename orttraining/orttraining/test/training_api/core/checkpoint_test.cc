@@ -76,7 +76,8 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   std::vector<ONNX_NAMESPACE::TensorProto> non_trainable_param_values;
   const auto& initializer_tensors = graph.GetAllInitializedTensors();
   for (const std::pair<std::string, const ONNX_NAMESPACE::TensorProto*>& pair : initializer_tensors) {
-    if (std::find(expected_trainable_param_names.begin(), expected_trainable_param_names.end(), pair.first) != expected_trainable_param_names.end()) {
+    if (std::find(expected_trainable_param_names.begin(), expected_trainable_param_names.end(), pair.first) !=
+        expected_trainable_param_names.end()) {
       trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*pair.second));
     } else {
       non_trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*pair.second));
@@ -84,7 +85,8 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   }
 
   std::unordered_map<std::string, OrtValue> expected_trainable_param_name_to_ort_value;
-  ORT_ENFORCE(CreateOrtValuesFromTensorProtos(trainable_param_values, expected_trainable_param_name_to_ort_value).IsOK());
+  ORT_ENFORCE(CreateOrtValuesFromTensorProtos(trainable_param_values, expected_trainable_param_name_to_ort_value)
+                  .IsOK());
 
   // Remove the tempoprary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
@@ -154,7 +156,7 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
     ASSERT_EQ(expected_tensor.SizeInBytes(), restored_tensor.SizeInBytes());
     ASSERT_EQ(expected_tensor.DataType(), restored_tensor.DataType());
 
-    ASSERT_TRUE(std::memcmp(expected_tensor.DataRaw(), restored_tensor.DataRaw(), expected_tensor.SizeInBytes()) == 0);
+    ASSERT_EQ(std::memcmp(expected_tensor.DataRaw(), restored_tensor.DataRaw(), expected_tensor.SizeInBytes()), 0);
   }
 }
 

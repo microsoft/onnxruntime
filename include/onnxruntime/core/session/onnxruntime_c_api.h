@@ -30,7 +30,7 @@
 *
 * This value is used by some API functions to behave as this version of the header expects.
 */
-#define ORT_API_VERSION 12
+#define ORT_API_VERSION 13
 
 #ifdef __cplusplus
 extern "C" {
@@ -537,10 +537,8 @@ typedef struct OrtOpenVINOProviderOptions {
 struct OrtApi;
 typedef struct OrtApi OrtApi;
 
-#ifdef ENABLE_TRAINING_ON_DEVICE
 struct OrtTrainingApi;
 typedef struct OrtTrainingApi OrtTrainingApi;
-#endif
 
 /** \brief The helper interface to get the right version of OrtApi
 *
@@ -554,14 +552,6 @@ struct OrtApiBase {
   *   older than the version created with this header file.
   */
   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;
-#ifdef ENABLE_TRAINING_ON_DEVICE
-  /** \brief Get a pointer to the requested version of the ::OrtTrainingApi
-   *
-   * \param[in] version Must be ::ORT_API_VERSION
-   * \return The ::OrtTrainingApi for the version requested, nullptr will be returned if this version is unsupported.
-   */
-  const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version)NO_EXCEPTION;
-#endif
   const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;  ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
 };
 typedef struct OrtApiBase OrtApiBase;
@@ -3499,6 +3489,12 @@ struct OrtApi {
   * \since Version 1.12.
   */
   ORT_CLASS_RELEASE(KernelInfo);
+
+  /* \brief: Get the training C Api
+  *
+  * \since Version 1.13
+  */
+  const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 };
 
 /*

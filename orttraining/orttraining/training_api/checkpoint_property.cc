@@ -22,7 +22,7 @@ TypedCheckpointProperty<T>::TypedCheckpointProperty(const ONNX_NAMESPACE::Tensor
   Path model_path;
   std::vector<T> data_vector(1);
   T* p = data_vector.data();
-  ORT_ENFORCE(utils::UnpackTensor<T>(tensor_proto, model_path, p, expected_num_elements).IsOK());
+  ORT_THROW_IF_ERROR(utils::UnpackTensor<T>(tensor_proto, model_path, p, expected_num_elements));
   prop_name_ = tensor_proto.name();
   prop_value_ = data_vector[0];
 }
@@ -62,14 +62,14 @@ std::shared_ptr<CheckpointProperty> CreateCheckpointPropertyFromTensorProto(
 }  // namespace
 
 void PropertyBag::AddProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
-  ORT_ENFORCE(named_properties.find(tensor_proto.name()) == named_properties.end(),
+  ORT_ENFORCE(named_properties_.find(tensor_proto.name()) == named_properties_.end(),
               "Duplicated property named ", tensor_proto.name());
 
   if (!IsSupportedDataType(tensor_proto.data_type())) {
     ORT_THROW("Failed to add property from tensorproto: float, int64_t and std::string data types supported only.");
   }
 
-  named_properties.insert({tensor_proto.name(), CreateCheckpointPropertyFromTensorProto(tensor_proto)});
+  named_properties_.insert({tensor_proto.name(), CreateCheckpointPropertyFromTensorProto(tensor_proto)});
 }
 
 }  // namespace api

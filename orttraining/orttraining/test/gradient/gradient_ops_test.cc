@@ -2141,7 +2141,9 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2_CPU) {
   test.AddOutput<bool>("updated", {1}, {true});
   test.AddOutput<float>("new_sum", {3}, {5.f, 7.f, 9.f});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.emplace_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
 TEST(GradientUtilsTest, InPlaceAccumulatorV2Overwrite) {
@@ -2153,6 +2155,9 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2Overwrite) {
   test.AddOutput<bool>("updated", {1}, {true});
   test.AddOutput<float>("new_sum", {3}, {4.f, 5.f, 6.f});
 
+  // This test can run on all EPs back to back because
+  // the input buffer (accumulation buffer) is overwritten and
+  // not used to compute the output for that run.
   test.Run();
 }
 
@@ -2166,7 +2171,9 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2_GPU) {
   test.AddOutput<bool>("updated", {1}, {true});
   test.AddOutput<float>("new_sum", {3}, {5.f, 7.f, 9.f});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.emplace_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
 TEST(GradientUtilsTest, InPlaceAccumulatorV2_Float16) {
@@ -2186,7 +2193,9 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2_Float16) {
   test.AddOutput<float>("new_sum", {3}, new_sum);
 
   // Didn't implement mixed precision InPlaceAccumulatorV2 in CPU
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.emplace_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 #endif
 

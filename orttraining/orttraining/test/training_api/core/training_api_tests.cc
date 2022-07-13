@@ -8,7 +8,7 @@
 #include "nlohmann/json.hpp"
 
 #include "test/framework/test_utils.h"
-#include "core/common/path_utils.h"
+#include "test/util/include/asserts.h"
 #include "core/framework/tensorprotoutils.h"
 #include "orttraining/training_api/include/utils.h"
 #include "orttraining/training_api/include/module.h"
@@ -20,10 +20,6 @@
 #include "default_providers.h"
 
 using json = nlohmann::json;
-using namespace onnxruntime::training;
-using namespace onnxruntime::training::api;
-using namespace onnxruntime::training::api::utils;
-using namespace onnxruntime::path_utils;
 
 namespace onnxruntime {
 namespace training {
@@ -44,60 +40,62 @@ void GenerateRandomInput(gsl::span<const int64_t> dims, OrtValue& input) {
   std::vector<float> data(shape.Size());
   std::for_each(data.begin(), data.end(),
                 [&generator_float, &distribution_float](float& value) { value = distribution_float(generator_float); });
-  CreateInputOrtValue<float>(dims, data, &input);
+  onnxruntime::training::api::utils::CreateInputOrtValue<float>(dims, data, &input);
 }
 
 TEST(TrainingApiTest, ModuleTrainStep) {
   auto model_uri = MODEL_FOLDER "training_model.onnx";
 
-  CheckpointState state;
+  onnxruntime::training::api::CheckpointState state;
   auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
-  ORT_ENFORCE(LoadCheckpoint(checkpoint_to_load_path, state).IsOK());
+  ASSERT_STATUS_OK(onnxruntime::training::api::LoadCheckpoint(checkpoint_to_load_path, state));
 
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
-  ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
-  auto model = std::make_unique<Module>(ToUTF8String(model_uri), state.module_checkpoint_state.named_parameters, session_option,
-                                        *env, std::vector<std::shared_ptr<IExecutionProvider>>());
-  ORT_ENFORCE(model->GetTrainModeOutputCount() == 1);
+  ASSERT_STATUS_OK(Environment::Create(nullptr, env));
+  auto model = std::make_unique<onnxruntime::training::api::Module>(ToUTF8String(model_uri),
+                                                                    state.module_checkpoint_state.named_parameters, session_option,
+                                                                    *env, std::vector<std::shared_ptr<IExecutionProvider>>());
+  ASSERT_EQ(model->GetTrainModeOutputCount(), 1);
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
-  CreateInputOrtValue<int32_t>(std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
+  onnxruntime::training::api::utils::CreateInputOrtValue<int32_t>(
+      std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
   auto data_loader = std::vector<std::vector<OrtValue>>(4, std::vector<OrtValue>{input, target});
 
   size_t step = 0;
   std::vector<float> single_bias_grad_vec, current_bias_grad_vec;
   std::string param_name = "fc2.weight";
-  std::shared_ptr<Parameter> bias_param = model->NamedParameters()[param_name];
+  std::shared_ptr<onnxruntime::training::api::Parameter> bias_param = model->NamedParameters()[param_name];
   OrtValue& bias_grad = bias_param->Gradient();
 
   for (auto it = data_loader.begin(); it != data_loader.end(); ++it) {
     step += 1;
     std::vector<OrtValue>& inputs = *it;
     std::vector<OrtValue> fetches;
-    ORT_ENFORCE(model->TrainStep(inputs, fetches).IsOK());
-    ORT_ENFORCE(fetches.size() == 1);
+    ASSERT_STATUS_OK(model->TrainStep(inputs, fetches));
+    ASSERT_EQ(fetches.size(), 1U);
     bias_grad = bias_param->Gradient();
 
     if (step > 1) {
       OrtValueToVec(bias_grad, current_bias_grad_vec);
       for (size_t i = 0; i < current_bias_grad_vec.size(); i++) {
-        ORT_ENFORCE(current_bias_grad_vec[i] == single_bias_grad_vec[i] * step);
+        ASSERT_EQ(current_bias_grad_vec[i], single_bias_grad_vec[i] * step);
       }
     } else {
       OrtValueToVec(bias_grad, single_bias_grad_vec);
     }
   }
   // reset grad
-  ORT_ENFORCE(model->ResetGrad().IsOK());
+  ASSERT_STATUS_OK(model->ResetGrad());
 
   // run a single step
   std::vector<OrtValue>& inputs = *data_loader.begin();
   std::vector<OrtValue> fetches;
-  ORT_ENFORCE(model->TrainStep(inputs, fetches).IsOK());
+  ASSERT_STATUS_OK(model->TrainStep(inputs, fetches));
   OrtValueToVec(bias_grad, current_bias_grad_vec);
   for (size_t i = 0; i < current_bias_grad_vec.size(); i++) {
-    ORT_ENFORCE(current_bias_grad_vec[i] == single_bias_grad_vec[i]);
+    ASSERT_EQ(current_bias_grad_vec[i], single_bias_grad_vec[i]);
   }
 }
 
@@ -107,33 +105,36 @@ TEST(TrainingApiTest, OptimStep) {
   auto model_uri = MODEL_FOLDER "training_model.onnx";
   auto optim_uri = MODEL_FOLDER "adamw.onnx";
 
-  CheckpointState state;
+  onnxruntime::training::api::CheckpointState state;
   auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
-  ORT_ENFORCE(LoadCheckpoint(checkpoint_to_load_path, state).IsOK());
+  ASSERT_STATUS_OK(onnxruntime::training::api::LoadCheckpoint(checkpoint_to_load_path, state));
 
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCudaExecutionProvider()};
   std::shared_ptr<IExecutionProvider> cuda_provider = providers.front();
   std::shared_ptr<IExecutionProvider> cpu_provider = onnxruntime::test::DefaultCpuExecutionProvider();
-  ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
-  auto model = std::make_unique<Module>(ToUTF8String(model_uri), state.module_checkpoint_state.named_parameters, session_option,
-                                        *env, providers);
-  auto optim = std::make_unique<Optimizer>(ToUTF8String(optim_uri), model->NamedParameters(), session_option,
-                                           *env, providers);
+  ASSERT_STATUS_OK(Environment::Create(nullptr, env));
+  auto model = std::make_unique<onnxruntime::training::api::Module>(
+      ToUTF8String(model_uri), state.module_checkpoint_state.named_parameters, session_option,
+      *env, providers);
+  auto optim = std::make_unique<onnxruntime::training::api::Optimizer>(
+      ToUTF8String(optim_uri), model->NamedParameters(), session_option,
+      *env, providers);
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
-  CreateInputOrtValue<int32_t>(std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
+  onnxruntime::training::api::utils::CreateInputOrtValue<int32_t>(
+      std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
   auto data_loader = std::vector<std::vector<OrtValue>>(4, std::vector<OrtValue>{input, target});
 
   size_t step = 0;
   std::string param_name = "fc2.weight";
 
   // before training, check if optim state is initialized to 0
-  OptimizerCheckpointState optimizer_states;
-  ORT_ENFORCE(optim->GetStateDict(optimizer_states).IsOK());
-  ParameterOptimizerState& param_state =
+  onnxruntime::training::api::OptimizerCheckpointState optimizer_states;
+  ASSERT_STATUS_OK(optim->GetStateDict(optimizer_states));
+  onnxruntime::training::api::ParameterOptimizerState& param_state =
       optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
   OrtValue& moment_1 = param_state.momentum_named_states.at("momentum0");
 
@@ -143,24 +144,24 @@ TEST(TrainingApiTest, OptimStep) {
   std::vector<float> moment_1_vec;
   CudaOrtValueToCpuVec(moment_1, moment_1_vec, cuda_provider, cpu_provider);
   for (size_t i = 0; i < moment_1_vec.size(); i++) {
-    ORT_ENFORCE(moment_1_vec[i] == 0.0f);
+    ASSERT_EQ(moment_1_vec[i], 0.0f);
   }
 
   for (auto it = data_loader.begin(); it != data_loader.end(); ++it) {
     step += 1;
     std::vector<OrtValue>& inputs = *it;
     std::vector<OrtValue> fetches;
-    ORT_ENFORCE(model->TrainStep(inputs, fetches).IsOK());
+    ASSERT_STATUS_OK(model->TrainStep(inputs, fetches));
     std::vector<float> grads;
     CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Gradient(), grads,
                          cuda_provider, cpu_provider);
-    ORT_ENFORCE(optim->Step().IsOK());
+    ASSERT_STATUS_OK(optim->Step());
 
     // get optim state and check if it is updated
     CudaOrtValueToCpuVec(moment_1, moment_1_vec, cuda_provider, cpu_provider);
     for (size_t i = 0; i < moment_1_vec.size(); i++) {
       if (grads[i] != 0.0f) {
-        ORT_ENFORCE(moment_1_vec[i] != 0.0f);
+        ASSERT_NE(moment_1_vec[i], 0.0f);
       }
     }
 
@@ -169,7 +170,7 @@ TEST(TrainingApiTest, OptimStep) {
                          cuda_provider, cpu_provider);
     for (size_t i = 0; i < param_vec_after_optimizer_step.size(); ++i) {
       if (grads[i] != 0.0f && moment_1_vec[i] != 0.0f) {
-        ORT_ENFORCE(param_vec_after_optimizer_step[i] != param_vec_before_optimizer_step[i]);
+        ASSERT_NE(param_vec_after_optimizer_step[i], param_vec_before_optimizer_step[i]);
       }
     }
   }
@@ -186,22 +187,25 @@ void TestLRSchduler(const std::string& test_file_name, float initial_lr, int64_t
   auto model_uri = MODEL_FOLDER "training_model.onnx";
   auto optim_uri = MODEL_FOLDER "adamw.onnx";
 
-  CheckpointState state;
+  onnxruntime::training::api::CheckpointState state;
   auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
-  ORT_ENFORCE(LoadCheckpoint(checkpoint_to_load_path, state).IsOK());
+  ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_to_load_path, state));
 
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
-  ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
+  ASSERT_STATUS_OK(Environment::Create(nullptr, env));
   const std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCudaExecutionProvider()};
-  auto model = std::make_unique<Module>(ToUTF8String(model_uri), state.module_checkpoint_state.named_parameters, session_option,
-                                        *env, providers);
-  auto optim = std::make_shared<Optimizer>(ToUTF8String(optim_uri), model->NamedParameters(), session_option,
-                                           *env, providers);
+  auto model = std::make_unique<onnxruntime::training::api::Module>(
+      ToUTF8String(model_uri), state.module_checkpoint_state.named_parameters,
+      session_option, *env, providers);
+  auto optim = std::make_shared<onnxruntime::training::api::Optimizer>(
+      ToUTF8String(optim_uri), model->NamedParameters(), session_option,
+      *env, providers);
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
-  CreateInputOrtValue<int32_t>(std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
+  onnxruntime::training::api::utils::CreateInputOrtValue<int32_t>(
+      std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
 
   /// Load test data for learning rate schedulers.
   auto data_uri = ORT_TSTR("testdata/test_data_generation/lr_scheduler/" + test_file_name);
@@ -217,30 +221,32 @@ void TestLRSchduler(const std::string& test_file_name, float initial_lr, int64_t
 
   if (resume_step != 0) {
     /// Reset optimizer states to match the initial state we want to test.
-    OptimizerCheckpointState optimizer_checkpoint_states;
+    onnxruntime::training::api::OptimizerCheckpointState optimizer_checkpoint_states;
     auto group_opt_state =
-        optimizer_checkpoint_states.group_named_optimizer_states["group0"] = std::make_shared<GroupOptimizerState>();
+        optimizer_checkpoint_states.group_named_optimizer_states["group0"] =
+            std::make_shared<onnxruntime::training::api::GroupOptimizerState>();
     group_opt_state->step = resume_step;
     group_opt_state->initial_lr = initial_lr;
-    ORT_ENFORCE(optim->LoadStateDict(optimizer_checkpoint_states).IsOK());
+    ASSERT_STATUS_OK(optim->LoadStateDict(optimizer_checkpoint_states));
   }
 
   // KNOWN ISSUE: LinearLRScheduler by default use optim's states to calculate the first step's learning rate.
   // If we restored it after creation, it will only affect the learning rate from the second step.
-  auto scheduler = std::make_unique<LinearLRScheduler>(optim, warmup_step_count, total_step_count);
+  auto scheduler = std::make_unique<onnxruntime::training::api::LinearLRScheduler>(
+      optim, warmup_step_count, total_step_count);
 
   for (auto it = test_data.begin(); it != test_data.end(); ++it) {
-    OptimizerCheckpointState optimizer_states;
-    ORT_ENFORCE(optim->GetStateDict(optimizer_states).IsOK());
+    onnxruntime::training::api::OptimizerCheckpointState optimizer_states;
+    ASSERT_STATUS_OK(optim->GetStateDict(optimizer_states));
     auto group_optimizer_state = optimizer_states.group_named_optimizer_states["group0"];
     CompareValue(it->second[0], group_optimizer_state->learning_rate);
     ASSERT_EQ(it->first, group_optimizer_state->step);
 
     std::vector<OrtValue> inputs{input, target};
     std::vector<OrtValue> fetches;
-    ORT_ENFORCE(model->TrainStep(inputs, fetches).IsOK());
-    ORT_ENFORCE(optim->Step().IsOK());
-    ORT_ENFORCE(scheduler->Step().IsOK());
+    ASSERT_STATUS_OK(model->TrainStep(inputs, fetches));
+    ASSERT_STATUS_OK(optim->Step());
+    ASSERT_STATUS_OK(scheduler->Step());
   }
 }
 

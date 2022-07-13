@@ -3,6 +3,7 @@
 # loss.py
 
 import copy
+import typing
 
 import onnx
 
@@ -19,8 +20,8 @@ class MSELoss(building_blocks.Block):
                    can be one of "mean" or "sum"
     """
 
-    def __init__(self, reduction="mean"):
-        super(MSELoss, self).__init__()
+    def __init__(self, reduction: typing.Optional[str] = "mean"):
+        super().__init__()
 
         # determine the reduction type
         if reduction != "mean" and reduction != "sum":
@@ -30,7 +31,7 @@ class MSELoss(building_blocks.Block):
         self._sub = building_blocks.Sub()
         self._square = building_blocks.Pow(2.0)
 
-    def build(self, loss_input_name, target_name="target"):
+    def build(self, loss_input_name: str, target_name: typing.Optional[str] = "target"):
         """Adds an MSELoss subgraph on top of the base_model.
 
         Creates a block that measures the mean squared error between
@@ -71,8 +72,10 @@ class CrossEntropyLoss(building_blocks.Block):
                       contribute to the input gradient.
     """
 
-    def __init__(self, weight=None, reduction="mean", ignore_index=None):
-        super(CrossEntropyLoss, self).__init__()
+    def __init__(
+        self, weight=None, reduction: typing.Optional[str] = "mean", ignore_index: typing.Optional[int] = None
+    ):
+        super().__init__()
 
         # determine the reduction type
         if reduction != "mean" and reduction != "sum":
@@ -82,7 +85,7 @@ class CrossEntropyLoss(building_blocks.Block):
         self._reduction = reduction
         self._ignore_index = ignore_index
 
-    def build(self, scores_input_name, labels_name="labels"):
+    def build(self, scores_input_name: str, labels_name: str = "labels"):
         """Adds a CrossEntropyLoss subgraph on top of an onnx model.
 
         Creates a block that measures the softmax cross entropy between
@@ -146,8 +149,8 @@ class BCEWithLogitsLoss(building_blocks.Block):
         pos_weight: numpy ndarray representing the weight of positive examples.
     """
 
-    def __init__(self, weight=None, reduction="mean", pos_weight=None):
-        super(BCEWithLogitsLoss, self).__init__()
+    def __init__(self, weight=None, reduction: typing.Optional[str] = "mean", pos_weight=None):
+        super().__init__()
 
         # determine the reduction type
         if reduction != "mean" and reduction != "sum":
@@ -164,7 +167,7 @@ class BCEWithLogitsLoss(building_blocks.Block):
         self._mul = building_blocks.Mul()
         self._neg = building_blocks.Neg()
 
-    def build(self, loss_input_name, target_name="target"):
+    def build(self, loss_input_name: str, target_name: typing.Optional[str] = "target"):
         """Adds a BCEWithLogitsLoss subgraph on top of an onnx model.
 
         Creates a block that measures the binary cross entropy with logits between

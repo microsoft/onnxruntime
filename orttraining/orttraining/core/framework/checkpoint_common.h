@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/framework/tensorprotoutils.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/path.h"

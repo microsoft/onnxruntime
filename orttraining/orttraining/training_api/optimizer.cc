@@ -16,7 +16,7 @@ namespace api {
 namespace {
 
 // Currently all parameters are in a single group, so we hardcode group0 here.
-const std::string GROUP_ZERO_NAME = "group0";
+constexpr char GROUP_ZERO_NAME[] = "group0";
 
 // TODO: don't hard code the state names, should get the state names according to the optimizer types.
 // TODO: Conolidate with frontend tooling
@@ -189,11 +189,13 @@ Status Optimizer::GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_st
   return Status::OK();
 }
 
-Status Optimizer::LoadStateDict(OptimizerCheckpointState& optimizer_checkpoint_states) {
-  auto& group_optimizer_state =
-      optimizer_checkpoint_states.group_named_optimizer_states[GROUP_ZERO_NAME];
-  optimizer_state_.initial_lr = group_optimizer_state->initial_lr;
-  optimizer_state_.step = group_optimizer_state->step;
+Status Optimizer::LoadStateDict(const OptimizerCheckpointState& optimizer_checkpoint_states) {
+  auto group_optimizer_state_it =
+      optimizer_checkpoint_states.group_named_optimizer_states.find(GROUP_ZERO_NAME);
+  ORT_ENFORCE(group_optimizer_state_it != optimizer_checkpoint_states.group_named_optimizer_states.cend(),
+              "Group 0 not found in the optimizer checkpoint states.");
+  optimizer_state_.initial_lr = group_optimizer_state_it->second->initial_lr;
+  optimizer_state_.step = group_optimizer_state_it->second->step;
 
   // TODO(pengwa): restore the momentums state from checkpoint.
   return Status::OK();

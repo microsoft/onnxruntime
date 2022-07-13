@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 # model.py
 
+import typing
 from abc import abstractmethod
 
 import onnx
@@ -15,13 +16,14 @@ class Model(building_blocks.Block):
     """Builds the forward model based on user's build method."""
 
     def __init__(self):
+        super().__init__()
         ...
 
     @abstractmethod
     def build(self, *args, **kwargs):
         """Customize and build the forward graph for this model.
 
-        This method is to be overriden by the user's implementation.
+        This method is to be overridden by the user's implementation.
         """
         ...
 
@@ -50,7 +52,7 @@ class TrainingModel(building_blocks.Block):
     """Builds the training model based on user's build method."""
 
     def __init__(self):
-        super(TrainingModel, self).__init__()
+        super().__init__()
         self._arg_requiring_grad = set()
         self._arg_not_requiring_grad = set()
         self._parameters = None
@@ -59,11 +61,11 @@ class TrainingModel(building_blocks.Block):
     def build(self, *args, **kwargs):
         """Customize and build the forward graph for this training model.
 
-        This method is to be overriden by the user's implementation.
+        This method is to be overridden by the user's implementation.
         """
         ...
 
-    def requires_grad(self, argument_name, value=True):
+    def requires_grad(self, argument_name: str, value: typing.Optional[bool] = True):
         """Control whether the given graph input/parameter requires gradient."""
         if value is True:
             if argument_name in self._arg_not_requiring_grad:
@@ -85,7 +87,7 @@ class TrainingModel(building_blocks.Block):
         is built, an exception will be raised.
         """
         if self._parameters is None:
-            raise RuntimeError("Please build the training model first before trying to " "retrieve the parameters.")
+            raise RuntimeError("Please build the training model first before trying to retrieve the parameters.")
 
         return self._parameters
 

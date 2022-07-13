@@ -131,7 +131,8 @@ Module::Module(const std::string& train_model_path_or_bytes,
       ORT_ENFORCE(target_allocator != nullptr);
 
       // Create a new tensor on the target_device and switch the source_ortvalue to point to this new tensor
-      auto target_tensor = std::make_unique<Tensor>(param_data_tensor.DataType(), param_data_tensor.Shape(), target_allocator);
+      auto target_tensor = std::make_unique<Tensor>(param_data_tensor.DataType(), param_data_tensor.Shape(),
+                                                    target_allocator);
       ORT_THROW_IF_ERROR(train_sess_state.GetDataTransferMgr().CopyTensor(param_data_tensor, *target_tensor.get()));
       auto ml_tensor_type = DataTypeImpl::GetType<Tensor>();
       param_data.Init(target_tensor.release(), ml_tensor_type, ml_tensor_type->GetDeleteFunc());
