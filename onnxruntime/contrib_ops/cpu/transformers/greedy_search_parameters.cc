@@ -8,13 +8,6 @@ namespace transformers {
 
 constexpr int kMaxSequenceLength = 4096;
 
-Status GreedySearchParameters::Validate() const {
-  ORT_RETURN_IF(eos_token_id < 0, "eos_token_id is invalid");
-  ORT_RETURN_IF(pad_token_id < 0, "pad_token_id is invalid");
-  ORT_RETURN_IF(min_length >= max_length, "min_length shall be smaller than max_length");
-  return Status::OK();
-}
-
 void GreedySearchParameters::ParseFromAttributes(const OpKernelInfo& info) {
   model_type = static_cast<int>(info.GetAttrOrDefault<int64_t>("model_type", 0));
   eos_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("eos_token_id", -1));
@@ -47,16 +40,6 @@ void GreedySearchParameters::ParseFromInputs(OpKernelContext* context) {
   repetition_penalty = repetition_penalty_tensor ?
                        static_cast<float>(*repetition_penalty_tensor->Data<float>()) : 1.0f;
   ORT_ENFORCE(repetition_penalty > 0.0f, "repetition_penalty shall be greater than 0, got ", repetition_penalty);
-}
-
-void GreedySearchParameters::SetSubgraphParameters(int vocabulary_size,
-                                                   int heads,
-                                                   int hidden_size_per_head,
-                                                   int layers) {
-  vocab_size = vocabulary_size;
-  num_heads = heads;
-  head_size = hidden_size_per_head;
-  num_layers = layers;
 }
 
 }  // namespace transformers

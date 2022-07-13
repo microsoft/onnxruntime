@@ -1054,10 +1054,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GreedySearch, 1,
                                 .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
                                 .Input(3, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, max_sequence_length)", "I")
-                                // .Output(1, "scores",
-                                //         "Processed prediction scores of the language modeling head (scores for each vocabulary token before SoftMax)"
-                                //         "Shape is (max_length - sequence_length, batch_size, vocab_size)",
-                                //         "T", OpSchema::Optional)
+                                // TODO(wy): support scores
                                 .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
                                 .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
