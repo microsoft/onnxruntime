@@ -544,9 +544,7 @@ Status GreedySearchProcessLogits(
                                        greedy_state->next_tokens_cpu.size_bytes(),
                                        cudaMemcpyDeviceToHost,
                                        cuda_stream));
-  std::cout << "device helper 546" << std::endl;
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
-  std::cout << "device helper 548" << std::endl;
 
 #ifdef DEBUG_BEAM_SEARCH
   dumper->Print("greedy_state->next_tokens", greedy_state->next_tokens.data(), 3, 1);

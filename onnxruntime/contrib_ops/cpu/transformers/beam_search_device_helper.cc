@@ -487,10 +487,11 @@ Status GreedySearchProcessLogits(
 
   gsl::span<const int64_t> next_token_indices = topk_indices->DataAsSpan<int64_t>();
   for (int i = 0; i < batch_size; i++) {
-    greedy_state->next_tokens[i] = gsl::narrow_cast<int32_t>(next_token_indices[i]);
+    greedy_state->next_tokens_cpu[i] = gsl::narrow_cast<int32_t>(next_token_indices[i]);
   }
 
-  gsl::span<const int32_t> next_tokens(greedy_state->next_tokens.data(), greedy_state->next_tokens.size());
+  gsl::span<const int32_t> next_tokens(greedy_state->next_tokens_cpu.data(),
+                                       greedy_state->next_tokens_cpu.size());
 
 #ifdef DEBUG_BEAM_SEARCH
   dumper->Print("next_tokens before scorer", next_tokens.data(), batch_size, top_k);
