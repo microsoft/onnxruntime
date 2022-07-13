@@ -1,14 +1,11 @@
 from copy import deepcopy
 
-from opgen.generator import AttrType, ONNXAttr
-
-from opgen.generator import (
-    ORTGen as ORTGen,
-    ONNXOp as ONNXOp,
-    SignatureOnly as SignatureOnly,
-    MakeTorchFallback as MakeTorchFallback,
-)
-
+from opgen.generator import AttrType
+from opgen.generator import MakeTorchFallback as MakeTorchFallback
+from opgen.generator import ONNXAttr
+from opgen.generator import ONNXOp as ONNXOp
+from opgen.generator import ORTGen as ORTGen
+from opgen.generator import SignatureOnly as SignatureOnly
 from opgen.onnxops import *
 
 ops = {
@@ -17,3 +14,4 @@ ops = {
 }
 
 type_promotion_ops = {}
+aten_output_type = {}
