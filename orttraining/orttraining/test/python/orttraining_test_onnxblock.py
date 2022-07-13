@@ -8,7 +8,7 @@ import numpy as np
 import onnx
 import pytest
 import torch
-from onnx import load_model, save_model
+from torch import no_grad
 
 import onnxruntime
 import onnxruntime.training.onnxblock as onnxblock
@@ -139,8 +139,9 @@ def _get_models(device, N, D_in, H, D_out, zero_flag=False):
     pt_model = SimpleNet(D_in, H, D_out).to(device)
 
     if zero_flag:
-        for param in pt_model.parameters():
-            param.zero_()
+        with torch.no_grad():
+            for param in pt_model.parameters():
+                param.zero_()
 
     x = torch.randn(N, D_in, device=device)
     onnx_model = _get_onnx_model(pt_model, (x,))
@@ -557,6 +558,7 @@ def test_save_checkpoint():
         onnxblock.save_checkpoint((trainable_params, non_trainable_params), checkpoint_file_path)
         # Then
         assert os.path.exists(checkpoint_file_path)
+
 
 def test_load_checkpoint():
     # Given

@@ -2,7 +2,6 @@
 # Licensed under the MIT License.
 # checkpoint_utils.py
 
-import numpy as np
 from onnx import TensorProto
 
 from onnxruntime.capi._pybind_state import load_checkpoint as _internal_load_checkpoint
@@ -34,7 +33,6 @@ def load_checkpoint(path_to_checkpoint, model):
         tensor_proto = TensorProto()
         tensor_proto.ParseFromString(parameters[i])
         parameters_dict[initializer.name] = tensor_proto
-
 
     for initializer in model.graph.initializer:
         initializer.CopyFrom(parameters_dict[initializer.name])
