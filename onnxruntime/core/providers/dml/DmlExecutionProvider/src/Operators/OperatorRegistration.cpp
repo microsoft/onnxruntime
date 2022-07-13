@@ -707,6 +707,34 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     10,  MatMulInteger,                      typeNameListThree,              supportedTypeListInteger,               DmlGraphSupport::Supported)},
     {REG_INFO(     10,  ConvInteger,                        typeNameListThree,              supportedTypeListInteger,               DmlGraphSupport::Supported)},
     {REG_INFO(     11,  DynamicQuantizeLinear,              typeNameListTwo,                supportedTypeListDynamicQuantizeLinear, DmlGraphSupport::Supported)},
+
+    // Excluded operators:
+    // RandomNormal 1 - random functions unsupported
+    // RandomNormalLike 1 - random functions unsupported
+    // RandomUniform 1 - random functions unsupported
+    // RandomUniformLike 1 - random functions unsupported
+    // Multinomial 7 - random functions unsupported
+    // Unique 11 - variable output tensor size is not GPU-amenable.
+    // Dropout 13, 12, 10 - rely on Dropout elimination transformer instead.
+    // HardSwish 14 - use functional decomposition instead.
+    // Bernoulli 15 - random functions unsupported
+    // GreaterOrEqual 16 - newer opset
+    // GridSample 16 - newer opset
+    // Identity 16 - newer opset
+    // LeakyRelu 16 - newer opset
+    // PRelu 16 - newer opset
+    // RoiAlign 16 - newer opset
+    // ScatterElements 16 - newer opset
+    // ScatterND 16 - newer opset
+    // Where 16 - newer opset
+    // LessOrEqual 16 - newer opset
+    // BlackmanWindow 17 - newer opset
+    // HammingWindow 17 - newer opset
+    // HannWindow 17 - newer opset
+    // LayerNormalization 17 - newer opset
+    // MelWeightMatrix 17 - newer opset
+    // SequenceMap 17 - newer opset
+    // STFT 17 - newer opset
 };
  
 template<typename T> 

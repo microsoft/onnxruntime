@@ -250,12 +250,14 @@ void verify<K::Tensor, K::Tensor>(
     check(WINML_ERR_SIZE_MISMATCH, tensorValueShape.Size() == tensorDescriptorShape.Size());
 
     for (unsigned i = 0; i < tensorValueShape.Size(); i++) {
-      if (tensorDescriptorShape.GetAt(i) == -1) {
+      auto expectedSize = tensorDescriptorShape.GetAt(i);
+      auto actualSize = tensorValueShape.GetAt(i);
+      if (expectedSize == -1) {
         // For free dimensions, the dimension will be set to -1.
         // In that case skip validation.
         continue;
       }
-      check(WINML_ERR_SIZE_MISMATCH, tensorValueShape.GetAt(i) == tensorDescriptorShape.GetAt(i));
+      check(WINML_ERR_SIZE_MISMATCH, actualSize == expectedSize);
     }
   }
 }

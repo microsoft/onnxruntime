@@ -2070,15 +2070,18 @@ namespace Windows::AI::MachineLearning::Adapter
             if (tensorType.has_shape())
             {
                 const auto& shape = tensorType.shape();
-                ML_CHECK_BOOL(static_cast<size_t>(shape.dim_size()) == outputShapes.GetShape(outputIndex).size());
+                const std::vector<uint32_t>& actualShape = outputShapes.GetShape(outputIndex);
+                auto expectedDimensionCount = shape.dim_size();
+                size_t actualDimensionCount = actualShape.size();
+                ML_CHECK_BOOL(static_cast<size_t>(expectedDimensionCount) == actualDimensionCount);
 
-                for (uint32_t output_dim = 0; output_dim < outputShapes.GetShape(outputIndex).size(); ++output_dim)
+                for (uint32_t outputDim = 0; outputDim < actualShape.size(); ++outputDim)
                 {
-                    if (shape.dim(output_dim).has_dim_value())
+                    if (shape.dim(outputDim).has_dim_value())
                     {
-                        int64_t expected_size = shape.dim(output_dim).dim_value();
-                        int64_t actual_size = outputShapes.GetShape(outputIndex)[output_dim];
-                        ML_CHECK_BOOL(expected_size == actual_size);
+                        int64_t expectedSize = shape.dim(outputDim).dim_value();
+                        int64_t actualSize = actualShape[outputDim];
+                        ML_CHECK_BOOL(expectedSize == actualSize);
                     }
                 }
             }
