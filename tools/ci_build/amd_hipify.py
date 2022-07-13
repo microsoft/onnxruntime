@@ -77,6 +77,8 @@ contrib_ops_excluded_files = [
     "transformers/beam_search_device_helper.h",
     "transformers/beam_search_impl.cu",
     "transformers/beam_search_impl.h",
+    "transformers/greedy_search.cc",
+    "transformers/greedy_search.h",
     "transformers/dump_cuda_tensor.cc",
     "transformers/dump_cuda_tensor.h",
     "conv_transpose_with_dynamic_pads.cc",

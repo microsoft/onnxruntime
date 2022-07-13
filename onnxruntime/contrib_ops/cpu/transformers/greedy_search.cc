@@ -73,7 +73,7 @@ Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_stat
                                                 const std::string& attribute_name,
                                                 const SessionState& subgraph_session_state) {
   const auto& node = Node();
-  if (parameters_.model_type == 0) {  // GPT-2
+  if (parameters_.model_type == IBeamSearchParameters::kModelTypeGpt) {  // GPT-2
     if (attribute_name == "decoder") {
       ORT_ENFORCE(gpt_subgraph_ == nullptr,
                   "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
@@ -85,30 +85,31 @@ Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_stat
                                         gpt_subgraph_->head_size,
                                         gpt_subgraph_->num_layers);
     }
-  } else if (parameters_.model_type == 1) {  // encoder-decoder like T5
-    if (attribute_name == "encoder") {
-      ORT_ENFORCE(t5_encoder_subgraph_ == nullptr,
-                  "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
-      t5_encoder_subgraph_ = std::make_unique<T5EncoderSubgraph>(
-                               node,
-                               attribute_name,
-                               subgraph_session_state.GetGraphViewer());
-      ORT_RETURN_IF_ERROR(t5_encoder_subgraph_->Setup(session_state, subgraph_session_state));
-      encoder_feeds_fetches_manager_ = t5_encoder_subgraph_->GetFeedsFetchesManager();
-    } else if (attribute_name == "decoder") {
-      ORT_ENFORCE(t5_decoder_subgraph_ == nullptr,
-                  "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
-      t5_decoder_subgraph_ = std::make_unique<T5DecoderSubgraph>(
-                               node,
-                               attribute_name,
-                               subgraph_session_state.GetGraphViewer());
-      ORT_RETURN_IF_ERROR(t5_decoder_subgraph_->Setup(session_state, subgraph_session_state));
-      decoder_feeds_fetches_manager_ = t5_decoder_subgraph_->GetFeedsFetchesManager();
-      parameters_.SetSubgraphParameters(t5_decoder_subgraph_->vocab_size,
-                                        t5_decoder_subgraph_->num_heads,
-                                        t5_decoder_subgraph_->head_size,
-                                        t5_decoder_subgraph_->num_layers);
-    }
+  } else if (parameters_.model_type == IBeamSearchParameters::kModelTypeT5) {  // encoder-decoder like T5
+    ORT_THROW("Not Implemented");
+    // if (attribute_name == "encoder") {
+    //   ORT_ENFORCE(t5_encoder_subgraph_ == nullptr,
+    //               "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
+    //   t5_encoder_subgraph_ = std::make_unique<T5EncoderSubgraph>(
+    //                            node,
+    //                            attribute_name,
+    //                            subgraph_session_state.GetGraphViewer());
+    //   ORT_RETURN_IF_ERROR(t5_encoder_subgraph_->Setup(session_state, subgraph_session_state));
+    //   encoder_feeds_fetches_manager_ = t5_encoder_subgraph_->GetFeedsFetchesManager();
+    // } else if (attribute_name == "decoder") {
+    //   ORT_ENFORCE(t5_decoder_subgraph_ == nullptr,
+    //               "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
+    //   t5_decoder_subgraph_ = std::make_unique<T5DecoderSubgraph>(
+    //                            node,
+    //                            attribute_name,
+    //                            subgraph_session_state.GetGraphViewer());
+    //   ORT_RETURN_IF_ERROR(t5_decoder_subgraph_->Setup(session_state, subgraph_session_state));
+    //   decoder_feeds_fetches_manager_ = t5_decoder_subgraph_->GetFeedsFetchesManager();
+    //   parameters_.SetSubgraphParameters(t5_decoder_subgraph_->vocab_size,
+    //                                     t5_decoder_subgraph_->num_heads,
+    //                                     t5_decoder_subgraph_->head_size,
+    //                                     t5_decoder_subgraph_->num_layers);
+    // }
   }
 
   return Status::OK();
@@ -167,13 +168,6 @@ if (parameters_.model_type == 0) {  // GPT-2
 
       return impl.Execute(*decoder_feeds_fetches_manager_);
     }
-  }
-
-  // Subgraph has constraint that the output is either float or float16
-  if (!t5_decoder_subgraph_->IsOutputFloat16()) {
-    ORT_THROW("Not Implemented");
-  } else {
-    ORT_THROW("Not Implemented");
   }
 
   return Status::OK();

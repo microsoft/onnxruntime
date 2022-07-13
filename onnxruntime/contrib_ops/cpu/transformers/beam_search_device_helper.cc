@@ -442,12 +442,8 @@ Status GreedySearchProcessLogits(
   dumper->Print("next_token_scores after logits processor", next_token_scores.data(), batch_size, 1, vocab_size);
 #endif
 
+  // TODO(wy): support output_scores
   ORT_UNUSED_PARAMETER(output_scores);
-  // if (output_scores) {
-  //   // Append next token scores to the scores output.
-  //   gsl::copy(next_token_scores, greedy_state->remaining_scores);
-  //   beam_state->remaining_scores = greedy_state->remaining_scores.subspan(next_token_scores.size());
-  // }
 
   // next_tokens = torch.argmax(scores, dim=-1)
   int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), vocab_size};

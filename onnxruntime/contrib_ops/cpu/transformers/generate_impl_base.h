@@ -3,8 +3,9 @@
 
 #pragma once
 #include <memory>
-#include <vector>
+#include <string>
 #include <utility>
+#include <vector>
 #include "contrib_ops/cpu/transformers/beam_search_shared.h"
 
 namespace onnxruntime {
@@ -60,7 +61,6 @@ class GenerateBase {
   }
 
  protected:
-
   bool IsCuda() const { return cuda_stream_ != nullptr; }
 
   const IConsoleDumper* GetConsoleDumper() const { return IsCuda() ? cuda_dumper_ : &(cpu_dumper_); }

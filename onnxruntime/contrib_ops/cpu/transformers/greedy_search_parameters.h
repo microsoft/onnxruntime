@@ -10,9 +10,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-// bugbug: IBeamSearchParameters only contains shared parameters?
 struct GreedySearchParameters : public BeamSearchParameters {
-
   int BatchBeamSize() const { return batch_size; }
 
   void ParseFromAttributes(const OpKernelInfo& info);

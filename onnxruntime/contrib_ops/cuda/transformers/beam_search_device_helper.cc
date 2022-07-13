@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <utility>
+#include <memory>
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/math/topk_impl.h"
 #include "core/providers/cuda/math/softmax.h"
@@ -498,16 +500,8 @@ Status GreedySearchProcessLogits(
   dumper->Print("next_token_scores after logits process", next_token_scores.data(), batch_size, vocab_size);
 #endif
 
+  // TODO(wy): support output_scores in greedy search
   ORT_UNUSED_PARAMETER(output_scores);
-  // if (output_scores) {
-  //   // Append next token scores to the scores output.
-  //   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(beam_state->remaining_scores.data(),
-  //                                        next_token_scores.data(),
-  //                                        next_token_scores.size_bytes(),
-  //                                        cudaMemcpyDeviceToDevice,
-  //                                        cuda_stream));
-  //   beam_state->remaining_scores = beam_state->remaining_scores.subspan(next_token_scores.size());
-  // }
 
   // next_tokens = torch.argmax(scores, dim=-1)
   int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), vocab_size};

@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <algorithm>
+#include <vector>
 #include "contrib_ops/cpu/transformers/greedy_search_impl_base.h"
 
 namespace onnxruntime {

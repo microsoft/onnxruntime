@@ -33,7 +33,9 @@ struct GreedySearchState : public IGreedySearchState<T> {
     this->eos_meet = AllocateBuffer<bool>(cpu_allocator, eos_meet_buffer_, batch_size);
     memset(this->eos_meet.data(), 0, this->eos_meet.size_bytes());
 
-    this->next_tokens_cpu = AllocateBuffer<int32_t>(cpu_allocator, next_tokens_cpu_buffer_, SafeInt<size_t>(batch_size));
+    this->next_tokens_cpu = AllocateBuffer<int32_t>(cpu_allocator,
+                                                    next_tokens_cpu_buffer_,
+                                                    SafeInt<size_t>(batch_size));
 
     // below buffers are on cpu or cuda
     size_t next_token_size = SafeInt<size_t>(batch_size) * vocab_size;
@@ -153,7 +155,7 @@ Status GreedySearchBase<T>::Initialize() {
 
   if (!this->IsCuda()) {
     // Logits processor is used in CPU only. In CUDA, cuda kernels are used instead.
-    // Initialize processsors after CheckInputs so that parameters_->vocab_mask is ready.
+    // Initialize processors after CheckInputs so that parameters_->vocab_mask is ready.
     this->logits_processors_.Init(*parameters_);
   }
 

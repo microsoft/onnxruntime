@@ -975,11 +975,6 @@ def convert_greedy_search_model(args: argparse.Namespace):
 
     eos_token_id = config.eos_token_id
     pad_token_id = config.eos_token_id if is_gpt2 else config.pad_token_id
-    vocab_size = config.vocab_size
-
-    # if vocab_size is given in parameters use that.
-    if args.vocab_size != -1:
-        vocab_size = args.vocab_size
 
     decoder_model = onnx.load_model(args.decoder_onnx, load_external_data=True)
     decoder_model.graph.name = f"{args.model_type} decoder"
@@ -1563,7 +1558,7 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
             args.decoder_onnx and not args.encoder_decoder_init_onnx
         ):
             raise ValueError("--decoder_onnx shall use together with --encoder_decoder_init_onnx")
-    is_greedy = args.num_beams ==1 and args.num_return_sequences == 1
+    is_greedy = args.num_beams == 1 and args.num_return_sequences == 1
 
     if args.model_type == "gpt2" and is_greedy:
         convert_greedy_search_model(args)
