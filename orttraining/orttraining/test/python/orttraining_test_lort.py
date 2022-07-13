@@ -1,11 +1,12 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# import lazy_tensor_core as lt
-# import lazy_tensor_core.core.lazy_model as ltm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+# Ask lazy backend to use Pytorch's JIT as
+# lazy backend's executor.
 from torch._lazy.ts_backend import init as init_ts_backend
 
 init_ts_backend()
@@ -40,11 +41,6 @@ def run_Simple():
     # ORT result.
     x_new, y_new, g_x_new = run(Foo, "lazy", [-1.0, 2.0])
 
-    print("x:", x)
-    print("x_new:", x_new)
-    print("y:", y)
-    print("y_new:", y_new)
-    print("Done assert once")
     assert torch.allclose(x.to("lazy"), x_new)
     assert torch.allclose(y.to("lazy"), y_new)
     assert torch.allclose(g_x.to("lazy"), g_x_new)
@@ -95,15 +91,12 @@ def run_MNIST():
 
     # Baseline.
     loss, grads = run(model, "cpu", x, y)
-    # loss = run(model, 'cpu', x, y)
     # ORT result.
     loss_new, grads_new = run(model, "lazy", x, y)
-    # loss_new = run(model, 'lazy', x, y)
 
-    print("MNIST result {}, {}, ".format(loss, loss_new))
-    assert torch.allclose(loss.to("lazy"), loss_new)
+    print(f"MNIST loss: {loss} (pytorch), {loss_new} (ort).")
+    assert torch.allclose(loss.to("lazy"), loss_new, rtol=1e-2)
     for g, g_new in zip(grads, grads_new):
-        # print(g, g_new)
         assert torch.allclose(g.to("lazy"), g_new)
 
 
