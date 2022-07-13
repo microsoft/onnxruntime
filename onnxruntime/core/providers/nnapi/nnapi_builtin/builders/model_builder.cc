@@ -403,6 +403,8 @@ Status ModelBuilder::AddNewOperand(const std::string& name,
                                    const OperandType& operand_type,
                                    uint32_t& index) {
   LOGS_DEFAULT(VERBOSE) << "operand name: " << name;
+  LOGS_DEFAULT(VERBOSE) << "operand type: " << operand_type.operandType.type
+                        << ", shape: " << Shape2String(Shape(operand_type.dimensions.begin(), operand_type.dimensions.end()));
   ORT_RETURN_IF_ERROR(AddNewNNAPIOperand(operand_type, index));
   RegisterOperand(name, index, operand_type);
   return Status::OK();

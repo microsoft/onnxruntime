@@ -11,6 +11,7 @@
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 #include "helper.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/gemm_matmul_helpers.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -1332,12 +1333,12 @@ bool SoftMaxOpSupportChecker::HasSupportedInputOutputsImpl(
 
 #pragma endregion
 
-namespace {
 namespace gemm_matmul_helpers {
+
 // Get the bias size (C) of Gemm op
 // ANEURALNETWORKS_FULLY_CONNECTED only supports 1d bias
 // Will test if C of Gemm can be squeezed and return the 1d vector size after squeeze
-bool GetGemmBiasSize(const Shape& c_shape, int32_t android_feature_level, uint32_t& size) {
+static bool GetGemmBiasSize(const Shape& c_shape, int32_t nnapi_feature_level, uint32_t& size) {
   // TODO add support of scalar C for Gemm
   size_t c_dim = c_shape.size();
   if (c_dim == 0) {
@@ -1345,8 +1346,8 @@ bool GetGemmBiasSize(const Shape& c_shape, int32_t android_feature_level, uint32
     return false;
   }
 
-  if (c_dim != 1 && android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_2) {
-    LOGS_DEFAULT(VERBOSE) << "C of Gemm can only be 1d tensor for API level " << android_feature_level
+  if (c_dim != 1 && nnapi_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_2) {
+    LOGS_DEFAULT(VERBOSE) << "C of Gemm can only be 1d tensor for API level " << nnapi_feature_level
                           << " shape of C, " << Shape2String(c_shape);
     return false;
   }
@@ -1369,7 +1370,7 @@ bool GetGemmBiasSize(const Shape& c_shape, int32_t android_feature_level, uint32
 
 bool IsGemmOrMatMulSupportedByNnapiFullyConnected(const InitializedTensorSet& initializers,
                                                   const NodeUnit& node_unit,
-                                                  const OpSupportCheckParams& params) {
+                                                  int32_t nnapi_feature_level) {
   const auto& op_type = node_unit.OpType();
   const auto& inputs = node_unit.Inputs();
   const bool is_qlinear_matmul = op_type == "QLinearMatMul";
@@ -1429,7 +1430,7 @@ bool IsGemmOrMatMulSupportedByNnapiFullyConnected(const InitializedTensorSet& in
         return false;
 
       uint32_t c_size;
-      if (!GetGemmBiasSize(c_shape, params.android_feature_level, c_size))
+      if (!GetGemmBiasSize(c_shape, nnapi_feature_level, c_size))
         return false;
 
       if (c_size != (transB == 0 ? b_shape[1] : b_shape[0])) {
@@ -1462,9 +1463,9 @@ bool IsGemmOrMatMulSupportedByNnapiFullyConnected(const InitializedTensorSet& in
   return true;
 }
 
-bool GemmOrMatMulHasSupportedQuantizedInputsAndOutputs(const InitializedTensorSet& initializers,
-                                                       const NodeUnit& node_unit,
-                                                       const OpSupportCheckParams& params) {
+static bool GemmOrMatMulHasSupportedQuantizedInputsAndOutputs(const InitializedTensorSet& initializers,
+                                                              const NodeUnit& node_unit,
+                                                              const OpSupportCheckParams& params) {
   // QLinearMatMul/QDQGemm/QDQMatMul
   if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
     return false;
@@ -1477,8 +1478,8 @@ bool GemmOrMatMulHasSupportedQuantizedInputsAndOutputs(const InitializedTensorSe
 
   return true;
 }
+
 }  // namespace gemm_matmul_helpers
-}  // namespace
 
 #pragma region op_gemm
 
@@ -1515,7 +1516,8 @@ bool GemmOpSupportChecker::HasSupportedInputOutputsImpl(
 
 bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& params) const {
-  return gemm_matmul_helpers::IsGemmOrMatMulSupportedByNnapiFullyConnected(initializers, node_unit, params);
+  return gemm_matmul_helpers::IsGemmOrMatMulSupportedByNnapiFullyConnected(initializers, node_unit,
+                                                                           params.android_feature_level);
 }
 
 #pragma endregion
@@ -1527,10 +1529,6 @@ class MatMulOpSupportChecker : public BaseOpSupportChecker {
   static void CreateSharedOpSupportChecker(
       const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
 
-  static bool IsNnapiBatchMatMulAvailable(int32_t nnapi_feature_level) {
-    return nnapi_feature_level >= ANEURALNETWORKS_FEATURE_LEVEL_6;
-  }
-
   private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
@@ -1540,16 +1538,12 @@ class MatMulOpSupportChecker : public BaseOpSupportChecker {
       const OpSupportCheckParams& params) const override;
 
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
-
-  bool IsQuantizedOp(const NodeUnit& node_unit) const override {
-    return IsQuantizedMatMul(GetQuantizedOpType(node_unit));
-  }
 };
 
 bool MatMulOpSupportChecker::HasSupportedInputOutputsImpl(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit,
     const OpSupportCheckParams& params) const {
-  if (!IsQuantizedOp(node_unit)) {
+  if (!IsQuantizedMatMul(GetQuantizedOpType(node_unit))) {
     return BaseOpSupportChecker::HasSupportedInputOutputsImpl(initializers, node_unit, params);
   }
 
@@ -1558,11 +1552,15 @@ bool MatMulOpSupportChecker::HasSupportedInputOutputsImpl(
 
 bool MatMulOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                const OpSupportCheckParams& params) const {
-  // if ANEURALNETWORKS_BATCH_MATMUL is not available or we are dealing with quantized MatMul,
-  // fall back to using ANEURALNETWORKS_FULLY_CONNECTED
-  // TODO could add support for quantized MatMul to use ANEURALNETWORKS_BATCH_MATMUL later
-  if (IsQuantizedOp(node_unit) || !IsNnapiBatchMatMulAvailable(params.android_feature_level)) {
-    return gemm_matmul_helpers::IsGemmOrMatMulSupportedByNnapiFullyConnected(initializers, node_unit, params);
+  if (gemm_matmul_helpers::IsGemmOrMatMulSupportedByNnapiFullyConnected(initializers, node_unit,
+                                                                        params.android_feature_level)) {
+    return true;
+  }
+
+  // try to fall back to ANEURALNETWORKS_BATCH_MATMUL
+  if (!gemm_matmul_helpers::IsNnapiBatchMatMulAvailable(params.android_feature_level) ||
+      IsQuantizedMatMul(GetQuantizedOpType(node_unit))) {
+    return false;
   }
 
   const auto& inputs = node_unit.Inputs();

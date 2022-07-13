@@ -16,6 +16,7 @@
 #include "helper.h"
 #include "model_builder.h"
 #include "op_support_checker.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/gemm_matmul_helpers.h"
 
 using namespace android::nn::wrapper;
 
@@ -858,6 +859,13 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
       return false;
     }
 
+    if (!gemm_matmul_helpers::IsGemmOrMatMulSupportedByNnapiFullyConnected(model_builder.GetInitializerTensors(),
+                                                                           node_unit,
+                                                                           model_builder.GetNNAPIFeatureLevel())) {
+      LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when using ANEURALNETWORKS_FULLY_CONNECTED";
+      return false;
+    }
+
     // NNAPI ANEURALNETWORKS_FULLY_CONNECTED will only flatten the input 0
     if (&output_node_arg != &dest_node_unit.Inputs()[0].node_arg) {
       LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when the output is input 0 of Gemm/Matmul"
@@ -1694,8 +1702,8 @@ Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, con
 
 #pragma endregion
 
-namespace {
 namespace gemm_matmul_helpers {
+namespace {
 
 void AddInitializersToSkipForGemmOrMatMulUsingNnapiFullyConnected(ModelBuilder& model_builder,
                                                                   const NodeUnit& node_unit) {
@@ -1866,8 +1874,8 @@ Status AddGemmOrMatMulToModelBuilderUsingNnapiFullyConnected(ModelBuilder& model
   return Status::OK();
 }
 
-}  // namespace gemm_matmul_helpers
 }  // namespace
+}  // namespace gemm_matmul_helpers
 
 #pragma region op_gemm
 
@@ -1898,10 +1906,6 @@ class MatMulOpBuilder : public BaseOpBuilder {
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
-
-  static bool IsNnapiBatchMatMulAvailable(int32_t nnapi_feature_level) {
-    return nnapi_feature_level >= ANEURALNETWORKS_FEATURE_LEVEL_6;
-  }
 };
 
 /* static */ void MatMulOpBuilder::CreateSharedOpBuilder(
@@ -1915,7 +1919,9 @@ class MatMulOpBuilder : public BaseOpBuilder {
 }
 
 void MatMulOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  if (IsQuantizedMatMul(node_unit) || !IsNnapiBatchMatMulAvailable(model_builder.GetNNAPIFeatureLevel())) {
+  if (gemm_matmul_helpers::IsGemmOrMatMulSupportedByNnapiFullyConnected(model_builder.GetInitializerTensors(),
+                                                                        node_unit,
+                                                                        model_builder.GetNNAPIFeatureLevel())) {
     gemm_matmul_helpers::AddInitializersToSkipForGemmOrMatMulUsingNnapiFullyConnected(model_builder, node_unit);
   }
 
@@ -1923,7 +1929,9 @@ void MatMulOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
 }
 
 Status MatMulOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  if (IsQuantizedMatMul(node_unit) || !IsNnapiBatchMatMulAvailable(model_builder.GetNNAPIFeatureLevel())) {
+  if (gemm_matmul_helpers::IsGemmOrMatMulSupportedByNnapiFullyConnected(model_builder.GetInitializerTensors(),
+                                                                        node_unit,
+                                                                        model_builder.GetNNAPIFeatureLevel())) {
     return gemm_matmul_helpers::AddGemmOrMatMulToModelBuilderUsingNnapiFullyConnected(model_builder, node_unit);
   }
 
@@ -1940,9 +1948,22 @@ Status MatMulOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   ORT_RETURN_IF_ERROR(shaper.MatMul(a, b, y));
 
+  auto input_indices = std::vector<uint32_t>{operand_indices.at(a), operand_indices.at(b)};
+
+  // adjoint A
+  ADD_SCALAR_OPERAND(model_builder, input_indices, false);
+  // adjoint B
+  ADD_SCALAR_OPERAND(model_builder, input_indices, false);
+
   const auto y_operand_type = OperandType{operand_types.at(a).type, shaper[y]};
+
+  LOGS_DEFAULT(VERBOSE) << "Adding ANEURALNETWORKS_BATCH_MATMUL for node: " << node_unit.Name();
+  LOGS_DEFAULT(VERBOSE) << "  A: " << a << ", shape: " << Shape2String(shaper[a]);
+  LOGS_DEFAULT(VERBOSE) << "  B: " << b << ", shape: " << Shape2String(shaper[b]);
+  LOGS_DEFAULT(VERBOSE) << "  Y: " << y << ", shape: " << Shape2String(shaper[y]);
+
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_BATCH_MATMUL,
-                                                 {operand_indices.at(a), operand_indices.at(b)},
+                                                 {input_indices},
                                                  {y}, {y_operand_type}));
 
   return Status::OK();
