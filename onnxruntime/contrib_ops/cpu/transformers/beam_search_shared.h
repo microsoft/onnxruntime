@@ -7,8 +7,6 @@
 #include "gsl/gsl"
 #include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
-#include "core/common/safeint.h"
-#include "contrib_ops/cpu/transformers/beam_search_shared.h"
 
 #ifndef NDEBUG
 //#define DEBUG_BEAM_SEARCH 1  // uncomment it for debugging beam search
