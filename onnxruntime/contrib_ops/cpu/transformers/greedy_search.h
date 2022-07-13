@@ -26,7 +26,7 @@ class GreedySearch : public IControlFlowKernel {
  public:
   explicit GreedySearch(const OpKernelInfo& info)
       : IControlFlowKernel(info),
-        encoder_feeds_fetches_manager_(nullptr),
+        // encoder_feeds_fetches_manager_(nullptr),
         decoder_feeds_fetches_manager_(nullptr),
         cuda_stream_(nullptr),
         dumper_(nullptr) {
@@ -92,9 +92,9 @@ class GreedySearch : public IControlFlowKernel {
   // Subgraph and FeedsFetchesManager re-used for each subgraph execution.
   //------------------------------------------------------------
   std::unique_ptr<GptSubgraph> gpt_subgraph_;
-  std::unique_ptr<T5EncoderSubgraph> t5_encoder_subgraph_;
-  std::unique_ptr<T5DecoderSubgraph> t5_decoder_subgraph_;
-  FeedsFetchesManager* encoder_feeds_fetches_manager_;
+  // std::unique_ptr<T5EncoderSubgraph> t5_encoder_subgraph_;
+  // std::unique_ptr<T5DecoderSubgraph> t5_decoder_subgraph_;
+  // FeedsFetchesManager* encoder_feeds_fetches_manager_;
   FeedsFetchesManager* decoder_feeds_fetches_manager_;
 
   void* cuda_stream_;
