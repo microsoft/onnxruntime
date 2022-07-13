@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -18,9 +19,35 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
                   const std::vector<int64_t>& steps,
                   const std::vector<int64_t>& output_dims,
                   const std::vector<T>& output_vals,
-                  bool v10_only = false) {
-  // V1-9
-  ORT_UNUSED_PARAMETER(steps);
+                  bool v10_only = false,
+                  const std::unordered_set<std::string>& excluded_providers_input = {}) {
+  std::unordered_set<std::string> excluded_providers;
+
+  if (!v10_only) {
+    // OpenVINO EP: Disabled temporarily
+    excluded_providers = {kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
+  } else {
+    excluded_providers = {kTensorrtExecutionProvider};
+  }
+
+  // merge with the excluded ep from input
+  excluded_providers.insert(excluded_providers_input.cbegin(), excluded_providers_input.cend());
+
+  // NNAPI EP does not support empty output
+  if (std::any_of(output_dims.cbegin(), output_dims.cend(), [](int64_t i) { return i == 0; })) {
+    excluded_providers.insert(kNnapiExecutionProvider);
+  }
+
+  // TODO: ORT behavior when step < 0 and end = INT_MAX is wrong. Fix it and
+  // remove the onnx_shape_disagreement code below.
+  // https://github.com/microsoft/onnxruntime/issues/11107
+  const bool onnx_shape_disagreement = (!steps.empty() && steps[0] < 0 && !ends.empty() &&
+                                        (ends[0] == std::numeric_limits<int64_t>::max() ||
+                                         ends[0] == std::numeric_limits<int32_t>::max()));
+  // ignore the above-mentioned disagreement.
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
+
   if (!v10_only) {
     OpTester testv9("Slice", 9);
     testv9.AddAttribute("starts", starts);
@@ -29,20 +56,35 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
       testv9.AddAttribute("axes", axes);
     testv9.AddInput<T>("data", input_dims, input_vals);
     testv9.AddOutput<T>("output", output_dims, output_vals);
-    testv9.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}); // OpenVINO EP: Disabled temporarily
+    if (onnx_shape_disagreement) {
+      testv9.Run(so, OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+    } else {
+      testv9.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+    }
   }
 
   // V10
-  OpTester testv10("Slice", 10);
-  testv10.AddInput<T>("data", input_dims, input_vals);
-  testv10.AddInput<int64_t>("starts", {static_cast<int64_t>(starts.size())}, starts);
-  testv10.AddInput<int64_t>("ends", {static_cast<int64_t>(ends.size())}, ends);
-  if (axes.size() != 0)
-    testv10.AddInput<int64_t>("axes", {static_cast<int64_t>(axes.size())}, axes);
-  if (steps.size() != 0)
-    testv10.AddInput<int64_t>("steps", {static_cast<int64_t>(steps.size())}, steps);
-  testv10.AddOutput<T>("output", output_dims, output_vals);
-  testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  auto run_test = [&](bool only_data_not_initializer) {
+    OpTester testv10("Slice", 10);
+    testv10.AddInput<T>("data", input_dims, input_vals);
+    testv10.AddInput<int64_t>("starts", {static_cast<int64_t>(starts.size())}, starts, only_data_not_initializer);
+    testv10.AddInput<int64_t>("ends", {static_cast<int64_t>(ends.size())}, ends, only_data_not_initializer);
+    if (axes.size() != 0)
+      testv10.AddInput<int64_t>("axes", {static_cast<int64_t>(axes.size())}, axes, only_data_not_initializer);
+    if (steps.size() != 0)
+      testv10.AddInput<int64_t>("steps", {static_cast<int64_t>(steps.size())}, steps, only_data_not_initializer);
+    testv10.AddOutput<T>("output", output_dims, output_vals);
+    if (onnx_shape_disagreement) {
+      testv10.Run(so, OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+    } else {
+      testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+    }
+  };
+
+  run_test(false);
+
+  // NNAPI EP requires the starts/ends/axes/steps be initializers
+  run_test(true);
 }
 
 // Slice V1-9 & Slice V10 can both run the following tests
@@ -173,6 +215,17 @@ TEST(SliceTest, Slice2D_TwoAxesEque) {
                       {},
                       {0, 2},
                       {});
+}
+
+TEST(SliceTest, Slice2D_DefaultAxes) {
+  RunSliceTest<float>({2, 2},
+                      {1.0f, 2.0f, 3.0f, 4.0f},
+                      {0},
+                      {1},
+                      {},  // default axes
+                      {},  // default steps
+                      {1, 2},
+                      {1.0f, 2.0f});
 }
 
 TEST(SliceTest, Slice3D) {
@@ -542,7 +595,7 @@ TEST(SliceTest, OptionalAxesInputAloneMissing) {
   testv10.AddInput<float>("data", input_dims, input_vals);
   testv10.AddInput<int64_t>("starts", {static_cast<int64_t>(starts.size())}, starts);
   testv10.AddInput<int64_t>("ends", {static_cast<int64_t>(ends.size())}, ends);
-  testv10.AddMissingOptionalInput<int64_t>();
+  testv10.AddOptionalInputEdge<int64_t>();
   testv10.AddInput<int64_t>("steps", {static_cast<int64_t>(steps.size())}, steps);
   testv10.AddOutput<float>("output", output_dims, output_vals);
   testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
@@ -575,6 +628,47 @@ TEST(SliceTest, Slice5D_SubsetOfAxes_Flatten2Dims_OffsetInput) {
                       {1, 1, 1, 2, 2},
                       {-5.f, -6.f, -7.f, -8.f},
                       true);
+}
+
+// test where we use a ridiculously large step, using a large enough step has caused
+// ORT crash due to integer overflow on 32bit system
+// See, https://github.com/microsoft/onnxruntime/issues/9368
+TEST(SliceTest, Slice5D_LargeStep) {
+  RunSliceTest<float>({1, 2, 2, 2, 2},
+                      {1.f, 2.f, 3.f, 4.f,
+                       5.f, 6.f, 7.f, 8.f,
+                       -1.f, -2.f, -3.f, -4.f,
+                       -5.f, -6.f, -7.f, -8.f},
+                      {0},
+                      {1},
+                      {1},
+                      {std::numeric_limits<int64_t>::max()},
+                      {1, 1, 2, 2, 2},
+                      {1.f, 2.f, 3.f, 4.f,
+                       5.f, 6.f, 7.f, 8.f},
+                      true,
+                      // Nuphar EP cannot handle large steps, TODO, add step clamp to Nuphar EP
+                      {kNupharExecutionProvider});
+}
+
+TEST(SliceTest, EmptyDim) {
+  RunSliceTest<float>({0, 6},  // empty dim in shape
+                      {},
+                      {0},  // starts
+                      {1},  // ends
+                      {0},  // axes
+                      {},   // steps
+                      {0, 6},
+                      {});
+
+  RunSliceTest<float>({0, 6},
+                      {},
+                      {1},   // starts
+                      {0},   // ends
+                      {0},   // axes
+                      {-1},  // steps
+                      {0, 6},
+                      {});
 }
 }  // namespace test
 }  // namespace onnxruntime

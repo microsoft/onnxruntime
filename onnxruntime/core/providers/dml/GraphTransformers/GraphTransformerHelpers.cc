@@ -34,8 +34,9 @@ namespace GraphTransformerHelpers
         //
         std::unique_ptr<onnxruntime::RuleBasedGraphTransformer> rule_transformer =
             std::make_unique<onnxruntime::RuleBasedGraphTransformer>("WinmlRuleTransformer");
-        rule_transformer->Register(std::make_unique<onnxruntime::BatchNormalizationMulFusion>());
-        rule_transformer->Register(std::make_unique<onnxruntime::BatchNormalizationAddFusion>());
-        lotusSession->RegisterGraphTransformer(std::move(rule_transformer), onnxruntime::TransformerLevel::Level1);
+        ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<onnxruntime::BatchNormalizationMulFusion>()));
+        ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<onnxruntime::BatchNormalizationAddFusion>()));
+        ORT_THROW_IF_ERROR(lotusSession->RegisterGraphTransformer(std::move(rule_transformer),
+                                                                  onnxruntime::TransformerLevel::Level1));
     }
 }

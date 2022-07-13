@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/tensor/resize.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -16,7 +15,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_tf_crop_and_resize) {
   test.AddAttribute("mode", "linear");
   test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
 
-  const int64_t H = 4, W = 4;
+  constexpr int64_t H = 4, W = 4;
 
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
@@ -46,7 +45,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapol
   test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
   test.AddAttribute("extrapolation_value", 10.0f);
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -65,6 +64,152 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapol
   test.Run();
 }
 
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapolation) {
+  OpTester test("Resize", 13);
+  std::vector<float> scales{1.0f, 0.8f, 0.8f, 1.0f};
+  std::vector<float> roi{0.0f, 0.4f, 0.6f, 0.0f, 1.0f, 1.2f, 1.7f, 1.0f};
+
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+  test.AddAttribute("extrapolation_value", 10.0f);
+
+  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
+  std::vector<float> X = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f,
+      9.0f, 10.0f, 11.0f, 12.0f,
+      13.0f, 14.0f, 15.0f, 16.0f};
+
+  test.AddInput<float>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {8}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<float> Y = {7.6000004f, 10.0f, 10.0f,
+                          12.400001f, 10.f, 10.0f,
+                          10.0f, 10.0f, 10.0f};
+
+  test.AddOutput<float>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  //CUDA: result mismatch due to not implementing NHWC support
+  //TensorRT: results mismatch
+  //ROCm: results mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
+}
+
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapolation_uint8) {
+  OpTester test("Resize", 13);
+  std::vector<float> scales{1.0f, 0.8f, 0.8f, 1.0f};
+  std::vector<float> roi{0.0f, 0.4f, 0.6f, 0.0f, 1.0f, 1.2f, 1.7f, 1.0f};
+
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+  test.AddAttribute("extrapolation_value", 10.0f);
+
+  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
+  std::vector<uint8_t> X = {
+      1, 2, 3, 4,
+      5, 6, 7, 8,
+      9, 10, 11, 12,
+      13, 14, 15, 16};
+
+  test.AddInput<uint8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {8}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<uint8_t> Y = {7, 10, 10,
+                            12, 10, 10,
+                            10, 10, 10};
+
+  test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  // CUDA: result mismatch due to not implementing NHWC support
+  // ROCm: results mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+}
+
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapolation_int8) {
+  OpTester test("Resize", 13);
+  std::vector<float> scales{1.0f, 0.8f, 0.8f, 1.0f};
+  std::vector<float> roi{0.0f, 0.4f, 0.6f, 0.0f, 1.0f, 1.2f, 1.7f, 1.0f};
+
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+  test.AddAttribute("extrapolation_value", 10.0f);
+
+  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
+  std::vector<int8_t> X = {
+      1, -2, 3, -4,
+      -5, 6, -7, 8,
+      9, -10, 11, -12,
+      -13, 14, -15, 16};
+
+  test.AddInput<int8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {8}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<int8_t> Y = {-2, 10, 10,
+                           0, 10, 10,
+                           10, 10, 10};
+
+  test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_extrapolation_uint8) {
+  OpTester test("Resize", 13);
+  std::vector<float> scales{1.0f, 0.8f, 0.8f, 1.0f};
+  std::vector<float> roi{0.0f, 0.4f, 0.6f, 0.0f, 1.0f, 1.2f, 1.7f, 1.0f};
+
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+
+  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
+  std::vector<uint8_t> X = {
+      1, 2, 3, 4,
+      5, 6, 7, 8,
+      9, 10, 11, 12,
+      13, 14, 15, 16};
+
+  test.AddInput<uint8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {8}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<uint8_t> Y = {7, 0, 0,
+                            12, 0, 0,
+                            0, 0, 0};
+
+  test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  // CUDA: result mismatch due to not implementing NHWC support
+  // ROCm: results mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+}
+
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_extrapolation_int8) {
+  OpTester test("Resize", 13);
+  std::vector<float> scales{1.0f, 0.8f, 0.8f, 1.0f};
+  std::vector<float> roi{0.0f, 0.4f, 0.6f, 0.0f, 1.0f, 1.2f, 1.7f, 1.0f};
+
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+
+  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
+  std::vector<int8_t> X = {
+      1, -2, 3, -4,
+      -5, 6, -7, 8,
+      9, -10, 11, -12,
+      -13, 14, -15, 16};
+
+  test.AddInput<int8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {8}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<int8_t> Y = {-2, 0, 0,
+                           0, 0, 0,
+                           0, 0, 0};
+
+  test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  test.Run();
+}
+
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
   OpTester test("Resize", 13);
   std::vector<float> roi{};
@@ -72,7 +217,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
 
   test.AddAttribute("mode", "linear");
 
-  const int64_t N = 1, C = 1, H = 2, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f};
@@ -87,7 +232,78 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
   test.Run();
 }
 
-// Since NNAPI(TFLite) only using the scale calulate using the input/output size
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear) {
+  OpTester test("Resize", 13);
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 0.6f, 0.6f, 1.0f};
+
+  test.AddAttribute("mode", "linear");
+
+  constexpr int64_t N = 1, H = 2, W = 4, C = 1;
+  std::vector<float> X = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f};
+
+  test.AddInput<float>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<float> Y = {2.66666651f, 4.3333331f};
+
+  test.AddOutput<float>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  // CUDA: result mismatch due to not implementing NHWC support
+  // ROCm: results mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kRocmExecutionProvider});
+}
+
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_uint8) {
+  OpTester test("Resize", 13);
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 0.6f, 0.6f, 1.0f};
+
+  test.AddAttribute("mode", "linear");
+
+  constexpr int64_t N = 1, H = 2, W = 4, C = 1;
+  std::vector<uint8_t> X = {
+      1, 2, 3, 4,
+      5, 6, 7, 8};
+
+  test.AddInput<uint8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<uint8_t> Y = {2, 4};
+
+  test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  // CUDA: result mismatch due to not implementing NHWC support
+  // ROCm: results mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+}
+
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_int8) {
+  OpTester test("Resize", 13);
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 0.6f, 0.6f, 1.0f};
+
+  test.AddAttribute("mode", "linear");
+
+  constexpr int64_t N = 1, H = 2, W = 4, C = 1;
+  std::vector<int8_t> X = {
+      1, -2, 3, -4,
+      -5, 6, -7, 8};
+
+  test.AddInput<int8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<int8_t> Y = {0, 0};
+
+  test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  test.Run();
+}
+
+// Since NNAPI(TFLite) only using the scale calculate using the input/output size
 // For the above test (ResizeOpLinearDownSampleTest_4DBilinear)
 // The output size is [1,1,2,4].*[1,1,0.6,0.6]=[1,1,1,2]
 // NNAPI will recaluclate the scales as the output size divided by input size
@@ -104,7 +320,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1) {
 
     test.AddAttribute("mode", "linear");
 
-    const int64_t N = 1, C = 1, H = 2, W = 4;
+    constexpr int64_t N = 1, C = 1, H = 2, W = 4;
     std::vector<float> X = {
         1.0f, 2.0f, 3.0f, 4.0f,
         5.0f, 6.0f, 7.0f, 8.0f};
@@ -129,7 +345,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1_WithSizes) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};
     std::vector<float> scales{};
-    const int64_t N = 1, C = 1, H = 2, W = 4;
+    constexpr int64_t N = 1, C = 1, H = 2, W = 4;
     std::vector<int64_t> sizes{N, C, 1, 2};
     test.AddAttribute("mode", "linear");
 
@@ -162,7 +378,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_align_corners) {
     test.AddAttribute("mode", "linear");
     test.AddAttribute("coordinate_transformation_mode", "align_corners");
 
-    const int64_t N = 1, C = 1, H = 2, W = 4;
+    constexpr int64_t N = 1, C = 1, H = 2, W = 4;
     std::vector<float> X = {
         1.0f, 2.0f, 3.0f, 4.0f,
         5.0f, 6.0f, 7.0f, 8.0f};
@@ -186,6 +402,67 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_align_corners) {
 #endif
 }
 
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_uint8) {
+  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  auto run_test = [](bool scales_in_initializer) {
+    OpTester test("Resize", 13);
+    std::vector<float> roi{};
+    std::vector<float> scales{1.0f, 0.6f, 0.6f, 1.0f};
+
+    test.AddAttribute("mode", "linear");
+    test.AddAttribute("coordinate_transformation_mode", "align_corners");
+
+    constexpr int64_t N = 1, H = 2, W = 4, C = 1;
+    std::vector<uint8_t> X = {
+        1, 2, 3, 4,
+        5, 6, 7, 8};
+
+    test.AddInput<uint8_t>("X", {N, H, W, C}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
+
+    std::vector<uint8_t> Y = {1, 4};
+
+    test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+    // CUDA: result mismatch due to not implementing NHWC support
+    // ROCm: results mismatch
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_int8) {
+  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  auto run_test = [](bool scales_in_initializer) {
+    OpTester test("Resize", 13);
+    std::vector<float> roi{};
+    std::vector<float> scales{1.0f, 0.6f, 0.6f, 1.0f};
+
+    test.AddAttribute("mode", "linear");
+    test.AddAttribute("coordinate_transformation_mode", "align_corners");
+
+    constexpr int64_t N = 1, H = 2, W = 4, C = 1;
+    std::vector<int8_t> X = {
+        1, -2, 3, -4,
+        -5, 6, -7, 8};
+
+    test.AddInput<int8_t>("X", {N, H, W, C}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
+
+    std::vector<int8_t> Y = {1, -4};
+
+    test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+    // TensorRT: results mismatch
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_pytorch_half_pixel) {
   OpTester test("Resize", 13);
   std::vector<float> roi{};
@@ -195,7 +472,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_pytorch_half_pixel) {
   test.AddAttribute("mode", "linear");
   test.AddAttribute("coordinate_transformation_mode", "pytorch_half_pixel");
 
-  const int64_t H = 4, W = 4;
+  constexpr int64_t H = 4, W = 4;
 
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
@@ -214,6 +491,64 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_pytorch_half_pixel) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: results mismatch
 }
 
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixel_uint8) {
+  OpTester test("Resize", 13);
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  std::vector<int64_t> sizes{1, 3, 1, 1};
+
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "pytorch_half_pixel");
+
+  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
+
+  std::vector<uint8_t> X = {
+      1, 2, 3, 4,
+      5, 6, 7, 8,
+      9, 10, 11, 12,
+      13, 14, 15, 16};
+
+  test.AddInput<uint8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {0}, scales);
+  test.AddInput<int64_t>("sizes", {4}, sizes);
+
+  std::vector<uint8_t> Y = {1, 7, 12};
+
+  test.AddOutput<uint8_t>("Y", {N, sizes[1], sizes[2], C}, Y);
+  // CUDA: result mismatch due to not implementing NHWC support
+  // ROCm: results mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+}
+
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixel_int8) {
+  OpTester test("Resize", 13);
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  std::vector<int64_t> sizes{1, 3, 1, 1};
+
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "pytorch_half_pixel");
+
+  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
+
+  std::vector<int8_t> X = {
+      1, -2, 3, -4,
+      -5, 6, -7, 8,
+      9, -10, 11, -12,
+      -13, 14, -15, 16};
+
+  test.AddInput<int8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {0}, scales);
+  test.AddInput<int64_t>("sizes", {4}, sizes);
+
+  std::vector<int8_t> Y = {0, 2, -9};
+
+  test.AddOutput<int8_t>("Y", {N, sizes[1], sizes[2], C}, Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: results mismatch
+}
+
 TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_asymmetric) {
   // To test NNAPI EP, we need the sclaes/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
@@ -224,7 +559,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_asymmetric) {
     test.AddAttribute("mode", "linear");
     test.AddAttribute("coordinate_transformation_mode", "asymmetric");
 
-    const int64_t N = 2, C = 1, H = 2, W = 2;
+    constexpr int64_t N = 2, C = 1, H = 2, W = 2;
     std::vector<float> X = {1.0f, 3.0f,
                             4.0f, 8.0f,
 
@@ -254,6 +589,89 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_asymmetric) {
   run_test(true);
 }
 
+TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_uint8) {
+  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  auto run_test = [](bool scales_in_initializer) {
+    OpTester test("Resize", 13);
+    std::vector<float> roi{};
+    std::vector<float> scales{1.0f, 2.0f, 4.0f, 1.0f};
+
+    test.AddAttribute("mode", "linear");
+    test.AddAttribute("coordinate_transformation_mode", "asymmetric");
+
+    constexpr int64_t N = 2, H = 2, W = 2, C = 1;
+    std::vector<uint8_t> X = {1, 3,
+                              4, 8,
+
+                              6, 2,
+                              7, 11};
+
+    test.AddInput<uint8_t>("X", {N, H, W, C}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
+
+    std::vector<uint8_t> Y = {
+        1, 1, 2, 2, 3, 3, 3, 3,
+        2, 3, 4, 4, 5, 5, 5, 5,
+        4, 5, 6, 7, 8, 8, 8, 8,
+        4, 5, 6, 7, 8, 8, 8, 8,
+
+        6, 5, 4, 3, 2, 2, 2, 2,
+        6, 6, 6, 6, 6, 6, 6, 6,
+        7, 8, 9, 10, 11, 11, 11, 11,
+        7, 8, 9, 10, 11, 11, 11, 11};
+
+    test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+    // CUDA: result mismatch due to not implementing NHWC support
+    // ROCm: results mismatch
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
+TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_int8) {
+  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  auto run_test = [](bool scales_in_initializer) {
+    OpTester test("Resize", 13);
+    std::vector<float> roi{};
+    std::vector<float> scales{1.0f, 2.0f, 4.0f, 1.0f};
+
+    test.AddAttribute("mode", "linear");
+    test.AddAttribute("coordinate_transformation_mode", "asymmetric");
+
+    constexpr int64_t N = 2, H = 2, W = 2, C = 1;
+    std::vector<int8_t> X = {1, -3,
+                             -4, 8,
+
+                             6, -2,
+                             -7, 11};
+
+    test.AddInput<int8_t>("X", {N, H, W, C}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
+
+    std::vector<int8_t> Y = {
+        1, 0, -1, -2, -3, -3, -3, -3,
+        -1, 0, 0, 1, 2, 2, 2, 2,
+        -4, -1, 2, 5, 8, 8, 8, 8,
+        -4, -1, 2, 5, 8, 8, 8, 8,
+
+        6, 4, 2, 0, -2, -2, -2, -2,
+        0, 0, 2, 3, 4, 4, 4, 4,
+        -7, -2, 2, 6, 11, 11, 11, 11,
+        -7, -2, 2, 6, 11, 11, 11, 11};
+
+    test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+    // TensorRT: results mismatch
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
 TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_2DBilinear_align_corners) {
   OpTester test("Resize", 13);
   std::vector<float> roi{};
@@ -261,7 +679,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_2DBilinear_align_corners) {
   test.AddAttribute("mode", "linear");
   test.AddAttribute("coordinate_transformation_mode", "align_corners");
 
-  const int64_t H = 2, W = 2;
+  constexpr int64_t H = 2, W = 2;
   std::vector<float> X = {1.0f, 3.0f,
                           4.0f, 8.0f};
 
@@ -288,7 +706,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_3DTrilinear_pytorch_half_pixel) 
   test.AddAttribute("mode", "linear");
   test.AddAttribute("coordinate_transformation_mode", "pytorch_half_pixel");
 
-  const int64_t D = 2, H = 4, W = 4;
+  constexpr int64_t D = 2, H = 4, W = 4;
 
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
@@ -320,7 +738,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_5DTrilinear_pytorch_half_pixel) {
   test.AddAttribute("mode", "linear");
   test.AddAttribute("coordinate_transformation_mode", "pytorch_half_pixel");
 
-  const int64_t N = 1, C = 2, D = 2, H = 1, W = 2;
+  constexpr int64_t N = 1, C = 2, D = 2, H = 1, W = 2;
 
   std::vector<float> X = {
       1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
@@ -346,7 +764,7 @@ TEST(ResizeOpTest, ResizeOpLinearScalesNoOpTest) {
     std::vector<float> scales{1.0f, 1.0f, 1.0f, 1.0f};
     test.AddAttribute("mode", "linear");
 
-    const int64_t N = 2, C = 1, H = 2, W = 2;
+    constexpr int64_t N = 2, C = 1, H = 2, W = 2;
     std::vector<float> X = {1.0f, 3.0f,
                             4.0f, 8.0f,
 
@@ -378,7 +796,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest) {
 
   test.AddAttribute("mode", "nearest");
 
-  const int64_t N = 1, C = 1, H = 2, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f};
@@ -400,7 +818,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_Opset12) {
 
   test.AddAttribute("mode", "nearest");
 
-  const int64_t N = 1, C = 1, H = 2, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f};
@@ -423,7 +841,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_WithSizes) {
 
   test.AddAttribute("mode", "nearest");
 
-  const int64_t N = 1, C = 1, H = 2, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f};
@@ -448,7 +866,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_tf_half_pixel) {
   test.AddAttribute("coordinate_transformation_mode", "tf_half_pixel_for_nn");
   test.AddAttribute("mode", "nearest");
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -477,7 +895,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_tf_crop_and_resize_with_extrapo
   test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
   test.AddAttribute("extrapolation_value", 10.0f);
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -505,7 +923,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSample5dTest_tf_crop_and_resize_with_extra
   test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
   test.AddAttribute("extrapolation_value", 10.0f);
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -532,7 +950,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSampleTest) {
 
   test.AddAttribute("mode", "nearest");
 
-  const int64_t N = 1, C = 1, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 2;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
 
   test.AddInput<float>("X", {N, C, H, W}, X);
@@ -557,7 +975,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSampleTest_WithSizes_CeilMode) {
   test.AddAttribute("mode", "nearest");
   test.AddAttribute("nearest_mode", "ceil");
 
-  const int64_t N = 1, C = 1, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 2;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
 
   test.AddInput<float>("X", {N, C, H, W}, X);
@@ -586,7 +1004,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample5dTest_WithSizes_CeilMode) {
   test.AddAttribute("mode", "nearest");
   test.AddAttribute("nearest_mode", "ceil");
 
-  const int64_t N = 1, C = 1, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 2;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
 
   test.AddInput<float>("X", {1, N, C, H, W}, X);
@@ -617,7 +1035,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Floor_Align_Corners) {
   test.AddAttribute("coordinate_transformation_mode", "align_corners");
   test.AddAttribute("nearest_mode", "floor");
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -655,7 +1073,7 @@ TEST(ResizeOpTest, ResizeOpNearest_OneToOneMappingBetweenInputAndOutputDataDims)
   test.AddAttribute("coordinate_transformation_mode", "tf_half_pixel_for_nn");
   test.AddAttribute("nearest_mode", "ceil");
 
-  const int64_t C = 2, D = 3;
+  constexpr int64_t C = 2, D = 3;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
 
   test.AddInput<float>("X", {C, D}, X);
@@ -690,13 +1108,14 @@ class ResizeOpTester : public OpTester {
 
     // set the Graph inputs to just X and roi (exclude 'scales') so the 'scales' are a constant initializer
     if (scales_in_initializer_) {
-      // this isn't intended to work with a scenario where the optional 'sizes' input is provided
-      ASSERT_TRUE(graph_input_defs.size() == 3);
       graph.SetInputs({graph.GetNodeArg(graph_input_defs[0]->Name()),
                        graph.GetNodeArg(graph_input_defs[1]->Name())});
-    }
-
-    if (sizes_in_initializer_) {
+      if (sizes_in_initializer_) {
+        ASSERT_TRUE(graph_input_defs.size() == 4);
+      } else {
+        ASSERT_TRUE(graph_input_defs.size() == 3);
+      }
+    } else if (sizes_in_initializer_) {
       ASSERT_TRUE(graph_input_defs.size() == 4);  // 'sizes' is 4th input
       graph.SetInputs({graph.GetNodeArg(graph_input_defs[0]->Name()),
                        graph.GetNodeArg(graph_input_defs[1]->Name()),
@@ -720,7 +1139,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Scales) {
     test.AddAttribute("coordinate_transformation_mode", "asymmetric");
     test.AddAttribute("nearest_mode", "floor");
 
-    const int64_t N = 1, C = 1, H = 2, W = 2;
+    constexpr int64_t N = 1, C = 1, H = 2, W = 2;
     std::vector<float> X = {
         1.0f, 2.0f,
         3.0f, 4.0f};
@@ -744,23 +1163,24 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Scales) {
 
 TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Sizes) {
   auto run_test = [](bool sizes_in_initializer) {
-    ResizeOpTester test(false, sizes_in_initializer);
+    ResizeOpTester test(sizes_in_initializer, sizes_in_initializer);
 
     std::vector<float> roi{};
+    std::vector<float> scales{};
     std::vector<int64_t> sizes{1, 1, 4, 4};
 
     test.AddAttribute("mode", "nearest");
     test.AddAttribute("coordinate_transformation_mode", "asymmetric");
     test.AddAttribute("nearest_mode", "floor");
 
-    const int64_t N = 1, C = 1, H = 2, W = 2;
+    constexpr int64_t N = 1, C = 1, H = 2, W = 2;
     std::vector<float> X = {
         1.0f, 2.0f,
         3.0f, 4.0f};
 
     test.AddInput<float>("X", {N, C, H, W}, X);
     test.AddInput<float>("roi", {0}, roi);
-    test.AddInput<float>("scales", {0}, {});
+    test.AddInput<float>("scales", {0}, scales, sizes_in_initializer);
     test.AddInput<int64_t>("sizes", {4}, sizes, sizes_in_initializer);
 
     std::vector<float> Y = {1.0f, 1.0f, 2.0f, 2.0f,
@@ -783,7 +1203,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest) {
 
   test.AddAttribute("mode", "cubic");
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -812,7 +1232,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_exclude_outside) {
   test.AddAttribute("exclude_outside", static_cast<int64_t>(1));
   test.AddAttribute("cubic_coeff_a", -0.5f);
 
-  const int64_t H = 4, W = 4;
+  constexpr int64_t H = 4, W = 4;
 
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
@@ -840,7 +1260,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_coeff) {
   test.AddAttribute("mode", "cubic");
   test.AddAttribute("cubic_coeff_a", -0.5f);
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -867,7 +1287,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_with_roi) {
   test.AddAttribute("mode", "cubic");
   test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -894,7 +1314,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_asymmetric) {
   test.AddAttribute("mode", "cubic");
   test.AddAttribute("coordinate_transformation_mode", "asymmetric");
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -921,7 +1341,7 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest) {
   test.AddAttribute("mode", "cubic");
   test.AddAttribute("coordinate_transformation_mode", "asymmetric");
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -953,7 +1373,7 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest_MultiChannel) {
 
   test.AddAttribute("mode", "cubic");
 
-  const int64_t N = 1, C = 2, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 2, H = 4, W = 4;
   std::vector<float> X = {
       0.0f, 1.0f, 2.0f, 3.0f,
       4.0f, 5.0f, 6.0f, 7.0f,
@@ -1002,7 +1422,7 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest_tf_half_pixel_for_nn) {
   test.AddAttribute("mode", "cubic");
   test.AddAttribute("coordinate_transformation_mode", "tf_half_pixel_for_nn");
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -1032,7 +1452,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_Ver10) {
 
   test.AddAttribute("mode", "linear");
 
-  const int64_t N = 1, C = 1, H = 2, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f};
@@ -1052,7 +1472,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_Ver10) {
 
   test.AddAttribute("mode", "linear");
 
-  const int64_t H = 2, W = 4;
+  constexpr int64_t H = 2, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f};
@@ -1071,7 +1491,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_Ver10) {
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 4.0f};
   test.AddAttribute("mode", "linear");
 
-  const int64_t N = 2, C = 1, H = 2, W = 2;
+  constexpr int64_t N = 2, C = 1, H = 2, W = 2;
   std::vector<float> X = {1.0f, 3.0f,
                           4.0f, 8.0f,
 
@@ -1101,7 +1521,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_2DBilinear_Ver10) {
   std::vector<float> scales{2.0f, 4.0f};
   test.AddAttribute("mode", "linear");
 
-  const int64_t H = 2, W = 2;
+  constexpr int64_t H = 2, W = 2;
   std::vector<float> X = {1.0f, 3.0f,
                           4.0f, 8.0f};
 
@@ -1123,7 +1543,7 @@ TEST(ResizeOpTest, ResizeOpLinearScalesNoOpTest_Ver10) {
   std::vector<float> scales{1.0f, 1.0f, 1.0f, 1.0f};
   test.AddAttribute("mode", "linear");
 
-  const int64_t N = 2, C = 1, H = 2, W = 2;
+  constexpr int64_t N = 2, C = 1, H = 2, W = 2;
   std::vector<float> X = {1.0f, 3.0f,
                           4.0f, 8.0f,
 
@@ -1149,7 +1569,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_Ver10) {
 
   test.AddAttribute("mode", "nearest");
 
-  const int64_t N = 1, C = 1, H = 2, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f};
@@ -1169,7 +1589,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSampleTest_Ver10) {
 
   test.AddAttribute("mode", "nearest");
 
-  const int64_t N = 1, C = 1, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 2;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
 
   test.AddInput<float>("X", {N, C, H, W}, X);
@@ -1190,7 +1610,7 @@ TEST(UpsampleOpTest, ResizeOpNearestNoScaleTest_Ver10) {
 
   test.AddAttribute("mode", "nearest");
 
-  const int64_t N = 1, C = 1, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 2;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
 
   test.AddInput<float>("X", {N, C, H, W}, X);
@@ -1208,7 +1628,7 @@ TEST(ResizeOpTest, ResizeOp_MissingRoiAndMissingScalesOptionalInputs) {
   test.AddAttribute("mode", "linear");
   test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
 
-  const int64_t H = 4, W = 4;
+  constexpr int64_t H = 4, W = 4;
 
   std::vector<float> X = {
       1.0f, 1.0f, 1.0f, 1.0f,
@@ -1217,12 +1637,80 @@ TEST(ResizeOpTest, ResizeOp_MissingRoiAndMissingScalesOptionalInputs) {
       1.0f, 1.0f, 1.0f, 1.0f};
 
   test.AddInput<float>("X", {H, W}, X);
-  test.AddMissingOptionalInput<float>();
-  test.AddMissingOptionalInput<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
   test.AddInput<int64_t>("sizes", {2}, {4, 4});
 
   test.AddOutput<float>("Y", {H, W}, X);
   test.Run();
 }
+
+template <typename T>
+void ResizeOpTypeCheck_Ver_10() {
+  OpTester test("Resize", 10);
+  std::vector<float> scales{1.0f, 1.0f, 2.0f, 3.0f};
+
+  test.AddAttribute("mode", "nearest");
+
+  constexpr int64_t N = 1, C = 1, H = 2, W = 2;
+  std::vector<T> X = {1, 2, 3, 4};
+
+  test.AddInput<T>("X", {N, C, H, W}, X);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<T> Y = {1, 1, 1, 2, 2, 2,
+                      1, 1, 1, 2, 2, 2,
+                      3, 3, 3, 4, 4, 4,
+                      3, 3, 3, 4, 4, 4};
+
+  test.AddOutput<T>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, ResizeOpTypeCheck_Ver_10) {
+  ResizeOpTypeCheck_Ver_10<float>();
+  ResizeOpTypeCheck_Ver_10<int32_t>();
+  ResizeOpTypeCheck_Ver_10<int8_t>();
+  ResizeOpTypeCheck_Ver_10<uint8_t>();
+}
+
+template <typename T>
+void ResizeOpTypeCheck_Ver_11_13(int opset_version) {
+  OpTester test("Resize", opset_version);
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 1.0f, 2.0f, 3.0f};
+
+  test.AddAttribute("mode", "nearest");
+
+  constexpr int64_t N = 1, C = 1, H = 2, W = 2;
+  std::vector<T> X = {1, 2, 3, 4};
+
+  test.AddInput<T>("X", {N, C, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<T> Y = {1, 1, 1, 2, 2, 2,
+                      1, 1, 1, 2, 2, 2,
+                      3, 3, 3, 4, 4, 4,
+                      3, 3, 3, 4, 4, 4};
+
+  test.AddOutput<T>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, ResizeOpTypeCheck_Ver11) {
+  ResizeOpTypeCheck_Ver_11_13<float>(11);
+  ResizeOpTypeCheck_Ver_11_13<int32_t>(11);
+  ResizeOpTypeCheck_Ver_11_13<int8_t>(11);
+  ResizeOpTypeCheck_Ver_11_13<uint8_t>(11);
+}
+
+TEST(ResizeOpTest, ResizeOpTypeCheck_Ver13) {
+  ResizeOpTypeCheck_Ver_11_13<float>(13);
+  ResizeOpTypeCheck_Ver_11_13<int32_t>(13);
+  ResizeOpTypeCheck_Ver_11_13<int8_t>(13);
+  ResizeOpTypeCheck_Ver_11_13<uint8_t>(13);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

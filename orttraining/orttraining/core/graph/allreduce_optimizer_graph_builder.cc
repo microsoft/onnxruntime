@@ -34,7 +34,7 @@ static Status AddNcclAllReduceForGradients(
                                   input_gradient_argdef,
                                   allreduce_outputs,
                                   {ONNX_NAMESPACE::MakeAttribute("group_type",
-                                                                static_cast<int64_t>(WorkerGroupType::DataParallel))},
+                                                                 static_cast<int64_t>(WorkerGroupType::DataParallel))},
                                   "NcclAllReduce")});
 
   gradient_argdefs = allreduce_outputs;
@@ -56,7 +56,7 @@ AllreduceOptimizerGraphBuilder::AllreduceOptimizerGraphBuilder(
               "Allreduce optimizer graph builder can only be used for distributed training.");
   if (opt_graph_config.use_nccl) {
     ORT_ENFORCE(IsNcclAvailable(), "Distributed training with NCCL is not supported, as NCCL is not enabled in this build.");
-  } else if(!opt_graph_config.use_nccl && opt_graph_config.adasum_reduction_type == AdasumReductionType::None){
+  } else if (!opt_graph_config.use_nccl && opt_graph_config.adasum_reduction_type == AdasumReductionType::None) {
     ORT_THROW("Performing Allreduce is only supported using NCCL.");
   }
 }
@@ -78,7 +78,7 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
   std::vector<ArgDef> output_gradient_argdef;
   const auto total_num_accumulations =
       opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
-  ORT_RETURN_IF_NOT(total_num_accumulations > 0);
+  ORT_RETURN_IF_NOT(total_num_accumulations > 0, "total_num_accumulations <= 0");
   const float scale = 1.0f / total_num_accumulations;
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, output_gradient_argdef, graph_defs,
                                               opt_graph_config_.AllReduceDataType()));

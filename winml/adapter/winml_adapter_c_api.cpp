@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "pch.h"
+#include "adapter/pch.h"
 
 #include "winml_adapter_c_api.h"
 #include "winml_adapter_apis.h"
@@ -26,6 +26,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::CloneModel,
     &winmla::ModelGetAuthor,
     &winmla::ModelGetName,
+    &winmla::ModelSetName,
     &winmla::ModelGetDomain,
     &winmla::ModelGetDescription,
     &winmla::ModelGetVersion,
@@ -40,6 +41,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::ModelGetMetadataCount,
     &winmla::ModelGetMetadata,
     &winmla::ModelEnsureNoFloat16,
+    &winmla::SaveModel,
 
     // OrtSessionOptions methods
     &OrtSessionOptionsAppendExecutionProvider_CPU,
@@ -56,20 +58,18 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::SessionEndProfiling,
     &winmla::SessionCopyOneInputAcrossDevices,
     &winmla::SessionGetNumberOfIntraOpThreads,
+    &winmla::SessionGetIntraOpThreadSpinning,
+    &winmla::SessionGetNamedDimensionsOverrides,
 
     // Dml methods (TODO need to figure out how these need to move to session somehow...)
     &winmla::DmlExecutionProviderSetDefaultRoundingMode,
     &winmla::DmlExecutionProviderFlushContext,
     &winmla::DmlExecutionProviderReleaseCompletedReferences,
-    &winmla::DmlCreateGPUAllocationFromD3DResource,
-    &winmla::DmlFreeGPUAllocation,
-    &winmla::DmlGetD3D12ResourceFromAllocation,
     &winmla::DmlCopyTensor,
 
     &winmla::GetProviderMemoryInfo,
     &winmla::GetProviderAllocator,
     &winmla::FreeProviderAllocator,
-    &winmla::GetValueMemoryInfo,
 
     &winmla::ExecutionProviderSync,
 
@@ -78,12 +78,29 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::ValueGetDeviceId,
     &winmla::SessionGetInputRequiredDeviceId,
 
+    &winmla::CreateTensorTypeInfo,
+    &winmla::CreateSequenceTypeInfo,
+    &winmla::CreateMapTypeInfo,
+    &winmla::CreateModel,
+    &winmla::ModelAddInput,
+    &winmla::ModelAddConstantInput,
+    &winmla::ModelAddOutput,
+    &winmla::ModelAddOperator,
+    &winmla::ModelGetOpsetVersion,
+    &winmla::OperatorGetNumInputs,
+    &winmla::OperatorGetInputName,
+    &winmla::OperatorGetNumOutputs,
+    &winmla::OperatorGetOutputName,
+    &winmla::JoinModels,
+    &winmla::CreateThreadPool,
+
     // Release
-    &winmla::ReleaseModel
+    &winmla::ReleaseModel,
+    &winmla::ReleaseThreadPool,
 };
 
-const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(const OrtApi* ort_api) NO_EXCEPTION {
-  if (OrtApis::GetApi(2) == ort_api) {
+const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(_In_ uint32_t ort_version) NO_EXCEPTION {
+  if (ort_version >= 2) {
     return &winml_adapter_api_1;
   }
 

@@ -1,0 +1,86 @@
+[
+  {
+    "name": "Cos with no attributes",
+    "operator": "Cos",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [0.4],
+            "dims": [1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.92106099],
+            "dims": [1],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "T[1]",
+        "inputs": [
+          {
+            "data": [0.1, 0.2, 0.3, 0.4],
+            "dims": [4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.99500417, 0.98006658, 0.95533649, 0.92106099],
+            "dims": [4],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "T[2,4]",
+        "inputs": [
+          {
+            "data": [0.1, 0.2, 0.3, 0.4, 0.9, 0.8, 0.7, 0.6],
+            "dims": [2, 4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [
+              0.99500417,
+              0.98006658,
+              0.95533649,
+              0.92106099,
+              0.62160997,
+              0.69670671,
+              0.76484219,
+              0.82533561
+            ],
+            "dims": [2, 4],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "Scalar",
+        "inputs": [
+          {
+            "data": [0.1],
+            "dims": [],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.99500417],
+            "dims": [],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

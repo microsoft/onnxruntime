@@ -70,7 +70,7 @@ Status TVMIRBuilder::Evaluate(
 
 // BEGIN: Generic IR creator classes
 #define ADD_OP_ITEM(name) \
-  op_ir_registry->Register(onnxruntime::make_unique<GENERIC_OP_IR_CREATOR_CLASS(name)>());
+  op_ir_registry->Register(std::make_unique<GENERIC_OP_IR_CREATOR_CLASS(name)>());
 
 #define BINARY_OP(name) ADD_OP_ITEM(name)
 #define BINARY_CMP_OP(name) ADD_OP_ITEM(name)
@@ -107,7 +107,7 @@ void RegisterAllGenericOpIRCreators(OpIRRegistry* op_ir_registry) {
 
 void RegisterGenericOrtOpTypeDispatcher(const std::shared_ptr<TVMIRBuilder>& builder,
                                         const OpIRRegistry* registry) {
-  auto dispatcher = onnxruntime::make_unique<OP_IR_DISPATCHER_CLASS(OpType)>("GenericOrtOpTypeOpIRCreators");
+  auto dispatcher = std::make_unique<OP_IR_DISPATCHER_CLASS(OpType)>("GenericOrtOpTypeOpIRCreators");
   LIST_ALL_GENERIC_OPS()
   builder->InsertDispatcher(std::move(dispatcher));
 }

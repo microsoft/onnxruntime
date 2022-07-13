@@ -1,3 +1,4 @@
+'use strict';
 const ort = require('onnxruntime');
 
 // use an async context to call onnxruntime functions.

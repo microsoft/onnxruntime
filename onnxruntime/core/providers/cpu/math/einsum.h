@@ -3,10 +3,12 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "einsum_utils/einsum_compute_preprocessor.h"
 #include "einsum_utils/einsum_typed_compute_processor.h"
+#endif
+#include "einsum_utils/einsum_compute_preprocessor.h"
 
 namespace onnxruntime {
 
@@ -15,7 +17,7 @@ class Einsum : public OpKernel {
   Einsum(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr<std::string>("equation", &equation_).IsOK(),
                 "Missing 'equation' attribute");
-    einsum_equation_preprocessor_ = onnxruntime::make_unique<EinsumEquationPreprocessor>(equation_);
+    einsum_equation_preprocessor_ = std::make_unique<EinsumEquationPreprocessor>(equation_);
   }
 
   virtual Status Compute(OpKernelContext* context) const override;

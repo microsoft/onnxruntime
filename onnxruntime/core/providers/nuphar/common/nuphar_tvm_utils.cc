@@ -69,7 +69,7 @@ static bool GetCacheSoFilePath(std::string& so_path) {
 
 static void* GetFuncFromLibrary(const std::string& so_path, const std::string& func_name, bool throw_if_not_found = true) {
   void* so_handle;
-  ORT_ENFORCE(Env::Default().LoadDynamicLibrary(so_path, &so_handle).IsOK());
+  ORT_ENFORCE(Env::Default().LoadDynamicLibrary(so_path, false, &so_handle).IsOK());
   void* func = nullptr;
   Status s = Env::Default().GetSymbolFromLibrary(so_handle, func_name, &func);
   if (throw_if_not_found && !s.IsOK())

@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
@@ -11,7 +10,7 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-template <typename T, typename U, bool simplified>
+template <typename T, typename U, typename V, bool simplified>
 class LayerNorm final : public CudaKernel {
  public:
   LayerNorm(const OpKernelInfo& op_kernel_info);

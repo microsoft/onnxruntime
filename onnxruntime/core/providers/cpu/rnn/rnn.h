@@ -17,7 +17,8 @@ class RNN : public OpKernel {
 
  public:
   RNN(const OpKernelInfo& info) : OpKernel(info),
-                                  clip_(info.GetAttrOrDefault("clip", -1.0f)) {
+                                  clip_(info.GetAttrOrDefault("clip", -1.0f)),
+                                  layout_(info.GetAttrOrDefault("layout", static_cast<int64_t>(0))) {
     ORT_ENFORCE(info.GetAttr("direction", &direction_).IsOK());
     ORT_ENFORCE(allowed_directions.find(direction_) != allowed_directions.end());
     const int num_directions = direction_ == "bidirectional" ? 2 : 1;
@@ -39,6 +40,9 @@ class RNN : public OpKernel {
       ORT_ENFORCE(allowed_activations.find(activations_[direction]) != allowed_activations.end(),
                   "RNN op: Invalid activation attribute - ", activations_[direction]);
     }
+
+    ORT_ENFORCE(layout_ == 0,
+                "Batchwise recurrent operations (layout == 1) are not supported. If you need support create a github issue with justification.");
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -63,6 +67,9 @@ class RNN : public OpKernel {
   int64_t hidden_size_;
 
   // const std::string default_activation = "Tanh";
+
+  // added since opset 14. Default value 0 matches the behavior prior to opset14
+  int64_t layout_;
 };
 
 }  // namespace onnxruntime

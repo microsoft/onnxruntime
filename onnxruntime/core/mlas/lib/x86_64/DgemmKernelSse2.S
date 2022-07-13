@@ -225,6 +225,6 @@ Implicit Arguments:
 // Generate the GEMM kernel.
 //
 
-FgemmKernelSse2Function C_UNDERSCORE(MlasGemmDoubleKernelSse)
+FgemmKernelSse2Function MlasGemmDoubleKernelSse
 
         .end

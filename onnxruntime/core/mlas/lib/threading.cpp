@@ -18,9 +18,9 @@ Abstract:
 
 void
 MlasExecuteThreaded(
-    PMLAS_THREADED_ROUTINE ThreadedRoutine,
+    MLAS_THREADED_ROUTINE* ThreadedRoutine,
     void* Context,
-    int32_t Iterations,
+    ptrdiff_t Iterations,
     MLAS_THREADPOOL* ThreadPool
     )
 {
@@ -33,7 +33,7 @@ MlasExecuteThreaded(
         return;
     }
 
-#if defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
 
     //
@@ -43,10 +43,7 @@ MlasExecuteThreaded(
     //
     // Execute the routine for the specified number of iterations.
     //
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
-    for (int32_t tid = 0; tid < Iterations; tid++) {
+    for (ptrdiff_t tid = 0; tid < Iterations; tid++) {
         ThreadedRoutine(Context, tid);
     }
 #else
@@ -55,7 +52,44 @@ MlasExecuteThreaded(
     //
 
     MLAS_THREADPOOL::TrySimpleParallelFor(ThreadPool, Iterations, [&](ptrdiff_t tid) {
-        ThreadedRoutine(Context, static_cast<int>(tid));
+        ThreadedRoutine(Context, tid);
     });
+#endif
+}
+
+
+void
+MlasTrySimpleParallel(
+    MLAS_THREADPOOL * ThreadPool,
+    const std::ptrdiff_t Iterations,
+    const std::function<void(std::ptrdiff_t tid)>& Work)
+{
+    //
+    // Execute the routine directly if only one iteration is specified.
+    //
+    if (Iterations == 1) {
+        Work(0);
+        return;
+    }
+
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
+    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+
+    //
+    // Fallback to OpenMP or a serialized implementation.
+    //
+
+    //
+    // Execute the routine for the specified number of iterations.
+    //
+    for (ptrdiff_t tid = 0; tid < Iterations; tid++) {
+        Work(tid);
+    }
+#else
+    //
+    // Schedule the threaded iterations using the thread pool object.
+    //
+
+    MLAS_THREADPOOL::TrySimpleParallelFor(ThreadPool, Iterations, Work);
 #endif
 }

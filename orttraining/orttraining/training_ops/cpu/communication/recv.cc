@@ -4,7 +4,7 @@
 
 #include "orttraining/training_ops/cpu/communication/recv.h"
 
-#include <mpi.h>
+#include "orttraining/core/framework/communication/mpi/mpi_include.h"
 
 #include "orttraining/training_ops/communication_common.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
@@ -51,9 +51,9 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeDefault>(0)  /* CPU variable */
-        .InputMemoryType<OrtMemTypeDefault>(1)  /* CPU variable */
-        .OutputMemoryType<OrtMemTypeDefault>(0) /* CPU variable */
+        .InputMemoryType(OrtMemTypeDefault, 0)  /* CPU variable */
+        .InputMemoryType(OrtMemTypeDefault, 1)  /* CPU variable */
+        .OutputMemoryType(OrtMemTypeDefault, 0) /* CPU variable */
         .TypeConstraint("TBool", DataTypeImpl::GetTensorType<bool>())
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),

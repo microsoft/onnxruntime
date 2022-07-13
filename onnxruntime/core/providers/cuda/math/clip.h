@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-class Clip_6 final : public onnxruntime::clip_internal::Clip_6Base<T>,  public CudaKernel {
+class Clip_6 final : public onnxruntime::clip_internal::Clip_6Base<T>, public CudaKernel {
  public:
   explicit Clip_6(const OpKernelInfo& info) : onnxruntime::clip_internal::Clip_6Base<T>(info), CudaKernel{info} {
   }
@@ -27,7 +27,7 @@ class Clip final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  template<typename T>
+  template <typename T>
   struct ComputeImpl;
 };
 

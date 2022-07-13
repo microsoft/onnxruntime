@@ -12,14 +12,14 @@
 namespace onnxruntime {
 
 namespace {
-//It assumes max(OrtMemType) <= 1, min(OrtMemType) = -2
+// It assumes max(OrtMemType) <= 1, min(OrtMemType) = -2
 inline int MakeKey(int id, OrtMemType mem_type) {
   return id << 2 | (mem_type + 2);
 }
 }  // namespace
 
-AllocatorPtr IExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
-  auto iter = allocators_.find(MakeKey(id, mem_type));
+AllocatorPtr IExecutionProvider::GetAllocator(int device_id, OrtMemType mem_type) const {
+  auto iter = allocators_.find(MakeKey(device_id, mem_type));
   if (iter != allocators_.end()) {
     return iter->second;
   }
@@ -34,9 +34,9 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   for (auto& node : graph.Nodes()) {
     for (auto registry : kernel_registries) {
       if (KernelRegistry::HasImplementationOf(*registry, node, Type())) {
-        std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
+        std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
         sub_graph->nodes.push_back(node.Index());
-        result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+        result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
         break;
       }
     }
@@ -53,48 +53,72 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 }
 
 // Update allocator in the provider if already present; ignore if not.
+// We match using the device id, OrtMemType and OrtDevice info.
+// We ignore the allocator name, and OrtAllocatorType (whether internally an arena is used or not).
+// TODO: We should remove OrtAllocatorType from OrtMemoryInfo as it's an implementation detail of the allocator.
 void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
   const auto& info = allocator->Info();
-  auto ite = mem_info_set_.find(info);
-  if (ite != mem_info_set_.end()) {
-    const int key = MakeKey(info.id, info.mem_type);
-    allocators_[key] = allocator;
+
+  // TODO: This only works on allocators that are stored in this class. If a derived class overrides GetAllocator
+  // (e.g. the CUDA EP) and stores AllocatorPtr instances in the derived class we know nothing about them.
+  // In theory we could call GetAllocator instead of allocators_.find, however the CUDA EP does things this way to
+  // return a per-thread allocator from the GetAllocator override, and it's not clear if that could/should be replaced.
+  auto iter = allocators_.find(MakeKey(info.id, info.mem_type));
+  if (iter != allocators_.end()) {
+    // check device as mem_type is relative to the device
+    // e.g. OrtMemTypeDefault is CPU for a CPU EP and GPU for a CUDA EP. An individual EP will only have one
+    // allocator for an OrtMemType value, so this check is to ensure we don't replace with an incompatible allocator.
+    if (iter->second->Info().device == info.device) {
+      IAllocator* existing_alloc = iter->second.get();
+      for (auto& entry : allocator_list_) {
+        if (entry.get() == existing_alloc) {
+          entry = allocator;
+          break;
+        }
+      }
+
+      iter->second = allocator;
+    }
   }
 }
 
 void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   const OrtMemoryInfo& info = allocator->Info();
-  auto ite = mem_info_set_.find(info);
-  if (ite != mem_info_set_.end()) {
-    ORT_THROW("duplicated allocator");
-  }
   const int key = MakeKey(info.id, info.mem_type);
-  allocators_.insert({key, allocator});
-  mem_info_set_.insert(ite, info);
-  allocator_list_.push_back(allocator);
+
+  auto iter = allocators_.find(key);
+  if (iter != allocators_.end()) {
+    ORT_THROW("Duplicate allocator for OrtMemType:", info.mem_type, " device:", info.device.ToString(),
+              " Existing allocator: ", iter->second->Info().name,
+              " New allocator: ", allocator->Info().name);
+  } else {
+    allocators_.insert({key, allocator});
+    allocator_list_.push_back(allocator);
+  }
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
-common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
-                                           std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
-  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+void IExecutionProvider::RegisterAllocator(AllocatorManager&) {
 }
-
-common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
-                                           std::string& /*dll_path*/) {
-  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
-}
-#endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+// !!!!This API will be deprecated soon. If your execution provider overrides this API
+// !!!!Please migrate it to the "Compile" API with FusedNodeAndGraph type.
+common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
+                                           std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
+  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED,
+                        "IExecutionProvider::Compile with fused Node is not implemented by " + type_);
+}
+
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& /*fused_nodes_and_graphs*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
-  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED,
+                        "IExecutionProvider::Compile with FusedNodeAndGraph is not implemented by " + type_);
 }
+
 #endif
 
 int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_viewer,
-                                                            uint64_t& model_hash) {
+                                                            HashValue& model_hash) {
   model_hash = 0;
 
   // find the top level graph
@@ -111,7 +135,7 @@ int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::G
   // the same memory (unit tests prove this can occur). the raw bytes of the Graph instance should be a unique
   // fingerprint for the instance that can use used as the key to the hash of the model path/contents.
   MurmurHash3::x86_128(&main_graph, gsl::narrow_cast<int32_t>(sizeof(Graph)), instance_hash[0], &instance_hash);
-  uint64_t graph_instance_hash = instance_hash[0] | (uint64_t(instance_hash[1]) << 32);
+  HashValue graph_instance_hash = instance_hash[0] | (uint64_t(instance_hash[1]) << 32);
 
   // if we've already hashed this main graph instance use the cached value
   auto entry = main_graph_hash_.find(graph_instance_hash);
@@ -154,7 +178,7 @@ int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::G
   return model_metadef_id_[model_hash]++;
 }
 
-int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const {
+int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const {
   ORT_ENFORCE(metadef_id_generator_,
               "IExecutionProvider constructor must be called with true for use_metadef_id_creator");
 

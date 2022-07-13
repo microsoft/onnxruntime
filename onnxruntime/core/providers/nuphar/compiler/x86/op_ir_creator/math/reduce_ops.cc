@@ -3,9 +3,10 @@
 
 #include "core/providers/nuphar/compiler/x86/op_ir_creator/all_ops.h"
 
-#include "core/providers/nuphar/mti_x86/math/reduce_ops.h"
 #include "core/framework/op_kernel_info.h"
 #include "core/providers/common.h"
+#include "core/providers/nuphar/compiler/nuphar_codegen_ctx.h"
+#include "core/providers/nuphar/mti_x86/math/reduce_ops.h"
 
 #include <algorithm>  // for sort
 
@@ -101,21 +102,39 @@ static std::tuple<int, int> VectorWidthAndFuseDimForReduce(int natural_width,
 
 class FuncReduceV {
  public:
-  FuncReduceV(const Node& node,
+  FuncReduceV(NupharCodeGenCtx* ctx_nuphar,
+              const Node& node,
               ReduceVFunc func,
               std::function<int(int)> natural_vector,
               const NodeArg* def,
               const std::string& name) : def_(def) {
     ProtoHelperNodeContext ctx(node);
     OpNodeProtoHelper<ProtoHelperNodeContext> info(&ctx);
-    axes_ = info.GetAttrsOrDefault<int64_t>("axes");
-    if (axes_.size() == 0) {
+    int version = ctx_nuphar->GetCodeGenHandle()->domain_version_lookup_func(node.Domain());
+    if (node.OpType() == "ReduceSum" && version >= 13) {
+      // ReduceSum changed axes from attribute to input in opset 13
+      // besides, it added noop_with_empty_axes attribute to do nothing when axes is empty
+      const auto& inputs = node.InputDefs();
+      if (inputs.size() > 1 && inputs[1] != nullptr) {
+        const auto* tensor = ctx_nuphar->GetOrtInitializerTensor(inputs[1]->Name());
+        ORT_ENFORCE(tensor);
+        const int64_t* input_axes = tensor->Data<int64_t>();
+        axes_ = std::vector<int64_t>(input_axes, input_axes + tensor->Shape().Size());
+      }
+      noop_with_empty_axes_ = (info.GetAttrOrDefault<int64_t>("noop_with_empty_axes", 0) != 0);
+    } else {
+      axes_ = info.GetAttrsOrDefault<int64_t>("axes");
+      noop_with_empty_axes_ = false;
+    }
+
+    if (!noop_with_empty_axes_ && axes_.size() == 0) {
       int64_t sz = static_cast<int64_t>(def->Shape()->dim().size());
       ORT_ENFORCE(sz > 0);
       for (int64_t i = 0; i < sz; i++) {
         axes_.push_back(i);
       }
     }
+
     int64_t keepdims_i = 1;
     ORT_ENFORCE(info.GetAttr("keepdims", &keepdims_i).IsOK());
     keep_dims_ = (keepdims_i == 1);
@@ -125,6 +144,10 @@ class FuncReduceV {
   }
 
   tvm::Tensor operator()(const tvm::Tensor& X) const {
+    if (noop_with_empty_axes_ && axes_.size() == 0) {
+      return X;  // No-op when noop_with_empty_axes is true and axes is empty (ReduceSum-13)
+    }
+
     std::vector<int64_t> axes;
     for (auto i : axes_) {
       axes.push_back(HandleNegativeAxis(i, gsl::narrow_cast<int64_t>(X->shape.size())));
@@ -153,20 +176,22 @@ class FuncReduceV {
   std::string name_;
   std::function<int(int)> natural_vector_;
   const NodeArg* def_;
+  bool noop_with_empty_axes_;
 };
 
-#define REDUCE_V_OP(name)                                                                                    \
-  Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(name)::Evaluate(                                                 \
-      const tvm::Array<tvm::Tensor>& inputs,                                                                 \
-      const Node& node,                                                                                      \
-      tvm_codegen::CodeGenContext& ctx_codegen,                                                              \
-      tvm::Array<tvm::Tensor>& outputs) {                                                                    \
-    auto natural_vector = [&](int bits) {                                                                    \
-      return ctx_codegen.GetCodeGenHandle()->codegen_target->NaturalVectorWidth(bits);                       \
-    };                                                                                                       \
-    tvm::Tensor Y = FuncReduceV(node, &nuphar::name, natural_vector, node.InputDefs()[0], #name)(inputs[0]); \
-    outputs.push_back(Y);                                                                                    \
-    return Status::OK();                                                                                     \
+#define REDUCE_V_OP(name)                                                                                                \
+  Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(name)::Evaluate(                                                             \
+      const tvm::Array<tvm::Tensor>& inputs,                                                                             \
+      const Node& node,                                                                                                  \
+      tvm_codegen::CodeGenContext& ctx_codegen,                                                                          \
+      tvm::Array<tvm::Tensor>& outputs) {                                                                                \
+    NupharCodeGenCtx* ctx_nuphar = Promote<NupharCodeGenCtx>(&ctx_codegen);                                              \
+    auto natural_vector = [&](int bits) {                                                                                \
+      return ctx_codegen.GetCodeGenHandle()->codegen_target->NaturalVectorWidth(bits);                                   \
+    };                                                                                                                   \
+    tvm::Tensor Y = FuncReduceV(ctx_nuphar, node, &nuphar::name, natural_vector, node.InputDefs()[0], #name)(inputs[0]); \
+    outputs.push_back(Y);                                                                                                \
+    return Status::OK();                                                                                                 \
   }
 
 LIST_REDUCE_V_OPS()

@@ -3,10 +3,17 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
 #include "core/common/status.h"
 #include "core/framework/tensor.h"
+#endif
 #include <sstream>
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 class BatchNormHelper {
  public:
@@ -17,13 +24,11 @@ class BatchNormHelper {
                                        const Tensor* var,
                                        bool is_spatial = true) {
     const auto& x_dims = X->Shape().GetDims();
-    if (x_dims.size() < 2) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Invalid input X: The rank of input X must be atleast 2. Got rank: ", x_dims.size());
-    }
 
-    int64_t num_channels = x_dims[1];
-    int num_feature_dims = static_cast<int>(X->Shape().NumDimensions() - 2);  // the first 2 are respectively - N and C
+    // If x_dims size < 2, num_channels defaults to 1.
+    int64_t num_channels = x_dims.size() > 1 ? x_dims[1] : 1;
+    // the first 2 are respectively - N and C.
+    int num_feature_dims = x_dims.size() > 1 ? static_cast<int>(x_dims.size() - 2) : 0;
 
     // defined as per spec and used for validation
     int kNumInputScaleDimensions = (is_spatial ? 1 : num_feature_dims + 1);
@@ -106,19 +111,24 @@ class BatchNormHelper {
 
   static void NormalizeDims(const TensorShape& x_shape, std::vector<int64_t>& new_dims) {
     new_dims.clear();
-    auto& orig_dims = x_shape.GetDims();
+    auto orig_dims = x_shape.GetDims();
+    ORT_ENFORCE(orig_dims.size() < 6,
+                "Input dim size should be < 6 for BatchNorm, but got ", std::to_string(orig_dims.size()));
     if (orig_dims.size() == 4 /*supported size by CUDA*/ ||
         orig_dims.size() == 5 /*supported size by CUDA*/) {
-      new_dims = orig_dims;
+      new_dims = std::vector<int64_t>(orig_dims.begin(), orig_dims.end());
       return;
     }
 
     auto rank = x_shape.NumDimensions();
     auto num_samples = rank > 0 ? orig_dims[0] : 1;  // NCHW
     auto num_channels = rank > 1 ? orig_dims[1] : 1;
-    auto width = rank > 3 ? orig_dims[3] : 1;
     auto height = rank > 2 ? orig_dims[2] : 1;
+    int64_t width = 1;
     new_dims = {num_samples, num_channels, height, width};
   }
 };
 }  // namespace onnxruntime
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif

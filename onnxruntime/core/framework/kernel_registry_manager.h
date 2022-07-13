@@ -32,7 +32,7 @@ class KernelRegistryManager {
   // Register kernels from providers
   Status RegisterKernels(const ExecutionProviders& execution_providers) ORT_MUST_USE_RESULT;
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // The registry passed in this function has highest priority than anything already in this KernelRegistryManager,
   // and anything registered from RegisterKernels
   // For example, if you do:
@@ -71,14 +71,16 @@ class KernelRegistryManager {
   static bool HasImplementationOf(const KernelRegistryManager& r, const Node& node, const std::string& provider_type);
 #endif
 
-  Status SearchKernelRegistry(const onnxruntime::Node& node,
-                              uint64_t kernel_def_hash,
-                              /*out*/ const KernelCreateInfo** kernel_create_info) const;
+  /**
+   * Search the kernel registries given a kernel def hash.
+   */
+  bool SearchKernelRegistriesByHash(HashValue kernel_def_hash,
+                                    const KernelCreateInfo** kernel_create_info) const;
 
-  std::unique_ptr<OpKernel> CreateKernel(const onnxruntime::Node& node,
-                                         const IExecutionProvider& execution_provider,
-                                         const SessionState& session_state,
-                                         const KernelCreateInfo& kernel_create_info) const ORT_MUST_USE_RESULT;
+  Status CreateKernel(const onnxruntime::Node& node,
+                      const IExecutionProvider& execution_provider,
+                      SessionState& session_state,
+                      const KernelCreateInfo& kernel_create_info, std::unique_ptr<OpKernel>& out) const;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelRegistryManager);
 

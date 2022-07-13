@@ -120,25 +120,25 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
     const float* k_weight = k_initializer.data<float>();
     const float* v_weight = v_initializer.data<float>();
     std::vector<float> result;
-    result.reserve(element_count);
+    result.reserve(gsl::narrow<size_t>(element_count));
     if (is_matmul) {
       MergeMatMulWeights<float>(q_weight, k_weight, v_weight, result, hidden_size);
     } else {
       MergeWeights<float>(q_weight, k_weight, v_weight, result, hidden_size);
     }
-    initializer.set_raw_data(result.data(), element_count * sizeof(float));
+    initializer.set_raw_data(result.data(), gsl::narrow<size_t>(element_count) * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
     const MLFloat16* q_weight = q_initializer.data<MLFloat16>();
     const MLFloat16* k_weight = k_initializer.data<MLFloat16>();
     const MLFloat16* v_weight = v_initializer.data<MLFloat16>();
     std::vector<MLFloat16> result;
-    result.reserve(element_count);
+    result.reserve(gsl::narrow<size_t>(element_count));
     if (is_matmul) {
       MergeMatMulWeights<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size);
     } else {
       MergeWeights<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size);
     }
-    initializer.set_raw_data(result.data(), element_count * sizeof(MLFloat16));
+    initializer.set_raw_data(result.data(), gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
   }
 
   return graph_utils::AddInitializer(graph, initializer);
@@ -242,7 +242,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           fused_count++;
           modified = true;
         }
-      } else if (reshape_count == 1 && (shape_count == 1 || shape_count == 3) && (reshape_count + shape_count) == node.GetOutputEdgesCount()) {  // GPT
+      } else if (reshape_count == 1 && (shape_count == 1 || shape_count == 3) && (static_cast<size_t>(reshape_count) + shape_count) == node.GetOutputEdgesCount()) {  // GPT
         if (AttentionFusionHelper::FuseGptAttention(node, graph, hidden_size, mask_int32_map, shape_count == 1, logger)) {
           fused_count++;
           modified = true;
@@ -269,7 +269,7 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
                                int64_t num_heads,
                                int64_t head_size,
                                const logging::Logger& logger) {
-  std::vector<std::reference_wrapper<const Node>> pivot_nodes;
+  InlinedVector<std::reference_wrapper<const Node>> pivot_nodes;
   if (edges.size() == 2) {
     const Node& qk_div = (edges[0]->GetNode().OpType() == "Div") ? edges[0]->GetNode() : edges[1]->GetNode();
     const Node& qk_matmul = (edges[1]->GetNode().OpType() == "MatMul") ? edges[1]->GetNode() : edges[0]->GetNode();
@@ -332,7 +332,8 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
     DEBUG_LOG("k root is not layer norm");
     return false;
   }
-  if (!AttentionFusionHelper::CheckNodesInPathK(graph, k_reshape, k_transpose, num_heads, head_size, logger)) {
+  if (!AttentionFusionHelper::CheckNodesInPathK(graph, k_reshape, k_transpose, num_heads,
+                                                head_size, /*transpose_optimized_pattern*/ false, logger)) {
     DEBUG_LOG("CheckNodesInPathK returns false");
     return false;
   }
@@ -374,8 +375,8 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
   NodeArg& qkv_bias = MergeQkvWeights(graph, hidden_size, q_bias_tensor, k_bias_tensor, v_bias_tensor, false);
   // Create Attention Node.
   const Node& reshape = parent_path_nodes[0];
-  const std::vector<NodeArg*> input_defs{layer_norm.MutableOutputDefs()[0], &qkv_weights, &qkv_bias, mask_int32};
-  const std::vector<NodeArg*> output_defs{graph.GetNode(reshape.Index())->MutableOutputDefs()[0]};
+  const std::array input_defs{layer_norm.MutableOutputDefs()[0], &qkv_weights, &qkv_bias, mask_int32};
+  const std::array output_defs{graph.GetNode(reshape.Index())->MutableOutputDefs()[0]};
   Node& attention_node = graph.AddNode(
       graph.GenerateNodeName("Attention"),
       "Attention",

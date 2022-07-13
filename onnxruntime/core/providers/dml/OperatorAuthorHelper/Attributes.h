@@ -9,6 +9,7 @@ namespace AttrName
     static constexpr const char* ActivationAlpha = "activation_alpha";
     static constexpr const char* ActivationBeta = "activation_beta";
     static constexpr const char* Activations = "activations";
+    static constexpr const char* AllowZero = "allowzero";
     static constexpr const char* Alpha = "alpha";
     static constexpr const char* AutoPad = "auto_pad";
     static constexpr const char* Axes = "axes";
@@ -47,17 +48,18 @@ namespace AttrName
     static constexpr const char* InputForget = "input_forget";
     static constexpr const char* K = "k";
     static constexpr const char* KeepDims = "keepdims";
-    static constexpr const char* SelectLastIndex = "select_last_index";
     static constexpr const char* KernelShape = "kernel_shape";
     static constexpr const char* LinearBeforeReset = "linear_before_reset";
     static constexpr const char* Lambda = "lambd"; // Deliberate typo to match ONNX spec.
     static constexpr const char* Largest = "largest";
+    static constexpr const char* Layout = "layout";
     static constexpr const char* Low = "low";
     static constexpr const char* Max = "max";
     static constexpr const char* Mean = "mean";
     static constexpr const char* Min = "min";
     static constexpr const char* Mode = "mode";
     static constexpr const char* NearestMode = "nearest_mode";
+    static constexpr const char* NoopWithEmptyAxes = "noop_with_empty_axes";
     static constexpr const char* NormalizeVariance = "normalize_variance";
     static constexpr const char* P = "p";
     static constexpr const char* OutputHeight = "output_height";
@@ -72,6 +74,7 @@ namespace AttrName
     static constexpr const char* Scale = "scale";
     static constexpr const char* Scales = "scales";
     static constexpr const char* Seed = "seed";
+    static constexpr const char* SelectLastIndex = "select_last_index";
     static constexpr const char* Shape = "shape";
     static constexpr const char* Size = "size";
     static constexpr const char* Sorted = "sorted";
@@ -85,8 +88,10 @@ namespace AttrName
     static constexpr const char* Tiles = "tiles";
     static constexpr const char* TimeAxis = "time_axis";
     static constexpr const char* To = "to";
+    static constexpr const char* TrainingMode = "training_mode";
     static constexpr const char* TransA = "transA";
     static constexpr const char* TransB = "transB";
+    static constexpr const char* Upper = "upper";
     static constexpr const char* Value = "value";
     static constexpr const char* WidthScale = "width_scale";
 

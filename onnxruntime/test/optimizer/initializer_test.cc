@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <fstream>
 #include <numeric>
+#include <type_traits>
 
 #include "gsl/gsl"
 
@@ -21,17 +22,17 @@ namespace test {
 namespace {
 template <typename T>
 Status WriteExternalDataFile(gsl::span<const T> data, const PathString& path, ScopedFileDeleter& file_deleter) {
-  std::vector<char> data_bytes(data.size_bytes());
+  std::vector<unsigned char> data_bytes(data.size_bytes());
   ORT_RETURN_IF_ERROR(onnxruntime::utils::WriteLittleEndian(data, gsl::make_span(data_bytes)));
   std::ofstream out{path, std::ios::binary | std::ios::trunc};
-  ORT_RETURN_IF_NOT(out && out.write(data_bytes.data(), data_bytes.size()));
+  ORT_RETURN_IF_NOT(out && out.write(reinterpret_cast<const char*>(data_bytes.data()), data_bytes.size()),
+                    "out && out.write(data_bytes.data(), data_bytes.size()) was false");
   file_deleter = ScopedFileDeleter{path};
   return Status::OK();
 }
 
-void SetTensorProtoExternalData(
-    const std::string& key, const std::string& value,
-    ONNX_NAMESPACE::TensorProto& tensor_proto) {
+void SetTensorProtoExternalData(const std::string& key, const std::string& value,
+                                ONNX_NAMESPACE::TensorProto& tensor_proto) {
   auto* external_data = tensor_proto.mutable_external_data();
   auto kvp_it = std::find_if(
       external_data->begin(), external_data->end(),
@@ -44,10 +45,10 @@ void SetTensorProtoExternalData(
 
 TEST(OptimizerInitializerTest, LoadExternalData) {
   const std::vector<int32_t> tensor_data = []() {
-        std::vector<int32_t> tensor_data(100);
-        std::iota(tensor_data.begin(), tensor_data.end(), 0);
-        return tensor_data;
-      }();
+    std::vector<int32_t> tensor_data(100);
+    std::iota(tensor_data.begin(), tensor_data.end(), 0);
+    return tensor_data;
+  }();
   const gsl::span<const int> tensor_data_span = gsl::make_span(tensor_data);
   const auto tensor_data_dir_path = Path::Parse(ToPathString("."));
   const auto tensor_data_dir_relative_path = Path::Parse(ToPathString("OptimizerInitializerTest_LoadExternalData.bin"));
@@ -63,7 +64,7 @@ TEST(OptimizerInitializerTest, LoadExternalData) {
         tensor_proto.add_dims(tensor_data.size());
         tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
         tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
-        SetTensorProtoExternalData("location", ToMBString(tensor_data_dir_relative_path.ToPathString()), tensor_proto);
+        SetTensorProtoExternalData("location", ToUTF8String(tensor_data_dir_relative_path.ToPathString()), tensor_proto);
         SetTensorProtoExternalData("offset", "0", tensor_proto);
         SetTensorProtoExternalData("length", std::to_string(tensor_data.size() * sizeof(int32_t)), tensor_proto);
         return tensor_proto;
@@ -105,5 +106,166 @@ TEST(OptimizerInitializerTest, LoadExternalData) {
     EXPECT_THROW(Initializer i(tensor_proto, tensor_data_dir_path), OnnxRuntimeException);
   }
 }
+
+template <typename T>
+constexpr ONNX_NAMESPACE::TensorProto_DataType GetTensorProtoDataType();
+
+#define CppTypeToTensorProto_DataType(CppType, TP_DataType)                          \
+  template <>                                                                        \
+  constexpr ONNX_NAMESPACE::TensorProto_DataType GetTensorProtoDataType<CppType>() { \
+    return ONNX_NAMESPACE::TP_DataType;                                              \
+  }
+
+CppTypeToTensorProto_DataType(int8_t, TensorProto_DataType_INT8);
+CppTypeToTensorProto_DataType(uint8_t, TensorProto_DataType_UINT8);
+CppTypeToTensorProto_DataType(int32_t, TensorProto_DataType_INT32);
+CppTypeToTensorProto_DataType(int64_t, TensorProto_DataType_INT64);
+CppTypeToTensorProto_DataType(MLFloat16, TensorProto_DataType_FLOAT16);
+CppTypeToTensorProto_DataType(BFloat16, TensorProto_DataType_BFLOAT16);
+CppTypeToTensorProto_DataType(float, TensorProto_DataType_FLOAT);
+CppTypeToTensorProto_DataType(double, TensorProto_DataType_DOUBLE);
+
+template <typename T>
+std::vector<T> GetInitializerData() {
+  std::vector<T> data{
+      0, 1, 2, 3,
+      4, 5, 6, 7,
+      8, 9, 10, 11};
+  return data;
+}
+
+template <>
+std::vector<MLFloat16> GetInitializerData<MLFloat16>() {
+  std::vector<MLFloat16> data{
+      0_f16, 1_f16, 2_f16, 3_f16,
+      4_f16, 5_f16, 6_f16, 7_f16,
+      8_f16, 9_f16, 10_f16, 11_f16};
+  return data;
+}
+
+template <>
+std::vector<BFloat16> GetInitializerData<BFloat16>() {
+  std::vector<BFloat16> data{
+      0_b16, 1_b16, 2_b16, 3_b16,
+      4_b16, 5_b16, 6_b16, 7_b16,
+      8_b16, 9_b16, 10_b16, 11_b16};
+  return data;
+}
+
+
+template <typename T>
+void TestInitializerRawData() {
+  std::vector<T> data = GetInitializerData<T>();
+
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  tensor_proto.set_data_type(GetTensorProtoDataType<T>());
+  tensor_proto.set_name("OptimizerInitializerTest_RawData");
+  tensor_proto.add_dims(3);
+  tensor_proto.add_dims(4);
+  tensor_proto.set_raw_data(data.data(), data.size() * sizeof(T));
+
+  const Initializer init(tensor_proto, Path());
+
+  for (size_t idx = 0; idx < data.size(); idx++) {
+    EXPECT_EQ(data[idx], init.data<T>()[idx]);
+  }
+}
+
+TEST(OptimizerInitializerTest, RawData) {
+  TestInitializerRawData<int8_t>();
+  TestInitializerRawData<uint8_t>();
+  TestInitializerRawData<int32_t>();
+  TestInitializerRawData<int64_t>();
+  TestInitializerRawData<MLFloat16>();
+  TestInitializerRawData<BFloat16>();
+  TestInitializerRawData<float>();
+  TestInitializerRawData<double>();
+}
+
+template <typename T>
+void AddData(const std::vector<T>& data, size_t idx, ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  tensor_proto.add_int32_data(data[idx]);
+}
+
+template <>
+void AddData<MLFloat16>(const std::vector<MLFloat16>& data, size_t idx, ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  tensor_proto.add_int32_data(data[idx].val);
+}
+
+template <>
+void AddData<BFloat16>(const std::vector<BFloat16>& data, size_t idx, ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  tensor_proto.add_int32_data(data[idx].val);
+}
+
+
+template <typename T>
+void TestInitializerDataField() {
+  constexpr auto dt = GetTensorProtoDataType<T>();
+  static_assert((dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 ||
+                 dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
+                 dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32 ||
+                 dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 ||
+                 dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16),
+                "tensor type is not supported");
+
+  const std::vector<T> data = GetInitializerData<T>();
+
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  tensor_proto.set_data_type(GetTensorProtoDataType<T>());
+  tensor_proto.set_name("OptimizerInitializerTest_DataField");
+  tensor_proto.add_dims(3);
+  tensor_proto.add_dims(4);
+
+  for (size_t idx = 0; idx < data.size(); idx++) {
+    AddData<T>(data, idx, tensor_proto);
+  }
+
+  const Initializer init(tensor_proto, Path());
+
+  for (size_t idx = 0; idx < data.size(); idx++) {
+    EXPECT_EQ(data[idx], init.data<T>()[idx]);
+  }
+}
+
+#define TestInitializerDataFieldSpecialized(type)                \
+  template <>                                                    \
+  void TestInitializerDataField<type>() {                        \
+    std::vector<type> data{                                      \
+        0, 1, 2, 3,                                              \
+        4, 5, 6, 7,                                              \
+        8, 9, 10, 11};                                           \
+                                                                 \
+    ONNX_NAMESPACE::TensorProto tensor_proto;                    \
+    tensor_proto.set_data_type(GetTensorProtoDataType<type>());  \
+    tensor_proto.set_name("OptimizerInitializerTest_DataField"); \
+    tensor_proto.add_dims(3);                                    \
+    tensor_proto.add_dims(4);                                    \
+    for (size_t idx = 0; idx < data.size(); idx++) {             \
+      tensor_proto.add_##type##_data(data[idx]);                 \
+    }                                                            \
+                                                                 \
+    const Initializer init(tensor_proto, Path());                \
+                                                                 \
+    for (size_t idx = 0; idx < data.size(); idx++) {             \
+      EXPECT_EQ(data[idx], init.data<type>()[idx]);              \
+    }                                                            \
+  }
+
+typedef int64_t int64;
+TestInitializerDataFieldSpecialized(float);
+TestInitializerDataFieldSpecialized(double);
+TestInitializerDataFieldSpecialized(int64);
+
+TEST(OptimizerInitializerTest, DataField) {
+  TestInitializerDataField<int8_t>();
+  TestInitializerDataField<uint8_t>();
+  TestInitializerDataField<int32_t>();
+  TestInitializerDataField<int64_t>();
+  TestInitializerDataField<MLFloat16>();
+  TestInitializerDataField<BFloat16>();
+  TestInitializerDataField<float>();
+  TestInitializerDataField<double>();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

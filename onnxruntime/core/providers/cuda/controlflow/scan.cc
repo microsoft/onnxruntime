@@ -1,10 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/controlflow/scan.h"
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/tensor/transpose.h"
+#include "core/framework/ort_value.h"
+
+// TODO: It's ugly to include a .cc file but this .cc file defines the implementation of some templates which we need.
+#include "core/framework/ort_value_tensor_slicer.cc"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -29,7 +34,7 @@ template <>
 Scan<9>::Scan(const OpKernelInfo& info) : onnxruntime::Scan<9>(info) {
   scan::detail::DeviceHelpers helpers;
 
-  helpers.transpose_func = [this](const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
+  helpers.transpose_func = [this](const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output) {
     // TODO: We construct a Transpose kernel on each call as doing so is fairly lightweight.
     // We could potentially keep a single instance and reuse it if that isn't performant enough.
     const OpKernelInfo& info = OpKernel::Info();
@@ -66,8 +71,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
                                   kOnnxDomain,
                                   8, 8,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder()
-                                      .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'sequence_lens' needs to be on CPU
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'sequence_lens' needs to be on CPU
                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                       .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                                   Scan<8>);
@@ -76,18 +81,32 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
                                   kOnnxDomain,
                                   9, 10,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder()
-                                      .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                  (*KernelDefBuilder::Create())
+                                      // 'I' is in the ONNX spec but is not used for any inputs or outputs
+                                      // .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                       .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   Scan<9>);
 
 // Opset 11 starts to support Neg Axis.
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
+                                  kOnnxDomain,
+                                  11,
+                                  15,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      // 'I' is in the ONNX spec but is not used for any inputs or outputs
+                                      // .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                      .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  Scan<9>);
+
+// Opset 16 starts to support BFloat16 type for the type constraint "V"
 ONNX_OPERATOR_KERNEL_EX(Scan,
                         kOnnxDomain,
-                        11,
+                        16,
                         kCudaExecutionProvider,
-                        KernelDefBuilder()
-                            .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                        (*KernelDefBuilder::Create())
+                            // 'I' is in the ONNX spec but is not used for any inputs or outputs
+                            // .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                             .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                         Scan<9>);
 

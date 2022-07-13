@@ -32,10 +32,10 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Shape", DataTypeImpl::GetTensorType<int64_t>())
-        .InputMemoryType<OrtMemTypeCPUInput>(GenerateInputMemoryType())  // all shape inputs are in CPU
+        .InputMemoryType(OrtMemTypeCPUInput, GenerateInputMemoryType())  // all shape inputs are in CPU
         .Alias(GenerateAliasMapping()),                                  // all output tensors are sharing the same bffer as input[0],
                                                                          // execept that the byte_offset is different
     View);
@@ -76,7 +76,7 @@ Status View::ComputeInternal(OpKernelContext* context) const {
         // View output is not sharing the underlaying buffer of input, copy instead
         const void* source = static_cast<const char*>(X_data) + y_byte_offsets[i];
         void* target = Y->MutableDataRaw();
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, Y->SizeInBytes(), cudaMemcpyDeviceToDevice));
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, Y->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
       } else {
         Y->SetByteOffset(y_byte_offsets[i]);
       }

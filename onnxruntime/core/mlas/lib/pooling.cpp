@@ -45,8 +45,6 @@ void
     float* Output
     );
 
-typedef MLAS_POOL_KERNEL_ROUTINE* PMLAS_POOL_KERNEL_ROUTINE;
-
 //
 // Define the number of elements to allocate on the stack for the reduction
 // buffer in the vectorized kernels.
@@ -68,7 +66,7 @@ typedef MLAS_POOL_KERNEL_ROUTINE* PMLAS_POOL_KERNEL_ROUTINE;
 
 struct MLAS_MAXIMUM_POOLING
 {
-    static float InitialValue()
+    static constexpr float InitialValue()
     {
         return std::numeric_limits<float>::lowest();
     }
@@ -78,7 +76,7 @@ struct MLAS_MAXIMUM_POOLING
         return MlasBroadcastFloat32x4(InitialValue());
     }
 
-    static float Reduce(float Reduction, float Value)
+    static constexpr float Reduce(float Reduction, float Value)
     {
         return std::max(Reduction, Value);
     }
@@ -93,7 +91,7 @@ struct MLAS_MAXIMUM_POOLING
         return MlasReduceMaximumFloat32x4(Reduction);
     }
 
-    static float AveragePool(float Reduction, float Size)
+    static constexpr float AveragePool(float Reduction, float Size)
     {
         MLAS_UNREFERENCED_PARAMETER(Size);
 
@@ -149,7 +147,7 @@ struct MLAS_AVERAGE_POOLING
         return MlasZeroFloat32x4();
     }
 
-    static float Reduce(float Reduction, float Value)
+    static constexpr float Reduce(float Reduction, float Value)
     {
         return Reduction + Value;
     }
@@ -164,7 +162,7 @@ struct MLAS_AVERAGE_POOLING
         return MlasReduceAddFloat32x4(Reduction);
     }
 
-    static float AveragePool(float Reduction, float Size)
+    static constexpr float AveragePool(float Reduction, float Size)
     {
         return Reduction / Size;
     }
@@ -1078,7 +1076,7 @@ Return Value:
 // Stores pointers to the pooling kernel routines.
 //
 
-static const PMLAS_POOL_KERNEL_ROUTINE MlasPoolGenericKernels[][3] =
+static MLAS_POOL_KERNEL_ROUTINE* const MlasPoolGenericKernels[][3] =
 {
     {
         MlasPool1DKernel<MLAS_MAXIMUM_POOLING>,
@@ -1097,14 +1095,14 @@ static const PMLAS_POOL_KERNEL_ROUTINE MlasPoolGenericKernels[][3] =
     },
 };
 
-static const PMLAS_POOL_KERNEL_ROUTINE MlasPoolGlobalKernels[] =
+static MLAS_POOL_KERNEL_ROUTINE* const MlasPoolGlobalKernels[] =
 {
     MlasPoolGlobalKernel<MLAS_MAXIMUM_POOLING>,
     MlasPoolGlobalKernel<MLAS_AVERAGE_POOLING>,
     MlasPoolGlobalKernel<MLAS_AVERAGE_POOLING>,
 };
 
-static const PMLAS_POOL_KERNEL_ROUTINE MlasPoolVectorKernels[][2] =
+static MLAS_POOL_KERNEL_ROUTINE* const MlasPoolVectorKernels[][2] =
 {
     {
         MlasPool2DVectorKernel<MLAS_MAXIMUM_POOLING>,
@@ -1249,7 +1247,7 @@ Return Value:
     // in the reduction buffer.
     //
 
-    PMLAS_POOL_KERNEL_ROUTINE PoolKernelRoutine = MlasPoolGenericKernels[PoolingKind][Dimensions - 1];
+    MLAS_POOL_KERNEL_ROUTINE* PoolKernelRoutine = MlasPoolGenericKernels[PoolingKind][Dimensions - 1];
 
     if (InputAndKernelShapeMatch && AllStridesAreOne && AllPaddingIsZero) {
 
@@ -1276,24 +1274,14 @@ Return Value:
         }
     }
 
-#ifdef MLAS_NO_ONNXRUNTIME_THREADPOOL
+#ifdef BUILD_MLAS_NO_ONNXRUNTIME
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
     //
     // Execute the pooling kernel routine.
     //
 
-#if defined(_OPENMP)
-
-#pragma omp parallel for
-    for (int64_t c = 0; c < int64_t(TotalChannelCount); c++) {
-      PoolKernelRoutine(&WorkBlock, 1, Input + c * InputSize, Output + c * OutputSize);
-    }
-
-#else
-
+    MLAS_UNREFERENCED_PARAMETER(OutputSize);
     PoolKernelRoutine(&WorkBlock, TotalChannelCount, Input, Output);
-
-#endif
 #else
     //
     // Use an external thread pool if one is provided.
@@ -1304,3 +1292,327 @@ Return Value:
     return;
 #endif
 }
+
+template<typename T8Bits>
+void
+MLASCALL
+MlasMaximumPool(
+    const T8Bits* const* Input,
+    T8Bits* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    )
+/*++
+
+Routine Description:
+
+    This routine implements the maximum pooling operation.
+
+    The input is supplied as an indirection buffer. Every pointer in the
+    indirection buffer points at a Channels length vector (either from the
+    input tensor or a vector of padding values). These are grouped in batches
+    of length KernelSize that are processed by the kernel to produce a single
+    output of length Channels. These batches are then repeated OutputCount
+    times.
+
+Arguments:
+
+    Input - Supplies an indirection buffer to the elements of the input tensor.
+
+    Output - Supplies the output tensor in channels last format.
+
+    Channels - Supplies the number of channels.
+
+    OutputCount - Supplies the number of channel sized output elements to
+        produce.
+
+    KernelSize - Supplies the total number of channel sized kernel elements to
+        consume.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    while (OutputCount > 0) {
+
+        size_t ChannelOffset = 0;
+        size_t c = Channels;
+
+#if defined(MLAS_SSE2_INTRINSICS)
+        const __m128i BitFlipVector = _mm_set1_epi32(0x80808080);
+        if constexpr (std::is_unsigned<T8Bits>::value) {
+            MLAS_UNREFERENCED_PARAMETER(BitFlipVector);
+        }
+
+        while (c >= 32) {
+
+            __m128i MaximumVector0 = _mm_setzero_si128();
+            __m128i MaximumVector1 = _mm_setzero_si128();
+
+            for (size_t k = 0; k < KernelSize; k++) {
+
+                __m128i InputVector0 = _mm_loadu_si128((const __m128i*)&Input[k][ChannelOffset]);
+                __m128i InputVector1 = _mm_loadu_si128((const __m128i*)&Input[k][ChannelOffset + 16]);
+
+                if constexpr (std::is_signed<T8Bits>::value) {
+                    InputVector0 = _mm_xor_si128(InputVector0, BitFlipVector);
+                    InputVector1 = _mm_xor_si128(InputVector1, BitFlipVector);
+                }
+
+                MaximumVector0 = _mm_max_epu8(MaximumVector0, InputVector0);
+                MaximumVector1 = _mm_max_epu8(MaximumVector1, InputVector1);
+            }
+
+            if constexpr (std::is_signed<T8Bits>::value) {
+                MaximumVector0 = _mm_xor_si128(MaximumVector0, BitFlipVector);
+                MaximumVector1 = _mm_xor_si128(MaximumVector1, BitFlipVector);
+            }
+
+            _mm_storeu_si128((__m128i*)&Output[0], MaximumVector0);
+            _mm_storeu_si128((__m128i*)&Output[16], MaximumVector1);
+            Output += 32;
+
+            ChannelOffset += 32;
+            c -= 32;
+        }
+
+        while (c >= 16) {
+
+            __m128i MaximumVector0 = _mm_setzero_si128();
+
+            for (size_t k = 0; k < KernelSize; k++) {
+
+                __m128i InputVector0 = _mm_loadu_si128((const __m128i*)&Input[k][ChannelOffset]);
+
+                if constexpr (std::is_signed<T8Bits>::value){
+                    InputVector0 = _mm_xor_si128(InputVector0, BitFlipVector);
+                }
+
+                MaximumVector0 = _mm_max_epu8(MaximumVector0, InputVector0);
+            }
+
+            if constexpr (std::is_signed<T8Bits>::value) {
+                MaximumVector0 = _mm_xor_si128(MaximumVector0, BitFlipVector);
+            }
+
+            _mm_storeu_si128((__m128i*)&Output[0], MaximumVector0);
+            Output += 16;
+
+            ChannelOffset += 16;
+            c -= 16;
+        }
+
+        if (c >= 8) {
+
+            __m128i MaximumVector0 = _mm_setzero_si128();
+
+            for (size_t k = 0; k < KernelSize; k++) {
+
+                __m128i InputVector0 = _mm_loadl_epi64((const __m128i*)&Input[k][ChannelOffset]);
+
+                if constexpr (std::is_signed<T8Bits>::value){
+                    InputVector0 = _mm_xor_si128(InputVector0, BitFlipVector);
+                }
+
+                MaximumVector0 = _mm_max_epu8(MaximumVector0, InputVector0);
+            }
+
+            if constexpr (std::is_signed<T8Bits>::value) {
+                MaximumVector0 = _mm_xor_si128(MaximumVector0, BitFlipVector);
+            }
+
+            _mm_storel_epi64((__m128i*)&Output[0], MaximumVector0);
+            Output += 8;
+
+            ChannelOffset += 8;
+            c -= 8;
+        }
+
+#elif defined(MLAS_NEON_INTRINSICS)
+
+        while (c >= 32) {
+
+            if constexpr (std::is_signed<T8Bits>::value){
+
+                int8x16_t MaximumVector0 = vdupq_n_s8(-128);
+                int8x16_t MaximumVector1 = vdupq_n_s8(-128);
+
+                for (size_t k = 0; k < KernelSize; k++) {
+
+                    int8x16_t InputVector0 = vld1q_s8(&Input[k][ChannelOffset]);
+                    int8x16_t InputVector1 = vld1q_s8(&Input[k][ChannelOffset + 16]);
+
+                    MaximumVector0 = vmaxq_s8(MaximumVector0, InputVector0);
+                    MaximumVector1 = vmaxq_s8(MaximumVector1, InputVector1);
+                }
+
+                vst1q_s8(&Output[0], MaximumVector0);
+                vst1q_s8(&Output[16], MaximumVector1);
+            } else {
+
+                uint8x16_t MaximumVector0 = vdupq_n_u8(0);
+                uint8x16_t MaximumVector1 = vdupq_n_u8(0);
+
+                for (size_t k = 0; k < KernelSize; k++) {
+
+                    uint8x16_t InputVector0 = vld1q_u8(&Input[k][ChannelOffset]);
+                    uint8x16_t InputVector1 = vld1q_u8(&Input[k][ChannelOffset + 16]);
+
+                    MaximumVector0 = vmaxq_u8(MaximumVector0, InputVector0);
+                    MaximumVector1 = vmaxq_u8(MaximumVector1, InputVector1);
+                }
+
+                vst1q_u8(&Output[0], MaximumVector0);
+                vst1q_u8(&Output[16], MaximumVector1);
+            }
+
+            Output += 32;
+
+            ChannelOffset += 32;
+            c -= 32;
+        }
+
+        while (c >= 16) {
+
+            if constexpr (std::is_signed<T8Bits>::value){
+
+                int8x16_t MaximumVector0 = vdupq_n_s8(-128);
+
+                for (size_t k = 0; k < KernelSize; k++) {
+
+                    int8x16_t InputVector0 = vld1q_s8(&Input[k][ChannelOffset]);
+                    MaximumVector0 = vmaxq_s8(MaximumVector0, InputVector0);
+                }
+
+                vst1q_s8(&Output[0], MaximumVector0);
+            } else {
+
+                uint8x16_t MaximumVector0 = vdupq_n_u8(0);
+
+                for (size_t k = 0; k < KernelSize; k++) {
+
+                    uint8x16_t InputVector0 = vld1q_u8(&Input[k][ChannelOffset]);
+                    MaximumVector0 = vmaxq_u8(MaximumVector0, InputVector0);
+                }
+
+                vst1q_u8(&Output[0], MaximumVector0);
+            }
+
+            Output += 16;
+
+            ChannelOffset += 16;
+            c -= 16;
+        }
+
+        if (c >= 8) {
+
+            if constexpr (std::is_signed<T8Bits>::value){
+
+                int8x8_t MaximumVector0 = vdup_n_s8(-128);
+
+                for (size_t k = 0; k < KernelSize; k++) {
+
+                    int8x8_t InputVector0 = vld1_s8(&Input[k][ChannelOffset]);
+                    MaximumVector0 = vmax_s8(MaximumVector0, InputVector0);
+                }
+
+                vst1_s8(&Output[0], MaximumVector0);
+            } else {
+
+                uint8x8_t MaximumVector0 = vdup_n_u8(0);
+
+                for (size_t k = 0; k < KernelSize; k++) {
+
+                    uint8x8_t InputVector0 = vld1_u8(&Input[k][ChannelOffset]);
+                    MaximumVector0 = vmax_u8(MaximumVector0, InputVector0);
+                }
+                vst1_u8(&Output[0], MaximumVector0);
+            }
+
+            Output += 8;
+
+            ChannelOffset += 8;
+            c -= 8;
+        }
+
+#elif defined(MLAS_TARGET_POWER)
+
+        while (c >= 32) {
+            auto MaximumVector0 = vec_splats(std::numeric_limits<T8Bits>::lowest());
+            auto MaximumVector1 = vec_splats(std::numeric_limits<T8Bits>::lowest());
+
+            for (size_t k = 0; k < KernelSize; k++) {
+                auto InputVector0 = vec_xl(0,  &Input[k][ChannelOffset]);
+                auto InputVector1 = vec_xl(16, &Input[k][ChannelOffset]);
+
+                MaximumVector0 = vec_max(MaximumVector0, InputVector0);
+                MaximumVector1 = vec_max(MaximumVector1, InputVector1);
+            }
+
+            vec_xst(MaximumVector0, 0, (T8Bits *) Output);
+            vec_xst(MaximumVector1, 16, (T8Bits *) Output);
+
+            Output += 32;
+            ChannelOffset += 32;
+            c -= 32;
+        }
+
+        while (c >= 16) {
+            auto MaximumVector = vec_splats(std::numeric_limits<T8Bits>::lowest());
+
+            for (size_t k = 0; k < KernelSize; k++) {
+                auto InputVector = vec_xl(0,  &Input[k][ChannelOffset]);
+                MaximumVector = vec_max(MaximumVector, InputVector);
+            }
+            vec_xst(MaximumVector, 0, (T8Bits *) Output);
+
+            Output += 16;
+            ChannelOffset += 16;
+            c -= 16;
+        }
+
+#endif
+
+        while (c > 0) {
+
+            int32_t MaximumValue = std::numeric_limits<T8Bits>::lowest();
+
+            for (size_t k = 0; k < KernelSize; k++) {
+                MaximumValue = std::max(MaximumValue, int32_t(Input[k][ChannelOffset]));
+            }
+
+            *Output++ = T8Bits(MaximumValue);
+
+            ChannelOffset += 1;
+            c -= 1;
+        }
+
+        Input += KernelSize;
+        OutputCount -= 1;
+    }
+}
+
+template
+void
+MLASCALL
+MlasMaximumPool<int8_t>(
+    const int8_t* const* Input,
+    int8_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
+template
+void
+MLASCALL
+MlasMaximumPool<uint8_t>(
+    const uint8_t* const* Input,
+    uint8_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );

@@ -49,7 +49,7 @@ steps:
       displayName: 'Install conda modules'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\scripts\conda.exe'
-        arguments: 'install -q --insecure -y pyopenssl setuptools wheel numpy'
+        arguments: 'install -q -y setuptools wheel numpy'
       timeoutInMinutes: 10
 
 

@@ -136,7 +136,10 @@ static void Scenario1LoadBindEvalDefault() {
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
   // create a session on the default device
-  LearningModelSession session(model, LearningModelDevice(LearningModelDeviceKind::Default));
+  auto device = LearningModelDevice(LearningModelDeviceKind::Default);
+  LearningModelSession session(model, device);
+  LearningModelSession session2(model, device);
+  LearningModelSession session3(model, device);
   // create a binding set
   LearningModelBinding binding(session);
   // bind the input and the output buffers by name
@@ -222,7 +225,7 @@ static void Scenario5AsyncEval() {
 }
 
 //! Scenario6: use BindInputWithProperties - BitmapBounds, BitmapPixelFormat
-// apparently this scenario is cut for rs5. - not cut, just rewprked. move props
+// apparently this scenario is cut for rs5. - not cut, just reworked. move props
 // to the image value when that is checked in.
 static void Scenario6BindWithProperties() {
   // load a model
@@ -259,6 +262,14 @@ static void Scenario6BindWithProperties() {
     auto bitmapPixelFormatProperty = wf::PropertyValue::CreateInt32(intFromBitmapPixelFormat);
     // insert it in the property set
     propertySet.Insert(L"BitmapPixelFormat", bitmapPixelFormatProperty);
+
+    // make a LearningModelPixelRange
+    LearningModelPixelRange pixelRange = LearningModelPixelRange::ZeroTo255;
+    // translate it to an int so it can be used as a PropertyValue;
+    int intFromLearningModelPixelRange = static_cast<int>(pixelRange);
+    auto pixelRangeProperty = wf::PropertyValue::CreateInt32(intFromLearningModelPixelRange);
+    // insert it in the property set
+    propertySet.Insert(L"PixelRange", pixelRangeProperty);
 
     // bind with properties
     WINML_EXPECT_NO_THROW(binding.Bind(input.Name(), imageValue, propertySet));
@@ -609,7 +620,7 @@ void SubmitEval(LearningModel model, SwapChainEntry* sessionBindings, int swapch
   // return without waiting for the submit to finish, setup the completion handler
 }
 
-//Scenario14:Load single model, run it mutliple times on a single gpu device using a fast swapchain pattern
+//Scenario14:Load single model, run it multiple times on a single gpu device using a fast swapchain pattern
 static void Scenario14RunModelSwapchain() {
   const int swapchainentrycount = 3;
   SwapChainEntry sessionBindings[swapchainentrycount];
@@ -729,7 +740,9 @@ static void Scenario21RunModel2ChainZ() {
   std::vector<int64_t> shape = {1, 3, 720, 720};
   auto outputValue = TensorFloat::Create(shape);  //   FeatureValueFromFeatureValueDescriptor(input, nullptr);
                                                   // now bind the(empty) output so we have a marker to chain with
-  binding1.Bind(output.Name(), outputValue);
+  PropertySet outputBindProperties;
+  outputBindProperties.Insert(L"DisableTensorCpuSync", wf::PropertyValue::CreateBoolean(true));
+  binding1.Bind(output.Name(), outputValue, outputBindProperties);
   // and leave the output unbound on the second model, we will fetch it later
   // run both models async
   WINML_EXPECT_NO_THROW(session1.EvaluateAsync(binding1, L""));
@@ -816,7 +829,8 @@ static void Scenario22ImageBindingAsCPUTensor() {
 
   uint32_t height = softwareBitmap.PixelHeight();
   uint32_t width = softwareBitmap.PixelWidth();
-  for (UINT32 i = 0; i < size; i += 4) {
+  for (UINT32 i = 0; i < size - 2; i += 4) {
+    // loop condition is i < size - 2 to avoid potential for extending past the memory buffer
     UINT32 pixelInd = i / 4;
     pCPUTensor[pixelInd] = (float)pData[i];
     pCPUTensor[(height * width) + pixelInd] = (float)pData[i + 1];
@@ -887,7 +901,8 @@ static void Scenario22ImageBindingAsGPUTensor() {
 
   uint32_t height = softwareBitmap.PixelHeight();
   uint32_t width = softwareBitmap.PixelWidth();
-  for (UINT32 i = 0; i < size; i += 4) {
+  for (UINT32 i = 0; i < size - 2; i += 4) {
+    // loop condition is i < size - 2 to avoid potential for extending past the memory buffer
     UINT32 pixelInd = i / 4;
     pCPUTensor[pixelInd] = (FLOAT)pData[i];
     pCPUTensor[(height * width) + pixelInd] = (FLOAT)pData[i + 1];
@@ -1387,7 +1402,7 @@ static void DeviceLostRecovery() {
   } catch (...) {
   }
 
-  // remove all references to the device by reseting the session and binding.
+  // remove all references to the device by resetting the session and binding.
   session = nullptr;
   binding = nullptr;
 
@@ -1494,7 +1509,8 @@ static void BindMultipleCPUBuffersAsInputs(LearningModelDeviceKind kind) {
   green_byteaccess->GetBuffer(reinterpret_cast<BYTE**>(&green_data), &frame_size);
   blue_byteaccess->GetBuffer(reinterpret_cast<BYTE**>(&blue_data), &frame_size);
 
-  for (UINT32 i = 0; i < size; i += 4) {
+  for (UINT32 i = 0; i < size - 2 && i / 4 < frame_size; i += 4) {
+    // loop condition is i < size - 2 to avoid potential for extending past the memory buffer
     UINT32 pixelInd = i / 4;
     red_data[pixelInd] = (float)data[i];
     green_data[pixelInd] = (float)data[i + 1];

@@ -83,7 +83,7 @@ static Status AddL2NormNcclAllReduce(
                                   {norm_squared},
                                   {allreduce_output},
                                   {ONNX_NAMESPACE::MakeAttribute("group_type",
-                                                                static_cast<int64_t>(WorkerGroupType::DataParallel))},
+                                                                 static_cast<int64_t>(WorkerGroupType::DataParallel))},
                                   allreduce_output.name)});
 
   // Sqrt the reduced L2 norm.
@@ -124,7 +124,7 @@ static std::vector<ArgDef> AddPartitionsForParameter(
         ORT_ENFORCE(dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
         // Find the initializer partition to read out.
-        auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+        auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
         const float* initializer_data = initializer->data<float>();
 
         // Create new initializer tensor proto.
@@ -146,7 +146,7 @@ static std::vector<ArgDef> AddPartitionsForParameter(
         view_outputs.push_back(partition_argdef);
       } else {
         auto dtype = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-        auto partition_argdef = ArgDef(partition_name, graph_defs.CreateTypeProto({shapes[i].Size()}, dtype));
+        auto partition_argdef = ArgDef(partition_name, graph_defs.CreateTypeProto(std::array<const int64_t, 1>{shapes[i].Size()}, dtype));
         view_outputs.push_back(partition_argdef);
       }
       view_num++;
@@ -168,7 +168,7 @@ static std::vector<ArgDef> AddViewForParameter(
 
       ArgDef shape_argdef(argdef.name + "_view_shape_" + std::to_string(view_num),
                           graph_defs.CreateTypeProto({dims}, ONNX_NAMESPACE::TensorProto_DataType_INT64));
-      graph_defs.AddInitializers({CreateTensorProto<int64_t>(shape_argdef.name, shape.GetDims(), {dims})});
+      graph_defs.AddInitializers({CreateTensorProto<int64_t>(shape_argdef.name, shape.AsShapeVector(), {dims})});
 
       auto dtype = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(argdef.type_proto->tensor_type().elem_type());
       ArgDef view_argdef(GetViewName(argdef.name, view_num),
@@ -205,16 +205,16 @@ void PartitionOptimizerState(
 
       if (utils::IsPrimitiveDataType<float>(element_type)) {
         float* data_buffer = init_tensor->MutableData<float>();
-        p_tensor = onnxruntime::make_unique<Tensor>(element_type,
-                                                    shape,
-                                                    data_buffer + partition_offset,
-                                                    info);
+        p_tensor = std::make_unique<Tensor>(element_type,
+                                            shape,
+                                            data_buffer + partition_offset,
+                                            info);
       } else if (utils::IsPrimitiveDataType<MLFloat16>(element_type)) {
         MLFloat16* data_buffer = init_tensor->MutableData<MLFloat16>();
-        p_tensor = onnxruntime::make_unique<Tensor>(element_type,
-                                                    shape,
-                                                    data_buffer + partition_offset,
-                                                    info);
+        p_tensor = std::make_unique<Tensor>(element_type,
+                                            shape,
+                                            data_buffer + partition_offset,
+                                            info);
 
       } else {
         ORT_THROW("Unsupported type: ", element_type, "for initial optimizer moments.");
@@ -250,6 +250,7 @@ static Status AddParameterPartition(
     //Partition the FP32 weight
     weight_views = AddPartitionsForParameter(graph, graph_defs, weight_argdef.name, view_shapes, updated_weight_names_map);
     ORT_ENFORCE(weight_views.size() == enabled.size());
+    weight_partition_info[weight_argdef.name].weight_partitioned = true;
 
     // Add View for mixed precision weight.
     ArgDef mixed_precision_weight_argdef(opt_config.mixed_precision_weight_arg->Name(), opt_config.mixed_precision_weight_arg->TypeAsProto());
@@ -275,7 +276,7 @@ static Status AddParameterPartition(
 
     // Partition initial optimizer state
     if (enabled[i]) {
-      weight_partition_info[weight_argdef.name].view_name = weight_views[i].name;
+      weight_partition_info[weight_argdef.name].partition_name = weight_views[i].name;
 
       if (!initial_states.empty()) {
         ORT_ENFORCE(view_shapes.size() == 3, "Invalid view_shapes vector passed for partitioning.");
@@ -328,7 +329,7 @@ static Status ModifyParametersForOptimizerPartitioning(
   // Note: the alignment here needs to be kept in-sync with the alignment in nccl_kernels.cc
   const int data_parallel_group_rank = opt_graph_config.data_parallel_group_rank;
   const int data_parallel_group_size = opt_graph_config.data_parallel_group_size;
-  const int64_t alignment = data_parallel_group_size * 32;
+  const int64_t alignment = static_cast<int64_t>(data_parallel_group_size) * 32;
   const int64_t padded_count = total_count + alignment - (total_count % alignment);
   const int64_t rank_count = padded_count / data_parallel_group_size;
   const int64_t rank_start = data_parallel_group_rank * rank_count;
@@ -359,29 +360,32 @@ static Status ModifyParametersForOptimizerPartitioning(
         new_weight_argdefs.push_back(weight_argdef);
         new_gradient_argdefs.push_back(gradient_argdef);
       } else {
-        weight_partition_info[weight_argdef.name].original_dim = tensor_shape.GetDims();
+        weight_partition_info[weight_argdef.name].original_dim = tensor_shape.AsShapeVector();
         if (offset < rank_start && offset + tensor_count <= rank_end) {
           int64_t size_for_previous_rank = rank_start - offset;
           int64_t size_for_current_rank = offset + tensor_count - rank_start;
           std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {0}};
           std::vector<bool> enabled = {false, true};
-          AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
-                                new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
+          ORT_RETURN_IF_ERROR(AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config,
+                                                    view_shapes, enabled, new_opt_configs, new_weight_argdefs,
+                                                    new_gradient_argdefs, updated_weight_names_map, weight_partition_info));
         } else if (offset >= rank_start && offset + tensor_count > rank_end) {
           int64_t size_for_current_rank = rank_end - offset;
           int64_t size_for_next_rank = offset + tensor_count - rank_end;
           std::vector<TensorShape> view_shapes = {{0}, {size_for_current_rank}, {size_for_next_rank}};
           std::vector<bool> enabled = {true, false};
-          AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
-                                new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
+          ORT_RETURN_IF_ERROR(AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config,
+                                                    view_shapes, enabled, new_opt_configs, new_weight_argdefs,
+                                                    new_gradient_argdefs, updated_weight_names_map, weight_partition_info));
         } else {  // offset < rank_start && offset + tensor_count > rank_end
           int64_t size_for_previous_rank = rank_start - offset;
           int64_t size_for_current_rank = rank_end - rank_start;
           int64_t size_for_next_rank = offset + tensor_count - rank_end;
           std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {size_for_next_rank}};
           std::vector<bool> enabled = {false, true, false};
-          AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
-                                new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
+          ORT_RETURN_IF_ERROR(AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config,
+                                                    view_shapes, enabled, new_opt_configs, new_weight_argdefs,
+                                                    new_gradient_argdefs, updated_weight_names_map, weight_partition_info));
         }
       }
     } else {
@@ -453,7 +457,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
   // add gradient scaling
   ArgDef fused_gradient_argdef;
   const auto total_num_accumulations = opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
-  ORT_RETURN_IF_NOT(total_num_accumulations > 0);
+  ORT_RETURN_IF_NOT(total_num_accumulations > 0, "total_num_accumulations <= 0");
   const float scale = 1.0f / total_num_accumulations;
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
                                               opt_graph_config_.AllReduceDataType(), false));

@@ -3,9 +3,6 @@
 
 #pragma once
 
-#include "core/common/common.h"
-#include "core/framework/kernel_registry.h"
-
 namespace onnxruntime {
 namespace cuda {
 

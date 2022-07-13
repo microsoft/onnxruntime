@@ -118,7 +118,7 @@ private:
 
     // A constant value used for internal computation.
     //
-    constexpr inline double sqrtpi()
+    constexpr double sqrtpi()
     { 
         return std::sqrt( std::atan(1)*4 ); 
     }

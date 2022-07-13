@@ -10,11 +10,8 @@
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
-using namespace ::onnxruntime::experimental;
 
-namespace onnxruntime {
-namespace experimental {
-namespace utils {
+namespace onnxruntime::fbs::utils {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -44,11 +41,10 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     std::copy(initializer.string_data().cbegin(), initializer.string_data().cend(), string_data_vec.begin());
     string_data = builder.CreateVectorOfStrings(string_data_vec);
   } else {
-    std::unique_ptr<uint8_t[]> unpacked_tensor;
-    size_t tensor_byte_size = 0;
+    std::vector<uint8_t> unpacked_tensor;
     ORT_RETURN_IF_ERROR(
-        onnxruntime::utils::UnpackInitializerData(initializer, model_path, unpacked_tensor, tensor_byte_size));
-    raw_data = builder.CreateVector(unpacked_tensor.get(), tensor_byte_size);
+        onnxruntime::utils::UnpackInitializerData(initializer, model_path, unpacked_tensor));
+    raw_data = builder.CreateVector(unpacked_tensor.data(), unpacked_tensor.size());
   }
 
   fbs::TensorBuilder tb(builder);
@@ -106,7 +102,8 @@ Status SaveSparseInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                               const AttributeProto& attr_proto,
                               flatbuffers::Offset<fbs::Attribute>& fbs_attr,
-                              const onnxruntime::Graph* graph) {
+                              const Path& model_path,
+                              const onnxruntime::Graph* subgraph) {
   auto name = SaveStringToOrtFormat(builder, attr_proto.has_name(), attr_proto.name());
   auto doc_string = SaveStringToOrtFormat(builder, attr_proto.has_doc_string(), attr_proto.doc_string());
   auto type = static_cast<fbs::AttributeType>(attr_proto.type());
@@ -124,13 +121,13 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     case fbs::AttributeType::TENSOR: {
       flatbuffers::Offset<fbs::Tensor> fbs_tensor;
       ORT_RETURN_IF_ERROR(
-          experimental::utils::SaveInitializerOrtFormat(builder, attr_proto.t(), graph->ModelPath(), fbs_tensor));
+          SaveInitializerOrtFormat(builder, attr_proto.t(), model_path, fbs_tensor));
       GET_FBS_ATTR(builder, type, t, fbs_tensor);
     } break;
     case fbs::AttributeType::GRAPH: {
-      ORT_RETURN_IF(nullptr == graph, "Graph attribute value was null. Invalid ORT format model.");
+      ORT_RETURN_IF(nullptr == subgraph, "Graph attribute value was null. Invalid ORT format model.");
       flatbuffers::Offset<fbs::Graph> fbs_graph;
-      ORT_RETURN_IF_ERROR(graph->SaveToOrtFormat(builder, fbs_graph));
+      ORT_RETURN_IF_ERROR(subgraph->SaveToOrtFormat(builder, fbs_graph));
       GET_FBS_ATTR(builder, type, g, fbs_graph);
     } break;
     case fbs::AttributeType::FLOATS: {
@@ -154,7 +151,7 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
       for (const auto& tensor : attr_proto.tensors()) {
         flatbuffers::Offset<fbs::Tensor> fbs_tensor;
         ORT_RETURN_IF_ERROR(
-            experimental::utils::SaveInitializerOrtFormat(builder, tensor, graph->ModelPath(), fbs_tensor));
+            SaveInitializerOrtFormat(builder, tensor, model_path, fbs_tensor));
         fbs_tensors_vec.push_back(fbs_tensor);
       }
       auto tensors = builder.CreateVector(fbs_tensors_vec);
@@ -173,8 +170,6 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 #undef GET_DATA_VEC
 
 #endif
-
-#if defined(ENABLE_ORT_FORMAT_LOAD)
 
 Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor,
                                 TensorProto& initializer) {
@@ -219,7 +214,7 @@ Status LoadSparseInitializerOrtFormat(const fbs::SparseTensor& fbs_sparse_tensor
 
   auto fbs_indicies_tensor = fbs_sparse_tensor.indices();
   ORT_RETURN_IF(nullptr == fbs_indicies_tensor, "Missing indicies for sparse initializer: ", "'", values_tensor->name(), "'",
-    "Invalid ORT format model.");
+                "Invalid ORT format model.");
   auto* indicies_tensor = loaded_initializer.mutable_indices();
   ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_indicies_tensor, *indicies_tensor));
 
@@ -235,7 +230,7 @@ Status LoadSparseInitializerOrtFormat(const fbs::SparseTensor& fbs_sparse_tensor
 Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
                               ONNX_NAMESPACE::AttributeProto& attr_proto,
                               std::unique_ptr<onnxruntime::Graph>& sub_graph,
-                              Graph& graph, Node& node,
+                              onnxruntime::Graph& graph, onnxruntime::Node& node,
                               const logging::Logger& logger) {
   attr_proto.Clear();
   LOAD_STR_FROM_ORT_FORMAT(attr_proto, name, fbs_attr.name());
@@ -266,7 +261,7 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
       auto fbs_graph = fbs_attr.g();
       ORT_RETURN_IF(nullptr == fbs_graph, "Null graph attribute. Invalid ORT format model.");
       attr_proto.mutable_g()->set_name("Empty graph proto from deserialization of ORT format model");
-      ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, graph, node, logger, sub_graph));
+      ORT_RETURN_IF_ERROR(onnxruntime::Graph::LoadFromOrtFormat(*fbs_graph, graph, node, logger, sub_graph));
     } break;
     case AttributeProto_AttributeType_FLOATS: {
       auto fbs_floats = fbs_attr.floats();
@@ -310,8 +305,4 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
   return Status::OK();
 }
 
-#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
-
-}  // namespace utils
-}  // namespace experimental
-}  // namespace onnxruntime
+}  // namespace onnxruntime::fbs::utils

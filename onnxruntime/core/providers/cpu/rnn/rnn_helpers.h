@@ -10,6 +10,7 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
+#include "core/framework/tensor.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
@@ -20,9 +21,6 @@
 #include "gsl/gsl"
 
 namespace onnxruntime {
-class Tensor;
-class OpKernelContext;
-
 namespace rnn {
 namespace detail {
 
@@ -59,7 +57,7 @@ gsl::span<TAlloc> Allocate(std::shared_ptr<IAllocator> allocator,
                            size_t size,
                            IAllocatorUniquePtr<TAlloc>& unique_ptr,
                            bool fill = false, TAlloc fill_value = TAlloc{}) {
-  unique_ptr = IAllocator::MakeUniquePtr<TAlloc>(allocator, size);
+  unique_ptr = IAllocator::MakeUniquePtr<TAlloc>(std::move(allocator), size);
   auto span = gsl::make_span(unique_ptr.get(), size);
 
   if (fill) {
@@ -113,7 +111,7 @@ void ReverseSequence(gsl::span<const T> inputs,
   for (int i = 0; i < batch_size; i++) {
     int seq_len = sequence_lengths[i];
 
-    for (int j = 0; j < seq_len; j++) {
+    for (ptrdiff_t j = 0; j < seq_len; j++) {
       gsl::span<const T> src = inputs.subspan(j * batch_size * input_size + i * input_size, input_size);
       gsl::span<T> dest = inputs_reverse.subspan(num_directions * (seq_len - j - 1) * batch_size * input_size + i * input_size, input_size);
 
@@ -166,6 +164,7 @@ void ComputeGemm(const int M,
 
 struct PackedWeights {
   BufferUniquePtr buffer_;
+  size_t buffer_size_;
   size_t weights_size_;
   TensorShape shape_;
 };
@@ -229,7 +228,8 @@ void ComputeGemm(const int M,
                  float* C,
                  float* C_end,
                  const int ldc,
-                 AllocatorPtr /*allocator*/,
+                 uint8_t* /* quantized_A_buffer */,
+                 int32_t* /* quantize_agg_C_buffer */,
                  concurrency::ThreadPool* thread_pool);
 
 void ComputeGemm(const int M,
@@ -243,7 +243,8 @@ void ComputeGemm(const int M,
                  float* C,
                  float* C_end,
                  const int ldc,
-                 AllocatorPtr allocator,
+                 uint8_t* quantized_A_buffer,
+                 int32_t* quantize_agg_C_buffer,
                  concurrency::ThreadPool* thread_pool);
 
 // helper to convert a span to a raw pointer

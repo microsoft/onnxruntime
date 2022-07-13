@@ -4,6 +4,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(
@@ -58,10 +59,45 @@ void RegisterNchwcSchemas() {
       .SetDomain(kMSNchwcDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(For internal use.)DOC")
+      .Attr("channels_last", "", AttributeProto::INT, static_cast<int64_t>(0))
       .Input(0, "X", "", "T")
       .Output(0, "Y", "", "T")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+
+        const auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+        auto* output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+        auto input_rank = input_shape.dim_size();
+        if (input_rank < 2) {
+          fail_shape_inference("tensor rank too small");
+        }
+
+        auto channels_last = getAttribute(ctx, "channels_last", 0);
+
+        // Copy the batch dimension.
+        *output_shape->add_dim() = input_shape.dim(0);
+
+        // Block align the channel dimension.
+        const auto& input_channel_dim = input_shape.dim((channels_last == 0) ? 1 : input_rank - 1);
+        auto* output_channel_dim = output_shape->add_dim();
+        if (input_channel_dim.has_dim_value()) {
+          const int64_t channels = input_channel_dim.dim_value();
+          const int64_t nchwc_block_size = static_cast<int64_t>(MlasNchwcGetBlockSize());
+          int64_t nchwc_channels = (channels + nchwc_block_size - 1) & ~(nchwc_block_size - 1);
+          output_channel_dim->set_dim_value(nchwc_channels);
+        }
+
+        // Copy the spatial dimensions.
+        int first_spatial_dim = (channels_last == 0) ? 2 : 1;
+        for (int i = 0; i < input_rank - 2; i++) {
+          *output_shape->add_dim() = input_shape.dim(first_spatial_dim + i);
+        }
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReorderOutput)
       .SetDomain(kMSNchwcDomain)
@@ -78,8 +114,8 @@ void RegisterNchwcSchemas() {
           return;
         }
 
-        auto input_shape = ctx.getInputType(0)->tensor_type().shape();
-        auto output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+        const auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+        auto* output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
 
         auto input_rank = input_shape.dim_size();
         if (input_rank < 2) {
@@ -92,7 +128,7 @@ void RegisterNchwcSchemas() {
           fail_shape_inference("invalid channel count");
         }
 
-        // Copy batch dimension.
+        // Copy the batch dimension.
         *output_shape->add_dim() = input_shape.dim(0);
 
         auto channels_last = getAttribute(ctx, "channels_last", 0);
@@ -100,7 +136,7 @@ void RegisterNchwcSchemas() {
           output_shape->add_dim()->set_dim_value(channels);
         }
 
-        // Copy spatial dimensions.
+        // Copy the spatial dimensions.
         for (int i = 0; i < input_rank - 2; i++) {
           *output_shape->add_dim() = input_shape.dim(2 + i);
         }
@@ -152,6 +188,8 @@ void RegisterNchwcSchemas() {
       .SinceVersion(1)
       .SetDoc(R"DOC(For internal use.)DOC")
       .Attr("scales", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("mode", "", AttributeProto::STRING, std::string("nearest"))
+      .Attr("coordinate_transformation_mode", "", AttributeProto::STRING, std::string("asymmetric"))
       .Input(0, "X", "", "T")
       .Output(0, "Y", "", "T")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors")
@@ -161,8 +199,8 @@ void RegisterNchwcSchemas() {
           return;
         }
 
-        auto input_shape = ctx.getInputType(0)->tensor_type().shape();
-        auto output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+        const auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+        auto* output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
 
         auto input_rank = input_shape.dim_size();
         if (input_rank < 2) {

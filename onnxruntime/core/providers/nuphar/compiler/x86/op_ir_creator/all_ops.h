@@ -48,6 +48,7 @@ namespace nuphar {
   LIST_REDUCE_V_OPS()          \
   LIST_X86_POOL_OPS()          \
   LIST_X86_UNARY_OPS()         \
+  ADD_OP_ITEM(Dropout)         \
   ADD_OP_ITEM(Gemm)            \
   ADD_OP_ITEM(LogSoftmax)      \
   ADD_OP_ITEM(MatMul)          \

@@ -27,7 +27,7 @@ class GRU final : public CudnnRnnBase<T> {
     // Use the latest RNN API exposed in CuDNN 8.x SDK
     CudnnRnnBase<T>::use_v8_api_ = true;
 
-    CudnnRnnBase<T>::CacheCudnnRnnWeights(info);
+    ORT_THROW_IF_ERROR(CudnnRnnBase<T>::CacheCudnnRnnWeights(info));
   }
 };
 

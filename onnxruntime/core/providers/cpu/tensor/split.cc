@@ -2,25 +2,43 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/split.h"
-#include "core/providers/common.h"
-#include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
 
 #include "gsl/gsl"
 
+#include "core/framework/op_kernel_type_control_utils.h"
+#include "core/providers/common.h"
+#include "core/providers/op_kernel_type_control.h"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
+
 namespace onnxruntime {
+
+namespace op_kernel_type_control {
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Split, Input, 0,
+    float, int8_t, int32_t, int64_t, uint8_t, std::string);
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Split, Input, 0,
+    int32_t, int64_t);
+}  // namespace op_kernel_type_control
+
+using SplitDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Split, Input, 0);
+using EnabledSplitDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Split, Input, 0);
+
+using OldSplitDataTypes = onnxruntime::TypeList<float, int32_t, int64_t, uint8_t, std::string>;
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Split,
     2,
     10,
     KernelDefBuilder().TypeConstraint("T",
-                                      std::vector<MLDataType>{
-                                          DataTypeImpl::GetTensorType<float>(),
-                                          DataTypeImpl::GetTensorType<int32_t>(),
-                                          DataTypeImpl::GetTensorType<int64_t>(),
-                                          DataTypeImpl::GetTensorType<uint8_t>(),
-                                          DataTypeImpl::GetTensorType<std::string>()}),
+                                      BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
+                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>())
+        .FixedTypeConstraintForHash(
+            "T",
+            BuildKernelDefConstraintsFromTypeList<OldSplitDataTypes>()),
     Split);
 
 // Opset 11 starts to support Neg Axis.
@@ -29,12 +47,11 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     11,
     12,
     KernelDefBuilder().TypeConstraint("T",
-                                      std::vector<MLDataType>{
-                                          DataTypeImpl::GetTensorType<float>(),
-                                          DataTypeImpl::GetTensorType<int32_t>(),
-                                          DataTypeImpl::GetTensorType<int64_t>(),
-                                          DataTypeImpl::GetTensorType<uint8_t>(),
-                                          DataTypeImpl::GetTensorType<std::string>()}),
+                                      BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
+                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>())
+        .FixedTypeConstraintForHash(
+            "T",
+            BuildKernelDefConstraintsFromTypeList<OldSplitDataTypes>()),
     Split);
 
 // Opset 13 starts to supports 'split' as optional input.
@@ -42,18 +59,17 @@ ONNX_CPU_OPERATOR_KERNEL(
     Split,
     13,
     KernelDefBuilder().TypeConstraint("T",
-                                      std::vector<MLDataType>{
-                                          DataTypeImpl::GetTensorType<float>(),
-                                          DataTypeImpl::GetTensorType<int32_t>(),
-                                          DataTypeImpl::GetTensorType<int64_t>(),
-                                          DataTypeImpl::GetTensorType<uint8_t>(),
-                                          DataTypeImpl::GetTensorType<std::string>()}),
+                                      BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
+                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>())
+        .FixedTypeConstraintForHash(
+            "T",
+            BuildKernelDefConstraintsFromTypeList<OldSplitDataTypes>()),
     Split);
 
 Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
                                     int& after_dims_including_split_axis, int& after_dims_excluding_split,
                                     std::vector<int64_t>& split_sizes) const {
-  auto& input_dims = input_shape.GetDims();
+  auto input_dims = input_shape.GetDims();
   const auto num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
   axis = HandleNegativeAxis(axis_, num_dimensions);  // handle negative and enforce axis is valid
   const int64_t split_dim_size = input_dims[axis];
@@ -75,9 +91,9 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outp
     split_sizes = std::vector<int64_t>(static_cast<size_t>(num_outputs), split_dim_size / num_outputs);
   } else {
     int64_t split_size_sum = split_size_sum_;
-    if (split_size_sum == -1){
+    if (split_size_sum == -1) {
       split_size_sum = std::accumulate(split_sizes.cbegin(), split_sizes.cend(), 0LL);
-    }        
+    }
     if (split_sizes.size() != static_cast<size_t>(num_outputs) || split_size_sum != split_dim_size)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "Cannot split using values in 'split' attribute. Axis=", axis_,
@@ -94,6 +110,7 @@ Status Split::Compute(OpKernelContext* context) const {
 
   Status status;
 
+  // Note: The non-string implementations can probably be based on data type size.
   if (input.IsDataType<float>())
     status = ComputeImpl<float>(*context, input);
   else if (input.IsDataType<int32_t>())
@@ -102,6 +119,8 @@ Status Split::Compute(OpKernelContext* context) const {
     status = ComputeImpl<int64_t>(*context, input);
   else if (input.IsDataType<uint8_t>())
     status = ComputeImpl<uint8_t>(*context, input);
+  else if (input.IsDataType<int8_t>())
+    status = ComputeImpl<int8_t>(*context, input);
   else if (input.IsDataTypeString())
     status = ComputeImpl<std::string>(*context, input);
   else
@@ -123,6 +142,10 @@ inline void copy_data<std::string>(const std::string* src, std::string* dst, siz
 
 template <typename T>
 Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
+  if (!utils::HasType<EnabledSplitDataTypes, T>()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type is not supported in this build.");
+  }
+
   auto& input_shape = input.Shape();
   auto num_outputs = context.OutputCount();
   int64_t axis = axis_;
@@ -131,16 +154,14 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
   int after_dims_excluding_split = 0;
   std::vector<int64_t> split_sizes;
 
-  size_t num_inputs = context.InputCount();
-  if (num_inputs == 2) {
-    //override the attribute value with the input value for split_split
-    const Tensor* split_tensor = context.Input<Tensor>(1);
+  const Tensor* split_tensor = context.Input<Tensor>(1);
+  if (split_tensor != nullptr) {
+    //override the attribute value with the input value for split
     ORT_ENFORCE(split_tensor->Shape().NumDimensions() == 1, "An split tensor must be a vector tensor.");
     auto nDims = static_cast<size_t>(split_tensor->Shape()[0]);
     const auto* data = split_tensor->template Data<int64_t>();
     split_sizes.assign(data, data + nDims);
-  }
-  else{
+  } else {
     split_sizes.assign(split_sizes_.begin(), split_sizes_.end());
   }
   ORT_RETURN_IF_ERROR(PrepareForCompute(input_shape,
@@ -152,8 +173,7 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
                                         split_sizes));
 
   // copy dimensions so we can update the selected axis in place
-  auto& input_dims = input_shape.GetDims();
-  std::vector<int64_t> output_dimensions{input_dims};
+  auto output_dimensions = input_shape.AsShapeVector();
 
   int64_t input_offset = 0;
   const T* input_data = input.template Data<T>();
@@ -177,7 +197,7 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
           copy_data<T>(src, dst, count);
         });
 
-    input_offset += split_size * after_dims_excluding_split;  // offset by the N data we used in this iteration
+    input_offset += static_cast<int64_t>(split_size) * after_dims_excluding_split;  // offset by the N data we used in this iteration
   }
 
   return Status::OK();

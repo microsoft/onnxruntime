@@ -162,7 +162,7 @@ static void MaxPool_8_WithIndexTest(bool has_index, int64_t storage_order = 0) {
     storage_order == 0 ? test.AddOutput<int64_t>("Indices", expected_dims, expected_indices_row)
                        : test.AddOutput<int64_t>("Indices", expected_dims, expected_indices_col);
   }
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDnnlExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider, kArmNNExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDnnlExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider, kArmNNExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_8_With_Index) {
@@ -1258,25 +1258,6 @@ TEST(PoolTest, LpPool) {
                                       1.7524666786193848, 1.3199115991592407, 1.8716570138931274,
                                       1.9475260972976685, 1.8482059240341187, 1.9523605108261108,
                                       2.0444071292877197, 1.8444844484329224, 1.6809544563293457};
-
-  test.AddInput<float>("X", x_dims, x_vals);
-  test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run();
-}
-
-TEST(PoolTest, LpPoolWithNegativeNumbers) {
-  OpTester test("LpPool");
-
-  test.AddAttribute("p", static_cast<int64_t>(1));
-  test.AddAttribute("auto_pad", "");
-  test.AddAttribute("strides", std::vector<int64_t>{2});
-  test.AddAttribute("pads", vector<int64_t>{0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2});
-
-  std::vector<float> x_vals = {0.2f, -0.6f};
-  std::vector<int64_t> x_dims = {1, 1, 2};
-  std::vector<int64_t> expected_dims = {1, 1, 1};
-  std::vector<float> expected_vals = {-0.4f};
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);

@@ -4,9 +4,6 @@
 #pragma once
 #include <stdint.h>
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
-#include "core/common/common.h"
-#include "core/framework/allocator.h"
-#include "core/framework/data_types.h"
 #include <functional>
 #include "core/providers/cpu/object_detection/non_max_suppression_helper.h"
 
@@ -14,6 +11,7 @@ namespace onnxruntime {
 namespace cuda {
 
 Status NonMaxSuppressionImpl(
+    cudaStream_t stream,
     std::function<IAllocatorUniquePtr<void>(size_t)> allocator,
     const PrepareContext& pc,
     const int64_t center_point_box,

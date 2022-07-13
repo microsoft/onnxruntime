@@ -66,16 +66,16 @@ Status GatherNDGrad::Compute(OpKernelContext* context) const {
   auto bytes_per_value = update_tensor->DataType()->Size();
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
   if (indices_tensor->IsDataType<int32_t>()) {
-    PrepareForCompute<int32_t>(input_shape, indices_tensor, bytes_per_value, p, tp);
+    ORT_RETURN_IF_ERROR(PrepareForCompute<int32_t>(input_shape, indices_tensor, bytes_per_value, p, tp));
   } else if (indices_tensor->IsDataType<int64_t>()) {
-    PrepareForCompute<int64_t>(input_shape, indices_tensor, bytes_per_value, p, tp);
+    ORT_RETURN_IF_ERROR(PrepareForCompute<int64_t>(input_shape, indices_tensor, bytes_per_value, p, tp));
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices tensor data type not supported");
   }
 
-  ORT_RETURN_IF_NOT(nullptr == p.input_str_base);
-  utils::MLTypeCallDispatcher<GatherNDGradComputeImpl, float, double> t_disp(update_tensor->GetElementType());
-  t_disp.Invoke(p, update_tensor);
+  ORT_RETURN_IF_NOT(nullptr == p.input_str_base, "nullptr != p.input_str_base");
+  utils::MLTypeCallDispatcher<float, double> t_disp(update_tensor->GetElementType());
+  t_disp.Invoke<GatherNDGradComputeImpl>(p, update_tensor);
 
   return Status::OK();
 }

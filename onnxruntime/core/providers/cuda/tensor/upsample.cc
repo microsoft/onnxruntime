@@ -19,8 +19,8 @@ namespace cuda {
       end,                                                        \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
-          .InputMemoryType<OrtMemTypeCPUInput>(1)                 \
+      (*KernelDefBuilder::Create())                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Upsample<T>)
 
@@ -41,16 +41,16 @@ template <typename T>
 Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 const std::vector<float>& roi,
                                 const std::vector<float>& scales,
-                                const std::vector<int64_t>& output_dims) const {
+                                const gsl::span<const int64_t>& output_dims) const {
   const Tensor* X = context->Input<Tensor>(0);
-  const std::vector<int64_t>& X_dims = X->Shape().GetDims();
+  auto X_dims = X->Shape().GetDims();
   int32_t rank = static_cast<int32_t>(X_dims.size());
 
-  ORT_ENFORCE(output_dims.size() == rank, "Rank of input and output tensor should be same.");
+  ORT_ENFORCE(static_cast<int32_t>(output_dims.size()) == rank, "Rank of input and output tensor should be same.");
   if (rank == 0)
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   is_resize_ ? "Resize: input tensor cannot be scalar." : "Upsample: input tensor cannot be scalar.");
-  if (rank != scales.size())
+  if (rank != static_cast<int32_t>(scales.size()))
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   is_resize_ ? "Resize: input tensor's dimension does not match the scales." : "Upsample: input tensor's dimension does not match the scales.");
   if (roi.size() != 2 * X->Shape().GetDims().size())
@@ -87,7 +87,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
     size_t temp_buffer_size = CalcResizeBufferSize(mode_, output_dims);
     auto dims_mapping_buffer = GetScratchBuffer<unsigned char>(temp_buffer_size);
     void* dims_mapping = reinterpret_cast<void*>(dims_mapping_buffer.get());
-    ResizeImpl(mode_, (int)rank, input_shape, output_shape,
+    ResizeImpl(Stream(), mode_, (int)rank, input_shape, output_shape,
                input_strides, output_div_pitches, scales_vals, roi_vals,
                reinterpret_cast<const CudaT*>(X->template Data<T>()),
                reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
@@ -102,7 +102,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
       scales_div[i] = fast_divmod(gsl::narrow_cast<int>(ceil(scales[i])));
     }
 
-    UpampleImpl(mode_,
+    UpampleImpl(Stream(),
+                mode_,
                 rank,
                 (UpsampleMode::LINEAR == mode_) ? (rank == 2 ? X_dims[0] : X_dims[2]) : 0,
                 input_strides,
@@ -121,7 +122,7 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   ORT_ENFORCE(X != nullptr);
 
-  std::vector<int64_t> output_dims(X->Shape().GetDims().size());
+  TensorShapeVector output_dims(X->Shape().GetDims().size());
   std::vector<float> roi_array(X->Shape().GetDims().size() * 2, 0.0f);
   if (!roi_cached_) {
     bool use_default_roi = true;
@@ -136,7 +137,7 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
     if (use_default_roi) {
       // default roi includes ensures all the values in that axis are included in the roi
       // normalized roi is thus : [start, end] = [0, 1]
-      const auto& input_dims = X->Shape().GetDims();
+      const auto input_dims = X->Shape().GetDims();
       size_t input_rank = input_dims.size();
       roi_array.resize(input_rank * 2);
       for (size_t i = 0; i < input_rank; ++i) {

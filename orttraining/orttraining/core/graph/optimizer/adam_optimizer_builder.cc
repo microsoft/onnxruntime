@@ -4,7 +4,7 @@
 #include "orttraining/core/graph/optimizer/adam_optimizer_builder.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 #include "core/util/math.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/tensorprotoutils.h"
 
 namespace onnxruntime {
@@ -28,7 +28,6 @@ Status AdamOptimizerBuilder::Build(
     const std::string& gradient_name = gradient_argdefs[i].name;
     const TypeProto* const weight_type_proto = weight_argdefs[i].type_proto;
     const TypeProto* const gradient_type_proto = gradient_argdefs[i].type_proto;
-    weight_to_opt_mapping[weight_name] = {};
 
     // Return either the input gradient/weight/mixed-precision-weight or updated gradient/weight/mixed-precision-weight.
     ArgDef output_gradient_argdef = gradient_argdefs[i];
@@ -38,6 +37,7 @@ Status AdamOptimizerBuilder::Build(
 
     // In distributed training, some weights may not be updated by all ranks.
     if (opt_configs[i].enabled) {
+      weight_to_opt_mapping[weight_name] = {};
       // The type proto initializer for Update Count
       const std::string update_count_string = ADAM_UC_PREFIX + "_" + weight_name;  // per weight optimizer requires a per weight update count
       TensorProto uc_tensor_proto;
@@ -47,7 +47,7 @@ Status AdamOptimizerBuilder::Build(
       const auto uc_state_it = initial_states.find(ADAM_UC_PREFIX);
       if (uc_state_it != initial_states.end()) {
         const auto& init_tensor = uc_state_it->second.Get<Tensor>();
-        ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}));
+        ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, TensorShapeVector{1}));
         uc_tensor_proto = utils::TensorToTensorProto(init_tensor, update_count_string);
       } else {
         uc_tensor_proto = CreateTensorProto<int64_t>(update_count_string, 1);
@@ -71,18 +71,15 @@ Status AdamOptimizerBuilder::Build(
 
       // Get shape of weight tensor.
       std::vector<int64_t> weight_dims;
-      ORT_RETURN_IF_NOT(
-          weight_argdefs[i].type_proto &&
-          weight_argdefs[i].type_proto->has_tensor_type() &&
-          weight_argdefs[i].type_proto->tensor_type().has_shape());
+      ORT_RETURN_IF_NOT(weight_argdefs[i].type_proto &&
+                            weight_argdefs[i].type_proto->has_tensor_type() &&
+                            weight_argdefs[i].type_proto->tensor_type().has_shape(),
+                        "weight_argsdefs[", i, "] did not have tensor with shape");
       for (const auto& dim : weight_argdefs[i].type_proto->tensor_type().shape().dim()) {
         weight_dims.push_back(dim.dim_value());
       }
 
-      const auto element_type = opt_configs[i].use_mixed_precision_moments ? 
-                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 : 
-                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
-
+      const auto element_type = opt_configs[i].use_mixed_precision_moments ? ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 : ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
       // Add first- and second-order momentums to input list.
       for (const auto& moments_prefix : MOMENTS_PREFIXES) {
         const std::string gradient_moment_name = moments_prefix + "_" + weight_name;
@@ -135,7 +132,7 @@ Status AdamOptimizerBuilder::Build(
         output_args.push_back(ArgDef());
       }
       if (!opt_configs[i].loss_scale_input_name.empty()) {
-        input_args.emplace_back(ArgDef(opt_configs[i].loss_scale_input_name, graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)));
+        input_args.emplace_back(ArgDef(opt_configs[i].loss_scale_input_name, graph_defs.CreateTypeProto(std::array<const int64_t, 1>{1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)));
       } else {
         input_args.emplace_back(ArgDef());
       }

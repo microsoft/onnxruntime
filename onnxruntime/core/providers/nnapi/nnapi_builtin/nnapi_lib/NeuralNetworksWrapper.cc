@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include <core/common/common.h>
+#include <core/common/safeint.h>
 
 #include "NeuralNetworksWrapper.h"
 
@@ -24,22 +25,22 @@ namespace wrapper {
 OperandType::OperandType(Type type, const std::vector<uint32_t>& d, float scale, int32_t zeroPoint)
     : type(type), dimensions(d) {
   operandType = {
-      .type = static_cast<int32_t>(type),
-      .dimensionCount = static_cast<uint32_t>(dimensions.size()),
-      .dimensions = dimensions.size() > 0 ? dimensions.data() : nullptr,
-      .scale = scale,
-      .zeroPoint = zeroPoint,
+      /*.type = */ static_cast<int32_t>(type),
+      /*.dimensionCount = */ static_cast<uint32_t>(dimensions.size()),
+      /*.dimensions = */ dimensions.size() > 0 ? dimensions.data() : nullptr,
+      /*.scale = */ scale,
+      /*.zeroPoint = */ zeroPoint,
   };
 }
 
 OperandType::OperandType(Type type, const std::vector<uint32_t>& d, SymmPerChannelQuantParams&& channelQuant)
     : type(type), dimensions(d), channelQuant(std::move(channelQuant)) {
   operandType = {
-      .type = static_cast<int32_t>(type),
-      .dimensionCount = static_cast<uint32_t>(dimensions.size()),
-      .dimensions = dimensions.size() > 0 ? dimensions.data() : nullptr,
-      .scale = 0.0f,
-      .zeroPoint = 0,
+      /*.type = */ static_cast<int32_t>(type),
+      /*.dimensionCount = */ static_cast<uint32_t>(dimensions.size()),
+      /*.dimensions = */ dimensions.size() > 0 ? dimensions.data() : nullptr,
+      /*.scale = */ 0.0f,
+      /*.zeroPoint = */ 0,
   };
 }
 
@@ -79,16 +80,12 @@ size_t OperandType::GetElementByteSize() const {
     case Type::TENSOR_INT32:
       element_size = 4;
       break;
+    case Type::TENSOR_QUANT8_ASYMM:
+    case Type::TENSOR_QUANT8_ASYMM_SIGNED:
     case Type::TENSOR_QUANT8_SYMM_PER_CHANNEL:
       element_size = 1;
       break;
-    case Type::TENSOR_QUANT8_ASYMM:
-      element_size = 1;
-      break;
     case Type::TENSOR_QUANT16_SYMM:
-      element_size = 2;
-      break;
-    case Type::TENSOR_QUANT16_ASYMM:
       element_size = 2;
       break;
     default:
@@ -99,12 +96,14 @@ size_t OperandType::GetElementByteSize() const {
 }
 
 size_t OperandType::GetOperandBlobByteSize() const {
-  return Product(dimensions) * GetElementByteSize();
+  SafeInt<size_t> num_elements = std::accumulate(dimensions.begin(), dimensions.end(), SafeInt<size_t>(1),
+                                                 std::multiplies<SafeInt<size_t>>());
+  return num_elements * GetElementByteSize();
 }
 
 void OperandType::SetDimensions(const std::vector<uint32_t>& d) {
   dimensions = d;
-  operandType.dimensionCount = dimensions.size();
+  operandType.dimensionCount = static_cast<uint32_t>(dimensions.size());
   operandType.dimensions = dimensions.size() > 0 ? dimensions.data() : nullptr;
 }
 

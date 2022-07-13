@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/graph/basic_types.h"
+#include "core/common/inlined_containers.h"
 #include "core/framework/alloc_kind.h"
 #include "core/framework/data_types.h"
 #include "core/framework/execution_plan_base.h"
@@ -17,6 +18,10 @@ namespace onnxruntime {
 // the ExecutionFrame).
 using OrtValueIndex = int;
 using OrtValueName = std::string;
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
+// pair of start and end program counters,according to the execution plan
+using IntervalT = std::pair<size_t, size_t>;
+#endif
 
 class SessionState;
 
@@ -31,6 +36,11 @@ struct AllocPlanPerValue {
   // if the value is used in async kernel, a fence object would be created
   // note the fence object would be shared between MLValues reusing the same buffer
   bool create_fence_if_async{false};
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
+  IntervalT life_interval{0, 0};
+  IntervalT allocate_interval{0, 0};
+  OrtValueIndex inplace_reuse{-1}; //No in-place reuse
+#endif
 
   class ProgramCounter {
    public:
@@ -64,7 +74,7 @@ struct AllocPlanPerValue {
   ProgramCounter program_counter;
 
  public:
-  AllocPlanPerValue() : location(CPU, Invalid) {}
+  AllocPlanPerValue() : location(CPU, OrtInvalidAllocator) {}
 };
 
 // SequentialExecutionPlan: This is the data that is produced by a static
@@ -104,10 +114,10 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   std::vector<NodeExecutionPlan> execution_plan;
 
   // Records whether a given node has fence on its input or output, key is node index.
-  std::vector<bool> node_has_fence;
+  InlinedVector<bool> node_has_fence;
 
   // to_be_freed: vector elements represent indices of ml-values to be freed (as described above)
-  std::vector<OrtValueIndex> to_be_freed;
+  InlinedVector<OrtValueIndex> to_be_freed;
 
   const OrtMemoryInfo& GetLocation(size_t ort_value_index) const override {
     return allocation_plan[ort_value_index].location;
@@ -117,10 +127,11 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
     allocation_plan[ort_value_index].location = info;
   }
 
-  std::set<OrtMemoryInfo> GetAllLocations() const override {
-    std::set<OrtMemoryInfo> locations;
+  InlinedHashSet<OrtMemoryInfo> GetAllLocations() const override {
+    InlinedHashSet<OrtMemoryInfo> locations;
+    locations.reserve(allocation_plan.size());
     for (auto& alloc_plan : allocation_plan) {
-      if (locations.find(alloc_plan.location) == locations.end()) locations.insert(alloc_plan.location);
+      locations.insert(alloc_plan.location);
     }
     return locations;
   }

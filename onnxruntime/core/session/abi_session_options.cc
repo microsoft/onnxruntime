@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/graph/onnx_protobuf.h"
+#include "core/common/gsl_suppress.h"
+#include "core/common/inlined_containers.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/error_code_helper.h"
@@ -141,18 +143,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetSessionGraphOptimizationLevel, _In_ OrtSessionOp
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SetIntraOpNumThreads, _Inout_ OrtSessionOptions* options, int intra_op_num_threads) {
-#ifdef _OPENMP
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(intra_op_num_threads);
-  // Can't use the default logger here since it's possible that the default logger has not been created
-  // at this point. The default logger gets created when the env is created and these APIs don't require
-  // the env to be created first.
-  std::cout << "WARNING: Since openmp is enabled in this build, this API cannot be used to configure"
-               " intra op num threads. Please use the openmp environment variables to control"
-               " the number of threads.\n";
-#else
   options->value.intra_op_param.thread_pool_size = intra_op_num_threads;
-#endif
   return nullptr;
 }
 
@@ -182,14 +173,52 @@ ORT_API_STATUS_IMPL(OrtApis::DisablePerSessionThreads, _In_ OrtSessionOptions* o
 
 ORT_API_STATUS_IMPL(OrtApis::AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
                     _In_z_ const char* config_key, _In_z_ const char* config_value) {
-  return onnxruntime::ToOrtStatus(options->value.AddConfigEntry(config_key, config_value));
+  return onnxruntime::ToOrtStatus(options->value.config_options.AddConfigEntry(config_key, config_value));
 }
 
 ORT_API_STATUS_IMPL(OrtApis::AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name,
                     _In_ const OrtValue* val) {
+  API_IMPL_BEGIN
   auto st = options->value.AddInitializer(name, val);
   if (!st.IsOK()) {
     return onnxruntime::ToOrtStatus(st);
   }
   return nullptr;
+  API_IMPL_END
 }
+
+ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializers, _In_ OrtSessionOptions* options,
+                    _In_reads_(initializers_num) const char* const* initializer_names,
+                    _In_reads_(initializers_num) const OrtValue* const* initializers, size_t initializers_num) {
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  API_IMPL_BEGIN
+  onnxruntime::InlinedVector<std::string> names;
+  onnxruntime::InlinedVector<OrtValue> values;
+  names.reserve(initializers_num);
+  values.reserve(initializers_num);
+  for (size_t i = 0; i < initializers_num; ++i) {
+    if (initializer_names[i] == nullptr || initializers[i] == nullptr) {
+      auto message = onnxruntime::MakeString("Input index: ", i, " contains null pointers");
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, message.c_str());
+    }
+    names.emplace_back(initializer_names[i]);
+    values.emplace_back(*initializers[i]);
+  }
+
+  auto st = options->value.AddExternalInitializers(names, values);
+  if (!st.IsOK()) {
+    return onnxruntime::ToOrtStatus(st);
+  }
+  return nullptr;
+  API_IMPL_END
+#else
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(initializer_names);
+  ORT_UNUSED_PARAMETER(initializers);
+  ORT_UNUSED_PARAMETER(initializers_num);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "External initializers are not supported in this build");
+#endif
+}
+
+

@@ -14,7 +14,8 @@ namespace onnxruntime {
 
 class Reshape final : public OpKernel {
  public:
-  explicit Reshape(const OpKernelInfo& info) : OpKernel(info) {
+  explicit Reshape(const OpKernelInfo& info) : OpKernel(info),
+                                               allow_zero_(info.GetAttrOrDefault<int64_t>("allowzero", 0) == 1) {
   }
 
   Status Compute(OpKernelContext* context) const override {
@@ -24,12 +25,12 @@ class Reshape final : public OpKernel {
                 "A shape tensor must be a vector tensor.");
     auto nDims = static_cast<size_t>(shapeTensor->Shape()[0]);
     const auto* data = shapeTensor->template Data<int64_t>();
-    std::vector<int64_t> shape(data, data + nDims);
+    TensorShapeVector shape(data, data + nDims);
 
     const auto* X = context->Input<Tensor>(0);
     const TensorShape& X_shape = X->Shape();
 
-    ReshapeHelper helper(X_shape, shape);
+    ReshapeHelper helper(X_shape, shape, allow_zero_);
 
     Tensor* Y = context->Output(0, TensorShape(shape));
 
@@ -37,17 +38,20 @@ class Reshape final : public OpKernel {
 
     return Status::OK();
   }
+
+ private:
+  const bool allow_zero_;
 };
 
 class Reshape_1 final : public OpKernel {
  public:
   explicit Reshape_1(const OpKernelInfo& info) : OpKernel(info) {
-    Status status = info.GetAttrs<int64_t>("shape", shape_);
+    Status status = info.GetAttrs("shape", shape_);
     ORT_ENFORCE(status.IsOK(), "Attribute shape is not set.");
   }
 
   Status Compute(OpKernelContext* context) const override {
-    std::vector<int64_t> shape = shape_;
+    TensorShapeVector shape = shape_;
     const auto* X = context->Input<Tensor>(0);
     const TensorShape& X_shape = X->Shape();
 
@@ -61,7 +65,7 @@ class Reshape_1 final : public OpKernel {
   }
 
  private:
-  std::vector<int64_t> shape_;
+  TensorShapeVector shape_;
 };
 
 }  //namespace onnxruntime

@@ -3,18 +3,26 @@
 
 #pragma once
 #include "gsl/gsl"
+
+#ifndef SHARED_PROVIDER
 #include "core/framework/utils.h"
+#endif
+#include "core/common/safeint.h"
 namespace onnxruntime {
 
-struct TensorPitches : std::vector<int64_t> {
+struct TensorPitches : TensorShapeVector {
   TensorPitches(const Tensor& tensor, size_t rank = 0) : TensorPitches(tensor.Shape(), rank) {}
   TensorPitches(const TensorShape& shape, size_t rank = 0) : TensorPitches(shape.GetDims(), rank) {}
-  TensorPitches(const std::vector<int64_t>& dims, size_t rank = 0)
-      : std::vector<int64_t>(std::max(rank, dims.size()), 0) {
+  TensorPitches(const TensorShapeVector& dims, size_t rank = 0)
+      : TensorShapeVector(std::max(rank, dims.size()), 0) {
+    Calculate(gsl::span<int64_t>(data(), size()), gsl::make_span(dims));
+  }
+  TensorPitches(const gsl::span<const int64_t>& dims, size_t rank = 0)
+      : TensorShapeVector(std::max(rank, dims.size()), 0) {
     Calculate(gsl::span<int64_t>(data(), size()), dims);
   }
 
-  static bool Calculate(gsl::span<int64_t> p, const std::vector<int64_t>& dims) {
+  static bool Calculate(const gsl::span<int64_t>& p, const gsl::span<const int64_t>& dims) {
     // The pitches is the size of the next inner axis. Aka the amount to move by one of the next inner axis.
     // For a tensor with shape(2,3,4,5) the values would be: (3*4*5, 4*5, 5, 1)
     // Note that the outermost '2' is never used, as you never need to move by the entire size of the outermost axis
@@ -22,7 +30,7 @@ struct TensorPitches : std::vector<int64_t> {
     auto tensor_rank = dims.size();
     auto pitch_rank = p.size();
     auto padded_rank = pitch_rank - tensor_rank;
-    if (gsl::narrow_cast<ptrdiff_t>(padded_rank) < 0)
+    if (static_cast<ptrdiff_t>(padded_rank) < 0)
       return false;
 
     // Guard against Scalars
@@ -86,7 +94,7 @@ struct TensorAxisCounters {
   const Tensor& tensor_;
   bool running_{true};
   size_t axis_;
-  std::vector<int64_t> indices_;  // There is no index for innermost axis since it's a special case
+  TensorShapeVector indices_;  // There is no index for innermost axis since it's a special case
 };
 
 struct ExtentAxisCounters {
@@ -121,31 +129,31 @@ struct ExtentAxisCounters {
  private:
   bool running_{true};
   size_t axis_;
-  std::vector<int64_t> indices_;      // There is no index for innermost axis since it's a special case
+  TensorShapeVector indices_;      // There is no index for innermost axis since it's a special case
   gsl::span<const int64_t> extents_;  // The extents of each axis
 };
 
 // A std::vector that holds the number of entries to skip to go to the next axis start given an extent
 // and optionally steps along each axis:
 // This is used by the SliceIterator to iterate over a slice of a tensor
-struct SliceSkips : std::vector<int64_t> {
+struct SliceSkips : TensorShapeVector {
   SliceSkips(const TensorShape& input_shape, gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
-      : std::vector<int64_t>(input_shape.NumDimensions(), 0) {
-    auto& dims = input_shape.GetDims();
+      : TensorShapeVector(input_shape.NumDimensions(), 0) {
+    auto dims = input_shape.GetDims();
     ORT_ENFORCE(dims.size() == extents.size() &&
                 dims.size() >= steps.size());
 
-    int64_t inner_most_dim = dims.size() - 1;
+    ptrdiff_t inner_most_dim = dims.size() - 1;
     // assume step == 1 if not present
     ptrdiff_t steps_size = steps.size();
     int64_t steps_i = 1;
-    if (inner_most_dim >= 0 && static_cast<ptrdiff_t>(inner_most_dim) < steps_size)
+    if (inner_most_dim >= 0 && inner_most_dim < steps_size)
       steps_i = steps[inner_most_dim];
 
-    size_t pitch = 1;
+    SafeInt<ptrdiff_t> pitch = 1;
     for (size_t i = size(); i-- > 0;) {
       auto prevPitch = pitch;
-      pitch *= dims[i];
+      pitch *= static_cast<ptrdiff_t>(dims[i]);
 
       // assume step == 1 if not present
       int64_t steps_i_minus_1 = 1;
@@ -167,11 +175,36 @@ struct SliceIteratorBase {
  private:
   enum class byte : unsigned char {};
 
+  // Initialize initial skip and inner_extent.
+  void Init(gsl::span<const int64_t> dims, gsl::span<const int64_t> starts, gsl::span<const int64_t> steps) {
+    ORT_ENFORCE(dims.size() == starts.size() &&
+                dims.size() == extents_.size() &&
+                dims.size() >= steps.size());
+
+    SafeInt<size_t> pitch = 1;
+    // Initial skip, so that input_ points to the first element to copy
+    for (size_t i = dims.size(); i-- > 0;) {
+      input_ += pitch * starts[i] * element_size_;
+      pitch *= static_cast<size_t>(dims[i]);
+    }
+
+    inner_extent_ = static_cast<size_t>(extents_[dims.size() - 1]);
+    //It could be -1
+    inner_step_ = static_cast<ptrdiff_t>(dims.size() == steps.size()
+                                             ? steps[dims.size() - 1]
+                                             : 1);
+  }
+
  protected:
   SliceIteratorBase(const Tensor& tensor, gsl::span<const int64_t> starts,
                     gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
-      : tensor_(tensor), extents_(extents), skips_(tensor_.Shape(), extents, steps), indices_(extents.size(), 0) {
-    auto& dims = tensor_.Shape().GetDims();
+      : is_string_tensor_(tensor.IsDataTypeString()),
+        input_{reinterpret_cast<const byte*>(tensor.DataRaw())},
+        element_size_(tensor.DataType()->Size()),
+        extents_(extents),
+        skips_(tensor.Shape(), extents, steps),
+        indices_(extents.size(), 0) {
+    auto dims = tensor.Shape().GetDims();
     Init(dims, starts, steps);
   }
 
@@ -181,28 +214,14 @@ struct SliceIteratorBase {
   // Also supports arbitrary positive and negative stepping along individual axes
   SliceIteratorBase(const Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts,
                     gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
-      : tensor_(tensor), extents_(extents), skips_(tensor_shape, extents, steps), indices_(extents.size(), 0) {
-    const auto& dims = tensor_shape.GetDims();
+      : is_string_tensor_(tensor.IsDataTypeString()),
+        input_{reinterpret_cast<const byte*>(tensor.DataRaw())},
+        element_size_(tensor.DataType()->Size()),
+        extents_(extents),
+        skips_(tensor_shape, extents, steps),
+        indices_(extents.size(), 0) {
+    auto dims = tensor_shape.GetDims();
     Init(dims, starts, steps);
-  }
-
-  // Initialize initial skip and inner_extent.
-  void Init(const std::vector<int64_t>& dims, gsl::span<const int64_t> starts, gsl::span<const int64_t> steps) {
-    ORT_ENFORCE(dims.size() == starts.size() &&
-                dims.size() == extents_.size() &&
-                dims.size() >= steps.size());
-
-    size_t pitch = 1;
-    // Initial skip, so that input_ points to the first element to copy
-    for (size_t i = dims.size(); i-- > 0;) {
-      input_ += pitch * starts[i] * element_size_;
-      pitch *= dims[i];
-    }
-
-    inner_extent_ = extents_[dims.size() - 1];
-    inner_step_ = dims.size() == steps.size()
-                      ? steps[dims.size() - 1]
-                      : 1;
   }
 
   void AdvanceOverInnerExtent() {
@@ -295,16 +314,16 @@ struct SliceIteratorBase {
     return out;
   }
 
-  const Tensor& tensor_;
-  const bool is_string_tensor_{tensor_.IsDataTypeString()};
+  const bool is_string_tensor_;
   // we do everything in this class using bytes to minimize binary size
-  const byte* input_{reinterpret_cast<const byte*>(tensor_.DataRaw())};
-  const int64_t element_size_ = tensor_.DataType()->Size();
+  const byte* input_;
+  const int64_t element_size_;
 
   gsl::span<const int64_t> extents_;
-  size_t inner_counter_{}, inner_extent_, inner_step_;
+  size_t inner_counter_{}, inner_extent_;
+  ptrdiff_t inner_step_;
   SliceSkips skips_;
-  std::vector<int64_t> indices_;  // There is no index for innermost axis since it's a special case
+  TensorShapeVector indices_;  // There is no index for innermost axis since it's a special case
 };
 
 // This provides easy sequential iteration over a subset of a tensor given a span of starts, extents & optionally steps
@@ -374,8 +393,8 @@ template <typename T>
 struct WritableSliceIterator {
   WritableSliceIterator(Tensor& tensor, gsl::span<const int64_t> starts,
                         gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
-      : tensor_(tensor), input_(tensor_.template MutableData<T>()), extents_(extents), skips_(tensor_.Shape(), extents, steps), indices_(extents.size(), 0) {
-    auto& dims = tensor_.Shape().GetDims();
+      : input_(tensor.template MutableData<T>()), extents_(extents), skips_(tensor.Shape(), extents, steps), indices_(extents.size(), 0) {
+    auto dims = tensor.Shape().GetDims();
     Init(dims, starts, steps);
   }
 
@@ -385,13 +404,13 @@ struct WritableSliceIterator {
   // Also supports arbitrary positive and negative stepping along individual axes
   WritableSliceIterator(Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts,
                         gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
-      : tensor_(tensor), input_(tensor_.template MutableData<T>()), extents_(extents), skips_(tensor_shape, extents, steps), indices_(extents.size(), 0) {
-    auto& dims = tensor_shape.GetDims();
+      : input_(tensor.template MutableData<T>()), extents_(extents), skips_(tensor_shape, extents, steps), indices_(extents.size(), 0) {
+    auto dims = tensor_shape.GetDims();
     Init(dims, starts, steps);
   }
 
   // Initialize initial skip and inner_extent.
-  void Init(const std::vector<int64_t>& dims, gsl::span<const int64_t> starts,
+  void Init(gsl::span<const int64_t> dims, gsl::span<const int64_t> starts,
             gsl::span<const int64_t> steps) {
     ORT_ENFORCE(dims.size() == starts.size(),
                 "dims.size()=", dims.size(), " != ", "starts.size()=", starts.size());
@@ -402,11 +421,11 @@ struct WritableSliceIterator {
     ORT_ENFORCE(dims.size() == steps.size(),
                 "dims.size()=", dims.size(), " != ", "steps.size()=", steps.size());
 
-    size_t pitch = 1;
+    SafeInt<size_t> pitch = 1;
     // Initial skip, so that input_ points to the first element to copy
     for (size_t i = dims.size(); i-- > 0;) {
       input_ += pitch * starts[i];
-      pitch *= dims[i];
+      pitch *= static_cast<size_t>(dims[i]);
     }
 
     inner_extent_ = extents_[dims.size() - 1];
@@ -495,12 +514,11 @@ struct WritableSliceIterator {
   }
 
  private:
-  Tensor& tensor_;
   T* input_;
   gsl::span<const int64_t> extents_;
   size_t inner_counter_{}, inner_extent_, inner_step_;
   SliceSkips skips_;
-  std::vector<int64_t> indices_;  // There is no index for innermost axis since it's a special case
+  TensorShapeVector indices_;  // There is no index for innermost axis since it's a special case
 };
 
 }  // namespace onnxruntime

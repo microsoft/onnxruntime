@@ -10,8 +10,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     7, 9,
     KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),
                                             DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<double>()})
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+                                            DataTypeImpl::GetTensorType<double>()}),
     IdentityOp<true>);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -31,10 +30,25 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()).Alias(0, 0),
     IdentityOp<false>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Identity,
     13,
+    13,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()).Alias(0, 0),
+    IdentityOp<false>);
+
+// Opset 14 supported sequence type
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    Identity,
+    14, 15,
+    KernelDefBuilder().TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()).Alias(0, 0),
+    IdentityOp<false>);
+
+// Opset 16 supported optional type
+ONNX_CPU_OPERATOR_KERNEL(
+    Identity,
+    16,
+    KernelDefBuilder().TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes()).Alias(0, 0),
     IdentityOp<false>);
 
 }  // namespace onnxruntime

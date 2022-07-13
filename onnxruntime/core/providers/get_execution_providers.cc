@@ -74,6 +74,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
+            kTvmExecutionProvider,
+#ifdef USE_TVM
+            true,
+#else
+            false,
+#endif
+        },
+        {
             kVitisAIExecutionProvider,
 #ifdef USE_VITISAI
             true,
@@ -84,6 +92,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
         {
             kNnapiExecutionProvider,
 #ifdef USE_NNAPI
+            true,
+#else
+            false,
+#endif
+        },
+        {
+            kCoreMLExecutionProvider,
+#ifdef USE_COREML
             true,
 #else
             false,
@@ -116,6 +132,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
         {
             kRknpuExecutionProvider,
 #ifdef USE_RKNPU
+            true,
+#else
+            false,
+#endif
+        },
+        {
+            kXnnpackExecutionProvider,
+#ifdef USE_XNNPACK
             true,
 #else
             false,

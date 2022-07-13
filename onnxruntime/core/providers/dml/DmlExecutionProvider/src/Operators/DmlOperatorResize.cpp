@@ -6,6 +6,25 @@
 namespace Dml
 {
 
+constexpr NameAndIndex coordinateTransformationModes[] =
+{
+    {"half_pixel", 0},
+    {"pytorch_half_pixel", 1},
+    {"align_corners", 2},
+    {"asymmetric", 3},
+    {"tf_half_pixel_for_nn", 4},
+    {"tf_crop_and_resize", 5},
+};
+
+constexpr NameAndIndex nearestNeighborRoundingModes[] =
+{
+    {"", 0},
+    {"round_prefer_floor", 0},  // round halves down
+    {"round_prefer_ceil", 1},   // round halves up
+    {"floor", 2},               // round always down
+    {"ceil", 3},                // round always up
+};
+
 void ComputePixelOffsetsAndScales(
     const MLOperatorKernelCreationContext& kernelCreationContext,
     gsl::span<const float> regionOfInterest, // May be empty depending on mode.
@@ -23,17 +42,12 @@ void ComputePixelOffsetsAndScales(
     assert(regionOfInterest.empty() || regionOfInterest.size() == inputDimensions.size() * 2);
 
     std::string coordinateTransformationMode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::CoordinateTransformationMode, "half_pixel");
-    uint32_t coordinateTransformationModeValue = UINT32_MAX;
-
-    const char* modes[] = { "half_pixel", "pytorch_half_pixel", "align_corners", "asymmetric", "tf_half_pixel_for_nn", "tf_crop_and_resize" };
-    for (uint32_t i = 0; i < std::size(modes); ++i)
+    auto optionalCoordinateTransformationModeValue = TryMapStringToIndex(coordinateTransformationMode, coordinateTransformationModes);
+    if (!optionalCoordinateTransformationModeValue)
     {
-        if (strcmp(modes[i], coordinateTransformationMode.c_str()) == 0)
-        {
-            coordinateTransformationModeValue = i;
-            break;
-        }
+        ML_INVALID_ARGUMENT("Unsupported 'coordinate_transformation_mode'");
     }
+    uint32_t coordinateTransformationModeValue = *optionalCoordinateTransformationModeValue;
 
     ML_CHECK_VALID_ARGUMENT(
         !regionOfInterest.empty() || coordinateTransformationModeValue != 5 /*tf_crop_and_resize*/,
@@ -150,7 +164,7 @@ void ComputePixelOffsetsAndScales(
             break;
 
         default:
-            ML_INVALID_ARGUMENT("Unknown 'coordinate_transformation_mode'");
+            assert(false); // TryMapStringToIndex would have already bailed above.
         }
 
         inputPixelOffsets[i] = inputPixelOffset;
@@ -198,13 +212,16 @@ public:
         );
 
         // Find any useless dimensions of size 1 that occur in both input and output.
+        // This enables higher dimension cases (where models prepend unnecessary
+        // dimensions) beyond DML's supported dimension count of 4.
         for (size_t i = 0, rank = m_outputDimensions.size(); i < rank; ++i)
         {
-            if (m_inputDimensions[i] = 1 && m_outputDimensions[i] == 1)
+            if (m_inputDimensions[i] == 1 && m_outputDimensions[i] == 1)
             {
                 squeezableDimensionIndices.push_back(gsl::narrow_cast<uint32_t>(i));
             }
         }
+
         RemoveValuesByIndex(squeezableDimensionIndices, /*keepOneValue*/ true, /*inout*/ squeezedInputShape);
         RemoveValuesByIndex(squeezableDimensionIndices, /*keepOneValue*/ true, /*inout*/ paddedScales);
         RemoveValuesByIndex(squeezableDimensionIndices, /*keepOneValue*/ true, /*inout*/ inputPixelOffsets);
@@ -233,20 +250,56 @@ public:
         std::string mode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::Mode, "NEAREST");
         DML_INTERPOLATION_MODE interpolationMode = Dml::MapStringToInteropolationMode(mode);
 
+        // Map ONNX to DML's mode using offsets and rounding direction.
+        // These offsets are in addition to the coordinate transform offsets.
+        DML_AXIS_DIRECTION roundingDirection = DML_AXIS_DIRECTION_DECREASING;
+        if (interpolationMode == DML_INTERPOLATION_MODE_NEAREST_NEIGHBOR)
+        {
+            std::string nearestMode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::NearestMode, "round_prefer_floor");
+            float offsetAdjustment = 0.5f;
+            auto optionalNearestModeValue = TryMapStringToIndex(nearestMode, nearestNeighborRoundingModes);
+            if (optionalNearestModeValue)
+            {
+                // The round_prefer_floor mode rounds values to the nearest integer, with half ties rounded toward
+                // negative infinity. The increasing rounding direction is correct, albeit unintuitive, because
+                // floor(x + 0.5) would return the wrong result, whereas the correct implementation is ceil(x - 0.5).
+                // The input offset is positive because positive input offsets translate the output rightward and
+                // downward, which (from the perspective of the output) is equivalent to panning the input
+                // toward further negative coordinates.
+                switch (*optionalNearestModeValue)
+                {
+                case 0: /*round_prefer_floor*/ roundingDirection = DML_AXIS_DIRECTION_INCREASING; offsetAdjustment =  0.5;  break;
+                case 1: /*round_prefer_ceil */ roundingDirection = DML_AXIS_DIRECTION_DECREASING; offsetAdjustment = -0.5;  break;
+                case 2: /*floor             */ roundingDirection = DML_AXIS_DIRECTION_DECREASING; offsetAdjustment =  0.0;  break;
+                case 3: /*ceil              */ roundingDirection = DML_AXIS_DIRECTION_INCREASING; offsetAdjustment =  0.0;  break;
+                default:
+                    assert(false);
+                }
+            }
+            if (offsetAdjustment != 0.0f)
+            {
+                for (auto& offset : inputPixelOffsets)
+                {
+                    offset += offsetAdjustment;
+                }
+            }
+        }
+
         // Create the operator description.
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        DML_RESAMPLE1_OPERATOR_DESC operatorDesc = {};
+        DML_RESAMPLE2_OPERATOR_DESC operatorDesc = {};
         operatorDesc.InputTensor = inputDescs.data();
         operatorDesc.OutputTensor = outputDescs.data();
         operatorDesc.InterpolationMode = interpolationMode;
+        operatorDesc.RoundingDirection = roundingDirection;
         operatorDesc.Scales = paddedScales.data();
         operatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(paddedScales.size());
         operatorDesc.InputPixelOffsets = inputPixelOffsets.data();
         operatorDesc.OutputPixelOffsets = outputPixelOffsets.data();
 
-        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_RESAMPLE1, &operatorDesc };
+        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_RESAMPLE2, &operatorDesc };
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
     }
 };
@@ -280,13 +333,6 @@ void CALLBACK QueryResize(IMLOperatorSupportQueryContextPrivate* context, bool* 
         return;
     }
 
-    // DML's nearest neighbor mode uses half pixels rounded down.
-    std::string nearestMode = attributes.GetOptionalAttribute<std::string>(AttrName::NearestMode, "round_prefer_floor");
-    if (nearestMode != "round_prefer_floor")
-    {
-        return;
-    }
-
     // Ignore parameter "cubic_coeff_a" since Cubic interpolation unsupported in DML.
     // Ignore parameter "extrapolation_value" as DML clamps to the input rather than reading black pixels.
 
@@ -295,6 +341,7 @@ void CALLBACK QueryResize(IMLOperatorSupportQueryContextPrivate* context, bool* 
 
 DML_OP_DEFINE_CREATION_FUNCTION(Resize10, VersionedKernel<DmlOperatorResize, 10>);
 DML_OP_DEFINE_CREATION_FUNCTION(Resize11, VersionedKernel<DmlOperatorResize, 11>);
+DML_OP_DEFINE_CREATION_FUNCTION(Resize13, VersionedKernel<DmlOperatorResize, 13>);
 DML_OP_DEFINE_CREATION_FUNCTION(Upsample7, VersionedKernel<DmlOperatorResize, 7>);
 DML_OP_DEFINE_CREATION_FUNCTION(Upsample9, VersionedKernel<DmlOperatorResize, 9>);
 DML_OP_DEFINE_CREATION_FUNCTION(Upsample10, VersionedKernel<DmlOperatorResize, 10>);

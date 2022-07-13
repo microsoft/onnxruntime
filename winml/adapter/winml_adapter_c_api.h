@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/session/onnxruntime_c_api.h"
+#include "winrt/windows.foundation.collections.h"
 
 /**
  * All APIs exported by winml_adapter_c_api.h are part of the private interface dedicated to supporting the WinML API.
@@ -13,6 +14,7 @@
 
 ORT_RUNTIME_CLASS(Model);
 ORT_RUNTIME_CLASS(ExecutionProvider);
+ORT_RUNTIME_CLASS(ThreadPool);
 
 struct WinmlAdapterApi;
 typedef struct WinmlAdapterApi WinmlAdapterApi;
@@ -42,6 +44,37 @@ struct OrtProfilerEventRecord {
 };
 
 typedef void(ORT_API_CALL* OrtProfilingFunction)(const OrtProfilerEventRecord* event_record);
+
+enum class ThreadPoolType : uint8_t {
+  INTRA_OP,
+  INTER_OP
+};
+
+struct OrtThreadPoolOptions {
+  //0: Use default setting. (All the physical cores or half of the logical cores)
+  //1: Don't create thread pool
+  //n: Create a thread pool with n threads.
+  int thread_pool_size = 0;
+  //If it is true and thread_pool_size = 0, populate the thread affinity information in ThreadOptions.
+  //Otherwise if the thread_options has affinity information, we'll use it and set it.
+  //In the other case, don't set affinity
+  bool auto_set_affinity = false;
+  //If it is true, the thread pool will spin a while after the queue became empty.
+  bool allow_spinning = true;
+  //It it is non-negative, thread pool will split a task by a decreasing block size
+  //of remaining_of_total_iterations / (num_of_threads * dynamic_block_base_)
+  int dynamic_block_base_ = 0;
+
+  unsigned int stack_size = 0;
+  //Index is thread id, value is processor ID
+  //If the vector is empty, no explict affinity binding
+  size_t* affinity_vec = nullptr;
+  size_t affinity_vec_len = 0;
+  const ORTCHAR_T* name = nullptr;
+
+  // Set or unset denormal as zero
+  bool set_denormal_as_zero = false;
+};
 
 struct WinmlAdapterApi {
   /**
@@ -100,6 +133,13 @@ struct WinmlAdapterApi {
 	 * This is used by WinML to support model reflection APIs.
     */
   OrtStatus*(ORT_API_CALL* ModelGetName)(_In_ const OrtModel* model, _Out_ const char** const name, _Out_ size_t* len)NO_EXCEPTION;
+
+  /**
+    * ModelSetName
+	* This api set the model name from the OrtModel.
+	* This is used by the Windows ML Samples Gallery to change the model name for telemetry.
+    */
+  OrtStatus*(ORT_API_CALL* ModelSetName)(_In_ const OrtModel* model, _In_ const char* name)NO_EXCEPTION;
 
   /**
     * ModelGetDomain
@@ -201,6 +241,12 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* ModelEnsureNoFloat16)(_In_ const OrtModel* model)NO_EXCEPTION;
 
+  /**
+  * SaveModel
+  * This api save the model to the fiven file
+  */
+  OrtStatus*(ORT_API_CALL* SaveModel)(_In_ const OrtModel* in, _In_ const wchar_t* const file_name, _In_ size_t len)NO_EXCEPTION;
+
   // OrtSessionOptions methods
 
   /**
@@ -223,7 +269,8 @@ struct WinmlAdapterApi {
     * c-abi, WinML uses this so that it can perform optimizations prior to loading the model, and initializing.
     * Moreover, WinML needs a new api to support the OrtModel type, and prevent the parsing model protobufs again on session creation. 
     */
-  OrtStatus*(ORT_API_CALL* CreateSessionWithoutModel)(_In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* CreateSessionWithoutModel)(_In_ OrtEnv* env, _In_ const OrtSessionOptions* options,
+   _In_ OrtThreadPool* inter_op_thread_pool, _In_ OrtThreadPool* intra_op_thread_pool, _Outptr_ OrtSession** session)NO_EXCEPTION;
 
   /**
     * SessionGetExecutionProvider
@@ -295,11 +342,27 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* SessionGetNumberOfIntraOpThreads)(_In_ OrtSession* session, _Out_ uint32_t* num_threads)NO_EXCEPTION;
 
+    /**
+    * SessionGetIntrapOpThreadSpinning
+     * This api returns false if the ort session options config entry "session.intra_op.allow_spinning" is set to "0", and true otherwise
+    * 
+    * WinML uses this to determine that the intra op thread spin policy was set correctly through OrtSessionOptions
+    */
+  OrtStatus*(ORT_API_CALL* SessionGetIntraOpThreadSpinning)(_In_ OrtSession* session, _Out_ bool* allow_spinning)NO_EXCEPTION;
+
+      /**
+    * SessionGetNamedDimensionsOverrides
+     * This api returns the named dimension overrides that are specified for this session
+    *
+    * WinML uses this to determine that named dimension overrides were set correctly through OrtSessionOptions.
+    */
+  OrtStatus*(ORT_API_CALL* SessionGetNamedDimensionsOverrides)(_In_ OrtSession* session, _Out_ winrt::Windows::Foundation::Collections::IMapView<winrt::hstring, uint32_t>& overrides)NO_EXCEPTION;
+
   /**
     * DmlExecutionProviderSetDefaultRoundingMode
-	 * This api is used to configure the DML EP to turn on/off rounding.
+	  * This api is used to configure the DML EP to turn on/off rounding.
     * 
- 	 * WinML uses this to disable rounding during session initialization and then enables it again post initialization.
+ 	  * WinML uses this to disable rounding during session initialization and then enables it again post initialization.
     */
   OrtStatus*(ORT_API_CALL* DmlExecutionProviderSetDefaultRoundingMode)(_In_ OrtExecutionProvider* dml_provider, _In_ bool is_enabled)NO_EXCEPTION;
 
@@ -318,30 +381,6 @@ struct WinmlAdapterApi {
     * WinML communicates directly with DML to perform this as an optimization.
     */
   OrtStatus*(ORT_API_CALL* DmlExecutionProviderReleaseCompletedReferences)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
-
-  /**
-    * DmlCreateGPUAllocationFromD3DResource
-	 * This api is used to create a DML EP input based on a user specified d3d12 resource.
-    * 
-    * WinML uses this as part of its Tensor apis to allow callers to specify their own D3D12 resources as inputs/outputs.
-    */
-  OrtStatus*(ORT_API_CALL* DmlCreateGPUAllocationFromD3DResource)(_In_ ID3D12Resource* pResource, _Out_ void** dml_resource)NO_EXCEPTION;
-
-  /**
-    * DmlFreeGPUAllocation
-	 * This api is used free the DML EP input created by DmlCreateGPUAllocationFromD3DResource.
-    * 
-    * WinML uses this as part of its Tensor apis to allow callers to specify their own D3D12 resources as inputs/outputs.
-    */
-  OrtStatus*(ORT_API_CALL* DmlFreeGPUAllocation)(_In_ void* ptr)NO_EXCEPTION;
-
-  /**
-    * DmlGetD3D12ResourceFromAllocation
-	 * This api is used to get the D3D12 resource when a OrtValue has been allocated by the DML EP and accessed via GetMutableTensorData.
-    * 
-    * WinML uses this in the image feature path to get the d3d resource and perform and tensorization on inputs directly into the allocated d3d12 resource.
-    */
-  OrtStatus*(ORT_API_CALL* DmlGetD3D12ResourceFromAllocation)(_In_ OrtExecutionProvider* provider, _In_ void* allocation, _Out_ ID3D12Resource** resource)NO_EXCEPTION;
 
   /**
     * DmlCopyTensor
@@ -377,14 +416,6 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* FreeProviderAllocator)(_In_ OrtAllocator* allocator)NO_EXCEPTION;
 
   /**
-    * GetValueMemoryInfo
-	 * This api gets the memory info of an OrtValue.
-    * 
-    * WinML uses this to determine if an OrtValue is allocated on the Cpu or elsewhere.
-    */
-  OrtStatus*(ORT_API_CALL* GetValueMemoryInfo)(const OrtValue* value, OrtMemoryInfo** memory_info)NO_EXCEPTION;
-
-  /**
     * ExecutionProviderSync
 	 * This api syncs the EP.
     * 
@@ -416,5 +447,68 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* SessionGetInputRequiredDeviceId)(_In_ OrtSession* session, _In_ const char* const input_name, _Out_ int16_t* device_id)NO_EXCEPTION;
 
+  OrtStatus*(ORT_API_CALL* CreateTensorTypeInfo)(_In_ const int64_t* shape, size_t shape_len,
+                                                 ONNXTensorElementDataType type, _Out_ OrtTypeInfo** type_info)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* CreateSequenceTypeInfo)(_Out_ OrtTypeInfo** type_info)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* CreateMapTypeInfo)(_Out_ OrtTypeInfo** type_info)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* CreateModel)(_In_ int64_t opset, _Outptr_ OrtModel** out)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelAddInput)(_In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelAddConstantInput)(_In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info, _In_ OrtValue* value)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelAddOutput)(_In_ OrtModel* model, _In_ const char* const output_name, _In_ OrtTypeInfo* info)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelAddOperator)(
+      _In_ OrtModel* model,
+      _In_ const char* const op_type,
+      _In_ const char* const op_name,
+      _In_ int64_t opset,
+      _In_ const char* const op_domain,
+      _In_ const char* const* input_names, _In_ size_t num_inputs,
+      _In_ const char* const* output_names, _In_ size_t num_outputs,
+      _In_ const char* const* attribute_names, _In_ OrtValue** attribute_values, _In_ size_t num_attributes)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* ModelGetOpsetVersion)(_In_ OrtModel* model, _In_ const char* const domain, _Out_ int32_t* version)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* OperatorGetNumInputs)(
+      _In_ const char* const op_type,
+      _In_ int64_t opset,
+      _In_ const char* const op_domain, 
+      _Out_ size_t* num_inputs)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* OperatorGetInputName)(
+      _In_ const char* const op_type,
+      _In_ int64_t opset,
+      _In_ const char* const op_domain,
+      _In_ size_t index,
+      _Out_ const char** const name
+      )NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* OperatorGetNumOutputs)(
+      _In_ const char* const op_type,
+      _In_ int64_t opset,
+      _In_ const char* const op_domain,
+      _Out_ size_t* num_inputs)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* OperatorGetOutputName)(
+      _In_ const char* const op_type,
+      _In_ int64_t opset,
+      _In_ const char* const op_domain,
+      _In_ size_t index,
+      _Out_ const char** const name)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* JoinModels)(
+      _In_ OrtModel* first_model,
+      _In_ OrtModel* second_model,
+      _In_ const char* const* output_names,
+      _In_ const char* const* input_names,
+      size_t num_linkages,
+      bool promote_unlinked_outputs,
+      _In_ const char* const join_node_prefix)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* CreateThreadPool)(
+      _In_ ThreadPoolType type,
+      _In_ OrtThreadPoolOptions* params,
+      _Outptr_ OrtThreadPool** out)NO_EXCEPTION;
+
   ORT_CLASS_RELEASE(Model);
+  ORT_CLASS_RELEASE(ThreadPool);
 };

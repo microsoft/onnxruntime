@@ -3,6 +3,8 @@ import torch
 
 from .optim import lr_scheduler
 from .amp import loss_scaler
+from . import PropagateCastOpsStrategy
+import onnxruntime as ort
 
 
 class ORTTrainerOptions(object):
@@ -188,6 +190,26 @@ class ORTTrainerOptions(object):
                             'type': 'integer',
                             'min': 0,
                             'default': 0
+                        },
+                        'propagate_cast_ops_config': {
+                            'type': 'dict',
+                            'required': False,
+                            'default': {},
+                            'schema': {
+                                'propagate_cast_ops_strategy': {
+                                    'type': 'onnxruntime.training.PropagateCastOpsStrategy',
+                                    'default': PropagateCastOpsStrategy.FLOOD_FILL
+                                },
+                                'propagate_cast_ops_level': {
+                                    'type': 'integer',
+                                    'default': 1
+                                },
+                                'propagate_cast_ops_allow': {
+                                    'type': 'list',
+                                    'schema': {'type': 'string'},
+                                    'default': []
+                                }
+                            }
                         }
                     }
                 },
@@ -204,7 +226,7 @@ class ORTTrainerOptions(object):
                             'type' : 'boolean',
                             'default' : True
                         },
-                        'invertible_layer_norm_gradient' : {
+                        'memory_efficient_gradient' : {
                             'type' : 'boolean',
                             'default' : False
                         },
@@ -243,9 +265,13 @@ class ORTTrainerOptions(object):
                                 'model_with_training_graph_path': {
                                     'type': 'string',
                                     'default': ''
-                                }
+                                },
+                                'model_with_training_graph_after_optimization_path': {
+                                    'type': 'string',
+                                    'default': ''
+                                },
                             }
-                        }                        
+                        },
                     }
                 },
                 '_internal_use' : {
@@ -265,7 +291,7 @@ class ORTTrainerOptions(object):
                         'onnx_opset_version': {
                             'type': 'integer',
                             'min' : 12,
-                            'max' : 12,
+                            'max' : 13,
                             'default': 12
                         },
                         'enable_onnx_contrib_ops' : {
@@ -273,7 +299,18 @@ class ORTTrainerOptions(object):
                             'default' : True
                         }
                     }
-                }
+                },
+                'provider_options':{
+                    'type': 'dict',
+                    'default': {},
+                    'required': False,
+                    'schema': {}
+                },
+                'session_options': {
+                    'type': 'SessionOptions',
+                    'nullable': True,
+                    'default': None
+                },
              }
 
     Keyword arguments:
@@ -290,7 +327,7 @@ class ORTTrainerOptions(object):
         distributed (dict):
             distributed training options.
         distributed.world_rank (int, default is 0):
-            rank ID used for data parallelism
+            rank ID used for data/horizontal parallelism
         distributed.world_size (int, default is 1):
             number of ranks participating in parallelism
         distributed.data_parallel_size (int, default is 1):
@@ -329,6 +366,25 @@ class ORTTrainerOptions(object):
             can be specified by extending :py:class:`.LossScaler` class from scratch
         graph_transformer (dict):
             graph transformer related configurations
+        graph_transformer.attn_dropout_recompute(bool, default False)
+        graph_transformer.gelu_recompute(bool, default False)
+        graph_transformer.transformer_layer_recompute(bool, default False)
+        graph_transformer.number_recompute_layers(bool, default False)
+        graph_transformer.propagate_cast_ops_config (dict):
+            graph_transformer.propagate_cast_ops_config.strategy(PropagateCastOpsStrategy, default FLOOD_FILL)
+                Specify the choice of the cast propagation optimization strategy, either, NONE, INSERT_AND_REDUCE or FLOOD_FILL.
+                NONE strategy does not perform any cast propagation transformation on the graph, although other optimizations
+                locally change cast operations, for example, in order to fuse Transpose and MatMul nodes, the TransposeMatMulFunsion optimization could
+                interchange Transpose and Cast if the Cast node exists between Transpose and MatMul.
+                INSERT_AND_REDUCE strategy inserts and reduces cast operations around the nodes with allowed opcodes.
+                FLOOD_FILL strategy expands float16 regions in the graph using the allowed opcodes, and unlike
+                INSERT_AND_REDUCE does not touch opcodes outside expanded float16 region.
+            graph_transformer.propagate_cast_ops_config.level(integer, default 1)
+                Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
+                Use predetermined list of opcodes considered safe to move before/after cast operation
+                if propagate_cast_ops_level is positive and use propagate_cast_ops_allow otherwise.
+            graph_transformer.propagate_cast_ops_config.allow(list of str, [])
+                List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
         attn_dropout_recompute (bool, default is False):
             enable recomputing attention dropout to save memory
         gelu_recompute (bool, default is False):
@@ -344,8 +400,8 @@ class ORTTrainerOptions(object):
             list of model parameter names to skip training (weights don't change)
         utils.grad_norm_clip (bool, default is True):
             enables gradient norm clipping for 'AdamOptimizer' and 'LambOptimizer'
-        utils.invertible_layer_norm_gradient (bool, default is False):
-            enables use of invertible layer norm gradients
+        utils.memory_efficient_gradient (bool, default is False):
+            enables use of memory aware gradient builder.
         utils.run_symbolic_shape_infer (bool, default is False):
             runs symbolic shape inference on the model
         debug (dict):
@@ -365,6 +421,8 @@ class ORTTrainerOptions(object):
         debug.graph_save_paths.model_with_training_graph_path (str, default is "")
             path to export the training ONNX graph with forward, gradient and optimizer nodes.
             No output when it is empty.
+        debug.graph_save_paths.model_with_training_graph_after_optimization_path (str, default is "")
+            outputs the optimized training graph to the path if nonempty.
         _internal_use (dict):
             internal options, possibly undocumented, that might be removed without notice
         _internal_use.enable_internal_postprocess (bool, default is True):
@@ -372,11 +430,16 @@ class ORTTrainerOptions(object):
         _internal_use.extra_postprocess (callable, default is None)
             a functor to postprocess the ONNX model and return a new ONNX model.
             It does not override :py:attr:`._internal_use.enable_internal_postprocess`, but complement it
-        _internal_use.onnx_opset_version (int, default is 12):
+        _internal_use.onnx_opset_version (int, default is 14):
             ONNX opset version used during model exporting.
         _internal_use.enable_onnx_contrib_ops (bool, default is True)
             enable PyTorch to export nodes as contrib ops in ONNX.
             This flag may be removed anytime in the future.
+        session_options (onnxruntime.SessionOptions):
+            The SessionOptions instance that TrainingSession will use.
+        provider_options (dict):
+            The provider_options for customized execution providers. it is dict map from EP name to
+            a key-value pairs, like {'EP1' : {'key1' : 'val1'}, ....}
 
     Example:
         .. code-block:: python
@@ -396,7 +459,7 @@ class ORTTrainerOptions(object):
                                }
             })
             fp16_enabled = opts.mixed_precision.enabled
-     """
+    """
 
     def __init__(self, options={}):
         # Keep a copy of original input for debug
@@ -407,20 +470,23 @@ class ORTTrainerOptions(object):
 
         # Validates user input
         self._validated_opts = dict(self._original_opts)
-        validator = ORTTrainerOptionsValidator(
-            _ORTTRAINER_OPTIONS_SCHEMA)
+        validator = ORTTrainerOptionsValidator(_ORTTRAINER_OPTIONS_SCHEMA)
         self._validated_opts = validator.validated(self._validated_opts)
         if self._validated_opts is None:
-            raise ValueError(f'Invalid options: {validator.errors}')
+            raise ValueError(f"Invalid options: {validator.errors}")
 
         # Convert dict in object
         for k, v in self._validated_opts.items():
             setattr(self, k, self._wrap(v))
 
     def __repr__(self):
-        return '{%s}' % str(', '.join("'%s': %s" % (k, repr(v))
-                                      for (k, v) in self.__dict__.items()
-                                      if k not in ['_original_opts', '_validated_opts', '_main_class_name']))
+        return "{%s}" % str(
+            ", ".join(
+                "'%s': %s" % (k, repr(v))
+                for (k, v) in self.__dict__.items()
+                if k not in ["_original_opts", "_validated_opts", "_main_class_name"]
+            )
+        )
 
     def _wrap(self, v):
         if isinstance(v, (tuple, list, set, frozenset)):
@@ -448,14 +514,20 @@ class _ORTTrainerOptionsInternal(ORTTrainerOptions):
 
 
 class ORTTrainerOptionsValidator(cerberus.Validator):
-    _LR_SCHEDULER = cerberus.TypeDefinition(
-        'lr_scheduler', (lr_scheduler._LRScheduler,), ())
-    _LOSS_SCALER = cerberus.TypeDefinition(
-        'loss_scaler', (loss_scaler.LossScaler,), ())
+    _LR_SCHEDULER = cerberus.TypeDefinition("lr_scheduler", (lr_scheduler._LRScheduler,), ())
+    _LOSS_SCALER = cerberus.TypeDefinition("loss_scaler", (loss_scaler.LossScaler,), ())
+
+    _SESSION_OPTIONS = cerberus.TypeDefinition("session_options", (ort.SessionOptions,), ())
+
+    _PROPAGATE_CAST_OPS_STRATEGY = cerberus.TypeDefinition(
+        "propagate_cast_ops_strategy", (PropagateCastOpsStrategy,), ()
+    )
 
     types_mapping = cerberus.Validator.types_mapping.copy()
-    types_mapping['lr_scheduler'] = _LR_SCHEDULER
-    types_mapping['loss_scaler'] = _LOSS_SCALER
+    types_mapping["lr_scheduler"] = _LR_SCHEDULER
+    types_mapping["loss_scaler"] = _LOSS_SCALER
+    types_mapping["session_options"] = _SESSION_OPTIONS
+    types_mapping["propagate_cast_ops_strategy"] = _PROPAGATE_CAST_OPS_STRATEGY
 
 
 def _check_is_callable(field, value, error):
@@ -465,261 +537,156 @@ def _check_is_callable(field, value, error):
         result = value is None or callable(value)
     except:
         # Python 3 but < 3.2
-        if hasattr(value, '__call__'):
+        if hasattr(value, "__call__"):
             result = True
     if not result:
         error(field, "Must be callable or None")
 
 
 _ORTTRAINER_OPTIONS_SCHEMA = {
-    'batch': {
-        'type': 'dict',
-        'default_setter': lambda _: {},
-        'required': False,
-        'schema': {
-            'gradient_accumulation_steps': {
-                'type': 'integer',
-                'min': 1,
-                'default': 1
-            }
+    "batch": {
+        "type": "dict",
+        "default_setter": lambda _: {},
+        "required": False,
+        "schema": {"gradient_accumulation_steps": {"type": "integer", "min": 1, "default": 1}},
+    },
+    "device": {
+        "type": "dict",
+        "default_setter": lambda _: {},
+        "required": False,
+        "schema": {
+            "id": {"type": "string", "default": "cuda"},
+            "mem_limit": {"type": "integer", "min": 0, "default": 0},
         },
     },
-    'device': {
-        'type': 'dict',
-        'default_setter': lambda _: {},
-        'required': False,
-        'schema': {
-            'id': {
-                'type': 'string',
-                'default': 'cuda'
+    "distributed": {
+        "type": "dict",
+        "default_setter": lambda _: {},
+        "required": False,
+        "schema": {
+            "world_rank": {"type": "integer", "min": 0, "default": 0},
+            "world_size": {"type": "integer", "min": 1, "default": 1},
+            "local_rank": {"type": "integer", "min": 0, "default": 0},
+            "data_parallel_size": {"type": "integer", "min": 1, "default": 1},
+            "horizontal_parallel_size": {"type": "integer", "min": 1, "default": 1},
+            "pipeline_parallel": {
+                "type": "dict",
+                "default_setter": lambda _: {},
+                "required": False,
+                "schema": {
+                    "pipeline_parallel_size": {"type": "integer", "min": 1, "default": 1},
+                    "num_pipeline_micro_batches": {"type": "integer", "min": 1, "default": 1},
+                    "pipeline_cut_info_string": {"type": "string", "default": ""},
+                    "sliced_schema": {
+                        "type": "dict",
+                        "default_setter": lambda _: {},
+                        "keysrules": {"type": "string"},
+                        "valuesrules": {"type": "list", "schema": {"type": "integer"}},
+                    },
+                    "sliced_axes": {
+                        "type": "dict",
+                        "default_setter": lambda _: {},
+                        "keysrules": {"type": "string"},
+                        "valuesrules": {"type": "integer"},
+                    },
+                    "sliced_tensor_names": {"type": "list", "schema": {"type": "string"}, "default": []},
+                },
             },
-            'mem_limit': {
-                'type': 'integer',
-                'min': 0,
-                'default': 0
-            }
-        }
+            "allreduce_post_accumulation": {"type": "boolean", "default": False},
+            "deepspeed_zero_optimization": {
+                "type": "dict",
+                "default_setter": lambda _: {},
+                "required": False,
+                "schema": {
+                    "stage": {"type": "integer", "min": 0, "max": 1, "default": 0},
+                },
+            },
+            "enable_adasum": {"type": "boolean", "default": False},
+        },
     },
-    'distributed': {
-        'type': 'dict',
-        'default_setter': lambda _: {},
-        'required': False,
-        'schema': {
-            'world_rank': {
-                'type': 'integer',
-                'min': 0,
-                'default': 0
-            },
-            'world_size': {
-                'type': 'integer',
-                'min': 1,
-                'default': 1
-            },
-            'local_rank': {
-                'type': 'integer',
-                'min': 0,
-                'default': 0
-            },
-            'data_parallel_size': {
-                'type': 'integer',
-                'min': 1,
-                'default': 1
-            },
-            'horizontal_parallel_size': {
-                'type': 'integer',
-                'min': 1,
-                'default': 1
-            },
-            'pipeline_parallel' : {
-                'type': 'dict',
-                'default_setter': lambda _: {},
-                'required': False,
-                'schema': {
-                    'pipeline_parallel_size': {
-                        'type': 'integer',
-                        'min': 1,
-                        'default': 1
-                    },
-                    'num_pipeline_micro_batches': {
-                        'type': 'integer',
-                        'min': 1,
-                        'default': 1
-                    },
-                    'pipeline_cut_info_string': {
-                        'type': 'string',
-                        'default': ''
-                    },
-                    'sliced_schema': {
-                        'type': 'dict',
-                        'default_setter': lambda _: {},
-                        'keysrules': {'type': 'string'},
-                        'valuesrules': {
-                            'type': 'list',
-                            'schema': {'type': 'integer'}
-                        }
-                    },
-                    'sliced_axes': {
-                        'type': 'dict',
-                        'default_setter': lambda _: {},
-                        'keysrules': {'type': 'string'},
-                        'valuesrules': {'type': 'integer'}
-                    },
-                    'sliced_tensor_names': {
-                        'type': 'list',
-                        'schema': {'type': 'string'},
-                        'default': []
-                    }
-                }
-            },
-            'allreduce_post_accumulation': {
-                'type': 'boolean',
-                'default': False
-            },
-            'deepspeed_zero_optimization': {
-                'type': 'dict',
-                'default_setter': lambda _: {},
-                'required': False,
-                'schema': {
-                    'stage': {
-                        'type': 'integer',
-                        'min': 0,
-                        'max': 1,
-                        'default': 0
-                    },
-                }
-            },
-            'enable_adasum': {
-                'type': 'boolean',
-                'default': False
-            }
-        }
+    "lr_scheduler": {"type": "lr_scheduler", "nullable": True, "default": None},
+    "mixed_precision": {
+        "type": "dict",
+        "default_setter": lambda _: {},
+        "required": False,
+        "schema": {
+            "enabled": {"type": "boolean", "default": False},
+            "loss_scaler": {"type": "loss_scaler", "nullable": True, "default": None},
+        },
     },
-    'lr_scheduler': {
-        'type': 'lr_scheduler',
-        'nullable': True,
-        'default': None
-    },
-    'mixed_precision': {
-        'type': 'dict',
-        'default_setter': lambda _: {},
-        'required': False,
-        'schema': {
-            'enabled': {
-                'type': 'boolean',
-                'default': False
-            },
-            'loss_scaler': {
-                'type': 'loss_scaler',
-                'nullable': True,
-                'default': None
-            }
-        }
-    },
-    'graph_transformer': {
-        'type': 'dict',
-        'default_setter': lambda _: {},
-        'required': False,
-        'schema': {
-            'attn_dropout_recompute': {
-                'type': 'boolean',
-                'default': False
-            },
-            'gelu_recompute': {
-                'type': 'boolean',
-                'default': False
-            },
-            'transformer_layer_recompute': {
-                'type': 'boolean',
-                'default': False
-            },
-            'number_recompute_layers': {
-                'type': 'integer',
-                'min': 0,
-                'default': 0
-            }
-        }
-    },
-    'utils': {
-        'type': 'dict',
-        'default_setter': lambda _: {},
-        'required': False,
-        'schema': {
-            'frozen_weights': {
-                'type': 'list',
-                'default': []
-            },
-            'grad_norm_clip': {
-                'type': 'boolean',
-                'default': True
-            },
-            'invertible_layer_norm_gradient': {
-                'type': 'boolean',
-                'default': False
-            },
-            'run_symbolic_shape_infer': {
-                'type': 'boolean',
-                'default': False
-            }
-        }
-    },
-    'debug': {
-        'type': 'dict',
-        'default_setter': lambda _: {},
-        'required': False,
-        'schema': {
-            'deterministic_compute': {
-                'type': 'boolean',
-                'default': False
-            },
-            'check_model_export': {
-                'type': 'boolean',
-                'default': False
-            },
-            'graph_save_paths' : {
-                'type' : 'dict',
-               'default_setter': lambda _: {},
-                'required': False,
-                'schema': {
-                    'model_after_graph_transforms_path': {
-                        'type': 'string',
-                        'default': ''
+    "graph_transformer": {
+        "type": "dict",
+        "default_setter": lambda _: {},
+        "required": False,
+        "schema": {
+            "attn_dropout_recompute": {"type": "boolean", "default": False},
+            "gelu_recompute": {"type": "boolean", "default": False},
+            "transformer_layer_recompute": {"type": "boolean", "default": False},
+            "number_recompute_layers": {"type": "integer", "min": 0, "default": 0},
+            "propagate_cast_ops_config": {
+                "type": "dict",
+                "default_setter": lambda _: {},
+                "required": False,
+                "schema": {
+                    "strategy": {
+                        "type": "propagate_cast_ops_strategy",
+                        "nullable": True,
+                        "default": PropagateCastOpsStrategy.FLOOD_FILL,
                     },
-                    'model_with_gradient_graph_path':{
-                        'type': 'string',
-                        'default': ''
-                    },
-                    'model_with_training_graph_path': {
-                        'type': 'string',
-                        'default': ''
-                    }
-                }
+                    "level": {"type": "integer", "min": -1, "default": 1},
+                    "allow": {"type": "list", "schema": {"type": "string"}, "default": []},
+                },
             },
-        }
+        },
     },
-    '_internal_use': {
-        'type': 'dict',
-        'default_setter': lambda _: {},
-        'required': False,
-        'schema': {
-            'enable_internal_postprocess': {
-                'type': 'boolean',
-                'default': True
+    "utils": {
+        "type": "dict",
+        "default_setter": lambda _: {},
+        "required": False,
+        "schema": {
+            "frozen_weights": {"type": "list", "default": []},
+            "grad_norm_clip": {"type": "boolean", "default": True},
+            "memory_efficient_gradient": {"type": "boolean", "default": False},
+            "run_symbolic_shape_infer": {"type": "boolean", "default": False},
+        },
+    },
+    "debug": {
+        "type": "dict",
+        "default_setter": lambda _: {},
+        "required": False,
+        "schema": {
+            "deterministic_compute": {"type": "boolean", "default": False},
+            "check_model_export": {"type": "boolean", "default": False},
+            "graph_save_paths": {
+                "type": "dict",
+                "default_setter": lambda _: {},
+                "required": False,
+                "schema": {
+                    "model_after_graph_transforms_path": {"type": "string", "default": ""},
+                    "model_with_gradient_graph_path": {"type": "string", "default": ""},
+                    "model_with_training_graph_path": {"type": "string", "default": ""},
+                    "model_with_training_graph_after_optimization_path": {"type": "string", "default": ""},
+                },
             },
-            'extra_postprocess': {
-                'check_with': _check_is_callable,
-                'nullable': True,
-                'default': None
-            },
-            'onnx_opset_version': {
-                'type': 'integer',
-                'min': 12,
-                'max': 12,
-                'default': 12
-            },
-            'enable_onnx_contrib_ops': {
-                'type': 'boolean',
-                'default': True
-            }
-        }
-    }
+        },
+    },
+    "_internal_use": {
+        "type": "dict",
+        "default_setter": lambda _: {},
+        "required": False,
+        "schema": {
+            "enable_internal_postprocess": {"type": "boolean", "default": True},
+            "extra_postprocess": {"check_with": _check_is_callable, "nullable": True, "default": None},
+            "onnx_opset_version": {"type": "integer", "min": 12, "max": 14, "default": 14},
+            "enable_onnx_contrib_ops": {"type": "boolean", "default": True},
+        },
+    },
+    "provider_options": {
+        "type": "dict",
+        "default_setter": lambda _: {},
+        "required": False,
+        "allow_unknown": True,
+        "schema": {},
+    },
+    "session_options": {"type": "session_options", "nullable": True, "default": None},
 }

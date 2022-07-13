@@ -10,13 +10,24 @@ namespace cuda {
 
 // kernel builder functions
 #define WHERE_TYPED_KERNEL_WITH_TYPE_NAME(T, TName)                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                    \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                          \
       Where,                                                        \
       kOnnxDomain,                                                  \
       9,                                                            \
+      15,                                                           \
       TName,                                                        \
       kCudaExecutionProvider,                                       \
-      KernelDefBuilder()                                            \
+      (*KernelDefBuilder::Create())                                 \
+          .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()) \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),   \
+      Where<T>);                                                    \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                    \
+      Where,                                                        \
+      kOnnxDomain,                                                  \
+      16,                                                           \
+      TName,                                                        \
+      kCudaExecutionProvider,                                       \
+      (*KernelDefBuilder::Create())                                 \
           .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()) \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),   \
       Where<T>);
@@ -174,6 +185,7 @@ Status Where<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(prepare.TernaryElementwiseBroadcastPrepareHelper(condition_shape, X_shape, Y_shape, output_shape));
 
   WhereImpl<CudaT>(
+      Stream(),
       prepare.output_rank_or_simple_broadcast,
       prepare.a_index_type,
       prepare.a_padded_strides,
@@ -202,6 +214,7 @@ SPECIALIZED_COMPUTE(uint8_t)
 SPECIALIZED_COMPUTE(int32_t)
 SPECIALIZED_COMPUTE(int64_t)
 SPECIALIZED_COMPUTE(float)
+SPECIALIZED_COMPUTE(double_t)
 SPECIALIZED_COMPUTE(MLFloat16)
 }  // namespace cuda
 }  // namespace onnxruntime

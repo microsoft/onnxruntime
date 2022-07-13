@@ -25,7 +25,9 @@
 
 #include "core/session/onnxruntime_c_api.h"
 #include <wil/wrl.h>
+#ifndef _GAMING_XBOX
 #include <dxgi1_6.h>
+#endif
 
 #define ENABLE_GRAPH_COMPILATION
 
@@ -44,8 +46,8 @@ namespace Dml
     }
 
     static void CreateDmlKernelRegistry(
-        _Outptr_ std::shared_ptr<onnxruntime::KernelRegistry>* registry,
-        _Outptr_ std::shared_ptr<const InternalRegistrationInfoMap>* internalRegInfoMap)
+        _Out_ std::shared_ptr<onnxruntime::KernelRegistry>* registry,
+        _Out_ std::shared_ptr<const InternalRegistrationInfoMap>* internalRegInfoMap)
     {
         ComPtr<AbiCustomRegistry> abiRegistry = wil::MakeOrThrow<AbiCustomRegistry>();
         Dml::RegisterDmlOperators(abiRegistry.Get());
@@ -67,11 +69,11 @@ namespace Dml
         if (queueType != D3D12_COMMAND_LIST_TYPE_DIRECT && queueType != D3D12_COMMAND_LIST_TYPE_COMPUTE)
         {
             // DML requires either DIRECT or COMPUTE command queues.
-            THROW_HR(E_INVALIDARG);
+            ORT_THROW_HR(E_INVALIDARG);
         }
 
         ComPtr<ID3D12Device> device;
-        THROW_IF_FAILED(commandQueue->GetDevice(IID_PPV_ARGS(&device)));
+        GRAPHICS_THROW_IF_FAILED(commandQueue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
         m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands);
 
@@ -88,13 +90,20 @@ namespace Dml
     {
 #ifdef ENABLE_GRAPH_COMPILATION
         return m_impl->GetCapability(graph, kernel_registries);
-#endif
+#else
         return onnxruntime::IExecutionProvider::GetCapability(graph, kernel_registries);
+#endif
     }
 
     void ExecutionProviderImpl::Close()
     {
         m_context->Close();
+    }
+
+    void ExecutionProviderImpl::WaitForOutstandingWork() 
+    {
+        Flush();
+        m_context->GetCurrentCompletionEvent().WaitForSignal();
     }
     
     HRESULT __stdcall ExecutionProviderImpl::AllocatePooledResource(
@@ -102,8 +111,10 @@ namespace Dml
         AllocatorRoundingMode roundingMode,
         ID3D12Resource **d3dResource, 
         IUnknown** pooledResource
-    ) const noexcept try
+    ) const noexcept
     {
+        ORT_TRY
+        {
         ComPtr<IUnknown> allocation;
         allocation.Attach(static_cast<IUnknown* >(m_allocator->Alloc(size, roundingMode)));
 
@@ -113,17 +124,18 @@ namespace Dml
         resource.CopyTo(d3dResource);
         *pooledResource = allocation.Detach();
         return S_OK;
+        }
+        ORT_CATCH_RETURN
     }
-    CATCH_RETURN();
 
     ID3D12Resource* __stdcall ExecutionProviderImpl::DecodeResource(void* allocation) const noexcept
     {
-        try
+        ORT_TRY
         {
             const AllocationInfo* allocInfo = m_allocator->DecodeDataHandle(allocation);
             return allocInfo->GetResource();
         }
-        catch(...)
+        ORT_CATCH_GENERIC
         {
             return nullptr;
         }
@@ -153,7 +165,7 @@ namespace Dml
 
         featureLevels.NumFeatureLevels = ARRAYSIZE(featureLevelsList);
         featureLevels.pFeatureLevelsRequested = featureLevelsList;
-        THROW_IF_FAILED(d3d12Device->CheckFeatureSupport(
+        ORT_THROW_IF_FAILED(d3d12Device->CheckFeatureSupport(
             D3D12_FEATURE_FEATURE_LEVELS,
             &featureLevels,
             sizeof(featureLevels)
@@ -187,43 +199,55 @@ namespace Dml
 
     HRESULT __stdcall ExecutionProviderImpl::GetD3DDevice(_COM_Outptr_ ID3D12Device** d3dDevice) const noexcept
     {
-        return m_d3d12Device.CopyTo(d3dDevice);
+        m_d3d12Device.CopyTo(d3dDevice);
+        _Analysis_assume_(*d3dDevice != nullptr);
+        return S_OK;
     }
 
     HRESULT __stdcall ExecutionProviderImpl::GetDmlDevice(_COM_Outptr_ IDMLDevice** dmlDevice) const noexcept
     {
-        return m_dmlDevice.CopyTo(dmlDevice);
+        m_dmlDevice.CopyTo(dmlDevice);
+        _Analysis_assume_(*dmlDevice != nullptr);
+        return S_OK;
     }
 
     HRESULT __stdcall ExecutionProviderImpl::ExecuteCommandList(
         ID3D12GraphicsCommandList* commandList,
         _Outptr_ ID3D12Fence** fence,
         _Out_ uint64_t* completionValue
-        ) const noexcept try
+        ) const noexcept
     {
+        ORT_TRY
+        {
         assert(!m_closed);
         m_context->ExecuteCommandList(commandList, fence, completionValue);
 
         return S_OK;
+        }
+        ORT_CATCH_RETURN
     }
-    CATCH_RETURN();
 
-    HRESULT __stdcall ExecutionProviderImpl::AddUAVBarrier() const noexcept try
+    HRESULT __stdcall ExecutionProviderImpl::AddUAVBarrier() const noexcept
     {
+        ORT_TRY
+        {
         assert(!m_closed);
 
         m_context->AddUAVBarrier();
 
         return S_OK;
+        }
+        ORT_CATCH_RETURN
     }
-    CATCH_RETURN();
 
     HRESULT __stdcall ExecutionProviderImpl::InitializeOperator(
         IDMLCompiledOperator* op,
         _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
         gsl::span<const DML_BUFFER_BINDING> inputBindings
-        ) const noexcept try
+        ) const noexcept
     {
+        ORT_TRY
+        {
         assert(!m_closed);
 
         bool hasInputsToBind = false;
@@ -257,16 +281,19 @@ namespace Dml
             inputArrayBindingDesc);
 
         return S_OK;
+        }
+        ORT_CATCH_RETURN
     }
-    CATCH_RETURN();
 
     HRESULT __stdcall ExecutionProviderImpl::ExecuteOperator(
         IDMLCompiledOperator* op,
         _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
         gsl::span<IMLOperatorTensor*> inputTensors,
         gsl::span<IMLOperatorTensor*> outputTensors
-        ) const noexcept try
+        ) const noexcept
     {
+        ORT_TRY
+        {
         assert(!m_closed);
 
         std::vector<uint32_t> shape;
@@ -276,7 +303,7 @@ namespace Dml
             if (tensor)
             {
                 shape.resize(tensor->GetDimensionCount());
-                THROW_IF_FAILED(tensor->GetShape(tensor->GetDimensionCount(), shape.data()));
+                ORT_THROW_IF_FAILED(tensor->GetShape(tensor->GetDimensionCount(), shape.data()));
 
                 if (OperatorHelper::ContainsEmptyDimensions(shape))
                 {
@@ -290,7 +317,7 @@ namespace Dml
             if (tensor)
             {
                 shape.resize(tensor->GetDimensionCount());
-                THROW_IF_FAILED(tensor->GetShape(tensor->GetDimensionCount(), shape.data()));
+                ORT_THROW_IF_FAILED(tensor->GetShape(tensor->GetDimensionCount(), shape.data()));
 
                 if (OperatorHelper::ContainsEmptyDimensions(shape))
                 {
@@ -332,19 +359,22 @@ namespace Dml
         outputBindings.reserve(outputTensors.size());
         FillBindings(outputBufferBindings, outputBindings, outputTensors);
 
-        THROW_IF_FAILED(ExecuteOperator(op, persistentResourceBinding, inputBindings, outputBindings));
+        ORT_THROW_IF_FAILED(ExecuteOperator(op, persistentResourceBinding, inputBindings, outputBindings));
         
         return S_OK;
+        }
+        ORT_CATCH_RETURN
     }
-    CATCH_RETURN();
 
     HRESULT __stdcall ExecutionProviderImpl::ExecuteOperator(
         IDMLCompiledOperator* op,
         _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
         gsl::span<DML_BINDING_DESC> inputTensors,
         gsl::span<DML_BINDING_DESC> outputTensors
-        ) const noexcept try
+        ) const noexcept
     {
+        ORT_TRY
+        {
         assert(!m_closed);
         
         DML_BINDING_DESC persistentResourceBindingDesc =
@@ -359,8 +389,9 @@ namespace Dml
             outputTensors);
 
         return S_OK;
+        }
+        ORT_CATCH_RETURN
     }
-    CATCH_RETURN();
 
     static gsl::span<const std::byte> AsByteSpan(const void* data, size_t sizeInBytes)
     {
@@ -372,13 +403,15 @@ namespace Dml
         return gsl::make_span(static_cast<std::byte*>(data), sizeInBytes);
     }
 
-    HRESULT __stdcall ExecutionProviderImpl::CopyTensor(IMLOperatorTensor* dst, IMLOperatorTensor* src) const noexcept try
+    HRESULT __stdcall ExecutionProviderImpl::CopyTensor(IMLOperatorTensor* dst, IMLOperatorTensor* src) const noexcept
     {
+        ORT_TRY
+        {
         assert(!m_closed);
 
         const size_t sourceSizeInBytes = ComputeByteSizeFromTensor(*src);
         const size_t dataSizeInBytes = ComputeByteSizeFromTensor(*dst);
-        THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != sourceSizeInBytes); // Tensors must be the same size
+        ORT_THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != sourceSizeInBytes); // Tensors must be the same size
 
         if (dataSizeInBytes == 0)
         {
@@ -432,35 +465,46 @@ namespace Dml
         else
         {
             // CPU -> CPU copies not supported
-            THROW_HR(E_INVALIDARG);
+            ORT_THROW_HR(E_INVALIDARG);
         }
 
         return S_OK;
+        }
+        ORT_CATCH_RETURN
     }
-    CATCH_RETURN();
 
     HRESULT STDMETHODCALLTYPE ExecutionProviderImpl::FillTensorWithPattern(
         IMLOperatorTensor* dst,
-        gsl::span<const std::byte> value // Data type agnostic value, treated as raw bits
-        ) const noexcept try
+        gsl::span<const std::byte> rawValue // Data type agnostic rawValue, treated as raw bits
+        ) const noexcept
     {
-        const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(dst).GetDataInterface().Get());
-        ID3D12Resource* dstData = dstAllocInfo->GetResource();
-        m_context->FillBufferWithPattern(dstData, value);
+        ORT_TRY
+        {
+        auto mlTensor = MLOperatorTensor(dst).GetDataInterface();
+        if (mlTensor != nullptr)
+        {
+            const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(mlTensor.Get());
+            ID3D12Resource* dstData = dstAllocInfo->GetResource();
+            m_context->FillBufferWithPattern(dstData, rawValue);
+        }
 
         return S_OK;
+        }
+        ORT_CATCH_RETURN
     }
-    CATCH_RETURN();
 
-    HRESULT __stdcall ExecutionProviderImpl::UploadToResource(ID3D12Resource* dstData, const void* srcData, uint64_t srcDataSize) const noexcept try
+    HRESULT __stdcall ExecutionProviderImpl::UploadToResource(ID3D12Resource* dstData, const void* srcData, uint64_t srcDataSize) const noexcept
     {
+        ORT_TRY
+        {
         assert(!m_closed);
 
         m_uploadHeap->BeginUploadToGpu(dstData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, AsByteSpan(srcData, static_cast<size_t>(srcDataSize)));
 
         return S_OK;
+        }
+        ORT_CATCH_RETURN
     }
-    CATCH_RETURN();
 
     uint32_t ExecutionProviderImpl::GetSupportedDeviceDataTypeMask() const
     {
@@ -516,7 +560,7 @@ namespace Dml
             provider,
             true);
 
-        THROW_IF_FAILED(CopyTensor(&destInternal, &srcInternal));
+        ORT_THROW_IF_FAILED(CopyTensor(&destInternal, &srcInternal));
 
         return onnxruntime::common::Status::OK();
     }
@@ -554,7 +598,7 @@ namespace Dml
                 true);
 
             const size_t dataSizeInBytes = ComputeByteSizeFromTensor(dstWrapper);
-            THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != ComputeByteSizeFromTensor(srcWrapper)); // Tensors must be the same size
+            ORT_THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != ComputeByteSizeFromTensor(srcWrapper)); // Tensors must be the same size
 
             if (dataSizeInBytes == 0)
             {
@@ -562,7 +606,7 @@ namespace Dml
             }
 
             dataSizesInBytes.push_back(static_cast<uint32_t>(ComputeByteSizeFromTensor(dstWrapper)));
-            THROW_HR_IF(E_INVALIDARG, dataSizesInBytes[i] != ComputeByteSizeFromTensor(srcWrapper)); // Tensors must be the same size
+            ORT_THROW_HR_IF(E_INVALIDARG, dataSizesInBytes[i] != ComputeByteSizeFromTensor(srcWrapper)); // Tensors must be the same size
 
             dstDatas.push_back(dstWrapper.GetData());
             const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(&srcWrapper).GetDataInterface().Get());
@@ -626,8 +670,13 @@ namespace Dml
         }
         else
         {         
+#ifdef _GAMING_XBOX
+            ComPtr<GraphicsUnknownWrapper> wrappedResource = Microsoft::WRL::Make<GraphicsUnknownWrapper>(m_allocator->DecodeDataHandle(data)->GetResource());
+            *abiData = wrappedResource.Detach();
+#else
             ComPtr<ID3D12Resource> resource = m_allocator->DecodeDataHandle(data)->GetResource();
             *abiData = resource.Detach();
+#endif
         } 
     }
 
@@ -639,7 +688,7 @@ namespace Dml
         return m_allocator->DecodeDataHandle(data)->GetPooledResourceId();
     }
 
-    void ExecutionProviderImpl::GetABIExecutionInterface(
+    void ExecutionProviderImpl::GetABIExecutionInterfaceAndInvalidateState(
         bool isInternalOperator,
         IUnknown** abiExecutionObject) const 
     {
@@ -653,8 +702,13 @@ namespace Dml
         else
         {
             ComPtr<ID3D12GraphicsCommandList> commandList;
-            m_context->GetCommandListForRecording(commandList.GetAddressOf());
+            m_context->GetCommandListForRecordingAndInvalidateState(commandList.GetAddressOf());
+#ifdef _GAMING_XBOX
+            ComPtr<GraphicsUnknownWrapper> wrappedCommandList = Microsoft::WRL::Make<GraphicsUnknownWrapper>(commandList.Get());
+            *abiExecutionObject = wrappedCommandList.Detach();
+#else
             *abiExecutionObject = commandList.Detach();
+#endif
         }  
     }
     
@@ -679,7 +733,7 @@ namespace Dml
         for (uint32_t i = 0; i < resourceCount; ++i)
         {
             ComPtr<ID3D12Resource> resource;
-            THROW_IF_FAILED(resources[i]->QueryInterface(resource.GetAddressOf()));
+            ORT_THROW_IF_FAILED(resources[i]->QueryInterface(resource.GetAddressOf()));
 
             // Custom operators receive resources in Common state and must return them to Common
             // state when finished.  Resources are otherwise kept in UAV state (or are promotable to UAV).

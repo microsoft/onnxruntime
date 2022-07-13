@@ -98,5 +98,19 @@ class Round final : public UnaryElementwise {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+template <typename T>
+class Sin final : public UnaryElementwise {
+ public:
+  Sin(const OpKernelInfo& info) : UnaryElementwise(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class Cos final : public UnaryElementwise {
+ public:
+  Cos(const OpKernelInfo& info) : UnaryElementwise(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 }  // namespace cuda
 }  // namespace onnxruntime

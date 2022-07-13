@@ -23,7 +23,7 @@ typedef std::map<size_t, OrtMemType> MemTypeMap;
 class KernelDef {
  private:
   // note that input/output might be on CPU implicitly when the node is from CPU execution provider
-  static inline bool MemTypeOnCpuExplicitly(OrtMemType mem_type) {
+  constexpr static inline bool MemTypeOnCpuExplicitly(OrtMemType mem_type) {
     return mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput;
   }
 
@@ -53,8 +53,14 @@ class KernelDef {
     return provider_type_;
   }
 
+  // type constraints with types supported by default
   const std::map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
-    return type_constraints_;
+    return default_type_constraints_;
+  }
+
+  // type constraints with types supported in this build
+  const std::map<std::string, std::vector<MLDataType>>& EnabledTypeConstraints() const {
+    return enabled_type_constraints_;
   }
 
   const std::vector<std::pair<int, int>>& MayInplace() const {
@@ -82,6 +88,13 @@ class KernelDef {
 
   bool AllocateInputsContiguously() const { return allocate_inputs_contiguously_; }
 
+  bool HasExternalOutputs() const { return external_outputs_; }
+
+#ifdef ENABLE_TRAINING
+  const std::vector<int>& MayStridedInput() const { return may_strided_inputs_; }
+  const std::vector<std::pair<int, int>>& MayStridedOutput() const { return may_strided_output_map_; }
+#endif
+
   OrtMemType OutputMemoryType(size_t output_index) const {
     auto it = output_memory_type_args_.find(output_index);
     if (it == output_memory_type_args_.end())
@@ -95,7 +108,7 @@ class KernelDef {
 
   bool IsConflict(const KernelDef& other) const;
 
-  uint64_t GetHash() const noexcept {
+  HashValue GetHash() const noexcept {
     // if we need to support different hash versions we can update CalculateHash to take a version number
     // and calculate any non-default versions dynamically. we only use this during kernel lookup so
     // it's not performance critical
@@ -125,10 +138,19 @@ class KernelDef {
   // The type of the execution provider.
   std::string provider_type_;
 
-  // The supported data types for inputs/outputs.
+  // The data types that are supported by default for inputs/outputs.
   // Key is input/output name defined in op schema, Value are supported types.
   // note: std::map as we need the order to be deterministic for the hash
-  std::map<std::string, std::vector<MLDataType>> type_constraints_;
+  // Note: default_type_constraints_ are used to calculate the kernel hash so that the hash is
+  // stable across builds with and without kernel type reduction enabled.
+  std::map<std::string, std::vector<MLDataType>> default_type_constraints_;
+
+  // the type constraints that are supported in this build (enabled) for the kernel
+  std::map<std::string, std::vector<MLDataType>> enabled_type_constraints_;
+
+  // optional alternate type constraints to use to calculate the hash instead of default_type_constraints_
+  // note: this provides a way to update the default type constraints while preserving the hash value
+  optional<std::map<std::string, std::vector<MLDataType>>> hash_type_constraints_;
 
   // An element <i, j> means that output j reuses the memory of input i.
   std::vector<std::pair<int, int>> inplace_map_;
@@ -143,6 +165,17 @@ class KernelDef {
   // Require input tensors to be allocated contiguously.
   bool allocate_inputs_contiguously_ = false;
 
+  // Whether the outputs are from external.
+  bool external_outputs_ = false;
+
+#ifdef ENABLE_TRAINING
+  // An element i means i-th input can be strided tensor.
+  std::vector<int> may_strided_inputs_;
+
+  // An element <i, j> means j-th output can be a strided tensor, which share the data from i-th input.
+  std::vector<std::pair<int, int>> may_strided_output_map_;
+#endif
+
   // The memory types of inputs/outputs of this kernel
   MemTypeMap input_memory_type_args_;
   MemTypeMap output_memory_type_args_;
@@ -155,13 +188,15 @@ class KernelDef {
   OrtMemType default_outputs_mem_type_{OrtMemTypeDefault};
 
   // hash of kernel definition for lookup in minimal build
-  uint64_t hash_ = 0;
+  HashValue hash_ = 0;
 };
 
 class KernelDefBuilder {
  public:
+  static std::unique_ptr<KernelDefBuilder> Create() { return std::make_unique<KernelDefBuilder>(); }
+
   explicit KernelDefBuilder()
-      : kernel_def_(new KernelDef()) {}
+      : kernel_def_(std::make_unique<KernelDef>()) {}
 
   KernelDefBuilder& SetName(const std::string& op_name);
   KernelDefBuilder& SetName(const char* op_name);
@@ -199,19 +234,41 @@ class KernelDefBuilder {
   /**
      Specify the set of types that this kernel supports. A further restriction
      of the set of types specified in the op schema.
-     The arg name could be either op formal parameter name, say "X", or type
-     argument name specified in op schema, say "T".
+
+     @param arg_name The arg name can be either op formal parameter name, say "X", or type
+                     argument name specified in op schema, say "T".
+     @param default_types The types that are supported by default.
+     @param enabled_types The types that are supported in this build.
+                          Possibly different from default_types when type reduction is enabled.
   */
   KernelDefBuilder& TypeConstraint(const std::string& arg_name,
-                                   const std::vector<MLDataType>& supported_types);
+                                   const std::vector<MLDataType>& default_types);
   KernelDefBuilder& TypeConstraint(const char* arg_name,
-                                   const std::vector<MLDataType>& supported_types);
+                                   const std::vector<MLDataType>& default_types);
+
+  KernelDefBuilder& TypeConstraint(const std::string& arg_name,
+                                   const std::vector<MLDataType>& default_types,
+                                   const std::vector<MLDataType>& enabled_types);
+  KernelDefBuilder& TypeConstraint(const char* arg_name,
+                                   const std::vector<MLDataType>& default_types,
+                                   const std::vector<MLDataType>& enabled_types);
 
   /**
      Like TypeConstraint but supports just a single type.
   */
-  KernelDefBuilder& TypeConstraint(const std::string& arg_name, MLDataType supported_type);
-  KernelDefBuilder& TypeConstraint(const char* arg_name, MLDataType supported_type);
+  KernelDefBuilder& TypeConstraint(const std::string& arg_name, MLDataType default_type);
+  KernelDefBuilder& TypeConstraint(const char* arg_name, MLDataType default_type);
+
+  /**
+     Specify the original set of types that this kernel supports by default to use when computing the kernel def hash.
+     The set of types supported by default may change over time, but the hash should stay the same.
+  */
+  KernelDefBuilder& FixedTypeConstraintForHash(
+      const std::string& arg_name,
+      const std::vector<MLDataType>& default_types_for_hash);
+  KernelDefBuilder& FixedTypeConstraintForHash(
+      const char* arg_name,
+      const std::vector<MLDataType>& default_types_for_hash);
 
   /**
      Inplace mapping from inputs to outputs allowed.
@@ -230,7 +287,7 @@ class KernelDefBuilder {
   KernelDefBuilder& Alias(int input_index, int output_index);
 
   /**
-     Apply variadic number of alias mapping from inputs to outputs. 
+     Apply variadic number of alias mapping from inputs to outputs.
      This is effectively applying Alias(i + input_offset, i + output_offset) for i >= 0
   */
   KernelDefBuilder& VariadicAlias(int input_offset, int output_offset);
@@ -246,15 +303,31 @@ class KernelDefBuilder {
   }
 
   /**
-     Specify that this kernel requires an input arg
-     in certain memory type (instead of the default, device memory).
+     Specify that this kernel's output buffers are passed from external,
+     i.e. not created or managed by ORT's memory allocator.
   */
-  template <OrtMemType T>
-  KernelDefBuilder& InputMemoryType(int input_index) {
-    kernel_def_->input_memory_type_args_.insert(std::make_pair(input_index, T));
+  KernelDefBuilder& ExternalOutputs() {
+    kernel_def_->external_outputs_ = true;
     return *this;
   }
 
+#ifdef ENABLE_TRAINING
+  /**
+     Specify that the input_index-th input can be strided tensor.
+   */
+  KernelDefBuilder& MayStridedInput(int input_index);
+
+  /**
+     Specify that the output_index-th output can be strided tensor, and share the data
+     from input_index-th input.
+   */
+  KernelDefBuilder& MayStridedOutput(int input_index, int output_index);
+#endif
+
+  /**
+     Specify that this kernel requires an input arg
+     in certain memory type (instead of the default, device memory).
+  */
   KernelDefBuilder& InputMemoryType(OrtMemType type, int input_index) {
     kernel_def_->input_memory_type_args_.insert(std::make_pair(input_index, type));
     return *this;
@@ -264,10 +337,9 @@ class KernelDefBuilder {
      Specify that this kernel requires input arguments
      in certain memory type (instead of the default, device memory).
   */
-  template <OrtMemType T>
-  KernelDefBuilder& InputMemoryType(const std::vector<int>& input_indexes) {
+  KernelDefBuilder& InputMemoryType(OrtMemType type, const std::vector<int>& input_indexes) {
     for (auto input_index : input_indexes) {
-      kernel_def_->input_memory_type_args_.insert(std::make_pair(input_index, T));
+      kernel_def_->input_memory_type_args_.insert(std::make_pair(input_index, type));
     }
     return *this;
   }
@@ -276,12 +348,6 @@ class KernelDefBuilder {
      Specify that this kernel provides an output arg
      in certain memory type (instead of the default, device memory).
   */
-  template <OrtMemType T>
-  KernelDefBuilder& OutputMemoryType(int output_index) {
-    kernel_def_->output_memory_type_args_.insert(std::make_pair(output_index, T));
-    return *this;
-  }
-
   KernelDefBuilder& OutputMemoryType(OrtMemType type, int output_index) {
     kernel_def_->output_memory_type_args_.insert(std::make_pair(output_index, type));
     return *this;
@@ -291,10 +357,9 @@ class KernelDefBuilder {
      Specify that this kernel provides an output arguments
      in certain memory type (instead of the default, device memory).
   */
-  template <OrtMemType T>
-  KernelDefBuilder& OutputMemoryType(const std::vector<int>& output_indexes) {
+  KernelDefBuilder& OutputMemoryType(OrtMemType type, const std::vector<int>& output_indexes) {
     for (auto output_index : output_indexes) {
-      kernel_def_->output_memory_type_args_.insert(std::make_pair(output_index, T));
+      kernel_def_->output_memory_type_args_.insert(std::make_pair(output_index, type));
     }
     return *this;
   }
@@ -332,6 +397,10 @@ class KernelDefBuilder {
   }
 
  private:
+  KernelDefBuilder& TypeConstraintImpl(const std::string& arg_name,
+                                       const std::vector<MLDataType>& default_types,
+                                       const std::vector<MLDataType>* enabled_types = nullptr);
+
   // we own the KernelDef until Build() is called.
   std::unique_ptr<KernelDef> kernel_def_;
 };

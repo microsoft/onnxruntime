@@ -3,8 +3,13 @@
 
 #pragma once
 
+#include <cstdint>
+#include <functional>
+
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#endif
 
 namespace onnxruntime {
 
@@ -88,6 +93,9 @@ inline Status ComputePad(const int64_t in_dim,
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                       "Dilation not supported for AutoPadType::SAME_UPPER or AutoPadType::SAME_LOWER.");
 
+      // The ONNX spec says if `auto_pad` attribute is set, pad until the `legacy_target_size`
+      // is `ceil (in_dim / stride)`. The following line of code is essentially just that and
+      // is retained as is
       int64_t legacy_target_size = (in_dim + stride - 1) / stride;
       int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_dim;
       // make sure padding is symmetric
@@ -110,11 +118,11 @@ inline Status ComputePad(const int64_t in_dim,
   return Status::OK();
 }
 
-inline int64_t ComputeOutputShape(const int64_t in_dim,
-                                  const int64_t stride, const int64_t kernel, const int64_t dilation,
-                                  const int64_t pad_head, const int64_t pad_tail) {
+constexpr inline int64_t ComputeOutputShape(const int64_t in_dim,
+                                            const int64_t stride, const int64_t kernel, const int64_t dilation,
+                                            const int64_t pad_head, const int64_t pad_tail) {
   const int64_t dkernel = dilation * (kernel - 1) + 1;
-  return static_cast<int64_t>(static_cast<float>(in_dim + pad_head + pad_tail - dkernel) / stride + 1);
+  return static_cast<int64_t>(static_cast<double>(in_dim + pad_head + pad_tail - dkernel) / stride + 1);
 }
 
 inline Status ComputePadAndOutputShape(const int64_t in_dim,
@@ -127,6 +135,12 @@ inline Status ComputePadAndOutputShape(const int64_t in_dim,
       ComputePad(in_dim, stride, kernel, dilation, pad_type, pad_head, pad_tail, force_symmetric_auto_padding));
   out_dim = ComputeOutputShape(in_dim, stride, kernel, dilation, pad_head, pad_tail);
   return Status::OK();
+}
+
+// Note: This helper function will not have overflow protection
+template <template <typename...> class Container, typename T>
+T Product(const Container<T>& c) {
+  return accumulate(c.cbegin(), c.cend(), static_cast<T>(1), std::multiplies<T>());
 }
 
 }  // namespace onnxruntime

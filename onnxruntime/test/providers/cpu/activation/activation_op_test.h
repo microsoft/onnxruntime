@@ -68,6 +68,18 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
       excluded_providers.insert(kNnapiExecutionProvider);
     }
 #endif
+// Use relative error because of computation error for float::max
+#if defined(USE_DNNL)
+    int gelu = strcmp(szOp, "Gelu");
+    if (gelu == 0) {
+      // OneDNN has a computation difference when computing FLT_MAX
+      // Expected: 3.4028234663852886e+38
+      // Actual:   3.4028232635611926e+38
+      // Since the numbers are large relative error is used instead of
+      // the default threshold which is a small value.
+      test.SetOutputRelErr("Y", .000001f);
+    }
+#endif
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
   }
 }
@@ -82,6 +94,8 @@ class ActivationOpTest : public ::testing::Test {
                                                         100.0, -100.0, 1000.0, -1000.0,                                // input values that leads to exp() overflow
                                                         DBL_MIN, DBL_MIN / 10, -DBL_MIN / 10,                          // min, denorm, -denorm
                                                         DBL_MAX, -DBL_MAX, std::numeric_limits<double>::infinity()}};  // max, -max, inf
+  std::vector<std::vector<int8_t>> input_values_int8{{-1, -5, 0, 1, 5, 100, -100,                                       // normal input values for activation
+                                                        std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max()}}; // min, max
 
   void SetUp() override {
     float low = -1.0f, high = 1.0f;

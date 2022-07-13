@@ -28,11 +28,6 @@
 //Gist Encoding
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cuda_allocator.h"
-#endif
-
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
@@ -41,7 +36,7 @@
 #ifdef ENABLE_NVTX_PROFILE
 #include <set>
 #include <thread>
-#include "core/profile/context.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 #endif
 
 namespace onnxruntime {
@@ -53,10 +48,11 @@ Status SetupOptimizerParams(
     const std::unordered_map<std::string, NodeArg*>& fp32_weight_names_to_mixed_precision_node_args,
     const optional<std::string>& loss_scale_input_name,
     const TrainingSession::TrainingConfiguration& config,
+    const TrainingSession::OptimizerState& init_optimizer_states,
     OptimizerGraphConfig& opt_graph_config_result,
     std::unordered_map<std::string, OptimizerNodeConfig>& opt_node_configs_result,
     std::unordered_map<std::string, std::string>& weight_name_map_after_graph_transform) {
-  ORT_RETURN_IF_NOT(config.optimizer_config.has_value());
+  ORT_RETURN_IF_NOT(config.optimizer_config.has_value(), "config.optimizer_config.has_value() was false");
   const auto& optimizer_config = config.optimizer_config.value();
 
   // This is the mapping from the new weight name to the original weight name
@@ -98,12 +94,10 @@ Status SetupOptimizerParams(
       opt_node_config.mixed_precision_weight_arg = mixed_precision_weight_name_it->second;
     }
 
-    // check if initial optimizer states have been provided for weight
-    if (config.init_optimizer_states) {
-      const auto optim_state_it = config.init_optimizer_states->find(weight_name);
-      if (optim_state_it != config.init_optimizer_states->end()) {
-        opt_node_config.initial_states = optim_state_it->second;
-      }
+    // retrieve value for initial optimizer states if provided for weight
+    const auto optim_state_it = init_optimizer_states.find(original_weight_name);
+    if (optim_state_it != init_optimizer_states.end()) {
+      opt_node_config.initial_states = optim_state_it->second;
     }
 
     opt_node_configs.emplace(weight_name, std::move(opt_node_config));
@@ -130,12 +124,11 @@ Status SetupOptimizerParams(
   opt_graph_config.deepspeed_zero = optimizer_config.deepspeed_zero;
 
   // check if shared initial optimizer states have been provided
-  if (config.init_optimizer_states) {
-    const auto optim_state_it = config.init_optimizer_states->find(onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY);
-    if (optim_state_it != config.init_optimizer_states->end()) {
-      opt_graph_config.shared_optimizer_states = std::move(optim_state_it->second);
-    }
+  const auto optim_state_it = init_optimizer_states.find(onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY);
+  if (optim_state_it != init_optimizer_states.end()) {
+    opt_graph_config.shared_optimizer_states = optim_state_it->second;
   }
+
   opt_node_configs_result = std::move(opt_node_configs);
   opt_graph_config_result = std::move(opt_graph_config);
 
@@ -324,7 +317,7 @@ static Status AddFakeLossScaling(
     Graph& graph, std::string& loss_scale_name) {
   GraphAugmenter::GraphDefs defs{};
   loss_scale_name = graph.GenerateNodeArgName("loss_scale");
-  const auto* loss_scale_type = defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  const auto* loss_scale_type = defs.CreateTypeProto(std::array<const int64_t, 1>{1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   graph.GetOrCreateNodeArg(loss_scale_name, loss_scale_type);
   defs.AddGraphInputs({loss_scale_name});
   ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, defs));
@@ -355,6 +348,9 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.data_parallel_size,
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryInfo::SetLocalRank(config.distributed_config.world_rank);
+#endif
 
 #ifdef USE_MPI
   const std::vector<MPIGroup>& mpi_groups = MPIContext::GetInstance().GetAllMPIGroups();
@@ -378,7 +374,7 @@ Status TrainingSession::ConfigureForTraining(
   std::string loss_name{};
 
   if (config.pipeline_config.has_value()) {
-    // if use pipeline, first check if model contains send op. If it does, set the
+    // If use pipeline, first check if model contains send op. If it does, set the
     // send node's output as the start tensor to build gradient graph
     GetPipelineSendOutput(model_->MainGraph(), loss_name);
   }
@@ -417,19 +413,23 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
+  if (config.init_optimizer_states) {
+    init_optimizer_states_ = config.init_optimizer_states.value();
+  }
+
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config));
 
   ORT_RETURN_IF_ERROR(ApplyModelParallelTransformationsToMainGraph(trainable_initializers, config_result));
 
   weight_partition_info_ = config_result.weight_partition_info;
-  
+
   // Save the model after graph transformations
   if (IsRootNode(config) && config.model_after_graph_transforms_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_after_graph_transforms_path.value(), SaveOption::NO_RELOAD));
   }
 
-  // derive actual set of weights to train
+  // Derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
       !filtered_config_weight_names_to_train.empty()
           ? trainable_initializers
@@ -464,7 +464,7 @@ Status TrainingSession::ConfigureForTraining(
 
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
-    
+
   if (IsRootNode(config) && config.model_with_gradient_graph_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_gradient_graph_path.value(), SaveOption::NO_RELOAD));
@@ -492,13 +492,13 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
-  // add optimizer or gradient accumulation
+  // Add optimizer or gradient accumulation
   if (config.optimizer_config.has_value()) {
     OptimizerGraphConfig opt_graph_config{};
     std::unordered_map<std::string, OptimizerNodeConfig> opt_node_configs{};
     ORT_RETURN_IF_ERROR(SetupOptimizerParams(
         weights_to_train_, fp32_weight_name_to_mixed_precision_node_arg,
-        loss_scale_input_name, config, opt_graph_config, opt_node_configs, config_result.weight_name_map_after_graph_transform));
+        loss_scale_input_name, config, init_optimizer_states_, opt_graph_config, opt_node_configs, config_result.weight_name_map_after_graph_transform));
     TrainingConfigurationResult::OptimizerConfigurationResult optimizer_config_result{};
     ORT_RETURN_IF_ERROR(BuildOptimizer(
         opt_graph_config, opt_node_configs,
@@ -513,7 +513,7 @@ Status TrainingSession::ConfigureForTraining(
   // Set eval feed names for nodes that differ between training and inferencing.
   ORT_RETURN_IF_ERROR(SetEvalFeedNames());
 
-  // add Tensorboard
+  // Add Tensorboard
   if (config.tensorboard_config.has_value()) {
     const auto& tensorboard_config = config.tensorboard_config.value();
 
@@ -523,7 +523,7 @@ Status TrainingSession::ConfigureForTraining(
       tensorboard_scalar_names.emplace_back(loss_scale_input_name.value());
     }
 
-    // add some tensors from optimizer graph outputs
+    // Add some tensors from optimizer graph outputs
     if (config_result.opt_config_result.has_value()) {
       const auto& opt_output_key_to_graph_output_name =
           config_result.opt_config_result.value().output_key_to_graph_output_name;
@@ -546,9 +546,10 @@ Status TrainingSession::ConfigureForTraining(
         tensorboard_config.dump_convergence_metrics));
   }
 
-  // add GIST encoding
+  // Add GIST encoding
   if (config.gist_config.has_value()) {
-    ORT_RETURN_IF_ERROR(AddGistEncoding());
+    const auto& gist_config = config.gist_config.value();
+    ORT_RETURN_IF_ERROR(AddGistEncoding(gist_config.op_type, gist_config.compr_type));
   }
 
   // If the current node is in rank0 or if the current session is running pipeline (in which case different rank would
@@ -592,11 +593,11 @@ static Status AddLossScaling(
     return Status::OK();
   }
 
-  // add node to scale loss_name by loss_scale_input_name
+  // Add node to scale loss_name by loss_scale_input_name
   GraphAugmenter::GraphDefs defs{};
   *loss_scale_input_name = graph.GenerateNodeArgName("loss_scale");
   const auto* loss_scale_input_type =
-      defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      defs.CreateTypeProto(std::array<const int64_t, 1>{1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   scaled_loss_name = graph.GenerateNodeArgName("scaled_loss");
   defs.AddNodeDef(NodeDef{
       "Mul",
@@ -618,7 +619,7 @@ static Status ConfigureLossFunctionInternal(
     Graph& graph,
     std::string* loss_scale_input_name,
     std::string& actual_loss_name) {
-  // build loss function or use external one
+  // Build loss function or use external one
   ORT_RETURN_IF_NOT(
       (loss_func_info.has_value() && loss_graph_builder) ^ external_loss_name.has_value(),
       "Either loss function information should be provided or an external "
@@ -710,7 +711,7 @@ static Status AddGradientAccumulationNodes(Graph& graph,
 }
 
 Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
-                                                        const TrainingConfiguration::GraphTransformerConfiguration& config) {
+                                                        const TrainingGraphTransformerConfiguration& config) {
   GraphTransformerManager graph_transformation_mgr{2};
   // TODO: ideally we can just reuse the CPU EP registered with the session, but in the training session case
   // the EPs are registered after ConfigureForTraining and before Initialize is called. Hence we don't have access
@@ -718,7 +719,7 @@ Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set
   // creating an EP instance for every single node in ConstantFolding.
   // Create execution frame for executing constant nodes.
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
-      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   AddPreTrainingTransformers(*cpu_execution_provider, graph_transformation_mgr, weights_to_train, config);
 
   // apply transformers
@@ -734,54 +735,50 @@ Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set
 void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execution_provider,
                                                  GraphTransformerManager& transformer_manager,
                                                  const std::unordered_set<std::string>& weights_to_train,
-                                                 const TrainingConfiguration::GraphTransformerConfiguration& config,
-                                                 TransformerLevel graph_optimization_level,
-                                                 const std::vector<std::string>& custom_list) {
-  auto add_transformers = [&](TransformerLevel level) {
-    // Generate and register transformers for level
-
-    auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, weights_to_train, config, execution_provider, custom_list);
-    for (auto& entry : transformers_to_register) {
-      transformer_manager.Register(std::move(entry), level);
-    }
-  };
-
+                                                 const TrainingGraphTransformerConfiguration& config,
+                                                 TransformerLevel graph_optimization_level) {
   ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
               "Exceeded max transformer level. Current level is set to " +
                   std::to_string(static_cast<uint32_t>(graph_optimization_level)));
 
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
-    if ((graph_optimization_level >= level) || !custom_list.empty()) {
-      add_transformers(level);
+    if ((graph_optimization_level >= level)) {
+      auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
+          level, weights_to_train, config, execution_provider);
+      for (auto& entry : transformers_to_register) {
+        ORT_THROW_IF_ERROR(transformer_manager.Register(std::move(entry), level));
+      }
     }
   }
 }
 
 // Registers all the predefined transformers with transformer manager
-void TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                TransformerLevel graph_optimization_level,
-                                                const std::vector<std::string>& custom_list) {
-  auto add_transformers = [&](TransformerLevel level) {
-    // Generate and register transformers for level
-    auto transformers_to_register = transformer_utils::GenerateTransformers(
-        level, weights_to_train_, GetSessionOptions().free_dimension_overrides, custom_list);
-    for (auto& entry : transformers_to_register) {
-      transformer_manager.Register(std::move(entry), level);
-    }
-  };
+Status TrainingSession::AddPredefinedTransformers(
+    GraphTransformerManager& transformer_manager,
+    TransformerLevel graph_optimization_level,
+    MinimalBuildOptimizationHandling minimal_build_optimization_handling) const {
+  ORT_RETURN_IF_NOT(
+      minimal_build_optimization_handling == MinimalBuildOptimizationHandling::ApplyFullBuildOptimizations,
+      "Only applying full build optimizations is supported by TrainingSession.");
 
-  ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
-              "Exceeded max transformer level. Current level is set to " +
-                  std::to_string(static_cast<uint32_t>(graph_optimization_level)));
+  ORT_RETURN_IF_NOT(graph_optimization_level <= TransformerLevel::MaxLevel,
+                    "Exceeded max transformer level. Current level is set to " +
+                        std::to_string(static_cast<uint32_t>(graph_optimization_level)));
 
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
-    if ((graph_optimization_level >= level) || !custom_list.empty()) {
-      add_transformers(level);
+    if ((graph_optimization_level >= level)) {
+      // Generate and register transformers for level
+      auto transformers_to_register = transformer_utils::GenerateTransformers(
+          level, weights_to_train_, GetSessionOptions().free_dimension_overrides, {});
+      for (auto& entry : transformers_to_register) {
+        ORT_RETURN_IF_ERROR(transformer_manager.Register(std::move(entry), level));
+      }
     }
   }
+
+  return Status::OK();
 }
 
 Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
@@ -793,33 +790,36 @@ Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unorde
 
   GraphTransformerManager graph_transformation_mgr{1};
   std::vector<std::unique_ptr<GraphTransformer>> transformers_to_register;
-  std::unordered_set<std::string> compatible_eps = {};
+  // Creating the CPU EP here to be used to get the
+  // CPU allocator for partitioning the optimizer state by column.
+  std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  InlinedHashSet<std::string_view> compatible_eps = {};
   LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
-  transformers_to_register.emplace_back(onnxruntime::make_unique<MegatronTransformer>(
+  transformers_to_register.emplace_back(std::make_unique<MegatronTransformer>(
       training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
       horizontal_parallel_size, config_result_out.weight_name_map_after_graph_transform, weights_to_train,
-      config_result_out.weight_partition_info, compatible_eps));
+      config_result_out.weight_partition_info, init_optimizer_states_, *cpu_execution_provider, compatible_eps));
 
   // Generate and register transformers for level
   for (auto& entry : transformers_to_register) {
-    graph_transformation_mgr.Register(std::move(entry), TransformerLevel::Level1);
+    ORT_RETURN_IF_ERROR(graph_transformation_mgr.Register(std::move(entry), TransformerLevel::Level1));
   }
 
-  // apply transformers
   Graph& graph = model_->MainGraph();
   ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(
       graph, TransformerLevel::Level1, *session_logger_));
   return common::Status::OK();
 }
 
-Status TrainingSession::AddGistEncoding() {
+Status TrainingSession::AddGistEncoding(int op_type, std::string compr_type) {
   try {
     Graph& graph = model_->MainGraph();
 
-    auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
-    rule_transformer_L1->Register(onnxruntime::make_unique<GistEncodeDecode>());
+    auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
+    ORT_RETURN_IF_ERROR(rule_transformer_L1->Register(std::make_unique<GistEncodeDecode>(op_type, compr_type)));
     onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-    graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+    ORT_RETURN_IF_ERROR(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
 
     ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
   } catch (const OnnxRuntimeException& exp) {
@@ -855,7 +855,7 @@ Status TrainingSession::ConfigureLossFunction(
 
     loss_graph_builder_ = LossFunctionBuilder::Build(loss_function_info_value.op_def.type);
 
-    ORT_RETURN_IF_NOT(loss_graph_builder_);
+    ORT_RETURN_IF_NOT(loss_graph_builder_, "loss_graph_builder_ == nullptr");
   }
 
   try {
@@ -929,7 +929,7 @@ Status TrainingSession::BuildOptimizer(
     OptimizerOutputKeyMap<std::string>& opt_graph_outputs) {
   ORT_RETURN_IF_NOT(
       opt_configs.size() == weights_to_train_.size(),
-      "Number of optimizer configurations does not match number of weights to train.")
+      "Number of optimizer configurations does not match number of weights to train.");
 
   for (const auto& weight_name : weights_to_train_) {
     ORT_RETURN_IF_NOT(
@@ -994,9 +994,19 @@ static Status UpdateWeightsBeforeSaving(
   return Status::OK();
 }
 
+Status TrainingSession::SaveWithExternalInitializers(const PathString& model_uri,
+                                                     const std::string& external_file_name,
+                                                     size_t initializer_size_threshold) {
+  // Delete the old files before saving.
+  std::remove(ToUTF8String(model_uri).c_str());
+  std::remove(external_file_name.c_str());
+
+  return Model::SaveWithExternalInitializers(*model_, model_uri, external_file_name, initializer_size_threshold);
+}
+
 Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveOption opt) {
   // Delete the old file before saving.
-  std::remove(ToMBString(model_uri).c_str());  // TODO would be good to have something like RemoveFile(PathString)
+  std::remove(ToUTF8String(model_uri).c_str());  // TODO would be good to have something like RemoveFile(PathString)
 
   if (opt == TrainingSession::SaveOption::NO_RELOAD) {
     return Model::Save(*model_, model_uri);
@@ -1048,7 +1058,7 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
 
   if (!status.IsOK()) {
     LOGS(*session_logger_, WARNING)
-        << "Error when saving model " << ToMBString(model_uri) << " : " << status.ErrorMessage();
+        << "Error when saving model " << ToUTF8String(model_uri) << " : " << status.ErrorMessage();
   }
 
   return status;
@@ -1069,7 +1079,7 @@ common::Status TrainingSession::GetOptimizerState(std::unordered_map<std::string
     }
     NameMLValMap curr_opt_tensors;
     const auto& weight_name = weight_map.first;
-    GetSessionState().GetInitializedTensors(opt_names, allow_missing, curr_opt_tensors);
+    ORT_RETURN_IF_ERROR(GetSessionState().GetInitializedTensors(opt_names, allow_missing, curr_opt_tensors));
     opt_state_tensors[weight_name] = {};
     // Keep only prefix in returned value
     for (const auto& opt_pair : weight_map.second) {
@@ -1080,10 +1090,13 @@ common::Status TrainingSession::GetOptimizerState(std::unordered_map<std::string
   }
   // Change key from sharded_name to weight_name using partition_info
   for (const auto& weight : weight_partition_info_) {
-    const auto& it = opt_state_tensors.find(weight.second.view_name);
-    ORT_ENFORCE(it != opt_state_tensors.end(), "Cannot find weight: " + weight.second.view_name + " in weight_partition_info_");
-    opt_state_tensors[weight.first] = it->second;
-    opt_state_tensors.erase(it);
+    const auto& it = opt_state_tensors.find(weight.second.partition_name);
+    if (it == opt_state_tensors.end()) {
+      ORT_RETURN_IF_NOT(allow_missing, "Failed to get optimizer params for partition: " + weight.second.partition_name);
+    } else {
+      opt_state_tensors[weight.first] = it->second;
+      opt_state_tensors.erase(it);
+    }
   }
   return Status::OK();
 }
@@ -1093,20 +1106,29 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
   std::unordered_set<std::string> fp_tensor_names{};
   fp_tensor_names.insert(
       weights_to_train_.begin(), weights_to_train_.end());
-  // Add zero sharded weights, only needed for fp32 weights in mixed precision run
-  for (const auto& weight_sharded_pair : updated_weight_names_map_) {
-    fp_tensor_names.erase(weight_sharded_pair.first);  // remove the original name
-    fp_tensor_names.insert(weight_sharded_pair.second);
+  // Add sharded weights
+  for (const auto& weight : weight_partition_info_) {
+    if (weight.second.weight_partitioned) {
+      fp_tensor_names.erase(weight.first);  // remove the original name
+      fp_tensor_names.insert(weight.second.partition_name);
+    }
   }
+
   NameMLValMap fp_weights;
-  GetSessionState().GetInitializedTensors(fp_tensor_names, allow_missing, fp_weights);
-  // Change key from sharded_name to weight_name
-  for (const auto& weight_sharded_pair : updated_weight_names_map_) {
-    const auto& it = fp_weights.find(weight_sharded_pair.second);
-    ORT_ENFORCE(it != fp_weights.end(), "Cannot find weight: " + weight_sharded_pair.second + " in updated_weight_names_map_");
-    fp_weights[weight_sharded_pair.first] = it->second;
-    fp_weights.erase(it);
+  ORT_RETURN_IF_ERROR(GetSessionState().GetInitializedTensors(fp_tensor_names, allow_missing, fp_weights));
+  // Change key from sharded_name to weight_name using partition_info
+  for (const auto& weight : weight_partition_info_) {
+    if (weight.second.weight_partitioned) {
+      const auto& it = fp_weights.find(weight.second.partition_name);
+      if (it == fp_weights.end()) {
+        ORT_RETURN_IF_NOT(allow_missing, "Failed to get weight partition: " + weight.second.partition_name);
+      } else {
+        fp_weights[weight.first] = it->second;
+        fp_weights.erase(it);
+      }
+    }
   }
+
   model_state_tensors["full_precision"] = fp_weights;
   if (include_mixed_precision_weights) {
     std::unordered_set<std::string> mp_tensor_names{};
@@ -1117,7 +1139,7 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
     mp_tensor_names.insert(
         mixed_precision_weight_initializer_names.begin(), mixed_precision_weight_initializer_names.end());
     NameMLValMap mp_weights;
-    GetSessionState().GetInitializedTensors(mp_tensor_names, allow_missing, mp_weights);
+    ORT_RETURN_IF_ERROR(GetSessionState().GetInitializedTensors(mp_tensor_names, allow_missing, mp_weights));
     // Change key from fp16_name to weight_name
     for (const auto& weight_fp16_pair : weight_to_mixed_precision_map_) {
       const auto& it = mp_weights.find(weight_fp16_pair.second);
@@ -1199,8 +1221,6 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
 }
 
 static const std::unordered_set<std::string> Nodes_Need_Eval_Feeds = {
-    // TODO remove this once ONNX TrainableDropout is completely deprecated.
-    "TrainableDropout",
     "Dropout",
 };
 
@@ -1215,19 +1235,7 @@ Status TrainingSession::SetEvalFeedNames() {
     auto it = Nodes_Need_Eval_Feeds.find(node.OpType());
     if (it != Nodes_Need_Eval_Feeds.cend()) {
       // The opset is < 12, add each ratio input to graph inputs for overriding.
-      // Needs to be removed when TrainableDropout is deprecated.
-      if (it->compare("TrainableDropout") == 0) {
-        auto& ratio_name = node.InputDefs()[1]->Name();
-        dropout_eval_feeds_.insert(ratio_name);
-        ORT_ENFORCE(model_->MainGraph().GetProducerNode(ratio_name) == nullptr,
-                    "Input: " + ratio_name + " should not have any producer node.");
-        if (def_graph_input_names.find(ratio_name) == def_graph_input_names.end()) {
-          defs.AddGraphInputs({ratio_name});
-          def_graph_input_names.insert(ratio_name);
-        }
-      }
-      // Found an opset-12 dropout node, replace initializer name.
-      else if (node.InputArgCount().size() > 2) {
+      if (node.InputArgCount().size() > 2) {
         auto& mode_input = node.MutableInputDefs()[2];
         const ONNX_NAMESPACE::TensorProto* mode_initializer = nullptr;
         if (!graph.GetInitializedTensor(training_mode_string_, mode_initializer)) {
@@ -1289,7 +1297,7 @@ Status TrainingSession::SetStateTensors(const NameMLValMap& state_tensors, bool 
     if (is_valid_state_tensor && is_tensor_present) {
       ORT_RETURN_IF_NOT(
           initializer_it->second.IsTensor() && state.second.IsTensor(),
-          "Non-tensor type as initializer is not expected.")
+          "Non-tensor type as initializer is not expected.");
 
       auto* initializer_tensor = initializer_it->second.GetMutable<Tensor>();
       auto& ckpt_tensor = state.second.Get<Tensor>();
@@ -1410,7 +1418,7 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
   };
 
   // perform reverse dfs from output node to discover trainable parameters
-  graph.ReverseDFSFrom({graph.GetProducerNode(loss_name)}, add_trainable_initializers, {}, {}, stop_at_untrainable);
+  graph.ReverseDFSFrom(std::array{graph.GetProducerNode(loss_name)}, add_trainable_initializers, {}, {}, stop_at_untrainable);
   return trainable_initializers;
 }
 
@@ -1420,7 +1428,7 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
 // Send and Recv call SubmitSendAndWait and SubmitRecvAndWait, respectively.
 void PipelineTrainingSession::LaunchNcclService(const int pipeline_stage_id) {
   ORT_ENFORCE(pipeline_stage_id >= 0, "Pipeline stage ID cannot be negative.");
-  auto& nccl_service = cuda::NcclService::GetInstance();
+  auto& nccl_service = cuda::INcclService::GetInstance();
 
   // Create NCCL communication plan. The plan is a vector of communication task group.
   // Each communication task group contains tasks which should be done in parallel.
@@ -1673,7 +1681,7 @@ Status PipelineTrainingSession::BuildLossAndLossScaling(
     std::string& loss_name,
     optional<std::string>& loss_scale_input_name,
     optional<TrainingConfigurationResult::MixedPrecisionConfigurationResult>& mixed_precision_config_result) {
-  const bool last_pipeline_stage = pipeline_stage_id + 1 == distributed_config.value().pipeline_parallel_size;
+  const bool last_pipeline_stage = pipeline_stage_id == -1 || (pipeline_stage_id + 1 == distributed_config.value().pipeline_parallel_size);
   const bool enable_loss_scale = is_mixed_precision_enabled_ &&
                                  mixed_precision_config.value().mixed_precision_type == MixedPrecisionDataType::FP16;
   // Enable loss scale if mixed precision is enabled AND at pipeline's last stage if pipeline is used.
@@ -1685,10 +1693,10 @@ Status PipelineTrainingSession::BuildLossAndLossScaling(
   loss_scale_input_name = enable_true_loss_scale ? optional<std::string>{""} : optional<std::string>{};
 
   ORT_RETURN_IF_ERROR(BuildLoss(
-    external_loss_name,
-    loss_name,
-    loss_function_config,
-    loss_scale_input_name));
+      external_loss_name,
+      loss_name,
+      loss_function_config,
+      loss_scale_input_name));
 
   if (enable_true_loss_scale) {
     TrainingConfigurationResult::MixedPrecisionConfigurationResult mp_result{};
@@ -1741,9 +1749,9 @@ void PipelineTrainingSession::CreateMicroBatchVariables(
       const size_t slice_axis = static_cast<size_t>(pipeline_context_.sliced_axes[name]);
       if (has_element(pipeline_context_.sliced_tensor_names, name)) {
         OrtValue sliced_value = SliceTensor(values[i], slice_id, slice_axis, num_slices, *this);
-        (sub_io_binding.*bind)(name, sliced_value);
+        ORT_THROW_IF_ERROR((sub_io_binding.*bind)(name, sliced_value));
       } else {
-        (sub_io_binding.*bind)(name, values[i]);
+        ORT_THROW_IF_ERROR((sub_io_binding.*bind)(name, values[i]));
       }
     }
   };
@@ -1792,7 +1800,7 @@ void PipelineTrainingSession::CreatePipelineEvents(
     auto event = onnxruntime::MakeScalarMLValue<int64_t>(bfc_arena, event_value, false);
 
     // Add the created event to the list.
-    io_binding.BindInput(event_name, event);
+    ORT_THROW_IF_ERROR(io_binding.BindInput(event_name, event));
   };
 
   int id = -1;
@@ -1841,7 +1849,7 @@ void PipelineTrainingSession::CreatePipelineEvents(
 common::Status PipelineTrainingSession::RunWithPipeline(const RunOptions& run_options, IOBinding& io_binding) {
   const size_t num_steps = pipeline_context_.num_pipeline_micro_batches;
   const size_t stage_id = pipeline_context_.pipeline_stage_id;
-  const bool training_mode = true;
+  constexpr bool training_mode = true;
 
   std::vector<std::unique_ptr<IOBinding>> sub_io_bindings(num_steps);
 
@@ -1897,7 +1905,7 @@ common::Status PipelineTrainingSession::RunWithPipeline(const RunOptions& run_op
   pipeline_worker_pool_.JoinAll();
   onnxruntime::contrib::OrtEventPool::GetInstance().ResetAllEvents();
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-  auto& nccl_service = cuda::NcclService::GetInstance();
+  auto& nccl_service = cuda::INcclService::GetInstance();
   nccl_service.Reset();
 #endif
 
@@ -1906,7 +1914,7 @@ common::Status PipelineTrainingSession::RunWithPipeline(const RunOptions& run_op
 
 PipelineTrainingSession::~PipelineTrainingSession() {
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-  auto& nccl_service = cuda::NcclService::GetInstance();
+  auto& nccl_service = cuda::INcclService::GetInstance();
   nccl_service.Terminate();
 #endif
 }

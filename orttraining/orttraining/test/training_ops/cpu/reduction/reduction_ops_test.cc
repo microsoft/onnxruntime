@@ -6,15 +6,12 @@
 #include <type_traits>
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-//#include "test/providers/cpu/reduction/reduction_test_cases.h"
-#ifdef USE_CUDA
-#include "core/providers/cuda/reduction/reduction_functions.h"
-#endif
+#include "test/common/cuda_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 
 void test_all_1d_true(size_t size) {
   std::unique_ptr<bool[]> p_data(new bool[size]);
@@ -87,8 +84,8 @@ TEST(AllOpTest, All_1d_large) {
 #endif
 
 class ReductionOpTest : public ::testing::TestWithParam<bool> {
-  protected:
-    bool use_determinism;
+ protected:
+  bool use_determinism;
 };
 
 TEST_P(ReductionOpTest, ReduceAllL2) {
@@ -103,7 +100,7 @@ TEST_P(ReductionOpTest, ReduceAllL2) {
   test.Run();
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST_P(ReductionOpTest, ReduceAllL2HalfHalf) {
   OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
   test.SetDeterminism(GetParam());
@@ -164,6 +161,106 @@ TEST_P(ReductionOpTest, ReduceAllL2HalfFloat) {
 
   test.AddOutput<float>("reduced", {}, result);
   test.Run();
+}
+#endif
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST_P(ReductionOpTest, ReduceAllL2_BFloat16_BFloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+  OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
+  test.SetDeterminism(GetParam());
+
+  std::vector<float> data0 = {1.0f, 2.0f, 3.0f};
+  std::vector<BFloat16> data0_bf16 = FloatsToBFloat16s(data0);
+
+  std::vector<float> data1 = {-1.0f, -2.0f};
+  std::vector<BFloat16> data1_bf16 = FloatsToBFloat16s(data1);
+
+  std::vector<float> result = {4.358898943540674f};
+  std::vector<BFloat16> result_bf16 = FloatsToBFloat16s(result);
+
+  test.AddInput<BFloat16>("data0", {3}, data0_bf16);
+  test.AddInput<BFloat16>("data1", {2}, data1_bf16);
+
+  test.AddOutput<BFloat16>("reduced", {}, result_bf16);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST_P(ReductionOpTest, ReduceAllL2_BFloat16_Float) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+  OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
+  test.SetDeterminism(GetParam());
+
+  std::vector<float> data0 = {1.0f, 2.0f, 3.0f};
+  std::vector<BFloat16> data0_bf16 = FloatsToBFloat16s(data0);
+
+  std::vector<float> data1 = {-1.0f, -2.0f};
+  std::vector<BFloat16> data1_bf16 = FloatsToBFloat16s(data1);
+
+  std::vector<float> result = {4.358898943540674f};
+
+  test.AddInput<BFloat16>("data0", {3}, data0_bf16);
+  test.AddInput<BFloat16>("data1", {2}, data1_bf16);
+
+  test.AddOutput<float>("reduced", {}, result);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST_P(ReductionOpTest, ReduceAllL2_Float_BFloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+  OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
+  test.SetDeterminism(GetParam());
+
+  std::vector<float> data0 = {1.0f, 2.0f, 3.0f};
+  std::vector<float> data1 = {-1.0f, -2.0f};
+
+  std::vector<float> result = {4.358898943540674f};
+  std::vector<BFloat16> result_bf16 = FloatsToBFloat16s(result);
+
+  test.AddInput<float>("data0", {3}, data0);
+  test.AddInput<float>("data1", {2}, data1);
+
+  test.AddOutput<BFloat16>("reduced", {}, result_bf16);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
 
@@ -243,6 +340,23 @@ TEST(ReductionOpTest, ReduceSumTraining_int32) {
                           11, 12});
   test.AddInput<int64_t>("axes", {2}, {0, 2}, true /*is_initializer*/);
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {33, 45});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSumTraining_fast_matrix_reduction) {
+  OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 4},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddInput<int64_t>("axes", {2}, {0, 1}, true /*is_initializer*/);
+  test.AddOutput<float>("reduced", {1, 1}, {78.0f});
   test.Run();
 }
 
@@ -328,7 +442,7 @@ TEST(ReductionOpTest, ReduceSumTraining_neg_axis) {
   test.Run();
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(ReductionOpTest, ReduceSumTrainingHalfHalf) {
   OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
   test.AddAttribute("keepdims", (int64_t)0);

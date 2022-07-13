@@ -2,15 +2,32 @@
 // Licensed under the MIT License.
 
 #pragma once
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#endif
 
 namespace onnxruntime {
+template <typename T>
+inline void TensorShapeCopyDims(const TensorShape& shape, T* dims, size_t num_dims) {
+  size_t n = std::min(num_dims, shape.NumDimensions());
+  for (size_t i = 0; i != n; ++i)
+    dims[i] = static_cast<ptrdiff_t>(shape[i]);
+}
+
+template <>
+inline void TensorShapeCopyDims(const TensorShape& shape, int64_t* dims, size_t num_dims) {
+  shape.CopyDims(dims, num_dims);
+}
 
 class MatMulComputeHelper {
  public:
-  Status Compute(const TensorShape& left_shape, const TensorShape& right_shape,
-                 bool transa = false, bool transb = false) {
+  // fill_offsets is to control if to fill offsets here.
+  // For CUDA/ROCM kernel when we can use GemmStridedBatched, we don't need to fill the offsets.
+  Status Compute(const TensorShape& orig_left_shape, const TensorShape& orig_right_shape,
+                 bool transa = false, bool transb = false,
+                 bool trans_batch_a = false, bool trans_batch_b = false,
+                 bool fill_offsets = true) {
     // Following numpy.matmul for shape inference:
     // https://docs.scipy.org/doc/numpy/reference/generated/numpy.matmul.html
     // The behavior depends on the arguments in the following way.
@@ -19,9 +36,9 @@ class MatMulComputeHelper {
     // * If the first argument is 1 - D, it is promoted to a matrix by prepending a 1 to its dimensions.After matrix multiplication the prepended 1 is removed.
     // * If the second argument is 1 - D, it is promoted to a matrix by appending a 1 to its dimensions.After matrix multiplication the appended 1 is removed.
 
-    size_t left_num_dims = left_shape.NumDimensions();
-    size_t right_num_dims = right_shape.NumDimensions();
-    ORT_RETURN_IF_NOT(left_num_dims >= 1 && right_num_dims >= 1);
+    size_t left_num_dims = orig_left_shape.NumDimensions();
+    size_t right_num_dims = orig_right_shape.NumDimensions();
+    ORT_RETURN_IF_NOT(left_num_dims >= 1 && right_num_dims >= 1, "left_num_dims and right_num_dims must be >= 1");
 
     // Special cases below for right_shape being 2D and left_shape > 2D by flattening left_shape to 2D
     // Note that padding 1s in front of the right_shape can be flattened too
@@ -29,21 +46,58 @@ class MatMulComputeHelper {
     // A: [M1, M2, ... K], B: [N, K]^T
     // A: [M1, M2, ... K], B: [1, ..., 1, K, N]
     // A: [M1, M2, ... K], B: [1, ..., 1, N, K]^T
-    if (!transa && left_num_dims >= 2 && right_num_dims >= 2 && left_num_dims >= right_num_dims &&
-        right_shape.SizeToDimension(right_num_dims - 1) == right_shape[right_num_dims - 2]) {
-      M_ = left_shape.SizeToDimension(left_num_dims - 1);
-      K_ = left_shape[left_num_dims - 1];
-      N_ = transb ? right_shape[right_num_dims - 2] : right_shape[right_num_dims - 1];
-      output_shape_ = left_shape;
+    if (!transa && !trans_batch_a && !trans_batch_b && left_num_dims >= 2 && right_num_dims >= 2 && left_num_dims >= right_num_dims &&
+        orig_right_shape.SizeToDimension(right_num_dims - 1) == orig_right_shape[right_num_dims - 2]) {
+      M_ = static_cast<ptrdiff_t>(orig_left_shape.SizeToDimension(left_num_dims - 1));
+      K_ = static_cast<ptrdiff_t>(orig_left_shape[left_num_dims - 1]);
+      N_ = static_cast<ptrdiff_t>(transb ? orig_right_shape[right_num_dims - 2] : orig_right_shape[right_num_dims - 1]);
+      output_shape_ = orig_left_shape;
       output_shape_[left_num_dims - 1] = N_;
       output_offsets_ = {0};
       left_offsets_ = {0};
       right_offsets_ = {0};
-      ORT_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2] ||
-                            transb && K_ == right_shape[right_num_dims - 1],
+      ORT_RETURN_IF_NOT((!transb && K_ == orig_right_shape[right_num_dims - 2]) ||
+                            (transb && K_ == orig_right_shape[right_num_dims - 1]),
                         "MatMul dimension mismatch");
       return Status::OK();
     }
+
+    std::vector<int64_t> dims_left(left_num_dims);
+    std::vector<int64_t> dims_right(right_num_dims);
+    orig_left_shape.CopyDims(&dims_left[0], left_num_dims);
+    orig_right_shape.CopyDims(&dims_right[0], right_num_dims);
+    left_stride_factor_ = right_stride_factor_ = 1;
+    left_ld_factor_ = right_ld_factor_ = 1;
+
+    if (trans_batch_a || trans_batch_b) {
+      ORT_ENFORCE(left_num_dims > 2 && left_num_dims == right_num_dims,
+                  "Two inputs should have same rank and rank >= 3 if transBatchA or transBatchB is true");
+      // trans_batch_a means the input tensor is either [M,b0,...,bn,K] or [K,b0,...,bn,M].
+      // Switch the dim[0] and batch dims here.
+      if (trans_batch_a) {
+        int64_t leading_dim = dims_left[0];
+        for (size_t i = 0; i < left_num_dims - 2; ++i) {
+          dims_left[i] = dims_left[i + 1];
+          left_ld_factor_ *= static_cast<int>(dims_left[i]);
+        }
+        dims_left[left_num_dims - 2] = leading_dim;
+        left_stride_factor_ = static_cast<size_t>(leading_dim);
+      }
+      // trans_batch_b means the input tensor is either [K,b0,...,bn,N] or [N,b0,...,bn,K].
+      // Switch the dim[0] and batch dims here.
+      if (trans_batch_b) {
+        int64_t leading_dim = dims_right[0];
+        for (size_t i = 0; i < right_num_dims - 2; ++i) {
+          dims_right[i] = dims_right[i + 1];
+          right_ld_factor_ *= static_cast<int>(dims_right[i]);
+        }
+        dims_right[right_num_dims - 2] = leading_dim;
+        right_stride_factor_ = static_cast<size_t>(leading_dim);
+      }
+    }
+
+    TensorShape left_shape(dims_left);
+    TensorShape right_shape(dims_right);
 
     bool has_1D_input = (left_num_dims == 1 || right_num_dims == 1);
 
@@ -55,27 +109,27 @@ class MatMulComputeHelper {
     // output shape would squeeze the reduced 1D dimension
     size_t num_output_dims = num_input_dims - (has_1D_input ? 1 : 0);
 
-    left_padded_dims_ = std::vector<int64_t>(num_dims_with_pad, 1);
-    right_padded_dims_ = std::vector<int64_t>(num_dims_with_pad, 1);
+    left_padded_dims_ = std::vector<ptrdiff_t>(num_dims_with_pad, 1);
+    right_padded_dims_ = std::vector<ptrdiff_t>(num_dims_with_pad, 1);
 
     if (right_num_dims == 1) {
       // right padded to (1,...,K,1)
-      right_padded_dims_[num_dims_with_pad - 2] = right_shape[0];
+      right_padded_dims_[num_dims_with_pad - 2] = static_cast<ptrdiff_t>(right_shape[0]);
 
       if (num_input_dims >= 2) {
         // left padded to (...,1,K)
-        left_shape.CopyDims(&left_padded_dims_[0], left_num_dims - 2);
-        left_padded_dims_[num_dims_with_pad - 3] = left_shape[transa ? left_num_dims - 1 : left_num_dims - 2];
-        left_padded_dims_[num_dims_with_pad - 1] = left_shape[transa ? left_num_dims - 2 : left_num_dims - 1];
+        TensorShapeCopyDims(left_shape, &left_padded_dims_[0], left_num_dims - 2);
+        left_padded_dims_[num_dims_with_pad - 3] = static_cast<ptrdiff_t>(left_shape[transa ? left_num_dims - 1 : left_num_dims - 2]);
+        left_padded_dims_[num_dims_with_pad - 1] = static_cast<ptrdiff_t>(left_shape[transa ? left_num_dims - 2 : left_num_dims - 1]);
       } else {
         // pad 1 in the front
-        left_shape.CopyDims(&left_padded_dims_[num_dims_with_pad - left_num_dims], left_num_dims);
+        TensorShapeCopyDims(left_shape, &left_padded_dims_[num_dims_with_pad - left_num_dims], left_num_dims);
       }
     } else {
       // pad 1 in the front for left
-      left_shape.CopyDims(&left_padded_dims_[num_dims_with_pad - left_num_dims], left_num_dims);
+      TensorShapeCopyDims(left_shape, &left_padded_dims_[num_dims_with_pad - left_num_dims], left_num_dims);
       // pad 1 in the front for right
-      right_shape.CopyDims(&right_padded_dims_[num_dims_with_pad - right_num_dims], right_num_dims);
+      TensorShapeCopyDims(right_shape, &right_padded_dims_[num_dims_with_pad - right_num_dims], right_num_dims);
     }
 
     // validate input shape and generate output shape
@@ -90,37 +144,39 @@ class MatMulComputeHelper {
         ORT_RETURN_IF_NOT(right_padded_dims_[idx_dim] == 1, "right operand cannot broadcast on dim ", idx_dim);
     }
     if (transa) {
-      M_ = has_1D_input ? 1 : left_shape[left_num_dims - 1];
-      K_ = left_shape[left_num_dims - 2];
+      M_ = static_cast<ptrdiff_t>(has_1D_input ? 1 : left_shape[left_num_dims - 1]);
+      K_ = static_cast<ptrdiff_t>(left_shape[left_num_dims - 2]);
     } else {
-      M_ = has_1D_input ? 1 : left_shape[left_num_dims - 2];
-      K_ = left_shape[left_num_dims - 1];
+      M_ = static_cast<ptrdiff_t>(has_1D_input ? 1 : left_shape[left_num_dims - 2]);
+      K_ = static_cast<ptrdiff_t>(left_shape[left_num_dims - 1]);
     }
 
     if (transb) {
-      N_ = (right_num_dims == 1) ? 1 : right_shape[right_num_dims - 2];
+      N_ = static_cast<ptrdiff_t>((right_num_dims == 1) ? 1 : right_shape[right_num_dims - 2]);
     } else {
-      N_ = (right_num_dims == 1) ? 1 : right_shape[right_num_dims - 1];
+      N_ = static_cast<ptrdiff_t>((right_num_dims == 1) ? 1 : right_shape[right_num_dims - 1]);
     }
 
     if (!has_1D_input) {
-      ORT_RETURN_IF_NOT(K_ == right_shape[transb ? right_num_dims - 1 : right_num_dims - 2], "MatMul dimension mismatch");
+      ORT_RETURN_IF_NOT(K_ == right_shape[transb ? right_num_dims - 1 : right_num_dims - 2],
+                        "MatMul dimension mismatch");
       // left (...M x K), right (...K x N), output (...M x N)
-      ORT_RETURN_IF_NOT(num_dims_with_pad == num_output_dims);
+      ORT_RETURN_IF_NOT(num_dims_with_pad == num_output_dims, "num_dims_with_pad != num_output_dims");
       output_dims[num_output_dims - 2] = M_;
       output_dims[num_output_dims - 1] = N_;
     } else {
       if (num_output_dims == 0) {
         // for left and right being both vector, output is scalar thus no shape
-        ORT_RETURN_IF_NOT(M_ == 1 && N_ == 1);
+        ORT_RETURN_IF_NOT(M_ == 1 && N_ == 1, "M_ == 1 && N_ == 1 was false");
       } else {
         if (left_num_dims == 1) {
-          ORT_RETURN_IF_NOT(num_dims_with_pad - 1 == num_output_dims);
-          ORT_RETURN_IF_NOT(K_ == right_shape[transb ? right_num_dims - 1 : right_num_dims - 2], "MatMul dimension mismatch");
+          ORT_RETURN_IF_NOT(num_dims_with_pad - 1 == num_output_dims, "num_dims_with_pad - 1 != num_output_dims");
+          ORT_RETURN_IF_NOT(K_ == right_shape[transb ? right_num_dims - 1 : right_num_dims - 2],
+                            "MatMul dimension mismatch");
           // left (K), right (...K,N), output (...N)
           output_dims[num_output_dims - 1] = N_;
         } else {
-          ORT_RETURN_IF_NOT(num_dims_with_pad - 2 == num_output_dims);
+          ORT_RETURN_IF_NOT(num_dims_with_pad - 2 == num_output_dims, "num_dims_with_pad - 2 != num_output_dims");
           ORT_RETURN_IF_NOT(K_ == right_shape[0], "MatMul dimension mismatch");
           // left(...K), right (K), output (...), already assigned
         }
@@ -131,26 +187,40 @@ class MatMulComputeHelper {
     output_shape_ = TensorShape(output_dims);
 
     // compute broadcast offsets
-    ComputeBroadcastOffsets();
+    ComputeBroadcastOffsets(fill_offsets);
 
     return Status::OK();
   }
 
- private:
-  void ComputeBroadcastOffsets() {
-    num_broadcasted_dims_ = left_padded_dims_.size() - 2;
+  Status Compute(const TensorShape& left_shape, const TensorShape& right_shape,
+                 const TensorShape* right_scale_shape, const TensorShape* right_zp_shape,
+                 bool transa = false, bool transb = false) {
+    ORT_RETURN_IF_ERROR(Compute(left_shape, right_shape, transa, transb));
+    right_zp_offsets_.clear();
+    right_scale_offsets_.clear();
+    right_zp_offsets_.resize(right_offsets_.size());
+    right_scale_offsets_.resize(right_offsets_.size());
 
-    if (num_broadcasted_dims_ == 0) {
-      left_offsets_ = {0};
-      right_offsets_ = {0};
-      output_offsets_ = {0};
-      return;
-    }
+    auto SetRightMatrixQuantParam = [this, &right_shape](const TensorShape* param_shape, std::vector<size_t>& quant_param_offsets) {
+      if (nullptr != param_shape && param_shape->NumDimensions() > 1) {
+        ORT_RETURN_IF_NOT(param_shape->NumDimensions() == right_shape.NumDimensions() && param_shape->Size() * K_ == right_shape.Size(),
+                          "Per-column quantization parameter of batched matrix should have same dimension as the matrix,"
+                          "and its size by K should be equal to the matrix's size.");
+        for (size_t batch_id = 0; batch_id < quant_param_offsets.size(); batch_id++) {
+          quant_param_offsets[batch_id] = right_offsets_[batch_id] / K_;
+        }
+      }
+      return Status::OK();
+    };
 
-    left_mat_size_ = M_ * K_;
-    right_mat_size_ = K_ * N_;
-    output_mat_size_ = M_ * N_;
+    ORT_RETURN_IF_ERROR(SetRightMatrixQuantParam(right_zp_shape, right_zp_offsets_));
+    ORT_RETURN_IF_ERROR(SetRightMatrixQuantParam(right_scale_shape, right_scale_offsets_));
 
+    return Status::OK();
+  }
+
+  // Move this piece of code to public so that we don't need to call this if we can use GemmStridedBatched.
+  void FillOffsets() {
     // stride in mats and dims for broadcasting
     left_padded_strides_.resize(num_broadcasted_dims_);
     right_padded_strides_.resize(num_broadcasted_dims_);
@@ -172,6 +242,26 @@ class MatMulComputeHelper {
     RecursiveFill(0, 0, 0, 0);
   }
 
+ private:
+  void ComputeBroadcastOffsets(bool fill_offsets) {
+    num_broadcasted_dims_ = left_padded_dims_.size() - 2;
+
+    if (num_broadcasted_dims_ == 0) {
+      left_offsets_ = {0};
+      right_offsets_ = {0};
+      output_offsets_ = {0};
+      return;
+    }
+
+    left_mat_size_ = M_ * K_ / left_stride_factor_;
+    right_mat_size_ = K_ * N_ / right_stride_factor_;
+    output_mat_size_ = M_ * N_;
+
+    if (fill_offsets) {
+      FillOffsets();
+    }
+  }
+
   void RecursiveFill(size_t idx_dim, size_t idx_left, size_t idx_right, size_t idx_out) {
     if (idx_dim == num_broadcasted_dims_) {
       left_offsets_[idx_out] = idx_left * left_mat_size_;
@@ -181,7 +271,7 @@ class MatMulComputeHelper {
       auto left_dim = left_padded_dims_[idx_dim];
       auto right_dim = right_padded_dims_[idx_dim];
       auto output_dim = output_broadcast_dims_[idx_dim];
-      for (int64_t i = 0; i < output_dim; ++i) {
+      for (int i = 0; i < output_dim; ++i) {
         RecursiveFill(idx_dim + 1,
                       idx_left + i * (left_dim == 1 ? 0 : left_padded_strides_[idx_dim]),
                       idx_right + i * (right_dim == 1 ? 0 : right_padded_strides_[idx_dim]),
@@ -191,15 +281,15 @@ class MatMulComputeHelper {
   }
 
  private:
-  size_t left_mat_size_;
-  size_t right_mat_size_;
-  size_t output_mat_size_;
+  size_t left_mat_size_ = 0;
+  size_t right_mat_size_ = 0;
+  size_t output_mat_size_ = 0;
 
-  size_t num_broadcasted_dims_;
+  size_t num_broadcasted_dims_ = 0;
 
-  std::vector<int64_t> left_padded_dims_;
-  std::vector<int64_t> right_padded_dims_;
-  std::vector<int64_t> output_broadcast_dims_;
+  std::vector<ptrdiff_t> left_padded_dims_;
+  std::vector<ptrdiff_t> right_padded_dims_;
+  std::vector<ptrdiff_t> output_broadcast_dims_;
 
   std::vector<size_t> left_padded_strides_;
   std::vector<size_t> right_padded_strides_;
@@ -207,13 +297,21 @@ class MatMulComputeHelper {
 
   TensorShape output_shape_;
 
-  int64_t M_;
-  int64_t N_;
-  int64_t K_;
+  ptrdiff_t M_ = 0;
+  ptrdiff_t N_ = 0;
+  ptrdiff_t K_ = 0;
 
   std::vector<size_t> left_offsets_;
   std::vector<size_t> right_offsets_;
   std::vector<size_t> output_offsets_;
+
+  std::vector<size_t> right_zp_offsets_;
+  std::vector<size_t> right_scale_offsets_;
+
+  size_t left_stride_factor_ = 1;
+  size_t right_stride_factor_ = 1;
+  int left_ld_factor_ = 1;
+  int right_ld_factor_ = 1;
 
  public:
   // output shape
@@ -222,18 +320,30 @@ class MatMulComputeHelper {
   }
 
   // left and output matrices' first dim
-  int64_t M() const {
+  ptrdiff_t M() const {
     return M_;
   }
 
   // right and output matrices' second dim
-  int64_t N() const {
+  ptrdiff_t N() const {
     return N_;
   }
 
   // left matrices' second dim, and right matrices' first dim
-  int64_t K() const {
+  ptrdiff_t K() const {
     return K_;
+  }
+
+  int Lda(bool is_trans) const {
+    return (is_trans ? static_cast<int>(M_) : static_cast<int>(K_)) * left_ld_factor_;
+  }
+
+  int Ldb(bool is_trans) const {
+    return (is_trans ? static_cast<int>(K_) : static_cast<int>(N_)) * right_ld_factor_; 
+  }
+
+  int Ldc() const {
+    return static_cast<int>(N_);
   }
 
   // Batched Gemm offsets in left matrices
@@ -249,6 +359,16 @@ class MatMulComputeHelper {
   // Batched Gemm offsets in output matrices
   const std::vector<size_t>& OutputOffsets() const {
     return output_offsets_;
+  }
+
+  // Batched Scale Offset for right matrices
+  const std::vector<size_t>& RightScaleOffsets() const {
+    return right_scale_offsets_;
+  }
+
+  // Batched Zero Point Offset for right matrices
+  const std::vector<size_t>& RightZeroPointOffsets() const {
+    return right_zp_offsets_;
   }
 
   template <typename T>

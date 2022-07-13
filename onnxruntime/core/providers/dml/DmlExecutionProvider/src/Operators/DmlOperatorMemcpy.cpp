@@ -29,7 +29,7 @@ public:
 
         if (!OperatorHelper::ContainsEmptyDimensions(MLOperatorTensor(inputTensors.front()).GetShape()))
         {
-            THROW_IF_FAILED(m_executionProvider->CopyTensor(
+            ORT_THROW_IF_FAILED(m_executionProvider->CopyTensor(
                 outputTensors.front(),
                 inputTensors.front()
                 ));

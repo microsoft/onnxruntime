@@ -1,12 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/kernel_registry.h"
+
+#include <algorithm>
 #include <memory>
 #include <unordered_map>
-#include "core/framework/kernel_registry.h"
+
 #include "core/framework/session_state.h"
 
-using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -21,14 +23,20 @@ namespace {
 //   traverse_fn - called to process the formal parameter and its associated TypeProto:
 //     bool TraverseFn(const ONNX_NAMESPACE::OpSchema::FormalParameter& param,
 //                     const ONNX_NAMESPACE::TypeProto* type)
-//       param - the formal paremeter
+//       param - the formal parameter
 //       type - the associated TypeProto
 //       returns true if traversal should continue, false otherwise
 template <typename ParamFilterFn, typename TraverseFn>
-void TraverseFormalParametersWithTypeProto(const Node& node,
+bool TraverseFormalParametersWithTypeProto(const Node& node,
                                            ParamFilterFn param_filter_fn,
                                            TraverseFn traverse_fn) {
   const ONNX_NAMESPACE::OpSchema& op_schema = *node.Op();
+
+  // was the param name matched in either inputs, outputs or type constraints. 
+  // this validates the name was valid and that the type involved will be returned if available.
+  // if the name is invalid we do not return a type, and any applicable type constraint can not be applied 
+  // in VerifyKernelDef.
+  bool matched = false;
 
   // process inputs:
   const size_t len = node.InputArgCount().size();
@@ -37,11 +45,12 @@ void TraverseFormalParametersWithTypeProto(const Node& node,
   for (size_t formal_index = 0; formal_index != len; ++formal_index) {
     const auto& param = op_schema.inputs()[formal_index];
     if (param_filter_fn(param)) {
+      matched = true;
       // get type of any corresponding actual parameter, if present
       for (int i = 0, end = node.InputArgCount()[formal_index]; i < end; ++i) {
-        const NodeArg* arg = node.InputDefs()[actual_index + i];
+        const NodeArg* arg = node.InputDefs()[static_cast<size_t>(actual_index) + i];
         if (!arg->Exists()) continue;  // a missing optional argument
-        if (!traverse_fn(param, arg->TypeAsProto())) return;
+        if (!traverse_fn(param, arg->TypeAsProto())) return matched;
       }
     }
     actual_index += node.InputArgCount()[formal_index];
@@ -50,14 +59,31 @@ void TraverseFormalParametersWithTypeProto(const Node& node,
   // process outputs:
   auto actual_outputs = node.OutputDefs();
   const auto num_actual_outputs = actual_outputs.size();
-  const auto last_formal = op_schema.outputs().size() - 1;
-  for (size_t i = 0; i != num_actual_outputs; ++i) {
-    const auto& formal = op_schema.outputs()[std::min(i, last_formal)];
+  const auto& schema_outputs = op_schema.outputs();
+  const auto last_formal = schema_outputs.size() - 1;
+  size_t i = 0;
+  for (; i != num_actual_outputs; ++i) {
+    const auto& formal = schema_outputs[std::min(i, last_formal)];
     if (!param_filter_fn(formal)) continue;
+    matched = true;
     const NodeArg* arg = actual_outputs[i];
     if (!arg->Exists()) continue;
-    if (!traverse_fn(formal, arg->TypeAsProto())) return;
+    if (!traverse_fn(formal, arg->TypeAsProto())) return matched;
   }
+
+  // missing optional outputs. check if type constraint name was valid if we haven't matched anything yet.
+  if (!matched) {
+    while (i <= last_formal) {
+      if (param_filter_fn(schema_outputs[i])) {
+        matched = true;
+        break;
+      }
+
+      ++i;
+    }
+  }
+
+  return matched;
 }
 
 class TypeBindingResolver {
@@ -66,7 +92,7 @@ class TypeBindingResolver {
       : node_(node),
         type_binding_map_() {
     if (use_lookup_map) {
-      type_binding_map_ = onnxruntime::make_unique<TypeBindingMap>();
+      type_binding_map_ = std::make_unique<TypeBindingMap>();
       TraverseFormalParametersWithTypeProto(
           node_,
           [](const ONNX_NAMESPACE::OpSchema::FormalParameter&) -> bool { return true; },
@@ -79,29 +105,55 @@ class TypeBindingResolver {
     }
   }
 
-  // Resolves a name to a TypeProto* for a given node.
-  // The name can represent either a type parameter or an input/output parameter.
-  // Returns the resolved TypeProto* or nullptr if unable to resolve.
+  // Resolves a type constraint name to a TypeProto* for a given node. ONNX code checks that all usages of the type
+  // constraint name by the node are consistent, so we just need to match the first usage to see the actual type
+  // being used by the node. e.g. if type constraint 'T' allows float and double, any input or output for that node
+  // that has constraint 'T' must use the same type, be that float or double.
+  //
+  // Also can resolve an input/output name to a contraint when a type constraint name is not used.
+  // e.g. the 'shape' input of Reshape has a directly specified constraint of 'tensor(int64)'.
+  //
+  // Returns the resolved TypeProto* or nullptr if unable to resolve due to the
+  // constraint being for a missing optional output.
   const ONNX_NAMESPACE::TypeProto* Resolve(const std::string& name_or_type_str) const {
+    const ONNX_NAMESPACE::TypeProto* result{};
+    bool matched = false;
+
     // lookup if available
     if (type_binding_map_) {
       auto found_it = type_binding_map_->find(name_or_type_str);
-      if (found_it == type_binding_map_->end()) return nullptr;
-      return found_it->second;
+      matched = found_it != type_binding_map_->end();
+      if (matched) {
+        result = found_it->second;
+      }
     }
 
-    // fall back to node parameter traversal
-    const ONNX_NAMESPACE::TypeProto* result{};
-    TraverseFormalParametersWithTypeProto(
-        node_,
-        [&name_or_type_str](const ONNX_NAMESPACE::OpSchema::FormalParameter& param) -> bool {
-          return param.GetName() == name_or_type_str || param.GetTypeStr() == name_or_type_str;
-        },
-        [&result](const ONNX_NAMESPACE::OpSchema::FormalParameter&,
-                  const ONNX_NAMESPACE::TypeProto* type) -> bool {
-          result = type;
-          return false;
-        });
+    if (!matched) {
+      // fall back to node parameter traversal
+      matched = TraverseFormalParametersWithTypeProto(
+          node_,
+          [&name_or_type_str](const ONNX_NAMESPACE::OpSchema::FormalParameter& param) -> bool {
+            return param.GetTypeStr() == name_or_type_str || param.GetName() == name_or_type_str;
+          },
+          [&result](const ONNX_NAMESPACE::OpSchema::FormalParameter&,
+                    const ONNX_NAMESPACE::TypeProto* type) -> bool {
+            result = type;
+            return false;
+          });
+    }
+
+// invalid kernel def with type constraints that don't match the schema. this means the type constraints are not
+// actually applied, making the kernel def misleading and potentially matching an unexpected/incorrect kernel.
+// warn in a release build as we do not have coverage of every single opset for every single operator
+// in the unit tests, so issues may be missed and the model may still work (e.g. matches the correct kernel by chance).
+// throw in a debug build so the issue is obvious and force it to be fixed.
+#ifdef NDEBUG
+    if (!matched) {
+      LOGS_DEFAULT(WARNING) << name_or_type_str << " constraint was not found for " << node_.OpType();
+    }
+#else
+    ORT_ENFORCE(matched, name_or_type_str, " constraint was not found for ", node_.OpType());
+#endif
     return result;
   }
 
@@ -114,7 +166,7 @@ class TypeBindingResolver {
 };
 };  // namespace
 
-bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
+bool KernelRegistry::VerifyKernelDef(const Node& node,
                                      const KernelDef& kernel_def,
                                      std::string& error_str) {
   // check if version matches
@@ -149,7 +201,7 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
   }
 
   // check if type matches
-  auto& kernel_type_constraints = kernel_def.TypeConstraints();
+  auto& kernel_type_constraints = kernel_def.EnabledTypeConstraints();
 
   // Note: The number of formal input/output parameters is N and the number of
   // type constraints is M. We select between an O(N*M) and an O(N+M) approach.
@@ -200,11 +252,11 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
   return true;
 }
 
-Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node,
+Status KernelRegistry::TryCreateKernel(const Node& node,
                                        const IExecutionProvider& execution_provider,
                                        const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                                        const OrtValueNameIdxMap& ort_value_name_idx_map,
-                                       const FuncManager& funcs_mgr,
+                                       FuncManager& funcs_mgr,
                                        const DataTransferManager& data_transfer_mgr,
                                        /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
   const KernelCreateInfo* kernel_create_info = nullptr;
@@ -214,10 +266,8 @@ Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node,
                            execution_provider,
                            constant_initialized_tensors,
                            ort_value_name_idx_map,
-                           funcs_mgr,
                            data_transfer_mgr);
-  op_kernel.reset(kernel_create_info->kernel_create_func(kernel_info));
-  return Status::OK();
+  return kernel_create_info->kernel_create_func(funcs_mgr, kernel_info, op_kernel);
 }
 
 static std::string ToString(const std::vector<std::string>& error_strs) {
@@ -227,73 +277,84 @@ static std::string ToString(const std::vector<std::string>& error_strs) {
   return ostr.str();
 }
 
-Status KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
-                                     onnxruntime::ProviderType exec_provider,
-                                     const KernelCreateInfo** out) const {
-  return TryFindKernel(node, exec_provider, uint64_t(0), out);
-}
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
 // It's often this function returns a failed status, but it is totally expected.
 // It just means this registry doesn't have such a kernel, please search it elsewhere.
 // if this function is called before graph partition, then node.provider is not set.
 // In this case, the kernel's provider must equal to exec_provider
 // otherwise, kernel_def.provider must equal to node.provider. exec_provider is ignored.
-Status KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
-                                     onnxruntime::ProviderType exec_provider,
-                                     uint64_t kernel_def_hash,
+Status KernelRegistry::TryFindKernel(const Node& node,
+                                     ProviderType exec_provider,
                                      const KernelCreateInfo** out) const {
   const auto& node_provider = node.GetExecutionProviderType();
   const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
 
   auto range = kernel_creator_fn_map_.equal_range(GetMapKey(node.OpType(), node.Domain(), expected_provider));
-  *out = nullptr;
+  if (out) *out = nullptr;
 
-  // if we have a hash (ORT format model) use only that.
-  if (kernel_def_hash != 0) {
-    for (auto i = range.first; i != range.second; ++i) {
-      if (i->second.kernel_def->GetHash() == kernel_def_hash) {
-        *out = &i->second;
-        return Status::OK();
-      }
+  std::vector<std::string> verify_kernel_def_error_strs;
+
+  for (auto i = range.first; i != range.second; ++i) {
+    std::string error_str;
+    if (VerifyKernelDef(node, *i->second.kernel_def, error_str)) {
+      if (out) *out = &i->second;
+      return Status::OK();
     }
+    verify_kernel_def_error_strs.push_back(error_str);
+  }
 
+  if (!verify_kernel_def_error_strs.empty()) {
     std::ostringstream oss;
     oss << "Op with name (" << node.Name() << ")"
         << " and type (" << node.OpType() << ")"
-        << " kernel not found in " << expected_provider << "."
-        << " No matching hash for " << kernel_def_hash;
+        << " kernel is not supported in " << expected_provider << "."
+        << " Encountered following errors: (" << ToString(verify_kernel_def_error_strs) << ")";
 
-    return Status(ONNXRUNTIME, FAIL, oss.str());
+    VLOGS_DEFAULT(2) << "TryFindKernel failed, Reason: " << oss.str();
+    return Status(common::ONNXRUNTIME, common::FAIL, oss.str());
   }
-#if !defined(ORT_MINIMAL_BUILD)
-  else {
-    std::vector<std::string> verify_kernel_def_error_strs;
 
-    for (auto i = range.first; i != range.second; ++i) {
-      std::string error_str;
-      if (VerifyKernelDef(node, *i->second.kernel_def, error_str)) {
-        *out = &i->second;
-        return Status::OK();
+  return Status(common::ONNXRUNTIME, common::FAIL, "Kernel not found");
+}
+
+Status KernelRegistry::TryFindKernel(const std::string& op_name, const std::string& domain, const int& version,
+                                     const std::unordered_map<std::string, MLDataType>& type_constraints,
+                                     ProviderType exec_provider, const KernelCreateInfo** out) const {
+  *out = nullptr;
+  auto range = kernel_creator_fn_map_.equal_range(GetMapKey(op_name, domain, exec_provider));
+  for (auto i = range.first; i != range.second; ++i) {  //loop through all kernels
+    const KernelCreateInfo& kci = i->second;
+    int start_ver{};
+    int end_ver{};
+    kci.kernel_def->SinceVersion(&start_ver, &end_ver);
+    if (start_ver <= version && end_ver >= version) {  //try match the version
+      auto& kci_constraints = kci.kernel_def->TypeConstraints();
+      bool match = true;
+      for (auto& constraint : type_constraints) {  //try match type constraints
+        auto iter = kci_constraints.find(constraint.first);
+        if (iter == kci_constraints.end() || find(iter->second.begin(), iter->second.end(), constraint.second) == iter->second.end()) {
+          match = false;
+          break;
+        }
+      }  //for
+      if (match) {
+        *out = &kci;  //found match, exit loop
+        break;
       }
-      verify_kernel_def_error_strs.push_back(error_str);
-    }
+    }  //if
+  }    //for
+  return *out == nullptr ? Status(common::ONNXRUNTIME, common::FAIL, "Kernel not found") : Status::OK();
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
-    if (!verify_kernel_def_error_strs.empty()) {
-      std::ostringstream oss;
-      oss << "Op with name (" << node.Name() << ")"
-          << " and type (" << node.OpType() << ")"
-          << " kernel is not supported in " << expected_provider << "."
-          << " Encountered following errors: (" << ToString(verify_kernel_def_error_strs) << ")";
-
-      return Status(ONNXRUNTIME, FAIL, oss.str());
-    }
+bool KernelRegistry::TryFindKernelByHash(HashValue kernel_def_hash, const KernelCreateInfo** out) const {
+  const auto hash_lookup_it = kernel_def_hash_lookup_.find(kernel_def_hash);
+  if (hash_lookup_it == kernel_def_hash_lookup_.end()) {
+    if (out) *out = nullptr;
+    return false;
   }
 
-  return Status(ONNXRUNTIME, FAIL, "Kernel not found");
-#else
-  ORT_THROW("Kernel hash must be provided in minimal build.");
-#endif
+  if (out) *out = &hash_lookup_it->second->second;
+  return true;
 }
 
 Status KernelRegistry::Register(KernelDefBuilder& kernel_builder,
@@ -303,24 +364,43 @@ Status KernelRegistry::Register(KernelDefBuilder& kernel_builder,
 
 Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
   if (!create_info.kernel_def) {
-    return Status(ONNXRUNTIME, FAIL, "kernel def can't be NULL");
+    return Status(common::ONNXRUNTIME, common::FAIL, "kernel def can't be NULL");
   }
-  std::string key = GetMapKey(*create_info.kernel_def);
+  const std::string key = GetMapKey(*create_info.kernel_def);
   // Check op version conflicts.
-  auto range = kernel_creator_fn_map_.equal_range(key);
+  const auto range = kernel_creator_fn_map_.equal_range(key);
   for (auto i = range.first; i != range.second; ++i) {
     if (i->second.kernel_def &&
         i->second.kernel_def->IsConflict(*create_info.kernel_def)) {
-      return Status(ONNXRUNTIME, FAIL,
+      return Status(common::ONNXRUNTIME, common::FAIL,
                     "Failed to add kernel for " + key +
                         ": Conflicting with a registered kernel with op versions.");
     }
   }
 
+  // check for existing hash conflict
+  const auto kernel_def_hash = create_info.kernel_def->GetHash();
+  ORT_RETURN_IF(kernel_def_hash_lookup_.find(kernel_def_hash) != kernel_def_hash_lookup_.end(),
+                "Failed to add kernel for " + key + ": Conflict with existing kernel def hash.");
+
   // Register the kernel.
-  // Ownership of the KernelDef is transferred to the map.
-  kernel_creator_fn_map_.emplace(key, std::move(create_info));
+  // Ownership of the KernelDef is transferred to kernel_creator_fn_map_.
+  auto it = kernel_creator_fn_map_.emplace(key, std::move(create_info));
+  kernel_def_hash_lookup_.emplace(kernel_def_hash, it);
   return Status::OK();
+}
+
+KernelDefHashes KernelRegistry::ExportKernelDefHashes() const {
+  KernelDefHashes result{};
+  result.reserve(kernel_creator_fn_map_.size());
+  std::transform(
+      kernel_creator_fn_map_.begin(), kernel_creator_fn_map_.end(),
+      std::back_inserter(result),
+      [](const KernelCreateMap::value_type& kvp) {
+        return std::make_pair(kvp.first, kvp.second.kernel_def->GetHash());
+      });
+  std::sort(result.begin(), result.end());
+  return result;
 }
 
 }  // namespace onnxruntime

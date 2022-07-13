@@ -18,7 +18,6 @@ CMake creates a target to this project
     <IsReleaseBuild Condition=" '$(IsReleaseBuild)' == '' ">false</IsReleaseBuild>
     <IsLinuxBuild Condition=" '$(IsLinuxBuild)' == '' ">false</IsLinuxBuild>
     <ExecutionProvider Condition=" '$(ExecutionProvider)' == '' ">None</ExecutionProvider>
-    <IsStoreBuild Condition=" '$(IsStoreBuild)' == '' ">false</IsStoreBuild>
 
     <!--internal build related properties-->
     <OnnxRuntimeSourceDirectory Condition="'$(OnnxRuntimeSourceDirectory)'==''">..</OnnxRuntimeSourceDirectory>
@@ -41,43 +40,8 @@ CMake creates a target to this project
 
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 
-  <Target Name="RestoreProjects" BeforeTargets="Build">
-    <Message Importance="High" Text="Restoring NuGet packages for CSharp projects..." />
-    <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
-             Targets="Restore" 
-             Properties="Platform=AnyCPU" 
-             />
-    <MSBuild Projects="sample\Microsoft.ML.OnnxRuntime.InferenceSample\Microsoft.ML.OnnxRuntime.InferenceSample.csproj"
-             Targets="Restore" 
-             Properties="Platform=AnyCPU" 
-             />
-    <MSBuild Projects="test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj"
-             Targets="Restore" 
-             Properties="ProtocDirectory=$(ProtocDirectory)"
-             />
-    <MSBuild Projects="tools\Microsoft.ML.OnnxRuntime.PerfTool\Microsoft.ML.OnnxRuntime.PerfTool.csproj"
-             Targets="Restore" 
-             Properties="Platform=AnyCPU" 
-             />
-  </Target>
-
   <Target Name="Build">
-    <Message Importance="High" Text="Building CSharp projects..." />
- 
-    <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
-             Targets="ObtainPackageVersion;Build" 
-             Properties="Platform=AnyCPU"/>
-    <MSBuild Projects="sample\Microsoft.ML.OnnxRuntime.InferenceSample\Microsoft.ML.OnnxRuntime.InferenceSample.csproj"
-             Targets="Build" 
-             Properties="Platform=AnyCPU"
-             />
-    <MSBuild Projects="test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj"
-             Targets="Build"
-             />
-    <MSBuild Projects="tools\Microsoft.ML.OnnxRuntime.PerfTool\Microsoft.ML.OnnxRuntime.PerfTool.csproj"
-             Targets="Build" 
-             Properties="Platform=AnyCPU"
-             />
+    <Error Text="Building via this file is not supported. Please build using the appropriate .sln file in this directory." />
   </Target>
 
   <Target Name="RunTest">
@@ -87,7 +51,7 @@ CMake creates a target to this project
     </Exec>
   </Target>
 
-   <Target Name="ObtainPackageVersion" BeforeTargets="CreatePackage;CreateWindowsAIPackage">
+   <Target Name="ObtainPackageVersion" BeforeTargets="Build;CreatePackage;CreateWindowsAIPackage">
     <ReadLinesFromFile File="..\VERSION_NUMBER">
       <Output TaskParameter="Lines" ItemName="MajorVersionNumber"/>
     </ReadLinesFromFile>   
@@ -114,7 +78,7 @@ CMake creates a target to this project
       <CurrentTime>$([System.DateTime]::UtcNow.ToString(hhmm))</CurrentTime>
       <PackageVersion>@(MajorVersionNumber)</PackageVersion>
       <Version>$(PackageVersion)</Version>
-      <PackageVersion Condition="'$(IsReleaseBuild)'!='true'">$(PackageVersion)-dev-$(CurrentDate)-$(CurrentTime)-$(GitCommitHashShort)</PackageVersion>
+      <PackageVersion Condition="'$(IsReleaseBuild)'!='True'">$(PackageVersion)-dev-$(CurrentDate)-$(CurrentTime)-$(GitCommitHashShort)</PackageVersion>
     </PropertyGroup>
     <Message Importance="High" Text="PackageVersion=$(PackageVersion)" />
   </Target>
@@ -123,15 +87,19 @@ CMake creates a target to this project
     <Message Importance="High" Text="Bundling managed assemblies into a NuGet package ..." />
     <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
              Targets="CopyMiscFiles;Pack"
-             Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId)"/>
+            Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId);SelectedTargets=All"/> 
 
     <Message Importance="High" Text="Generating nuspec for the native Nuget package ..." />
-    <Exec ContinueOnError="False" Command="python $(GenerateNuspecScript) --package_version $(PackageVersion) --package_name $(OrtPackageId) --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild) --execution_provider $(ExecutionProvider) --is_store_build $(IsStoreBuild)" ConsoleToMSBuild="true">
+    <Exec ContinueOnError="False" Command="python $(GenerateNuspecScript) --package_version $(PackageVersion) --package_name $(OrtPackageId) --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild) --execution_provider $(ExecutionProvider)" ConsoleToMSBuild="true">
         <Output TaskParameter="ConsoleOutput" PropertyName="GenerateNuspecOutput" />
     </Exec>
 
     <Message Importance="High" Text="Bundling native shared library artifacts into a NuGet package ..." />
-    <Exec ContinueOnError="False" Command="$(NugetExe) pack NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)">
+    <Exec ContinueOnError="False" Command="$(NugetExe) pack NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)" Condition=" '$(OS)' == 'Windows_NT'">
+      <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
+    </Exec>
+
+    <Exec ContinueOnError="False" Command="$(NugetExe) pack NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)" Condition=" '$(OS)' != 'Windows_NT'">
       <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
     </Exec>
 
@@ -149,7 +117,7 @@ CMake creates a target to this project
     <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeSourceDirectory)\%(Filename).txt')"/>
 
     <Message Importance="High" Text="Generating nuspec for the Microsoft.AI.MachineLearning Nuget package ..." />
-    <Exec ContinueOnError="False" Command="python ..\tools\nuget\generate_nuspec_for_native_nuget.py --package_version $(PackageVersion) --package_name Microsoft.AI.MachineLearning --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild) --is_store_build $(IsStoreBuild)" ConsoleToMSBuild="true">
+    <Exec ContinueOnError="False" Command="python ..\tools\nuget\generate_nuspec_for_native_nuget.py --package_version $(PackageVersion) --package_name Microsoft.AI.MachineLearning --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild)" ConsoleToMSBuild="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="GenerateNuspecOutput" />
     </Exec>
 

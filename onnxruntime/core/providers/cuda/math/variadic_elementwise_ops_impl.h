@@ -12,6 +12,7 @@ namespace cuda {
 
 template <typename T, typename VariadicElementwiseOpTag>
 void Impl_General(
+    cudaStream_t stream,
     int32_t output_rank_or_simple_broadcast,
     const TArray<int64_t>* lhs_padded_strides,
     const T* lhs_data,
@@ -30,6 +31,7 @@ using InputBatchArray = TArray<const T*, k_max_input_batch_size>;
 
 template <typename T, typename VariadicElementwiseOpTag>
 void Impl_NoBroadcastInputBatch(
+    cudaStream_t stream,
     InputBatchArray<T> input_data_batch,
     T* output_data,
     size_t count);

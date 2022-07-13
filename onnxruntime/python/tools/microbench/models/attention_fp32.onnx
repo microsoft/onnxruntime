@@ -1,0 +1,36 @@
+p2o:Ë
+Y
+INPUT
+WEIGHT
+BIAS
+
+MASK_INDEX
+return_val"	Attention*
+	num_heads :com.microsoft	attentionZ7
+INPUT.
+,(
+
+batch_size
+	seq_len
+hidden_sizeZ&
+WEIGHT
+
+hidden_size
+lenZ
+BIAS
+
+lenZ-
+
+MASK_INDEX
+
+
+batch_size
+	seq_lenb<
+
+return_val.
+,(
+
+batch_size
+	seq_len
+hidden_sizeB
+com.microsoft

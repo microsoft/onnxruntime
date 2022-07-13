@@ -4,6 +4,7 @@
 #pragma once
 #include <atomic>
 #include <string>
+#include "core/common/gsl_suppress.h"
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
@@ -43,7 +44,6 @@ struct OrtTypeInfo {
   static OrtStatus* FromTypeProto(const ONNX_NAMESPACE::TypeProto*, OrtTypeInfo** out);
   static const onnxruntime::DataTypeImpl* ElementTypeFromProto(int type);
 
- private:
   OrtTypeInfo(ONNXType type) noexcept;
   OrtTypeInfo(ONNXType type, OrtTensorTypeAndShapeInfo* data) noexcept;
   OrtTypeInfo(ONNXType type, OrtMapTypeInfo* map_type_info) noexcept;

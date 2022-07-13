@@ -27,12 +27,12 @@ class ShapeInferenceTest : public ::testing::Test {
   ShapeInferenceTest() : model_("Test", false, DefaultLoggingManager().DefaultLogger()), node_count_(0) {}
 
   void Input(const std::string& name, const Type& type) {
-    name_to_arg_[name] = onnxruntime::make_unique<onnxruntime::NodeArg>(name, &type.value);
+    name_to_arg_[name] = std::make_unique<onnxruntime::NodeArg>(name, &type.value);
   }
 
   onnxruntime::NodeArg* Arg(const std::string& name) {
     if (name_to_arg_.count(name) == 0)
-      name_to_arg_[name] = onnxruntime::make_unique<onnxruntime::NodeArg>(name, nullptr);
+      name_to_arg_[name] = std::make_unique<onnxruntime::NodeArg>(name, nullptr);
     return name_to_arg_[name].get();
   }
 
@@ -84,18 +84,7 @@ TEST_F(ShapeInferenceTest, BasicTest) {
   Input("X1", type1);
 
   auto& node = Node("Cast", "X1", "Y1");
-  //AttributeProto squeezed_axes;
-  //squeezed_axes.set_name("axes");
-  //squeezed_axes.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
-  //squeezed_axes.add_ints(0);
-  //p_node->AddAttribute("axes", squeezed_axes);
-  AttributeProto cast_to;
-  cast_to.set_name("to");
-  cast_to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
-  cast_to.set_i(ONNX_NAMESPACE::TensorProto_DataType_INT32);
-  //cast_to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
-  //cast_to.set_s("INT16");
-  node.AddAttribute("to", cast_to);
+  node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_INT32});
 
   DoShapeInference();
   // check inferred shapes

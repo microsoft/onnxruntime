@@ -18,7 +18,7 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearLeakyRelu_Int8) {
   std::vector<int64_t> dims = {16};
   test.AddInput<int8_t>("X", dims, {0, 16, 17, 18, 19, 90, 91, 127, -128, -110, -108, -100, -16, -17, -18, -1});
   test.AddInput<float>("X_scale", {}, {X_scale});
-  test.AddMissingOptionalInput<int8_t>();  // optional "X_zero_point" using default value here
+  test.AddOptionalInputEdge<int8_t>();  // optional "X_zero_point" using default value here
   test.AddInput<float>("Y_scale", {}, {Y_scale});
   test.AddInput<int8_t>("Y_zero_point", {}, {Y_zero_point});
   test.AddOutput<int8_t>("Y", dims, {-100, -60, -58, -55, -52, 125, 127, 127, -128, -128, -127, -125, -104, -104, -104, -100});
@@ -59,7 +59,7 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearSigmoid_Int8) {
   std::vector<int64_t> dims = {16};
   test.AddInput<int8_t>("X", dims, {0, 16, 17, 18, 19, 90, 91, 127, -128, -110, -108, -100, -16, -17, -18, -1});
   test.AddInput<float>("X_scale", {}, {X_scale});
-  test.AddMissingOptionalInput<int8_t>();  // optional "X_zero_point" using default value here
+  test.AddOptionalInputEdge<int8_t>();  // optional "X_zero_point" using default value here
   test.AddInput<float>("Y_scale", {}, {Y_scale});
   test.AddInput<int8_t>("Y_zero_point", {}, {Y_zero_point});
   test.AddOutput<int8_t>("Y", dims, {8, 33, 35, 36, 38, 112, 112, 126, -110, -105, -104, -101, -17, -19, -20, 6});
@@ -87,6 +87,32 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearSigmoid_UInt8) {
   std::fesetround(FE_TONEAREST);
   test.Run();
   std::fesetround(origin_round_mode);
+}
+
+// NNAPI can only take 0 as Y_zero_point
+TEST(QLinearLookupTableBasedOperatorTests, QLinearSigmoid_UInt8_0_Y_ZP) {
+  auto run_test = [](bool scales_and_zp_are_initializers) {
+    OpTester test("QLinearSigmoid", 1, onnxruntime::kMSDomain);
+    float X_scale = 0.025f;
+    uint8_t X_zero_point = 128;
+    float Y_scale = 1.0f / 256.0f;
+    uint8_t Y_zero_point = 0;
+
+    std::vector<int64_t> dims = {16};
+    test.AddInput<uint8_t>("X", dims, {0, 16, 17, 18, 19, 90, 91, 127, 128, 136, 137, 138, 216, 217, 218, 255});
+    test.AddInput<float>("X_scale", {}, {X_scale}, scales_and_zp_are_initializers);
+    test.AddInput<uint8_t>("X_zero_point", {}, {X_zero_point}, scales_and_zp_are_initializers);
+    test.AddInput<float>("Y_scale", {}, {Y_scale}, scales_and_zp_are_initializers);
+    test.AddInput<uint8_t>("Y_zero_point", {}, {Y_zero_point}, scales_and_zp_are_initializers);
+    test.AddOutput<uint8_t>("Y", dims, {10, 15, 15, 15, 16, 71, 73, 126, 128, 141, 142, 144, 230, 231, 232, 246});
+    auto origin_round_mode = std::fegetround();
+    std::fesetround(FE_TONEAREST);
+    test.Run();
+    std::fesetround(origin_round_mode);
+  };
+
+  run_test(false);
+  run_test(true);
 }
 
 }  // namespace test

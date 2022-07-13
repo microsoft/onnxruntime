@@ -216,8 +216,8 @@ void MultiThreadMultiSessionOnDevice(const LearningModelDevice& device) {
         for (unsigned i_thread = 0; i_thread < NUM_THREADS; ++i_thread) {
             LearningModelSession &model_session = modelSessions[i_thread];
             pool.SubmitWork([&model_session,&ivfs,&max_indices,&max_values,tolerance,i_thread]() {
-                DWORD start_time = GetTickCount();
-                while (((GetTickCount() - start_time) / 1000) < NUM_SECONDS) {
+                ULONGLONG start_time = GetTickCount64();
+                while (((GetTickCount64() - start_time) / 1000) < NUM_SECONDS) {
                     auto j = i_thread % ivfs.size();
                     auto input = ivfs[j];
                     auto expected_index = max_indices[j];
@@ -282,8 +282,8 @@ void MultiThreadSingleSessionOnDevice(const LearningModelDevice& device) {
     try {
         for (unsigned i = 0; i < NUM_THREADS; ++i) {
            pool.SubmitWork([&model_session, &ivfs, &max_indices, &max_values, tolerance, i]() {
-                DWORD start_time = GetTickCount();
-                while (((GetTickCount() - start_time) / 1000) < NUM_SECONDS) {
+                ULONGLONG start_time = GetTickCount64();
+                while (((GetTickCount64() - start_time) / 1000) < NUM_SECONDS) {
                     auto j = i % ivfs.size();
                     auto input = ivfs[j];
                     auto expected_index = max_indices[j];

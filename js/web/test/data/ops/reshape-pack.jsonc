@@ -1,0 +1,141 @@
+[
+  {
+    "name": "Reshape with '0' and '-1' in the shape tensor input",
+    "operator": "Reshape",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "2D reshape [4, 4]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+            "dims": [4, 4],
+            "type": "float32"
+          },
+          {
+            "data": [2, 8],
+            "dims": [2],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+            "dims": [2, 8],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "3D reshape [1, 2, 4]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [1, 2, 4],
+            "type": "float32"
+          },
+          {
+            "data": [1, 4, 2],
+            "dims": [3],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [1, 4, 2],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "3D reshape [1, 4, 4]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+            "dims": [1, 4, 4],
+            "type": "float32"
+          },
+          {
+            "data": [1, 2, 8],
+            "dims": [3],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+            "dims": [1, 2, 8],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "3D reshape [4, 1, 2]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [4, 1, 2],
+            "type": "float32"
+          },
+          {
+            "data": [2, 2, 2],
+            "dims": [3],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [2, 2, 2],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "4D reshape [1, 4, 1, 2]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [1, 4, 1, 2],
+            "type": "float32"
+          },
+          {
+            "data": [1, 2, 2, 2],
+            "dims": [4],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [1, 2, 2, 2],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "4D reshape [4, 1, 1, 2]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [4, 1, 1, 2],
+            "type": "float32"
+          },
+          {
+            "data": [2, 2, 1, 2],
+            "dims": [4],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [2, 2, 1, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

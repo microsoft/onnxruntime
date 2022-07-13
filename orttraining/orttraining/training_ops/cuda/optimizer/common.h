@@ -9,11 +9,11 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-Status CopyIfNotSameBuffer(const Tensor& source_tensor, Tensor& target_tensor) {
+Status CopyIfNotSameBuffer(cudaStream_t stream, const Tensor& source_tensor, Tensor& target_tensor) {
   const T* source = source_tensor.template Data<T>();
   T* target = target_tensor.template MutableData<T>();
   if (target != source) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, source_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, source_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice, stream));
   }
   return Status::OK();
 }

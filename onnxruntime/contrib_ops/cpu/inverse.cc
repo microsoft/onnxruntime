@@ -77,8 +77,8 @@ Status Inverse::Compute(OpKernelContext* ctx) const {
   }
 
   std::function<void(ptrdiff_t)> fn = [elem_type, input, output, rows, cols](ptrdiff_t batch_num) {
-    utils::MLTypeCallDispatcher<ComputeImpl, float, double, MLFloat16> t_disp(elem_type);
-    t_disp.Invoke(input, output, batch_num, rows, cols);
+    utils::MLTypeCallDispatcher<float, double, MLFloat16> t_disp(elem_type);
+    t_disp.Invoke<ComputeImpl>(input, output, batch_num, rows, cols);
   };
 
   concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(), num_batches, std::move(fn), 0);

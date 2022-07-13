@@ -20,9 +20,10 @@ size_t GetAttentionWorkspaceSize(
 
 bool LaunchAttentionKernel(
     const cudaDeviceProp& prop,                   // Device Properties
+    cudaStream_t stream,                          // cuda stream
     const void* input,                            // Input tensor
     const int* mask_index,                        // Attention mask raw data or index (end position of each sequence, or end positions and start positions). NULL means no mask.
-    const std::vector<int64_t>* mask_index_dims,  // Mask index shape
+    gsl::span<const int64_t> mask_index_dims,     // Mask index shape
     void* output,                                 // Output tensor
     int batch_size,                               // Batch size (B)
     int sequence_length,                          // Sequence length (S)
@@ -34,42 +35,75 @@ bool LaunchAttentionKernel(
     bool is_unidirectional,                       // Whether there is unidirecitonal mask.
     int past_sequence_length,                     // Sequence length in past state
     const void* past,                             // Past state input
+    const void* extra_add_qk,                     // Additional Add
     void* present                                 // Present state output
 );
 
-cublasStatus_t inline CublasGemmStridedBatched(
-    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
-    int m, int n, int k, const float alpha,
-    const float* A, int lda, long long int strideA, const float* B, int ldb, long long int strideB,
-    const float beta, float* C, int ldc, long long int strideC, int batchCount) {
-  return cublasSgemmStridedBatched(
-      handle, transa, transb, m, n, k, &alpha, A, lda, strideA, B, ldb, strideB, &beta, C, ldc, strideC, batchCount);
-}
-
-cublasStatus_t inline CublasGemmStridedBatched(
-    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
-    int m, int n, int k, const half alpha,
-    const half* A, int lda, long long int strideA, const half* B, int ldb, long long int strideB,
-    const half beta, half* C, int ldc, long long int strideC, int batchCount) {
-  return cublasHgemmStridedBatched(
-      handle, transa, transb, m, n, k, &alpha, A, lda, strideA, B, ldb, strideB, &beta, C, ldc, strideC, batchCount);
-}
+bool LaunchDecoderAttentionKernel(
+    const cudaDeviceProp& prop,                   // Device Properties
+    cudaStream_t stream,                          // Cuda stream
+    cublasHandle_t& cublas,                       // Cublas handle
+    const size_t element_size,                    // Element size of input tensor
+    const int batch_size,                         // Batch size (B)
+    const int sequence_length,                    // Sequence length (S)
+    const int kv_sequence_length,                 // Key/Value/Cache sequence length
+    const int num_heads,                          // Number of attention heads (N)
+    const int head_size,                          // Hidden layer size per head (H)
+    const bool static_kv,                         // Whether cross attention or not
+    const bool use_past,                          // Whether use cache or not
+    const bool has_layer_state,                   // Whether output cache or not
+    const bool has_key_padding_mask,              // Whether use key_padding_mask or not
+    const void* gemm_query_buffer,                // Query buffer
+    const void* gemm_kv_buffer,                   // Key and value buffer
+    const bool* key_padding_mask,                 // Key padding mask
+    const void* key_cache,                        // Input key cache
+    const void* value_cache,                      // Input value cache
+    void* qkv_buffer,                             // Temporary buffer
+    void* workspace_buffer,                       // Temporary buffer
+    void* output,                                 // Output tensor
+    void* new_key_cache,                          // New_key_cache tensor
+    void* new_value_cache                         // New_value_cache tensor
+);
 
 bool LaunchTransCtx(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const float* input, float* output);
+                    const int max_threads_per_block, const bool reversed_bs, const float* input, float* output);
 
 bool LaunchTransCtx(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const half* input, half* output);
+                    const int max_threads_per_block, const bool reversed_bs, const half* input, half* output);
 
-bool LaunchTransQkv(cudaStream_t stream,
+bool LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const float* input, float* output);
+                    const int max_threads_per_block, const bool reversed_bs, const float* input, float* output);
 
-bool LaunchTransQkv(cudaStream_t stream,
+bool LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const half* input, half* output);
+                    const int max_threads_per_block, const bool reversed_bs, const half* input, half* output);
+
+bool LaunchConcatTensorToTensor(cudaStream_t stream,
+                                const int all_sequence_length,
+                                const int sequence_length,
+                                const int batch_size,
+                                const int head_size,
+                                const int num_heads,
+                                const int max_threads_per_block,
+                                const int matrix_num,
+                                const float* tensor_in,
+                                const float* tensor_add,
+                                float* tensor_out);
+
+bool LaunchConcatTensorToTensor(cudaStream_t stream,
+                                const int all_sequence_length,
+                                const int sequence_length,
+                                const int batch_size,
+                                const int head_size,
+                                const int num_heads,
+                                const int max_threads_per_block,
+                                const int matrix_num,
+                                const half* tensor_in,
+                                const half* tensor_add,
+                                half* tensor_out);
 
 bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const int all_sequence_length,
@@ -77,6 +111,7 @@ bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const int batch_size,
                                const int head_size,
                                const int num_heads,
+                               const int max_threads_per_block,
                                const float* past,
                                const float* k_v,
                                float* present);
@@ -87,6 +122,7 @@ bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const int batch_size,
                                const int head_size,
                                const int num_heads,
+                               const int max_threads_per_block,
                                const half* past,
                                const half* k_v,
                                half* present);

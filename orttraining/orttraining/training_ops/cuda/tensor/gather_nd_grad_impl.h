@@ -2,13 +2,16 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/providers/cuda/shared_inc/cuda_utils.h"
+
+#include <stdint.h>
+#include <cuda_runtime.h>
 
 namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
 void GatherNDGradImpl(
+    cudaStream_t stream,
     const size_t num_slices,
     const void* update_data,
     void* output_data,

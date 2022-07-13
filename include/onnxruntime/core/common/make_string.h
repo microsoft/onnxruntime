@@ -19,10 +19,12 @@
 
 #include <locale>
 #include <sstream>
+#include <type_traits>
 
 namespace onnxruntime {
 
 namespace detail {
+
 inline void MakeStringImpl(std::ostringstream& /*ss*/) noexcept {
 }
 
@@ -36,6 +38,39 @@ inline void MakeStringImpl(std::ostringstream& ss, const T& t, const Args&... ar
   MakeStringImpl(ss, t);
   MakeStringImpl(ss, args...);
 }
+
+// see MakeString comments for explanation of why this is necessary
+template <typename... Args>
+inline std::string MakeStringImpl(const Args&... args) noexcept {
+  std::ostringstream ss;
+  MakeStringImpl(ss, args...);
+  return ss.str();
+}
+
+//
+// Infrastructure to convert char[n] to char* to reduce binary size
+//
+
+// default is to leave the type as is
+template <class T>
+struct if_char_array_make_ptr {
+  using type = T;
+};
+
+// specialization that matches an array reference, which is what the char array from a string literal
+// used in a call to MakeString will be.
+// if the type is a char[n] array we 'decay' it to a char* so that the usages can be folded.
+template <class T, size_t N>
+struct if_char_array_make_ptr<T (&)[N]> {
+  // remove a single extent (T[x] -> T, but T[x][y] -> T[y]) so we only match char[x],
+  // and get the type name without the 'const' so both 'const char (&)[n]' and 'char (&)[n]' are matched.
+  using element_type = typename std::remove_const<typename std::remove_extent<T>::type>::type;
+  using type = typename std::conditional<std::is_same<char, element_type>::value, T*, T (&)[N]>::type;
+};
+
+// helper to make usage simpler in MakeString
+template <class T>
+using if_char_array_make_ptr_t = typename if_char_array_make_ptr<T>::type;
 }  // namespace detail
 
 /**
@@ -44,9 +79,18 @@ inline void MakeStringImpl(std::ostringstream& ss, const T& t, const Args&... ar
  */
 template <typename... Args>
 std::string MakeString(const Args&... args) {
-  std::ostringstream ss;
-  detail::MakeStringImpl(ss, args...);
-  return ss.str();
+  // We need to update the types from the MakeString template instantiation to decay any char[n] to char*.
+  //   e.g. MakeString("in", "out") goes from MakeString<char[2], char[3]> to MakeStringImpl<char*, char*>
+  //        so that MakeString("out", "in") will also match MakeStringImpl<char*, char*> instead of requiring
+  //        MakeStringImpl<char[3], char[2]>.
+  //
+  // We have to do the type processing before any actual work, so this function purely implements the type processing.
+  // If we do not do it this way we do not get the full binary size reduction.
+  //
+  // See https://stackoverflow.com/a/29418212/684911 for overall details of the approach, but note it does not cover
+  // the need to do the type processing as a separate step.
+
+  return detail::MakeStringImpl(detail::if_char_array_make_ptr_t<Args const&>(args)...);
 }
 
 /**

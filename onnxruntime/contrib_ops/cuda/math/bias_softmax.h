@@ -13,6 +13,7 @@ namespace cuda {
 template <typename T>
 struct DispatchBiasSoftmaxForward {
   void operator()(
+      cudaStream_t stream,
       Tensor* output,
       const Tensor* input,
       const Tensor* input_bias,
@@ -24,7 +25,8 @@ struct DispatchBiasSoftmaxForward {
 
 template <typename T>
 struct DispatchBiasSoftMaxForwardViaDnnLibrary {
-  void operator()(
+  Status operator()(
+      cudaStream_t stream,
       cudnnHandle_t cudaDnnHandle,
       int element_count,
       int batch_count,

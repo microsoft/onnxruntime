@@ -29,6 +29,8 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
     STOP_GRADIENT_EDGES = {
         {"Not", {0}},
         {"And", {0, 1}},
+        {"BatchNormalization", {3, 4}},
+        {"BatchNormInternal", {3, 4}},
         {"Or", {0, 1}},
         {"Xor", {0, 1}},
         {"Equal", {0, 1}},
@@ -47,11 +49,11 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Size", {0}},
         {"Reshape", {1}},
         {"Expand", {1}},
-        {"TrainableDropout", {1}},
         {"Dropout", {1, 2}},
         {"Slice", {1, 2, 3, 4}},
         {"SparseSoftmaxCrossEntropy", {1, 2}},
         {"SoftmaxCrossEntropyLoss", {1, 2}},
+        {"SoftmaxCrossEntropyLossInternal", {1, 2, 3}},
         {"ConstantOfShape", {0}},
         {"Scatter", {1}},
         {"ScatterElements", {1}},
@@ -66,7 +68,17 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Unsqueeze", {1}},
         {"ReduceSum", {1}},
         {"Split", {1}},
-        {"Clip", {1, 2}}};
+        {"Clip", {1, 2}},
+        {"Pad", {1, 2}},
+        {"Multinomial", {0}},
+        {"RandomNormalLike", {0}},
+        {"RandomUniformLike", {0}},
+        {"EyeLike", {0}}};
+
+static std::unordered_set<std::string> INVERTIBLE_OPS{"LayerNormalization",
+                                                      "Relu"};
+
+static const std::unordered_set<size_t> CAST_STOP_EDGE{0};
 
 class GradientGraphBuilder {
  public:
@@ -89,6 +101,10 @@ class GradientGraphBuilder {
 
   Status Build(const std::unordered_set<std::string>* p_initializer_names_to_preserve = nullptr);
 
+  const std::unordered_set<std::string>& GetNonDifferentiableYNodeArgNames() const {
+    return non_differentiable_y_node_arg_names_;
+  }
+
  private:
   std::unordered_set<const NodeArg*> y_node_args_;
   std::unordered_set<const NodeArg*> x_node_args_;
@@ -96,6 +112,8 @@ class GradientGraphBuilder {
   NodeSet y_nodes_;
   NodeSet x_nodes_;
   NodeSet reachable_nodes_;
+
+  std::unordered_set<std::string> non_differentiable_y_node_arg_names_;
 
   Graph* graph_;
 
@@ -119,22 +137,43 @@ class GradientGraphBuilder {
   // key: name of the gradient, value: num of gradients pending
   std::unordered_map<std::string, int> pending_;
 
+  // Tracks tensors that are stashed in the forward pass for later use in backward pass.
+  std::unordered_set<std::string> stashed_tensors_;
+
+  const std::unordered_set<int64_t> GRAD_ALLOWED_TYPES{
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+      ONNX_NAMESPACE::TensorProto_DataType_DOUBLE,
+      ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16,
+  };
+  const std::unordered_set<size_t>* GetStopGradientEdges(const Node& node) const;
+
   /**
-  Perferms a ReverseBFS on the graph
-  @param nodes Starting nodes for ReverseBFS
+  Performs a BFS on the graph with STOP_GRADIENT_EDGES constrain
+  It will skip traversing over the edges defined in STOP_GRADIENT_EDGES map.
+  The resulting node set contains all the nodes that are differentiable wrt the x_node_args
+  @param Starting nodes arg name for BFS
+  @returns All the nodes visited during BFS
+  */
+  NodeSet BFSWithStopGradient(const std::unordered_set<std::string>& x_node_arg_names) const;
+
+  /**
+  Performs a ReverseBFS on the graph with STOP_GRADIENT_EDGES constrain
+  It will skip traversing over the edges defined in STOP_GRADIENT_EDGES map.
+  The resulting node set contains all the nodes that are differentiable wrt the input nodes
+  @param Starting nodes for ReverseBFS
   @returns All the nodes visited during ReverseBFS
   */
-  NodeSet ReverseBFS(const NodeSet& nodes) const;
+  NodeSet ReverseBFSWithStopGradient(const NodeSet& nodes) const;
 
   /**
   Check if 'x_node_args_' are reachable from 'y_node_args_' for computing the partial derivative
   @param reachable_nodes All the nodes reachable from the 'y_node_args_'
   @returns OK if all 'x_node_args_' are reachable, else an ONNXRUNTIME INVALID_ARGUMENT status
   */
-
   Status CheckNodeArgsReachable() const;
 
-  /** 
+  /**
   Check if node is reachable from the 'y_node_args_'
    **/
   bool IsReachable(const Node* node) const {

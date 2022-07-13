@@ -9,6 +9,22 @@
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
+std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) {
+  return std::make_unique<OpKernelInfo>(info);
+}
+
+const onnxruntime::Node& OpKernel::Node() const {
+  return op_kernel_info_->node();
+}
+
+const onnxruntime::KernelDef& OpKernel::KernelDef() const {
+  return op_kernel_info_->GetKernelDef();
+}
+
+const OrtMemoryInfo& OpKernel::Allocator(int id, OrtMemType mem_type) const {
+  return op_kernel_info_->GetMemoryInfo(id, mem_type);
+}
+
 OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
                                  _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger)
     : execution_frame_(frame), kernel_(kernel), threadpool_(threadpool), logger_(&logger) {
@@ -19,6 +35,9 @@ OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKe
   node_implicit_input_start_index_ = node_input_start_index_ + InputCount();
   node_output_start_index_ = node_implicit_input_start_index_ + ImplicitInputCount();
 }
+
+OpKernelContext::OpKernelContext(concurrency::ThreadPool* threadpool,
+                                 const logging::Logger& logger) : threadpool_(threadpool), logger_(&logger) {}
 
 Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
   auto p_ml_value = OutputMLValue(index, shape);
@@ -33,10 +52,12 @@ Tensor* OpKernelContext::Output(int index, const std::initializer_list<int64_t>&
   return Output(index, TensorShape(shape));
 }
 
-SparseTensor* OpKernelContext::Output(int index, size_t nnz, const TensorShape& shape) {
-  auto p_ml_value = OutputMLValue(index, shape, nnz);
+#if !defined(DISABLE_SPARSE_TENSORS)
+SparseTensor* OpKernelContext::OutputSparse(int index, const TensorShape& shape) {
+  auto p_ml_value = OutputMLValue(index, shape);
   return p_ml_value ? p_ml_value->GetMutable<SparseTensor>() : nullptr;
 }
+#endif
 
 bool OpKernelContext::TryGetInferredInputShape(int index, TensorShape& shape) const {
   return execution_frame_->TryGetInferredShape(GetInputArgIndex(index), shape);
@@ -46,7 +67,7 @@ bool OpKernelContext::TryGetInferredOutputShape(int index, TensorShape& shape) c
   return execution_frame_->TryGetInferredShape(GetOutputArgIndex(index), shape);
 }
 
-OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape, size_t nnz) {
+OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape) {
   if (index < 0 || index >= OutputCount())
     return nullptr;
 
@@ -56,7 +77,7 @@ OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape, si
   //I believe it's a false alarm.
 
   OrtValue* p_ml_value = nullptr;
-  Status status = execution_frame_->GetOrCreateNodeOutputMLValue(GetOutputArgIndex(index), &shape, p_ml_value, nnz);
+  Status status = execution_frame_->GetOrCreateNodeOutputMLValue(index, GetOutputArgIndex(index), &shape, p_ml_value, kernel_->Node());
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   return p_ml_value;
 }
@@ -73,6 +94,18 @@ Status OpKernelContext::GetTempSpaceAllocator(AllocatorPtr* output) const {
   *output = execution_frame_->GetAllocator(kernel_->Allocator(0, OrtMemTypeDefault));
   if (!*output)
     return Status(common::ONNXRUNTIME, common::FAIL, "TempSpace allocator not found");
+  return Status::OK();
+}
+
+Status OpKernelContext::GetTempSpaceCPUAllocator(AllocatorPtr* output) const {
+  // While looking up the allocator from SessionState
+  // (which is called via ExecutionFrame), the allocator lookup
+  // logic doesn't key on OrtAllocatorType, so any OrtAllocatorType
+  // is good here.
+  *output = execution_frame_->GetAllocator(
+      OrtMemoryInfo(CPU, OrtAllocatorType::OrtArenaAllocator));
+  if (!*output)
+    return Status(common::ONNXRUNTIME, common::FAIL, "CPU allocator not found");
   return Status::OK();
 }
 
@@ -118,7 +151,7 @@ Fence_t OpKernelContext::OutputFence(int index) const {
 OrtValue* OpKernelContext::GetOrCreateOutputMLValue(int index) {
   auto output_arg_index = GetOutputArgIndex(index);
   OrtValue* value = nullptr;
-  auto status = execution_frame_->GetOrCreateNodeOutputMLValue(output_arg_index, nullptr, value);
+  auto status = execution_frame_->GetOrCreateNodeOutputMLValue(index, output_arg_index, nullptr, value, kernel_->Node());
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   return value;
 }
@@ -174,5 +207,18 @@ OrtValue* OpKernelContext::GetOutputMLValue(int index) {
   auto output_arg_index = GetOutputArgIndex(index);
   return execution_frame_->GetMutableNodeInputOrOutputMLValue(output_arg_index);
 }
+
+#ifdef ENABLE_ATEN
+Status OpKernelContext::SetOutputMLValue(int index, const OrtValue& ort_value) {
+  if (index < 0 || index >= OutputCount()) {
+    return Status(common::ONNXRUNTIME, common::FAIL,
+                  "Index out of range. " + std::to_string(index) +
+                      " was specified, but " + "range is [0, " + std::to_string(OutputCount()) + ")");
+  }
+
+  auto output_arg_index = GetOutputArgIndex(index);
+  return execution_frame_->SetOutputMLValue(output_arg_index, ort_value);
+}
+#endif
 
 }  // namespace onnxruntime

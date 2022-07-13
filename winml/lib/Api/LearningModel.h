@@ -26,7 +26,8 @@ struct LearningModel : LearningModelT<LearningModel> {
       const winml::ILearningModelOperatorProvider operator_provider);
 
   LearningModel(
-      const std::string& path,
+      _winml::IEngineFactory* engine_factory,
+      _winml::IModel* model,
       const winml::ILearningModelOperatorProvider operator_provider);
 
   /* LearningModel properties (MachineLearningContract 1). */
@@ -53,6 +54,8 @@ struct LearningModel : LearningModelT<LearningModel> {
 
   wfc::IVectorView<winml::ILearningModelFeatureDescriptor>
   OutputFeatures();
+
+  void SetName(const hstring& name);
 
   /* IClosable methods. */
   void Close();
@@ -101,6 +104,13 @@ struct LearningModel : LearningModelT<LearningModel> {
   _winml::IModel* DetachModel();
   _winml::IModel* CloneModel();
   _winml::IEngineFactory* GetEngineFactory();
+  void SaveToFile(const hstring& file_name);
+  void JoinModel(
+      winml::LearningModel other,
+      const std::unordered_map<std::string, std::string>& linkages,
+      bool promote_unlinked_outputs,
+      bool close_model_on_join,
+      const winrt::hstring& join_node_prefix);
 
  private:
   com_ptr<_winml::IEngineFactory> engine_factory_;

@@ -1,0 +1,13 @@
+module: ONNX Runtime Objective-C API
+author: ONNX Runtime Authors
+author_url: https://www.onnxruntime.ai
+github_url: https://github.com/microsoft/onnxruntime
+
+objc: true
+umbrella_header: ../include/onnxruntime.h
+framework_root: ..
+
+readme: ./docs.readme.md
+
+hide_documentation_coverage: true
+undocumented_text: ""

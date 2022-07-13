@@ -16,7 +16,7 @@ namespace cuda {
       9,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .MayInplace(0, 0)                                       \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Shrink<T>);
@@ -33,7 +33,7 @@ Status Shrink<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const {
   Tensor* Y = p_op_kernel_context->Output(0, x_shape);
   auto* y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
-  ShrinkImpl<CudaT>(x_data, bias_, lambd_, y_data, x_size);
+  ShrinkImpl<CudaT>(Stream(), x_data, bias_, lambd_, y_data, x_size);
 
   return Status::OK();
 }

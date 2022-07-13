@@ -5,8 +5,7 @@
 extern "C" {
 #endif
 
-OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
-
+ORT_EXPORT OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
 
 #ifdef __cplusplus
 }

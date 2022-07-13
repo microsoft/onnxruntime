@@ -35,7 +35,10 @@ class Profiler;
 #define WINML_TLM_RUNTIME_ERROR_VERSION 0
 #define WINML_TLM_RUNTIME_PERF_VERSION 0
 #define WINML_TLM_NATIVE_API_INTRAOP_THREADS_VERSION 0
+#define WINML_TLM_NATIVE_API_INTRAOP_THREAD_SPINNING_VERSION 0
+#define WINML_TLM_DEVICE_KIND_VERSION 0
 #define WINML_TLM_NAMED_DIMENSION_OVERRIDE_VERSION 0
+#define WINML_TLM_EXPERIMENTAL_API_VERSION 0
 
 #define WinMLTraceLoggingWrite(hProvider, EventName, ...)                \
   TraceLoggingWrite(hProvider,                                           \
@@ -82,8 +85,8 @@ class WinMLTelemetryHelper {
     TraceLoggingUnregister(provider_);
   }
 
+  void LogApiUsage(const char* name);
   void LogWinMLShutDown();
-  void LogWinMLSessionCreated();
   void LogWinMLSuspended();
   void LogRuntimeError(HRESULT hr, std::string message, PCSTR file, PCSTR function, int line);
   void LogRuntimeError(HRESULT hr, PCSTR message, PCSTR file, PCSTR function, int line);
@@ -100,9 +103,13 @@ class WinMLTelemetryHelper {
       uint32_t default_attribute_count);
   void SetIntraOpNumThreadsOverride(
       uint32_t num_threads);
+  void SetIntraOpThreadSpinning(
+      bool allow_spinning);
   void SetNamedDimensionOverride(
       winrt::hstring name,
       uint32_t value);
+  void SetLearningModelDeviceKind(
+      int device_kind);
   void EndRuntimeSession() { ++runtime_session_id_; };
   bool IsMeasureSampled();
   int GetRuntimeSessionId() { return runtime_session_id_; }

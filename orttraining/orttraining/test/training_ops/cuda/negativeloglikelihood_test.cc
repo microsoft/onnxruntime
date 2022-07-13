@@ -14,21 +14,21 @@ constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
 constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
 #endif
 
-static void TestNegativeLogLikelihoodLoss(const std::vector<int64_t>* X_dims,
+static void TestNegativeLogLikelihoodLoss(CompareOpTester& test, const std::vector<int64_t>* X_dims,
                                           const std::vector<int64_t>* index_dims,
-                                          const std::vector<int64_t>* weight_dims,
-                                          const std::vector<int64_t>* Y_dims,
-                                          const std::string& reduction,
-                                          const std::int64_t ignore_index = -1) {
-  CompareOpTester test("NegativeLogLikelihoodLoss", 12, onnxruntime::kOnnxDomain);
+                                          const std::vector<int64_t>* weight_dims, const std::vector<int64_t>* Y_dims,
+                                          const std::string& reduction, const std::int64_t ignore_index,
+                                          const bool is_internal_op) {
   test.AddAttribute("reduction", reduction);
-  test.AddAttribute("ignore_index", ignore_index);
+  if (!is_internal_op) {
+    test.AddAttribute("ignore_index", ignore_index);
+  }
 
   // create rand inputs
   RandomValueGenerator random{};
   std::vector<float> X_data = random.Uniform<float>(*X_dims, -200.0f, 200.0f);
   std::vector<int64_t> index_data = random.Uniform<int64_t>(*index_dims, 0, (*X_dims)[1]);
-  //Add one data point that has ignore_index.
+  // Add one data point that has ignore_index.
   if (index_data.size() > 0) {
     index_data[0] = ignore_index;
   }
@@ -41,11 +41,33 @@ static void TestNegativeLogLikelihoodLoss(const std::vector<int64_t>* X_dims,
     test.AddInput<float>("weight", *weight_dims, weight_data);
   }
 
-  std::vector<float> Y_data = FillZeros<float>(*Y_dims);
+  if (is_internal_op && ignore_index != -1) {
+    test.AddInput<int64_t>("ignore_index", {}, &ignore_index, 1);
+  }
 
+  std::vector<float> Y_data = FillZeros<float>(*Y_dims);
   test.AddOutput<float>("output", *Y_dims, Y_data);
 
-  test.CompareWithCPU(kGpuExecutionProvider);
+  std::unordered_map<std::string, int> extra_domain_to_version;
+  if (is_internal_op) {
+    extra_domain_to_version[onnxruntime::kOnnxDomain] = 12;
+  }
+
+  test.CompareWithCPU(kGpuExecutionProvider, 1e-4, 1e-4, false, extra_domain_to_version);
+}
+
+static void TestNegativeLogLikelihoodLoss(const std::vector<int64_t>* X_dims, const std::vector<int64_t>* index_dims,
+                                          const std::vector<int64_t>* weight_dims, const std::vector<int64_t>* Y_dims,
+                                          const std::string& reduction, const std::int64_t ignore_index = -1) {
+  CompareOpTester test("NegativeLogLikelihoodLoss", 12, onnxruntime::kOnnxDomain);
+  TestNegativeLogLikelihoodLoss(test, X_dims, index_dims, weight_dims, Y_dims, reduction, ignore_index, false);
+
+  // Can we add a empty optional input before a non-empty input?
+  if (weight_dims || ignore_index == -1) {
+    CompareOpTester test_internal("NegativeLogLikelihoodLossInternal", 1, onnxruntime::kMSDomain);
+    TestNegativeLogLikelihoodLoss(test_internal, X_dims, index_dims, weight_dims, Y_dims, reduction, ignore_index,
+                                  true);
+  }
 }
 
 TEST(CudaKernelTest, NegativeLogLikelihoodLoss_TinySizeTensor) {

@@ -6,7 +6,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-bool LaunchEmbedLayerNormKernel(void* output,                     // output tensor
+bool LaunchEmbedLayerNormKernel(cudaStream_t stream,
+                                void* output,                     // output tensor
                                 void* mask_index,                 // output mask index
                                 const int* input_ids,             // input word IDs
                                 const int* segment_ids,           // input segment IDs
@@ -20,7 +21,9 @@ bool LaunchEmbedLayerNormKernel(void* output,                     // output tens
                                 const int hidden_size,            // hidden size (that is head_size * num_heads)
                                 int batch_size,                   // batch size
                                 int sequence_length,              // sequence length
-                                const size_t element_size);       // size of element in output tensor. 2 for half, 4 for float.
+                                const size_t element_size,        // size of element in output tensor. 2 for half, 4 for float.
+                                void* embedding_sum,              // Optional output of sum of embeddings
+                                const int* position_ids);         // Optional input of position ids
 
 }  // namespace cuda
 }  // namespace contrib

@@ -5,6 +5,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/compare_provider_test_utils.h"
 #include "core/providers/cpu/tensor/transpose.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 namespace test {
@@ -137,11 +138,7 @@ TEST(TransposeOpTest, TwoDim_int16) {
       2, 5,
       3, 6};
 
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, true, false);
-#else
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
-#endif
 }
 
 TEST(TransposeOpTest, TwoDim_mlfloat16) {
@@ -152,9 +149,10 @@ TEST(TransposeOpTest, TwoDim_mlfloat16) {
 
   std::vector<int64_t> perm = {1, 0};
   std::vector<int64_t> expected_shape({3, 2});
-  std::initializer_list<MLFloat16> expected_vals = {MLFloat16(1), MLFloat16(4),
-                                                    MLFloat16(2), MLFloat16(5),
-                                                    MLFloat16(3), MLFloat16(6)};
+  std::initializer_list<MLFloat16> expected_vals =
+      {MLFloat16{static_cast<uint16_t>(1)}, MLFloat16{static_cast<uint16_t>(4)},
+       MLFloat16{static_cast<uint16_t>(2)}, MLFloat16{static_cast<uint16_t>(5)},
+       MLFloat16{static_cast<uint16_t>(3)}, MLFloat16{static_cast<uint16_t>(6)}};
 
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
 }
@@ -190,7 +188,7 @@ TEST(TransposeOpTest, TwoDimStr) {
 }
 
 // Test 3 dimensional transpose, with permutation attribute specified
-TEST(TransposeOpTest, ThreeDim) {
+TEST(TransposeOpTest, Transpose021) {
   std::vector<int64_t> input_shape({4, 2, 3});
   std::vector<float> input_vals = {
       1.0f, 2.0f, 3.0f,
@@ -227,8 +225,38 @@ TEST(TransposeOpTest, ThreeDim) {
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  //TensorRT: illegal error
 }
 
+TEST(TransposeOpTest, Transpose120) {
+  std::vector<int64_t> input_shape({4, 2, 3});
+  std::vector<float> input_vals = {
+      1.0f, 2.0f, 3.0f,
+      4.0f, 5.0f, 6.0f,
+
+      1.1f, 2.1f, 3.1f,
+      4.1f, 5.1f, 6.1f,
+
+      1.2f, 2.2f, 3.2f,
+      4.2f, 5.2f, 6.2f,
+
+      1.3f, 2.3f, 3.3f,
+      4.3f, 5.3f, 6.3f};
+
+  std::vector<int64_t> perm = {1, 2, 0};
+  std::vector<int64_t> expected_shape({2, 3, 4});
+  auto expected_vals = {
+      1.0f, 1.1f, 1.2f, 1.3f,
+      2.0f, 2.1f, 2.2f, 2.3f,
+      3.0f, 3.1f, 3.2f, 3.3f,
+
+      4.0f, 4.1f, 4.2f, 4.3f,
+      5.0f, 5.1f, 5.2f, 5.3f,
+      6.0f, 6.1f, 6.2f, 6.3f
+     };
+
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  //TensorRT: illegal error
+}
+
 // test when the suffix size is > 1 (last dimension is not moved)
-TEST(TransposeOpTest, ThreeDimSuffix) {
+TEST(TransposeOpTest, Transpose102) {
   std::vector<int64_t> input_shape({4, 2, 3});
   std::vector<float> input_vals = {
       1.0f, 2.0f, 3.0f,
@@ -345,7 +373,7 @@ static void NumericNCHW2NHWC() {
       3, 7, 11,
       4, 8, 12};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false, false);
 }
 TEST(TransposeOpTest, NCHW2NHWC) {
   NumericNCHW2NHWC<int8_t>();
@@ -403,7 +431,7 @@ static void NumericNHWC2NCHW() {
       10, 12,
       14, 16};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false, false);
 }
 
 TEST(TransposeOpTest, NHWC2NCHW) {
@@ -559,9 +587,9 @@ TEST(TransposeOpTest, DoTransposeEltWise) {
                                        13.0f, 15.0f, 14.0f, 16.0f,
                                        17.0f, 17.0f};
 
-  DoTransposeEltWise(input_shape.size(), input_shape, 16,
-                     stride, (uint8_t*)input_vals_end.data(), (uint8_t*)target.data(),
-                     sizeof(float));
+  ASSERT_STATUS_OK(DoTransposeEltWise(input_shape.size(), input_shape, 16,
+                                      stride, (uint8_t*)input_vals_end.data(), (uint8_t*)target.data(),
+                                      sizeof(float)));
   for (size_t i = 0; i < input_vals_end.size(); ++i) {
     ASSERT_TRUE(target[i] == expected_vals3[i]);
   }
@@ -592,26 +620,34 @@ static void TestTranspose(
   test.CompareWithCPU(kGpuExecutionProvider, error_tolerance);
 }
 
-TEST(TransposeOpTest, Transpose0213) {
+TEST(TransposeOpTest, Transpose0213) {  // Will trigger Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim()
   const std::vector<int64_t> X_dims{64, 128, 16, 64};
   const std::vector<int64_t> perm{0, 2, 1, 3};
   const std::vector<int64_t> Y_dims{64, 16, 128, 64};
   TestTranspose(perm, X_dims, Y_dims);
 }
 
-TEST(TransposeOpTest, Transpose0231) {
+TEST(TransposeOpTest, Transpose0213_V2) {  // Will trigger Transpose4DParallelizeOneElementPerThread()
+  const std::vector<int64_t> X_dims{64, 128, 64, 2};
+  const std::vector<int64_t> perm{0, 2, 1, 3};
+  const std::vector<int64_t> Y_dims{64, 64, 128, 2};
+  TestTranspose(perm, X_dims, Y_dims);
+}
+
+TEST(TransposeOpTest, Transpose0231) {  // Will trigger Transpose3DImpl() because of "flattening" of dims 2 and 3 into one dim
   const std::vector<int64_t> X_dims{64, 128, 16, 64};
   const std::vector<int64_t> perm{0, 2, 3, 1};
   const std::vector<int64_t> Y_dims{64, 16, 64, 128};
   TestTranspose(perm, X_dims, Y_dims);
 }
 
-TEST(TransposeOpTest, Transpose0312) {
+TEST(TransposeOpTest, Transpose0312) {  // Will trigger Transpose3DImpl() because of "flattening" of dims 1 and 2 into one dim
   const std::vector<int64_t> X_dims{64, 16, 64, 128};
   const std::vector<int64_t> perm{0, 3, 1, 2};
   const std::vector<int64_t> Y_dims{64, 128, 16, 64};
   TestTranspose(perm, X_dims, Y_dims);
 }
+
 #endif
 
 }  // namespace test

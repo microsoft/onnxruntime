@@ -13,18 +13,17 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
-std::unique_ptr<OpKernel> KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
-                                                              const IExecutionProvider& execution_provider,
-                                                              const SessionState& session_state,
-                                                              const KernelCreateInfo& kernel_create_info) const {
+Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
+                                           const IExecutionProvider& execution_provider,
+                                           SessionState& session_state,
+                                           const KernelCreateInfo& kernel_create_info,
+                                           std::unique_ptr<OpKernel>& out) const {
   OpKernelInfo kernel_info(node, *kernel_create_info.kernel_def, execution_provider,
                            session_state.GetConstantInitializedTensors(),
                            session_state.GetOrtValueNameIdxMap(),
-                           session_state.GetFuncMgr(),
                            session_state.GetDataTransferMgr());
 
-  // OpKernel is abstract base class so can't use make_unique
-  return std::unique_ptr<OpKernel>(kernel_create_info.kernel_create_func(kernel_info));
+  return kernel_create_info.kernel_create_func(session_state.GetMutableFuncMgr(), kernel_info, out);
 }
 
 Status KernelRegistryManager::RegisterKernels(const ExecutionProviders& execution_providers) {
@@ -45,7 +44,7 @@ Status KernelRegistryManager::RegisterKernels(const ExecutionProviders& executio
   return Status::OK();
 }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 void KernelRegistryManager::RegisterKernelRegistry(std::shared_ptr<KernelRegistry> kernel_registry) {
   if (nullptr == kernel_registry) {
     return;
@@ -64,12 +63,6 @@ bool KernelRegistryManager::HasImplementationOf(const KernelRegistryManager& r, 
 
 Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node,
                                                    /*out*/ const KernelCreateInfo** kernel_create_info) const {
-  return SearchKernelRegistry(node, uint64_t(0), kernel_create_info);
-}
-#endif
-
-Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node, uint64_t kernel_def_hash,
-                                                   /*out*/ const KernelCreateInfo** kernel_create_info) const {
   Status status;
 
   auto create_error_message = [&node, &status](const std::string& prefix) {
@@ -86,14 +79,12 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
     return Status(ONNXRUNTIME, FAIL, create_error_message("The node is not placed on any Execution Provider. "));
   }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   for (auto& registry : custom_kernel_registries_) {
-    status = registry->TryFindKernel(node, std::string(), kernel_def_hash, kernel_create_info);
+    status = registry->TryFindKernel(node, std::string(), kernel_create_info);
     if (status.IsOK()) {
       return status;
     }
   }
-#endif
 
   KernelRegistry* p = nullptr;
   auto iter = provider_type_to_registry_.find(ptype);
@@ -102,13 +93,33 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
   }
 
   if (p != nullptr) {
-    status = p->TryFindKernel(node, std::string(), kernel_def_hash, kernel_create_info);
+    status = p->TryFindKernel(node, std::string(), kernel_create_info);
     if (status.IsOK()) {
       return status;
     }
   }
 
   return Status(ONNXRUNTIME, NOT_IMPLEMENTED, create_error_message("Failed to find kernel for "));
+}
+#endif
+
+bool KernelRegistryManager::SearchKernelRegistriesByHash(HashValue kernel_def_hash,
+                                                         const KernelCreateInfo** kernel_create_info) const {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  for (const auto& registry : custom_kernel_registries_) {
+    if (registry->TryFindKernelByHash(kernel_def_hash, kernel_create_info)) {
+      return true;
+    }
+  }
+#endif
+
+  for (const auto& kv : provider_type_to_registry_) {
+    if (kv.second->TryFindKernelByHash(kernel_def_hash, kernel_create_info)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 }  // namespace onnxruntime

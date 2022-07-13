@@ -5,7 +5,7 @@ parameters:
   displayName: "Do a dry-run and do not remove any images"
 - name: CacheHistoryDays
   type: number
-  default: 7
+  default: 4
   displayName: "The length of the cache history in days"
 - name: CacheMinAccessCount
   type: number
@@ -20,11 +20,22 @@ jobs:
 - job: Clean_Build_Docker_Image_Cache
 
   pool:
-    vmImage: 'ubuntu-18.04'
+    vmImage: 'ubuntu-20.04'
 
   timeoutInMinutes: 10
 
   steps:
+  - checkout: self
+    submodules: false
+    fetchDepth: 1
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.9'
+      addToPath: true
+      architecture: 'x64'
+    displayName: "Use Python 3.9"
+
   - task: AzureCLI@2
     inputs:
       azureSubscription: 'AIInfraBuild'
@@ -38,3 +49,4 @@ jobs:
           --log-storage-account-container $(buildcache-log-storage-account-container) \
           --cache-history-days ${{ parameters.CacheHistoryDays }} \
           --cache-min-access-count ${{ parameters.CacheMinAccessCount }}
+    displayName: "Clean image cache"

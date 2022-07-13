@@ -39,6 +39,7 @@ __global__ void _UnaryElementWise(
 
 template <typename InT, typename OutT, typename FuncT>
 void UnaryElementWiseImpl(
+    cudaStream_t stream,
     const InT* input_data,
     OutT* output_data,
     const FuncT& func,
@@ -49,7 +50,7 @@ void UnaryElementWiseImpl(
   int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   _UnaryElementWise<InT, OutT, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
-      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           input_data,
           output_data,
           func,

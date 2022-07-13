@@ -14,7 +14,7 @@ class CpuTensorizer {
   static HRESULT TensorizeData(
       _In_ ImageTensorChannelType formatFrom,
       _In_ ImageTensorChannelType formatTo,
-      _In_ ImageNominalPixelRange pixelRange,
+      _In_ winml::LearningModelPixelRange pixelRange,
       _In_ BYTE* pBuffer,
       _In_ UINT32 bufferWidth,
       _In_ const wgi::BitmapBounds& inputBounds,

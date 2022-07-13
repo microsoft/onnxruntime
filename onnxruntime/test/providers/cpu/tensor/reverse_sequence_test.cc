@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -114,7 +116,7 @@ TEST(ReverseSequenceTest, InvalidInput) {
       test.AddInput<int64_t>("input", input_shape, input);
       test.AddInput<int64_t>("sequence_lens", {batch_size}, sequence_lens);
       test.AddOutput<int64_t>("Y", input_shape, expected_output);
-      test.Run(test::OpTester::ExpectResult::kExpectFailure, err_msg);
+      test.Run(test::OpTester::ExpectResult::kExpectFailure, err_msg, {kTensorrtExecutionProvider});  // TensorRT engine build error
     };
 
     check_bad_axis(2, 1, {1, seq_size, batch_size}, "Invalid batch_axis of 2. Must be 0 or 1");
@@ -140,8 +142,39 @@ TEST(ReverseSequenceTest, InvalidInput) {
     test.AddInput<int64_t>("sequence_lens", {3}, sequence_lens);
     test.AddOutput<int64_t>("Y", {2, 4, 1}, expected_output);
     test.Run(test::OpTester::ExpectResult::kExpectFailure,
-             "sequence_lens shape must be {batch_size}. Got:{3}. batch_size=2");
+             "sequence_lens shape must be {batch_size}. Got:{3}. batch_size=2", {kTensorrtExecutionProvider});  // TensorRT engine build error
   }
+}
+
+TEST(ReverseSequenceTest, BadLength) {
+  auto run_test = [](bool use_negative) {
+    OpTester test("ReverseSequence", 10);
+    std::vector<int64_t> input = {0, 1, 2, 3,
+                                  4, 5, 6, 7};
+
+    std::vector<int64_t> sequence_lens = {4, 3};
+
+    // make sequence_lens invalid for the input
+    sequence_lens[1] = use_negative ? -2 : 6;
+
+    test.AddAttribute("batch_axis", int64_t(0));
+    test.AddAttribute("time_axis", int64_t(1));
+
+    test.AddInput<int64_t>("input", {2, 4, 1}, input);
+    test.AddInput<int64_t>("sequence_lens", {2}, sequence_lens);
+    test.AddOutput<int64_t>("Y", {0}, {});
+
+    // the bad length check is just in the CPU EP
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCpuExecutionProvider());
+    SessionOptions so;
+    // Don't fail early on shape inference so that we can test the op's error handling.
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
+    test.Run(so, OpTester::ExpectResult::kExpectFailure, "Invalid sequence length", {}, nullptr, &eps);
+  };
+
+  run_test(true);
+  run_test(false);
 }
 
 }  // namespace test

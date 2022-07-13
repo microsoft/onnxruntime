@@ -3,7 +3,7 @@ jobs:
   timeoutInMinutes: 180
   workspace:
     clean: all
-  pool: Linux-CPU
+  pool: Linux-CPU-2019
   steps:
   - checkout: self
     clean: true
@@ -36,10 +36,9 @@ jobs:
               --build_shared_lib \
               --parallel \
               --enable_pybind \
-              --use_openmp \
               --enable_onnx_tests \
-              --use_dnnl \
-              --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so
+              --build_java \
+              --use_dnnl
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2

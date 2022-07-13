@@ -10,6 +10,8 @@ using namespace Windows::AI::MachineLearning::Adapter;
 namespace Dml::GraphDescBuilder
 {
 
+    #pragma warning(push)
+    #pragma warning(disable:4702)
     const std::string& GetUniqueNodeName(const onnxruntime::Node& node)
     {
         // The node's name is optional, and it might be re-created with a different index
@@ -24,8 +26,11 @@ namespace Dml::GraphDescBuilder
         }
 
         assert(false);
-        THROW_HR(E_UNEXPECTED);
+        ORT_THROW_HR(E_UNEXPECTED);
+        const onnxruntime::NodeArg* arg = node.OutputDefs()[0];
+        return arg->Name();
     }
+    #pragma warning(pop)
 
     GraphDesc BuildGraphDesc(
         const onnxruntime::OpKernelInfo& kernelInfo,
@@ -33,8 +38,8 @@ namespace Dml::GraphDescBuilder
         const size_t isConstGpuGraphInputCount,
         std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
         const onnxruntime::Graph& graph,
-        const onnxruntime::ConstPointerContainer<std::vector<onnxruntime::NodeArg*>>& fusedNodeInputDefs,
-        const onnxruntime::ConstPointerContainer<std::vector<onnxruntime::NodeArg*>>& fusedNodeOutputDefs,
+        const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
+        const gsl::span<const std::string> fusedNodeOutputArgOriginalNames,
         const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
         IDMLDevice* device,
         const void* executionHandle)
@@ -51,10 +56,9 @@ namespace Dml::GraphDescBuilder
         // Map from Lotus node argument names to input indices of the fused kernel node.
         std::unordered_map<std::string, uint32_t> nameToFusedNodeInputIndex;
 
-        for (size_t inputIndex = 0; inputIndex < fusedNodeInputDefs.size(); ++inputIndex)
+        for (size_t inputIndex = 0; inputIndex < fusedNodeInputArgOriginalNames.size(); ++inputIndex)
         {
-            const onnxruntime::NodeArg* graphInput = graph.GetNodeArg(
-                GraphKernelHelper::GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[inputIndex]->Name()));
+            const onnxruntime::NodeArg* graphInput = graph.GetNodeArg(fusedNodeInputArgOriginalNames[inputIndex]);
 
             if (!graphInput)
             {
@@ -62,7 +66,7 @@ namespace Dml::GraphDescBuilder
                 // which then causes them to have a different name. If that happens we can't figure out how to
                 // correlate inputs to the fused graph index. This likely requires a higher-level fix, but for now
                 // just bail early.
-                THROW_HR(E_UNEXPECTED);
+                ORT_THROW_HR(E_UNEXPECTED);
             }
 
             nameToFusedNodeInputIndex.emplace(graphInput->Name(), gsl::narrow_cast<uint32_t>(inputIndex));
@@ -91,7 +95,12 @@ namespace Dml::GraphDescBuilder
             reuseCommandList = true;
         }
 
-        auto constantCpuGraphInputGetter = [&fusedNodeInputDefs, &transferredInitializerMap](const std::string& argName)
+#ifdef _GAMING_XBOX
+        // #40265989
+        reuseCommandList = false;
+#endif
+
+        auto constantCpuGraphInputGetter = [&transferredInitializerMap](const std::string& argName)
         {
             ComPtr<OnnxTensorWrapper> tensorWrapper;
 
@@ -119,8 +128,12 @@ namespace Dml::GraphDescBuilder
                 // Check whether this specific node requested support for constant CPU inputs
                 if (std::find(requiredConstantCpuInputs.begin(), requiredConstantCpuInputs.end(), inputIndex) != requiredConstantCpuInputs.end())
                 {
-                    const onnxruntime::NodeArg* arg = node.InputDefs()[inputIndex];
-                    tensor = constantCpuGraphInputGetter(arg->Name());
+                    auto inputDefs = node.InputDefs();
+                    if (inputIndex < inputDefs.size())
+                    {
+                        const onnxruntime::NodeArg* arg = inputDefs[inputIndex];
+                        tensor = constantCpuGraphInputGetter(arg->Name());
+                    }
                 }
 
                 return tensor;
@@ -131,31 +144,9 @@ namespace Dml::GraphDescBuilder
                 node,
                 constantCpuNodeInputGetter,
                 executionHandle,
-                &graphNodeInfo
+                /*out*/ &graphNodeInfo
             );
-
-            // Determine the number of valid inputs and outputs of this node.  The graph currently supports opererators
-            // with unused inputs and outputs only at the end of each list.  
-            uint32_t validOpInputCount = 0;
-            uint32_t validOpOutputCount = 0;
-
-            for (uint32_t i = 0; i < graphNodeInfo.kernelInputIndices.size(); ++i)
-            {
-                if (graphNodeInfo.kernelInputIndices[i] != std::numeric_limits<uint32_t>::max())
-                {
-                    assert(i - validOpInputCount == 0);
-                    ++validOpInputCount;
-                }
-            }
-
-            for (uint32_t i = 0; i < graphNodeInfo.kernelOutputIndices.size(); ++i)
-            {
-                if (graphNodeInfo.kernelOutputIndices[i] != std::numeric_limits<uint32_t>::max())
-                {
-                    assert(i - validOpOutputCount == 0);
-                    ++validOpOutputCount;
-                }
-            }
+            ORT_THROW_HR_IF(E_UNEXPECTED, !graphNodeInfo.desc);
 
             uint32_t nodeIndex = gsl::narrow_cast<uint32_t>(graphNodes.size());
             AbstractOperatorDesc opDesc = *graphNodeInfo.desc; // Make a copy
@@ -166,8 +157,13 @@ namespace Dml::GraphDescBuilder
             std::vector<DmlBufferTensorDesc*> outputTensorDescs = opDesc.GetOutputTensors();
 
             // Set connections of the new node
-            for (uint32_t inputIndex = 0; inputIndex < validOpInputCount; ++inputIndex)
+            for (uint32_t inputIndex = 0; inputIndex < graphNodeInfo.kernelInputIndices.size(); ++inputIndex)
             {
+                if (graphNodeInfo.kernelInputIndices[inputIndex] == std::numeric_limits<uint32_t>::max())
+                {
+                    continue;
+                }
+
                 uint32_t kernelInputIndex = graphNodeInfo.kernelInputIndices[inputIndex];
 
                 const onnxruntime::NodeArg* arg = node.InputDefs()[kernelInputIndex];
@@ -175,13 +171,6 @@ namespace Dml::GraphDescBuilder
                 if (arg->Exists())
                 {
                     auto iter = nameToFusedNodeInputIndex.find(arg->Name());
-
-                    // The graph input could be missing the suffix, so try to match without it.
-                    // This is part of a temporary workaround; see comments in GraphKernelHelper::GetFusedNodeArgNameMatchingGraph.
-                    if (iter == nameToFusedNodeInputIndex.end())
-                    {
-                        iter = nameToFusedNodeInputIndex.find(GraphKernelHelper::GetFusedNodeArgNameMatchingGraph(arg->Name()));
-                    }
 
                     if (iter != nameToFusedNodeInputIndex.end())
                     {
@@ -219,8 +208,13 @@ namespace Dml::GraphDescBuilder
             
             // Store the new node for lookup when downstream nodes consume it.
 
-            for (uint32_t outputIndex = 0; outputIndex < validOpOutputCount; ++outputIndex) 
+            for (uint32_t outputIndex = 0; outputIndex < graphNodeInfo.kernelOutputIndices.size(); ++outputIndex) 
             {
+                if (graphNodeInfo.kernelOutputIndices[outputIndex] == std::numeric_limits<uint32_t>::max())
+                {
+                    continue;
+                }
+
                 uint32_t kernelOutputIndex = graphNodeInfo.kernelOutputIndices[outputIndex];
                 const onnxruntime::NodeArg* arg = node.OutputDefs()[kernelOutputIndex];
                 if (arg->Exists())
@@ -232,7 +226,7 @@ namespace Dml::GraphDescBuilder
             DML_OPERATOR_DESC dmlDesc = SchemaHelpers::ConvertOperatorDesc(opDesc, &allocator);
 
             ComPtr<IDMLOperator> op;
-            THROW_IF_FAILED(device->CreateOperator(&dmlDesc, IID_PPV_ARGS(&op)));
+            ORT_THROW_IF_FAILED(device->CreateOperator(&dmlDesc, IID_PPV_ARGS(&op)));
             allocator.Reset();
 
             NodeInfo nodeInfo = {};
@@ -243,11 +237,11 @@ namespace Dml::GraphDescBuilder
         assert(graphNodes.size() == orderedNodeIndices.size());
 
         // Add graph output nodes, which might be in a different order from the encapsulating node
-        for (size_t outputIndex = 0; outputIndex < fusedNodeOutputDefs.size(); ++outputIndex)
+        for (size_t outputIndex = 0; outputIndex < fusedNodeOutputArgOriginalNames.size(); ++outputIndex)
         {
-            const onnxruntime::NodeArg* graphOutput = graph.GetNodeArg(
-                GraphKernelHelper::GetFusedNodeArgNameMatchingGraph(fusedNodeOutputDefs[outputIndex]->Name()));
+            const onnxruntime::NodeArg* graphOutput = graph.GetNodeArg(fusedNodeOutputArgOriginalNames[outputIndex]);
 
+            ORT_THROW_HR_IF_NULL_MSG(E_POINTER, graphOutput, "FusedNode's nodeArgList does not contain one of the nodeArg");
             const auto& outputNodeAndIndex = nameToNodeAndIndexMap.at(graphOutput->Name());
 
             DML_OUTPUT_GRAPH_EDGE_DESC edge = {};

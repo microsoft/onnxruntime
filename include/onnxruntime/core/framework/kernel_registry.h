@@ -6,6 +6,10 @@
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
+
+using KernelCreateMap = std::multimap<std::string, KernelCreateInfo>;
+using KernelDefHashes = std::vector<std::pair<std::string, HashValue>>;
+
 /**
  * Each provider has a KernelRegistry. Often, the KernelRegistry only belongs to that specific provider.
  *
@@ -15,13 +19,13 @@ class KernelRegistry {
   KernelRegistry() = default;
 
   // Register a kernel with kernel definition and function to create the kernel.
-  Status Register(KernelDefBuilder& kernel_def_builder, const KernelCreateFn& kernel_creator) ORT_MUST_USE_RESULT;
+  Status Register(KernelDefBuilder& kernel_def_builder, const KernelCreateFn& kernel_creator);
 
-  Status Register(KernelCreateInfo&& create_info) ORT_MUST_USE_RESULT;
+  Status Register(KernelCreateInfo&& create_info);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  static bool HasImplementationOf(const KernelRegistry& r, const onnxruntime::Node& node,
-                                  onnxruntime::ProviderType exec_provider) {
+  static bool HasImplementationOf(const KernelRegistry& r, const Node& node,
+                                  ProviderType exec_provider) {
     const KernelCreateInfo* info;
     Status st = r.TryFindKernel(node, exec_provider, &info);
     return st.IsOK();
@@ -31,23 +35,25 @@ class KernelRegistry {
   // for its clients unless the factory is managing the lifecycle of the pointer
   // itself.
   // TODO(Task:132) Make usage of unique_ptr/shared_ptr as out param consistent
-  Status TryCreateKernel(const onnxruntime::Node& node, const IExecutionProvider& execution_provider,
+  Status TryCreateKernel(const Node& node, const IExecutionProvider& execution_provider,
                          const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
-                         const OrtValueNameIdxMap& mlvalue_name_idx_map, const FuncManager& funcs_mgr,
+                         const OrtValueNameIdxMap& mlvalue_name_idx_map, FuncManager& funcs_mgr,
                          const DataTransferManager& data_transfer_mgr,
-                         std::unique_ptr<OpKernel>& op_kernel) const ORT_MUST_USE_RESULT;
+                         std::unique_ptr<OpKernel>& op_kernel) const;
 
   // Check if an execution provider can create kernel for a node and return the kernel if so
-  Status TryFindKernel(const onnxruntime::Node& node, onnxruntime::ProviderType exec_provider,
+  Status TryFindKernel(const Node& node, ProviderType exec_provider,
                        const KernelCreateInfo** out) const;
+
+  // Find KernelCreateInfo in instant mode
+  Status TryFindKernel(const std::string& op_name, const std::string& domain, const int& version,
+                       const std::unordered_map<std::string, MLDataType>& type_constraints,
+                       ProviderType exec_provider, const KernelCreateInfo** out) const;
 
 #endif
 
-  // Check if an execution provider can create kernel for a node and return the kernel if so.
-  // Kernel matching is via kernel_def_hash.
-  Status TryFindKernel(const onnxruntime::Node& node, onnxruntime::ProviderType exec_provider,
-                       uint64_t kernel_def_hash,
-                       const KernelCreateInfo** out) const;
+  // Try to find the kernel given a kernel def hash.
+  bool TryFindKernelByHash(HashValue kernel_def_hash, const KernelCreateInfo** out) const;
 
   bool IsEmpty() const { return kernel_creator_fn_map_.empty(); }
 
@@ -57,6 +63,9 @@ class KernelRegistry {
     return kernel_creator_fn_map_;
   }
 #endif
+
+  // Get sorted kernel def key and hash pairs.
+  KernelDefHashes ExportKernelDefHashes() const;
 
  private:
 #if !defined(ORT_MINIMAL_BUILD)
@@ -74,13 +83,14 @@ class KernelRegistry {
   // if this function is called before graph partition, then node.provider is not set.
   // In this case, kernel_def.provider must equal to exec_provider
   // otherwise, kernel_def.provider must equal to node.provider. exec_provider is ignored.
-  static bool VerifyKernelDef(const onnxruntime::Node& node,
+  static bool VerifyKernelDef(const Node& node,
                               const KernelDef& kernel_def,
                               std::string& error_str);
 #endif
 
   static std::string GetMapKey(const std::string& op_name, const std::string& domain, const std::string& provider) {
     std::string key(op_name);
+    // use the kOnnxDomainAlias of 'ai.onnx' instead of kOnnxDomain's empty string
     key.append(1, ' ').append(domain.empty() ? kOnnxDomainAlias : domain).append(1, ' ').append(provider);
     return key;
   }
@@ -91,5 +101,8 @@ class KernelRegistry {
   // Kernel create function map from op name to kernel creation info.
   // key is opname+domain_name+provider_name
   KernelCreateMap kernel_creator_fn_map_;
+
+  // map from kernel def hash to entry in kernel_creator_fn_map_
+  std::unordered_map<HashValue, KernelCreateMap::iterator> kernel_def_hash_lookup_;
 };
 }  // namespace onnxruntime

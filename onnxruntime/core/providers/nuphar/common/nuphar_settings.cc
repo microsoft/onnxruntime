@@ -58,17 +58,10 @@ void SetDefaultOptions(std::map<std::string, std::string>& options) {
   options.insert(std::make_pair(cache_so_name_opt, cache_so_name_default));
 
   std::string parallel_min_workloads_opt(kNupharParallelMinWorkloads);
-#if defined(_OPENMP)
-  // a rough estimate of workloads based on static dimensions for each thread, when using parallel schedule
-  // user may change it to 0 to turn it off,
-  // or use OMP_NUM_THREADS to control TVM thread pool similar to control MKL
-  unsigned int parallel_min_workloads_default = 64;
-#else
   // turn off parallel schedule by default to avoid TVM thread pool confliction with others
   // this is to ensure performance when user runs multiple inference threads, with each runs as single thread
   // if needed, user can override it with settings, and use TVM_NUM_THREADS to control the thread pool
   unsigned int parallel_min_workloads_default = 0;
-#endif
   options.insert(std::make_pair(parallel_min_workloads_opt, std::to_string(parallel_min_workloads_default)));
 }
 

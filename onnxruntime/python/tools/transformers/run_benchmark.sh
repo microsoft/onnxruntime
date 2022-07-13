@@ -5,19 +5,20 @@
 # --------------------------------------------------------------------------
 # This measures the performance of OnnxRuntime, PyTorch and TorchScript on transformer models.
 # Please install PyTorch (see https://pytorch.org/) before running this benchmark. Like the following:
-# GPU:   conda install pytorch torchvision cudatoolkit=10.1 -c pytorch
+# GPU:   conda install pytorch torchvision cudatoolkit=11.0 -c pytorch
 # CPU:   conda install pytorch torchvision cpuonly -c pytorch
 
-# When run_cli=true, this script is self-contained and you need not copy other files to run benchmarks
-#                    it will use onnxruntime-tools package.
-# If run_cli=false, it depends on other python script (*.py) files in this directory.
-run_cli=true
+# When use_package=true, you need not copy other files to run benchmarks except this sh file.
+# Otherwise, it will use python script (*.py) files in this directory.
+use_package=true
 
 # only need once
 run_install=true
 
 # Engines to test.
+# To run ort_trt, you need to build and install the onnxruntime-gpu-tensorrt package on your own
 run_ort=true
+run_ort_trt=false
 run_torch=false
 run_torchscript=true
 run_tensorflow=false
@@ -40,6 +41,10 @@ fi
 # Enable optimizer (use script instead of OnnxRuntime for graph optimization)
 use_optimizer=true
 
+# Manually set layer number as needed(e.g 16)
+force_layer_number=false
+layer_number=16
+
 # Batch Sizes and Sequence Lengths
 batch_sizes="1 4"
 sequence_lengths="8 16 32 64 128 256 512 1024"
@@ -50,7 +55,7 @@ sequence_lengths="8 16 32 64 128 256 512 1024"
 input_counts=1
 
 # Pretrained transformers models can be a subset of: bert-base-cased roberta-base gpt2 distilgpt2 distilbert-base-uncased
-models_to_test="bert-base-cased roberta-base gpt2"
+models_to_test="bert-base-cased roberta-base distilbert-base-uncased"
 
 # If you have mutliple GPUs, you can choose one GPU for test. Here is an example to use the second GPU:
 # export CUDA_VISIBLE_DEVICES=1
@@ -81,7 +86,7 @@ fi
 
 
 if [ "$run_install" = true ] ; then
-  pip uninstall --yes ort_nightly
+  pip uninstall --yes ort-nightly ort-gpu-nightly
   pip uninstall --yes onnxruntime
   pip uninstall --yes onnxruntime-gpu
   if [ "$run_cpu_fp32" = true ] || [ "$run_cpu_int8" = true ]; then
@@ -89,14 +94,12 @@ if [ "$run_install" = true ] ; then
   else
     pip install onnxruntime-gpu
   fi
-  pip install --upgrade onnxconverter_common
-  pip install --upgrade onnxruntime-tools
-  pip install --upgrade transformers
+  pip install --upgrade onnx coloredlogs packaging psutil py3nvml onnxconverter_common numpy transformers sympy
 fi
 
-if [ "$run_cli" = true ] ; then
-  echo "Use onnxruntime_tools.transformers.benchmark"
-  benchmark_script="-m onnxruntime_tools.transformers.benchmark"
+if [ "$use_package" = true ] ; then
+  echo "Use onnxruntime.transformers.benchmark"
+  benchmark_script="-m onnxruntime.transformers.benchmark"
 else
   benchmark_script="benchmark.py"
 fi
@@ -110,8 +113,16 @@ if [ "$export_onnx_from_tf" = true ] ; then
 fi
 
 if [ "$use_optimizer" = true ] ; then
-  onnx_export_options="$onnx_export_options -o"
-  benchmark_options="$benchmark_options -o"
+  onnx_export_options="$onnx_export_options -o by_script"
+  benchmark_options="$benchmark_options -o by_script"
+else
+  onnx_export_options="$onnx_export_options -o by_ort"
+  benchmark_options="$benchmark_options -o by_ort"
+fi
+
+if [ "$force_layer_number" = true ] ; then
+  onnx_export_options="$onnx_export_options --force_num_layers $layer_number"
+  benchmark_options="$benchmark_options --force_num_layers $layer_number"
 fi
 
 # -------------------------------------------
@@ -122,6 +133,16 @@ run_one_test() {
       if [ "$run_tests" = true ] ; then
         python $benchmark_script -m $1 $onnx_export_options $2 $3 $4
         python $benchmark_script -m $1 $benchmark_options $2 $3 $4 -i $input_counts
+      fi
+    fi
+
+    if [ "$run_ort_trt" = true ] ; then
+      trt_options="--provider tensorrt"
+      echo python $benchmark_script -m $1 $onnx_export_options $trt_options $2 $3 $4 >> benchmark.log
+      echo python $benchmark_script -m $1 $benchmark_options $trt_options $2 $3 $4 -i $input_counts >> benchmark.log
+      if [ "$run_tests" = true ] ; then
+        python $benchmark_script -m $1 $onnx_export_options $trt_options $2 $3 $4
+        python $benchmark_script -m $1 $benchmark_options $trt_options $2 $3 $4 -i $input_counts
       fi
     fi
 
@@ -149,6 +170,9 @@ run_one_test() {
 
 # -------------------------------------------
 if [ "$run_gpu_fp32" = true ] ; then
+  if [ "$run_ort_trt" = true ] ; then
+    export ORT_TENSORRT_FP16_ENABLE=0
+  fi
   for m in $models_to_test
   do
     echo Run GPU FP32 Benchmark on model ${m}
@@ -157,6 +181,9 @@ if [ "$run_gpu_fp32" = true ] ; then
 fi
 
 if [ "$run_gpu_fp16" = true ] ; then
+  if [ "$run_ort_trt" = true ] ; then
+    export ORT_TENSORRT_FP16_ENABLE=1
+  fi
   for m in $models_to_test
   do
     echo Run GPU FP16 Benchmark on model ${m}

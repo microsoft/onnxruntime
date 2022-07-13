@@ -11,14 +11,17 @@ namespace cuda {
 
 template <typename T, bool is_log_softmax>
 Status SoftMaxComputeHelper(
+    cudaStream_t stream,
     const T* input,
     const TensorShape& shape,
     T* Y,
-    cudnnHandle_t handle,
     int64_t axis);
 
 template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
-void dispatch_softmax_forward(output_t* dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count);
+void dispatch_warpwise_softmax_forward(cudaStream_t stream, output_t* dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count);
+
+template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
+void dispatch_blockwise_softmax_forward(cudaStream_t stream, output_t* output, const input_t* input, int softmax_elements, int softmax_elements_stride, int batch_count);
 
 template <typename T>
 class Softmax final : public CudaKernel {

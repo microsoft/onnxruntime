@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "pch.h"
+#include "lib/Api/pch/pch.h"
 
 #include "SequenceFeatureDescriptor.h"
 
@@ -62,4 +62,14 @@ SequenceFeatureDescriptor::GetDescription(
   *cchDescription = static_cast<uint32_t>(description_.size());
   return S_OK;
 }
+
+HRESULT
+SequenceFeatureDescriptor::GetDescriptorInfo(
+    _winml::IEngineFactory* engine_factory,
+    _winml::IDescriptorInfo** info) {
+  engine_factory->CreateSequenceDescriptorInfo(info);
+  return S_OK;
+};
+
+
 }  // namespace WINMLP

@@ -8,19 +8,15 @@
 #include "ort_env.h"
 #include "core/session/ort_apis.h"
 #include "core/session/environment.h"
-#include "core/session/allocator_impl.h"
+#include "core/session/allocator_adapters.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/provider_shutdown.h"
-#ifdef __ANDROID__
-#include "core/platform/android/logging/android_log_sink.h"
-#else
-#include "core/common/logging/sinks/clog_sink.h"
-#endif
+#include "core/platform/logging/make_platform_default_log_sink.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
-OrtEnv* OrtEnv::p_instance_ = nullptr;
+std::unique_ptr<OrtEnv> OrtEnv::p_instance_;
 int OrtEnv::ref_count_ = 0;
 onnxruntime::OrtMutex OrtEnv::m_;
 
@@ -28,7 +24,7 @@ LoggingWrapper::LoggingWrapper(OrtLoggingFunction logging_function, void* logger
     : logging_function_(logging_function), logger_param_(logger_param) {
 }
 
-void LoggingWrapper::SendImpl(const onnxruntime::logging::Timestamp& /*timestamp*/ /*timestamp*/, const std::string& logger_id,
+void LoggingWrapper::SendImpl(const onnxruntime::logging::Timestamp& /*timestamp*/, const std::string& logger_id,
                               const onnxruntime::logging::Capture& message) {
   std::string s = message.Location().ToString();
   logging_function_(logger_param_, static_cast<OrtLoggingLevel>(message.Severity()), message.Category(),
@@ -54,25 +50,21 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
     std::unique_ptr<LoggingManager> lmgr;
     std::string name = lm_info.logid;
     if (lm_info.logging_function) {
-      std::unique_ptr<ISink> logger = onnxruntime::make_unique<LoggingWrapper>(lm_info.logging_function,
-                                                                               lm_info.logger_param);
-      lmgr.reset(new LoggingManager(std::move(logger),
-                                    static_cast<Severity>(lm_info.default_warning_level),
-                                    false,
-                                    LoggingManager::InstanceType::Default,
-                                    &name));
+      std::unique_ptr<ISink> logger = std::make_unique<LoggingWrapper>(lm_info.logging_function,
+                                                                       lm_info.logger_param);
+      lmgr = std::make_unique<LoggingManager>(std::move(logger),
+                                              static_cast<Severity>(lm_info.default_warning_level),
+                                              false,
+                                              LoggingManager::InstanceType::Default,
+                                              &name);
     } else {
-#ifdef __ANDROID__
-      ISink* sink = new AndroidLogSink();
-#else
-      ISink* sink = new CLogSink();
-#endif
+      auto sink = MakePlatformDefaultLogSink();
 
-      lmgr.reset(new LoggingManager(std::unique_ptr<ISink>{sink},
-                                    static_cast<Severity>(lm_info.default_warning_level),
-                                    false,
-                                    LoggingManager::InstanceType::Default,
-                                    &name));
+      lmgr = std::make_unique<LoggingManager>(std::move(sink),
+                                              static_cast<Severity>(lm_info.default_warning_level),
+                                              false,
+                                              LoggingManager::InstanceType::Default,
+                                              &name);
     }
     std::unique_ptr<onnxruntime::Environment> env;
     if (!tp_options) {
@@ -83,11 +75,11 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
     if (!status.IsOK()) {
       return nullptr;
     }
-    p_instance_ = new OrtEnv(std::move(env));
+    p_instance_ = std::make_unique<OrtEnv>(std::move(env));
   }
 
   ++ref_count_;
-  return p_instance_;
+  return p_instance_.get();
 }
 
 void OrtEnv::Release(OrtEnv* env_ptr) {
@@ -95,11 +87,10 @@ void OrtEnv::Release(OrtEnv* env_ptr) {
     return;
   }
   std::lock_guard<onnxruntime::OrtMutex> lock(m_);
-  ORT_ENFORCE(env_ptr == p_instance_);  // sanity check
+  ORT_ENFORCE(env_ptr == p_instance_.get());  // sanity check
   --ref_count_;
   if (ref_count_ == 0) {
-    delete p_instance_;
-    p_instance_ = nullptr;
+    p_instance_.reset();
   }
 }
 
@@ -120,4 +111,8 @@ onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocator(const OrtMemoryIn
                                                                const OrtArenaCfg* arena_cfg) {
   auto status = value_->CreateAndRegisterAllocator(mem_info, arena_cfg);
   return status;
+}
+
+onnxruntime::common::Status OrtEnv::UnregisterAllocator(const OrtMemoryInfo& mem_info) {
+  return value_->UnregisterAllocator(mem_info);
 }

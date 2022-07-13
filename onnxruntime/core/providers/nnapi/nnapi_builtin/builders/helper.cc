@@ -5,21 +5,20 @@
 #include <string>
 #include <vector>
 
-#include <core/common/safeint.h>
-#include <core/common/logging/logging.h>
-#include <core/framework/tensorprotoutils.h>
-#include <core/graph/graph.h>
-#include <core/graph/graph_viewer.h>
-#include <core/providers/common.h>
-
 #include "helper.h"
+
+#include "core/common/safeint.h"
+#include "core/common/logging/logging.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
+#include "core/providers/common.h"
+#include "core/providers/shared/node_unit/node_unit.h"
+#include "core/providers/shared/utils/utils.h"
 #include "op_support_checker.h"
 
 namespace onnxruntime {
 namespace nnapi {
-
-using std::string;
-using std::vector;
 
 std::string GetErrorCause(int error_code) {
   switch (error_code) {
@@ -49,32 +48,60 @@ std::string GetErrorCause(int error_code) {
   }
 }
 
-QLinearOpType GetQLinearOpType(const onnxruntime::Node& node) {
-  const auto& op_type = node.OpType();
-  if (op_type == "DequantizeLinear")
-    return QLinearOpType::DequantizeLinear;
-  else if (op_type == "QuantizeLinear")
-    return QLinearOpType::QuantizeLinear;
-  else if (op_type == "QLinearConv")
-    return QLinearOpType::QLinearConv;
-  else if (op_type == "QLinearMatMul")
-    return QLinearOpType::QLinearMatMul;
-  else if (op_type == "QLinearAdd")
-    return QLinearOpType::QLinearAdd;
+QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
+  const auto& op_type = node_unit.OpType();
+  if (node_unit.UnitType() == NodeUnit::Type::SingleNode) {
+    if (op_type == "DequantizeLinear")
+      return QuantizedOpType::DequantizeLinear;
+    else if (op_type == "QuantizeLinear")
+      return QuantizedOpType::QuantizeLinear;
+    else if (op_type == "QLinearConv")
+      return QuantizedOpType::QLinearConv;
+    else if (op_type == "QLinearMatMul")
+      return QuantizedOpType::QLinearMatMul;
+    else if (op_type == "QLinearAdd")
+      return QuantizedOpType::QLinearAdd;
+    else if (op_type == "QLinearMul")
+      return QuantizedOpType::QLinearMul;
+    else if (op_type == "QLinearSigmoid")
+      return QuantizedOpType::QLinearSigmoid;
+    else if (op_type == "QLinearAveragePool")
+      return QuantizedOpType::QLinearAveragePool;
+  } else if (node_unit.UnitType() == NodeUnit::Type::QDQGroup) {
+    if (op_type == "Conv")
+      return QuantizedOpType::QDQConv;
+    else if (op_type == "Resize")
+      return QuantizedOpType::QDQResize;
+    else if (op_type == "AveragePool")
+      return QuantizedOpType::QDQAveragePool;
+    else if (op_type == "Add")
+      return QuantizedOpType::QDQAdd;
+    else if (op_type == "Mul")
+      return QuantizedOpType::QDQMul;
+    else if (op_type == "Transpose")
+      return QuantizedOpType::QDQTranspose;
+    else if (op_type == "Reshape")
+      return QuantizedOpType::QDQReshape;
+    else if (op_type == "Softmax")
+      return QuantizedOpType::QDQSoftmax;
+    else if (op_type == "Concat")
+      return QuantizedOpType::QDQConcat;
+    else if (op_type == "Gemm")
+      return QuantizedOpType::QDQGemm;
+    else if (op_type == "MatMul")
+      return QuantizedOpType::QDQMatMul;
+  } else {
+    // throw?
+  }
 
-  return QLinearOpType::Unknown;
+  return QuantizedOpType::Unknown;
 }
 
-ConvType GetConvType(const onnxruntime::Node& node, const InitializedTensorSet& initializers) {
-  const auto& op_type = node.OpType();
-  bool is_qlinear_conv = (op_type == "QLinearConv");
-  ORT_ENFORCE(op_type == "Conv" || is_qlinear_conv);
-
-  NodeAttrHelper helper(node);
+ConvType GetConvType(const NodeUnit& node_unit, const InitializedTensorSet& initializers) {
+  NodeAttrHelper helper(node_unit);
   const auto group = helper.Get("group", 1);
 
-  size_t w_idx = is_qlinear_conv ? 3 : 1;
-  const auto& weight = node.InputDefs()[w_idx]->Name();
+  const auto& weight = node_unit.Inputs()[1].node_arg.Name();
   const auto& weight_tensor = *initializers.at(weight);
 
   // For ONNX we only have 1 conv ops
@@ -91,37 +118,59 @@ ConvType GetConvType(const onnxruntime::Node& node, const InitializedTensorSet& 
     return ConvType::Grouped;
 }
 
-bool IsQLinearBinaryOp(QLinearOpType qlinear_op_type) {
-  return qlinear_op_type == QLinearOpType::QLinearConv ||
-         qlinear_op_type == QLinearOpType::QLinearMatMul ||
-         qlinear_op_type == QLinearOpType::QLinearAdd;
+bool IsQuantizedConv(QuantizedOpType quant_op_type) {
+  return (quant_op_type == QuantizedOpType::QLinearConv) ||
+         (quant_op_type == QuantizedOpType::QDQConv);
 }
 
-bool HasValidBinaryOpQuantizedInputs(const Node& node) {
-  auto op_type = GetQLinearOpType(node);
+bool IsQuantizedPool(QuantizedOpType quant_op_type) {
+  return (quant_op_type == QuantizedOpType::QLinearAveragePool) ||
+         (quant_op_type == QuantizedOpType::QDQAveragePool);
+}
+
+bool IsQuantizedGemm(QuantizedOpType quant_op_type) {
+  return (quant_op_type == QuantizedOpType::QLinearMatMul) ||
+         (quant_op_type == QuantizedOpType::QDQGemm) ||
+         (quant_op_type == QuantizedOpType::QDQMatMul);
+}
+
+bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type) {
+  return quant_op_type == QuantizedOpType::QLinearMatMul ||
+         quant_op_type == QuantizedOpType::QLinearAdd ||
+         quant_op_type == QuantizedOpType::QLinearMul ||
+         quant_op_type == QuantizedOpType::QDQAdd ||
+         quant_op_type == QuantizedOpType::QDQMul ||
+         quant_op_type == QuantizedOpType::QDQGemm ||
+         quant_op_type == QuantizedOpType::QDQMatMul ||
+         IsQuantizedConv(quant_op_type);
+}
+
+bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit) {
+  auto quant_op_type = GetQuantizedOpType(node_unit);
   int32_t a_input_type, b_input_type;
-  if (!IsQLinearBinaryOp(op_type)) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType() << "] is not a binary qlinear op";
+  if (!IsQuantizedBinaryOp(quant_op_type)) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node_unit.OpType() << "] is not a binary qlinear op";
     return false;
   }
 
-  const auto input_defs(node.InputDefs());
-  if (!GetType(*input_defs[0], a_input_type))
+  const auto& inputs = node_unit.Inputs();
+  if (!GetType(inputs[0].node_arg, a_input_type))
     return false;
-  if (!GetType(*input_defs[3], b_input_type))
+  if (!GetType(inputs[1].node_arg, b_input_type))
     return false;
 
-  // QlinearConv supports u8u8 or u8s8
-  // QLinearMatMul/Add only support u8u8
-  bool is_qlinear_conv = op_type == QLinearOpType::QLinearConv;
+  // QlinearConv/MatMul/QDQGemm/QDQMatMul supports u8u8 or u8s8
+  // QLinearAdd/QLinearMul only support u8u8
+  bool is_quant_conv_or_gemm = IsQuantizedConv(quant_op_type) || IsQuantizedGemm(quant_op_type);
+
   bool has_valid_qlinear_conv_weight =
       (b_input_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
        b_input_type == ONNX_NAMESPACE::TensorProto_DataType_INT8);
 
   if (a_input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
-      (!is_qlinear_conv && a_input_type != b_input_type) ||
-      (is_qlinear_conv && !has_valid_qlinear_conv_weight)) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+      (!is_quant_conv_or_gemm && a_input_type != b_input_type) ||
+      (is_quant_conv_or_gemm && !has_valid_qlinear_conv_weight)) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node_unit.OpType()
                           << "] A Input type: [" << a_input_type
                           << "] B Input type: [" << b_input_type
                           << "] is not supported for now";
@@ -131,150 +180,62 @@ bool HasValidBinaryOpQuantizedInputs(const Node& node) {
   return true;
 }
 
-bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const Node& node,
-                                const std::vector<size_t>& indices, const OpSupportCheckParams& params) {
-  const auto& op_type = node.OpType();
-  bool is_qlinear_conv = (op_type == "QLinearConv");
-  const auto input_defs(node.InputDefs());
-  for (const auto idx : indices) {
-    if (idx >= input_defs.size()) {
-      LOGS_DEFAULT(VERBOSE) << "HasValidQuantizationScales, Input index,  " << idx
-                            << " >= input number, " << input_defs.size();
-      return false;
-    }
-    const auto scale_name = input_defs[idx]->Name();
-    if (Contains(initializers, scale_name)) {
-      const auto& scale_tensor = *initializers.at(scale_name);
-      int64_t scales_dim = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
-      bool is_conv_weight = is_qlinear_conv && idx == 4;
-      bool is_conv_u8s8_weight = false;
+common::Status GetQuantizationScaleAndZeroPoint(
+    const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path& model_path,
+    float& scale, int32_t& zero_point) {
+  scale = 0.0f;
+  zero_point = 0;
 
-      if (is_conv_weight) {
-        const auto& weight_tensor = *initializers.at(node.InputDefs()[3]->Name());
-        is_conv_u8s8_weight = weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT8;
-      }
-
-      // We need to check the per-channel quantization scales dimensions for u8s8 QlinearConv
-      // We only support per-channel quantization for u8s8
-      // For all other cases, the scales should be a scalar
-      if (is_conv_u8s8_weight) {
-        if (params.android_sdk_ver < 29) {
-          LOGS_DEFAULT(VERBOSE) << op_type << " only supports per-channel quantization on Android API 29+, "
-                                << "system API level: " << params.android_sdk_ver;
-          return false;
-        }
-
-        const auto& weight_tensor = *initializers.at(node.InputDefs()[3]->Name());
-        if (weight_tensor.dims()[0] != scales_dim) {
-          LOGS_DEFAULT(VERBOSE) << op_type << " mismatch int8 per-channel quantization weight,"
-                                << " weight dimension[0] " << weight_tensor.dims()[0]
-                                << " scale dimension " << scales_dim;
-          return false;
-        }
-      } else {
-        if (scales_dim != 1) {
-          LOGS_DEFAULT(VERBOSE) << op_type << " does not support per-channel quantization, "
-                                << " for now, only u8s8 QlinearConv supports per-channel quantization on API 29+";
-          return false;
-        }
-      }
-    } else {
-      LOGS_DEFAULT(VERBOSE) << "The scale of " << op_type << " must be known";
-      return false;
-    }
+  if (!io_def.quant_param) {  // Not a quantized IO
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "NodeArg: ", io_def.node_arg.Name(), " is not quantized");
   }
 
-  return true;
+  const auto unpack_tensor = [&model_path](const InitializedTensorSet& initializers,
+                                           const std::string& name, std::vector<uint8_t>& unpacked_tensor) {
+    const auto& tensor = *initializers.at(name);
+    ORT_RETURN_IF_ERROR(
+        onnxruntime::utils::UnpackInitializerData(tensor, model_path, unpacked_tensor));
+    return Status::OK();
+  };
+
+  const auto& quant_param = *io_def.quant_param;
+  {  // get the scale
+    std::vector<uint8_t> unpacked_tensor;
+    const auto& name = quant_param.scale.Name();
+    ORT_RETURN_IF_ERROR(unpack_tensor(initializers, name, unpacked_tensor));
+    // The scale should be one or more floats
+    ORT_RETURN_IF(unpacked_tensor.size() < 4,
+                  "The initializer [", name, "] should have one or more floats ",
+                  "with size no less than 4, actual size: ", unpacked_tensor.size());
+    scale = reinterpret_cast<const float*>(unpacked_tensor.data())[0];
+  }
+
+  if (quant_param.zero_point) {  // get the zero point if it's there
+    std::vector<uint8_t> unpacked_tensor;
+    const auto& name = quant_param.zero_point->Name();
+    ORT_RETURN_IF_ERROR(unpack_tensor(initializers, name, unpacked_tensor));
+    ORT_RETURN_IF(unpacked_tensor.empty(), "The initializer [", name, "] is empty");
+    // Onnx quantization uses uint8 [int8 not yet supported], need to cast to int32_t used by NNAPI
+    zero_point = static_cast<int32_t>(unpacked_tensor[0]);
+  }
+
+  return Status::OK();
 }
 
-bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, const Node& node,
-                                    const std::vector<size_t>& indices) {
-  const auto& op_type = node.OpType();
-  bool is_qlinear_conv = (op_type == "QLinearConv");
-  const auto input_defs(node.InputDefs());
-  for (const auto idx : indices) {
-    if (idx >= input_defs.size()) {
-      LOGS_DEFAULT(VERBOSE) << "HasValidQuantizationZeroPoints, Input index,  " << idx
-                            << " >= input number, " << input_defs.size();
-      return false;
-    }
-
-    const auto zero_point_name = input_defs[idx]->Name();
-    if (Contains(initializers, zero_point_name)) {
-      bool is_conv_weight = is_qlinear_conv && idx == 5;
-      bool is_conv_u8s8_weight = false;
-      if (is_conv_weight) {
-        const auto& weight_tensor = *initializers.at(node.InputDefs()[3]->Name());
-        is_conv_u8s8_weight = weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT8;
-      }
-
-      const auto& zero_tensor = *initializers.at(zero_point_name);
-      int64_t zero_dim = zero_tensor.dims().empty() ? 1 : zero_tensor.dims()[0];
-      if (is_conv_u8s8_weight) {
-        if (zero_tensor.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8) {
-          LOGS_DEFAULT(VERBOSE) << "u8s8 QlinearConv only supports int8 zero point for weight, "
-                                << "actual zero point type: [" << zero_tensor.data_type() << "]";
-          return false;
-        }
-
-        // For onnx, u8s8 QlinearConv, the weight zero point can be a scalar,
-        // or a tensor with same channel as weight, for NNAPI we only support it be
-        // 0 (scalar) or all 0 (tensor), NNAPI will assume the zero point for per-channel
-        // quantization is 0 there is no input for it
-        const auto& weight_tensor = *initializers.at(node.InputDefs()[3]->Name());
-        if (weight_tensor.dims()[0] != zero_dim && zero_dim != 1) {
-          LOGS_DEFAULT(VERBOSE) << op_type << " mismatch int8 per-channel quantization weight,"
-                                << " weight dimension[0] " << weight_tensor.dims()[0]
-                                << " zero point dimension " << zero_dim;
-          return false;
-        }
-
-        std::unique_ptr<uint8_t[]> unpacked_tensor;
-        size_t tensor_byte_size;
-        auto status = onnxruntime::utils::UnpackInitializerData(zero_tensor, node.ModelPath(),
-                                                                unpacked_tensor, tensor_byte_size);
-        if (!status.IsOK()) {
-          LOGS_DEFAULT(ERROR) << "QLinearConv erro when unpack zero tensor:" << status.ErrorMessage();
-          return false;
-        }
-
-        // Verify all onnx weight zero point(s) are 0(s)
-        const int8_t* zero_points = reinterpret_cast<const int8_t*>(unpacked_tensor.get());
-        for (size_t i = 0; i < tensor_byte_size; i++) {
-          if (zero_points[i] != 0) {
-            LOGS_DEFAULT(VERBOSE) << "QLinearConv only support 0 as zero point, "
-                                  << "zero_points[" << i << "] has value: " << zero_points[i];
-            return false;
-          }
-        }
-      } else {
-        if (zero_dim != 1) {
-          LOGS_DEFAULT(VERBOSE) << op_type << " does not support per-channel quantization, "
-                                << " for now, only u8s8 QlinearConv supports per-channel quantization on API 29+";
-          return false;
-        }
-      }
-    } else {
-      LOGS_DEFAULT(VERBOSE) << "The zero point of " << op_type << " must be known";
-      return false;
-    }
+common::Status GetQuantizationScaleAndZeroPoint(
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& name,
+    float& scale, int32_t& zero_point, ArgType arg_type) {
+  const auto& io_defs = arg_type == ArgType::kInput ? node_unit.Inputs() : node_unit.Outputs();
+  for (const auto& io_def : io_defs) {
+    if (io_def.node_arg.Name() == name)
+      return GetQuantizationScaleAndZeroPoint(initializers, io_def, node_unit.ModelPath(),
+                                              scale, zero_point);
   }
 
-  return true;
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                         "Unknown input: ", name, ", for NodeUnit with node index: ", node_unit.Index());
 }
-
-#define GET_TENSOR_DATA(FUNC_NAME, ELEMENT_TYPE, DATA)                                  \
-  const ELEMENT_TYPE* GetTensor##FUNC_NAME(const ONNX_NAMESPACE::TensorProto& tensor) { \
-    return tensor.DATA().empty()                                                        \
-               ? reinterpret_cast<const ELEMENT_TYPE*>(tensor.raw_data().data())        \
-               : tensor.DATA().data();                                                  \
-  }
-
-GET_TENSOR_DATA(FloatData, float, float_data)
-GET_TENSOR_DATA(Int32Data, int32_t, int32_data)
-GET_TENSOR_DATA(Int64Data, int64_t, int64_data)
-
-#undef GET_TENSOR_DATA
 
 bool GetShape(const NodeArg& node_arg, Shape& shape) {
   shape.clear();
@@ -304,39 +265,9 @@ bool GetType(const NodeArg& node_arg, int32_t& type) {
   return true;
 }
 
-bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node, float& min, float& max) {
-  min = std::numeric_limits<float>::lowest();
-  max = std::numeric_limits<float>::max();
-  if (node.SinceVersion() < 11) {  // Clip opset 1, 6 is using attributes for min/max
-    NodeAttrHelper helper(node);
-    min = helper.Get("min", std::numeric_limits<float>::lowest());
-    max = helper.Get("max", std::numeric_limits<float>::max());
-  } else {
-    if (node.InputDefs().size() > 1) {  // we have input min
-      const auto& min_name = node.InputDefs()[1]->Name();
-      if (!Contains(initializers, min_name)) {
-        LOGS_DEFAULT(VERBOSE) << "Input min of Clip must be known";
-        return false;
-      }
-      min = GetTensorFloatData(*initializers.at(min_name))[0];
-    }
-
-    if (node.InputDefs().size() > 2) {  // we have input max
-      const auto& max_name = node.InputDefs()[2]->Name();
-      if (!Contains(initializers, max_name)) {
-        LOGS_DEFAULT(VERBOSE) << "Input max of Clip must be known";
-        return false;
-      }
-      max = GetTensorFloatData(*initializers.at(max_name))[0];
-    }
-  }
-
-  return true;
-}
-
-void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2) {
+void GetFlattenOutputShape(const NodeUnit& node_unit, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2) {
   int32_t rank = static_cast<int>(input_shape.size());
-  NodeAttrHelper helper(node);
+  NodeAttrHelper helper(node_unit);
   int32_t axis = helper.Get("axis", 1);
   // axis == rank is a valid input, but invalid for HandleNegativeAxis
   // Skip non-negative axis here
@@ -347,13 +278,9 @@ void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& 
   dim_2 = std::accumulate(input_shape.cbegin() + axis, input_shape.cend(), 1, std::multiplies<int32_t>());
 }
 
-bool IsValidSupportedNodesVec(const std::vector<size_t>& supported_node_vec, const GraphViewer& graph_viewer) {
-  if (supported_node_vec.empty())
-    return false;
-
-  if (supported_node_vec.size() == 1) {
-    const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
-    const auto* node(graph_viewer.GetNode(node_indices[supported_node_vec[0]]));
+bool IsValidSupportedNodeGroup(const std::vector<const Node*>& supported_node_partition) {
+  if (supported_node_partition.size() == 1) {
+    const auto* node = supported_node_partition[0];
     const auto& op = node->OpType();
     // It is not worth it to perform a single Reshape/Flatten/Identity operator
     // which is only copying the data in NNAPI
@@ -367,49 +294,77 @@ bool IsValidSupportedNodesVec(const std::vector<size_t>& supported_node_vec, con
   return true;
 }
 
-bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
-  const auto& op_support_checkers = GetOpSupportCheckers();
-  if (Contains(op_support_checkers, node.OpType())) {
-    const auto* op_support_checker = op_support_checkers.at(node.OpType());
-    return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, params);
-  } else {
+static bool IsInternalQuantizedNodeUnit(const NodeUnit& node_unit) {
+  // First, ignore QDQ NodeUnit which is not internal quantized node
+  if (node_unit.UnitType() == NodeUnit::Type::QDQGroup)
     return false;
-  }
+
+  // These operators can use uint8 input without specific QLinear version of it
+  // However, the mode has to be internal to the graph/partition (they cannot consume graph inputs)
+  static const std::unordered_set<std::string> internal_quantized_op_types =
+      {
+          "Transpose",
+          "Resize",
+          "Concat",
+          "MaxPool",
+      };
+
+  const auto& node = node_unit.GetNode();
+  if (!Contains(internal_quantized_op_types, node.OpType()))
+    return false;
+
+  int32_t input_type;
+  ORT_ENFORCE(GetType(*node.InputDefs()[0], input_type));
+
+  return input_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8;
 }
 
-std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
-  std::vector<std::vector<size_t>> supported_node_vecs;
-  if (params.android_sdk_ver < ORT_NNAPI_MIN_API_LEVEL) {
-    LOGS_DEFAULT(WARNING) << "All ops will fallback to CPU EP, because Android API level [" << params.android_sdk_ver
-                          << "] is lower than minimal supported API level [" << ORT_NNAPI_MIN_API_LEVEL
-                          << "] of this build for NNAPI";
-    return supported_node_vecs;
-  }
+// We support some operators running using uint8 internally
+// These nodes cannot use a graph input as input since onnx graph input does not carry scale/zero point info
+bool IsInternalQuantizationSupported(const Node& node, const std::unordered_set<std::string>& node_outputs_in_group) {
+  const auto& op_type = node.OpType();
 
-  std::vector<size_t> supported_node_vec;
-  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer.GetNode(node_indices[i]));
-    bool supported = IsNodeSupported(*node, graph_viewer, params);
-    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node->OpType()
-                          << "] index: [" << i
-                          << "] name: [" << node->Name()
-                          << "] supported: [" << supported
-                          << "]";
-    if (supported) {
-      supported_node_vec.push_back(i);
-    } else {
-      if (IsValidSupportedNodesVec(supported_node_vec, graph_viewer)) {
-        supported_node_vecs.push_back(supported_node_vec);
-        supported_node_vec.clear();
-      }
+  // The node's input(s) have to be an output of node(s) within the group
+  // If not, then this node is using graph/partition input(s) as input(s)
+  const auto& input_defs = node.InputDefs();
+
+  // We only need to check input0 for all operators except "Concat"
+  bool check_all_inputs = op_type == "Concat";
+
+  for (size_t i = 0; i < (check_all_inputs ? input_defs.size() : 1); i++) {
+    if (!Contains(node_outputs_in_group, input_defs[i]->Name())) {
+      LOGS_DEFAULT(VERBOSE) << "Node [" << node.Name() << "] type: [" << op_type
+                            << "] has input [" << input_defs[i]->Name()
+                            << "] does not support using graph input(quantized) as node input";
+      return false;
     }
   }
 
-  if (IsValidSupportedNodesVec(supported_node_vec, graph_viewer))
-    supported_node_vecs.push_back(supported_node_vec);
+  return true;
+}
 
-  return supported_node_vecs;
+bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
+  const auto& op_support_checkers = GetOpSupportCheckers();
+  const auto op_support_checker_it = op_support_checkers.find(node_unit.OpType());
+  if (op_support_checker_it == op_support_checkers.end()) {
+    return false;
+  }
+
+  const auto* op_support_checker = op_support_checker_it->second;
+  return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node_unit, params);
+}
+
+bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_viewer,
+                            const OpSupportCheckParams& params,
+                            const std::unordered_set<std::string>& node_outputs_in_group) {
+  if (!IsNodeSupported(node_unit, graph_viewer, params))
+    return false;
+
+  // We also want to check if the node is supported as an internal quantized node_unit
+  if (IsInternalQuantizedNodeUnit(node_unit))
+    return IsInternalQuantizationSupported(node_unit.GetNode(), node_outputs_in_group);
+
+  return true;
 }
 
 std::string Shape2String(const std::vector<uint32_t>& shape) {
@@ -422,62 +377,15 @@ std::string Shape2String(const std::vector<uint32_t>& shape) {
   return os.str();
 }
 
-NodeAttrHelper::NodeAttrHelper(const onnxruntime::Node& node)
-    : node_attributes_(node.GetAttributes()) {}
-
-float NodeAttrHelper::Get(const std::string& key, float def_val) const {
-  if (HasAttr(key))
-    return node_attributes_.at(key).f();
-
-  return def_val;
-}
-
-int32_t NodeAttrHelper::Get(const std::string& key, int32_t def_val) const {
-  if (HasAttr(key))
-    return SafeInt<int32_t>(node_attributes_.at(key).i());
-
-  return def_val;
-}
-
-string NodeAttrHelper::Get(const std::string& key, const string& def_val) const {
-  if (HasAttr(key))
-    return node_attributes_.at(key).s();
-
-  return def_val;
-}
-
-vector<int32_t> NodeAttrHelper::Get(const std::string& key, const vector<int32_t>& def_val) const {
-  if (HasAttr(key)) {
-    const auto& attr(node_attributes_.at(key));
-    std::vector<int32_t> v;
-    v.reserve(static_cast<size_t>(attr.ints_size()));
-    for (int j = 0; j < attr.ints_size(); j++) {
-      int64_t val = attr.ints(j);
-      v.push_back(SafeInt<int32_t>(val));
-    }
-    return v;
+bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                        const std::string& input_name, const char* input_description) {
+  if (!Contains(initializers, input_name)) {
+    LOGS_DEFAULT(VERBOSE) << input_description << " of " << node_unit.Name() << "of type ["
+                          << node_unit.OpType() << "] must be an initializer tensor";
+    return false;
   }
 
-  return def_val;
-}
-
-vector<float> NodeAttrHelper::Get(const std::string& key, const vector<float>& def_val) const {
-  if (HasAttr(key)) {
-    const auto& attr(node_attributes_.at(key));
-    std::vector<float> v;
-    v.reserve(static_cast<size_t>(attr.ints_size()));
-    for (int j = 0; j < attr.ints_size(); j++) {
-      v.push_back(attr.floats(j));
-    }
-
-    return v;
-  }
-
-  return def_val;
-}
-
-bool NodeAttrHelper::HasAttr(const std::string& key) const {
-  return Contains(node_attributes_, key);
+  return true;
 }
 
 }  // namespace nnapi

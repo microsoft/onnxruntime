@@ -90,6 +90,7 @@ __global__ void _ElementWiseWithStrideTwo(
 
 template <typename T>
 void ComplexMul_Impl(
+    cudaStream_t stream,
     int32_t output_rank_or_simple_broadcast,
     const TArray<int64_t>* lhs_padded_strides,
     const T* lhs_data,
@@ -109,8 +110,10 @@ void ComplexMul_Impl(
   int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
 
-  if (lhs_padded_strides && rhs_padded_strides && lhs_padded_strides->Size() && rhs_padded_strides->Size())
-    _ElementWiseWithStrideTwo<T, true, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  if (!lhs_padded_strides || !rhs_padded_strides || !fdm_output_strides) return;
+
+  if (lhs_padded_strides->Size() && rhs_padded_strides->Size())
+    _ElementWiseWithStrideTwo<T, true, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         output_rank_or_simple_broadcast,
         *lhs_padded_strides,
         lhs_data,
@@ -122,8 +125,8 @@ void ComplexMul_Impl(
         lhs_size,
         rhs_size,
         is_conj);
-  else if (lhs_padded_strides && lhs_padded_strides->Size())
-    _ElementWiseWithStrideTwo<T, true, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  else if (lhs_padded_strides->Size())
+    _ElementWiseWithStrideTwo<T, true, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         output_rank_or_simple_broadcast,
         *lhs_padded_strides,
         lhs_data,
@@ -136,7 +139,7 @@ void ComplexMul_Impl(
         rhs_size,
         is_conj);
   else
-    _ElementWiseWithStrideTwo<T, false, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _ElementWiseWithStrideTwo<T, false, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         output_rank_or_simple_broadcast,
         *lhs_padded_strides,
         lhs_data,
@@ -152,6 +155,7 @@ void ComplexMul_Impl(
 
 #define SPECIALIZE_STACKEDCOMPLEXMUL_IMPL(T)                            \
   template void ComplexMul_Impl<T>(                                     \
+      cudaStream_t stream,                                              \
       int32_t output_rank_or_simple_broadcast,                          \
       const TArray<int64_t>* lhs_padded_strides,                        \
       const T* lhs_data,                                                \

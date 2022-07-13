@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
 #include "nccl_kernels.h"
 #include "core/providers/cuda/tensor/identity_op.h"
 
@@ -12,7 +11,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     IdentityOp<false>);
@@ -22,7 +21,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclAllReduce);

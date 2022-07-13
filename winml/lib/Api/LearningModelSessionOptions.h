@@ -7,7 +7,7 @@
 #include <thread>
 namespace WINMLP {
 
-struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelSessionOptions, ILearningModelSessionOptionsNative> {
+struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelSessionOptions, ILearningModelSessionOptionsNative, ILearningModelSessionOptionsNative1> {
   LearningModelSessionOptions() = default;
 
   LearningModelSessionOptions(const LearningModelSessionOptions& options);
@@ -25,6 +25,11 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   (uint32_t intraOpNumThreads);
 
   uint32_t GetIntraOpNumThreads();
+
+  STDMETHOD(SetIntraOpThreadSpinning)
+  (boolean allowSpinning);
+
+  bool GetIntraOpThreadSpinning();
 
  private:
   // The batch size override property is used to inform the engine when the developer
@@ -61,6 +66,8 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   // The default value here is the maximum number of logical cores to ensure that the default behavior of WinML always runs the fastest.
   // WARNING: Setting a number higher than the maximum number of logical cores may result in an inefficient threadpool
   uint32_t intra_op_num_threads_override_ = std::thread::hardware_concurrency();
+
+  bool allow_thread_spinning_ = true;
 };
 
 }  // namespace WINMLP

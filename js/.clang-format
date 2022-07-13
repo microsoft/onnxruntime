@@ -1,0 +1,16 @@
+---
+Language: JavaScript
+BasedOnStyle: Google
+ColumnLimit: 120
+---
+Language: Cpp
+BasedOnStyle: LLVM
+ColumnLimit: 120
+---
+Language: ObjC
+BasedOnStyle: LLVM
+ColumnLimit: 120
+---
+Language: Java
+BasedOnStyle: LLVM
+ColumnLimit: 120

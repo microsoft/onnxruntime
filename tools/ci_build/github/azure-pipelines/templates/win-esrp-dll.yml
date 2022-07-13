@@ -1,12 +1,24 @@
 parameters:
-  FolderPath: ''
-  DisplayName: ''
-  DoEsrp: 'false'
-  Pattern: '*.dll'
+- name: DoEsrp
+  type: boolean
+  default: true
+
+- name: FolderPath
+  type: string
+  default: ''
+
+- name: DisplayName
+  type: string
+  default: ''
+
+- name: Pattern
+  type: string
+  default: '*.dll'
 
 steps:
 - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
   displayName: ${{ parameters.DisplayName }}
+  condition: and(succeeded(), eq('${{ parameters.DoEsrp }}', true))
   inputs:
     ConnectedServiceName: 'OnnxRuntime CodeSign 20190817'
     FolderPath: ${{ parameters.FolderPath }}

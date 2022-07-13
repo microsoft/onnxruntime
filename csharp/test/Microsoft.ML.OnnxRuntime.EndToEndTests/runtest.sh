@@ -3,70 +3,51 @@
 # Licensed under the MIT License.
 
 LocalNuGetRepo=$1
-SourceRoot=$2
-BuildDir=$3
-export CurrentOnnxRuntimeVersion=$4
-IsMacOS=${5:-false}
-# NOTE: PackageName is not PACKAGENAME since this is being called by other scripts that have already switched to the CamelCase version
-PackageName=${PackageName:-Microsoft.ML.OnnxRuntime}
+export CurrentOnnxRuntimeVersion=$2
+IsMacOS=${3:-false}
+PACKAGENAME=${PACKAGENAME:-Microsoft.ML.OnnxRuntime}
 RunTestCsharp=${RunTestCsharp:-true}
 RunTestNative=${RunTestNative:-true}
 
-set -x
+set -x -e
 
-OldDir=`pwd`
-cd $SourceRoot
+pushd .
+cd $BUILD_SOURCESDIRECTORY
 
 echo "Current NuGet package version is $CurrentOnnxRuntimeVersion"
 
 if [ $RunTestCsharp = "true" ]; then
+  if [[ $IsMacOS == "True" || $IsMacOS == "true" ]]; then
+    # TODO(#12040): The test should figure out the opset version from the model file. Remove it from the path.
+    ONNX_DIR="${BUILD_SOURCESDIRECTORY}/cmake/external/onnx"
+    ONNX_VERSION_NUMBER=$(cat "${ONNX_DIR}/VERSION_NUMBER" | sed -E 's/([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+    OPSET_VERSION=$(grep "${ONNX_VERSION_NUMBER}" "${ONNX_DIR}/docs/Versioning.md" | sed -E "s/${ONNX_VERSION_NUMBER}\|[^|]+\|([0-9]+)\|.*/\1/")
+    mkdir -p "${BUILD_BINARIESDIRECTORY}/models"
+    ln -s "${ONNX_DIR}/onnx/backend/test/data/node" "${BUILD_BINARIESDIRECTORY}/models/opset${OPSET_VERSION}"
+  fi
   # Run C# tests
-  dotnet restore $SourceRoot/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj -s $LocalNuGetRepo -s https://api.nuget.org/v3/index.json
+  dotnet restore $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj -s $LocalNuGetRepo -s https://api.nuget.org/v3/index.json
   if [ $? -ne 0 ]; then
     echo "Failed to restore nuget packages for the test project"
     exit 1
   fi
 
-  dotnet test $SourceRoot/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed
+  if [ $PACKAGENAME = "Microsoft.ML.OnnxRuntime.Gpu" ]; then
+    export TESTONGPU=ON
+    dotnet test -p:DefineConstants=USE_CUDA $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed
+    if [ $? -ne 0 ]; then
+      echo "Failed to build or execute the end-to-end test"
+      exit 1
+    fi
+    dotnet test -p:DefineConstants=USE_TENSORRT $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed
+  else
+    dotnet test $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed
+  fi
   if [ $? -ne 0 ]; then
     echo "Failed to build or execute the end-to-end test"
     exit 1
   fi
 fi
 
-if [ $RunTestNative = "true" ]; then
-  # Run Native shared object test
-  # PackageName is passed in environment (e.g. Microsoft.ML.OnnxRuntime)
-  PackageName="$PackageName.$CurrentOnnxRuntimeVersion.nupkg"
-  cd $LocalNuGetRepo
-  TempDir=_tmp
-  mkdir -p $TempDir && pushd $TempDir
-  unzip ../$PackageName
-
-  inc="-I build/native/include"
-
-  if [ $IsMacOS = "true" ]; then
-    export DYLD_FALLBACK_LIBRARY_PATH=$LocalNuGetRepo/_tmp:${DYLD_FALLBACK_LIBRARY_PATH}
-    libs="-L runtimes/osx-x64/native -l onnxruntime"
-    g++ -std=c++11 $SourceRoot/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp $inc $libs -Wunused-result -Wformat=0 -o sampletest
-    libName=$(otool -L ./sampletest | grep onnxruntime | xargs | cut -d' ' -f1 | cut -d'/' -f2)
-    ln -sf runtimes/osx-x64/native/libonnxruntime.dylib $libName
-  else
-    export LD_LIBRARY_PATH=$LocalNuGetRepo/_tmp:${LD_LIBRARY_PATH}
-    libs="-L runtimes/linux-x86/native -L runtimes/linux-x64/native -l onnxruntime"
-    g++ -std=c++11 $SourceRoot/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp $inc $libs -Wunused-result -o sampletest
-    # Create link to versioned shared object required at runtime
-    libname=`ldd sampletest | grep onnxruntime | xargs | cut -d" " -f1`
-    ln -sf runtimes/linux-x64/native/libonnxruntime.so $libname
-  fi
-
-  # Copy Sample Model
-  cp $SourceRoot/csharp/testdata/squeezenet.onnx .
-
-  # Run the sample model
-  ./sampletest
-  popd
-  rm -rf $TempDir
-fi
 cd $OldDir
-
+popd

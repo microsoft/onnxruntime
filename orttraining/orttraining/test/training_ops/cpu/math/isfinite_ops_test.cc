@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace test {
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(IsFiniteTest, Float) {
   OpTester test("IsFinite", 1, kMSDomain);
 
@@ -80,6 +80,36 @@ TEST(IsAllFiniteTest, TrueFloat) {
   test.Run();
 }
 
+TEST(IsAllFiniteTest, IsInfOnly) {
+  OpTester test("IsAllFinite", 1, kMSDomain);
+
+  std::vector<int64_t> shape = {3};
+  std::vector<float> input0 = {9.4f, 1.7f, 3.6f};
+  std::vector<float> input1 = {7.5f, 1.2f, std::numeric_limits<float>::quiet_NaN()};
+
+  test.AddInput<float>("X0", shape, input0);
+  test.AddInput<float>("X1", shape, input1);
+  test.AddAttribute("isinf_only", static_cast<int64_t>(1));
+  test.AddOutput<bool>("Y", {}, {true});
+
+  test.Run();
+}
+
+TEST(IsAllFiniteTest, IsNaNOnly) {
+  OpTester test("IsAllFinite", 1, kMSDomain);
+
+  std::vector<int64_t> shape = {3};
+  std::vector<float> input0 = {9.4f, 1.7f, 3.6f};
+  std::vector<float> input1 = {7.5f, 1.2f, std::numeric_limits<float>::infinity()};
+
+  test.AddInput<float>("X0", shape, input0);
+  test.AddInput<float>("X1", shape, input1);
+  test.AddAttribute("isnan_only", static_cast<int64_t>(1));
+  test.AddOutput<bool>("Y", {}, {true});
+
+  test.Run();
+}
+
 std::vector<std::vector<float>> generate_is_all_finite_test_data(
     const int tensor_count,
     const int max_tensor_size,
@@ -141,7 +171,7 @@ TEST(IsAllFiniteTest, MoreFalseFloatTensorLarge) {
     OpTester test("IsAllFinite", 1, kMSDomain);
     bool expected_answer = false;
     auto tensors = generate_is_all_finite_test_data(13, 941736, expected_answer, test_count);
-    for (int i = 0; i < tensors.size(); ++i) {
+    for (size_t i = 0; i < tensors.size(); ++i) {
       auto name = std::string("X") + std::to_string(i);
       auto size = static_cast<int64_t>(tensors[i].size());
       test.AddInput<float>(name.c_str(), {size}, tensors[i]);
@@ -156,7 +186,7 @@ TEST(IsAllFiniteTest, MoreFalseFloatManyBlock) {
     OpTester test("IsAllFinite", 1, kMSDomain);
     bool expected_answer = false;
     auto tensors = generate_is_all_finite_test_data(894, 17, expected_answer, test_count);
-    for (int i = 0; i < tensors.size(); ++i) {
+    for (size_t i = 0; i < tensors.size(); ++i) {
       auto name = std::string("X") + std::to_string(i);
       auto size = static_cast<int64_t>(tensors[i].size());
       test.AddInput<float>(name.c_str(), {size}, tensors[i]);
@@ -169,7 +199,7 @@ TEST(IsAllFiniteTest, MoreFalseFloatManyBlock) {
 TEST(IsAllFiniteTest, MoreFalseFloatMultipleFalse) {
   OpTester test("IsAllFinite", 1, kMSDomain);
   auto tensors = generate_is_all_finite_test_data(1234, 1987, 0.1f, 0);
-  for (int i = 0; i < tensors.size(); ++i) {
+  for (size_t i = 0; i < tensors.size(); ++i) {
     auto name = std::string("X") + std::to_string(i);
     auto size = static_cast<int64_t>(tensors[i].size());
     test.AddInput<float>(name.c_str(), {size}, tensors[i]);
@@ -182,7 +212,7 @@ TEST(IsAllFiniteTest, MoreTrueFloatTensorLarge) {
   OpTester test("IsAllFinite", 1, kMSDomain);
   bool expected_answer = true;
   auto tensors = generate_is_all_finite_test_data(12, 941736, expected_answer, 0);
-  for (int i = 0; i < tensors.size(); ++i) {
+  for (size_t i = 0; i < tensors.size(); ++i) {
     auto name = std::string("X") + std::to_string(i);
     auto size = static_cast<int64_t>(tensors[i].size());
     test.AddInput<float>(name.c_str(), {size}, tensors[i]);
@@ -197,7 +227,7 @@ TEST(IsAllFiniteTest, MoreFalseFloatManyBlockFloat16) {
   OpTester test("IsAllFinite", 1, kMSDomain);
   bool expected_answer = false;
   auto tensors = generate_is_all_finite_test_data(894, 17, expected_answer, 0);
-  for (int i = 0; i < tensors.size(); ++i) {
+  for (size_t i = 0; i < tensors.size(); ++i) {
     auto name = std::string("X") + std::to_string(i);
     auto size = static_cast<int64_t>(tensors[i].size());
     std::vector<MLFloat16> buffer_half(tensors[i].size());
@@ -212,7 +242,7 @@ TEST(IsAllFiniteTest, MoreFalseFloatTensorLargeFloat16) {
   OpTester test("IsAllFinite", 1, kMSDomain);
   bool expected_answer = false;
   auto tensors = generate_is_all_finite_test_data(12, 941736, expected_answer, 0);
-  for (int i = 0; i < tensors.size(); ++i) {
+  for (size_t i = 0; i < tensors.size(); ++i) {
     auto name = std::string("X") + std::to_string(i);
     auto size = static_cast<int64_t>(tensors[i].size());
     std::vector<MLFloat16> buffer_half(tensors[i].size());

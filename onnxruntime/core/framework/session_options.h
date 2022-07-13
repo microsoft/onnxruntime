@@ -5,9 +5,12 @@
 
 #include <string>
 #include <vector>
+#include "core/common/gsl_suppress.h"
+#include "core/common/inlined_containers.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/util/thread_utils.h"
+#include "core/framework/config_options.h"
 
 namespace onnxruntime {
 
@@ -64,6 +67,11 @@ struct SessionOptions {
   // See class 'OrtValuePatternPlanner'.
   bool enable_mem_pattern = true;
 
+  // Enable memory resue in memory planning. Allows to reuse tensor buffer between tensors if they are of
+  // the same size. The issue with this is it can lead to memory being held for longer than needed and
+  // can impact peak memory consumption.
+  bool enable_mem_reuse = true;
+
   // enable the memory arena on CPU
   // Arena may pre-allocate memory for future usage.
   // set this option to false if you don't want it.
@@ -108,23 +116,26 @@ struct SessionOptions {
   // To add an configuration to this session, call OrtApis::AddSessionConfigEntry
   // The configuration keys and value formats are defined in
   // /include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h
-  std::unordered_map<std::string, std::string> session_configurations;
+  ConfigOptions config_options;
   std::unordered_map<std::string, const OrtValue*> initializers_to_share_map;
 
   // See onnxruntime_c_api.h for detailed documentation.
-  Status AddInitializer(const char* name, const OrtValue* val) noexcept;
+  Status AddInitializer(_In_z_ const char* name, _In_ const OrtValue* val);
 
-  // Check if the given SessionOptions has a config using the given config_key.
-  // Returns true if found and copies the value into config_value.
-  // Returns false if not found and clears config_value.
-  bool TryGetConfigEntry(const std::string& config_key, std::string& config_value) const noexcept;
+#if !defined(ORT_MINIMAL_BUILD)  && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  // Customer supplied pre-processed data for external initializers
+  InlinedHashMap<std::string, OrtValue> external_initializers;
+  Status AddExternalInitializers(gsl::span<const std::string> names, gsl::span<const OrtValue> values);
+#endif
 
-  // Get the config string of the given SessionOptions using the given config_key
-  // If there is no such config, the given default string will be returned
-  const std::string GetConfigOrDefault(const std::string& config_key, const std::string& default_value) const noexcept;
+  // custom function callback to create a thread
+  OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;
 
-  // Add a config pair (config_key, config_value) to the given SessionOptions
-  Status AddConfigEntry(_In_z_ const char* config_key, _In_z_ const char* config_value) noexcept;
+  // custom options to pass to custom_create_thread_fn
+  void* custom_thread_creation_options = nullptr;
+
+  // custom function callback to join a thread
+  OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
 };
 
 }  // namespace onnxruntime

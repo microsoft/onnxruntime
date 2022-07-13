@@ -49,7 +49,7 @@ constexpr const char* const k_gradient_norm_op_name = "ReduceAllL2";
 constexpr const char* const k_unscale_op_name = "MixedPrecisionScale";
 constexpr const char* const k_inplace_accumulator_op_name = "InPlaceAccumulator";
 constexpr const char* const k_zero_gradient_op_name = "ZeroGradient";
-#if defined(USE_MPI)
+#if defined(ORT_USE_NCCL) && defined(USE_MPI)
 constexpr const char* const k_adasum_op_name = "AdasumAllReduce";
 #endif
 Status SetUpBaseGraph(Graph& graph);
@@ -172,7 +172,7 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
     NameMLValMap per_weight_states;
     OrtValue ml_value;
 
-    for (const auto key : MOMENTS_PREFIXES) {
+    for (const auto& key : MOMENTS_PREFIXES) {
       CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, values, &ml_value);
       per_weight_states.insert(std::make_pair(key, std::move(ml_value)));
     }
@@ -196,10 +196,10 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
   std::unordered_map<std::string, std::unordered_map<std::string, std::string>> opt_initializer_names_map;
   ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names_map, opt_graph_outputs));
 
-  const ONNX_NAMESPACE::TensorProto* tensor;
+  const ONNX_NAMESPACE::TensorProto* tensor{};
   for (auto& weight_item : opt_initializer_names_map) {
     for (auto& opt_item : weight_item.second) {
-      ASSERT_TRUE(graph.GetInitializedTensor(opt_item.second, tensor));
+      ORT_ENFORCE(graph.GetInitializedTensor(opt_item.second, tensor));
       ASSERT_TRUE(tensor->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT || tensor->data_type() == ONNX_NAMESPACE::TensorProto::INT64);
       if (tensor->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
         VerifyTensorValue(tensor, values[0]);
@@ -229,7 +229,7 @@ TEST_F(OptimizerGraphBuilderTest, ZeroSplitInitialOptimizerState) {
   std::vector<int64_t> param_dims = {784, 128};
   int64_t num_ele = std::accumulate(param_dims.begin(), param_dims.end(), static_cast<int64_t>(1), std::multiplies<int64_t>());
 
-  MLValue mlValue;
+  OrtValue mlValue;
   std::vector<float> init_value(num_ele);
   std::iota(init_value.begin(), init_value.end(), static_cast<float>(0));
 
@@ -243,12 +243,12 @@ TEST_F(OptimizerGraphBuilderTest, ZeroSplitInitialOptimizerState) {
   PartitionOptimizerState(partition_offset, partition_size, initial_states);
 
   std::vector<float> expected_vec(init_value.begin() + partition_offset, init_value.begin() + partition_offset + partition_size);
-  std::vector<int64_t> expected_shape = {partition_size};
+  std::array<int64_t, 1> expected_shape = {partition_size};
 
   for (const auto& state : initial_states) {
     const auto& init_tensor = state.second.Get<Tensor>();
     const auto& shape = init_tensor.Shape().GetDims();
-    ASSERT_EQ(shape, expected_shape);
+    ASSERT_EQ(shape, gsl::make_span(expected_shape));
     const std::vector<float> found(init_tensor.Data<float>(),
                                    init_tensor.Data<float>() + partition_size);
     ASSERT_EQ(expected_vec, found);

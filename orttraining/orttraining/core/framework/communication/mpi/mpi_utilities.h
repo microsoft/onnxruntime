@@ -3,15 +3,17 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
 #include "core/framework/tensor.h"
 #include "core/framework/op_kernel.h"
-#ifdef USE_MPI
-#include <mpi.h>
 #endif
+
+#include "orttraining/core/framework/communication/mpi/mpi_include.h"
+
 namespace onnxruntime {
 namespace training {
 #ifdef USE_MPI
-MPI_Datatype GetMPIDataType (MLDataType data_type);
+MPI_Datatype GetMPIDataType(MLDataType data_type);
 
 int GetMPIRank(MPI_Comm comm);
 

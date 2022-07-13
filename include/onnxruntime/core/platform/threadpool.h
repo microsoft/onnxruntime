@@ -157,7 +157,8 @@ class ThreadPool {
              const ThreadOptions& thread_options,
              const NAME_CHAR_TYPE* name,
              int degree_of_parallelism,
-             bool low_latency_hint);
+             bool low_latency_hint,
+             bool force_hybrid = false);
 
   // Waits until all scheduled work has finished and then destroy the
   // set of threads.
@@ -210,9 +211,7 @@ class ThreadPool {
     // point to avoid a dependence on the Eigen headers.
     std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)>
       ps_{nullptr, [](ThreadPoolParallelSection*){}};
-#ifndef _OPENMP
     ThreadPool *tp_;
-#endif
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelSection);
 
     // Non-owning reference to the current thread's paralel section
@@ -221,6 +220,14 @@ class ThreadPool {
     static_assert(std::is_trivially_destructible<decltype(current_parallel_section)>::value,
                   "Per-thread state should be trivially destructible");
   };
+
+  // The below API allows to disable spinning
+  // This is used to support real-time scenarios where
+  // spinning between relatively infrequent requests
+  // contributes to high CPU usage while not processing anything.
+  void EnableSpinning();
+
+  void DisableSpinning();
 
   // Schedules fn() for execution in the pool of threads.  The function may run
   // synchronously if it cannot be enqueued.  This will occur if the thread pool's
@@ -260,13 +267,6 @@ class ThreadPool {
 
   inline static void TrySimpleParallelFor(ThreadPool* tp, std::ptrdiff_t total,
                                           const std::function<void(std::ptrdiff_t)>& fn) {
-#ifdef _OPENMP
-    ORT_UNUSED_PARAMETER(tp);
-#pragma omp parallel for
-    for (std::ptrdiff_t i = 0; i < total; ++i) {
-      fn(i);
-    }
-#else
     if (tp != nullptr) {
       tp->SimpleParallelFor(total, fn);
     } else {
@@ -275,13 +275,12 @@ class ThreadPool {
         fn(i);
       }
     }
-#endif
   }
 
   /**
    * Tries to call the given function in parallel, with calls split into (num_batches) batches.
    *\param num_batches If it is zero, it will be replaced to the value of DegreeOfParallelism().
-   *\param fn A std::function or STL style functor with signature of "void f(int32_t);"
+   *\param fn A std::function or STL style functor with signature of "void f(std::ptrdiff_t);"
    * Pitfall: Caller should cap `num_batches` to a reasonable value based on the cost of `fn` and the value of `total`.
    *For example, if fn is as simple as: int sum=0; fn = [&](int i){sum +=i;} and `total` is 100, then num_batches should
    *be just 1.
@@ -290,14 +289,6 @@ class ThreadPool {
    **/
   template <typename F>
   inline static void TryBatchParallelFor(ThreadPool* tp, std::ptrdiff_t total, F&& fn, std::ptrdiff_t num_batches) {
-#ifdef _OPENMP
-    ORT_UNUSED_PARAMETER(tp);
-    ORT_UNUSED_PARAMETER(num_batches);
-#pragma omp parallel for
-    for (std::ptrdiff_t i = 0; i < total; ++i) {
-      fn(i);
-    }
-#else
     if (tp == nullptr) {
       for (std::ptrdiff_t i = 0; i < total; ++i) {
         // In many cases, fn can be inlined here.
@@ -314,7 +305,7 @@ class ThreadPool {
     }
 
     if (num_batches <= 0) {
-      num_batches = std::min<ptrdiff_t>(total, DegreeOfParallelism(tp));
+      num_batches = std::min<std::ptrdiff_t>(total, DegreeOfParallelism(tp));
     }
 
     if (num_batches <= 1) {
@@ -330,18 +321,17 @@ class ThreadPool {
         fn(i);
       }
     });
-#endif
   }
 
   struct WorkInfo {
-    std::ptrdiff_t start;
-    std::ptrdiff_t end;
+    std::ptrdiff_t start{0};
+    std::ptrdiff_t end{0};
   };
 
   /** Calculate the start and end offsets for a batch.
       @remarks Based on MlasPartitionWork
   */
-  static WorkInfo PartitionWork(std::ptrdiff_t batch_idx, std::ptrdiff_t num_batches, std::ptrdiff_t total_work) {
+  constexpr static WorkInfo PartitionWork(std::ptrdiff_t batch_idx, std::ptrdiff_t num_batches, std::ptrdiff_t total_work) {
     const std::ptrdiff_t work_per_batch = total_work / num_batches;
     const std::ptrdiff_t work_per_batch_extra = total_work % num_batches;
 
@@ -380,6 +370,10 @@ class ThreadPool {
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ThreadPool);
 
+  // StartProfiling and StopProfiling are not to be consumed as public-facing API
+  static void StartProfiling(concurrency::ThreadPool* tp);
+  static std::string StopProfiling(concurrency::ThreadPool* tp);
+
  private:
   friend class LoopCounter;
 
@@ -396,7 +390,7 @@ class ThreadPool {
   // then the function will run directly in the caller.  The fork-join
   // synchronization is handled in the thread pool, and so any state captured
   // by fn() is safe from concurrent access once RunWithHelp returns.
-  void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n);
+  void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size);
 
   // Divides the work represented by the range [0, total) into k shards.
   // Calls fn(i*block_size, (i+1)*block_size) from the ith shard (0 <= i < k).
@@ -425,6 +419,10 @@ class ThreadPool {
 
   void Schedule(std::function<void()> fn);
 
+  void StartProfiling();
+
+  std::string StopProfiling();
+
   ThreadOptions thread_options_;
 
   // If a thread pool is created with degree_of_parallelism != 1 then an underlying
@@ -435,6 +433,9 @@ class ThreadPool {
 
   // If used, underlying_threadpool_ is instantiated and owned by the ThreadPool.
   std::unique_ptr<ThreadPoolTempl<Env> > extended_eigen_threadpool_;
+
+  // Force the thread pool to run in hybrid mode on a normal cpu.
+  bool force_hybrid_ = false;
 };
 
 }  // namespace concurrency

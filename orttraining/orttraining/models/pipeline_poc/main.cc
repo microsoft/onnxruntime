@@ -8,6 +8,9 @@
 #include "cxxopts.hpp"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "core/providers/provider_factory_creators.h"
+#include "core/session/onnxruntime_c_api.h"
+
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
@@ -15,8 +18,6 @@
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
 #include "orttraining/models/runner/data_loader.h"
-
-#include "core/providers/cuda/cuda_execution_provider.h"
 
 #include <condition_variable>
 #include <mutex>
@@ -90,6 +91,7 @@ int main(int argc, char* argv[]) {
       false,                             //enable_profiling
       ORT_TSTR(""),                      //optimized_model_filepath
       true,                              //enable_mem_pattern
+      true,                              //enable_mem_reuse
       true,                              //enable_cpu_mem_arena
       ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
       "",                                //session_logid
@@ -104,14 +106,17 @@ int main(int argc, char* argv[]) {
       true,                              //thread_pool_allow_spinning
       false,                             //use_deterministic_compute
       {},                                //session_configurations
-      {}                                 //initializers_to_share_map
+      {},                                //initializers_to_share_map
+      {}                                 // external_initializers
   };
 
   InferenceSession session_object{so, *env};
 
   Status st;
-  CUDAExecutionProviderInfo xp_info{static_cast<OrtDevice::DeviceId>(world_rank)};
-  st = session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info));
+  OrtCUDAProviderOptions xp_info{};
+  xp_info.device_id = static_cast<OrtDevice::DeviceId>(world_rank);
+  auto cuda_factory = CudaProviderFactoryCreator::Create(&xp_info);
+  st = session_object.RegisterExecutionProvider(cuda_factory->CreateProvider());
   ORT_ENFORCE(st == Status::OK(), "MPI rank ", world_rank, ": ", st.ErrorMessage());
 
   std::string model_at_rank;

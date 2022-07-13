@@ -3,6 +3,7 @@
 
 #pragma once
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
 #include "core/framework/allocation_planner.h"
 
 namespace onnxruntime {
@@ -12,6 +13,9 @@ struct MemoryBlock {
 
   MemoryBlock() = default;
   MemoryBlock(size_t offset, size_t size) : offset_(offset), size_(size) {}
+  bool operator<(const MemoryBlock& mb) const {
+    return offset_ < mb.offset_;
+  }
 };
 
 class MemoryPattern {
@@ -42,11 +46,15 @@ class MemoryPattern {
     return &it->second;
   }
 
+  const InlinedHashMap<int, MemoryBlock>& GetPatternsMap() const {
+    return patterns_;
+  }
+
  private:
   // allow move
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(MemoryPattern);
 
-  std::unordered_map<int, MemoryBlock> patterns_;
+  InlinedHashMap<int, MemoryBlock> patterns_;
   size_t peak_size_{0};
 };
 

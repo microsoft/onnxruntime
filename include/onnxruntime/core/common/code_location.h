@@ -19,7 +19,7 @@ struct CodeLocation {
   */
   CodeLocation(const char* file_path, const int line, const char* func)
       : file_and_path{file_path}, line_num{line}, function{func} {
-      }
+  }
 
   /**
      @param file_path Usually the value of __FILE__
@@ -29,7 +29,7 @@ struct CodeLocation {
   */
   CodeLocation(const char* file_path, const int line, const char* func, const std::vector<std::string>& stacktrace)
       : file_and_path{file_path}, line_num{line}, function{func}, stacktrace(stacktrace) {
-      }
+  }
 
   std::string FileNoPath() const {
     // assuming we always have work to do, so not trying to avoid creating a new string if
@@ -47,9 +47,10 @@ struct CodeLocation {
     out << (format == Format::kFilename ? FileNoPath() : file_and_path) << ":" << line_num << " " << function;
     return out.str();
   }
-
+  //utf-8. Because on Windows we compile our code with "/utf-8". And we assume the other platforms only use utf-8.
   const std::string file_and_path;
   const int line_num;
+  //utf-8
   const std::string function;
   const std::vector<std::string> stacktrace;
 };

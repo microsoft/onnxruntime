@@ -2,47 +2,35 @@
 // Licensed under the MIT License.
 
 #include "core/graph/graph_utils.h"
+
+#include <queue>
+
 #include "core/graph/graph.h"
 #include "core/common/logging/logging.h"
-#include <queue>
 
 namespace onnxruntime {
 
 namespace graph_utils {
 
-struct GraphEdge {
-  NodeIndex src_node;
-  NodeIndex dst_node;
-  int src_arg_index;
-  int dst_arg_index;
-  std::string arg_name;
-
-  GraphEdge(NodeIndex src_node, NodeIndex dst_node,
-            int src_arg_index, int dst_arg_index, const std::string& arg_name) : src_node(src_node),
-                                                                                 dst_node(dst_node),
-                                                                                 src_arg_index(src_arg_index),
-                                                                                 dst_arg_index(dst_arg_index),
-                                                                                 arg_name(arg_name) {}
-
-  // Constructs a GraphEdge given a node, an edge_end, and a boolean for the edge direction.
-  static GraphEdge CreateGraphEdge(const Node& node, const Node::EdgeEnd& edge_end, bool is_input_edge) {
-    return is_input_edge
-               ? GraphEdge(edge_end.GetNode().Index(),
-                           node.Index(),
-                           edge_end.GetSrcArgIndex(),
-                           edge_end.GetDstArgIndex(),
-                           GetNodeInputName(node, edge_end.GetDstArgIndex()))
-               : GraphEdge(node.Index(),
-                           edge_end.GetNode().Index(),
-                           edge_end.GetSrcArgIndex(),
-                           edge_end.GetDstArgIndex(),
-                           GetNodeOutputName(node, edge_end.GetSrcArgIndex()));
-  }
-};
-
 //---------------------
 //--- local helpers ---
 //---------------------
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+static int GetIndexFromName(const Node& node, const std::string& name, bool is_input) {
+  const auto& node_args = is_input ? node.InputDefs() : node.OutputDefs();
+  auto itr = std::find_if(node_args.begin(), node_args.end(),
+                          [&name](const NodeArg* node_arg) { return node_arg->Name() == name; });
+  ORT_ENFORCE(itr != node_args.end(),
+              "Attempting to get index by a name which does not exist:", name, "for node: ", node.Name());
+  auto index = std::distance(node_args.begin(), itr);
+  return static_cast<int>(index);
+}
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD)
 
 // check if an output edge provides an implicit input to the destination node
 static bool OutputEdgeProvidesImplicitInput(const Graph& graph, const GraphEdge& output_edge) {
@@ -138,48 +126,6 @@ static void UpdateImplicitInputNameInSubgraph(Node& node,
   }
 }
 
-/** Returns a vector of the input GraphEdges of a node. */
-static std::vector<GraphEdge> GetNodeInputEdges(const Node& node) {
-  std::vector<GraphEdge> input_edges;
-  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
-    input_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, true));
-  }
-
-  return input_edges;
-}
-
-/** Returns a vector of the output GraphEdges of a node. */
-static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node) {
-  std::vector<GraphEdge> output_edges;
-  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-    output_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, false));
-  }
-
-  return output_edges;
-}
-
-/** Returns a vector of output GraphEdges of a node for the provided output index. */
-static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node, size_t index) {
-  std::vector<GraphEdge> output_edges;
-  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-    if (static_cast<size_t>(it->GetSrcArgIndex()) == index) {
-      output_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, false));
-    }
-  }
-
-  return output_edges;
-}
-
-/** Removes a set of GraphEdges from the graph. */
-static void RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edges) {
-  for (const auto& edge_to_remove : edges) {
-    graph.RemoveEdge(edge_to_remove.src_node,
-                     edge_to_remove.dst_node,
-                     edge_to_remove.src_arg_index,
-                     edge_to_remove.dst_arg_index);
-  }
-}
-
 /** Given a graph, a list of edges, and a NodeArg name, checks if each of the edges provides an implicit input
     to a subgraph. If so, it checks if there is no clash of the given NodeArg name in each of the subgraphs.
     This is important when removing a node with this NodeArg as input. */
@@ -203,7 +149,7 @@ static bool CanUpdateImplicitInputNameInSubgraphs(const Graph& graph,
 /** Removes a node with a single incoming node and connects the incoming node with the output node/s.*/
 static bool RemoveNodeWithSingleNodeInSingleUsedOutput(Graph& graph, Node& node) {
   // Store info for input and output edges.
-  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
+  std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node);
 
   if (!output_edges.empty()) {
     // get non-const incoming Node
@@ -231,14 +177,14 @@ After the move is complete src_node will have no input edges.
 */
 static void MoveAllNodeInputEdges(Graph& graph, Node& src_node, Node& target_node) {
   auto target_idx = target_node.Index();
-  auto input_edges = GetNodeInputEdges(src_node);
+  auto input_edges = GraphEdge::GetNodeInputEdges(src_node);
 
   for (auto cur = input_edges.cbegin(), end = input_edges.cend(); cur != end; ++cur) {
     auto target_arg_index = GetNodeInputIndexFromInputName(target_node, cur->arg_name);
     graph.AddEdge(cur->src_node, target_idx, cur->src_arg_index, target_arg_index);
   }
 
-  RemoveGraphEdges(graph, input_edges);
+  GraphEdge::RemoveGraphEdges(graph, input_edges);
 }
 
 /** Move the output defs and edges from src_node to target_node.
@@ -249,26 +195,108 @@ static void MoveAllNodeOutputs(Graph& graph, Node& src_node, Node& target_node) 
   target_node.MutableOutputDefs() = src_node.MutableOutputDefs();
 
   auto target_idx = target_node.Index();
-  auto output_edges = GetNodeOutputEdges(src_node);
+  auto output_edges = GraphEdge::GetNodeOutputEdges(src_node);
 
   for (auto cur = output_edges.cbegin(), end = output_edges.cend(); cur != end; ++cur) {
     graph.AddEdge(target_idx, cur->dst_node, cur->src_arg_index, cur->dst_arg_index);
   }
 
-  RemoveGraphEdges(graph, output_edges);
+  GraphEdge::RemoveGraphEdges(graph, output_edges);
 }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 //----------------------------
 //--- end of local helpers ---
 //----------------------------
 
-int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name) {
-  auto itr = std::find_if(node.InputDefs().begin(), node.InputDefs().end(),
-                          [&input_name](const NodeArg* input) { return input->Name() == input_name; });
-  ORT_ENFORCE(itr != node.InputDefs().end(),
-              "Attempting to get index for an input which does not exist.");
-  auto index = std::distance(node.InputDefs().begin(), itr);
-  return static_cast<int>(index);
+bool MatchesOpSinceVersion(const Node& node, std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions) {
+  return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
+}
+
+bool MatchesOpSetDomain(const Node& node, std::string_view domain) {
+  const auto& node_domain = node.Domain();
+  return node_domain == domain;
+}
+
+bool IsSupportedOptypeVersionAndDomain(const Node& node,
+                                       std::string_view op_type,
+                                       std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
+                                       std::string_view domain) {
+  return (node.OpType() == op_type &&
+  // we don't have op schemas in the minimal build so there's no way to check the deprecated flag
+#if !defined(ORT_MINIMAL_BUILD)
+          !node.Op()->Deprecated() &&
+#endif
+          MatchesOpSinceVersion(node, versions) && MatchesOpSetDomain(node, domain));
+}
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name) {
+  const auto& attrs = node.GetAttributes();
+  const auto iter = attrs.find(attr_name);
+  return iter == attrs.end() ? nullptr : &iter->second;
+}
+
+NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
+  // sanity check as AddInitializedTensor silently ignores attempts to add a duplicate initializer
+  const ONNX_NAMESPACE::TensorProto* existing = nullptr;
+  ORT_ENFORCE(!graph.GetInitializedTensor(new_initializer.name(), existing),
+              "Initializer with same name exists. Name:", new_initializer.name());
+
+  graph.AddInitializedTensor(new_initializer);
+
+  ONNX_NAMESPACE::TypeProto new_type;
+  auto* typeproto_tensor = new_type.mutable_tensor_type();
+  typeproto_tensor->set_elem_type(new_initializer.data_type());
+
+  auto* shape = typeproto_tensor->mutable_shape();
+  for (auto dim : new_initializer.dims()) {
+    shape->add_dim()->set_dim_value(dim);
+  }
+
+  return graph.GetOrCreateNodeArg(new_initializer.name(), &new_type);
+}
+
+int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name) {
+  return GetIndexFromName(node, output_name, false);
+}
+
+std::vector<const Node*> FindParentsByType(const Node& node, const std::string& parent_type) {
+  // find parents and sort them by destination argument index
+  // as there is at most one input edge for each input argument,
+  // there is no need of extra work like FindChildrenByType
+  std::vector<const Node*> parents(node.InputDefs().size(), nullptr);
+  for (auto it = node.InputEdgesBegin(); it != node.InputEdgesEnd(); it++) {
+    if (it->GetNode().OpType().compare(parent_type) == 0) {
+      parents[it->GetDstArgIndex()] = &(it->GetNode());
+    }
+  }
+
+  // remove unmatched nodes
+  parents.erase(std::remove(parents.begin(), parents.end(), nullptr), parents.end());
+  return parents;
+}
+
+std::vector<const Node*> FindChildrenByType(const Node& node, const std::string& child_type) {
+  // find children and sort them by source argument index:
+  //     Create a 2D vector to hold the result.
+  //     1st dimension index is output index,
+  //     and the 2nd dimension stores the edges from the output.
+  std::vector<std::vector<const Node*>> children(node.OutputDefs().size(), std::vector<const Node*>());
+  for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); it++) {
+    if (it->GetNode().OpType().compare(child_type) == 0) {
+      children[it->GetSrcArgIndex()].push_back(&(it->GetNode()));
+    }
+  }
+
+  // aggregate children
+  std::vector<const Node*> agg_res;
+  for (size_t output_idx = 0; output_idx < children.size(); output_idx++) {
+    agg_res.insert(agg_res.end(), children[output_idx].begin(), children[output_idx].end());
+  }
+  return agg_res;
 }
 
 const std::string& GetNodeInputName(const Node& node, int index) {
@@ -285,53 +313,123 @@ const std::string& GetNodeOutputName(const Node& node, int index) {
   return outputs[index]->Name();
 }
 
-bool IsSupportedOptypeVersionAndDomain(const Node& node,
-                                       const std::string& op_type,
-                                       const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
-                                       const std::string& domain) {
-  return (node.OpType() == op_type && !node.Op()->Deprecated() &&
-          MatchesOpSinceVersion(node, versions) && MatchesOpSetDomain(node, domain));
+size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
+  std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node);
+  GraphEdge::RemoveGraphEdges(graph, output_edges);
+
+  return output_edges.size();
 }
 
-bool IsSupportedOptypeVersionAndDomain(const Node& node,
-                                       const char* op_type,
-                                       const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
-                                       const char* domain) {
-  return IsSupportedOptypeVersionAndDomain(node, std::string(op_type), versions, std::string(domain));
+size_t RemoveNodeOutputEdges(Graph& graph, Node& node, int output_idx) {
+  std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node, output_idx);
+  GraphEdge::RemoveGraphEdges(graph, output_edges);
+
+  return output_edges.size();
 }
 
-bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
+const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& initializer_name,
+                                                          bool check_outer_scope) {
+  return graph.GetConstantInitializer(initializer_name, check_outer_scope);
+}
+
+GraphEdge::GraphEdge(NodeIndex src_node,
+                     NodeIndex dst_node,
+                     int src_arg_index,
+                     int dst_arg_index,
+                     const std::string& arg_name) : src_node(src_node),
+                                                    dst_node(dst_node),
+                                                    src_arg_index(src_arg_index),
+                                                    dst_arg_index(dst_arg_index),
+                                                    arg_name(arg_name) {}
+
+// Constructs a GraphEdge given a node, an edge_end, and a boolean for the edge direction.
+GraphEdge GraphEdge::CreateGraphEdge(const Node& node, const Node::EdgeEnd& edge_end, bool is_input_edge) {
+  return is_input_edge
+             ? GraphEdge(edge_end.GetNode().Index(),
+                         node.Index(),
+                         edge_end.GetSrcArgIndex(),
+                         edge_end.GetDstArgIndex(),
+                         GetNodeInputName(node, edge_end.GetDstArgIndex()))
+             : GraphEdge(node.Index(),
+                         edge_end.GetNode().Index(),
+                         edge_end.GetSrcArgIndex(),
+                         edge_end.GetDstArgIndex(),
+                         GetNodeOutputName(node, edge_end.GetSrcArgIndex()));
+}
+
+const Node::EdgeEnd* GetInputEdge(const Node& node, int arg_index) {
+  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
+    if (arg_index == it->GetDstArgIndex()) {
+      return &(*it);
+    }
+  }
+  return nullptr;
+}
+
+/** Returns a vector of the input GraphEdges of a node. */
+std::vector<GraphEdge> GraphEdge::GetNodeInputEdges(const Node& node) {
+  std::vector<GraphEdge> input_edges;
+  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
+    input_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, true));
+  }
+
+  return input_edges;
+}
+
+/** Returns a vector of the output GraphEdges of a node. */
+std::vector<GraphEdge> GraphEdge::GetNodeOutputEdges(const Node& node) {
+  std::vector<GraphEdge> output_edges;
+  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+    output_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, false));
+  }
+
+  return output_edges;
+}
+
+/** Returns a vector of output GraphEdges of a node for the provided output index. */
+std::vector<GraphEdge> GraphEdge::GetNodeOutputEdges(const Node& node, size_t index) {
+  std::vector<GraphEdge> output_edges;
+  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+    if (static_cast<size_t>(it->GetSrcArgIndex()) == index) {
+      output_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, false));
+    }
+  }
+
+  return output_edges;
+}
+
+/** Removes a set of GraphEdges from the graph. */
+void GraphEdge::RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edges) {
+  for (const auto& edge_to_remove : edges) {
+    graph.RemoveEdge(edge_to_remove.src_node,
+                     edge_to_remove.dst_node,
+                     edge_to_remove.src_arg_index,
+                     edge_to_remove.dst_arg_index);
+  }
+}
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD)
+
+bool MatchesOpSinceVersion(const Node& node, gsl::span<const ONNX_NAMESPACE::OperatorSetVersion> versions) {
   return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
 }
 
-bool MatchesOpSinceVersion(const Node& node, const std::vector<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
-  return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
-}
-
-bool MatchesOpSetDomain(const Node& node, const std::string& domain) {
-  const auto& node_domain = node.Domain();
-  // We do a special check for the ONNX domain, as it has two aliases.
-  return node_domain == domain ||
-         ((node_domain == kOnnxDomain || node_domain == kOnnxDomainAlias) &&
-          (domain == kOnnxDomain || domain == kOnnxDomainAlias));
+int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name) {
+  return GetIndexFromName(node, input_name, true);
 }
 
 bool IsSupportedProvider(const Node& node,
-                         const std::unordered_set<std::string>& compatible_providers) {
+                         const InlinedHashSet<std::string_view>& compatible_providers) {
   return !(!compatible_providers.empty() &&
            compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end());
-}
-
-const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name) {
-  const auto& attrs = node.GetAttributes();
-  const auto iter = attrs.find(attr_name);
-  return iter == attrs.end() ? nullptr : &iter->second;
 }
 
 /** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators.
 Returns the name of the single used output in output_name. */
 static bool IsOnlyOneOutputUsed(const Graph& graph, const Node& node, const std::string*& output_name) {
-  const int unassigned = -1;
+  constexpr int unassigned = -1;
   int first_output = unassigned;
 
   // check that there are only edges for one output, and set the output_name
@@ -386,7 +484,7 @@ bool CanRemoveNode(const Graph& graph, const Node& node, const logging::Logger& 
   // This would allow removal of a node that is providing a graph output, as that output name would come from updating
   // the upstream node. This should also enable removal if CanUpdateImplicitInputNameInSubgraphs returns false.
 
-  if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
+  if (graph.NodeProducesGraphOutput(node)) {
     return false;
   }
 
@@ -406,7 +504,7 @@ bool CanRemoveNode(const Graph& graph, const Node& node, const logging::Logger& 
 
   if (new_name) {
     // Check that changing the current output name to the new name won't break any subgraphs that consume it
-    std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
+    std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node);
     can_remove = CanUpdateImplicitInputNameInSubgraphs(graph, output_edges, *new_name, logger);
   }
 
@@ -414,8 +512,8 @@ bool CanRemoveNode(const Graph& graph, const Node& node, const logging::Logger& 
 }
 
 bool RemoveNode(Graph& graph, Node& node) {
-  //TODO: enable the check back
-  //assert(CanRemoveNode(graph, node, nullptr));
+  // TODO: enable the check back
+  // assert(CanRemoveNode(graph, node, nullptr));
 
   // Note: Node does not produce any graph outputs, and only a single output is used.
 
@@ -457,7 +555,7 @@ bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const s
   if (output_name_is_changing) {
     // Check that changing the current output name to the new name won't break any subgraphs
     // that consume the current name
-    std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
+    std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node);
     can_remove = CanUpdateImplicitInputNameInSubgraphs(graph, output_edges, initializer_name, logger);
   }
 
@@ -466,7 +564,7 @@ bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const s
 
 bool ReplaceNodeWithInitializer(Graph& graph, Node& node, NodeArg& replacement) {
   // We have to remove the output edges before we create replacement ones, so save the current output edge information
-  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
+  std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node);
 
   // Remove the output edges of the node and then the node (this will remove any input edges).
   RemoveNodeOutputEdges(graph, node);
@@ -494,11 +592,6 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input) {
   return std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end();
 }
 
-const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& initializer_name,
-                                                          bool check_outer_scope) {
-  return graph.GetConstantInitializer(initializer_name, check_outer_scope);
-}
-
 bool IsInitializer(const Graph& graph, const std::string& name, bool check_outer_scope) {
   bool is_initializer = false;
   const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
@@ -521,7 +614,7 @@ bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg) {
 }
 
 bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs,
-                              const std::unordered_set<std::string>& excluded_initializers) {
+                              const InlinedHashSet<std::string>& excluded_initializers) {
   // clear so we have a known state. if we fail part way through we go back to this state.
   constant_inputs.clear();
 
@@ -565,49 +658,15 @@ const Node* FirstParentByType(const Node& node, const std::string& parent_type) 
   return nullptr;
 }
 
-NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
-  // sanity check as AddInitializedTensor silently ignores attempts to add a duplicate initializer
-  const ONNX_NAMESPACE::TensorProto* existing = nullptr;
-  ORT_ENFORCE(!graph.GetInitializedTensor(new_initializer.name(), existing),
-              "Initializer with same name exists. Name:", new_initializer.name());
-
-  graph.AddInitializedTensor(new_initializer);
-
-  ONNX_NAMESPACE::TypeProto new_type;
-  auto* typeproto_tensor = new_type.mutable_tensor_type();
-  typeproto_tensor->set_elem_type(new_initializer.data_type());
-
-  auto* shape = typeproto_tensor->mutable_shape();
-  for (auto dim : new_initializer.dims()) {
-    shape->add_dim()->set_dim_value(dim);
-  }
-
-  return graph.GetOrCreateNodeArg(new_initializer.name(), &new_type);
-}
-
-size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
-  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
-  RemoveGraphEdges(graph, output_edges);
-
-  return output_edges.size();
-}
-
-size_t RemoveNodeOutputEdges(Graph& graph, Node& node, int output_idx) {
-  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node, output_idx);
-  RemoveGraphEdges(graph, output_edges);
-
-  return output_edges.size();
-}
-
 void ReplaceDownstreamNodeInput(Graph& graph, Node& node, int output_idx, Node& replacement, int replacement_output_idx) {
   // get the output edges from node for output_idx
-  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node, output_idx);
+  std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node, output_idx);
 
   if (!output_edges.empty()) {
     const auto& replacement_name = replacement.MutableOutputDefs()[replacement_output_idx]->Name();
 
     // Remove the output edges of the node first
-    RemoveGraphEdges(graph, output_edges);
+    GraphEdge::RemoveGraphEdges(graph, output_edges);
 
     // Create connections between the replacement node and the outgoing nodes
     for (const auto& output_edge : output_edges) {
@@ -660,24 +719,15 @@ void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node) {
   graph.RemoveNode(second_node.Index());
 }
 
-void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node) {
-  MoveAllNodeInputEdges(graph, nodes.front(), replacement_node);
-  MoveAllNodeOutputs(graph, nodes.back(), replacement_node);
+void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrapper<Node>> nodes, Node& replacement_node_start,
+                        Node& replacement_node_end) {
+  MoveAllNodeInputEdges(graph, *nodes.begin(), replacement_node_start);
+  MoveAllNodeOutputs(graph, nodes.back(), replacement_node_end);
 
   for (Node& node : nodes) {
     RemoveNodeOutputEdges(graph, node);
     graph.RemoveNode(node.Index());
   }
-}
-
-const Node::EdgeEnd*
-GetInputEdge(const Node& node, int arg_index) {
-  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
-    if (arg_index == it->GetDstArgIndex()) {
-      return &(*it);
-    }
-  }
-  return nullptr;
 }
 
 const Node* GetInputNode(const Node& node, int arg_index) {
@@ -688,7 +738,7 @@ const Node* GetInputNode(const Node& node, int arg_index) {
   return &(edge->GetNode());
 }
 
-inline std::string ToString(const std::vector<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
+inline std::string ToString(gsl::span<const ONNX_NAMESPACE::OperatorSetVersion> versions) {
   std::ostringstream output;
   if (!versions.empty()) {
     // Convert all but the last element to avoid a trailing ";"
@@ -700,7 +750,8 @@ inline std::string ToString(const std::vector<ONNX_NAMESPACE::OperatorSetVersion
   return output.str();
 }
 
-bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToMatch>& edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger) {
+bool FindPath(const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMatch> edges_to_match,
+              std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger) {
   result.clear();
   result.reserve(edges_to_match.size());
 
@@ -750,7 +801,7 @@ bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToM
   return true;
 }
 
-bool FindPath(Graph& graph, const Node& node, bool is_input_edge, const std::vector<EdgeEndToMatch>& edges_to_match, std::vector<std::reference_wrapper<Node>>& result, const logging::Logger& logger) {
+bool FindPath(Graph& graph, const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMatch> edges_to_match, std::vector<std::reference_wrapper<Node>>& result, const logging::Logger& logger) {
   result.clear();
 
   std::vector<const Node::EdgeEnd*> edge_ends;
@@ -768,7 +819,7 @@ bool FindPath(Graph& graph, const Node& node, bool is_input_edge, const std::vec
 
 bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
   std::queue<NodeIndex> q;
-  std::unordered_set<NodeIndex> removed_nodes;
+  InlinedHashSet<NodeIndex> removed_nodes;
 
   NodeIndex start_node_index = start_node.Index();
   q.push(start_node_index);
@@ -784,7 +835,7 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
     // Each eligible node in the subgraph must have less than one output edge and no output should be
     // the graph output
     const Node& cur_node = *graph.GetNode(cur_node_index);
-    if (cur_node.GetOutputEdgesCount() > 1 || !graph.GetNodeOutputsInGraphOutputs(cur_node).empty()) {
+    if (cur_node.GetOutputEdgesCount() > 1 || graph.NodeProducesGraphOutput(cur_node)) {
       continue;
     }
 
@@ -822,6 +873,8 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
 NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg) {
   return graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(base_arg.Name()), base_arg.TypeAsProto());
 }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace graph_utils
 }  // namespace onnxruntime

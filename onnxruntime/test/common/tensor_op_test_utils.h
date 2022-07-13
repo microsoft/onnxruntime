@@ -6,17 +6,21 @@
 #include <random>
 #include <type_traits>
 
+#include <gsl/gsl>
+
 #include "gtest/gtest.h"
 
 #include "core/common/common.h"
 #include "core/common/optional.h"
+#include "core/common/type_utils.h"
+#include "core/framework/tensor.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
 namespace test {
 
 namespace detail {
-inline int64_t SizeFromDims(const std::vector<int64_t>& dims) {
+inline int64_t SizeFromDims(gsl::span<const int64_t> dims) {
   const int64_t size = std::accumulate(
       dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
   ORT_ENFORCE(size >= 0);
@@ -40,7 +44,7 @@ class RandomValueGenerator {
   typename std::enable_if<
       std::is_floating_point<TFloat>::value,
       std::vector<TFloat>>::type
-  Uniform(const std::vector<int64_t>& dims, TFloat min, TFloat max) {
+  Uniform(gsl::span<const int64_t> dims, TFloat min, TFloat max) {
     std::vector<TFloat> val(detail::SizeFromDims(dims));
     std::uniform_real_distribution<TFloat> distribution(min, max);
     for (size_t i = 0; i < val.size(); ++i) {
@@ -52,13 +56,26 @@ class RandomValueGenerator {
   // Random values generated are in the range [min, max).
   template <typename TInt>
   typename std::enable_if<
-      std::is_integral<TInt>::value,
+      std::is_integral<TInt>::value && !utils::IsByteType<TInt>::value,
       std::vector<TInt>>::type
-  Uniform(const std::vector<int64_t>& dims, TInt min, TInt max) {
+  Uniform(gsl::span<const int64_t> dims, TInt min, TInt max) {
     std::vector<TInt> val(detail::SizeFromDims(dims));
     std::uniform_int_distribution<TInt> distribution(min, max - 1);
     for (size_t i = 0; i < val.size(); ++i) {
       val[i] = distribution(generator_);
+    }
+    return val;
+  }
+
+  template <typename TByte>
+  typename std::enable_if<
+      utils::IsByteType<TByte>::value,
+      std::vector<TByte>>::type
+  Uniform(gsl::span<const int64_t> dims, TByte min, TByte max) {
+    std::vector<TByte> val(detail::SizeFromDims(dims));
+    std::uniform_int_distribution<int32_t> distribution(min, max - 1);
+    for (size_t i = 0; i < val.size(); ++i) {
+      val[i] = static_cast<TByte>(distribution(generator_));
     }
     return val;
   }
@@ -68,7 +85,7 @@ class RandomValueGenerator {
   typename std::enable_if<
       std::is_floating_point<TFloat>::value,
       std::vector<TFloat>>::type
-  Gaussian(const std::vector<int64_t>& dims, TFloat mean, TFloat stddev) {
+  Gaussian(gsl::span<const int64_t> dims, TFloat mean, TFloat stddev) {
     std::vector<TFloat> val(detail::SizeFromDims(dims));
     std::normal_distribution<TFloat> distribution(mean, stddev);
     for (size_t i = 0; i < val.size(); ++i) {
@@ -126,20 +143,32 @@ class RandomValueGenerator {
 
 template <class T>
 inline std::vector<T> FillZeros(const std::vector<int64_t>& dims) {
-  std::vector<T> val(detail::SizeFromDims(dims), T(0));
+  std::vector<T> val(detail::SizeFromDims(dims), T{});
   return val;
 }
 
 // Returns a vector of `count` values which start at `start` and change by increments of `step`.
 template <typename T>
-inline std::vector<T> ValueRange(
-    size_t count, T start = static_cast<T>(0), T step = static_cast<T>(1)) {
+inline std::vector<T> ValueRange(size_t count, T start = static_cast<T>(0.f), T step = static_cast<T>(1.f)) {
   std::vector<T> result;
   result.reserve(count);
   T curr = start;
   for (size_t i = 0; i < count; ++i) {
     result.emplace_back(curr);
     curr += step;
+  }
+  return result;
+}
+
+template <>
+inline std::vector<MLFloat16> ValueRange<MLFloat16>(size_t count, MLFloat16 start, MLFloat16 step) {
+  std::vector<MLFloat16> result;
+  result.reserve(count);
+  float curr = start.ToFloat();
+  float f_step = step.ToFloat();
+  for (size_t i = 0; i < count; ++i) {
+    result.emplace_back(MLFloat16(curr));
+    curr += f_step;
   }
   return result;
 }

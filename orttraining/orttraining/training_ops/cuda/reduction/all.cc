@@ -2,18 +2,19 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/reduction/all.h"
+#include "orttraining/training_ops/cuda/reduction/all_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_ALL_KERNEL_TYPED(T)                                            \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      All,                                                                      \
-      kMSDomain,                                                                \
-      1,                                                                        \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_ALL_KERNEL_TYPED(T)                                                       \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      All,                                                                                 \
+      kMSDomain,                                                                           \
+      1,                                                                                   \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       All<T>);
 
 template <typename T>
@@ -26,10 +27,10 @@ Status All<T>::ComputeInternal(OpKernelContext* ctx) const {
               size, ") exceeds the max allowed value (", std::numeric_limits<int>::max(), ").");
 
   LaunchAllKernel(
+      Stream(),
       input.Data<T>(),
       static_cast<int>(size),
       output.MutableData<bool>());
-
   return Status::OK();
 }
 

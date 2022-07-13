@@ -6,12 +6,11 @@
 #include <atomic>
 #include <cassert>
 #include "dnnl_execution_provider.h"
+#include "dnnl_provider_factory_creator.h"
 
 using namespace onnxruntime;
 
 namespace onnxruntime {
-
-void Shutdown_DeleteRegistry();
 
 struct DnnlProviderFactory : IExecutionProviderFactory {
   DnnlProviderFactory(bool create_arena) : create_arena_(create_arena) {}
@@ -26,12 +25,12 @@ struct DnnlProviderFactory : IExecutionProviderFactory {
 std::unique_ptr<IExecutionProvider> DnnlProviderFactory::CreateProvider() {
   DNNLExecutionProviderInfo info;
   info.create_arena = create_arena_;
-  return onnxruntime::make_unique<DNNLExecutionProvider>(info);
+  return std::make_unique<DNNLExecutionProvider>(info);
 }
 
 struct Dnnl_Provider : Provider {
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int use_arena) override {
-#if defined(_WIN32) && !defined(_OPENMP)
+#if defined(_WIN32)
     {
       // We crash when unloading DNNL on Windows when OpenMP also unloads (As there are threads
       // still running code inside the openmp runtime DLL if OMP_WAIT_POLICY is set to ACTIVE).
@@ -49,8 +48,10 @@ struct Dnnl_Provider : Provider {
     return std::make_shared<DnnlProviderFactory>(use_arena != 0);
   }
 
+  void Initialize() override {
+  }
+
   void Shutdown() override {
-    Shutdown_DeleteRegistry();
   }
 
 } g_provider;

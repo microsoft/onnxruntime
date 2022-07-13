@@ -12,8 +12,8 @@ namespace cuda {
       10, 10,                                                      \
       T,                                                           \
       kCudaExecutionProvider,                                      \
-      KernelDefBuilder()                                           \
-          .InputMemoryType<OrtMemTypeCPUInput>(1)                  \
+      (*KernelDefBuilder::Create())                                \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                  \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),  \
       Resize<T>);                                                  \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                         \
@@ -22,10 +22,10 @@ namespace cuda {
       11, 12,                                                      \
       T,                                                           \
       kCudaExecutionProvider,                                      \
-      KernelDefBuilder()                                           \
-          .InputMemoryType<OrtMemTypeCPUInput>(1)                  \
-          .InputMemoryType<OrtMemTypeCPUInput>(2)                  \
-          .InputMemoryType<OrtMemTypeCPUInput>(3)                  \
+      (*KernelDefBuilder::Create())                                \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                  \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                  \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                  \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()), \
       Resize<T>);                                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
@@ -34,10 +34,10 @@ namespace cuda {
       13,                                                          \
       T,                                                           \
       kCudaExecutionProvider,                                      \
-      KernelDefBuilder()                                           \
-          .InputMemoryType<OrtMemTypeCPUInput>(1)                  \
-          .InputMemoryType<OrtMemTypeCPUInput>(2)                  \
-          .InputMemoryType<OrtMemTypeCPUInput>(3)                  \
+      (*KernelDefBuilder::Create())                                \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                  \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                  \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                  \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()), \
       Resize<T>);
 

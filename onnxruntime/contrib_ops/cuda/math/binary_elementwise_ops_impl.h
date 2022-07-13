@@ -20,6 +20,7 @@ namespace cuda {
 #define CONTRIB_BINARY_ELEMENTWISE_IMPL_DECLARATION(name)               \
   template <typename T>                                                 \
   void Impl_##name(                                                     \
+      cudaStream_t stream,                                        \
       int32_t output_rank_or_simple_broadcast,                          \
       const TArray<int64_t>* lhs_padded_strides,                        \
       const T* lhs_data,                                                \

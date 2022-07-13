@@ -219,7 +219,8 @@ class CompareFunction : public BinaryElementwise<ShouldBroadcast> {
  public:
   CompareFunction(const OpKernelInfo& info) : BinaryElementwise(info) {}
 
-  typedef void (*ImplCompare)(int32_t output_rank_or_simple_broadcast,
+  typedef void (*ImplCompare)(cudaStream_t stream,
+                              int32_t output_rank_or_simple_broadcast,
                               const TArray<int64_t>* lhs_padded_strides,
                               const CudaT* lhs_data,
                               const TArray<int64_t>* rhs_padded_strides,
@@ -256,5 +257,22 @@ class Less final : public CompareFunction<T, typename ToCudaType<T>::MappedType>
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
+
+template <typename T>
+class GreaterOrEqual final : public CompareFunction<T, typename ToCudaType<T>::MappedType> {
+ public:
+  GreaterOrEqual(const OpKernelInfo& info) : CompareFunction<T, typename ToCudaType<T>::MappedType>(info) {}
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class LessOrEqual final : public CompareFunction<T, typename ToCudaType<T>::MappedType> {
+ public:
+  LessOrEqual(const OpKernelInfo& info) : CompareFunction<T, typename ToCudaType<T>::MappedType>(info) {}
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 }  // namespace cuda
 }  // namespace onnxruntime

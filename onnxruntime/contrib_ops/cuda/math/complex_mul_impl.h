@@ -13,6 +13,7 @@ using namespace ::onnxruntime::cuda;
 
 template <typename T>
 void ComplexMul_Impl(
+    cudaStream_t stream,
     int32_t output_rank_or_simple_broadcast,
     const TArray<int64_t>* lhs_padded_strides,
     const T* lhs_data,

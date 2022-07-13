@@ -34,11 +34,19 @@ __global__ void _ScatterNDKernel(
     // This would have been an error in the CPU kernel, but throwing in the CUDA EP
     // is hard. This is the approach taken by other frameworks for out of bound indices
     // in their corresponding GPU backends as well.
-    if (index < 0)
-      index = 0;
+    // index >= -dim_value && index < dim_value
 
-    else if (index >= dim_value)
-      index = dim_value - 1;
+    if (index >= 0) {
+      if (index >= dim_value) {
+        index = dim_value - 1;
+      }
+    } else {
+      if (index < -dim_value) {
+        index = 0;
+      } else {
+        index += dim_value;
+      }
+    }
 
     data_offset += (index * element_count_dim);
   }
@@ -52,6 +60,7 @@ __global__ void _ScatterNDKernel(
 }
 
 Status ScatterNDImpl(
+    cudaStream_t stream,
     void* output_data,
     const size_t element_size,
     const size_t num_indices,
@@ -68,7 +77,7 @@ Status ScatterNDImpl(
 
   switch (element_size) {
     case sizeof(int8_t):
-      _ScatterNDKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _ScatterNDKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           reinterpret_cast<int8_t*>(output_data),
           num_indices,
           indices_data,
@@ -79,7 +88,7 @@ Status ScatterNDImpl(
       break;
 
     case sizeof(int16_t):
-      _ScatterNDKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _ScatterNDKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           reinterpret_cast<int16_t*>(output_data),
           num_indices,
           indices_data,
@@ -90,7 +99,7 @@ Status ScatterNDImpl(
       break;
 
     case sizeof(int32_t):
-      _ScatterNDKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _ScatterNDKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           reinterpret_cast<int32_t*>(output_data),
           num_indices,
           indices_data,
@@ -101,7 +110,7 @@ Status ScatterNDImpl(
       break;
 
     case sizeof(int64_t):
-      _ScatterNDKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _ScatterNDKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           reinterpret_cast<int64_t*>(output_data),
           num_indices,
           indices_data,

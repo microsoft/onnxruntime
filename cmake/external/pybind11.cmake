@@ -8,7 +8,7 @@ if(NOT TARGET pybind11::module)
 
   set(pybind11_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/pybind11/src/pybind11/include)
   set(pybind11_URL https://github.com/pybind/pybind11.git)
-  set(pybind11_TAG v2.6.1)
+  set(pybind11_TAG v2.6.2)
 
   ExternalProject_Add(pybind11
         PREFIX pybind11

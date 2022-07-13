@@ -24,17 +24,17 @@ class VariadicElementwiseOp : public CudaKernel {
 
   template <typename T>
   struct NoBroadcastBatchImplDispatchTarget {
-    Status operator()(const InputTensorVector& inputs, Tensor& output) const;
+    Status operator()(cudaStream_t stream, const InputTensorVector& inputs, Tensor& output) const;
   };
 
   template <typename T>
   struct BinaryImplDispatchTarget {
-    Status operator()(const Tensor& lhs, const Tensor& rhs, Tensor& output) const;
+    Status operator()(cudaStream_t stream, const Tensor& lhs, const Tensor& rhs, Tensor& output) const;
   };
 
   template <typename T>
   struct GeneralImplDispatchTarget {
-    Status operator()(const InputTensorVector& inputs, Tensor& output) const;
+    Status operator()(cudaStream_t stream, const InputTensorVector& inputs, Tensor& output) const;
   };
 };
 

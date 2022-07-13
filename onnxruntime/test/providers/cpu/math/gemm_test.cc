@@ -4,52 +4,57 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
 
 template <typename T>
-void TestGemmNoTrans(bool b_is_initializer) {
-  OpTester test("Gemm");
+void TestGemmNoTrans() {
+  auto run_test = [](bool b_is_initializer, bool c_is_initializer = false) {
+    OpTester test("Gemm");
 
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)0);
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", 1.0f);
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f), b_is_initializer);
-  test.AddInput<T>("C", {2, 3}, std::vector<T>(6, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 11.0f, 11.0f,
-                     -9.0f, -9.0f, -9.0f});
-  test.Run();
+    test.AddInput<T>("A", {2, 4},
+                     {1.0f, 2.0f, 3.0f, 4.0f,
+                      -1.0f, -2.0f, -3.0f, -4.0f});
+    test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f), b_is_initializer);
+    test.AddInput<T>("C", {2, 3}, std::vector<T>(6, 1.0f), c_is_initializer);
+    test.AddOutput<T>("Y", {2, 3},
+                      {11.0f, 11.0f, 11.0f,
+                       -9.0f, -9.0f, -9.0f});
+    test.Run();
+  };
+
+  run_test(false, false);
+  // NNAPI EP requires weight to be an initializer
+  run_test(true, false);
+  // CoreML EP requires weight and bias both to be initializers
+  run_test(true, true);
 }
 
 TEST(GemmOpTest, GemmNoTrans_float) {
-  TestGemmNoTrans<float>(false);
+  TestGemmNoTrans<float>();
 }
 
 TEST(GemmOpTest, GemmNoTrans_double) {
-  TestGemmNoTrans<double>(false);
+  TestGemmNoTrans<double>();
 }
 
-// NNAPI EP requires weight to be an initializer
-TEST(GemmOpTest, GemmNoTransBIsInitializer) {
-  TestGemmNoTrans<float>(true);
-  TestGemmNoTrans<double>(true);
-}
-
-// Only CUDA kernel has float 16 support
-#ifdef USE_CUDA
+// Only CUDA and ROCM kernel has float 16 support
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(GemmOpTest, GemmNoTrans_f16) {
+#ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
     return;
   }
+#endif
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -81,42 +86,73 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
 }
 #endif
 
-template <typename T>
-void TestGemmBroadcast(bool b_is_initializer) {
-  OpTester test("Gemm");
-
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(GemmOpTest, GemmNoTrans_bfloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+  OpTester test("Gemm", 14);
   test.AddAttribute("transA", (int64_t)0);
   test.AddAttribute("transB", (int64_t)0);
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
-
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f), b_is_initializer);
-  test.AddInput<T>("C", {3}, std::vector<T>{1.0f, 2.0f, 3.0f});
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 12.0f, 13.0f,
-                     -9.0f, -8.0f, -7.0f});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO : Temporarily disabled due to accuracy issues
-#else
-  test.Run();
+  test.AddInput<BFloat16>("A", {2, 4}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f}));
+  test.AddInput<BFloat16>("B", {4, 3}, MakeBFloat16({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f}));
+  test.AddInput<BFloat16>("C", {2, 3}, MakeBFloat16({1.f, 1.f, 1.f, 1.f, 1.f, 1.f}));
+  test.AddOutput<BFloat16>("Y", {2, 3}, MakeBFloat16({11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
 #endif
+
+template <typename T>
+void TestGemmBroadcast() {
+  auto run_test = [](bool b_is_initializer, bool c_is_initializer) {
+    OpTester test("Gemm");
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
+
+    test.AddInput<T>("A", {2, 4},
+                     {1.0f, 2.0f, 3.0f, 4.0f,
+                      -1.0f, -2.0f, -3.0f, -4.0f});
+    test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f), b_is_initializer);
+    test.AddInput<T>("C", {3}, std::vector<T>{1.0f, 2.0f, 3.0f}, c_is_initializer);
+    test.AddOutput<T>("Y", {2, 3},
+                      {11.0f, 12.0f, 13.0f,
+                       -9.0f, -8.0f, -7.0f});
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO : Temporarily disabled due to accuracy issues
+#else
+    test.Run();
+#endif
+  };
+
+  run_test(false, false);
+  // NNAPI EP requires weight to be an initializer
+  run_test(true, false);
+  // CoreML EP requires weight and bias both to be initializers
+  run_test(true, true);
 }
 
 TEST(GemmOpTest, GemmBroadcast) {
-  TestGemmBroadcast<float>(false);
-  TestGemmBroadcast<double>(false);
-}
-
-TEST(GemmOpTest, GemmBroadcastBIsInitializer) {
-  TestGemmBroadcast<float>(true);
-  TestGemmBroadcast<double>(true);
+  TestGemmBroadcast<float>();
+  TestGemmBroadcast<double>();
 }
 
 template <typename T>
-static void TestGemmTrans(bool b_is_initializer) {
+static void TestGemmTrans() {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)1);
@@ -129,7 +165,7 @@ static void TestGemmTrans(bool b_is_initializer) {
                     2.0f, -2.0f,
                     3.0f, -3.0f,
                     4.0f, -4.0f});
-  test.AddInput<T>("B", {3, 4}, std::vector<T>(12, 1.0f), b_is_initializer);
+  test.AddInput<T>("B", {3, 4}, std::vector<T>(12, 1.0f));
   test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
   test.AddOutput<T>("Y", {2, 3},
                     {11.0f, 11.0f, 11.0f,
@@ -142,39 +178,39 @@ static void TestGemmTrans(bool b_is_initializer) {
 }
 
 TEST(GemmOpTest, GemmTrans) {
-  TestGemmTrans<float>(false);
-  TestGemmTrans<double>(false);
-}
-
-TEST(GemmOpTest, GemmTransBIsInitializer) {
-  TestGemmTrans<float>(true);
-  TestGemmTrans<double>(true);
+  TestGemmTrans<float>();
+  TestGemmTrans<double>();
 }
 
 // NNAPI EP's GEMM only works as A*B', add case only B is transposed
 // Also test NNAPI EP's handling of non-1D bias (C of Gemm)
 template <typename T>
 static void TestGemmTransB() {
-  OpTester test("Gemm");
+  auto run_test = [](bool b_is_initializer, bool c_is_initializer = false) {
+    OpTester test("Gemm");
 
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)1);
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", 1.0f);
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)1);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {3, 4}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {1, 3}, std::vector<T>(3, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 11.0f, 11.0f,
-                     -9.0f, -9.0f, -9.0f});
+    test.AddInput<T>("A", {2, 4},
+                     {1.0f, 2.0f, 3.0f, 4.0f,
+                      -1.0f, -2.0f, -3.0f, -4.0f});
+    test.AddInput<T>("B", {3, 4}, std::vector<T>(12, 1.0f), b_is_initializer);
+    test.AddInput<T>("C", {1, 3}, std::vector<T>(3, 1.0f), c_is_initializer);
+    test.AddOutput<T>("Y", {2, 3},
+                      {11.0f, 11.0f, 11.0f,
+                       -9.0f, -9.0f, -9.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
-  test.Run();
+    test.Run();
 #endif
+  };
+  run_test(false, false);
+  // CoreML EP requires weight and bias both to be initializers
+  run_test(true, true);
 }
 
 TEST(GemmOpTest, GemmTransB) {
@@ -185,32 +221,98 @@ TEST(GemmOpTest, GemmTransB) {
 // NNAPI EP's GEMM only works as A*B', add case only B is transposed
 // Also test NNAPI EP's handling of non-1D bias (C of Gemm) which is broadcastable but not valid for NNAPI
 template <typename T>
-void TestGemmTransB_1() {
-  OpTester test("Gemm");
+static void TestGemmTransB_1() {
+  auto run_test = [](bool b_is_initializer, bool c_is_initializer = false) {
+    OpTester test("Gemm");
 
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)1);
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", 1.0f);
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)1);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {3, 4}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {2, 1}, std::vector<T>(2, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 11.0f, 11.0f,
-                     -9.0f, -9.0f, -9.0f});
+    test.AddInput<T>("A", {2, 4},
+                     {1.0f, 2.0f, 3.0f, 4.0f,
+                      -1.0f, -2.0f, -3.0f, -4.0f});
+    test.AddInput<T>("B", {3, 4}, std::vector<T>(12, 1.0f), b_is_initializer);
+    test.AddInput<T>("C", {2, 1}, std::vector<T>(2, 1.0f), c_is_initializer);
+    test.AddOutput<T>("Y", {2, 3},
+                      {11.0f, 11.0f, 11.0f,
+                       -9.0f, -9.0f, -9.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
-  test.Run();
+    test.Run();
 #endif
+  };
+  run_test(false, false);
+  // CoreML EP requires weight and bias both to be initializers
+  run_test(true, true);
 }
 
 TEST(GemmOpTest, GemmTransB_1) {
   TestGemmTransB_1<float>();
   TestGemmTransB_1<double>();
+}
+
+template <typename T>
+void TestGemmAlpha() {
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 0.5f);
+  test.AddAttribute("beta", 1.0f);
+
+  test.AddInput<T>("A", {2, 4},
+                   {1.0f, 2.0f, 3.0f, 4.0f,
+                    -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
+  test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
+  test.AddOutput<T>("Y", {2, 3},
+                    {6.0f, 6.0f, 6.0f,
+                     -4.0f, -4.0f, -4.0f});
+  //test.AddOutput<T>("Y", {2, 3},
+  //                  {5.0f, 5.0f, 5.0f,
+  //                   -5.0f, -5.0f, -5.0f});
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Seg fault in parser
+#endif
+}
+
+TEST(GemmOpTest, GemmAlpha) {
+  TestGemmAlpha<float>();
+  TestGemmAlpha<double>();
+}
+
+template <typename T>
+void TestGemmBeta() {
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 2.0f);
+
+  test.AddInput<T>("A", {2, 4},
+                   {1.0f, 2.0f, 3.0f, 4.0f,
+                    -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
+  test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
+  test.AddOutput<T>("Y", {2, 3},
+                    {12.0f, 12.0f, 12.0f,
+                     -8.0f, -8.0f, -8.0f});
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Seg fault in parser
+#endif
+}
+
+TEST(GemmOpTest, GemmBeta) {
+  TestGemmBeta<float>();
+  TestGemmBeta<double>();
 }
 
 template <typename T>
@@ -435,6 +537,88 @@ TEST(GemmOpTest, GemmWithAlphaOpset11) {
   TestGemmWithAlphaOpset11<float>();
   TestGemmWithAlphaOpset11<double>();
 }
+
+#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
+TEST(GemmOpTest, SharedPrepackedWeights) {
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+
+  std::vector<float> b_init_values(12, 1.0f);
+  test.AddInput<float>("A", {2, 4},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        -1.0f, -2.0f, -3.0f, -4.0f});
+  // B is to be an initializer for triggering pre-packing
+  test.AddInput<float>("B", {4, 3}, b_init_values, true);
+  test.AddInput<float>("C", {2, 3}, std::vector<float>(6, 1.0f));
+  test.AddOutput<float>("Y", {2, 3},
+                        {11.0f, 11.0f, 11.0f,
+                         -9.0f, -9.0f, -9.0f});
+
+  OrtValue b;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({4, 3}),
+                       b_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), b);
+
+  SessionOptions so;
+
+  // Set up B as a shared initializer to be shared between sessions
+  ASSERT_EQ(so.AddInitializer("B", &b), Status::OK());
+
+  // We want all sessions running using this OpTester to be able to share pre-packed weights if applicable
+  test.EnableSharingOfPrePackedWeightsAcrossSessions();
+
+  // Pre-packing is limited just to the CPU EP for now and we will only test the CPU EP
+  // and we want to ensure that it is available in this build
+  auto cpu_ep = []() -> std::vector<std::unique_ptr<IExecutionProvider>> {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    return execution_providers;
+  };
+
+  size_t number_of_pre_packed_weights_counter_session_1 = 0;
+  size_t number_of_shared_pre_packed_weights_counter = 0;
+
+  // Session 1
+  {
+    auto ep_vec = cpu_ep();
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
+             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
+    // Assert that no pre-packed weights have been shared thus far
+    ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
+  }
+
+  auto number_of_elements_in_shared_prepacked_buffers_container =
+      test.GetNumPrePackedWeightsShared();
+  // Assert that the number of elements in the shared container
+  // is the same as the number of weights that have been pre-packed
+  ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_elements_in_shared_prepacked_buffers_container);
+
+  // On some platforms/architectures MLAS may choose to not do any pre-packing and the number of elements
+  // that have been pre-packed will be zero in which case we do not continue with the testing
+  // of "sharing" of pre-packed weights as there are no pre-packed weights to be shared at all.
+  if (number_of_pre_packed_weights_counter_session_1 == 0)
+    return;
+
+  // Session 2
+  {
+    size_t number_of_pre_packed_weights_counter_session_2 = 0;
+    auto ep_vec = cpu_ep();
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
+             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
+
+    // Assert that the same number of weights were pre-packed in both sessions
+    ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_pre_packed_weights_counter_session_2);
+
+    // Assert that the number of pre-packed weights that were shared equals
+    // the number of pre-packed weights in the second session
+    ASSERT_EQ(number_of_pre_packed_weights_counter_session_2,
+              static_cast<size_t>(number_of_shared_pre_packed_weights_counter));
+  }
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

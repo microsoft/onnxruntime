@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/fallback_cpu_capability.h"
+#include "core/common/inlined_containers.h"
 
 #include <queue>
 
@@ -14,28 +15,37 @@ using namespace ONNX_NAMESPACE::Utils;
 namespace onnxruntime {
 
 namespace {
-const int64_t Small_Initializer_Threshold = 100;
+constexpr int64_t kSmallInitializerThreshold = 100;
 
-bool IsSmallInitializerWithSingleConsumer(const onnxruntime::GraphViewer& graph, const NodeArg* arg) {
-  const ONNX_NAMESPACE::TensorProto* initializer_tensor;
-  if (!graph.GetInitializedTensor(arg->Name(), initializer_tensor))
+static bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const NodeArg* arg) {
+  // 'true' in the function call is to let the searching for the initializer
+  // continue in the outer scopes of the current (sub-)graph if applicable
+  const ONNX_NAMESPACE::TensorProto* initializer_tensor =
+      graph.GetGraph().GetInitializer(arg->Name(), true);
+
+  // Not an initializer at all
+  if (initializer_tensor == nullptr) {
     return false;
+  }
+
+  // Check if "small" enough
   int64_t size = 1;
   for (auto& dim : initializer_tensor->dims()) {
     size *= dim;
   }
-  return size <= Small_Initializer_Threshold &&
-         graph.GetConsumerNodes(arg->Name()).size() == 1;
+
+  return size <= kSmallInitializerThreshold;
 }
 }  // namespace
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const std::string& provider_type,
-                                                   const std::vector<const KernelRegistry*>& kernel_registries,
-                                                   const std::vector<NodeIndex>& tentative_nodes) {
-  const std::vector<NodeIndex>& ordered_nodes = graph.GetNodesInTopologicalOrder();
-  std::vector<size_t> node_id_to_order_map(graph.MaxNodeIndex());
-  for (size_t id = 0; id < ordered_nodes.size(); ++id) {
+                                                   gsl::span<const KernelRegistry* const> kernel_registries,
+                                                   gsl::span<const NodeIndex> tentative_nodes) {
+  // automatic conversion from const std::vector&
+  const auto& ordered_nodes = graph.GetNodesInTopologicalOrder();
+  InlinedVector<size_t> node_id_to_order_map(graph.MaxNodeIndex());
+  for (size_t id = 0, limit = ordered_nodes.size(); id < limit; ++id) {
     const NodeIndex& node_id = ordered_nodes[id];
     node_id_to_order_map[node_id] = id;
   }
@@ -46,11 +56,14 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
   };
 
   std::priority_queue<NodeIndex, std::vector<NodeIndex>, decltype(greater_order_comp)> candidates(greater_order_comp);
-  std::unordered_set<NodeIndex> visited;
 
-  std::unordered_set<const NodeArg*> cpu_output_args;
-  std::unordered_set<NodeIndex> provider_nodes;
-  std::unordered_map<NodeIndex, const KernelCreateInfo*> node_to_kernel;
+  InlinedHashSet<const NodeArg*> cpu_output_args;
+
+  InlinedHashSet<NodeIndex> provider_nodes;
+  provider_nodes.reserve(tentative_nodes.size());
+
+  InlinedHashMap<NodeIndex, const KernelCreateInfo*> node_to_kernel;
+  node_to_kernel.reserve(tentative_nodes.size());
 
   for (auto& node_id : tentative_nodes) {
     provider_nodes.insert(node_id);
@@ -82,8 +95,11 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
         }));
   }
 
-  const std::vector<const NodeArg*>& graph_inputs = graph.GetInputs();
+  const auto& graph_inputs = graph.GetInputs();
+  InlinedHashSet<NodeIndex> visited;
+  visited.reserve(candidates.size());
   std::unordered_set<NodeIndex> cpu_nodes;
+  cpu_nodes.reserve(candidates.size());
   // The algo below is trying to identity a subgraph that only depends on cpu tensors.
   // Usually it is a subgraph that doing shape calculation based on a GPU tensor, then reshape it back.
   // The detail:
@@ -92,9 +108,10 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
   while (!candidates.empty()) {
     NodeIndex cur = candidates.top();
     candidates.pop();
-    if (visited.count(cur) != 0)
+
+    auto p = visited.insert(cur);
+    if (!p.second)
       continue;
-    visited.insert(cur);
 
     if (provider_nodes.find(cur) == provider_nodes.end())
       continue;
@@ -112,7 +129,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
       }
 
       // allow placing on CPU if it's a small initializer or graph input
-      if (IsSmallInitializerWithSingleConsumer(graph, input) ||
+      if (IsSmallInitializer(graph, input) ||
           std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end()) {
         continue;
       }
@@ -132,7 +149,9 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
 
     if (place_in_cpu) {
       cpu_nodes.insert(cur);
-      LOGS_DEFAULT(WARNING) << "Force fallback to CPU execution for node: " << node->Name();
+      LOGS_DEFAULT(INFO) << "ORT optimization- Force fallback to CPU execution for node: " << node->Name()
+                         << " because the CPU execution path is deemed faster than overhead involved with execution on other EPs "
+                         << " capable of executing this node";
       for (auto* output : node->OutputDefs()) {
         cpu_output_args.insert(output);
       }

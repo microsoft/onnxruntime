@@ -1,9 +1,14 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
-#include "core/providers/shared_library/provider_api.h"
-#include <inference_engine.hpp>
 #include <fstream>
+#include <vector>
+#include <string>
+#include <memory>
+
+#include "core/providers/shared_library/provider_api.h"
+
+#include <inference_engine.hpp>
 
 #include "contexts.h"
 #include "backend_manager.h"
@@ -26,7 +31,9 @@ void BackendManager::ReleaseGlobalContext() {
   g_global_context.reset();
 }
 
-BackendManager::BackendManager(const Node* fused_node, const logging::Logger& logger) {
+BackendManager::BackendManager(const onnxruntime::Node& fused_node, 
+    const onnxruntime::GraphViewer& subgraph, 
+    const logging::Logger& logger) {
   auto prec_str = GetGlobalContext().precision_str;
   if (prec_str == "FP32") {
     subgraph_context_.precision = InferenceEngine::Precision::FP32;
@@ -38,14 +45,14 @@ BackendManager::BackendManager(const Node* fused_node, const logging::Logger& lo
 
   // Save the indexes of graph inputs among fused_node's inputDefs
   // (which also contains initializers).
-  auto node_input_defs = fused_node->InputDefs();
+  auto node_input_defs = fused_node.InputDefs();
   int i = 0;
   for (auto idef : node_input_defs) {
     subgraph_context_.input_names.insert({idef->Name(), i});
     i++;
   }
 
-  auto graph_inputs = fused_node->GetFunctionBody()->Body().GetInputs();
+  auto graph_inputs = subgraph.GetInputs();
   for (auto input : graph_inputs) {
     if (GetGlobalContext().device_type.find("MYRIAD") != std::string::npos) {
       auto shape = input->Shape();
@@ -63,14 +70,14 @@ BackendManager::BackendManager(const Node* fused_node, const logging::Logger& lo
     subgraph_context_.input_indexes.push_back(index);
   }
 
-  auto graph_outputs_defs = fused_node->OutputDefs();
+  auto graph_outputs_defs = fused_node.OutputDefs();
   i = 0;
   for (auto output_def : graph_outputs_defs) {
     subgraph_context_.output_names.insert({output_def->Name(), i});
     i++;
   }
-  subgraph_context_.subgraph_name = fused_node->Name();
-  model_proto_ = GetModelProtoFromFusedNode(fused_node, logger);
+  subgraph_context_.subgraph_name = fused_node.Name();
+  model_proto_ = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
 
   if (ModelHasBatchedInputs(*model_proto_) &&
       GetGlobalContext().is_wholly_supported_graph &&
@@ -81,7 +88,27 @@ BackendManager::BackendManager(const Node* fused_node, const logging::Logger& lo
     concrete_backend_ = BackendFactory::MakeBackend(*model_copy, GetGlobalContext(), subgraph_context_);
     subgraph_context_.has_dynamic_input_shape = false;
 
-  } else if (ModelHasSymbolicInputDims(fused_node)) {
+  } else if (ModelHasSymbolicInputDims(subgraph)) {
+    subgraph_context_.has_dynamic_input_shape = true;
+    if (GetGlobalContext().device_type.find("MYRIAD") != std::string::npos) {
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims."
+                            " Defering backend initialization and device_type is MYRIAD.";
+    }
+    if (GetGlobalContext().device_type.find("CPU") != std::string::npos) {
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims and "
+                       << "device_type is CPU.";
+      #if (defined OV_API_20)
+        if (GetGlobalContext().enable_dynamic_shapes) {
+          LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
+                          << "Creating backend Dynamic Shapes";
+          concrete_backend_ = BackendFactory::MakeBackend(*model_proto_, GetGlobalContext(), subgraph_context_);
+          LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
+                          << "Backend created for graph " << subgraph_context_.subgraph_name;
+        }
+      #endif
+    }
+  } else if (ModelHasSymbolicInputDims(subgraph) &&
+      GetGlobalContext().device_type.find("GPU") != std::string::npos) {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims. Defering backend initialization";
     subgraph_context_.has_dynamic_input_shape = true;
   } else {
@@ -92,7 +119,7 @@ BackendManager::BackendManager(const Node* fused_node, const logging::Logger& lo
   }
 }
 
-bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::Provider_ModelProto& model_proto) const {
+bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const {
   bool has_batched_inputs = true;
 
   for (int i = 0; i < (int)subgraph_context_.input_indexes.size(); i++) {
@@ -123,9 +150,9 @@ bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::Provider_ModelP
   return has_batched_inputs;
 }
 
-bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::Node* fused_node) const {
+bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& subgraph) const {
   bool has_sym_dims = false;
-  auto graph_inputs = fused_node->GetFunctionBody()->Body().GetInputs();
+  auto graph_inputs = subgraph.GetInputs();
   for (auto input : graph_inputs) {
     if (input->Shape() == nullptr) {
       has_sym_dims = true;
@@ -144,26 +171,24 @@ bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::Node* fused_no
   return has_sym_dims;
 }
 
-std::unique_ptr<ONNX_NAMESPACE::Provider_ModelProto>
-BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node,
+std::unique_ptr<ONNX_NAMESPACE::ModelProto>
+BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node, 
+                                           const onnxruntime::GraphViewer& subgraph, 
                                            const logging::Logger& logger) const {
-  const auto* node_function = fused_node->GetFunctionBody();
-  const std::string& name = fused_node->Name();
-  ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", name);
-
-  const onnxruntime::Graph& node_subgraph = node_function->Body();
-  auto model = node_subgraph.CreateGraphViewer()->CreateModel(logger);
+  auto model = subgraph.CreateModel(logger);
 
   auto model_proto = model->ToProto();
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
-  *model_proto->mutable_graph() = *node_subgraph.ToGraphProto();
+  subgraph.ToProto(*model_proto->mutable_graph(), true, true);
 
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
+    const std::string& name = fused_node.Name();
     std::fstream dump(name + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
     model_proto->SerializeToOstream(dump);
   }
+#else
+  ORT_UNUSED_PARAMETER(fused_node);
 #endif
 
   return model_proto;
@@ -199,10 +224,10 @@ std::string MakeMapKeyString(std::vector<std::vector<int64_t>>& shapes,
   return key;
 }
 
-std::shared_ptr<ONNX_NAMESPACE::Provider_ModelProto>
-BackendManager::ReWriteInputShapeInfo(const ONNX_NAMESPACE::Provider_ModelProto& model_proto,
+std::shared_ptr<ONNX_NAMESPACE::ModelProto>
+BackendManager::ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto,
                                       std::vector<std::vector<int64_t>> input_shapes) {
-  auto model_copy = std::shared_ptr<Provider_ModelProto>(Provider_ModelProto::Create());
+  auto model_copy = std::shared_ptr<ONNX_NAMESPACE::ModelProto>(ONNX_NAMESPACE::ModelProto::Create());
   std::string proto_str;
   model_proto.SerializeToString(proto_str);
   model_copy->ParseFromString(proto_str);
@@ -219,16 +244,16 @@ BackendManager::ReWriteInputShapeInfo(const ONNX_NAMESPACE::Provider_ModelProto&
   return model_copy;
 }
 
-std::shared_ptr<ONNX_NAMESPACE::Provider_ModelProto>
-BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::Provider_ModelProto& model_proto) {
-  auto model_copy = std::shared_ptr<Provider_ModelProto>(Provider_ModelProto::Create());
+std::shared_ptr<ONNX_NAMESPACE::ModelProto>
+BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_proto) {
+  auto model_copy = std::shared_ptr<ONNX_NAMESPACE::ModelProto>(ONNX_NAMESPACE::ModelProto::Create());
   std::string proto_str;
   model_proto.SerializeToString(proto_str);
   model_copy->ParseFromString(proto_str);
   auto graph_proto = model_copy->mutable_graph();
 
   for (int i = 0; i < graph_proto->input_size(); i++) {
-    ONNX_NAMESPACE::Provider_TensorShapeProto* g_in_shape = graph_proto->mutable_input((int)i)->mutable_type()->mutable_tensor_type()->mutable_shape();
+    ONNX_NAMESPACE::TensorShapeProto* g_in_shape = graph_proto->mutable_input((int)i)->mutable_type()->mutable_tensor_type()->mutable_shape();
     g_in_shape->mutable_dim(0)->clear_dim_value();
     g_in_shape->mutable_dim(0)->set_dim_value(1);
   }
@@ -236,7 +261,15 @@ BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::Provider_ModelProto
 }
 
 void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
-  if (subgraph_context_.has_dynamic_input_shape) {
+  bool use_dynamic_backend = true;
+  if (GetGlobalContext().enable_dynamic_shapes && subgraph_context_.has_dynamic_input_shape &&
+      GetGlobalContext().device_type.find("CPU") != std::string::npos) {
+    #if (defined OV_API_20)
+      concrete_backend_->Infer(api, context);
+      use_dynamic_backend = false;
+    #endif
+  }
+  else if (use_dynamic_backend && subgraph_context_.has_dynamic_input_shape) {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(api, context);
     auto key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
 
@@ -251,9 +284,9 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
     auto search = backend_map_.find(key);
     if (search == backend_map_.end()) {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
-                         << "Creating concrete backend for key: " << key;
+                        << "Creating concrete backend for key: " << key;
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
-                         << "Backend created for graph " << subgraph_context_.subgraph_name;
+                        << "Backend created for graph " << subgraph_context_.subgraph_name;
       auto modelproto_with_concrete_shapes = ReWriteInputShapeInfo(*model_proto_, tensor_shapes);
       dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
                                                     GetGlobalContext(), subgraph_context_);

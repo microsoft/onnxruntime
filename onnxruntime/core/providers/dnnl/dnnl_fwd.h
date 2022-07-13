@@ -6,6 +6,6 @@
 namespace onnxruntime {
 namespace ort_dnnl {
 template <typename T>
-Provider_KernelCreateInfo BuildKernelCreateInfo();
+KernelCreateInfo BuildKernelCreateInfo();
 }
 }  // namespace onnxruntime

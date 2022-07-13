@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "pch.h"
+#include "lib/Api.Ort/pch.h"
 
 #include "OnnxruntimeEngine.h"
 #include "OnnxruntimeEngineBuilder.h"
@@ -14,12 +14,12 @@
 #include "OnnxruntimeErrors.h"
 using namespace _winml;
 
-HRESULT OnnxruntimeEngineBuilder::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory) {
+HRESULT OnnxruntimeEngineBuilder::RuntimeClassInitialize(_In_ OnnxruntimeEngineFactory* engine_factory) {
   engine_factory_ = engine_factory;
   return S_OK;
 }
 
-STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_winml::IEngine** out) {
+STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** out) {
   auto ort_api = engine_factory_->UseOrtApi();
 
   Microsoft::WRL::ComPtr<IOrtSessionBuilder> onnxruntime_session_builder;
@@ -48,10 +48,19 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_winml::IEngine** out) {
     }
   }
 
-  RETURN_HR_IF_NOT_OK_MSG(ort_api->SetIntraOpNumThreads(session_options.get(), intra_op_num_threads_override_), ort_api);
+  if (intra_op_num_threads_override_.has_value()) {
+    RETURN_HR_IF_NOT_OK_MSG(ort_api->SetIntraOpNumThreads(session_options.get(), intra_op_num_threads_override_.value()), ort_api);
+  }
+
+  if (!allow_thread_spinning_) {
+    ort_api->AddSessionConfigEntry(session_options.get(), "session.intra_op.allow_spinning", "0");
+  }
+
+  OrtThreadPool* inter_op_ort_pool = thread_pool_ ? static_cast<OnnxruntimeThreading*>(thread_pool_.Get())->UseInterOpThreadPool() : nullptr;
+  OrtThreadPool* intra_op_ort_pool = thread_pool_ ? static_cast<OnnxruntimeThreading*>(thread_pool_.Get())->UseIntraOpThreadPool() : nullptr;
 
   OrtSession* ort_session = nullptr;
-  onnxruntime_session_builder->CreateSession(session_options.get(), &ort_session);
+  onnxruntime_session_builder->CreateSession(session_options.get(), inter_op_ort_pool, intra_op_ort_pool, &ort_session);
   auto session = UniqueOrtSession(ort_session, ort_api->ReleaseSession);
 
   Microsoft::WRL::ComPtr<OnnxruntimeEngine> onnxruntime_engine;
@@ -61,7 +70,7 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_winml::IEngine** out) {
   return S_OK;
 }
 
-STDMETHODIMP OnnxruntimeEngineBuilder::GetD3D12Device(ID3D12Device** device) {
+STDMETHODIMP OnnxruntimeEngineBuilder::GetD3D12Device(_Outptr_ ID3D12Device** device) {
   *device = device_.Get();
   return S_OK;
 }
@@ -77,7 +86,7 @@ STDMETHODIMP OnnxruntimeEngineBuilder::SetMetacommandsEnabled(int enabled) {
   return S_OK;
 }
 
-STDMETHODIMP OnnxruntimeEngineBuilder::GetID3D12CommandQueue(ID3D12CommandQueue** queue) {
+STDMETHODIMP OnnxruntimeEngineBuilder::GetID3D12CommandQueue(_Outptr_ ID3D12CommandQueue** queue) {
   *queue = queue_.Get();
   return S_OK;
 }
@@ -87,7 +96,6 @@ STDMETHODIMP OnnxruntimeEngineBuilder::SetBatchSizeOverride(uint32_t batch_size_
   return S_OK;
 }
 
-
 STDMETHODIMP OnnxruntimeEngineBuilder::SetNamedDimensionOverrides(wfc::IMapView<winrt::hstring, uint32_t> named_dimension_overrides) {
   named_dimension_overrides_ = std::move(named_dimension_overrides);
   return S_OK;
@@ -95,5 +103,15 @@ STDMETHODIMP OnnxruntimeEngineBuilder::SetNamedDimensionOverrides(wfc::IMapView<
   
 STDMETHODIMP OnnxruntimeEngineBuilder::SetIntraOpNumThreadsOverride(uint32_t intra_op_num_threads) {
   intra_op_num_threads_override_ = intra_op_num_threads;
+  return S_OK;
+}
+
+STDMETHODIMP OnnxruntimeEngineBuilder::SetIntraOpThreadSpinning(bool allow_spinning) {
+  allow_thread_spinning_ = allow_spinning;
+  return S_OK;
+}
+
+STDMETHODIMP OnnxruntimeEngineBuilder::SetThreadPool(IThreading* thread_pool) {
+  thread_pool_ = thread_pool;
   return S_OK;
 }

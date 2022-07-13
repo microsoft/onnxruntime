@@ -53,7 +53,7 @@ MatMulIntegerToFloatFusion will fuse subgraph like below into MatMulIntegerToFlo
 Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  std::vector<std::reference_wrapper<Node>> nodes_to_remove;
+  InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
 
   for (auto node_index : node_topology_list) {
     auto* node_ptr = graph.GetNode(node_index);
@@ -64,7 +64,7 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
 
     ORT_RETURN_IF_ERROR(Recurse(mul_node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7, 13}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7, 13, 14}) ||
         !graph_utils::IsSupportedProvider(mul_node, GetCompatibleExecutionProviders())) {
       continue;
     }
@@ -111,7 +111,7 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
     // DynamicQuantizeLinear outputs are only used by one MatMulInteger,
     // thus it can fused into DynamicQuantizeMatMul
     NodeArg optional_node_arg("", nullptr);
-    std::vector<NodeArg*> input_defs{
+    InlinedVector<NodeArg*> input_defs{
         matmulinteger_node.MutableInputDefs()[0],
         matmulinteger_node.MutableInputDefs()[1],
         mul_node_right.MutableInputDefs()[0],
@@ -153,7 +153,7 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
     }
   }
 
-  modified = !nodes_to_remove.empty();
+  modified = modified || !nodes_to_remove.empty();
 
   for (const auto& node : nodes_to_remove) {
     graph_utils::RemoveNodeOutputEdges(graph, node);

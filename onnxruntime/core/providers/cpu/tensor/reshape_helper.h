@@ -3,16 +3,14 @@
 
 #pragma once
 
-#include "core/common/common.h"
-#include "core/framework/tensor.h"
-#include "gsl/gsl"
+#include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
 
 // Verify and convert unknown dim during reshape
 class ReshapeHelper {
  public:
-  ReshapeHelper(const TensorShape& input_shape, std::vector<int64_t>& requested_shape) {
+  ReshapeHelper(const TensorShape& input_shape, TensorShapeVector& requested_shape, bool allow_zero = false) {
     auto nDims = requested_shape.size();
     ptrdiff_t unknown_dim = -1;
     int64_t size = 1;
@@ -22,7 +20,7 @@ class ReshapeHelper {
         ORT_ENFORCE(unknown_dim == -1, "At most one dimension can be -1.");
         unknown_dim = i;
       } else {
-        if (requested_shape[i] == 0) {
+        if (!allow_zero && requested_shape[i] == 0) {
           ORT_ENFORCE(i < input_shape.NumDimensions(),
                       "The dimension with value zero exceeds"
                       " the dimension size of the input tensor.");

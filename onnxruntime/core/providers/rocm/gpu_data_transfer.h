@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "rocm_pch.h"
 #include "core/framework/data_transfer.h"
+#include "core/providers/rocm/rocm_pch.h"
 
 namespace onnxruntime {
 
@@ -17,12 +17,12 @@ enum HIPStreamType : int {
 
 class GPUDataTransfer : public IDataTransfer {
  public:
-  GPUDataTransfer();
+  GPUDataTransfer(hipStream_t stream, bool do_copy_in_default_stream = true);
   ~GPUDataTransfer();
 
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
 
-  // Silence MSVC warning about not fully overriding
+  // Dumpen MSVC warning about not fully overriding
   using IDataTransfer::CopyTensor;
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
 
@@ -32,6 +32,7 @@ class GPUDataTransfer : public IDataTransfer {
   }
 
  private:
+  bool do_copy_in_default_stream_;
   hipStream_t streams_[kTotalHipStreams];
 };
 

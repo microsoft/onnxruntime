@@ -238,8 +238,7 @@ Return Value:
 
 --*/
 
-        .globl  C_UNDERSCORE(MlasGemmFloatKernelAvx)
-C_UNDERSCORE(MlasGemmFloatKernelAvx):
+        FUNCTION_ENTRY MlasGemmFloatKernelAvx
 
         push    ebp
         push    ebx
@@ -342,14 +341,10 @@ C_UNDERSCORE(MlasGemmFloatKernelAvx):
         add     ebp,8                       # correct for over-subtract above
 
 .LOutputMasked8x2Block:
-        call    __x86.get_pc_thunk.bx
-        add     ebx,OFFSET _GLOBAL_OFFSET_TABLE_
-        mov     ebx,DWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOT[ebx]
-        mov     .LSgemmKernelFrame_CountN[esp],ebp
-        vbroadcastss xmm0,.LSgemmKernelFrame_CountN[esp]
-        vpcmpgtd xmm1,xmm0,XMMWORD PTR [ebx+16]
-        vpcmpgtd xmm0,xmm0,XMMWORD PTR [ebx]
-        vinsertf128 ymm0,ymm0,xmm1,1
+        neg     ebp
+        LoadGlobalOffsetTable bx
+        mov     ebx,DWORD PTR C_UNDERSCORE(MlasMaskMoveTableAvx)@GOT[ebx]
+        vmovdqu ymm0,YMMWORD PTR [ebx+ebp*4+8*4]
         cmp     BYTE PTR .LSgemmKernelFrame_ZeroMode[esp],0
         jnz     .LSkipAccumulateMasked8x2Block
         vmaskmovps ymm4,ymm0,YMMWORD PTR [esi]
@@ -424,14 +419,10 @@ C_UNDERSCORE(MlasGemmFloatKernelAvx):
         add     ebp,8                       # correct for over-subtract above
 
 .LOutputMasked8x1Block:
-        call    __x86.get_pc_thunk.bx
-        add     ebx,OFFSET _GLOBAL_OFFSET_TABLE_
-        mov     ebx,DWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOT[ebx]
-        mov     .LSgemmKernelFrame_CountN[esp],ebp
-        vbroadcastss xmm0,.LSgemmKernelFrame_CountN[esp]
-        vpcmpgtd xmm1,xmm0,XMMWORD PTR [ebx+16]
-        vpcmpgtd xmm0,xmm0,XMMWORD PTR [ebx]
-        vinsertf128 ymm0,ymm0,xmm1,1
+        neg     ebp
+        LoadGlobalOffsetTable bx
+        mov     ebx,DWORD PTR C_UNDERSCORE(MlasMaskMoveTableAvx)@GOT[ebx]
+        vmovdqu ymm0,YMMWORD PTR [ebx+ebp*4+8*4]
         cmp     BYTE PTR .LSgemmKernelFrame_ZeroMode[esp],0
         jnz     .LSkipAccumulateMasked8x1Block
         vmaskmovps ymm4,ymm0,YMMWORD PTR [esi]

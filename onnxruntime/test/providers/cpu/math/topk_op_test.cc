@@ -582,9 +582,28 @@ TEST(TopKOperator, Top3ExplicitAxisSmallestElements) {
   top_3_explicit_axis_smallest<double>(11, 0);  //unsorted
 }
 
+template<typename T>
+static void top_3_explicit_aix_infinity(int opset_version, bool positive) {
+  T inf = positive ? std::numeric_limits<T>::infinity() : -std::numeric_limits<T>::infinity();
+  std::vector<T> input_vals = {inf, inf, inf, inf, inf, inf, inf, inf};
+  std::vector<int64_t> input_dimensions = {4, 2};
+  std::vector<T> expected_vals = {inf, inf, inf, inf, inf, inf};
+  std::vector<int64_t> expected_indices = {0, 0, 1, 1, 2, 2};
+  std::vector<int64_t> expected_dimensions = {3, 2};
+  int64_t axis = 0;
+  RunTest(opset_version, 3, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, true, axis, 0, 1);
+}
+
+TEST(TopKOperator, Top3ExplicitAxisInfinity) {
+  top_3_explicit_aix_infinity<float>(11, true);
+  top_3_explicit_aix_infinity<float>(11, false);
+  top_3_explicit_aix_infinity<double>(11, true);
+  top_3_explicit_aix_infinity<double>(11, false);
+}
+
 template <typename T>
 static void top_1_explicit_axis_MultiD_input_smallest(int opset_version, int64_t sorted = 1) {
-  std::vector<T> input_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+  std::vector<T> input_vals = {1, 2, 3, 4, 5, 6, 7, 8};
   std::vector<int64_t> input_dimensions = {2, 2, 2};
   std::vector<T> expected_vals = {1, 2, 5, 6};
   std::vector<int64_t> expected_indices = {0, 0, 0, 0};
@@ -598,6 +617,10 @@ TEST(TopKOperator, Top1ExplicitAxisMultiDInputSmallestElements) {
   top_1_explicit_axis_MultiD_input_smallest<float>(11, 0);  //unsorted
   top_1_explicit_axis_MultiD_input_smallest<double>(11);
   top_1_explicit_axis_MultiD_input_smallest<double>(11, 0);  //unsorted
+  top_1_explicit_axis_MultiD_input_smallest<int32_t>(11);
+  top_1_explicit_axis_MultiD_input_smallest<int32_t>(11, 0);  //unsorted
+  top_1_explicit_axis_MultiD_input_smallest<int64_t>(11);
+  top_1_explicit_axis_MultiD_input_smallest<int64_t>(11, 0);  //unsorted
 }
 
 // test path where SelectTopK is used (select using std::nth_element)
@@ -820,9 +843,9 @@ static void TestThreaded(int64_t k, int64_t n, int64_t batch_size) {
 // and sufficient items to process given this calculation:
 //   int64_t threads_needed = static_cast<int64_t>(std::floor(input_shape.Size() * k / (128 * 1024)));
 TEST(TopKOperator, PriorityQueueThreaded) {
-  const int64_t k = 200;
-  const int64_t n = 2;
-  const int64_t batch_size = 1000;
+  constexpr int64_t k = 200;
+  constexpr int64_t n = 2;
+  constexpr int64_t batch_size = 1000;
   TestThreaded<float>(k, n, batch_size);
   TestThreaded<double>(k, n, batch_size);
 }
@@ -831,9 +854,9 @@ TEST(TopKOperator, PriorityQueueThreaded) {
 // and sufficient items to process given this calculation:
 //   int64_t threads_needed = static_cast<int64_t>(std::floor(input_shape.Size() * k / (128 * 1024)));
 TEST(TopKOperator, SelectTopKThreaded) {
-  const int64_t k = 400;
-  const int64_t n = 2;
-  const int64_t batch_size = 500;
+  constexpr int64_t k = 400;
+  constexpr int64_t n = 2;
+  constexpr int64_t batch_size = 500;
   TestThreaded<float>(k, n, batch_size);
   TestThreaded<double>(k, n, batch_size);
 }

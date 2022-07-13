@@ -16,7 +16,7 @@ namespace cuda {
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       ImageScaler<T>);
 
@@ -30,7 +30,7 @@ ImageScaler<T>::ImageScaler(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(info.GetAttrs<float>("bias", bias_).IsOK());
 
   b_data_ = GetScratchBuffer<float>(bias_.size());
-  CUDA_CALL_THROW(cudaMemcpy(b_data_.get(), bias_.data(), sizeof(float) * bias_.size(), cudaMemcpyHostToDevice));
+  CUDA_CALL_THROW(cudaMemcpyAsync(b_data_.get(), bias_.data(), sizeof(float) * bias_.size(), cudaMemcpyHostToDevice, Stream()));
 }
 
 template <typename T>
@@ -53,6 +53,7 @@ Status ImageScaler<T>::ComputeInternal(OpKernelContext* context) const {
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   ImageScalerImpl<CudaT>(
+      Stream(),
       reinterpret_cast<const CudaT*>(X->template Data<T>()),
       scale_,
       b_data_.get(),

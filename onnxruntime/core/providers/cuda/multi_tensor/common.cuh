@@ -9,6 +9,8 @@
 #pragma once
 #include <vector>
 
+#include "core/common/common.h"
+
 namespace onnxruntime {
 namespace cuda {
 // initial reference from:
@@ -73,15 +75,17 @@ int compute_max_tensor_size_per_launch(int element_count_per_thread) {
 
 template <int TensorGroupSize, typename TMultiTensorFunctor, typename... TFunctorParams>
 void launch_multi_tensor_functor(
+    cudaStream_t stream,
     const int chunk_size,
     std::vector<int>& tensor_sizes,
     std::vector<std::vector<void*>>& grouped_tensor_pointers,
     TMultiTensorFunctor multipleTensorKernel,
     TFunctorParams&&... kernelParams) {
+  // Check if 32-bit integer is enough.
   ORT_ENFORCE(tensor_sizes.size() > 0);
-  ORT_ENFORCE(tensor_sizes.size() < static_cast<size_t>(std::numeric_limits<int>::max()));
+  ORT_ENFORCE(tensor_sizes.size() < static_cast<size_t>(INT_MAX));
   ORT_ENFORCE(grouped_tensor_pointers.size() > 0);
-  ORT_ENFORCE(grouped_tensor_pointers.size() < static_cast<size_t>(std::numeric_limits<int>::max()));
+  ORT_ENFORCE(grouped_tensor_pointers.size() < static_cast<size_t>(INT_MAX));
   ORT_ENFORCE(chunk_size > 0);
   // Number of groups, for example, the number of updated weight tensors in Lamb optimizer.
   const int group_count = static_cast<int>(grouped_tensor_pointers.size());
@@ -90,8 +94,6 @@ void launch_multi_tensor_functor(
   int tensor_group_index = 0;
   int block_index = 0;
 
-  // Check if 32-bit integer is enough.
-  ORT_ENFORCE(tensor_sizes.size() < static_cast<size_t>(std::numeric_limits<int>::max()));
   ORT_ENFORCE(grouped_tensor_pointers.size() == tensor_sizes.size());
   ORT_ENFORCE(group_size == ACTUAL_TENSOR_GROUP_SIZE[TensorGroupSize]);
   for (int i = 0; i < group_count; ++i) {
@@ -121,7 +123,7 @@ void launch_multi_tensor_functor(
       chunk_group.chunk_count = block_index;
 
       if (block_index == chunk_group.max_block_count) {
-        multipleTensorKernel(chunk_group, std::forward<TFunctorParams>(kernelParams)...);
+        multipleTensorKernel(stream, chunk_group, std::forward<TFunctorParams>(kernelParams)...);
         block_index = 0;
       }
     }
@@ -129,7 +131,7 @@ void launch_multi_tensor_functor(
     // After ++tensor_group_index, tensor_group_index becomes the count of tensor group in chunk_group.
     ++tensor_group_index;
     if (tensor_group_index == chunk_group.max_tensor_group_count) {
-      multipleTensorKernel(chunk_group, std::forward<TFunctorParams>(kernelParams)...);
+      multipleTensorKernel(stream, chunk_group, std::forward<TFunctorParams>(kernelParams)...);
       block_index = 0;
       tensor_group_index = 0;
     }
@@ -138,7 +140,7 @@ void launch_multi_tensor_functor(
   // This round of processing tensor group is finished.
   // All the groups remain in chunk group should be processed right now.
   if (block_index != 0) {
-    multipleTensorKernel(chunk_group, std::forward<TFunctorParams>(kernelParams)...);
+    multipleTensorKernel(stream, chunk_group, std::forward<TFunctorParams>(kernelParams)...);
     block_index = 0;
     tensor_group_index = 0;
   }

@@ -28,6 +28,7 @@ using GatheredIndexIndex_t = int32_t;
 
 template <typename T, typename TIndex>
 void GatherGradImpl(
+    cudaStream_t stream,
     const CudaScratchBufferAllocator& allocator,
     const T* dY_data,
     const TIndex* dX_indices,

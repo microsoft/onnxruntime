@@ -3,74 +3,58 @@
 
 #include "core/framework/session_options.h"
 #include "core/common/logging/logging.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 
 namespace onnxruntime {
 
-bool SessionOptions::TryGetConfigEntry(const std::string& config_key, std::string& config_value) const noexcept {
-  bool found = false;
-  config_value.clear();
+namespace {
 
-  auto iter = session_configurations.find(config_key);
-  if (iter != session_configurations.cend()) {
-    found = true;
-    config_value = iter->second;
-  }
-
-  return found;
-}
-
-const std::string SessionOptions::GetConfigOrDefault(const std::string& config_key,
-                                                     const std::string& default_value) const noexcept {
-  auto iter = session_configurations.find(config_key);
-  return iter == session_configurations.cend() ? default_value : iter->second;
-}
-
-Status SessionOptions::AddConfigEntry(const char* config_key, const char* config_value) noexcept {
-  std::string key(config_key);
-  if (key.empty() || key.length() > 128)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config key is empty or longer than maximum length 128");
-
-  std::string val(config_value);
-  if (val.length() > 1024)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config value is longer than maximum length 1024");
-
-  auto iter = session_configurations.find(config_key);
-  if (iter != session_configurations.cend()) {
-    LOGS_DEFAULT(WARNING) << "Session Config with key [" << key << "] already exists with value ["
-                          << iter->second << "]. It will be overwritten";
-    iter->second = std::move(val);
-  } else {
-    session_configurations[std::move(key)] = std::move(val);
-  }
-
-  return Status::OK();
-}
-
-Status SessionOptions::AddInitializer(const char* name, const OrtValue* val) noexcept {
-  // input validation
+Status CheckInitializer(const char* name, const OrtValue* val) {
   if (name == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Received nullptr for name.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Received nullptr for name");
   }
 
   if (val == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Received nullptr for OrtValue.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Received nullptr for OrtValue");
   }
 
   if (!val->IsTensor()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Received OrtValue is not a tensor. Only tensors are supported.");
   }
-
   if (val->Get<Tensor>().OwnsBuffer()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer containing the initializer must be owned by the user.");
   }
+  return Status::OK();
+}
 
+}  // namespace
+
+Status SessionOptions::AddInitializer(_In_z_ const char* name, _In_ const OrtValue* val) {
+  // input validation
+  ORT_RETURN_IF_ERROR(CheckInitializer(name, val));
   // now do the actual work
-  auto rc = initializers_to_share_map.insert({name, val});
-  if (!rc.second) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "An OrtValue for this name has already been added.");
+  bool result = initializers_to_share_map.emplace(name, val).second;
+
+  if (!result) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "An OrtValue for this name has already been added: ", name);
   }
 
   return Status::OK();
 }
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+Status SessionOptions::AddExternalInitializers(gsl::span<const std::string> names, gsl::span<const OrtValue> values) {
+  const auto init_num = names.size();
+  ORT_ENFORCE(init_num == values.size(), "Expecting same size spans");
+  external_initializers.reserve(external_initializers.size() + init_num);
+  for (size_t i = 0; i < init_num; ++i) {
+    ORT_RETURN_IF_ERROR(CheckInitializer(names[i].c_str(), &values[i]));
+    bool result = external_initializers.emplace(names[i], values[i]).second;
+    if (!result) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "An OrtValue for this name has already been added: ", names[i]);
+    }
+  }
+  return Status::OK();
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
 }  // namespace onnxruntime

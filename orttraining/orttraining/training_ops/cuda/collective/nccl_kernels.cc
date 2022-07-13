@@ -10,7 +10,6 @@ NcclAllReduce::NcclAllReduce(const OpKernelInfo& info) : NcclKernel(info) {
 }
 
 Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
-  cudaStream_t stream = nullptr;  // Default stream
   ncclComm_t comm = nccl_->Comm(group_type_);
 
   const void* input_data = context->Input<Tensor>(0)->DataRaw();
@@ -32,7 +31,7 @@ Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
 
   ncclDataType_t dtype = GetNcclDataType(onnx_type);
 #ifdef ORT_USE_NCCL
-  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, stream));
+  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, Stream()));
 #endif
   return Status::OK();
 }
@@ -41,7 +40,6 @@ NcclAllGather::NcclAllGather(const OpKernelInfo& info) : NcclKernel(info) {
 }
 
 Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
-  cudaStream_t stream = nullptr;  // Default stream
   ncclComm_t comm = nccl_->Comm(group_type_);
   const int rank = nccl_->Rank(group_type_);
   const int size = nccl_->Size(group_type_);
@@ -86,7 +84,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
       ORT_ENFORCE(offset + tensor_bytes <= rank_end, "A single rank must be responsible for the entire tensor.");
       void* fusion_data_at_offset = (int8_t*)fusion_data + offset;
       const void* input_data = input_tensor->DataRaw();
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(fusion_data_at_offset, input_data, tensor_bytes, cudaMemcpyDeviceToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(fusion_data_at_offset, input_data, tensor_bytes, cudaMemcpyDeviceToDevice, Stream()));
     }
 
     offset += tensor_bytes;
@@ -95,7 +93,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
   // AllGather.
   const void* fusion_data_rank_offset = (const int8_t*)fusion_data + rank_start;
 #ifdef ORT_USE_NCCL
-  NCCL_RETURN_IF_ERROR(ncclAllGather(fusion_data_rank_offset, fusion_data, rank_count, dtype, comm, stream));
+  NCCL_RETURN_IF_ERROR(ncclAllGather(fusion_data_rank_offset, fusion_data, rank_count, dtype, comm, Stream()));
 #endif
 
   // Copy AllGather results to outputs.
@@ -113,12 +111,12 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
     if (offset < rank_start || offset >= rank_end) {
       void* output_data = output_tensor->MutableDataRaw();
       const void* fusion_data_at_offset = (const int8_t*)fusion_data + offset;
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice, Stream()));
     } else {
       const void* input_data = input_tensor->DataRaw();
       void* output_data = output_tensor->MutableDataRaw();
       if (input_data != output_data) {
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, tensor_bytes, cudaMemcpyDeviceToDevice));
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, tensor_bytes, cudaMemcpyDeviceToDevice, Stream()));
       }
     }
 
@@ -132,7 +130,6 @@ NcclReduceScatter::NcclReduceScatter(const OpKernelInfo& info) : NcclKernel(info
 }
 
 Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
-  cudaStream_t stream = nullptr;  // Default stream
   ncclComm_t comm = nccl_->Comm(group_type_);
   const int rank = nccl_->Rank(group_type_);
   const int size = nccl_->Size(group_type_);
@@ -174,7 +171,7 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
 
     void* fusion_data_at_offset = (int8_t*)fusion_data + offset;
     const void* input_data = input_tensor->DataRaw();
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(fusion_data_at_offset, input_data, tensor_bytes, cudaMemcpyDeviceToDevice));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(fusion_data_at_offset, input_data, tensor_bytes, cudaMemcpyDeviceToDevice, Stream()));
 
     offset += tensor_bytes;
   }
@@ -182,7 +179,7 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   // ReduceScatter.
   void* fusion_data_rank_offset = (int8_t*)fusion_data + rank_start;
 #ifdef ORT_USE_NCCL
-  NCCL_RETURN_IF_ERROR(ncclReduceScatter(fusion_data, fusion_data_rank_offset, rank_count, dtype, ncclSum, comm, stream));
+  NCCL_RETURN_IF_ERROR(ncclReduceScatter(fusion_data, fusion_data_rank_offset, rank_count, dtype, ncclSum, comm, Stream()));
 #endif
   // Copy this rank's ReduceScatter results to outputs.
   offset = 0;
@@ -200,12 +197,12 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
       ORT_ENFORCE(offset + tensor_bytes <= rank_end, "A single rank must be responsible for the entire tensor.");
       void* output_data = output_tensor->MutableDataRaw();
       const void* fusion_data_at_offset = (const int8_t*)fusion_data + offset;
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, fusion_data_at_offset, tensor_bytes, cudaMemcpyDeviceToDevice, Stream()));
     } else {
       const void* input_data = input_tensor->DataRaw();
       void* output_data = output_tensor->MutableDataRaw();
       if (input_data != output_data) {
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, tensor_bytes, cudaMemcpyDeviceToDevice));
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, tensor_bytes, cudaMemcpyDeviceToDevice, Stream()));
       }
     }
 
@@ -220,7 +217,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
         .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
@@ -231,7 +228,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
         .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
@@ -242,7 +239,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
         .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),

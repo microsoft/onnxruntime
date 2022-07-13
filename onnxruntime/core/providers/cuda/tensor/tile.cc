@@ -4,6 +4,7 @@
 #include "core/providers/cuda/tensor/tile.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "tile_impl.h"
+
 using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
@@ -14,8 +15,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     6,
     12,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(1)
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
                               DataTypeImpl::GetTensorType<int32_t>(),
@@ -29,8 +30,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     13,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(1)
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
                               DataTypeImpl::GetTensorType<int32_t>(),
@@ -38,6 +39,28 @@ ONNX_OPERATOR_KERNEL_EX(
                               DataTypeImpl::GetTensorType<MLFloat16>()})
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Tile);
+
+#define CASE_TILE(type)                                                                                            \
+  case sizeof(type): {                                                                                             \
+    TileImpl(Stream(), rank, fdm_input_shape, input_strides,                                                       \
+             reinterpret_cast<const typename ToCudaType<type>::MappedType*>(input_data), fdm_output_strides,       \
+             reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data), output_tensor.Shape().Size()); \
+  } break
+
+#define CASE_TILE_MEMCPY(type)                                                                                \
+  case sizeof(type): {                                                                                        \
+    TileMemcpyImpl(Stream(), reinterpret_cast<const typename ToCudaType<type>::MappedType*>(input_data),      \
+                   reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data), input_shape.Size(), \
+                   num_of_copies_per_batch);                                                                  \
+  } break
+
+#define CASE_TILE_BATCHED_MEMCPY(type)                                                                          \
+  case sizeof(type): {                                                                                          \
+    TileBatchedMemcpyImpl(Stream(), reinterpret_cast<const typename ToCudaType<type>::MappedType*>(input_data), \
+                          reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data),                \
+                          num_of_elements_per_batch, input_shape.Size(), num_of_batch_copies,                   \
+                          num_of_copies_per_batch);                                                             \
+  } break
 
 Status Tile::ComputeInternal(OpKernelContext* ctx) const {
   auto& input_tensor = *ctx->Input<Tensor>(0);
@@ -51,22 +74,71 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
 
   // Calculate the shape of the output tensor
   auto* repeats = repeats_tensor.template Data<int64_t>();
-  const auto& input_shape = input_tensor.Shape().GetDims();
-  std::vector<int64_t> output_dims(input_shape);
+  const auto& input_shape = input_tensor.Shape();
+  const auto input_dims = input_shape.GetDims();
+  auto output_dims(input_shape.AsShapeVector());
   for (auto axis = 0; axis < rank; axis++)
     output_dims[axis] *= repeats[axis];
-  TensorShape outputShape(output_dims);
-  auto& output_tensor = *ctx->Output(0, outputShape);
+  TensorShape output_shape(output_dims);
+  auto& output_tensor = *ctx->Output(0, output_shape);
 
   void* output_data = output_tensor.MutableDataRaw();
   const void* input_data = input_tensor.DataRaw();
+  const auto element_size = input_tensor.DataType()->Size();
 
-  TensorPitches input_pitches(input_shape);
+  // Repeat tensor input can have 0 as a valid value
+  // check if the computed output_shape size is 0 and
+  // return an empty tensor if so.
+  if (output_shape.Size() == 0) {
+    return Status::OK();
+  }
+
+  // Repeat tensor has all 1s in it
+  if (output_shape == input_shape) {
+    CUDA_CALL(cudaMemcpyAsync(output_tensor.MutableDataRaw(), input_tensor.DataRaw(), input_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
+    return Status::OK();
+  }
+
+  bool is_batched_memcpy = false;
+  size_t num_of_elements_per_batch = 1;
+  size_t num_of_copies_per_batch = 1;
+  size_t num_of_batch_copies = 1;
+  if (TileOp::IsTileMemcpy(input_shape,
+                           repeats,
+                           rank,
+                           is_batched_memcpy,
+                           num_of_elements_per_batch,
+                           num_of_copies_per_batch,
+                           num_of_batch_copies)) {
+    if (!is_batched_memcpy) {
+      switch (element_size) {
+        CASE_TILE_MEMCPY(float);
+        CASE_TILE_MEMCPY(double);
+        CASE_TILE_MEMCPY(MLFloat16);
+        default:
+          ORT_THROW("Unsupported value attribute datatype with sizeof=: ", element_size);
+          break;
+      }
+    } else {
+      switch (element_size) {
+        CASE_TILE_BATCHED_MEMCPY(float);
+        CASE_TILE_BATCHED_MEMCPY(double);
+        CASE_TILE_BATCHED_MEMCPY(MLFloat16);
+        default:
+          ORT_THROW("Unsupported value attribute datatype with sizeof=: ", element_size);
+          break;
+      }
+    }
+
+    return Status::OK();
+  }
+
+  TensorPitches input_pitches(input_dims);
   TArray<int64_t> input_strides(input_pitches);
 
   TArray<fast_divmod> fdm_input_shape(rank);
-  for (int32_t i = 0; i < input_shape.size(); ++i) {
-    fdm_input_shape[i] = fast_divmod(gsl::narrow_cast<int>(input_shape[i]));
+  for (size_t i = 0; i < input_dims.size(); ++i) {
+    fdm_input_shape[gsl::narrow_cast<int>(i)] = fast_divmod(gsl::narrow_cast<int>(input_dims[i]));
   }
 
   TArray<fast_divmod> fdm_output_strides(rank);
@@ -79,38 +151,13 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
   static_assert(sizeof(double) == sizeof(int64_t), "Double and Int64 are of different sizes");
 
   if (output_tensor.Shape().Size() > 0) {
-    if (input_tensor.IsDataType<float>() ||
-        input_tensor.IsDataType<int32_t>()) {
-      TileImpl(
-          rank,
-          fdm_input_shape,
-          input_strides,
-          reinterpret_cast<const typename ToCudaType<float>::MappedType*>(input_data),
-          fdm_output_strides,
-          reinterpret_cast<typename ToCudaType<float>::MappedType*>(output_data),
-          output_tensor.Shape().Size());
-    } else if (input_tensor.IsDataType<double>() ||
-               input_tensor.IsDataType<int64_t>()) {
-      TileImpl(
-          rank,
-          fdm_input_shape,
-          input_strides,
-          reinterpret_cast<const typename ToCudaType<double>::MappedType*>(input_data),
-          fdm_output_strides,
-          reinterpret_cast<typename ToCudaType<double>::MappedType*>(output_data),
-          output_tensor.Shape().Size());
-    } else if (input_tensor.IsDataType<MLFloat16>()) {
-      TileImpl(
-          rank,
-          fdm_input_shape,
-          input_strides,
-          reinterpret_cast<const typename ToCudaType<MLFloat16>::MappedType*>(input_data),
-          fdm_output_strides,
-          reinterpret_cast<typename ToCudaType<MLFloat16>::MappedType*>(output_data),
-          output_tensor.Shape().Size());
-    } else {
-      // Won't hit this as the kernel doesn't claim support for any type that will trigger this
-      ORT_THROW("Tile doesn't have an implementation yet for the type: ", input_tensor.DataType());
+    switch (element_size) {
+      CASE_TILE(float);
+      CASE_TILE(double);
+      CASE_TILE(MLFloat16);
+      default:
+        ORT_THROW("Unsupported value attribute datatype with sizeof=: ", element_size);
+        break;
     }
   }
 

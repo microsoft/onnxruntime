@@ -11,13 +11,16 @@ class ModelInfo;
 
 struct OrtModel {
  public:
+  static OrtStatus* CreateEmptyModel(int64_t opset, OrtModel** model);
   static OrtStatus* CreateOrtModelFromPath(const char* path, size_t len, OrtModel** model);
   static OrtStatus* CreateOrtModelFromData(void* data, size_t len, OrtModel** model);
   static OrtStatus* CreateOrtModelFromProto(std::unique_ptr<onnx::ModelProto>&& model_proto, OrtModel** model);
   const ModelInfo* UseModelInfo() const;
 
-  const onnx::ModelProto* UseModelProto() const;
+  onnx::ModelProto* UseModelProto() const;
   std::unique_ptr<onnx::ModelProto> DetachModelProto();
+
+  void RefreshModelInfo();
 
  private:
   OrtModel(std::unique_ptr<onnx::ModelProto> model_proto);
