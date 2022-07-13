@@ -30,10 +30,14 @@ const distributePadding = (totalPad: number, autoPad: string, pads: number[], he
 
 const calculateOutputShapeAndPads = (
   inputShape: readonly number[], kernelShape: readonly number[], dilations: readonly number[], autoPad: string,
-  pads: number[], strides: readonly number[], outputPadding: readonly number[], outputShape: number[]
+  pads: number[], strides: readonly number[], outputPadding: readonly number[], outputShape: number[],
+  featureMaps: number
 ) => {
     const spatialRank = inputShape.length - 2;
     const updateShape = outputShape.length === 0;
+    if (updateShape) {
+      outputShape.push(inputShape[0], featureMaps);
+    }
     for (let i = 0; i < spatialRank; ++i) {
       const outSize = updateShape ? inputShape[i + 2] * strides[i] : outputShape[i];
       const totalPad = computeTotalPad(inputShape[i + 2], strides[i], pads[i], kernelShape[i], dilations[i], outSize);
@@ -84,7 +88,6 @@ const createUnpackedConvTransposeProgramInfo = (
   const wShape = inputs[1].dims;
   const outputChannelsPerGroup = wShape[1];
   const inputChannelsPerGroup = wShape[0] / attributes.group;
-  const outputShape = [inputs[0].dims[0], inputs[1].dims[1] * attributes.group, ...attributes.outputShape];
   const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
   const {activationFunction, applyActivation} = getActivationSnippet(attributes);
 
@@ -128,7 +131,7 @@ const createUnpackedConvTransposeProgramInfo = (
 `;
   return {
     ...metadata,
-    output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
+    output: {dims: attributes.outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
     shaderSource,
     hasMain: true,
   };
@@ -174,8 +177,8 @@ const getAdjustedConvTransposeAttributes = <T extends ConvTransposeAttributes>(a
   // If outputShape is not specified in the attributes of this op, infer it from the parameters
   // Similarly, automatically infer pads if not specified
   calculateOutputShapeAndPads(
-    inputShape, kernelShape, attributes.dilations, attributes.autoPad,
-    pads, attributes.strides, attributes.outputPadding, outputShape
+    inputShape, kernelShape, attributes.dilations, attributes.autoPad, pads, attributes.strides,
+    attributes.outputPadding, outputShape, inputs[1].dims[1] * attributes.group
   );
    
   // always return a new object so does not modify the original attributes
@@ -225,7 +228,7 @@ const validateInputs = (inputs: Tensor[], attributes: ConvTransposeAttributes): 
   const featureMaps = inputs[1].dims[1] * attributes.group;
 
   // if bias is provided it should be 1D and the number of elements should be equal to the number of feature maps
-  if (inputs.length === 3 && (inputs[2].dims.length !== 1 || inputs[2].dims[0] !== featureMaps)) {
+  if (inputs.length === 3 && (inputs[2].dims.length !== 1 || inputs[2].dims[1] !== featureMaps)) {
     throw new Error('invalid bias');
   }
 
@@ -256,8 +259,14 @@ const validateInputs = (inputs: Tensor[], attributes: ConvTransposeAttributes): 
     throw new Error('invalid kernel shape');
   }
 
-  // as with kernelShape, must have same number of spatial dims as input
-  if (attributes.outputShape.length !== 0 && attributes.outputShape.length !== inputs[0].dims.length - 2) {
+  // must have same number of spatial dims as input (incl. non-spatial)
+  if (
+    attributes.outputShape.length !== 0 &&
+    (attributes.outputShape.length !== inputs[0].dims.length ||
+      attributes.outputShape[0] !== inputs[0].dims[0] ||
+      attributes.outputShape[1] !== featureMaps
+    )
+  ) {
     throw new Error('invalid output shape');
   }
 
