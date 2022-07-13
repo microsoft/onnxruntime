@@ -181,21 +181,21 @@ Status GreedySearchBase<T>::GenerateNextToken(
   // Process logits to get next token scores
   ORT_RETURN_IF_ERROR(ProcessLogits(logits, greedy_state, this->temp_space_allocator_, counter));
   next_tokens = greedy_state.next_tokens_cpu;
-  greedy_state.sequences.AppendNextTokenToSequences(next_tokens);
 
-#ifdef DEBUG_BEAM_SEARCH
-  greedy_state.sequences.PrintSequences(&cpu_dumper_);
-#endif
-
-  gsl::span<int32_t> sequence_lengths = greedy_state.sequence_lengths;
   gsl::span<bool>& eos_meet = greedy_state.eos_meet;
 
   for (size_t batch_id = 0; batch_id < next_tokens.size(); ++batch_id) {
     if (next_tokens[batch_id] == eos_token_id) {
       eos_meet[batch_id] = true;
-      sequence_lengths[batch_id] = greedy_state.sequences.GetSequenceLength();
+      next_tokens[batch_id] = parameters_->pad_token_id;
     }
   }
+
+  greedy_state.sequences.AppendNextTokenToSequences(next_tokens);
+
+#ifdef DEBUG_BEAM_SEARCH
+  greedy_state.sequences.PrintSequences(&cpu_dumper_);
+#endif
 
   return Status::OK();
 }

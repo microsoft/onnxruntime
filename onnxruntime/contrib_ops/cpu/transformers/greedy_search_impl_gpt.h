@@ -220,14 +220,10 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
 
   // Copy the sequences to output
   gsl::span<int32_t> output = output_sequences->MutableDataAsSpan<int32_t>();
-  std::fill_n(output.data(), output.size(), parameters->pad_token_id);
-
   for (int batch_id = 0; batch_id < parameters->batch_size; ++batch_id) {
     auto batch_output = output.subspan(batch_id * parameters->max_length,  parameters->max_length);
-
     gsl::span<const int32_t> sequence_source = greedy_state.sequences.GetSequence(batch_id);
     gsl::copy(sequence_source, batch_output);
-
   }
 
   return status;
