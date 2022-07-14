@@ -5,17 +5,20 @@
 ## Model testing is not complete.
 
 from __future__ import print_function
+
 import argparse
-import torch
+import os
+
+import numpy as np
 import onnxruntime_pybind11_state as torch_ort
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
-import numpy as np
-import os
 
-dataset_root_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
+# we use the build directory so gitignore applies.
+dataset_root_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "build/data")
 
 
 class NeuralNet(nn.Module):
@@ -40,9 +43,10 @@ def train_with_eager(args, model, optimizer, device, train_loader, epoch):
     for batch_idx, (data, target) in enumerate(train_loader):
         data_cpu = data.reshape(data.shape[0], -1)
         data = data_cpu.to(device)
+        target_ort = target.to(device)
 
         x = model(data)
-        loss = my_loss(x.cpu(), target)
+        loss = my_loss(x, target_ort)
 
         loss.backward()
         optimizer.step()
@@ -70,7 +74,7 @@ def main():
     parser.add_argument(
         "--test-batch-size", type=int, default=1000, metavar="N", help="input batch size for testing (default: 1000)"
     )
-    parser.add_argument("--epochs", type=int, default=10, metavar="N", help="number of epochs to train (default: 10)")
+    parser.add_argument("--epochs", type=int, default=1, metavar="N", help="number of epochs to train (default: 1)")
     parser.add_argument("--lr", type=float, default=0.01, metavar="LR", help="learning rate (default: 0.01)")
     parser.add_argument("--no-cuda", action="store_true", default=False, help="disables CUDA training")
     parser.add_argument("--seed", type=int, default=1, metavar="S", help="random seed (default: 1)")
