@@ -2497,7 +2497,6 @@ void GatherOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
   const auto& inputs = node_unit.Inputs();
   const auto& indices_name = inputs[1].node_arg.Name();
   if (Contains(model_builder.GetInitializerTensors(), indices_name)) {
-    std::cout << "indices is an initializer" << std::endl;
     // Skip the second input `indices` for Gather if it is an initializer
     model_builder.AddInitializerToSkip(indices_name);
   }
