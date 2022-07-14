@@ -94,8 +94,8 @@ class PrefixVocabMaskLogitsProcessor : public ILogitsProcessor<T> {
   gsl::span<const bool> prefix_uppercase_;
 
   const int batch_size_;
-  int deep_write_spl_tokens_;
   int step_;
+  int deep_write_spl_tokens_;
 };
 
 class LogitsProcessorList : public ILogitsProcessorList {
