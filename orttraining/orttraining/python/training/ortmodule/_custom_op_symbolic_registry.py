@@ -5,6 +5,7 @@
 
 import torch
 import torch.onnx.symbolic_helper as sym_help
+from packaging.version import Version
 from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, parse_args
 
@@ -20,7 +21,9 @@ class CustomOpSymbolicRegistry:
     def register_all(cls):
         for name, fn in cls._SYMBOLICS.items():
             # Symbolic name is in format: domain::name
-            register_custom_op_symbolic(name, fn, 1)
+            # Exporter will fail to register symbolic with non-empty domain when torch version is < 1.11.0.
+            if Version(torch.__version__) >= Version("1.11.0") or name.startswith("::"):
+                register_custom_op_symbolic(name, fn, 1)
 
 
 def register_symbolic(name, domain=""):
