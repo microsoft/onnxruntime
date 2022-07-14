@@ -171,5 +171,15 @@ GetQDQTestCaseFn BuildQDQMatMulTestCase(const std::vector<int64_t>& input1_shape
   };
 }
 
+std::vector<std::string> GetNodeOpTypesInTopologicalOrder(const Graph& graph) {
+  std::vector<std::string> op_types{};
+  GraphViewer graph_viewer{graph};
+  const auto& ordering = graph_viewer.GetNodesInTopologicalOrder();
+  for (const auto node_idx : ordering) {
+    op_types.push_back(graph.GetNode(node_idx)->OpType());
+  }
+  return op_types;
+}
+
 }  // namespace test
 }  // namespace onnxruntime

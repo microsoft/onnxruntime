@@ -3,10 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import sys
-
-sys.path.append("../build")
-
 import kernel_explorer as ke
 import numpy as np
 import pytest

@@ -105,19 +105,17 @@ void RunQAttention(const std::vector<float>& input_data,
   tester.AddInput<QInput>("input_zero_point", {1}, {input_quant_params.zero_point});
   tester.AddInput<QWeight>("weight_zero_point", {1}, {weight_quant_params.zero_point});
 
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   if constexpr (ep == EP::CUDA) {
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   } else if constexpr (ep == EP::CPU) {
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCpuExecutionProvider());
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   } else {  // onednn ep
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultDnnlExecutionProvider());
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   }
+
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "",
+             {kTensorrtExecutionProvider}, nullptr, &execution_providers);
 }
 
 static void RunQAttentionCUDA(

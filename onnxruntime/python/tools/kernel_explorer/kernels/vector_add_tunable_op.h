@@ -7,15 +7,18 @@
 #include <string>
 #include <vector>
 #include "contrib_ops/rocm/bert/tunable_op.h"
-#include "kernels/vector_add_kernel.h"
+#include "python/tools/kernel_explorer/kernels/vector_add_kernel.h"
 
-using onnxruntime::contrib::rocm::OpParams;
 using onnxruntime::contrib::rocm::Op;
+using onnxruntime::contrib::rocm::OpParams;
 using onnxruntime::contrib::rocm::TunableOp;
+
+namespace onnxruntime {
 
 template<typename T>
 struct VectorAddParams : OpParams {
-  VectorAddParams(const T* x, const T* y, T* z, int n) : x(x), y(y), z(z), n(n) {}
+  VectorAddParams(hipStream_t stream, const T* x, const T* y, T* z, int n) :
+    x(x), y(y), z(z), n(n), OpParams(stream) {}
 
   std::string signature() const {
     return std::to_string(n);
@@ -34,23 +37,24 @@ class VectorAddOp : public Op {
 
   void Run(const OpParams* op_params) {
     const VectorAddParams<T>* vector_add_params = static_cast<const VectorAddParams<T>*>(op_params);
-    LaunchVectorAdd<T, ThreadsPerBlock, VecSize>(vector_add_params->x,
+    LaunchVectorAdd<T, ThreadsPerBlock, VecSize>(vector_add_params->stream,
+                                                 vector_add_params->x,
                                                  vector_add_params->y,
                                                  vector_add_params->z,
                                                  vector_add_params->n);
   }
 };
 
-#define ADD_OP(threads_per_block)                                              \
-  ops_.push_back(std::make_unique<VectorAddOp<half, threads_per_block, 1>>()); \
-  ops_.push_back(std::make_unique<VectorAddOp<half, threads_per_block, 2>>()); \
-  ops_.push_back(std::make_unique<VectorAddOp<half, threads_per_block, 4>>()); \
-  ops_.push_back(std::make_unique<VectorAddOp<half, threads_per_block, 8>>());
+#define ADD_OP(threads_per_block)                                            \
+  ops_.push_back(std::make_unique<VectorAddOp<T, threads_per_block, 1>>());  \
+  ops_.push_back(std::make_unique<VectorAddOp<T, threads_per_block, 2>>());  \
+  ops_.push_back(std::make_unique<VectorAddOp<T, threads_per_block, 4>>());  \
+  ops_.push_back(std::make_unique<VectorAddOp<T, threads_per_block, 8>>());
 
 template <typename T>
 class VectorAddTunableOp : public TunableOp {
  public:
-  VectorAddTunableOp() {
+  VectorAddTunableOp() : TunableOp(4) {
     ADD_OP(64);
     ADD_OP(128);
     ADD_OP(192);
@@ -60,4 +64,11 @@ class VectorAddTunableOp : public TunableOp {
     ADD_OP(448);
     ADD_OP(512);
   }
+
+ private:
+  virtual bool Condition(const OpParams* op_params) {
+    return true;
+  }
 };
+
+}  // namespace onnxruntime

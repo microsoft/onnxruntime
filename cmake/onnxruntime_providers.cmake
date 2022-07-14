@@ -1457,11 +1457,22 @@ endif()
 
 if (onnxruntime_USE_TVM)
   add_definitions(-DUSE_TVM=1)
+  if (onnxruntime_TVM_USE_HASH)
+    add_definitions(-DUSE_TVM_HASH=1)
+  endif()
 
-  file (GLOB_RECURSE onnxruntime_providers_tvm_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.cc"
+  if (onnxruntime_TVM_USE_HASH)
+    file (GLOB_RECURSE onnxruntime_providers_tvm_cc_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.cc"
     )
+  else()
+    file (GLOB onnxruntime_providers_tvm_cc_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.cc"
+    )
+  endif()
+
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_tvm_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_tvm ${onnxruntime_providers_tvm_cc_srcs})
 
@@ -1473,22 +1484,36 @@ if (onnxruntime_USE_TVM)
           ${TVM_INCLUDES}
           ${IPP_CRYPTO_INCLUDES}
           ${PYTHON_INLCUDE_DIRS})
-  onnxruntime_add_include_to_target(onnxruntime_providers_tvm onnxruntime_common onnx tvm ippcp_s)
+  onnxruntime_add_include_to_target(onnxruntime_providers_tvm onnxruntime_common onnx tvm)
+  if (onnxruntime_TVM_USE_HASH)
+    onnxruntime_add_include_to_target(onnxruntime_providers_tvm ippcp_s)
+  endif()
 
   add_dependencies(onnxruntime_providers_tvm ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
   target_link_libraries(onnxruntime_providers_tvm PRIVATE
       onnx
       tvm
-      ippcp_s
       onnxruntime_common
       onnxruntime_framework
   )
+  if (onnxruntime_TVM_USE_HASH)
+    target_link_libraries(onnxruntime_providers_tvm PRIVATE
+      ippcp_s
+    )
+  endif()
 
   set_target_properties(onnxruntime_providers_tvm PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_tvm PROPERTIES LINKER_LANGUAGE CXX)
 
-  target_compile_options(onnxruntime_providers_tvm PRIVATE -Wno-error=type-limits)
+  if (WIN32 AND MSVC)
+    # wd4100: identifier' : unreferenced formal parameter
+    # wd4127: conditional expression is constant
+    # wd4244: conversion from 'int' to 'char', possible loss of data
+    target_compile_options(onnxruntime_providers_tvm PRIVATE "/wd4100" "/wd4127" "/wd4244")
+  else()
+    target_compile_options(onnxruntime_providers_tvm PRIVATE "-Wno-error=type-limits")
+  endif()
   target_compile_definitions(onnxruntime_providers_tvm PUBLIC DMLC_USE_LOGGING_LIBRARY=<tvm/runtime/logging.h>)
 
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/tvm  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)

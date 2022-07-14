@@ -476,6 +476,9 @@ def parse_arguments():
     parser.add_argument("--use_nuphar", action="store_true", help="Build with nuphar")
     parser.add_argument("--use_tvm", action="store_true", help="Build with TVM")
     parser.add_argument("--tvm_cuda_runtime", action="store_true", default=False, help="Build TVM with CUDA support")
+    parser.add_argument(
+        "--use_tvm_hash", action="store_true", help="Build ipp-crypto for hash generation. It is used by TVM EP only"
+    )
     parser.add_argument("--use_tensorrt", action="store_true", help="Build with TensorRT")
     parser.add_argument(
         "--tensorrt_placeholder_builder", action="store_true", help="Instantiate Placeholder TensorRT Builder"
@@ -485,6 +488,12 @@ def parse_arguments():
     parser.add_argument("--migraphx_home", help="Path to MIGraphX installation dir")
     parser.add_argument("--use_full_protobuf", action="store_true", help="Use the full protobuf library")
 
+    parser.add_argument(
+        "--llvm_config",
+        type=str,
+        default="",
+        help="Path to llvm-config.exe for LLVM buit from sources. It is strongly needed for build on Windows",
+    )
     parser.add_argument(
         "--skip_onnx_tests",
         action="store_true",
@@ -833,6 +842,7 @@ def generate_build_tree(
         # set vars for TVM
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_TVM_CUDA_RUNTIME=" + ("ON" if args.use_tvm and args.tvm_cuda_runtime else "OFF"),
+        "-Donnxruntime_TVM_USE_HASH=" + ("ON" if args.use_tvm_hash else "OFF"),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         # By default - we currently support only cross compiling for ARM/ARM64
@@ -915,6 +925,8 @@ def generate_build_tree(
         cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
     if args.use_tensorrt:
         cmake_args.append("-Donnxruntime_TENSORRT_HOME=" + tensorrt_home)
+    if args.llvm_config:
+        cmake_args.append("-Donnxruntime_TVM_USE_LLVM=" + args.llvm_config)
 
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.

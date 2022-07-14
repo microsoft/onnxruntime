@@ -36,7 +36,7 @@ using namespace ONNX_NAMESPACE;
 template <typename T>
 FastGelu<T>::FastGelu(const OpKernelInfo& op_kernel_info) : RocmKernel(op_kernel_info) {
   const TransformerOptions* options = TransformerOptions::GetInstance();
-  use_half2_ = !options->DisableHalf2();
+  tuning_ = options->IsTuningEnabled();
 }
 
 template <typename T>
@@ -60,7 +60,7 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
                                   reinterpret_cast<const HipT*>(input->template Data<T>()),
                                   (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->template Data<T>()) : nullptr,
                                   reinterpret_cast<HipT*>(output->template MutableData<T>()),
-                                  use_half2_)) {
+                                  tuning_)) {
     HIP_CALL(hipGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
