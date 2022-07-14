@@ -115,5 +115,37 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearSigmoid_UInt8_0_Y_ZP) {
   run_test(true);
 }
 
+TEST(QLinearLookupTableBasedOperatorTests, QLinearSoftmax_UInt8) {
+  OpTester test("QLinearSoftmax", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("axis", -1);
+  float X_scale = 0.166099221f;
+  // unused
+  uint8_t X_zero_point = 128;
+  float Y_scale = 1.0f / 256.0f;
+  uint8_t Y_zero_point = 8;
+  //
+
+  std::vector<int64_t> dims = {2, 20};
+  auto x_in = std::vector<uint8_t>{50, 67, 58, 68, 46, 69, 77, 91, 62, 74, 67, 72, 71, 70, 83, 88, 75, 54, 74, 88};
+  auto y_out = std::vector<uint8_t> { 0, 2, 0, 2, 0, 2, 8, 86, 1, 5, 2, 4, 3, 3, 23, 52, 6, 0, 5, 52 };
+  for (int64_t i = 1; i < dims[0]; i++) {
+    for (int64_t j = 0; j < dims[1]; j++) {
+      x_in.push_back(x_in[j]);
+      y_out.push_back(y_out[j]);
+    }
+  }
+
+  test.AddInput<uint8_t>("X", dims, x_in);
+  test.AddInput<float>("X_scale", {}, {X_scale});
+  test.AddInput<uint8_t>("X_zero_point", {}, {X_zero_point});
+  test.AddInput<float>("Y_scale", {}, {Y_scale});
+  test.AddInput<uint8_t>("Y_zero_point", {}, {Y_zero_point});
+  test.AddOutput<uint8_t>("Y", dims, y_out);
+  auto origin_round_mode = std::fegetround();
+  std::fesetround(FE_TONEAREST);
+  test.Run();
+  std::fesetround(origin_round_mode);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
