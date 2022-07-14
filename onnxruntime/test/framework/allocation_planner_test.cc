@@ -301,7 +301,7 @@ class PlannerTest : public ::testing::Test {
     onnxruntime::GraphViewer graph_viewer{graph_};
     status = SequentialPlanner::CreatePlan(nullptr, graph_viewer, outer_scope_node_args, execution_providers_,
                                            kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), test_context,
-                                           providers, MockStreamHandleRegsitry(), {{kCpuExecutionProvider, 1}}, {},
+                                           providers, MockStreamHandleRegsitry(),/* {{kCpuExecutionProvider, 1}}, {},*/
                                            "", DefaultLoggingManager().DefaultLogger(), plan_);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -1635,7 +1635,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   const auto& main_graph_ort_value_index_map = main_graph_session_state.GetOrtValueNameIdxMap();
   //const auto* para_exe_plan = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetParalllelExecutionPlan();
   //auto& per_value_plans = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetPerAllocPlan();
-  auto* exe_plan = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetTheExecutionPlan();
+  auto* exe_plan = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetExecutionPlan();
   auto& per_value_plans = exe_plan->GetAllocationPlan();
   InlinedHashMap<std::string, std::string> reuse_pairs;
   reuse_pairs.emplace("conv_0_out", "relu_0_out");

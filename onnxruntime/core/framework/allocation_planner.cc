@@ -305,8 +305,8 @@ class PlannerImpl {
 
   Status CreatePlan(const ExecutionProviders& execution_providers,
                     const IStreamCommandHandleRegistry& stream_handle_registry,
-                    const ProviderStreamMap& provider_stream_map,
-                    const OpStreamMap& op_stream_map,
+                    /*const ProviderStreamMap& provider_stream_map,
+                    const OpStreamMap& op_stream_map,*/
                     const std::string& partition_config_file,
                     const logging::Logger& logger);
 
@@ -1775,69 +1775,69 @@ class PlannerImpl {
 
   //TODO: the current partition algo based on primitive user setting is not flexible.
   //Need a better way to read from user configurations
-  void PartitionIntoStreams(const ProviderStreamMap& provider_stream_map,
-                            const OpStreamMap& op_stream_map) {
-    class StreamRange {  //iterate between [from,to)
-     public:
-      StreamRange(int from, int to) : from_(from), to_(to){};
-      int next() {
-        int size = to_ - from_;
-        ORT_ENFORCE(size > 0, "invalid stream range");
-        int curr = from_ + iter_;
-        iter_ = (iter_ + 1) % size;
-        return curr;
-      };
-      StreamRange(const StreamRange&) = default;
-      StreamRange(StreamRange&&) = default;
-      StreamRange& operator=(const StreamRange&) = default;
-      StreamRange& operator=(StreamRange&&) = default;
+  //void PartitionIntoStreams(const ProviderStreamMap& provider_stream_map,
+  //                          const OpStreamMap& op_stream_map) {
+  //  class StreamRange {  //iterate between [from,to)
+  //   public:
+  //    StreamRange(int from, int to) : from_(from), to_(to){};
+  //    int next() {
+  //      int size = to_ - from_;
+  //      ORT_ENFORCE(size > 0, "invalid stream range");
+  //      int curr = from_ + iter_;
+  //      iter_ = (iter_ + 1) % size;
+  //      return curr;
+  //    };
+  //    StreamRange(const StreamRange&) = default;
+  //    StreamRange(StreamRange&&) = default;
+  //    StreamRange& operator=(const StreamRange&) = default;
+  //    StreamRange& operator=(StreamRange&&) = default;
 
-     private:
-      int from_{};
-      int to_{};
-      int iter_{};
-    };  //StreamRange
+  //   private:
+  //    int from_{};
+  //    int to_{};
+  //    int iter_{};
+  //  };  //StreamRange
 
-    
-    std::map<std::string, std::unique_ptr<StreamRange>> stream_map;
-    for (const auto& iter : provider_stream_map) {
-      const auto& provider_name = iter.first;
-      int num_streams = iter.second;
-      int prev_stream_idx = static_cast<int>(num_logic_streams_);
-      for (int i = 0; i < num_streams; ++i) {
-        num_logic_streams_++;
-      }
-      stream_map.insert({provider_name, std::make_unique<StreamRange>(prev_stream_idx, static_cast<int>(num_logic_streams_))});
-    }
+  //  
+  //  std::map<std::string, std::unique_ptr<StreamRange>> stream_map;
+  //  for (const auto& iter : provider_stream_map) {
+  //    const auto& provider_name = iter.first;
+  //    int num_streams = iter.second;
+  //    int prev_stream_idx = static_cast<int>(num_logic_streams_);
+  //    for (int i = 0; i < num_streams; ++i) {
+  //      num_logic_streams_++;
+  //    }
+  //    stream_map.insert({provider_name, std::make_unique<StreamRange>(prev_stream_idx, static_cast<int>(num_logic_streams_))});
+  //  }
 
-    for (const auto& iter : op_stream_map) {
-      for (const auto& op : iter) {
-        stream_map.insert({op, std::make_unique<StreamRange>(static_cast<int>(num_logic_streams_), 
-            static_cast<int>(num_logic_streams_) + 1)});
-      }
-      num_logic_streams_++;
-    }
+  //  for (const auto& iter : op_stream_map) {
+  //    for (const auto& op : iter) {
+  //      stream_map.insert({op, std::make_unique<StreamRange>(static_cast<int>(num_logic_streams_), 
+  //          static_cast<int>(num_logic_streams_) + 1)});
+  //    }
+  //    num_logic_streams_++;
+  //  }
 
-    //partition the nodes into streams
-    stream_nodes_.resize(num_logic_streams_);
-    node_stream_map_.resize(graph_viewer_.MaxNodeIndex() + 1);
-    auto& p_graph_nodes = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder());
+  //  //partition the nodes into streams
+  //  stream_nodes_.resize(num_logic_streams_);
+  //  node_stream_map_.resize(graph_viewer_.MaxNodeIndex() + 1);
+  //  auto& p_graph_nodes = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder());
 
-    for (auto node_index : p_graph_nodes) {
-      const auto* node = graph_viewer_.GetNode(node_index);
-      int logic_stream_index = -1;
-      if (stream_map.find(node->OpType()) != stream_map.end()) {
-        logic_stream_index = stream_map[node->OpType()]->next();
-      } else {
-        onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
-        ORT_ENFORCE(stream_map.find(exec_provider_name) != stream_map.end());
-        logic_stream_index = stream_map[exec_provider_name]->next();
-      }
-      ORT_ENFORCE(logic_stream_index > -1 && logic_stream_index < num_logic_streams_);
-      stream_nodes_[logic_stream_index].push_back(node_index);
-      node_stream_map_[node_index] = logic_stream_index;
-    }
-  }
+  //  for (auto node_index : p_graph_nodes) {
+  //    const auto* node = graph_viewer_.GetNode(node_index);
+  //    int logic_stream_index = -1;
+  //    if (stream_map.find(node->OpType()) != stream_map.end()) {
+  //      logic_stream_index = stream_map[node->OpType()]->next();
+  //    } else {
+  //      onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
+  //      ORT_ENFORCE(stream_map.find(exec_provider_name) != stream_map.end());
+  //      logic_stream_index = stream_map[exec_provider_name]->next();
+  //    }
+  //    ORT_ENFORCE(logic_stream_index > -1 && logic_stream_index < num_logic_streams_);
+  //    stream_nodes_[logic_stream_index].push_back(node_index);
+  //    node_stream_map_[node_index] = logic_stream_index;
+  //  }
+  //}
   // build each logic streams
   Status BuildExecutionPlan(const ExecutionProviders& execution_providers,
                             const IStreamCommandHandleRegistry& stream_handle_registry) {
@@ -1988,8 +1988,8 @@ class PlannerImpl {
 
 Status PlannerImpl::CreatePlan(const ExecutionProviders& execution_providers,
                                const IStreamCommandHandleRegistry& stream_handle_registry,
-                               const ProviderStreamMap& provider_stream_map,
-                               const OpStreamMap& op_stream_map,
+                               /*const ProviderStreamMap& provider_stream_map,
+                               const OpStreamMap& op_stream_map,*/
                                const std::string& partition_config_file,
                                const logging::Logger& logger) {
 
@@ -2061,8 +2061,8 @@ Status SequentialPlanner::CreatePlan(
     const ISequentialPlannerContext& context,
     const ExecutionProviders& execution_providers,
     const IStreamCommandHandleRegistry& stream_handle_registry,
-    const ProviderStreamMap& provider_stream_map,
-    const OpStreamMap& op_stream_map,
+    //const ProviderStreamMap& provider_stream_map,
+    //const OpStreamMap& op_stream_map,
     const std::string& partition_config_file,
     const logging::Logger& logger,
     std::unique_ptr<SequentialExecutionPlan>& plan) {
@@ -2077,8 +2077,8 @@ Status SequentialPlanner::CreatePlan(
 
   return planner.CreatePlan(execution_providers,
                             stream_handle_registry,
-                            provider_stream_map,
-                            op_stream_map,
+                            /*provider_stream_map,
+                            op_stream_map,*/
                             partition_config_file,
                             logger);
 }
