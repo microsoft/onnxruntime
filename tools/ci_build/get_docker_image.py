@@ -22,31 +22,15 @@ log = get_logger("get_docker_image")
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Gets a docker image, either by pulling it from a "
-        "container registry or building it locally and then pushing it. "
-        "The uniqueness of the docker image is determined by a hash digest of "
-        "the Dockerfile, the build context directory, and arguments to "
-        "'docker build' affecting the image content. "
-        "This digest value is used in the image tag. "
-        "This script checks whether an image with that tag is initially "
-        "present in the container registry to determine whether to pull or "
-        "build the image. "
+        description="Build a docker image and push it to a remote Azure Container Registry."
+        "The content in the remote registry can be used as a cache when we need to build the thing again."
         "The user must be logged in to the container registry."
     )
 
     parser.add_argument("--dockerfile", default="Dockerfile", help="Path to the Dockerfile.")
     parser.add_argument("--context", default=".", help="Path to the build context.")
     parser.add_argument(
-        "--docker-build-args",
-        default="",
-        help="String of Docker build args which may affect the image content. "
-        "These will be used in differentiating images from one another. "
-        "For example, '--build-arg'.",
-    )
-    parser.add_argument(
-        "--docker-build-args-not-affecting-image-content",
-        default="",
-        help="String of Docker build args which do not affect the image " "content.",
+        "--docker-build-args", default="", help="Arguments that will be passed to the 'docker build' command."
     )
 
     parser.add_argument(
@@ -106,7 +90,6 @@ def main():
             "build",
             "--pull",
             *shlex.split(args.docker_build_args),
-            *shlex.split(args.docker_build_args_not_affecting_image_content),
             "--tag",
             full_image_name,
             "--file",
