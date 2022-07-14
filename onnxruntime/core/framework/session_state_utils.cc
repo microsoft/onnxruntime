@@ -1,17 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/onnx_protobuf.h"
-#include "core/framework/session_state_utils.h"
-
 #include <functional>
 #include <limits>
 #include <utility>
+
 #include <core/common/status.h>
 
+#include "core/graph/onnx_protobuf.h"
+#include "core/framework/session_state_utils.h"
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
-
 #include "core/graph/graph_viewer.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/graph_partitioner.h"
