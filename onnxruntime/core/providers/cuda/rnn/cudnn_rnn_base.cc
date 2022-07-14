@@ -287,7 +287,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   // Prepare the weight data
   IAllocatorUniquePtr<void> w_data;
-  size_t weightspace_bytes = 0;  // if v8 API is used, this will be computed and stored for re-use later downstream
+  size_t weightspace_bytes = 0; // Only calculated if !weight_cached_, if calculated, gets stored in weightspace_bytes_cached_
   CudnnFilterDescriptor w_desc;
   if (!weight_cached_) {
     const Tensor& W = *ctx->Input<Tensor>(RNN_Input_Index::W);
