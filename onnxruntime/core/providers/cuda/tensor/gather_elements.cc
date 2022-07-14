@@ -34,97 +34,54 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(GatherElements, kOnnxDomain, 11, 12, kCudaExec
 
 #undef CREATE_GATHER_ELEMENTS_KERNEL_DEF
 
-namespace {
-bool CanSkip(const TensorShapeVector& input_shape, const TensorShapeVector& indices_shape, size_t dim) {
-  return input_shape[dim] == 1 && indices_shape[dim] == 1;
-}
-
-bool CanMerge(const TensorShapeVector& input_shape, const TensorShapeVector& indices_shape,
-              const TensorShapeVector* p_indices_strides, size_t src, size_t dst) {
-  return input_shape[src] == indices_shape[src] && input_shape[dst] == indices_shape[dst] &&
-         (!p_indices_strides || indices_shape[dst] * (*p_indices_strides)[dst] == (*p_indices_strides)[src]);
-}
-
-void Move(TensorShapeVector& input_shape, TensorShapeVector& indices_shape, TensorShapeVector* p_indices_strides,
-          size_t src, size_t dst) {
-  input_shape[dst] = input_shape[src];
-  indices_shape[dst] = indices_shape[src];
-  if (p_indices_strides) (*p_indices_strides)[dst] = (*p_indices_strides)[src];
-}
-
-// Mrege will not change the strides.
-void Merge(TensorShapeVector& input_shape, TensorShapeVector& indices_shape, size_t src, size_t dst) {
-  input_shape[dst] *= input_shape[src];
-  indices_shape[dst] *= indices_shape[src];
-}
-}  // namespace
-
 void CoalesceDimensions(TensorShapeVector& input_shape, TensorShapeVector& indices_shape,
                         TensorShapeVector* p_indices_strides, int64_t axis, GatherScatterElementsArgs& args) {
   size_t rank = input_shape.size();
-  // Reverse for better calculation.
-  std::reverse(input_shape.begin(), input_shape.end());
-  std::reverse(indices_shape.begin(), indices_shape.end());
-  if (p_indices_strides) std::reverse(p_indices_strides->begin(), p_indices_strides->end());
   if (axis < 0 || axis >= static_cast<int64_t>(rank)) ORT_THROW("Invalid axis in CoalesceDimensions: ", axis);
-  size_t reverse_axis = rank - 1 - static_cast<size_t>(axis);
-  size_t curr = 0, next = 0;
-  while (curr < reverse_axis && CanSkip(input_shape, indices_shape, curr)) ++curr;
-  if (curr < reverse_axis) {
-    if (curr > 0) Move(input_shape, indices_shape, p_indices_strides, curr, 0);
-    next = curr + 1;
-    curr = 0;
-    while (next < reverse_axis) {
-      if (!CanSkip(input_shape, indices_shape, next)) {
-        if (CanMerge(input_shape, indices_shape, p_indices_strides, next, curr)) {
-          Merge(input_shape, indices_shape, next, curr);
-        } else {
-          ++curr;
-          if (curr != next) Move(input_shape, indices_shape, p_indices_strides, next, curr);
-        }
-      }
-      ++next;
-    }
-  }
+  size_t new_axis = static_cast<size_t>(axis);
+  auto CanCoalesce = [&](size_t dst, size_t src) {
+    if (dst == static_cast<size_t>(new_axis) || src == static_cast<size_t>(new_axis)) return false;
+    if (input_shape[dst] == 1 && indices_shape[dst] == 1) return true;
+    if (input_shape[src] == 1 && indices_shape[src] == 1) return true;
+    return input_shape[dst] == indices_shape[dst] && input_shape[src] == indices_shape[src] &&
+           (!p_indices_strides || (*p_indices_strides)[dst] == indices_shape[src] * (*p_indices_strides)[src]);
+  };
 
-  if (curr == reverse_axis) {
-    if (curr > 0) Move(input_shape, indices_shape, p_indices_strides, curr, 0);
-    curr = 0;
-  } else {
-    ++curr;
-    // next is now the reverse_axis
-    if (curr != next) Move(input_shape, indices_shape, p_indices_strides, next, curr);
-  }
-  size_t new_reverse_axis = curr;
-  next = reverse_axis + 1;
-  while (next < rank && CanSkip(input_shape, indices_shape, next)) ++next;
-  if (next < rank) {
-    ++curr;
-    if (curr != next) Move(input_shape, indices_shape, p_indices_strides, next, curr);
-    ++next;
-    while (next < rank) {
-      if (!CanSkip(input_shape, indices_shape, next)) {
-        if (CanMerge(input_shape, indices_shape, p_indices_strides, next, curr)) {
-          Merge(input_shape, indices_shape, next, curr);
-        } else {
-          ++curr;
-          if (curr != next) Move(input_shape, indices_shape, p_indices_strides, next, curr);
-        }
+  size_t curr = 0;
+  for (size_t next = 1; next < rank; ++next) {
+    if (CanCoalesce(curr, next)) {
+      if (indices_shape[next] != 1 && p_indices_strides) {
+        (*p_indices_strides)[curr] = (*p_indices_strides)[next];
       }
-      ++next;
+      input_shape[curr] *= input_shape[next];
+      indices_shape[curr] *= indices_shape[next];
+    } else {
+      if (next == static_cast<size_t>(new_axis)) {
+        // Handle all dims outside of axis are 1-dim.
+        if (input_shape[curr] != 1 || indices_shape[curr] != 1) ++curr;
+        new_axis = static_cast<int64_t>(curr);
+      } else {
+        ++curr;
+      }
+      if (curr != next) {
+        input_shape[curr] = input_shape[next];
+        indices_shape[curr] = indices_shape[next];
+        if (p_indices_strides) (*p_indices_strides)[curr] = (*p_indices_strides)[next];
+      }
     }
+  }
+  // Handle all dims inside of axis are 1-dim.
+  if (curr > static_cast<size_t>(new_axis) && input_shape[curr] == 1 && indices_shape[curr] == 1) {
+    --curr;
   }
 
   size_t new_rank = curr + 1;
   args.rank = static_cast<int64_t>(new_rank);
-  args.axis = static_cast<int64_t>(new_rank - 1 - new_reverse_axis);
+  args.axis = static_cast<int64_t>(new_axis);
   input_shape.resize(new_rank);
-  std::reverse(input_shape.begin(), input_shape.end());
   indices_shape.resize(new_rank);
-  std::reverse(indices_shape.begin(), indices_shape.end());
   if (p_indices_strides) {
     p_indices_strides->resize(new_rank);
-    std::reverse(p_indices_strides->begin(), p_indices_strides->end());
   }
 
   // Set stride along axis to 0 so we don't need IF statement to check in kernel.

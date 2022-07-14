@@ -88,6 +88,8 @@ void RunTestWrapper() {
   RunTest<T, int32_t>({2, 2}, {2, 2}, true, 1LL);
   RunTest<T, int64_t>({2, 2}, {2, 2}, true, -1LL);
   RunTest<T, int32_t>({2, 2, 2}, {1, 2, 1}, true, 1LL);
+  RunTest<T, int32_t>({2, 2, 1}, {1, 2, 1}, true, 1LL);
+  RunTest<T, int32_t>({1, 2, 2}, {1, 2, 1}, true, 1LL);
   RunTest<T, int64_t>({2, 2, 2}, {1, 2, 1}, true, 2LL);
   RunTest<T, int32_t>({3, 3}, {3, 2}, true, 1LL);
   RunTest<T, int64_t>({3, 3}, {3, 2});
@@ -102,7 +104,7 @@ void RunTestWrapper() {
   // ([2,2,2,3],[3,2,2,2],axis=0) coalesce to ([2,4,3],[3,4,2],axis=0)
   RunTest<T, int32_t>({2, 2, 2, 3}, {3, 2, 2, 2}, true, 0LL);
 
-  // ([2,2,3,3,2],[2,2,3,2,2],axis=0) coalesce to ([2,6,3,2],[2,6,3,2],axis=0)
+  // ([2,2,3,3,2],[2,2,3,2,2],axis=0) coalesce to ([2,6,3,2],[2,6,2,2],axis=0)
   RunTest<T, int64_t>({2, 2, 3, 3, 2}, {2, 2, 3, 2, 2});
 
   // ([2,2,1,3,1],[2,2,1,2,1],axis=0) coalesce to ([2,2,3],[2,2,2],axis=0)
