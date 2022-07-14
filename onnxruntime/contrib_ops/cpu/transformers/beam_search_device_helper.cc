@@ -273,13 +273,13 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   // Get scores for candidates of next token: next_token_scores = log_softmax(next_token_logits, dim=-1)
   gsl::span<T>& next_token_scores = beam_state->next_token_scores;
   ORT_RETURN_IF_ERROR(
-    SoftmaxCPU<T>(
-      batch_beam_size,  // rows
-      vocab_size,       // elements per row
-      (input_length == 1 && logits_batch_size == batch_beam_size) ? logits_data : next_token_logits.data(),
-      next_token_scores.data(),
-      true,
-      thread_pool));
+      SoftmaxCPU<T>(
+          batch_beam_size,  // rows
+          vocab_size,       // elements per row
+          (input_length == 1 && logits_batch_size == batch_beam_size) ? logits_data : next_token_logits.data(),
+          next_token_scores.data(),
+          true,
+          thread_pool));
 
 #ifdef DEBUG_BEAM_SEARCH
   dumper->Print("next_token_scores after softmax", next_token_scores.data(), batch_size, num_beams, vocab_size);
@@ -453,7 +453,7 @@ Status UpdateGptFeeds(
   }
   next_inputs[0] = input_ids;
 
-  if (increase_position){
+  if (increase_position) {
     // Update position IDs
     int32_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int32_t>();
     for (int i = 0; i < batch_beam_size; i++) {
@@ -744,28 +744,28 @@ template Status UpdateDecoderFeeds<float>(
 template void ExpandInputs<int32_t>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
 
 template Status ExpandBuffer<int32_t>(
-  void* stream,
-  const OrtValue& input,
-  int num_beams,
-  AllocatorPtr allocator,
-  OrtValue& expanded,
-  bool only_copy_shape);
+    void* stream,
+    const OrtValue& input,
+    int num_beams,
+    AllocatorPtr allocator,
+    OrtValue& expanded,
+    bool only_copy_shape);
 
 template Status ExpandBuffer<float>(
-  void* stream,
-  const OrtValue& input,
-  int num_beams,
-  AllocatorPtr allocator,
-  OrtValue& expanded,
-  bool only_copy_shape);
+    void* stream,
+    const OrtValue& input,
+    int num_beams,
+    AllocatorPtr allocator,
+    OrtValue& expanded,
+    bool only_copy_shape);
 
 template Status ExpandBuffer<MLFloat16>(
-  void* stream,
-  const OrtValue& input,
-  int num_beams,
-  AllocatorPtr allocator,
-  OrtValue& expanded,
-  bool only_copy_shape);
+    void* stream,
+    const OrtValue& input,
+    int num_beams,
+    AllocatorPtr allocator,
+    OrtValue& expanded,
+    bool only_copy_shape);
 
 }  // namespace BeamSearchCpuDeviceHelper
 }  // namespace contrib

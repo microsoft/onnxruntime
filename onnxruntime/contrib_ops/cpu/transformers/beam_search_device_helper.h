@@ -142,7 +142,6 @@ using ExpandBufferFunc = std::function<Status(
     bool only_copy_shape)>;
 }  // namespace BeamSearchDeviceHelper
 
-
 // These are CPU specific device helper implementations
 namespace BeamSearchCpuDeviceHelper {
 Status TopK(
@@ -213,8 +212,7 @@ Status UpdateGptFeeds(
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx
-    );
+    int gpt_subgraph_first_present_output_idx);
 
 // ---------------------------------------------------------------
 // Functions for encoder-decoder model like T5

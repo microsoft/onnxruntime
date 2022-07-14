@@ -258,9 +258,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   // The output will be float for consideration of precision and easy integration with remaining parts.
   float* Y_data = next_token_scores.data();
-  const CudaT* X_data = (input_length == 1 && logits_batch_size == batch_beam_size) ?
-                        logits_data :
-                        reinterpret_cast<const CudaT*>(next_token_logits.data());
+  bool is_single_token = (input_length == 1 && logits_batch_size == batch_beam_size);
+  const CudaT* X_data = is_single_token ? logits_data : reinterpret_cast<const CudaT*>(next_token_logits.data());
 
   dispatch_blockwise_softmax_forward<CudaT, float, float, true>(
       cuda_stream, Y_data, X_data, vocab_size, vocab_size, batch_size * num_beams);
@@ -654,12 +653,12 @@ Status ExpandBuffer(void* stream,
   for (int i = 0; i < batch_size; i++) {
     for (int j = 0; j < num_beams; j++) {
       CUDA_RETURN_IF_ERROR(
-        cudaMemcpyAsync(
-          target,
-          input_data + i * chunk_size,
-          sizeof(T) * chunk_size,
-          cudaMemcpyDeviceToDevice,
-          cuda_stream));
+          cudaMemcpyAsync(
+              target,
+              input_data + i * chunk_size,
+              sizeof(T) * chunk_size,
+              cudaMemcpyDeviceToDevice,
+              cuda_stream));
       target += chunk_size;
     }
   }
