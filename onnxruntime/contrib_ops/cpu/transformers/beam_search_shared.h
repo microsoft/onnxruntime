@@ -145,26 +145,6 @@ class IConsoleDumper {
   bool is_enabled_;
 };
 
-template <typename T>
-gsl::span<T> AllocateBuffer(AllocatorPtr allocator,
-                            BufferUniquePtr& buffer,
-                            size_t elements,
-                            bool fill = false,
-                            T fill_value = T{}) {
-  size_t bytes = SafeInt<size_t>(sizeof(T)) * elements;
-  void* data = allocator->Alloc(bytes);
-  BufferUniquePtr temp_buffer(data, BufferDeleter(allocator));
-  buffer = std::move(temp_buffer);
-  T* first = reinterpret_cast<T*>(buffer.get());
-  auto span = gsl::make_span(first, elements);
-
-  if (fill) {
-    std::fill_n(first, elements, fill_value);
-  }
-
-  return span;
-}
-
 }  // namespace transformers
 }  // namespace contrib
 }  // namespace onnxruntime
