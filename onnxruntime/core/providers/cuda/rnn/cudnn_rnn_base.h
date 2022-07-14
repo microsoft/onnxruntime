@@ -143,20 +143,11 @@ class CudnnRnnBase : public CudaKernel {
  private:
   Status SetCudnnRnnWeightBias(const cudnnHandle_t cudnn_handle,
                                const cudnnRNNDescriptor_t rnn_desc,
-                               const cudnnTensorDescriptor_t x_desc,
-                               const cudnnFilterDescriptor_t w_desc,
-                               void* w_data,
+                               void* reorganized_w_data,
+                               size_t weightspace_bytes,
                                const T* W_data,
                                const T* R_data,
                                const T* B_data) const;
-
-  Status SetCudnnRnnWeightBias_v8(const cudnnHandle_t cudnn_handle,
-                                  const cudnnRNNDescriptor_t rnn_desc,
-                                  void* reorganized_w_data,
-                                  size_t weightspace_bytes,
-                                  const T* W_data,
-                                  const T* R_data,
-                                  const T* B_data) const;
 
   Status ReorganizeWeights(const Tensor* W, const Tensor* R, const Tensor* B,
                            IAllocatorUniquePtr<void>& target_w_data,
@@ -167,25 +158,13 @@ class CudnnRnnBase : public CudaKernel {
   void SetWeightBias(const cudnnHandle_t handle,
                      const cudnnRNNDescriptor_t rnn_desc,
                      const int pseudo_layer,
-                     const cudnnTensorDescriptor_t x_desc,
-                     const cudnnFilterDescriptor_t w_desc,
-                     const cudnnFilterDescriptor_t filter_desc,
-                     const void* w_data,
+                     const void* reorganized_w_data,
+                     size_t weightspace_bytes,
                      const int lin_layer_id,
-                     const T* pos,
-                     int& offset,
-                     bool is_matrix) const;
-
-  void SetWeightBias_v8(const cudnnHandle_t handle,
-                        const cudnnRNNDescriptor_t rnn_desc,
-                        const int pseudo_layer,
-                        const void* reorganized_w_data,
-                        size_t weightspace_bytes,
-                        const int lin_layer_id,
-                        const T* matrix_pos,
-                        const T* bias_pos,
-                        int& matrix_offset,
-                        int& bias_offset) const;
+                     const T* matrix_pos,
+                     const T* bias_pos,
+                     int& matrix_offset,
+                     int& bias_offset) const;
 
   void SetZeroSequences(const int64_t zero_seq_index_cache_size,
                         const std::vector<int32_t>& zero_seq_index_cache,

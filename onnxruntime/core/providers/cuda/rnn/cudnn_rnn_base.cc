@@ -12,43 +12,13 @@ template <typename T>
 void CudnnRnnBase<T>::SetWeightBias(const cudnnHandle_t handle,
                                     const cudnnRNNDescriptor_t rnn_desc,
                                     const int pseudo_layer,
-                                    const cudnnTensorDescriptor_t x_desc,
-                                    const cudnnFilterDescriptor_t w_desc,
-                                    const cudnnFilterDescriptor_t filter_desc,
                                     const void* reorganized_w_data,
+                                    size_t weightspace_bytes,
                                     const int lin_layer_id,
-                                    const T* pos,
-                                    int& offset,
-                                    bool is_matrix) const {
-  int numDims;
-  std::vector<int> matDims(3);
-  cudnnDataType_t dt;
-  cudnnTensorFormat_t tf;
-  T* mem_offset;
-
-  if (is_matrix) {
-    cudnnGetRNNLinLayerMatrixParams(handle, rnn_desc, pseudo_layer, x_desc, w_desc, reorganized_w_data, lin_layer_id, filter_desc, (void**)&mem_offset);
-  } else {
-    cudnnGetRNNLinLayerBiasParams(handle, rnn_desc, pseudo_layer, x_desc, w_desc, reorganized_w_data, lin_layer_id, filter_desc, (void**)&mem_offset);
-  }
-
-  cudnnGetFilterNdDescriptor(filter_desc, 3, &dt, &tf, &numDims, matDims.data());
-  int count = matDims[0] * matDims[1] * matDims[2];
-  CUDA_CALL_THROW(cudaMemcpyAsync(mem_offset, pos + offset, count * sizeof(T), cudaMemcpyDeviceToDevice, Stream()));
-  offset += count;
-}
-
-template <typename T>
-void CudnnRnnBase<T>::SetWeightBias_v8(const cudnnHandle_t handle,
-                                       const cudnnRNNDescriptor_t rnn_desc,
-                                       const int pseudo_layer,
-                                       const void* reorganized_w_data,
-                                       size_t weightspace_bytes,
-                                       const int lin_layer_id,
-                                       const T* matrix_pos,
-                                       const T* bias_pos,
-                                       int& matrix_offset,
-                                       int& bias_offset) const {
+                                    const T* matrix_pos,
+                                    const T* bias_pos,
+                                    int& matrix_offset,
+                                    int& bias_offset) const {
   cudnnTensorDescriptor_t m_desc;
   cudnnCreateTensorDescriptor(&m_desc);
 
@@ -80,54 +50,23 @@ void CudnnRnnBase<T>::SetWeightBias_v8(const cudnnHandle_t handle,
 }
 
 template <typename T>
-Status CudnnRnnBase<T>::SetCudnnRnnWeightBias_v8(const cudnnHandle_t cudnn_handle,
-                                                 const cudnnRNNDescriptor_t rnn_desc,
-                                                 void* reorganized_w_data,
-                                                 size_t weightspace_bytes,
-                                                 const T* W_data,
-                                                 const T* R_data,
-                                                 const T* B_data) const {
-  int w_offset = 0;
-  int r_offset = 0;
-  int bias_offset = 0;
-
-  for (int layer = 0; layer < RNN_NUM_LAYERS * num_directions_; ++layer) {
-    for (size_t idx = 0; idx < W_lin_layer_id_.size(); ++idx) {
-      SetWeightBias_v8(cudnn_handle, rnn_desc, layer, reorganized_w_data, weightspace_bytes, W_lin_layer_id_[idx], W_data, B_data, w_offset, bias_offset);
-    }
-    for (size_t idx = 0; idx < R_lin_layer_id_.size(); ++idx) {
-      SetWeightBias_v8(cudnn_handle, rnn_desc, layer, reorganized_w_data, weightspace_bytes, R_lin_layer_id_[idx], R_data, B_data, r_offset, bias_offset);
-    }
-  }
-
-  return Status::OK();
-}
-
-template <typename T>
 Status CudnnRnnBase<T>::SetCudnnRnnWeightBias(const cudnnHandle_t cudnn_handle,
                                               const cudnnRNNDescriptor_t rnn_desc,
-                                              const cudnnTensorDescriptor_t x_desc,
-                                              const cudnnFilterDescriptor_t w_desc,
                                               void* reorganized_w_data,
+                                              size_t weightspace_bytes,
                                               const T* W_data,
                                               const T* R_data,
                                               const T* B_data) const {
   int w_offset = 0;
   int r_offset = 0;
   int bias_offset = 0;
-  CudnnFilterDescriptor filter_desc;
+
   for (int layer = 0; layer < RNN_NUM_LAYERS * num_directions_; ++layer) {
     for (size_t idx = 0; idx < W_lin_layer_id_.size(); ++idx) {
-      SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data, W_lin_layer_id_[idx], W_data, w_offset, true);
-      if (B_data != nullptr) {
-        SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data, W_lin_layer_id_[idx], B_data, bias_offset, false);
-      }
+      SetWeightBias(cudnn_handle, rnn_desc, layer, reorganized_w_data, weightspace_bytes, W_lin_layer_id_[idx], W_data, B_data, w_offset, bias_offset);
     }
     for (size_t idx = 0; idx < R_lin_layer_id_.size(); ++idx) {
-      SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data, R_lin_layer_id_[idx], R_data, r_offset, true);
-      if (B_data != nullptr) {
-        SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data, R_lin_layer_id_[idx], B_data, bias_offset, false);
-      }
+      SetWeightBias(cudnn_handle, rnn_desc, layer, reorganized_w_data, weightspace_bytes, R_lin_layer_id_[idx], R_data, B_data, r_offset, bias_offset);
     }
   }
 
@@ -158,7 +97,7 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
 
   CUDNN_RETURN_IF_ERROR(cudnnGetRNNWeightSpaceSize(CudnnHandle(), rnn_desc, &weightspace_bytes));
   reorganized_w_data = GetScratchBuffer<void>(weightspace_bytes);
-  ORT_RETURN_IF_ERROR(SetCudnnRnnWeightBias_v8(CudnnHandle(), rnn_desc, reorganized_w_data.get(), weightspace_bytes, W_data, R_data, B_data));
+  ORT_RETURN_IF_ERROR(SetCudnnRnnWeightBias(CudnnHandle(), rnn_desc, reorganized_w_data.get(), weightspace_bytes, W_data, R_data, B_data));
 
   return Status::OK();
 }
