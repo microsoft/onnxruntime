@@ -372,11 +372,11 @@ void resize_output(
   if (output->sizes().equals(shape)) {
     return;
   }
-  std::cout << "Resizing tensor\n";
-  // if (output->numel() != 0) {
-  //   throw std::runtime_error(
-  //     "resizing a non-empty output tensor is not supported.");
-  // }
+
+  if (output->numel() != 0) {
+    throw std::runtime_error(
+      "resizing a non-empty output tensor is not supported.");
+  }
 
   resize_impl_ort_(invoker, output, shape);
 }

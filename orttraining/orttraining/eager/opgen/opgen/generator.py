@@ -163,8 +163,6 @@ class ORTGen:
             else:
                 writer.writeline(" {")
                 writer.push_indent()
-                # if mapped_func.cpp_func.torch_func:
-                #     writer.writeline(f'std::cout << "running {mapped_func.cpp_func.torch_func.torch_schema}\\n";')
                 self._write_function_body(writer, mapped_func)
                 writer.pop_indent()
                 writer.writeline("}")
