@@ -47,9 +47,6 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
-#include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
-#endif
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
@@ -927,23 +924,6 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   // first apply execution provider independent level 1 graph optimizations.
   ORT_RETURN_IF_ERROR_SESSIONID_(
       graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
-
-#ifdef USE_DML
-  // TODO: this is a temporary workaround to apply the DML EP's custom graph transformer prior to partitioning. This
-  // transformer applies DML-specific fusions that go beyond what ORT offers by default. Ideally the DML EP should
-  // apply these transforms during partitioning, but the full mutable Graph object isn't exposed to
-  // IExecutionProvider::GetCapability, which is necessary for the DML EP's transforms.
-  //
-  // To prevent this from interfering with other EPs, we only apply this transform if the DML EP is the only one that's
-  // registered (aside from the CPU EP, which is always registered by default.)
-  if (execution_providers_.Get(kDmlExecutionProvider) && execution_providers_.NumProviders() <= 2) {
-    Dml::GraphTransformer dml_transformer(onnxruntime::kDmlExecutionProvider,
-                                          execution_providers_.Get(kDmlExecutionProvider));
-
-    bool modified = false;
-    ORT_RETURN_IF_ERROR_SESSIONID_(dml_transformer.Apply(graph, modified, *session_logger_));
-  }
-#endif
 
   // if saving model to ORT format we only assign nodes a custom EP can handle and don't compile them.
   // we do this to preserve the original nodes in the model but prevent optimizers from changing them.

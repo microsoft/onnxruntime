@@ -526,14 +526,30 @@ namespace Dml
         std::string partitionKernelPrefix = std::to_string(m_partitionKernelPrefixVal++) + "_";
         uint32_t deviceDataTypeMask = GetSupportedDeviceDataTypeMask();
 
-        return PartitionGraph(
-            graph,
-            *m_internalRegInfoMap,
-            registries,
-            deviceDataTypeMask,
-            m_kernelRegistry.get(),
-            partitionKernelPrefix
-        );
+        bool isFirstPartitionCall = std::none_of(graph.Nodes().begin(), graph.Nodes().end(), [](const onnxruntime::Node& node) {
+                return !node.GetExecutionProviderType().empty() && node.GetExecutionProviderType() == onnxruntime::kDmlExecutionProvider;
+            });
+
+        if (isFirstPartitionCall)
+        {
+            return LightWeightPartitionGraph(
+                graph,
+                *m_internalRegInfoMap,
+                registries,
+                deviceDataTypeMask
+            );
+        } 
+        else
+        {
+            return PartitionGraph(
+                graph,
+                *m_internalRegInfoMap,
+                registries,
+                deviceDataTypeMask,
+                m_kernelRegistry.get(),
+                partitionKernelPrefix
+            );
+        }
     }
     
     bool IsGpuTensor(const onnxruntime::Tensor& tensor) 

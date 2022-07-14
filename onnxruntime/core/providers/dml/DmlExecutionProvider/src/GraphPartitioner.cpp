@@ -290,21 +290,18 @@ namespace Dml
         _In_opt_ const std::unordered_map<std::string, GraphPartition*>* nodeNameToPartitionMap,
         _Inout_ std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& dmlNodePropertyMap,
         _Inout_ std::unordered_set<std::string>& requiredInitializerMap,
-        _Out_ bool* isDmlNode,
+        bool isDmlNode,
         _Out_ bool* isDmlGraphNode
         )
     {
-        *isDmlNode = false;
         *isDmlGraphNode = false;
 
         // Find the highest priority DML registry supporting this node, and get its highest-priority
         // registration.  Determine if that registration supports usage as a graph node.
         for (auto registry : dmlRegistries) 
         {
-            if (IsNodeSupportedByDml(node, *registry, supportedDeviceDataTypeMask, internalRegInfoMap))
+            if (isDmlNode)
             {
-                *isDmlNode = true;
-
                 // Get the kernel creation info for the registration, and check if it carries the property
                 // set during registration of kernels that support DML graph node usage.
                 auto graphNodeProperty = dmlNodePropertyMap.insert(std::make_pair(&node, GraphNodeProperties()));
@@ -654,7 +651,7 @@ namespace Dml
             const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
 
             // Whether the node is implemented through DML.
-            bool isDmlNode = false;
+            bool isDmlNode = node.GetExecutionProviderType() == onnxruntime::kDmlExecutionProvider;
 
             // Whether the node is implemented through DML and as a graph node, meaning it
             // can generate DML operations through a private interface for use as an MLGraph node.
@@ -670,7 +667,7 @@ namespace Dml
                 &nodeNameToPartitionMap,
                 graphNodePropertyMap,
                 requiredInitializerMap,
-                /*out*/ &isDmlNode,
+                isDmlNode,
                 /*out*/ &isDmlGraphNode
             );
 
@@ -778,6 +775,50 @@ namespace Dml
         }
 
         return initializerPartitionMap;
+    }
+
+    std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
+    LightWeightPartitionGraph(
+        const onnxruntime::GraphViewer& graph,
+        const InternalRegistrationInfoMap& internalRegInfoMap,
+        const std::vector<const onnxruntime::KernelRegistry*>& registries,
+        uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
+        )
+    {
+        std::vector<std::unique_ptr<onnxruntime::ComputeCapability>> result;
+        
+        // Get the list of node indices in toplogical order, so nodes are visited before.
+        // downstream nodes consuming them.
+        const std::vector<onnxruntime::NodeIndex>& toplogicalOrder = graph.GetNodesInTopologicalOrder();
+
+        for (size_t nodeIndex : toplogicalOrder) 
+        {
+            const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
+
+            // Whether the node is implemented through DML.
+            bool isDmlNode = false;
+
+            // Find the highest priority DML registry supporting this node, and get its highest-priority
+            // registration.
+            for (auto registry : registries) 
+            {
+                if (IsNodeSupportedByDml(node, *registry, supportedDeviceDataTypeMask, internalRegInfoMap))
+                {
+                    isDmlNode = true;
+                    break;
+                }
+            }
+
+            if (isDmlNode)
+            {
+                std::unique_ptr<onnxruntime::IndexedSubGraph> subGraph = std::make_unique<onnxruntime::IndexedSubGraph>();
+                subGraph->nodes = {nodeIndex};
+                result.push_back(std::make_unique<onnxruntime::ComputeCapability>(std::move(subGraph)));
+            }
+            
+        }
+
+        return result;
     }
 
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>

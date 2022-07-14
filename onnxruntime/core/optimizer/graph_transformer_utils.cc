@@ -59,6 +59,7 @@
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #endif
@@ -211,6 +212,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       const InlinedHashSet<std::string_view> cpu_cuda_rocm_eps = {onnxruntime::kCpuExecutionProvider,
                                                                   onnxruntime::kCudaExecutionProvider,
                                                                   onnxruntime::kRocmExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_cuda_rocm_dml_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                  onnxruntime::kCudaExecutionProvider,
+                                                                  onnxruntime::kRocmExecutionProvider,
+                                                                  onnxruntime::kDmlExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_eps = {onnxruntime::kCpuExecutionProvider,
                                                                             onnxruntime::kCudaExecutionProvider,
                                                                             onnxruntime::kRocmExecutionProvider,
@@ -233,7 +238,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_eps));
 
-      transformers.emplace_back(std::make_unique<GeluFusion>(cpu_cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<GeluFusion>(cpu_cuda_rocm_dml_eps));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<AttentionFusion>(cpu_cuda_rocm_eps));
@@ -279,6 +284,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // we will prefer NhwcTransformer once ort runs on x86-64 CPU, otherwise ConvAddActivationFusion is enabled.
       // this PR #6351 implemented similiar fusion-pattern but only for CUDA, and can only fuse conv-add-relu, while we can fuse more activation.
       transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(cpu_ep));
+
+      const InlinedHashSet<std::string_view> dml_ep = {onnxruntime::kDmlExecutionProvider};
+      transformers.emplace_back(std::make_unique<Dml::GraphTransformer>(dml_ep));
 #endif
     } break;
 

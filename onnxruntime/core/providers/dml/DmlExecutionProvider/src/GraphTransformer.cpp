@@ -15,15 +15,6 @@
 
 namespace Dml
 {
-    GraphTransformer::GraphTransformer(
-        const std::string& name, 
-        const onnxruntime::IExecutionProvider* provider
-    )
-        : onnxruntime::GraphTransformer(name),
-          m_providerImpl(static_cast<const ExecutionProvider* >(provider)->GetImpl())
-    {
-    }
-
     onnxruntime::common::Status GraphTransformer::ApplyImpl(
         onnxruntime::Graph& graph,
         bool& modified,
@@ -63,8 +54,6 @@ namespace Dml
     
     void GraphTransformer::PerformOperatorFusion(onnxruntime::Graph* graph, bool* modified) const
     {
-        onnxruntime::KernelRegistry* registry = m_providerImpl->GetKernelRegistry().get();
-
         struct NodeToAdd
         {
             std::string name;
@@ -89,12 +78,7 @@ namespace Dml
             // We need to predict whether the nodes will be assigned to the DML transformer by Lotus,
             // which occurs in IExecutionProvider::GetCapability.
 
-            if (!IsNodeSupportedByDml(
-                node,
-                *registry,
-                m_providerImpl->GetSupportedDeviceDataTypeMask(),
-                *m_providerImpl->GetInternalRegistrationInfoMap().get()
-                ))
+            if (!onnxruntime::graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()))
             {
                 // Can't fuse nodes that don't belong to this execution provider
                 continue;
@@ -114,7 +98,7 @@ namespace Dml
 
             // We need to predict whether the nodes will be assigned to the DML transformer by Lotus,
             // which occurs in IExecutionProvider::GetCapability.
-            if (!onnxruntime::KernelRegistry::HasImplementationOf(*registry, outputNode, onnxruntime::kDmlExecutionProvider)) 
+            if (!onnxruntime::graph_utils::IsSupportedProvider(outputNode, GetCompatibleExecutionProviders())) 
             {
                 // Can't fuse nodes that don't belong to this execution provider
                 continue;
@@ -201,6 +185,7 @@ namespace Dml
                 &nodeToAdd.attributes,
                 nodeToAdd.domain);
 
+            node.SetExecutionProviderType(onnxruntime::kDmlExecutionProvider);
             // Add a dynamic attribute to the fuseable operator to specify activation
             node.AddAttribute(AttrName::FusedActivation, nodeToAdd.activationOpType);
             node.AddAttribute(AttrName::FusedActivationDomain, nodeToAdd.activationOpDomain);
@@ -298,7 +283,7 @@ namespace Dml
 
         for (auto& nodeToAdd : nodesToAdd)
         {
-            graph->AddNode(
+            auto& node = graph->AddNode(
                 nodeToAdd.name,
                 nodeToAdd.opType,
                 nodeToAdd.description,
@@ -306,6 +291,7 @@ namespace Dml
                 nodeToAdd.outputs,
                 &nodeToAdd.attributes,
                 nodeToAdd.domain);
+            node.SetExecutionProviderType(onnxruntime::kDmlExecutionProvider);
         }
 
         for (const auto& nodeIndex : nodesToRemove) 
