@@ -1,20 +1,18 @@
 ## This code is from https://github.com/pytorch/examples/blob/master/mnist/main.py
-## with modification to do training using onnxruntime as backend on cuda device.
-## A private PyTorch build from https://aiinfra.visualstudio.com/Lotus/_git/pytorch (ORTTraining branch) is needed to run the demo.
+## with modification to do training using onnxruntime as backend.
 
-## Model testing is not complete.
+# pylint: disable=missing-docstring
+# pylint: disable=C0103
 
 from __future__ import print_function
 
 import argparse
 import os
 
-import numpy as np
 import onnxruntime_pybind11_state as torch_ort
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
+from torch import nn, optim
 from torchvision import datasets, transforms
 
 # we use the build directory so gitignore applies.
@@ -23,7 +21,7 @@ dataset_root_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "bu
 
 class NeuralNet(nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNet, self).__init__()
+        super().__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(hidden_size, num_classes)
@@ -112,18 +110,18 @@ def main():
         **kwargs,
     )
 
-    device = torch.device("ort")
+    device_ort = torch_ort.device()
     input_size = 784
     hidden_size = 500
     num_classes = 10
-    model = NeuralNet(input_size, hidden_size, num_classes)
-    model.to(device)
-    optimizer = optim.SGD(model.parameters(), lr=0.01)
+    model_nn = NeuralNet(input_size, hidden_size, num_classes)
+    model_nn.to(device_ort)
+    optimizer = optim.SGD(model_nn.parameters(), lr=0.01)
 
     print("\nStart Training.")
 
     for epoch in range(1, args.epochs + 1):
-        train_with_eager(args, model, optimizer, device, train_loader, epoch)
+        train_with_eager(args, model_nn, optimizer, device_ort, train_loader, epoch)
 
 
 if __name__ == "__main__":
