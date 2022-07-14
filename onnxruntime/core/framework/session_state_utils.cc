@@ -248,10 +248,7 @@ common::Status SaveInitializedTensors(
   for (int ort_value_index : initializer_allocation_order) {
     const auto entry = initialized_tensors_to_allocate.find(ort_value_index);
     auto location = exec_plan.GetLocation(ort_value_index).name;
-    if (utils::HasExternalData(*entry->second) && (strcmp(location, CPU) == 0)) {
-      // external data will be memory mapped, no need to plan for its allocation
-      continue;
-    } else {
+    if (!(utils::HasExternalData(*entry->second) && (strcmp(location, CPU) == 0))) {
       // can not trace string tensor
       ORT_ENFORCE(entry != initialized_tensors_to_allocate.end() &&
                   entry->second->data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING);
@@ -261,13 +258,8 @@ common::Status SaveInitializedTensors(
   }
 
   for (const auto& entry : initialized_tensors_to_allocate) {
-    auto location = exec_plan.GetLocation(entry.first).name;
     // We don't want to trace shared initializers since their memory is provided by the user
     if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
-      continue;
-    }
-    if (utils::HasExternalData(*entry.second) && (strcmp(location, CPU) == 0)) {
-      // external data is memory mapped, no need to plan for its allocation
       continue;
     }
     if (entry.second->data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
