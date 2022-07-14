@@ -24,10 +24,12 @@ class FusionOptions:
         self.enable_bias_skip_layer_norm = True
         self.enable_bias_gelu = True
         self.enable_gelu_approximation = False
+        self.enable_shape_inference = True
         self.attention_mask_format = AttentionMaskFormat.AttentionMask
 
         if model_type == "gpt2":
             self.enable_skip_layer_norm = False
+            self.enable_shape_inference = False
 
     def use_raw_attention_mask(self, use_raw_mask=True):
         if use_raw_mask:

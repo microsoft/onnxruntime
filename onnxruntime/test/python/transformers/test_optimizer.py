@@ -17,13 +17,13 @@ from onnx import TensorProto, load_model
 from parity_utilities import find_transformers_source
 
 if find_transformers_source():
-    from benchmark_helper import OptimizerInfo, Precision
+    from benchmark_helper import ConfigModifier, OptimizerInfo, Precision
     from huggingface_models import MODELS
     from onnx_exporter import export_onnx_model_from_pt, export_onnx_model_from_tf
     from onnx_model import OnnxModel
     from optimizer import optimize_model
 else:
-    from onnxruntime.transformers.benchmark_helper import OptimizerInfo, Precision
+    from onnxruntime.transformers.benchmark_helper import ConfigModifier, OptimizerInfo, Precision
     from onnxruntime.transformers.huggingface_models import MODELS
     from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_pt, export_onnx_model_from_tf
     from onnxruntime.transformers.onnx_model import OnnxModel
@@ -84,13 +84,17 @@ class TestBertOptimization(unittest.TestCase):
 
         import torch
 
+        config_modifier = ConfigModifier(None)
+        fusion_options = None
+        model_class = "AutoModel"
         with torch.no_grad():
             _, is_valid_onnx_model, _, _ = export_onnx_model_from_pt(
                 model_name,
-                MODELS[model_name][1],
-                MODELS[model_name][2],
-                MODELS[model_name][3],
-                None,
+                MODELS[model_name][1],  # opset version
+                MODELS[model_name][2],  # use_external_data_format
+                MODELS[model_name][3],  # optimization model type
+                model_class,
+                config_modifier,
                 "./cache_models",
                 "./onnx_models",
                 input_names[:inputs_count],
@@ -101,6 +105,7 @@ class TestBertOptimization(unittest.TestCase):
                 True,
                 True,
                 model_fusion_statistics,
+                fusion_options,
             )
 
         onnx_model = list(model_fusion_statistics.keys())[0]
@@ -114,6 +119,11 @@ class TestBertOptimization(unittest.TestCase):
         # Remove cached model so that CI machine will have space
         import shutil
 
+        from transformers.utils import is_tf2onnx_available, is_tf_available
+
+        if not is_tf_available() or not is_tf2onnx_available():
+            return
+
         shutil.rmtree("./cache_models", ignore_errors=True)
         shutil.rmtree("./onnx_models", ignore_errors=True)
 
@@ -126,13 +136,17 @@ class TestBertOptimization(unittest.TestCase):
 
         import torch
 
+        config_modifier = ConfigModifier(None)
+        fusion_options = None
+        model_class = "AutoModel"
         with torch.no_grad():
             _, is_valid_onnx_model, _, _ = export_onnx_model_from_tf(
                 model_name,
-                MODELS[model_name][1],
-                MODELS[model_name][2],
-                MODELS[model_name][3],
-                None,
+                MODELS[model_name][1],  # opset version
+                MODELS[model_name][2],  # use_external_data_format
+                MODELS[model_name][3],  # optimization model
+                model_class,
+                config_modifier,
                 "./cache_models",
                 "./onnx_models",
                 input_names[:inputs_count],
@@ -143,6 +157,7 @@ class TestBertOptimization(unittest.TestCase):
                 True,
                 True,
                 model_fusion_statistics,
+                fusion_options,
             )
 
         onnx_model = list(model_fusion_statistics.keys())[0]
@@ -281,9 +296,9 @@ class TestBertOptimization(unittest.TestCase):
     # def test_huggingface_gpt2_fusion(self):
     #     self._test_optimizer_on_huggingface_model("gpt2", [0, 12, 0, 12, 0, 25, 0])
 
-    @pytest.mark.slow
-    def test_huggingface_xlm_fusion(self):
-        self._test_optimizer_on_huggingface_model("xlm-mlm-ende-1024", [0, 6, 0, 0, 6, 0, 13])
+    # @pytest.mark.slow
+    # def test_huggingface_xlm_fusion(self):
+    #     self._test_optimizer_on_huggingface_model("xlm-mlm-ende-1024", [0, 6, 0, 0, 6, 0, 13])
 
     @pytest.mark.slow
     def test_huggingface_roberta_fusion(self):
@@ -311,19 +326,19 @@ class TestBertOptimization(unittest.TestCase):
     def test_huggingface_xlmroberta_fusion(self):
         self._test_optimizer_on_huggingface_model("xlm-roberta-base", [0, 12, 0, 0, 12, 1, 24])
 
-    @pytest.mark.slow
-    def test_huggingface_flaubert_fusion(self):
-        # output not close issue
-        self._test_optimizer_on_huggingface_model(
-            "flaubert/flaubert_base_cased",
-            [0, 12, 0, 0, 12, 0, 25],
-            validate_model=False,
-        )
-        self._test_optimizer_on_huggingface_model(
-            "flaubert/flaubert_small_cased",
-            [0, 6, 0, 0, 6, 12, 1],
-            validate_model=False,
-        )
+    # @pytest.mark.slow
+    # def test_huggingface_flaubert_fusion(self):
+    #     # output not close issue
+    #     self._test_optimizer_on_huggingface_model(
+    #         "flaubert/flaubert_base_cased",
+    #         [0, 12, 0, 0, 12, 0, 25],
+    #         validate_model=False,
+    #     )
+    #     self._test_optimizer_on_huggingface_model(
+    #         "flaubert/flaubert_small_cased",
+    #         [0, 6, 0, 0, 6, 12, 1],
+    #         validate_model=False,
+    #     )
 
     # @pytest.mark.slow
     # def test_huggingface_dialogpt_fusion(self):

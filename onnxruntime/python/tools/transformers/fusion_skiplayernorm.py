@@ -40,18 +40,13 @@ class FusionSkipLayerNormalization(Fusion):
         if len(self.model.get_parents(add)) != 2:
             return
 
+        # shape_infer_helper can not handle subgraphs so we do not return when shape_infer_helper is None.
         if self.shape_infer_helper is not None:
             if not self.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
                 logger.debug(
                     f"skip skiplayernorm fusion since shape of inputs ({add.input[0]}, {add.input[1]}) are not same"
                 )
                 return
-        else:
-            # shape_infer_helper can not handle subgraphs. Current work around is to disable skiplayernorm fusion
-            # longterm todo: support subgraph in symbolic_shape_infer or support add broadcasting in skiplayernorm op
-            logger.warning(
-                "symbolic shape infer failed. it's safe to ignore this message if there is no issue with optimized model"
-            )
 
         gather_path = self.model.match_parent_path(add, ["Gather"], [None])
         if gather_path is not None and self.model.find_graph_input(gather_path[0].input[1]) is None:

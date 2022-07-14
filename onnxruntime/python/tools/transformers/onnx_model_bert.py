@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 from logging import getLogger
-from typing import List
+from typing import List, Optional
 
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_biasgelu import FusionBiasGelu
@@ -337,7 +337,9 @@ class BertOnnxModel(OnnxModel):
         self.clean_graph()
         self.prune_graph()
 
-    def optimize(self, options: FusionOptions = None, add_dynamic_axes=False):
+    def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
+        self.enable_shape_infer = options.enable_shape_inference
+
         # Remove cast nodes that having same data type of input and output based on symbolic shape inference.
         self.utils.remove_useless_cast_nodes()
 

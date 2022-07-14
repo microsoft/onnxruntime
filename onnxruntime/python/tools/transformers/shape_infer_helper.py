@@ -84,7 +84,7 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
     def get_edge_shape(self, edge):
         assert self.all_shapes_inferred_ == True
         if edge not in self.known_vi_:
-            print("Cannot retrive the shape of " + str(edge))
+            print("Cannot retrieve the shape of " + str(edge))
             return None
         type_proto = self.known_vi_[edge].type
         shape = get_shape_from_type_proto(type_proto)
