@@ -198,9 +198,6 @@ class CudnnRnnBase : public CudaKernel {
   std::vector<int> W_lin_layer_id_;
   std::vector<int> R_lin_layer_id_;
 
-  // use v8 APIs
-  bool use_v8_api_ = false;
-
  private:
   cudnnDirectionMode_t cudnn_direction_mode_;
   bool reverse_;
