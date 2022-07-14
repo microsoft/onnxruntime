@@ -162,7 +162,8 @@ void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
 
   // Process prefix vocabulary mask and set tokens with mask value 0 to -inf.
   // prefix_vocab_mask shape (max_iteration, batch_szie, vocab_size).
-  size_t step_offset = SafeInt<size_t>(step_++) * batch_size_ * next_token_scores;
+  size_t step_offset = static_cast<size_t>(step_) * batch_size_ * next_token_scores;
+  step_++; // increment step
 
   T* p = next_token_scores.scores.data();
   for (int i = 0; i < batch_size_; i++) {
