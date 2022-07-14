@@ -378,7 +378,7 @@ class PlannerImpl {
   }
 
   int& UseCount(OrtValueIndex n) {
-    ORT_ENFORCE(n >= 0 && static_cast<size_t>(n) < ort_value_info_.size());
+    ORT_ENFORCE(n >= 0 && static_cast<size_t>(n) < ort_value_info_.size(), "invalid value index: ", n, " against size ", ort_value_info_.size());
     return ort_value_info_[n].usecount;
   }
   int& UseCount(const OrtValueName& name) { return UseCount(Index(name)); }
@@ -1762,11 +1762,14 @@ class PlannerImpl {
     auto partitioner = INodePartitioner::CreateNodePartitioner(logger, partition_config_file);
     partitioner->PartitionNodes(graph_viewer_, stream_nodes_);
     node_stream_map_.resize(graph_viewer_.MaxNodeIndex() + 1);
+    //int node_cnt = 0;
     for (int i = 0; i < stream_nodes_.size(); ++i) {
       for (auto node_index : stream_nodes_[i]) {
         node_stream_map_[node_index] = i;
+        //node_cnt++;
       }
     }
+    //std::cout << "total node partitioned: " << node_cnt << std::endl;
     num_logic_streams_ = stream_nodes_.size();
   }
 
@@ -2107,9 +2110,11 @@ class DummyPartitioner : public INodePartitioner {
   std::vector<std::vector<std::string>> node_names_by_stream_;
   Status status_{};
   static const std::string name;
+  static std::mutex mtx; // TODO: switch to rwlock to ensure thread-safety when multiple threads read/write the config file
 };
 
 const std::string DummyPartitioner::name = "DummyPartition";
+std::mutex DummyPartitioner::mtx;
 
 /*
 Format of the configuration file for dummpy partition:
@@ -2129,6 +2134,10 @@ line 8: node_name,node_name,node_name ...        # list of nodes on 2nd stream o
       return;
 
 void DummyPartitioner::Initialize() {
+  if (configuration_file_.empty()) {
+    return;
+  }
+  std::lock_guard<std::mutex> guard(mtx);
   std::ifstream if_stream(configuration_file_);
   if (if_stream.is_open()) {
     int eps = 0;
@@ -2176,12 +2185,14 @@ void DummyPartitioner::Initialize() {
       }
     }  // else means file is empty, will fill it with default settings
     if_stream.close();
-  } else {
-    status_ = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "cannot open partition configuration: ", configuration_file_.c_str());
   }
 }
 
 void DummyPartitioner::DumpPartition() const {
+  if (configuration_file_.empty()) {
+    return;
+  }
+  std::lock_guard<std::mutex> guard(mtx);
   std::ofstream of_stream(configuration_file_, std::ios_base::out | std::ios_base::trunc);
   if (of_stream.is_open()) {
     of_stream << Name() << std::endl;
@@ -2267,13 +2278,7 @@ std::vector<std::string> INodePartitioner::Split(const std::string& line, char s
 std::unique_ptr<INodePartitioner> INodePartitioner::CreateNodePartitioner(const logging::Logger& logger, const std::string& configuration_file) {
   std::string cfg_file = configuration_file;
   INodePartitioner::NodePartitionerType partitioner_type = INodePartitioner::NodePartitionerType::DummyPartition;
-  if (cfg_file.empty()) {
-    cfg_file = "onnxruntime_node_partition_configuration.csv";
-    std::ofstream of_stream(cfg_file, std::ios_base::out | std::ios_base::trunc);
-    ORT_ENFORCE(of_stream.is_open(), "cannnot write configuration to", cfg_file.c_str());
-    of_stream << "DummyPartition" << std::endl;
-    of_stream.close();
-  } else {
+  if (!cfg_file.empty()) {
     std::ifstream if_stream(cfg_file);
     if (if_stream.is_open()) {
       std::string partitioner_name;
@@ -2282,8 +2287,13 @@ std::unique_ptr<INodePartitioner> INodePartitioner::CreateNodePartitioner(const 
       auto iter = name_type_map.find(partitioner_name);
       ORT_ENFORCE(iter != name_type_map.end(), "invalid node partitioner name");
       partitioner_type = iter->second;
-    }//if
-  }//else 
+    } else { // create and initialize the configure file if not already there
+      std::ofstream of_stream(cfg_file, std::ios_base::out | std::ios_base::trunc);
+      ORT_ENFORCE(of_stream.is_open(), "cannnot write configuration to", cfg_file.c_str());
+      of_stream << "DummyPartition" << std::endl;
+      of_stream.close();
+    }
+  }//else means configuration will not be written to a file
   std::unique_ptr<INodePartitioner> node_partitioner;
   switch (partitioner_type) {
     case INodePartitioner::NodePartitionerType::DummyPartition:
