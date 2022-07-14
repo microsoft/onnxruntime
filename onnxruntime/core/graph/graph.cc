@@ -1540,7 +1540,6 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
             // as we create a NodeArg instance for all Node inputs the value could be produced by this graph,
             // or could be coming from outer scope. check the valid values for just this Graph using resolve_context_.
             // if none are found, it's an outer scope value.
-            const bool check_ancestors = false;
             if (resolve_context_.IsLocalValue(node_arg_name) == false) {
               ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(node_arg_name));
             }
