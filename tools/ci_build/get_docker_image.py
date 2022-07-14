@@ -83,8 +83,6 @@ def main():
     log.info("Image: {}".format(full_image_name))
 
     if use_container_registry:
-        run("az", "login", "--identity", "--username", "d1c41439-486c-4110-9052-d97199c8aa78")
-        run("az", "acr", "login", "-n", args.container_registry)
         run(
             args.docker_path,
             "buildx",

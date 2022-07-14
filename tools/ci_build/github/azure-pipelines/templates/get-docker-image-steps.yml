@@ -19,15 +19,18 @@ parameters:
 
 steps:
 - ${{ if eq(parameters.UseImageCacheContainerRegistry, true) }}:
-  - script: |
-      ${{ parameters.ScriptName }} \
-        --dockerfile "${{ parameters.Dockerfile }}" \
-        --context "${{ parameters.Context }}" \
-        --docker-build-args "${{ parameters.DockerBuildArgs }}" \
-        --container-registry onnxruntimebuildcache \
-        --repository "${{ parameters.Repository }}"
-    displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"
-
+  - template: with-container-registry-steps.yml
+    parameters:
+      Steps:
+      - script: |
+          ${{ parameters.ScriptName }} \
+            --dockerfile "${{ parameters.Dockerfile }}" \
+            --context "${{ parameters.Context }}" \
+            --docker-build-args "${{ parameters.DockerBuildArgs }}" \
+            --container-registry onnxruntimebuildcache \
+            --repository "${{ parameters.Repository }}"
+        displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"
+      ContainerRegistry: onnxruntimebuildcache
 - ${{ if eq(parameters.UseImageCacheContainerRegistry, false) }}:
   - script: |
       ${{ parameters.ScriptName }} \
