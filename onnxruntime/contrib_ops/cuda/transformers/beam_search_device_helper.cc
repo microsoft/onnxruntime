@@ -258,9 +258,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   // The output will be float for consideration of precision and easy integration with remaining parts.
   float* Y_data = next_token_scores.data();
-  const CudaT* X_data = (input_length == 1 && logits_batch_size == batch_beam_size) ?
-                        logits_data :
-                        reinterpret_cast<const CudaT*>(next_token_logits.data());
+  bool is_single_token = (input_length == 1 && logits_batch_size == batch_beam_size);
+  const CudaT* X_data = is_single_token ? logits_data : reinterpret_cast<const CudaT*>(next_token_logits.data());
 
   dispatch_blockwise_softmax_forward<CudaT, float, float, true>(
       cuda_stream, Y_data, X_data, vocab_size, vocab_size, batch_size * num_beams);
@@ -500,12 +499,12 @@ Status UpdateGptFeeds(
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
+    bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx,
-    const transformers::IConsoleDumper* dumper) {
+    int gpt_subgraph_first_present_output_idx) {
   // Update input_ids with next tokens.
   int batch_beam_size = static_cast<int>(beam_next_tokens.length());
   int64_t dims[] = {batch_beam_size, 1};
@@ -519,7 +518,7 @@ Status UpdateGptFeeds(
   next_inputs[0] = input_ids;
 
   // Update position IDs
-  int32_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+  int32_t* position_data = increase_position ? position_ids.GetMutable<Tensor>()->MutableData<int32_t>() : nullptr;
   next_inputs[1] = position_ids;
 
   // Update attention mask
@@ -537,14 +536,6 @@ Status UpdateGptFeeds(
                               reinterpret_cast<cudaStream_t>(stream));
 
   next_inputs[2] = attention_mask;
-
-#ifdef DEBUG_BEAM_SEARCH
-  dumper->Print("input_ids", input_ids);
-  dumper->Print("position_ids", position_ids);
-  dumper->Print("attention_mask", attention_mask);
-#else
-  ORT_UNUSED_PARAMETER(dumper);
-#endif
 
   // Update past state
   if (num_beams == 1) {
@@ -662,12 +653,12 @@ Status ExpandBuffer(void* stream,
   for (int i = 0; i < batch_size; i++) {
     for (int j = 0; j < num_beams; j++) {
       CUDA_RETURN_IF_ERROR(
-        cudaMemcpyAsync(
-          target,
-          input_data + i * chunk_size,
-          sizeof(T) * chunk_size,
-          cudaMemcpyDeviceToDevice,
-          cuda_stream));
+          cudaMemcpyAsync(
+              target,
+              input_data + i * chunk_size,
+              sizeof(T) * chunk_size,
+              cudaMemcpyDeviceToDevice,
+              cuda_stream));
       target += chunk_size;
     }
   }
@@ -714,12 +705,12 @@ template Status UpdateGptFeeds<float>(
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
+    bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx,
-    const transformers::IConsoleDumper* dumper);
+    int gpt_subgraph_first_present_output_idx);
 
 // Float16
 template void InitBeamState<MLFloat16>(transformers::IBeamSearchState<MLFloat16>* beam_state,
@@ -748,12 +739,12 @@ template Status UpdateGptFeeds<MLFloat16>(
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
+    bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx,
-    const transformers::IConsoleDumper* dumper);
+    int gpt_subgraph_first_present_output_idx);
 
 template Status UpdateDecoderFeeds<float>(
     AllocatorPtr allocator,
