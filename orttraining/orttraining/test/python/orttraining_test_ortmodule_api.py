@@ -1323,6 +1323,8 @@ def test_gradient_correctness_reducesum(dim, keepdim):
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
 
+# Before PyTorch 1.11.0, the exporter will fail to register symbolic with non-empty domain.
+@pytest.mark.skipif(LooseVersion(torch.__version__) < LooseVersion("1.11.0"), reason="PyTorch 1.10 incompatible")
 @pytest.mark.parametrize("dim", [0, 1, -1])
 def test_gradient_correctness_chunk(dim):
     class NeuralNetChunk(torch.nn.Module):
