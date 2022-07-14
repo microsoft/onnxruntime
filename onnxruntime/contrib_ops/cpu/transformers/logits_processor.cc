@@ -146,7 +146,7 @@ void VocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
 
 template <typename T>
 PrefixVocabMaskLogitsProcessor<T>::PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& prefix_vocab_mask, const gsl::span<const bool>& prefix_uppercase, int batch_size, int max_iteration_for_prefix_vocab_mask)
-    : prefix_vocab_mask_(prefix_vocab_mask), prefix_uppercase_(prefix_uppercase), batch_size_(batch_size), max_iteration_for_prefix_vocab_mask(max_iteration_for_prefix_vocab_mask), step_(0) {
+    : max_iteration_for_prefix_vocab_mask(max_iteration_for_prefix_vocab_mask), prefix_vocab_mask_(prefix_vocab_mask), prefix_uppercase_(prefix_uppercase), batch_size_(batch_size), step_(0) {
     // TODO dw do this per model
     deep_write_spl_tokens_ = 5;
 }

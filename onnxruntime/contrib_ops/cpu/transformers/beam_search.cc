@@ -379,7 +379,7 @@ Status BeamSearchImpl<T>::CheckInputs(const OpKernelContextInternal& context) {
     }
 
     // store max # iterations for prefix vocab mask in parameters
-    parameters_->max_iteration_for_prefix_vocab_mask = static_cast<int>(vocab_mask_dims[0])
+    parameters_->max_iteration_for_prefix_vocab_mask = static_cast<int>(vocab_mask_dims[0]);
     // store prefix vocab mask in parameters.
     parameters_->prefix_vocab_mask = prefix_vocab_mask->DataAsSpan<int32_t>();
   }
