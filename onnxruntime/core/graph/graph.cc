@@ -2440,9 +2440,12 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
 
   LexicalScopeContext parent;
   if (parent_node_) {
-    // add outer scope values.
-    // these are set in BuildConnections and happens prior to this being called during Graph::Resolve
-    for (const auto* implicit_inputs : parent_node_->ImplicitInputDefs()) {
+    // add outer scope values. these are set as implicit inputs to the node containing the subgraph
+    // in BuildConnections, which happens prior to this being called during Graph::Resolve
+    const auto& outer_scope_values = parent_node_->ImplicitInputDefs();
+    parent.output_names.reserve(outer_scope_values.size());
+
+    for (const auto* implicit_inputs : outer_scope_values) {
       parent.output_names.insert(implicit_inputs->Name());
     }
   } else {
@@ -2452,9 +2455,11 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   }
 
   LexicalScopeContext lsc{parent};
+  lsc.output_names.reserve(resolve_context_.inputs_and_initializers.size() + resolve_context_.output_args.size());
 
-  lsc.output_names.insert(resolve_context_.inputs_and_initializers.cbegin(),
-                          resolve_context_.inputs_and_initializers.cend());
+  for (const std::string_view& input : resolve_context_.inputs_and_initializers) {
+    lsc.output_names.insert(std::string(input));
+  }
 
   for (auto node_index : nodes_in_topological_order_) {
     // Node verification.
