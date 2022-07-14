@@ -10,9 +10,7 @@
 #include "core/framework/iexecutor.h"
 #include "core/framework/session_state.h"
 #include "core/framework/session_options.h"
-#ifdef ENABLE_TRAINING
-#include "core/framework/partial_graph_execution_state.h"
-#endif
+
 namespace ONNX_NAMESPACE {
 class TensorShapeProto;
 class TensorProto;
@@ -32,6 +30,11 @@ class IExecutionProvider;
 class Node;
 class Tensor;
 struct KernelCreateInfo;
+#ifdef ENABLE_TRAINING
+struct PartialGraphExecutionState;
+typedef std::unordered_map<std::string, OrtValue> OrtValueCache;
+typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
+#endif
 
 namespace logging {
 class Logger;
@@ -96,7 +99,8 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                                    const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
-                                   const OrtValueCachePtr& cache);
+                                   const OrtValueCachePtr& cache, const bool& terminate_flag,
+                                   Stream* parent_stream);
 #endif
 
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.

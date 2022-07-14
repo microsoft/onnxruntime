@@ -26,7 +26,7 @@ namespace cuda {
     ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                             \
     Ctx##x func_ctx = MakeFuncCtx();                                                                             \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
-        Stream(),                                                                                                \
+        Stream(context),                                                                                         \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.rhs_tensor->template Data<T>()),     \
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()), \

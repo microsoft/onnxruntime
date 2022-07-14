@@ -26,6 +26,8 @@
 
 #include "orttraining/python/orttraining_pybind_common.h"
 
+#include "core/framework/execution_context.h"
+
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/core/framework/torch/custom_function_register.h"
 #endif

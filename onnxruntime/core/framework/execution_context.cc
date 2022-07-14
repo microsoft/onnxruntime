@@ -186,7 +186,14 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
   // get logic stream
   auto& execution_plan = ctx.GetSessionState().GetExecutionPlan()->execution_plan;
   auto& logic_stream = execution_plan[stream_idx];
-  while (since < logic_stream->steps_.size()) {
+  size_t end = logic_stream->steps_.size();
+#ifdef ENABLE_TRAINING
+  auto* range = ctx.GetCurrentRange();
+  if (range)
+    end = std::min(end, range->stream_pc_range[stream_idx].second);
+#endif
+
+  while (since < end) {
     if (ctx.TerminateFlag()) {
       ctx.SetStatus(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true."));
       return;

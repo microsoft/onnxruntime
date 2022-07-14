@@ -15,6 +15,10 @@
 #include "core/graph/graph_viewer.h"
 #include "core/framework/op_kernel_context_internal.h"
 
+#ifdef ENABLE_TRAINING
+#include "core/framework/partial_graph_execution_state.h"
+#endif 
+
 namespace onnxruntime {
 
 class ExecutionContext;
@@ -36,4 +40,16 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, const std:
                                       const bool only_execute_path_to_fetches,
                                       bool single_thread_mode);
 
+#ifdef ENABLE_TRAINING
+onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
+                                          const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+                                          std::vector<OrtValue>& fetches,
+                                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                          const logging::Logger& logger,
+                                          const DeviceStreamColloection& device_streams,
+                                          const bool& terminate_flag,
+                                          bool single_thread_mode,
+                                          PartialGraphExecutionState& state,
+                                          const OrtValueCachePtr& cache);
+#endif
 }  // namespace onnxruntime

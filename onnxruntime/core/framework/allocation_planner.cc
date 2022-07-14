@@ -1637,39 +1637,41 @@ class PlannerImpl {
 
   // Compute allocation order for tensors that are required to be allocated contiguously.
   Status ComputeAllocationOrder() {
-    std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
-    std::vector<OrtValueIndex>& initializer_allocation_order(plan_.initializer_allocation_order);
-    std::vector<OrtValueIndex>& activation_allocation_order(plan_.activation_allocation_order);
-    for (auto& step : execution_plan) {
-      const auto* pnode = graph_viewer_.GetNode(step.node_index);
-      if (pnode == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot find the node ", step.node_index);
-      if (!AllocateInputsContiguously(*pnode)) continue;
-      // This node has requested inputs be allocated contiguously.
-      const auto& input_defs = pnode->InputDefs();
-      onnxruntime::AllocKind input_kind = AllocKind::kAllocateStatically;
-      bool set_input_kind = true;
-      for (const auto& node_input : input_defs) {
-        if (!node_input->Exists()) continue;
-        const auto current_idx = Index(node_input->Name());
-        const auto& current_plan = AllocPlan(current_idx);
-        const auto actual_idx = current_plan.alloc_kind == AllocKind::kReuse ? current_plan.reused_buffer : current_idx;
-        const auto& actual_plan = AllocPlan(actual_idx);
-        if (set_input_kind) {
-          input_kind = actual_plan.alloc_kind;
-          set_input_kind = false;
-        }
+    for (auto& stream : stream_nodes_) {
+      std::vector<OrtValueIndex>& initializer_allocation_order(plan_.initializer_allocation_order);
+      std::vector<OrtValueIndex>& activation_allocation_order(plan_.activation_allocation_order);
+      for (auto& step : stream) {
+        const auto* pnode = graph_viewer_.GetNode(step);
+        if (pnode == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot find the node ", step);
+        if (!AllocateInputsContiguously(*pnode)) continue;
+        // This node has requested inputs be allocated contiguously.
+        const auto& input_defs = pnode->InputDefs();
+        onnxruntime::AllocKind input_kind = AllocKind::kAllocateStatically;
+        bool set_input_kind = true;
+        for (const auto& node_input : input_defs) {
+          if (!node_input->Exists()) continue;
+          const auto current_idx = Index(node_input->Name());
+          const auto& current_plan = AllocPlan(current_idx);
+          const auto actual_idx = current_plan.alloc_kind == AllocKind::kReuse ? current_plan.reused_buffer : current_idx;
+          const auto& actual_plan = AllocPlan(actual_idx);
+          if (set_input_kind) {
+            input_kind = actual_plan.alloc_kind;
+            set_input_kind = false;
+          }
 
-        if ((actual_plan.alloc_kind == AllocKind::kAllocateStatically) && (input_kind != AllocKind::kAllocateStatically))
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "AllocateInputsContiguously() requires all inputs to be initializers, or all inputs to be non-initializers.");
+          if ((actual_plan.alloc_kind == AllocKind::kAllocateStatically) && (input_kind != AllocKind::kAllocateStatically))
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "AllocateInputsContiguously() requires all inputs to be initializers, or all inputs to be non-initializers.");
 
-        if (actual_plan.alloc_kind == AllocKind::kAllocateStatically) {
-          if (std::find(initializer_allocation_order.begin(), initializer_allocation_order.end(), actual_idx) == initializer_allocation_order.end())
-            initializer_allocation_order.push_back(actual_idx);
-        } else {
-          if (std::find(activation_allocation_order.begin(), activation_allocation_order.end(), actual_idx) == activation_allocation_order.end())
-            activation_allocation_order.push_back(actual_idx);
+          if (actual_plan.alloc_kind == AllocKind::kAllocateStatically) {
+            if (std::find(initializer_allocation_order.begin(), initializer_allocation_order.end(), actual_idx) == initializer_allocation_order.end())
+              initializer_allocation_order.push_back(actual_idx);
+          } else {
+            if (std::find(activation_allocation_order.begin(), activation_allocation_order.end(), actual_idx) == activation_allocation_order.end())
+              activation_allocation_order.push_back(actual_idx);
+          }
         }
-      }
+    }
+    
     }
     return Status::OK();
   }
@@ -1886,12 +1888,18 @@ class PlannerImpl {
             plan_.downstream_map[notification_index].push_back({i, 
                 static_cast<int>(execution_plan[i]->steps_.size())});
             execution_plan[i]->steps_.emplace_back(std::make_unique<BarrierStep>(barrier_id));
+#ifdef ENABLE_TRAINING
+            execution_plan[i]->step_node_index.push_back(node_index);
+#endif
             // push a wait command if has EP registered it.
             auto wait_handle = stream_handle_registry.GetWaitHandle(
                 execution_plan[plan_.notification_owners[notfication_it->second]]->ep_->Type(),
                 node->GetExecutionProviderType());
             if (wait_handle) {
               execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_index));
+#ifdef ENABLE_TRAINING
+              execution_plan[i]->step_node_index.push_back(node_index);
+#endif
             }
           }
         }
@@ -1901,13 +1909,32 @@ class PlannerImpl {
         }
         // push launch kernel command
         execution_plan[i]->steps_.emplace_back(std::make_unique<LaunchKernelStep>(node_index));
+#ifdef ENABLE_TRAINING
+        execution_plan[i]->step_node_index.push_back(node_index);
+#endif
         // check if any notification generated by this node, if yes, push a activate
         auto notification_it = node_to_notification.find(node_index);
         if (notification_it != node_to_notification.end()) {
           NotificationIndex notification_index = notification_it->second;
           execution_plan[i]->steps_.emplace_back(std::make_unique<ActivateNotificationStep>(notification_index));
+#ifdef ENABLE_TRAINING
+          // calculate the min consmer;
+          auto& order = graph_viewer_.GetNodesInTopologicalOrder();
+          size_t distance = graph_viewer_.NumberOfNodes();
+          for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+            auto order_it = std::find(order.begin(), order.end(), it->Index());
+            size_t cur_distance = std::distance(order.begin(), order_it);
+            distance = std::min(distance, cur_distance);
+          }
+          // set the notification step as the triggering part of next node.
+          execution_plan[i]->step_node_index.push_back(order[distance]);
+#endif
           // notify downstreams
           execution_plan[i]->steps_.emplace_back(std::make_unique<TriggerDownstreamStep>(notification_index));
+#ifdef ENABLE_TRAINING
+          // set the notification step as the triggering part of next node.
+          execution_plan[i]->step_node_index.push_back(order[distance]);
+#endif
         }
       }
     }

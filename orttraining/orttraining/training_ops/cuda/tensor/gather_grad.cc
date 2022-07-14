@@ -97,7 +97,7 @@ Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
   const Tensor* dY = context->Input<Tensor>(2);
 
   Tensor* dX = context->Output(0, X_shape);
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(dX->MutableDataRaw(), 0, dX->SizeInBytes(), Stream()));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(dX->MutableDataRaw(), 0, dX->SizeInBytes(), Stream(context)));
 
   if (gathered_indices->Shape().Size() == 0) {
     // nothing else to do
@@ -113,7 +113,7 @@ Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
   const int64_t num_batches = X_shape.SizeToDimension(axis);
 
   return DispatchToGatherGradImpl(
-      Stream(), t_type, tindex_type, CudaScratchBufferAllocator{*this},
+      Stream(context), t_type, tindex_type, CudaScratchBufferAllocator{*this, context->GetComputeStream()},
       num_gathered_per_index, gather_dimension_size, num_batches,
       *dY, *gathered_indices, *dX);
 }

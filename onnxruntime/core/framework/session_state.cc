@@ -619,9 +619,9 @@ Status SessionState::GeneratePatternGroupCache(const gsl::span<const OrtValue>& 
 
   // Try to resolve shapes for activations.
   auto& node_index_info = GetNodeIndexInfo();
-  for (auto& node_plan : exe_plan->execution_plan) {
-    int node_index = node_index_info.GetNodeOffset(node_plan.node_index);
-    auto* node = graph_viewer_->GetNode(node_plan.node_index);
+  for (auto& node_idx : graph_viewer_->GetNodesInTopologicalOrder()) {
+    int node_index = node_index_info.GetNodeOffset(node_idx);
+    auto* node = graph_viewer_->GetNode(node_idx);
     int output_start = node_index + static_cast<int>(node->InputDefs().size()) +
                        static_cast<int>(node->ImplicitInputDefs().size());
 
@@ -680,54 +680,70 @@ Status SessionState::GeneratePatternGroupCache(const gsl::span<const OrtValue>& 
       ORT_RETURN_IF_ERROR(mem_planner.TraceAllocation(ml_value_idx, counter, size));
     }
   }
-
+  // TODO: add check for single stream
   // Allocate all other activations.
-  for (auto& node_plan : exe_plan->execution_plan) {
-    int node_index = node_index_info.GetNodeOffset(node_plan.node_index);
-    auto* node = graph_viewer_->GetNode(node_plan.node_index);
-    int output_start = node_index + static_cast<int>(node->InputDefs().size()) +
-                       static_cast<int>(node->ImplicitInputDefs().size());
-    // allocate output
-    for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
-      const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
-      if (ml_value_idx == NodeIndexInfo::kInvalidEntry ||
-          (std::find(exe_plan->activation_allocation_order.begin(),
-                     exe_plan->activation_allocation_order.end(), ml_value_idx) !=
-           exe_plan->activation_allocation_order.end()))
+  for (auto& stream : exe_plan->execution_plan) {
+    int cur_node_index = -1;
+    for (auto& step_index : stream->step_node_index) {
+      if (step_index == cur_node_index) {
         continue;
-      const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
-      if (!ml_type->IsTensorType())
-        continue;
-      const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
-      size_t size = 0;
-      TryCalculateSizeFromResolvedShape(ml_value_idx, resolved_shapes, size);
+      }
+      int node_index = node_index_info.GetNodeOffset(step_index);
+      auto* node = graph_viewer_->GetNode(step_index);
+      int output_start = node_index + static_cast<int>(node->InputDefs().size()) +
+                         static_cast<int>(node->ImplicitInputDefs().size());
+      // allocate output
+      for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
+        const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
+        if (ml_value_idx == NodeIndexInfo::kInvalidEntry ||
+            (std::find(exe_plan->activation_allocation_order.begin(),
+                       exe_plan->activation_allocation_order.end(), ml_value_idx) !=
+             exe_plan->activation_allocation_order.end()))
+          continue;
+        const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
+        if (!ml_type->IsTensorType())
+          continue;
+        const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+        size_t size = 0;
+        TryCalculateSizeFromResolvedShape(ml_value_idx, resolved_shapes, size);
 
-      // Plan memory if conditions are met.
-      if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
-          ml_data_type != DataTypeImpl::GetType<std::string>() && size != 0) {
-        size_t aligned_size = 0;
-        if (!IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(size, ml_data_type->Size(), &aligned_size)) {
-          return Status(ONNXRUNTIME, FAIL, "Size overflow");
+        // Plan memory if conditions are met.
+        if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
+            ml_data_type != DataTypeImpl::GetType<std::string>() && size != 0) {
+          size_t aligned_size = 0;
+          if (!IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(size, ml_data_type->Size(), &aligned_size)) {
+            return Status(ONNXRUNTIME, FAIL, "Size overflow");
+          }
+
+          ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
+
+          const auto& counter = exe_plan->allocation_plan[ml_value_idx].program_counter;
+          ORT_RETURN_IF_ERROR(mem_planner.TraceAllocation(ml_value_idx, counter, aligned_size));
         }
+      }
 
-        ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
-
-        const auto& counter = exe_plan->allocation_plan[ml_value_idx].program_counter;
-        ORT_RETURN_IF_ERROR(mem_planner.TraceAllocation(ml_value_idx, counter, aligned_size));
+      // release nodes
+      auto& release_actions = exe_plan->node_release_list[step_index];
+      for (auto it = release_actions.begin(); it != release_actions.end(); ++it) {
+        auto& action = exe_plan->release_actions[*it];
+        //if the value consumed by multiple stream, we can't pre-release it statically.
+        if (action.ref_count != 1)
+          continue;
+        
+        auto ml_value_idx = action.value_index;
+        const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
+        if (!ml_type->IsTensorType())
+          continue;
+        const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+        if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
+          ORT_RETURN_IF_ERROR(mem_planner.TraceFree(ml_value_idx));
+        }
       }
     }
+  }
 
-    // release nodes
-    for (int index = node_plan.free_from_index; index <= node_plan.free_to_index; ++index) {
-      auto ml_value_idx = exe_plan->to_be_freed[index];
-      const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
-      if (!ml_type->IsTensorType())
-        continue;
-      const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
-      if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
-        ORT_RETURN_IF_ERROR(mem_planner.TraceFree(ml_value_idx));
-      }
-    }
+  for (auto& node_plan : exe_plan->execution_plan) {
+    
   }
 
   if (!mem_planner.GeneratePatterns(output).IsOK()) {

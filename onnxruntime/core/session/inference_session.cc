@@ -63,6 +63,10 @@
 #include "core/framework/customregistry.h"
 #include "core/session/custom_ops.h"
 #endif
+#ifdef ENABLE_TRAINING
+#include "core/framework/partial_graph_execution_state.h"
+#include "core/framework/execution_context.h"
+#endif
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -1774,7 +1778,8 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
     }
 #endif
     ORT_CHECK_AND_SET_RETVAL(utils::ExecutePartialGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
-                                                        run_logger, state, cache));
+                                                        run_logger, state, cache, run_options.terminate, 
+                                                        /*parent stream*/nullptr));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {

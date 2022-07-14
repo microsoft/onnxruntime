@@ -589,7 +589,10 @@ __launch_bounds__(ChunkGroup<4>::thread_count_per_block)
   }
 }
 
-CudaKernel::CudaAsyncBuffer<LambMultiTensorSyncRangeAndLock> compute_tensor_range_and_lock(ChunkGroup<4> chunk_group, const CudaKernel& kernel) {
+CudaKernel::CudaAsyncBuffer<LambMultiTensorSyncRangeAndLock> compute_tensor_range_and_lock(
+    ChunkGroup<4> chunk_group, 
+    const CudaKernel& kernel,
+    onnxruntime::Stream* ort_stream) {
   const int num_blocks = chunk_group.chunk_count;
 
   // sync_range_and_lock is a struct consisting of (start_block, num_blocks, lock) for each tensor
@@ -603,13 +606,18 @@ CudaKernel::CudaAsyncBuffer<LambMultiTensorSyncRangeAndLock> compute_tensor_rang
     tensor_block_span.leading_block = block_index;
     tensor_block_span.number_blocks++;
   }
-  ORT_THROW_IF_ERROR(sync_range_and_lock.CopyToGpu());
+  ORT_THROW_IF_ERROR(sync_range_and_lock.CopyToGpu(ort_stream));
 
   return sync_range_and_lock;
 }
 
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
-void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(cudaStream_t stream, ChunkGroup<4> chunk_group, const CudaKernel& kernel, void* reduction_buffer, size_t reduction_buffer_size) {
+void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(cudaStream_t cuda_stream, 
+    ChunkGroup<4> chunk_group, 
+    const CudaKernel& kernel, 
+    void* reduction_buffer, 
+    size_t reduction_buffer_size,
+    onnxruntime::Stream* ort_stream) {
   // thread count per block.
   constexpr int thread_count = ChunkGroup<4>::thread_count_per_block;
   // shared memory's size per block.
@@ -628,13 +636,13 @@ void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()
   TOut1* w_buffer = reinterpret_cast<TOut1*>(reduction_buffer);
   TOut2* d_buffer = reinterpret_cast<TOut2*>(w_buffer + num_blocks);
 
-  auto sync_range_and_lock = compute_tensor_range_and_lock(chunk_group, kernel);
-  LambMultiTensorReductionImpl<TIn1, TIn2, TOut1, TOut2, TBuf><<<chunk_group.chunk_count, thread_count, shared_memory_size, stream>>>(
+  auto sync_range_and_lock = compute_tensor_range_and_lock(chunk_group, kernel, ort_stream);
+  LambMultiTensorReductionImpl<TIn1, TIn2, TOut1, TOut2, TBuf><<<chunk_group.chunk_count, thread_count, shared_memory_size, cuda_stream>>>(
       chunk_group, w_buffer, d_buffer, sync_range_and_lock.GpuPtr());
 }
 
 #define INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(TIn1, TIn2, TOut1, TOut2, TBuf) \
-  template void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(cudaStream_t stream, ChunkGroup<4> chunk_group, const CudaKernel& kernel, void* reduction_buffer, size_t reduction_buffer_size);
+  template void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(cudaStream_t stream, ChunkGroup<4> chunk_group, const CudaKernel& kernel, void* reduction_buffer, size_t reduction_buffer_size, onnxruntime::Stream* ort_stream);
 
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, float, float, float, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(double, double, double, double, double)

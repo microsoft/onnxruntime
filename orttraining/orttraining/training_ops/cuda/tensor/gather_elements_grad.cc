@@ -118,7 +118,7 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
 
   int rank = static_cast<int>(output_dims.size());
   Tensor* dX = context->Output(0, data_shape);
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(dX->MutableDataRaw(), 0, dX->SizeInBytes(), Stream()));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(dX->MutableDataRaw(), 0, dX->SizeInBytes(), Stream(context)));
 
   TArray<int64_t> buffer_output_dims(output_dims);
   TensorPitches input_strides(output_dims);
@@ -133,7 +133,7 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
 
   utils::MLTypeCallDispatcher<MLFloat16, float, double> t_disp(dY->GetElementType());
   return t_disp.InvokeRet<Status, ComputeImpl>(
-      Stream(), dY, indices_tensor, dX, rank,
+      Stream(context), dY, indices_tensor, dX, rank,
       buffer_output_dims, buffer_input_strides, indices_size,
       buffer_indices_dims, fdm_indices_strides, axis);
 }

@@ -4,6 +4,9 @@
 #include "core/framework/iexecutor.h"
 #include "core/framework/stream_handles.h"
 #include "core/graph/basic_types.h"
+#ifdef ENABLE_TRAINING
+#include "core/framework/partial_graph_execution_state.h"
+#endif
 
 namespace onnxruntime {
 class SessionState;
@@ -107,6 +110,16 @@ public:
     session_scope_ = session_scope;
   }
 
+#ifdef ENABLE_TRAINING
+  PartialGraphExecutionState::ProgramRegion* GetCurrentRange() {
+    return program_range_;
+  }
+
+  void SetCurrentRange(PartialGraphExecutionState::ProgramRegion* range) {
+    program_range_ = range;
+  }
+#endif 
+
  private:
   const SessionState* session_state;
   std::unique_ptr<ExecutionFrame> frame;
@@ -119,6 +132,9 @@ public:
   const bool& terminate_flag_;
   Status task_status_{Status::OK()};
   SessionScope* session_scope_{};
+#ifdef ENABLE_TRAINING
+  PartialGraphExecutionState::ProgramRegion* program_range_{nullptr};
+#endif 
 };
 
 using NotificationIndex = size_t;

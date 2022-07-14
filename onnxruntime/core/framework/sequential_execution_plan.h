@@ -101,6 +101,9 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
   struct LogicStream {
     std::vector<std::unique_ptr<ExecutionStep>> steps_;
+#ifdef ENABLE_TRAINING
+    std::vector<NodeIndex> step_node_index;
+#endif
     const IExecutionProvider* ep_ = nullptr;
   };
 
@@ -143,6 +146,15 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
       if (locations.find(alloc_plan.location) == locations.end()) locations.insert(alloc_plan.location);
     }
     return locations;
+  }
+
+  size_t NumberOfValidStream() const {
+    size_t count = 0;
+    for (auto& stream : execution_plan) {
+      if (!stream->steps_.empty())
+        count++;
+    }
+    return count;
   }
 };
 

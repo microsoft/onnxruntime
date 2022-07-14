@@ -417,8 +417,8 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
     //ORT_RETURN_IF_ERROR(p_kernel->Compute(&kernel_ctx));
     ORT_TRY {
 #ifdef ENABLE_TRAINING
-      if (p_op_kernel->KernelDef().AllocateInputsContiguously()) {
-        ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context));
+      if (p_kernel->KernelDef().AllocateInputsContiguously()) {
+        ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&kernel_ctx));
       }
 #endif
       status = p_kernel->Compute(&kernel_ctx);
@@ -540,5 +540,46 @@ onnxruntime::Status BindToDeviceStream(Stream* parent_stream,
   }
   return Status::OK();
 }
+
+#ifdef ENABLE_TRAINING
+onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
+                                          const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+                                          std::vector<OrtValue>& fetches,
+                                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                          const logging::Logger& logger,
+                                          const DeviceStreamColloection& device_streams,
+                                          const bool& terminate_flag,
+                                          bool single_thread_mode,
+                                          PartialGraphExecutionState& state,
+                                          const OrtValueCachePtr& cache) {
+  auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
+                                          fetch_allocators, session_state, logger, device_streams, terminate_flag);
+
+  ctx.SetCurrentRange(&state.GetProgramRegions(session_state));
+
+  SessionScope session_scope(session_state, *reinterpret_cast<const ExecutionFrame*>(ctx.GetExecutionFrame()));
+  ctx.SetSessionScope(&session_scope);
+
+  auto* execution_plan = session_state.GetExecutionPlan();
+
+  auto* tp = single_thread_mode ? nullptr : session_state.GetInterOpThreadPool();
+
+  for (int i = 0; i < execution_plan->execution_plan.size(); ++i) {
+    if (!execution_plan->execution_plan[i]->steps_.empty()) {
+      concurrency::ThreadPool::Schedule(tp, [i, &ctx]() {
+        RunSince(i, ctx, 0);
+      });
+    }
+  }
+
+  if (!single_thread_mode) {
+    ctx.WaitAll();
+  }
+
+  ORT_RETURN_IF_ERROR(ctx.TaskStatus());
+  ORT_RETURN_IF_ERROR(ctx.GetExecutionFrame()->GetOutputs(fetches));
+  return Status::OK();
+}
+#endif
 
 }  // namespace onnxruntime
