@@ -1523,7 +1523,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     this->GetStreamHandleRegistryInstance(),
                                                     /*provider_stream_map,
                                                     read_op_map_from_str(session_options.grouped_ops),*/
-                                                    "",//session_options.node_partition_config_file,
+                                                    session_options.config_options.GetConfigOrDefault(kNodePartitionConfigFile, ""),
                                                     Logger(),
                                                     p_seq_exec_plan_));
 

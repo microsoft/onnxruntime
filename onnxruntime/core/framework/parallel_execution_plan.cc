@@ -2259,52 +2259,65 @@ void LogicStream::RunSince(ExecutionPlanContext& ctx, size_t since) {
   return;
 }
 
-onnxruntime::Status ExecutionPlanExecutor::Execute(const SessionState& session_state,
-                                                   const std::vector<int>& feed_mlvalue_idxs,
-                                                   const std::vector<OrtValue>& feeds,
-                                                   const std::vector<int>& fetch_mlvalue_idxs,
-                                                   std::vector<OrtValue>& fetches,
-                                                   const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                                   const logging::Logger& logger,
-                                                   const DeviceStreamColloection& device_streams,
-                                                   const bool& terminate_flag,
-                                                   const bool only_execute_path_to_fetches) {
-  if (only_execute_path_to_fetches) {
-    ORT_THROW("NOT IMPLEMENTED YET.");
-  }
-
-  onnxruntime::TimePoint session_start{};
-  auto is_profiler_enabled = session_state.Profiler().IsEnabled();
-  if (is_profiler_enabled) {
-    session_start = session_state.Profiler().Start();
-  }
-
-  ExecutionPlan& plan = *session_state.GetTheExecutionPlan();
-  ExecutionFrame frame(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state, &device_streams.GetStreams());
-  ExecutionPlanContext context(session_state, plan, frame, session_state.Logger(), device_streams, terminate_flag);
-  auto* tp = session_state.GetInterOpThreadPool();
-
-  LOGS(logger, INFO) << "Number of streams: " << plan.NumStreams();
-  LOGS(logger, INFO) << "Begin execution";
-
-  for (int i = 0; i < plan.impl_->logic_streams_.size(); ++i) {
-    if (!plan.impl_->logic_streams_[i]->commands_.empty()) {
-      concurrency::ThreadPool::Schedule(tp, [i, this, &context, &plan]() {
-        plan.impl_->logic_streams_[i]->RunSince(context, 0);
-      });
-    }
-  }
-
-  LOGS(logger, INFO) << "Done execution";
-
-  context.WaitAll();
-  ORT_RETURN_IF_ERROR(context.task_status_);
-  ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
-
-  if (is_profiler_enabled) {
-    session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start);
-  }
+onnxruntime::Status ExecutionPlanExecutor::Execute(const SessionState&,
+                                                   const std::vector<int>&,
+                                                   const std::vector<OrtValue>&,
+                                                   const std::vector<int>&,
+                                                   std::vector<OrtValue>&,
+                                                   const std::unordered_map<size_t, IExecutor::CustomAllocator>&,
+                                                   const logging::Logger&,
+                                                   const DeviceStreamColloection&,
+                                                   const bool&,
+                                                   const bool) {
   return Status::OK();
 }
+
+//onnxruntime::Status ExecutionPlanExecutor::Execute(const SessionState& session_state,
+//                                                   const std::vector<int>& feed_mlvalue_idxs,
+//                                                   const std::vector<OrtValue>& feeds,
+//                                                   const std::vector<int>& fetch_mlvalue_idxs,
+//                                                   std::vector<OrtValue>& fetches,
+//                                                   const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+//                                                   const logging::Logger& logger,
+//                                                   const DeviceStreamColloection& device_streams,
+//                                                   const bool& terminate_flag,
+//                                                   const bool only_execute_path_to_fetches) {
+//  if (only_execute_path_to_fetches) {
+//    ORT_THROW("NOT IMPLEMENTED YET.");
+//  }
+//
+//  onnxruntime::TimePoint session_start{};
+//  auto is_profiler_enabled = session_state.Profiler().IsEnabled();
+//  if (is_profiler_enabled) {
+//    session_start = session_state.Profiler().Start();
+//  }
+//
+//  ExecutionPlan& plan = *session_state.GetTheExecutionPlan();
+//  ExecutionFrame frame(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state, &device_streams.GetStreams());
+//  ExecutionPlanContext context(session_state, plan, frame, session_state.Logger(), device_streams, terminate_flag);
+//  auto* tp = session_state.GetInterOpThreadPool();
+//
+//  LOGS(logger, INFO) << "Number of streams: " << plan.NumStreams();
+//  LOGS(logger, INFO) << "Begin execution";
+//
+//  for (int i = 0; i < plan.impl_->logic_streams_.size(); ++i) {
+//    if (!plan.impl_->logic_streams_[i]->commands_.empty()) {
+//      concurrency::ThreadPool::Schedule(tp, [i, this, &context, &plan]() {
+//        plan.impl_->logic_streams_[i]->RunSince(context, 0);
+//      });
+//    }
+//  }
+//
+//  LOGS(logger, INFO) << "Done execution";
+//
+//  context.WaitAll();
+//  ORT_RETURN_IF_ERROR(context.task_status_);
+//  ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
+//
+//  if (is_profiler_enabled) {
+//    session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start);
+//  }
+//  return Status::OK();
+//}
 
 }  // namespace onnxruntime
