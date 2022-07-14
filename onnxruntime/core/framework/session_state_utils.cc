@@ -88,7 +88,7 @@ static inline common::Status ExtDataTensorProtoToTensor(const Env& env,
   TensorShape tensor_shape{tensor_shape_vec};
 
   auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, ext_data_buf, OrtMemoryInfo(CPU,
-              OrtAllocatorType::OrtDeviceAllocator));
+                                           OrtAllocatorType::OrtDeviceAllocator));
   tensor = std::move(*p_tensor);
 
   return common::Status::OK();
@@ -314,9 +314,9 @@ common::Status SaveInitializedTensors(
       bool use_device_allocator_for_initializers =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
 
-      Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, (m.has_value()) ? &*m : nullptr, alloc, default_cpu_alloc, ort_value,
-
-                                         data_transfer_mgr, use_device_allocator_for_initializers);
+      Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, (m.has_value()) ? &*m : nullptr, alloc,
+                                         default_cpu_alloc, ort_value, data_transfer_mgr,
+                                         use_device_allocator_for_initializers);
       if (!st.IsOK()) {
         std::ostringstream oss;
         oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();
