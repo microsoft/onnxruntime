@@ -17,6 +17,7 @@ from time import sleep
 from unittest.mock import patch
 
 import _test_helpers
+import onnx
 import pytest
 import torch
 
@@ -1320,6 +1321,54 @@ def test_gradient_correctness_reducesum(dim, keepdim):
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5, rtol=1e-4)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
+
+@pytest.mark.parametrize("dim", [0, 1, -1])
+def test_gradient_correctness_chunk(dim):
+    class NeuralNetChunk(torch.nn.Module):
+        def __init__(self, dim):
+            super(NeuralNetChunk, self).__init__()
+            self.dim = dim
+
+        def forward(self, input):
+            return input.chunk(3, dim=self.dim)
+
+    device = "cuda"
+    pt_model = NeuralNetChunk(dim).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="chunk_model"))
+
+    def run_step(model, input):
+        y1, y2, y3 = model(input)
+        loss = y1.sum() + y2.sum() + y3.sum()
+        loss.backward()
+        return y1, y2, y3
+
+    N, D, H = 16, 17, 18
+    for _ in range(10):
+        input = torch.rand((N, D, H), device=device, requires_grad=True)
+        pt_y1, pt_y2, pt_y3 = run_step(pt_model, input)
+        ort_y1, ort_y2, ort_y3 = run_step(ort_model, input)
+
+        _test_helpers.assert_values_are_close(ort_y1, pt_y1)
+        _test_helpers.assert_values_are_close(ort_y2, pt_y2)
+        _test_helpers.assert_values_are_close(ort_y3, pt_y3)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
+    assert os.path.exists(os.path.join(os.getcwd(), "chunk_model_torch_exported_training.onnx"))
+    assert os.path.exists(os.path.join(os.getcwd(), "chunk_model_optimized_training.onnx"))
+    assert os.path.exists(os.path.join(os.getcwd(), "chunk_model_optimized_pre_grad_training.onnx"))
+    assert os.path.exists(os.path.join(os.getcwd(), "chunk_model_execution_model_training.onnx"))
+    model = onnx.load(os.path.join(os.getcwd(), "chunk_model_torch_exported_training.onnx"))
+    has_split = False
+    for node in model.graph.node:
+        if node.op_type == "Split":
+            has_split = True
+            break
+    assert has_split
+    os.remove(os.path.join(os.getcwd(), "chunk_model_torch_exported_training.onnx"))
+    os.remove(os.path.join(os.getcwd(), "chunk_model_optimized_training.onnx"))
+    os.remove(os.path.join(os.getcwd(), "chunk_model_optimized_pre_grad_training.onnx"))
+    os.remove(os.path.join(os.getcwd(), "chunk_model_execution_model_training.onnx"))
 
 
 # In PyTorch 1.11.0, there is issue during reduce node shape handling for exporter, so any sub-graph that

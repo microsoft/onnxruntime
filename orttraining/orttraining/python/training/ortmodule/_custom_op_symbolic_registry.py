@@ -220,6 +220,34 @@ def squeeze(g, self, dim=None):
     return sym_help._squeeze_helper(g, self, axes_i=[squeeze_dim])
 
 
+# Exporter's prim::ConstantChunk uses multiple Slice nodes, which is fine for inference.
+# For training, the gradient graph will be multiple SliceGrad and one Sum, which is inefficient compared to
+# exporting to Split with SplitGrad as gradient graph.
+@register_symbolic("ConstantChunk", "prim")
+def prim_ConstantChunk(g, self, chunks, dim):
+    input_shape_dim = g.op(
+        "Gather", g.op("Shape", self), g.op("Constant", value_t=torch.tensor([dim], dtype=torch.long)), axis_i=0
+    )
+    chunk_size_minus_1 = g.op("Constant", value_t=torch.tensor([chunks - 1], dtype=torch.long))
+    chunk_dim = g.op(
+        "Div",
+        g.op("Add", input_shape_dim, chunk_size_minus_1),
+        g.op("Constant", value_t=torch.tensor([chunks], dtype=torch.long)),
+    )
+    return g.op(
+        "Split",
+        self,
+        g.op(
+            "Concat",
+            g.op("Expand", chunk_dim, chunk_size_minus_1),
+            g.op("Sub", input_shape_dim, g.op("Mul", chunk_dim, chunk_size_minus_1)),
+            axis_i=0,
+        ),
+        axis_i=dim,
+        outputs=chunks,
+    )
+
+
 # For torch.einsum.
 def parse_equation(equation):
     pos_comma = equation.find(",")
