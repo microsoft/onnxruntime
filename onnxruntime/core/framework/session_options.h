@@ -151,6 +151,8 @@ struct SessionOptions {
   // for example, if current session planned two logical stream on EP1, and maximal EP is set to 2.
   // if two request coming in parallel, the total 4 logical streams will be serialzied on two physical streams.
   std::string max_streams_per_ep{};
+
+  //std::string node_partition_config_file{};
 };
 
 }  // namespace onnxruntime

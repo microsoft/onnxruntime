@@ -306,7 +306,9 @@ class PlannerImpl {
   Status CreatePlan(const ExecutionProviders& execution_providers,
                     const IStreamCommandHandleRegistry& stream_handle_registry,
                     const ProviderStreamMap& provider_stream_map,
-                    const OpStreamMap& op_stream_map);
+                    const OpStreamMap& op_stream_map,
+                    const std::string& partition_config_file,
+                    const logging::Logger& logger);
 
  private:
   const ISequentialPlannerContext* context_;
@@ -1756,6 +1758,18 @@ class PlannerImpl {
     return Status::OK();
   }
 
+  void PartitionIntoStreams(const logging::Logger& logger, const std::string& partition_config_file) {
+    auto partitioner = INodePartitioner::CreateNodePartitioner(logger, partition_config_file);
+    partitioner->PartitionNodes(graph_viewer_, stream_nodes_);
+    node_stream_map_.resize(graph_viewer_.MaxNodeIndex() + 1);
+    for (int i = 0; i < stream_nodes_.size(); ++i) {
+      for (auto node_index : stream_nodes_[i]) {
+        node_stream_map_[node_index] = i;
+      }
+    }
+    num_logic_streams_ = stream_nodes_.size();
+  }
+
   //TODO: the current partition algo based on primitive user setting is not flexible.
   //Need a better way to read from user configurations
   void PartitionIntoStreams(const ProviderStreamMap& provider_stream_map,
@@ -1972,11 +1986,16 @@ class PlannerImpl {
 Status PlannerImpl::CreatePlan(const ExecutionProviders& execution_providers,
                                const IStreamCommandHandleRegistry& stream_handle_registry,
                                const ProviderStreamMap& provider_stream_map,
-                               const OpStreamMap& op_stream_map) {
+                               const OpStreamMap& op_stream_map,
+                               const std::string& partition_config_file,
+                               const logging::Logger& logger) {
+
   auto& p_graph_nodes = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder());
 
   //1. partition graph into streams
-  PartitionIntoStreams(provider_stream_map, op_stream_map);
+  // PartitionIntoStreams(provider_stream_map, op_stream_map);
+
+  PartitionIntoStreams(logger, partition_config_file);
 
   //2. initialize the plan based on stream partition result
   int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
@@ -2041,6 +2060,8 @@ Status SequentialPlanner::CreatePlan(
     const IStreamCommandHandleRegistry& stream_handle_registry,
     const ProviderStreamMap& provider_stream_map,
     const OpStreamMap& op_stream_map,
+    const std::string& partition_config_file,
+    const logging::Logger& logger,
     std::unique_ptr<SequentialExecutionPlan>& plan) {
   // allocate/reset here so we know it's clean
   ORT_ENFORCE(plan, "plan ptr must be filled with instance!");
@@ -2054,54 +2075,204 @@ Status SequentialPlanner::CreatePlan(
   return planner.CreatePlan(execution_providers,
                             stream_handle_registry,
                             provider_stream_map,
-                            op_stream_map);
+                            op_stream_map,
+                            partition_config_file,
+                            logger);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 std::unordered_map<std::string, INodePartitioner::NodePartitionerType> INodePartitioner::name_type_map = {{std::string{"DummyPartitioner"}, NodePartitionerType::DummyPartition}};
 
-INodePartitioner::INodePartitioner(const std::string& configuration_file) : configuration_file_(configuration_file) {}
+//INodePartitioner::INodePartitioner(const std::string& configuration_file, const logging::Logger& logger) : configuration_file_(configuration_file, logger) {}
 
 class DummyPartitioner : public INodePartitioner {
  public:
-  DummyPartitioner(const std::string& configuration_file) : INodePartitioner(configuration_file) {
+  DummyPartitioner(const logging::Logger& logger, const std::string& configuration_file) : INodePartitioner(logger, configuration_file) {
     Initialize();
   }
-  void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& stream_nodes) const override {
-  }
-  void DumpPartition() const override {
-  }
+  void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& stream_nodes) override;
+  void DumpPartition() const override;
   Status IsInitialized() const override {
     return status_;
   }
+  virtual const std::string& Name() const override {
+    return name;
+  }
+
  private:
   void Initialize();
+  int num_streams_{};
   std::map<std::string, int> max_streams_;
-  std::vector<std::vector<NodeIndex>> stream_nodes_;
+  std::vector<std::vector<std::string>> node_names_by_stream_;
   Status status_{};
+  static const std::string name;
 };
+
+const std::string DummyPartitioner::name = "DummyPartition";
+
+/*
+Format of the configuration file for dummpy partition:
+line 1: DummyPartition                           # name of the partitioner
+line 2: ExecutionProviders:2                     # number of execution providers
+line 3: CpuExecutionProvider:2                   # number of streams of the 1st ep
+line 4: GpuExecutionProvider:2                   # number of streams of the 2nd ep
+line 5: node_name,node_name,node_name ...        # list of nodes on 1st stream of the 1st ep
+line 6: node_name,node_name,node_name ...        # list of nodes on 2nd stream of the 1st ep
+line 7: node_name,node_name,node_name ...        # list of nodes on 1st stream of the 2nd ep
+line 8: node_name,node_name,node_name ...        # list of nodes on 2nd stream of the 2nd ep
+*/
+
+#define EXIT_ON_ERR(err)\
+      status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, err);\
+      if_stream.close();\
+      return;
 
 void DummyPartitioner::Initialize() {
   std::ifstream if_stream(configuration_file_);
   if (if_stream.is_open()) {
-
+    int eps = 0;
+    //int at = 0;
+    std::string line;
+    if (!std::getline(if_stream, line) || line != Name()) {
+      EXIT_ON_ERR("configuration file should start with a line of partition name");
+    }
+    //++at;
+    if (std::getline(if_stream, line)) {
+      auto columns = INodePartitioner::Split(line,':');
+      if (columns.size() != 2 || columns[0] != "ExecutionProviders") {
+        EXIT_ON_ERR("2nd line of configuration file should be of format: ExecutionProviders,<an integer>");
+      }
+      for (char c : columns[1]) {
+        if (!isalpha(c)) {
+          EXIT_ON_ERR("2nd line, the ExecutionProviders should followed by a integer");
+        }
+      }
+      eps = atoi(columns[1].c_str()); //TODO:
+      if (eps <= 0) {
+        EXIT_ON_ERR("2nd line, the number of ExecutionProviders must be a positive value");
+      }
+      for (int i = 0; i < eps; ++i) {
+        if (std::getline(if_stream, line)) {
+          auto columns = INodePartitioner::Split(line,':');
+          if (columns.size() != 2) {
+            EXIT_ON_ERR("invalid configuration - failed to read execution provider stream setting")
+          }
+        } else {
+          EXIT_ON_ERR("invalid configuration - failed to read execution provider stream setting");
+        }
+        auto num_current_stream = atoi(columns[1].c_str());
+        max_streams_[columns[0]] = num_current_stream;  //TODO: handle the case when columns[1] has non alpha char
+        num_streams_ += num_current_stream;
+      }
+      while (getline(if_stream, line)) {
+        node_names_by_stream_.push_back(INodePartitioner::Split(line,','));
+        if (node_names_by_stream_.back().empty()) {
+          EXIT_ON_ERR("invalid configuration - the line of node names is empty");
+        }
+      }
+      if (node_names_by_stream_.size() != num_streams_) {
+        EXIT_ON_ERR("invalid configuration - the total number of line of streams mismatch with the sum of execution provider stream setting");
+      }
+    }  // else means file is empty, will fill it with default settings
     if_stream.close();
   } else {
     status_ = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "cannot open partition configuration: ", configuration_file_.c_str());
   }
 }
 
-std::unique_ptr<INodePartitioner> INodePartitioner::CreateNodePartitioner(const std::string& configuration_file) {
+void DummyPartitioner::DumpPartition() const {
+  std::ofstream of_stream(configuration_file_, std::ios_base::out | std::ios_base::trunc);
+  if (of_stream.is_open()) {
+    of_stream << Name() << std::endl;
+    for (const auto& kv : max_streams_) {
+      of_stream << kv.first << ":" << kv.second << std::endl;
+    }
+    for (const auto& nodes : node_names_by_stream_) {
+      std::copy(nodes.begin(), prev(nodes.end()), std::ostream_iterator<std::string>(of_stream, ","));
+      of_stream << "," << nodes.back() << std::endl;
+    }
+    of_stream.close();
+  } else {
+    LOGS(logger_, WARNING) << "DummyPartitioner failed to dump configuration to file: " << configuration_file_;
+  }
+}
+
+void DummyPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& stream_nodes) {
+  if (!status_.IsOK()) {
+    return;  // input configuration has errors, do nothing
+  }
+
+  std::unordered_map<std::string, int> op_type_counter;
+  auto& p_graph_nodes = graph_viewer.GetNodesInTopologicalOrder();
+
+  if (max_streams_.empty() && node_names_by_stream_.empty()) { // input configure empty, do it from scratch
+    // partition by ep, each has one stream
+    std::unordered_map<std::string, int> ep_to_stream;
+    for (auto node_index : p_graph_nodes) {
+      const auto* node = graph_viewer.GetNode(node_index);
+      const auto& op_type = node->OpType();
+      const auto& node_name = node->Name();
+      onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
+      if (max_streams_.find(exec_provider_name) == max_streams_.end()) {
+        max_streams_[exec_provider_name] = 1;
+      }
+      auto it = ep_to_stream.find(exec_provider_name);
+      if (it == ep_to_stream.end()) {
+        ep_to_stream[exec_provider_name] = static_cast<int>(node_names_by_stream_.size());
+        node_names_by_stream_.push_back({});
+        it = ep_to_stream.find(exec_provider_name);
+      }
+      if (node_name.empty()) {
+        node_names_by_stream_[it->second].push_back(op_type + std::to_string(op_type_counter[op_type]++));
+      } else {
+        node_names_by_stream_[it->second].push_back(node_name);
+      }
+    }
+  }
+  std::unordered_map<std::string, int> node_stream_map;
+  for (int i = 0; i < node_names_by_stream_.size(); ++i) {
+    for (const auto& node_name : node_names_by_stream_[i]) {
+      node_stream_map[node_name] = i;
+    }
+  }
+  op_type_counter.clear();
+  stream_nodes.clear();
+  stream_nodes.resize(node_names_by_stream_.size());
+  for (auto node_index : p_graph_nodes) {
+    const auto* node = graph_viewer.GetNode(node_index);
+    const auto& op_type = node->OpType();
+    const auto& node_name = node->Name();
+    if (node_name.empty()) {
+      auto tmp_name = op_type + std::to_string(op_type_counter[op_type]++);
+      ORT_ENFORCE(node_stream_map.find(tmp_name) != node_stream_map.end());
+      stream_nodes[node_stream_map[tmp_name]].push_back(node_index);
+    } else {
+      stream_nodes[node_stream_map[node_name]].push_back(node_index);
+    }
+  }
+}
+
+std::vector<std::string> INodePartitioner::Split(const std::string& line, char splitor) {
+  std::vector<std::string> columns;
+  std::string column;
+  std::stringstream ss;
+  ss << line;
+  while (getline(ss, column, splitor)) {
+    columns.push_back(column);
+  }
+  return columns;
+}
+
+std::unique_ptr<INodePartitioner> INodePartitioner::CreateNodePartitioner(const logging::Logger& logger, const std::string& configuration_file) {
   std::string cfg_file = configuration_file;
   INodePartitioner::NodePartitionerType partitioner_type = INodePartitioner::NodePartitionerType::DummyPartition;
   if (cfg_file.empty()) {
-    time_t t = std::time(nullptr);
-    struct tm buf;
-    localtime_s(&buf, &t);
-    std::stringstream ss;
-    ss << "partition_configuration_" << std::put_time(&buf, "%d_%m_%Y_%H_%M_%S") << ".csv";
-    cfg_file = ss.str();
+    cfg_file = "onnxruntime_node_partition_configuration.csv";
+    std::ofstream of_stream(cfg_file, std::ios_base::out | std::ios_base::trunc);
+    ORT_ENFORCE(of_stream.is_open(), "cannnot write configuration to", cfg_file.c_str());
+    of_stream << "DummyPartition" << std::endl;
+    of_stream.close();
   } else {
     std::ifstream if_stream(cfg_file);
     if (if_stream.is_open()) {
@@ -2116,7 +2287,7 @@ std::unique_ptr<INodePartitioner> INodePartitioner::CreateNodePartitioner(const 
   std::unique_ptr<INodePartitioner> node_partitioner;
   switch (partitioner_type) {
     case INodePartitioner::NodePartitionerType::DummyPartition:
-      node_partitioner.reset(new DummyPartitioner(cfg_file));
+      node_partitioner.reset(new DummyPartitioner(logger, cfg_file));
       break;
     default:
       break;

@@ -1518,11 +1518,13 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     execution_providers_, kernel_create_info_map_,
                                                     subgraphs_kernel_create_info_maps,
                                                     outer_scope_node_arg_to_location_map,
-                                                    ort_value_name_idx_map_, context, 
+                                                    ort_value_name_idx_map_, context,
                                                     this->GetExecutionProviders(),
                                                     this->GetStreamHandleRegistryInstance(),
                                                     provider_stream_map,
                                                     read_op_map_from_str(session_options.grouped_ops),
+                                                    "",//session_options.node_partition_config_file,
+                                                    Logger(),
                                                     p_seq_exec_plan_));
 
 

@@ -302,7 +302,8 @@ class PlannerTest : public ::testing::Test {
     status = SequentialPlanner::CreatePlan(nullptr, graph_viewer, outer_scope_node_args, execution_providers_,
                                            kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), test_context,
                                            providers, MockStreamHandleRegsitry(), {{kCpuExecutionProvider, 1}}, {},
-                                           plan_);
+                                           "", DefaultLoggingManager().DefaultLogger(), plan_);
+
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     //AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
 

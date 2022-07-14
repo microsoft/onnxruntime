@@ -86,15 +86,18 @@ class INodePartitioner {
     DummyPartition = 0,
     Unknown,
   };
-  virtual ~INodePartitioner(){};
-  static std::unique_ptr<INodePartitioner> CreateNodePartitioner(const std::string& configuration_file = "");
-  virtual void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& stream_nodes) const = 0;
-  virtual void DumpPartition() const = 0;
+  virtual ~INodePartitioner() { DumpPartition(); };
+  static std::unique_ptr<INodePartitioner> CreateNodePartitioner(const logging::Logger& logger, const std::string& configuration_file = "");
+  virtual void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& stream_nodes) = 0;
+  virtual void DumpPartition() const {}; // do nothing by default
   virtual Status IsInitialized() const = 0;
+  virtual const std::string& Name() const = 0;
 
  protected:
+  static std::vector<std::string> Split(const std::string& line, char splitor);
   static std::unordered_map<std::string, NodePartitionerType> name_type_map;
-  INodePartitioner(const std::string& configuration_file);
+  INodePartitioner(const logging::Logger& logger, const std::string& configuration_file) : logger_(logger), configuration_file_(configuration_file) {}
+  const logging::Logger& logger_;
   std::string configuration_file_{};
 };
 
@@ -114,6 +117,8 @@ class SequentialPlanner {
       const IStreamCommandHandleRegistry& stream_handle_registry,
       const ProviderStreamMap& provider_stream_map,
       const OpStreamMap& op_stream_map,
+      const std::string& partition_config_file,
+      const logging::Logger& logger,
       std::unique_ptr<SequentialExecutionPlan>& plan);
 };
 

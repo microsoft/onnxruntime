@@ -356,6 +356,9 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
   telemetry_ = {};
   allocator_manager_ = std::make_shared<onnxruntime::AllocatorManager>();
+
+  // read patition config file path, default empty
+  // session_options_.node_partition_config_file = session_options.config_options.GetConfigOrDefault(kNodePartitionConfigFile, "");
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env)
