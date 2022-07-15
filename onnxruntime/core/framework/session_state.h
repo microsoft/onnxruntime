@@ -187,11 +187,11 @@ class SessionState {
   // execution plan. nullptr until FinalizeSessionState is called
   const SequentialExecutionPlan* GetExecutionPlan() const;
 
-  ParallelExecutionPlan* GetParalllelExecutionPlan();
+  //ParallelExecutionPlan* GetParalllelExecutionPlan();
 
-  ExecutionPlan* GetTheExecutionPlan() const { return p_exec_plan_.get(); };
+  //ExecutionPlan* GetTheExecutionPlan() const { return p_exec_plan_.get(); };
 
-  const ParallelExecutionPlan& GetConstParalllelExecutionPlan() const;
+  //const ParallelExecutionPlan& GetConstParalllelExecutionPlan() const;
 
   const std::vector<AllocPlanPerValue>& SessionState::GetPerAllocPlan() const;
 

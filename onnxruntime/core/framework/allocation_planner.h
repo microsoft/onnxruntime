@@ -80,6 +80,27 @@ class ParalllelPlannerContext : public SequentialPlannerContext {
   explicit ParalllelPlannerContext() : SequentialPlannerContext(ExecutionMode::ORT_PARALLEL, ExecutionOrder::DEFAULT, false) {}
 };
 
+class INodePartitioner {
+ public:
+  enum NodePartitionerType {
+    DummyPartition = 0,
+    Unknown,
+  };
+  virtual ~INodePartitioner() {};
+  static std::unique_ptr<INodePartitioner> CreateNodePartitioner(const logging::Logger& logger, const std::string& configuration_file = "");
+  virtual void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& stream_nodes) = 0;
+  Status GetStatus() const { return status_; }
+  virtual const std::string& Name() const = 0;
+
+ protected:
+  static std::vector<std::string> Split(const std::string& line, char splitor);
+  static std::unordered_map<std::string, NodePartitionerType> name_type_map;
+  INodePartitioner(const logging::Logger& logger, const std::string& configuration_file) : logger_(logger), configuration_file_(configuration_file) {}
+  const logging::Logger& logger_;
+  std::string configuration_file_{};
+  Status status_{};
+};
+
 class SequentialPlanner {
  public:
   // This API allows user to provide a custom planner context.
@@ -94,8 +115,10 @@ class SequentialPlanner {
       const ISequentialPlannerContext& context,
       const ExecutionProviders& execution_providers,
       const IStreamCommandHandleRegistry& stream_handle_registry,
-      const ProviderStreamMap& provider_stream_map,
-      const OpStreamMap& op_stream_map,
+      //const ProviderStreamMap& provider_stream_map,
+      //const OpStreamMap& op_stream_map,
+      const std::string& partition_config_file,
+      const logging::Logger& logger,
       std::unique_ptr<SequentialExecutionPlan>& plan);
 };
 

@@ -132,6 +132,14 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
   size_t num_barriers{0};
 
+  const std::vector<AllocPlanPerValue>& GetAllocationPlan() const {
+    return allocation_plan;
+  }
+
+  const std::unordered_map<size_t, size_t>& GetValueToStreamMap() const {
+    return value_to_stream_map;
+  }
+
   const OrtMemoryInfo& GetLocation(size_t ort_value_index) const override {
     return allocation_plan[ort_value_index].location;
   }
