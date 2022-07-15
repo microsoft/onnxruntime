@@ -84,9 +84,6 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   const auto alpha = Consts<CudaT>::One;
   const auto beta = Consts<CudaT>::Zero;
 
-  std::lock_guard<OrtMutex> lock(cudnn_stream_mutex_);
-  CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream(p_op_kernel_context)));
-
   CudnnTensor data_desc;
   vector<int64_t> new_dims;
   BatchNormHelper::NormalizeDims(x_shape, new_dims);
@@ -124,7 +121,9 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
         f_B.get(),
         f_mean.get(),
         f_var.get(),
-        epsilon_));
+        epsilon_),
+        CudnnHandle(),
+        Stream(p_op_kernel_context));
 
     return Status::OK();
   }
@@ -156,7 +155,9 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
         running_var_data,
         epsilon_,
         saved_mean_data,
-        saved_inv_var_data));
+        saved_inv_var_data),
+        CudnnHandle(),
+        Stream(p_op_kernel_context));
     // in BatchNorm Forward Inference mode if only Y output present
   } else {
     CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardInference(
@@ -173,7 +174,9 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
         b_data,
         mean_data,
         var_data,
-        epsilon_));
+        epsilon_),
+        CudnnHandle(),
+        Stream(p_op_kernel_context));
   }
   return Status::OK();
 }

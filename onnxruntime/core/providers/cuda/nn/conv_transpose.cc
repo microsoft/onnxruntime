@@ -66,8 +66,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
   {
     std::lock_guard<OrtMutex> lock(s_.mutex);
-    CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream(context)));
-    CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream(context)));
+    CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetStream(CudnnHandle(), Stream(context)));
     // TODO: add a global cache if need to handle cases for multiple frames running simultaneously with different batch_size
     bool input_dims_changed = (s_.last_x_dims.AsShapeVector() != x_dims);
     bool w_dims_changed = (s_.last_w_dims.AsShapeVector() != w_dims);
@@ -132,11 +131,11 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
         // set math type to tensor core before algorithm search
         if constexpr (std::is_same<T, MLFloat16>::value)
-          CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
+          CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
 
         cudnnConvolutionBwdDataAlgoPerf_t perf;
         int algo_count = 1;
-        CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
+        CUDNN_CONFIG_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
             CudnnHandle(),
             s_.w_desc,
             w_data,
@@ -154,7 +153,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       }
 
       const auto& perf = s_.cached_benchmark_results.at(x_dims);
-      CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, perf.mathType));
+      CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, perf.mathType));
       s_.algo = perf.algo;
       s_.workspace_bytes = perf.memory;
     }
@@ -180,7 +179,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
     IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes, OrtStream(context));
 
-    CUDNN_RETURN_IF_ERROR(
+    CUDNN_CONFIG_RETURN_IF_ERROR(
         cudnnConvolutionBackwardData(
             CudnnHandle(),
             &alpha,
@@ -199,7 +198,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
     if (has_bias) {
       const Tensor* B = dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2);
       auto b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
-      CUDNN_RETURN_IF_ERROR(cudnnAddTensor(CudnnHandle(), &alpha, s_.b_tensor, b_data, &alpha, s_.y_tensor, y_data));
+      CUDNN_CONFIG_RETURN_IF_ERROR(cudnnAddTensor(CudnnHandle(), &alpha, s_.b_tensor, b_data, &alpha, s_.y_tensor, y_data));
     }
   }
 

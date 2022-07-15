@@ -128,8 +128,10 @@ Status ReduceKernel<true>::ComputeImplEx<int32_t, CUDNN_REDUCE_TENSOR_NO_INDICES
   ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, cudnn_type_X, CUDNN_REDUCE_TENSOR_FLATTENED_INDICES));
   ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_cudnn, cudnn_type_X));
   ORT_RETURN_IF_ERROR(output_tensor.Set(output_dims_cudnn, cudnn_type_X));
-  CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes));
-  CUDNN_RETURN_IF_ERROR(cudnnGetReductionWorkspaceSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &workspace_bytes));
+  CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes),
+                        CudnnHandle(), Stream(ctx));
+  CUDNN_RETURN_IF_ERROR(cudnnGetReductionWorkspaceSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &workspace_bytes),
+                        CudnnHandle(), Stream(ctx));
   IAllocatorUniquePtr<uint32_t> indices_cuda = GetScratchBuffer<uint32_t>(indices_bytes, ctx->GetComputeStream());
   IAllocatorUniquePtr<CudaT> workspace_cuda = GetScratchBuffer<CudaT>(workspace_bytes, ctx->GetComputeStream());
 
@@ -147,7 +149,8 @@ Status ReduceKernel<true>::ComputeImplEx<int32_t, CUDNN_REDUCE_TENSOR_NO_INDICES
                                           temp_X.get(),
                                           &zero,
                                           output_tensor,
-                                          temp_Y.get()));
+                                          temp_Y.get()),
+                        CudnnHandle(), Stream(ctx));
 
   Impl_Cast<float, int32_t>(Stream(ctx), temp_Y.get(), Y->template MutableData<int32_t>(), output_count);
 

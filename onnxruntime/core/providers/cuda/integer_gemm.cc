@@ -45,7 +45,6 @@ Status GemmInt8(int m, int n, int k,
   }
 
   cublasHandle_t cublas = cuda_kernel->CublasHandle();
-  cublasSetStream(cublas, stream);
   CUBLAS_RETURN_IF_ERROR(cublasGemmEx(
       cublas,
       CUBLAS_OP_N, CUBLAS_OP_N,
@@ -55,7 +54,8 @@ Status GemmInt8(int m, int n, int k,
       lda_aligned == lda ? a : a_padded.get(), CUDA_R_8I, lda_aligned,
       &beta,
       c, CUDA_R_32I, ldc, CUDA_R_32I,
-      CUBLAS_GEMM_DFALT));
+      CUBLAS_GEMM_DFALT),
+      cublas, stream);
   return Status::OK();
 }
 }  // namespace cuda

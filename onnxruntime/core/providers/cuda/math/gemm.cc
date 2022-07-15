@@ -78,9 +78,6 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
   auto& device_prop = GetDeviceProp();
 
-  std::lock_guard<OrtMutex> lock(cublas_stream_mutex_);
-  CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream(ctx)));
-
   // broadcast bias if needed and is present
   if (beta_ != 0 && B != nullptr) {
     auto& b_shape = B->Shape();
@@ -94,7 +91,9 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
           b_data,
           0,
           out_data,
-          1));
+          1),
+                             CublasHandle(),
+                             Stream(ctx));
     } else if (b_shape.NumDimensions() == 1 || b_shape[0] == 1) {
       // B is (N,) or (1, N), broadcast using Y(N,M) = 1 * B(N,1) x ones(1,M) + 0 * Y
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -106,7 +105,9 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
           b_data, N,
           GetConstOnes<CudaT>(M, GetCudaStreamFromContext(ctx)), 1,
           /*beta*/ &zero,
-          out_data, N, device_prop));
+          out_data, N, device_prop),
+                             CublasHandle(), 
+                             Stream(ctx));
     } else if (b_shape.NumDimensions() == 2 && b_shape[1] == 1) {
       // B is (M, 1), broadcast using Y(N,M) = 1 * ones(N,1) x B(1,M) + 0 * Y
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -118,7 +119,9 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
           GetConstOnes<CudaT>(N, GetCudaStreamFromContext(ctx)), N,
           b_data, 1,
           /*beta*/ &zero,
-          out_data, N, device_prop));
+          out_data, N, device_prop),
+                             CublasHandle(),
+                             Stream(ctx));
     } else {
       // B is (M, N), no broadcast needed.
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(out_data, b_data, M * N * sizeof(T), cudaMemcpyDeviceToDevice, Stream(ctx)));
@@ -141,7 +144,9 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
       // ideally we need to set the output buffer contents to 0 if bias is missing,
       // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
       B != nullptr ? &beta : &zero,
-      out_data, N, device_prop));
+      out_data, N, device_prop),
+      CublasHandle(),
+      Stream(ctx));
 
   return Status::OK();
 }

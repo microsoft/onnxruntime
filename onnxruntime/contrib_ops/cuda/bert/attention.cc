@@ -64,9 +64,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   int past_sequence_length = 0;
   Tensor* present = GetPresent(context, past, batch_size, head_size, sequence_length, past_sequence_length);
 
-  std::lock_guard<OrtMutex> lock(cublas_stream_mutex_);
-  CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream(context)));
-
   cublasHandle_t cublas = CublasHandle();
   constexpr size_t element_size = sizeof(T);
 
@@ -86,14 +83,16 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
       reinterpret_cast<const CudaT*>(bias->template Data<T>()), n,
       GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
-      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop),
+      cublas, Stream(context));
 
   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x B.
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
       reinterpret_cast<const CudaT*>(weights->template Data<T>()), n,
       reinterpret_cast<const CudaT*>(input->template Data<T>()), k,
-      &one, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+      &one, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop),
+      cublas, Stream(context));
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, past_sequence_length);
   auto temp_buffer = GetScratchBuffer<void>(workSpaceSize, OrtStream(context));

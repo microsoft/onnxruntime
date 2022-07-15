@@ -57,9 +57,6 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
   const auto one = Consts<CudaT>::One;
   const auto zero = Consts<CudaT>::Zero;
 
-  std::lock_guard<OrtMutex> lock(cudnn_stream_mutex_);
-  CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream(p_op_kernel_context)));
-
   if (N == 1) {
     // when N == 1, we can treat it as spatial batch normalization in training
     // as the mean/variance would be computed from input
@@ -89,7 +86,9 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
         nullptr,
         epsilon_,
         nullptr,
-        nullptr));
+        nullptr),
+        CudnnHandle(),
+        Stream(p_op_kernel_context));
   } else {
     // we use cudnnBatchNormalizationForwardTraining to compute mean/variance
     // so collapsing NC into channel
@@ -136,7 +135,9 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
         variance.get(),
         CUDNN_BN_MIN_EPSILON,
         nullptr,
-        nullptr));
+        nullptr),
+        CudnnHandle(),
+        Stream(p_op_kernel_context));
 
     // Y = scale * (x - mean) / sqrt (variance + epsilon) + B
     // X/Y is (N,C,H,W)
@@ -188,9 +189,6 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
   const auto one = Consts<CudaT>::One;
   const auto zero = Consts<CudaT>::Zero;
 
-  std::lock_guard<OrtMutex> lock(cudnn_stream_mutex_);
-  CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream(p_op_kernel_context)));
-
   if (N == 1) {
     // when N == 1, we can treat it as spatial batch normalization in training
     // as the mean/variance would be computed from input
@@ -230,7 +228,9 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
         nullptr,
         epsilon_,
         nullptr,
-        nullptr));
+        nullptr),
+        CudnnHandle(),
+        Stream(p_op_kernel_context));
   } else {
     // we use cudnnBatchNormalizationForwardTraining to compute mean/variance
     // so collapsing NC into channel
@@ -282,7 +282,9 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
         variance.get(),
         CUDNN_BN_MIN_EPSILON,
         nullptr,
-        nullptr));
+        nullptr),
+        CudnnHandle(),
+        Stream(p_op_kernel_context));
 
     // Y = scale * (x - mean) / sqrt (variance + epsilon) + B
     // X/Y is (N,C,H,W)

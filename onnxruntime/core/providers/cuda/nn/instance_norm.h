@@ -17,8 +17,6 @@ class InstanceNorm final : public CudaKernel {
 
  private:
   double epsilon_;
-  // mutex for set cudnn stream
-  mutable OrtMutex cudnn_stream_mutex_;
 };
 
 }  // namespace cuda

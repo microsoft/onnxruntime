@@ -35,10 +35,10 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override {
-    CUDNN_RETURN_IF_ERROR(status_);
+    CUDNN_CONFIG_RETURN_IF_ERROR(status_);
     std::lock_guard<OrtMutex> lock(Base::s_.mutex);
-    CUDNN_CALL_THROW(cudnnSetStream(Base::CudnnHandle(), Stream(context)));
-    CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream(context)));
+    CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetStream(Base::CudnnHandle(), Stream(context)));
+    CUBLAS_CONFIG_CALL_TRHOW(cublasSetStream(CublasHandle(), Stream(context)));
 
     ORT_RETURN_IF_ERROR(Base::UpdateState(context, true));
     if (Base::s_.Y->Shape().Size() == 0) {
@@ -69,7 +69,7 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
                                                               Base::s_.y_tensor,
                                                               Base::s_.y_data);
     if (CUDNN_STATUS_SUCCESS != cudnn_status) {
-      CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(Base::CudnnHandle(),
+      CUDNN_CONFIG_RETURN_IF_ERROR(cudnnConvolutionForward(Base::CudnnHandle(),
                                                     &alpha,
                                                     Base::s_.x_tensor,
                                                     Base::s_.x_data,
@@ -83,14 +83,14 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
                                                     Base::s_.y_tensor,
                                                     Base::s_.y_data));
       if (has_b) {
-        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(Base::CudnnHandle(), &alpha, Base::s_.b_tensor, Base::s_.b_data,
+        CUDNN_CONFIG_RETURN_IF_ERROR(cudnnAddTensor(Base::CudnnHandle(), &alpha, Base::s_.b_tensor, Base::s_.b_data,
                                              &alpha, Base::s_.y_tensor, Base::s_.y_data));
       }
       if (has_z) {
-        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(Base::CudnnHandle(), &alpha, Base::s_.z_tensor, Base::s_.z_data,
+        CUDNN_CONFIG_RETURN_IF_ERROR(cudnnAddTensor(Base::CudnnHandle(), &alpha, Base::s_.z_tensor, Base::s_.z_data,
                                              &alpha, Base::s_.y_tensor, Base::s_.y_data));
       }
-      CUDNN_RETURN_IF_ERROR(cudnnActivationForward(Base::CudnnHandle(), activation_desc_, &alpha, Base::s_.y_tensor,
+      CUDNN_CONFIG_RETURN_IF_ERROR(cudnnActivationForward(Base::CudnnHandle(), activation_desc_, &alpha, Base::s_.y_tensor,
                                                    Base::s_.y_data, &beta, Base::s_.y_tensor, Base::s_.y_data));
     }
     if (Base::s_.post_slicing_required) {

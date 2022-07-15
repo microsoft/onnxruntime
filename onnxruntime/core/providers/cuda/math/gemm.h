@@ -31,8 +31,6 @@ class Gemm final : public CudaKernel {
   bool trans_B_;
   float alpha_;
   float beta_;
-  // mutex for set cublas stream
-  mutable OrtMutex cublas_stream_mutex_;
 };
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -258,7 +258,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
       // set math type to tensor core before algorithm search
       ORT_IF_CONSTEXPR(std::is_same<T, MLFloat16>::value)
-        CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
+        CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
 
       cudnnConvolutionFwdAlgoPerf_t perf;
       int algo_count = 1;
@@ -285,7 +285,9 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
               &algo_count,  // returnedAlgoCount
               &perf,
               algo_search_workspace.get(),
-              max_ws_size));
+              max_ws_size),
+              s_.handle,
+              Stream(context));
           break;
         }
         case 1:
@@ -297,12 +299,14 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
               s_.y_tensor,
               1,            // requestedAlgoCount
               &algo_count,  // returnedAlgoCount
-              &perf));
+              &perf),
+              s_.handle,
+              Stream(context));
           break;
 
         default:
           perf.algo = kDefaultConvAlgo;
-          CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(s_, perf.algo, &perf.memory));
+          CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(s_, perf.algo, &perf.memory), s_.handle, Stream(context));
           if (std::is_same<T, MLFloat16>::value) {
             perf.mathType = CUDNN_TENSOR_OP_MATH;
           } else {
@@ -312,7 +316,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       s_.cached_benchmark_results.insert(x_dims_cudnn, {perf.algo, perf.memory, perf.mathType});
     }
     const auto& perf = s_.cached_benchmark_results.at(x_dims_cudnn);
-    CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, perf.mathType));
+    CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, perf.mathType));
     s_.algo = perf.algo;
     s_.workspace_bytes = perf.memory;
   } else {
@@ -334,8 +338,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 template <typename T>
 Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   std::lock_guard<OrtMutex> lock(s_.mutex);
-  CUDNN_CALL_THROW(cudnnSetStream(s_.handle, Stream(context)));
-  CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream(context)));
+  CUDNN_CONFIG_CALL_THROW(cudnnSetStream(s_.handle, Stream(context)));
   ORT_RETURN_IF_ERROR(UpdateState(context));
   if (s_.Y->Shape().Size() == 0) {
     return Status::OK();
@@ -356,10 +359,14 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
                                                 s_.workspace_bytes,
                                                 &beta,
                                                 s_.y_tensor,
-                                                s_.y_data));
+                                                s_.y_data),
+      s_.handle,
+      Stream(context));
   if (nullptr != s_.b_data) {
     CUDNN_RETURN_IF_ERROR(cudnnAddTensor(s_.handle, &alpha, s_.b_tensor, s_.b_data,
-                                         &alpha, s_.y_tensor, s_.y_data));
+                                         &alpha, s_.y_tensor, s_.y_data),
+        s_.handle,
+        Stream(context));
   }
   // To deal with asymmetric padding, we may have over-padded on one or both sides of the spatial dimensions
   // This may have lead to extra results that are unnecessary and hence we slice that off here
@@ -390,7 +397,7 @@ Status CudnnConvolutionDescriptor::Set(
     cudnnConvolutionMode_t mode,
     cudnnDataType_t data_type) {
   if (!desc_)
-    CUDNN_RETURN_IF_ERROR(cudnnCreateConvolutionDescriptor(&desc_));
+    CUDNN_CONFIG_RETURN_IF_ERROR(cudnnCreateConvolutionDescriptor(&desc_));
 
   InlinedVector<int, kTensorShapeSmallBufferElementsSize> pad_dims(rank);
   InlinedVector<int, kTensorShapeSmallBufferElementsSize> stride_dims(rank);
@@ -405,7 +412,7 @@ Status CudnnConvolutionDescriptor::Set(
   // Setting math_type to CUDNN_DATA_FLOAT for half input
   cudnnDataType_t math_type = data_type;
   if (data_type == CUDNN_DATA_HALF) math_type = CUDNN_DATA_FLOAT;
-  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionNdDescriptor(
+  CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetConvolutionNdDescriptor(
       desc_,
       gsl::narrow_cast<int>(rank),
       pad_dims.data(),
@@ -414,13 +421,13 @@ Status CudnnConvolutionDescriptor::Set(
       mode,
       math_type));
 
-  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(desc_, groups));
+  CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(desc_, groups));
 
   // Copied from /pytorch/aten/src/ATen/cudnn/Descriptors.h
   // See Note [behavior of cudnnFind and cudnnGet] at /pytorch/aten/src/ATen/native/cudnn/Conv_v7.cpp
-  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_DEFAULT_MATH));
+  CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_DEFAULT_MATH));
   if (data_type == CUDNN_DATA_HALF) {
-    CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_TENSOR_OP_MATH));
+    CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_TENSOR_OP_MATH));
   }
 
   return Status::OK();

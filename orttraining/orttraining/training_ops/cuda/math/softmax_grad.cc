@@ -58,7 +58,9 @@ Status SoftMaxGradComputeHelper(
           dY_data,
           &beta,
           output_tensor,
-          dX_data));
+          dX_data),
+      handle,
+      stream);
 
   return Status::OK();
 }

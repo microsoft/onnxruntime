@@ -62,7 +62,6 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   cublasHandle_t cublas = CublasHandle();
   cudaStream_t stream = Stream(context);
-  CUBLAS_RETURN_IF_ERROR(cublasSetStream(cublas, stream));
 
   constexpr size_t element_size = sizeof(T);
 
@@ -119,14 +118,16 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
       reinterpret_cast<const CudaT*>(bias->template Data<T>()), n,
       GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
-      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop),
+      cublas, stream);
 
   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x B.
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
       reinterpret_cast<const CudaT*>(weights->template Data<T>()), n,
       reinterpret_cast<const CudaT*>(input->template Data<T>()), k,
-      &one, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+      &one, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop),
+      cublas, stream);
 
   // Wait for async copy of batch_global_num
   CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
@@ -156,13 +157,15 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
         reinterpret_cast<const CudaT*>(global_bias->template Data<T>()), n,
         GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
-        &zero, reinterpret_cast<CudaT*>(global_gemm_buffer.get()), n, device_prop));
+        &zero, reinterpret_cast<CudaT*>(global_gemm_buffer.get()), n, device_prop),
+          cublas, stream);
 
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
         reinterpret_cast<const CudaT*>(global_weights->template Data<T>()), n,
         reinterpret_cast<const CudaT*>(input->template Data<T>()), k,
-        &one, reinterpret_cast<CudaT*>(global_gemm_buffer.get()), n, device_prop));
+        &one, reinterpret_cast<CudaT*>(global_gemm_buffer.get()), n, device_prop),
+        cublas, stream);
   }
 
   size_t workSpaceSize = GetLongformerAttentionWorkspaceSize(element_size,

@@ -70,9 +70,6 @@ Status LRN<T>::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* Y = context->Output(0, X->Shape());
 
-  std::lock_guard<OrtMutex> lock(cudnn_stream_mutex_);
-  CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream(context)));
-
   CudnnTensor x_tensor;
   ORT_RETURN_IF_ERROR(x_tensor.Set(X->Shape().GetDims(), CudnnTensor::GetDataType<CudaT>()));
 
@@ -88,7 +85,9 @@ Status LRN<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(X->template Data<T>()),
       &zero,
       x_tensor,
-      reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
+      reinterpret_cast<CudaT*>(Y->template MutableData<T>())),
+      CudnnHandle(),
+      Stream(context));
 
   return Status::OK();
 }
@@ -105,9 +104,9 @@ CudnnLRNDescriptor::~CudnnLRNDescriptor() {
 
 Status CudnnLRNDescriptor::Set(uint32_t N, double alpha, double beta, double K) {
   if (!desc_)
-    CUDNN_RETURN_IF_ERROR(cudnnCreateLRNDescriptor(&desc_));
+    CUDNN_CONFIG_RETURN_IF_ERROR(cudnnCreateLRNDescriptor(&desc_));
 
-  CUDNN_RETURN_IF_ERROR(cudnnSetLRNDescriptor(desc_, N, alpha, beta, K));
+  CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetLRNDescriptor(desc_, N, alpha, beta, K));
   return Status::OK();
 }
 

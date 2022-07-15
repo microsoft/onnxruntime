@@ -73,7 +73,8 @@ Status TransposeWithCublas(cudaStream_t stream, cublasHandle_t cublas_handle, co
                             input_data,
                             N,
                             output_data,
-                            M));
+                            M),
+      cublas_handle, stream);
   return Status::OK();
 }
 
@@ -182,10 +183,6 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
                                          stream));
     return Status::OK();
   }
-
-  OrtMutex cublas_stream_mutex;
-  std::lock_guard<OrtMutex> lock(cublas_stream_mutex);
-  CUBLAS_CALL_THROW(cublasSetStream(cublas_handle, stream));
 
   auto element_type = input.GetElementType();
   size_t element_size = input.DataType()->Size();

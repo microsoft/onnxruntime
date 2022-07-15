@@ -84,8 +84,6 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
 
   // We need to access to the CUDA EP instance to get the cudnn handle
   CUDAExecutionProvider* cuda_ep_;
-
-  mutable OrtMutex cudnn_stream_mutex_;
 };
 
 template <typename T>
@@ -255,9 +253,9 @@ class CudnnReduceDescriptor final {
 
   Status Set(cudnnReduceTensorOp_t op, cudnnDataType_t type, cudnnReduceTensorIndices_t indices) {
     if (!desc_)
-      CUDNN_RETURN_IF_ERROR(cudnnCreateReduceTensorDescriptor(&desc_));
+      CUDNN_CONFIG_RETURN_IF_ERROR(cudnnCreateReduceTensorDescriptor(&desc_));
 
-    CUDNN_RETURN_IF_ERROR(cudnnSetReduceTensorDescriptor(
+    CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetReduceTensorDescriptor(
         desc_,
         op,
         type,

@@ -113,7 +113,9 @@ Status BatchNormalizationGrad<T, T1, T2>::ComputeInternal(OpKernelContext* ctx) 
       p_dBias,
       epsilon_,
       p_saved_mean,
-      p_saved_inv_std));
+      p_saved_inv_std),
+      CudnnHandle(),
+      Stream(ctx));
 
   if (std::is_same<T1, MLFloat16>::value) {
     Impl_Cast<float, CudaT1>(Stream(ctx), reinterpret_cast<float*>(p_dScale), dScale_data, C);

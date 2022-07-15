@@ -125,9 +125,6 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
 
-  std::lock_guard<OrtMutex> lock(cublas_stream_mutex_);
-  CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream(ctx)));
-
   if (helper.OutputOffsets().size() == 1) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         Base::CublasHandle(),
@@ -144,7 +141,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         &zero,
         reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
         ldc,
-        device_prop));
+        device_prop),
+        CublasHandle(),
+        Stream(ctx));
     return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
                                       transa, transb, trans_batch_a_, trans_batch_b_, stride_A, stride_B, stride_C, batch_count)) {
@@ -166,7 +165,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                           ldc,
                                                           stride_C,
                                                           static_cast<int>(batch_count),
-                                                          device_prop));
+                                                          device_prop),
+        CublasHandle(),
+        Stream(ctx));
 
     return Status::OK();
   }
@@ -201,7 +202,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       output_arrays.GpuPtr(),
       ldc,
       static_cast<int>(helper.OutputOffsets().size()),
-      device_prop));
+      device_prop),
+      CublasHandle(),
+      Stream(ctx));
 
   return Status::OK();
 }

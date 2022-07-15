@@ -21,9 +21,6 @@ class Inverse final : public ::onnxruntime::cuda::CudaKernel {
 
   template <typename T>
   struct ComputeImpl;
-
-  // mutex for set cudnn stream
-  mutable OrtMutex cublas_stream_mutex_;
 };
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -93,7 +90,8 @@ struct Inverse::ComputeImpl {
       IAllocatorUniquePtr<float*> matrix_ptrs = inst->GetScratchBuffer<float*>(n_batches, ort_stream);
       ORT_RETURN_IF_ERROR(ComputeMatrixOffsets<float>(stream, input_workspace.get(), num_batches, rows, matrix_ptrs));
       // Do LU factorization
-      CUBLAS_RETURN_IF_ERROR(cublasSgetrfBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), info.get(), n_batches));
+      CUBLAS_RETURN_IF_ERROR(cublasSgetrfBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), info.get(), n_batches),
+                             cublas_h, stream);
       ORT_RETURN_IF_ERROR(CheckForSingularity(stream, info, info_cpu, num_batches));
 
       // Need to compute ptrs for output buffers
@@ -103,7 +101,8 @@ struct Inverse::ComputeImpl {
         IAllocatorUniquePtr<float> ml_float_output = inst->GetScratchBuffer<float>(input_count, ort_stream);
         ORT_RETURN_IF_ERROR(ComputeMatrixOffsets<float>(stream, ml_float_output.get(), num_batches, rows, output_ptrs));
         // Do the inverse
-        CUBLAS_RETURN_IF_ERROR(cublasSgetriBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), output_ptrs.get(), dim, info.get(), n_batches));
+        CUBLAS_RETURN_IF_ERROR(cublasSgetriBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), output_ptrs.get(), dim, info.get(), n_batches),
+            cublas_h, stream);
         ORT_RETURN_IF_ERROR(CheckForSingularity(stream, info, info_cpu, num_batches));
         // Copy the result to output with casting
         Impl_Cast<float, CudaT>(stream, ml_float_output.get(), reinterpret_cast<CudaT*>(output.MutableData<MLFloat16>()), input_count);
@@ -111,7 +110,8 @@ struct Inverse::ComputeImpl {
       } else {
         ORT_RETURN_IF_ERROR(ComputeMatrixOffsets<float>(stream, output.MutableData<float>(), num_batches, rows, output_ptrs));
         // Do the inverse
-        CUBLAS_RETURN_IF_ERROR(cublasSgetriBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), output_ptrs.get(), dim, info.get(), n_batches));
+        CUBLAS_RETURN_IF_ERROR(cublasSgetriBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), output_ptrs.get(), dim, info.get(), n_batches),
+            cublas_h, stream);
         ORT_RETURN_IF_ERROR(CheckForSingularity(stream, info, info_cpu, num_batches));
         // We are done here
       }
@@ -123,13 +123,15 @@ struct Inverse::ComputeImpl {
       IAllocatorUniquePtr<double*> matrix_ptrs = inst->GetScratchBuffer<double*>(n_batches, ort_stream);
       ORT_RETURN_IF_ERROR(ComputeMatrixOffsets<double>(stream, input_workspace.get(), num_batches, rows, matrix_ptrs));
       // Do LU factorization
-      CUBLAS_RETURN_IF_ERROR(cublasDgetrfBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), info.get(), n_batches));
+      CUBLAS_RETURN_IF_ERROR(cublasDgetrfBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), info.get(), n_batches),
+          cublas_h, stream);
       ORT_RETURN_IF_ERROR(CheckForSingularity(stream, info, info_cpu, num_batches));
 
       // Need to compute ptrs for output buffers
       IAllocatorUniquePtr<double*> output_ptrs = inst->GetScratchBuffer<double*>(n_batches, ort_stream);
       ORT_RETURN_IF_ERROR(ComputeMatrixOffsets<double>(stream, output.MutableData<double>(), num_batches, rows, output_ptrs));
-      CUBLAS_RETURN_IF_ERROR(cublasDgetriBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), output_ptrs.get(), dim, info.get(), n_batches));
+      CUBLAS_RETURN_IF_ERROR(cublasDgetriBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), output_ptrs.get(), dim, info.get(), n_batches),
+          cublas_h, stream);
       ORT_RETURN_IF_ERROR(CheckForSingularity(stream, info, info_cpu, num_batches));
       // We are done here
     } else {
@@ -152,9 +154,6 @@ Status Inverse::ComputeInternal(OpKernelContext* ctx) const {
   if (num_dim > 2) {
     num_batches = static_cast<size_t>(input_shape.SizeToDimension(num_dim - 2));
   }
-
-  std::lock_guard<OrtMutex> lock(cublas_stream_mutex_);
-  CUBLAS_CALL_THROW(cublasSetStream(Base::CublasHandle(), Stream(ctx)));
 
   IAllocatorUniquePtr<int> info = GetScratchBuffer<int>(num_batches, OrtStream(ctx));
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(info.get(), 0, num_batches * sizeof(int), Stream(ctx)));

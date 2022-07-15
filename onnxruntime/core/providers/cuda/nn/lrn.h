@@ -28,8 +28,6 @@ class LRN : public CudaKernel {
 
  private:
   CudnnLRNDescriptor norm_desc_;
-  // mutex for set cudnn stream
-  mutable OrtMutex cudnn_stream_mutex_;
 };
 
 }  // namespace cuda

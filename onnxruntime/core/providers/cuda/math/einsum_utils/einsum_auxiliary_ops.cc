@@ -36,8 +36,6 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets) {
 // CUDA EP specific Transpose helper
 Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets) {
-  CUBLAS_CALL_THROW(cublasSetStream(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cublas_handle_,
-                                    static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->GetCudaStream()));
   return cuda::Transpose::DoTranspose(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp(),
                                       static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->GetCudaStream(),
                                       static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cublas_handle_,
@@ -54,9 +52,6 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
 
   CudaT one = cuda::ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = cuda::ToCudaType<T>::FromFloat(0.0f);
-  //set cublas stream
-  CUBLAS_CALL_THROW(cublasSetStream(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cublas_handle_, 
-                                    static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->GetCudaStream()));
 
   CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cublas_handle_,
                                                         CUBLAS_OP_N,
@@ -76,7 +71,9 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
                                                         static_cast<int>(N),
                                                         static_cast<int>(output_stride),
                                                         static_cast<int>(num_batches),
-                                                        static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp()));
+                                                        static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp()),
+                         static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cublas_handle_, 
+                         static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->GetCudaStream());
 
   return Status::OK();
 }
@@ -87,9 +84,6 @@ std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> 
                                   bool keep_dims, AllocatorPtr allocator,
                                   const TensorShape* input_shape_override,
                                   concurrency::ThreadPool* /*tp*/, void* einsum_cuda_assets) {
-  //set cublas stream
-  CUDNN_CALL_THROW(cudnnSetStream(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->PerThreadCudnnHandle(), 
-                                  static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->GetCudaStream()));
   return cuda::ReductionOps::ReduceCompute<T>(*static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_, CUDNN_REDUCE_TENSOR_ADD,
                                               allocator, input, reduce_axes,
                                               keep_dims, false, false, false,

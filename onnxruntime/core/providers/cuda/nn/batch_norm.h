@@ -51,8 +51,6 @@ class BatchNorm final : public CudaKernel {
   cudnnBatchNormMode_t cudnn_batch_norm_mode_;
   double momentum_;
   bool is_training_mode_ = 0;  //default as per spec
-  // mutex for set cudnn stream
-  mutable OrtMutex cudnn_stream_mutex_;
 };
 
 }  // namespace cuda

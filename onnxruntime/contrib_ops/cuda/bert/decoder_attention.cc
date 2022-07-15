@@ -221,7 +221,6 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // weight: (h1, h2)
   // h = N*H
   cublasHandle_t cublas = CublasHandle();
-  CUBLAS_RETURN_IF_ERROR(cublasSetStream(cublas, stream));
   constexpr size_t element_size = sizeof(T);
 
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -263,13 +262,15 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
       reinterpret_cast<const CudaT*>(bias->template Data<T>()), n,
       GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
-      &zero, reinterpret_cast<CudaT*>(gemm_query_buffer_p.get()), n, device_prop));
+      &zero, reinterpret_cast<CudaT*>(gemm_query_buffer_p.get()), n, device_prop),
+                         cublas, Stream(context));
   // matmul: (h2, h1)*(h1, S*B)
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
       reinterpret_cast<const CudaT*>(q_weights->template Data<T>()), n,
       reinterpret_cast<const CudaT*>(query->template Data<T>()), k,
-      &one, reinterpret_cast<CudaT*>(gemm_query_buffer_p.get()), n, device_prop));
+      &one, reinterpret_cast<CudaT*>(gemm_query_buffer_p.get()), n, device_prop),
+      cublas, Stream(context));
   // gemm_query_buffer in col-base: (h2, S*B)
 
   // calcualte k, v
@@ -287,13 +288,15 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
           reinterpret_cast<const CudaT*>(bias->template Data<T>() + hidden_size), n,
           GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
-          &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
+          &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop),
+          cublas, Stream(context));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
           reinterpret_cast<const CudaT*>(kv_weights->template Data<T>()), n,
           reinterpret_cast<const CudaT*>(query->template Data<T>()), k,
-          &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
+          &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop),
+          cublas, Stream(context));
       // gemm_kv_buffer in col-base: (2*h2, T_S*B)
     } else {
       gemm_kv_buffer_p = GetScratchBuffer<T>(batch_size * 2 * key_sequence_length * hidden_size * element_size, OrtStream(context));
@@ -306,13 +309,15 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
           reinterpret_cast<const CudaT*>(bias->template Data<T>() + hidden_size), n,
           GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
-          &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
+          &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop),
+          cublas, Stream(context));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
           reinterpret_cast<const CudaT*>(kv_weights->template Data<T>()), n,
           reinterpret_cast<const CudaT*>(key->template Data<T>()), k,
-          &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
+          &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop),
+          cublas, Stream(context));
       // gemm_kv_buffer in col-base: (2*h2, T_S*B)
     }
   } else {
@@ -329,13 +334,15 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
           reinterpret_cast<const CudaT*>(bias->template Data<T>() + hidden_size), n,
           GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
-          &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
+          &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop),
+          cublas, Stream(context));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
           reinterpret_cast<const CudaT*>(kv_weights->template Data<T>()), n,
           reinterpret_cast<const CudaT*>(query->template Data<T>()), k,
-          &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
+          &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop),
+          cublas, Stream(context));
       // gemm_kv_buffer in col-base: (2*h2, T_S*B)
     } else {
       kv_sequence_length = cache_sequence_length;
