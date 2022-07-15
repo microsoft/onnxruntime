@@ -3,10 +3,9 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from distutils.version import LooseVersion
-
 import torch
 import torch.onnx.symbolic_helper as sym_help
+from packaging.version import Version
 from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, parse_args
 
@@ -23,7 +22,7 @@ class CustomOpSymbolicRegistry:
         for name, fn in cls._SYMBOLICS.items():
             # Symbolic name is in format: domain::name
             # Exporter will fail to register symbolic with non-empty domain when torch version is < 1.11.0.
-            if LooseVersion(torch.__version__) >= LooseVersion("1.11.0") or name.startswith("::"):
+            if Version(torch.__version__) >= Version("1.11.0") or name.startswith("::"):
                 register_custom_op_symbolic(name, fn, 1)
 
 

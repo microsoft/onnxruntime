@@ -11,7 +11,6 @@ import random
 import tempfile
 import warnings
 from collections import OrderedDict, namedtuple
-from distutils.version import LooseVersion
 from inspect import signature
 from time import sleep
 from unittest.mock import patch
@@ -20,6 +19,7 @@ import _test_helpers
 import onnx
 import pytest
 import torch
+from packaging.version import Version
 
 # Import autocasting libs
 from torch.cuda import amp
@@ -1096,7 +1096,7 @@ def test_export_correctness_pool2d(pool_type, stride):
             torch.bfloat16,
             marks=[
                 pytest.mark.skipif(
-                    LooseVersion(torch.__version__) < LooseVersion("1.10.0"),
+                    Version(torch.__version__) < Version("1.10.0"),
                     reason="PyTorch 1.9 incompatible",
                 )
             ],
@@ -1142,7 +1142,7 @@ def test_gradient_correctness_minmax(operator, dim, keepdim, data_type):
 # Before 1.10 (excluded), Torch's min/max(x,y) will assign dY to y's dX if value from x and y are equal.
 # From 1.10, both x and y's dX will be dY/2. ORT follows this distribution logic, so skip below test if Torch version
 # is lower than 1.10.
-@pytest.mark.skipif(LooseVersion(torch.__version__) < LooseVersion("1.10.0"), reason="PyTorch 1.9 incompatible")
+@pytest.mark.skipif(Version(torch.__version__) < Version("1.10.0"), reason="PyTorch 1.9 incompatible")
 @pytest.mark.parametrize("operator", ["min", "max"])
 def test_gradient_correctness_minmax_two_tensors(operator):
     func = getattr(torch, operator)
@@ -1324,7 +1324,7 @@ def test_gradient_correctness_reducesum(dim, keepdim):
 
 
 # Before PyTorch 1.11.0, the exporter will fail to register symbolic with non-empty domain.
-@pytest.mark.skipif(LooseVersion(torch.__version__) < LooseVersion("1.11.0"), reason="PyTorch 1.10 incompatible")
+@pytest.mark.skipif(Version(torch.__version__) < Version("1.11.0"), reason="PyTorch 1.10 incompatible")
 @pytest.mark.parametrize("dim", [0, 1, -1])
 def test_gradient_correctness_chunk(dim):
     class NeuralNetChunk(torch.nn.Module):
@@ -1378,7 +1378,7 @@ def test_gradient_correctness_chunk(dim):
 # Currently skip these cases and test_gradient_correctness_einsum_2,
 # will enable these tests again once the issue in PyTorch is fixed.
 skip_torch_1_11 = pytest.mark.skipif(
-    LooseVersion(torch.__version__) >= LooseVersion("1.11.0"), reason="PyTorch 1.11 incompatible"
+    Version(torch.__version__) >= Version("1.11.0"), reason="PyTorch 1.11 incompatible"
 )
 
 
@@ -4739,7 +4739,7 @@ def test_ortmodule_ortmodule_method_attribute_copy():
     assert type(out2.grad_fn).__name__ == "_ORTModuleFunctionBackward"
     assert (
         type(out3.grad_fn).__name__ == "AddmmBackward0"
-        if LooseVersion(torch.__version__) >= LooseVersion("1.10.0")
+        if Version(torch.__version__) >= Version("1.10.0")
         else "AddmmBackward"
     )
 
