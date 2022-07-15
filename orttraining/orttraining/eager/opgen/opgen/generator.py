@@ -198,10 +198,6 @@ class ORTGen:
         writer.writeline('#include "ort_aten.h"')
         writer.writeline('#include "ort_log.h"')
         writer.writeline()
-        writer.writeline(
-            '#define CHECK_STATUS(status) if(!status.IsOK()) { std::stringstream err; err << "ORT return failure (line " << __LINE__ << "): " << status.ErrorMessage(); throw std::runtime_error(err.str()); }'
-        )
-        writer.writeline()
         writer.push_namespace("torch_ort")
         writer.push_namespace("eager")
         writer.writeline()
