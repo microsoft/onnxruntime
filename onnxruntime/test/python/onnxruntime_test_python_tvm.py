@@ -50,6 +50,7 @@ def get_model_with_fixed_shapes() -> ModelProto:
     """
     Create model with Static Shapes
     """
+
     def change_input_shape(model: ModelProto, ind: int, shape: Tuple) -> None:
         """
         Function to change the input form
@@ -81,6 +82,7 @@ def get_input_data_for_model_with_fixed_shapes(onnx_model: ModelProto) -> Dict[A
     """
     Create input data for model with static shapes
     """
+
     def get_onnx_input_names(model: ModelProto) -> List[AnyStr]:
         inputs = [node.name for node in model.graph.input]
         initializer = [node.name for node in model.graph.initializer]
@@ -193,6 +195,7 @@ class TestTVM(unittest.TestCase):
     """
     Unit tests for TVM EP
     """
+
     @staticmethod
     def test_accuracy_for_model_with_dynamic_shapes():
         """
