@@ -60,7 +60,9 @@
       "test_convtranspose",
       "test_convtranspose_pad",
       "test_convtranspose_pads",
-      "test_convtranspose_output_shape",
+      // TODO: add this when test-case file in opset v8 is fixed (i.e. output_shape has 2 dims)
+      // Might have to rewrite git history for that...
+      // "test_convtranspose_output_shape",
       "test_convtranspose_kernel_shape",
       "test_convtranspose_dilations",
       "test_constant",
