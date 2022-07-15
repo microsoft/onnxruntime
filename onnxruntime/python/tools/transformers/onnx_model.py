@@ -25,8 +25,11 @@ class OnnxModel:
         self.model: ModelProto = model
         self._node_name_suffix: Dict[str, int] = {}  # key is node name prefix, value is the last suffix generated
         self.shape_infer_helper = None
-        self.enable_shape_infer = False
+        self.enable_shape_infer = True
         self.all_graphs = None
+
+    def disable_shape_inference(self):
+        self.enable_shape_infer = False
 
     def infer_runtime_shape(self, dynamic_axis_mapping={}, update=False):
         if self.enable_shape_infer:
