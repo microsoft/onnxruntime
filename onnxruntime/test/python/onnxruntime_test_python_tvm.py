@@ -1,16 +1,16 @@
 import os
 import sys
-import tvm
-import numpy
 import tempfile
 import unittest
-import onnxruntime
+from typing import Any, AnyStr, Dict, List, Tuple
 
-from typing import Dict, List, AnyStr, Tuple, Any
-from onnx import TensorProto, ModelProto, mapping
-from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
+import numpy
+import tvm
 from numpy.testing import assert_almost_equal
+from onnx import ModelProto, TensorProto, mapping
+from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
 
+import onnxruntime
 
 numpy.random.seed(32)
 
