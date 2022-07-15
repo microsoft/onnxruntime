@@ -2118,7 +2118,7 @@ class GatherOpSupportChecker : public BaseOpSupportChecker {
                          const OpSupportCheckParams& params) const override;
 };
 
-bool GatherOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+bool GatherOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                const OpSupportCheckParams& /* params */) const {
   const auto& inputs = node_unit.Inputs();
   Shape input_shape;
@@ -2141,6 +2141,18 @@ bool GatherOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* in
   // Here in GatherOpSupportChecker::IsOpSupportedImpl, we removed the restriction that 2nd input "indices" must be an initializer
   // to accommodate the support for some models such as modibleBERT.
   // However, for other cases(such as int64 type), we still require indices of gather to be an initializer
+  const auto& indices_name = inputs[1].node_arg.Name();
+
+  int32_t indices_type;
+  if (!GetType(node_unit.Inputs()[1].node_arg, indices_type))
+    return false;
+
+  if (indices_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    if (!Contains(initializers, indices_name)) {
+      LOGS_DEFAULT(VERBOSE) << "Indices of Gather must be known.";
+      return false;
+    }
+  }
 
   return true;
 }
