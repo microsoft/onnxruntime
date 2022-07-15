@@ -232,6 +232,17 @@ class OrtOpTests(unittest.TestCase):
         ort_result = torch.softmax(ort_tensor, dim=1)
         assert torch.allclose(cpu_result, ort_result.cpu())
 
+    def test_log_softmax(self):
+        device = self.get_device()
+        cpu_tensor = torch.rand(3, 5)
+        ort_tensor = cpu_tensor.to(device)
+        cpu_result_a = torch.log_softmax(cpu_tensor, dim=1)
+        ort_result_a = torch.log_softmax(ort_tensor, dim=1)
+        assert torch.allclose(cpu_result_a, ort_result_a.cpu())
+        cpu_result_b = torch.log_softmax(cpu_tensor, dim=0)
+        ort_result_b = torch.log_softmax(ort_tensor, dim=0)
+        assert torch.allclose(cpu_result_b, ort_result_b.cpu())
+
     def test_addmm(self):
         device = self.get_device()
         size = 4

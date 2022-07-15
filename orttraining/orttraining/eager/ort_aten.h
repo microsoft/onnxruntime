@@ -11,6 +11,8 @@
 #include "ort_log.h"
 #include "ort_tensor.h"
 
+#define CHECK_STATUS(status) if(!status.IsOK()) { std::stringstream err; err << "ORT return failure (line " << __LINE__ << "): " << status.ErrorMessage(); throw std::runtime_error(err.str()); }
+
 namespace torch_ort {
 namespace eager {
 

@@ -241,6 +241,19 @@ onnx::AttributeProto create_ort_attribute(
   return attr;
 }
 
+onnx::AttributeProto create_ort_attribute(
+  const char* name,
+  const std::vector<int64_t> values) {
+  onnx::AttributeProto attr;
+  attr.set_name(name);
+  attr.set_type(onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+
+  for (size_t i = 0; i < values.size(); i++)
+    attr.add_ints(values[i]);
+
+  return attr;
+}
+
 bool IsSupportedType(at::Scalar scalar, const std::vector<at::ScalarType>& valid_types){
   return std::find(valid_types.begin(), valid_types.end(), scalar.type()) != valid_types.end();
 }
@@ -972,6 +985,89 @@ at::Tensor& nonzero_out(
   auto ort_input_out = create_ort_value(invoker, out);
   auto ort_temp = create_ort_value(invoker, temp);
   copy(invoker, ort_temp, ort_input_out);
+
+  return out;
+}
+
+// aten::_log_softmax.out(Tensor self, int dim, bool half_to_float, *, Tensor(a!) out) -> Tensor(a!)
+at::Tensor& _log_softmax_out(
+  const at::Tensor& self,
+  int64_t dim,
+  bool half_to_float,
+  // *,
+  at::Tensor& out) {
+  ORT_LOG_FN(self, dim, half_to_float, out);
+
+  if (
+    !IsSupportedType(self, {at::kBFloat16,at::kDouble,at::kFloat,at::kHalf})) {
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(_log_softmax_out)>::call(self, dim, half_to_float, out);
+  }
+  auto& invoker = GetORTInvoker(self.device());
+
+  // resize the output and then create output ort value to be updated.
+  resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), self.sizes());
+  auto ort_input_out = create_ort_value(invoker, out);
+  auto ort_input_0_self = create_ort_value(invoker, self);
+
+  // Check dimensions (according to symbolic_opset9).
+  // Onnx only supports log_softmax with dim -1, otherwise transpose required.
+  int64_t ndim = self.dim();
+  if (dim < 0) {
+    dim += ndim;
+  }
+  bool need_transpose = ndim != dim + 1;
+
+  // Use transpose to switch the needed dimension to -1
+  // This requires specifying all of the dimensions in order and then
+  // swapping the last one with the one specified.
+  std::vector<int64_t> axes;
+  std::vector<OrtValue> ort_outputs_0_Transpose(1);
+  if (need_transpose) {
+    axes.reserve(ndim);
+    for (int64_t i = 0; i < ndim; i++)
+      axes.push_back(i);
+
+    axes[dim] = ndim-1;
+    axes[ndim-1] = dim;
+    dim = ndim-1;
+
+    NodeAttributes attrs_0(1);
+    attrs_0["perm"] = create_ort_attribute("perm", axes);
+    auto status = invoker.Invoke("Transpose", {
+      std::move(ort_input_0_self),
+    }, ort_outputs_0_Transpose, &attrs_0);
+    CHECK_STATUS(status);
+  }
+
+  NodeAttributes attrs_1(1);
+  attrs_1["axis"] = create_ort_attribute(
+    "axis", dim, at::ScalarType::Int);
+
+  std::vector<OrtValue> ort_outputs_1_LogSoftmax(1);
+  if (!need_transpose) {
+    ort_outputs_1_LogSoftmax[0] = ort_input_out;
+  }
+
+  auto status = invoker.Invoke("LogSoftmax", {
+    std::move(need_transpose ? ort_outputs_0_Transpose[0] : ort_input_0_self),
+  }, ort_outputs_1_LogSoftmax, &attrs_1);
+  CHECK_STATUS(status);
+
+  std::vector<OrtValue> ort_outputs_2_Transpose(1);
+
+  if (need_transpose) {
+    ort_outputs_2_Transpose[0] = ort_input_out;
+
+    NodeAttributes attrs_2(1);
+    attrs_2["perm"] = create_ort_attribute("perm", axes);;
+
+    status = invoker.Invoke("Transpose", {
+      std::move(ort_outputs_1_LogSoftmax[0]),
+    }, ort_outputs_2_Transpose, &attrs_2);
+    CHECK_STATUS(status);
+  }
 
   return out;
 }
