@@ -294,5 +294,13 @@
     [
       "QGemm com.microsoft CPUExecutionProvider",
       13737193491843065240
+    ],
+    [
+      "QLinearSoftmax com.microsoft CPUExecutionProvider",
+      1358501621273155784
+    ],
+    [
+      "QLinearSoftmax com.microsoft CPUExecutionProvider",
+      7613708265192985552
     ]
 ]

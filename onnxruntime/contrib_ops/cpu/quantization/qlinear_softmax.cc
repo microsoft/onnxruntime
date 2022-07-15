@@ -83,7 +83,7 @@ QLinearSoftmax<T>::QLinearSoftmax(const OpKernelInfo& info)
   }
   uint32_t reduce_size = gsl::narrow_cast<uint32_t>(x_shape->dim(axis_).dim_value());
   if (opset_ < 13) {
-    for (size_t i = axis_; i < rank; i++) {
+    for (size_t i = axis_ + 1; i < rank; i++) {
       reduce_size *= gsl::narrow_cast<uint32_t>(x_shape->dim(i).dim_value());
     }
   }
