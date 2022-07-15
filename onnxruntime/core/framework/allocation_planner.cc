@@ -1760,6 +1760,8 @@ class PlannerImpl {
 
   void PartitionIntoStreams(const logging::Logger& logger, const std::string& partition_config_file) {
     auto partitioner = INodePartitioner::CreateNodePartitioner(logger, partition_config_file);
+    auto status = partitioner->GetStatus();
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     partitioner->PartitionNodes(graph_viewer_, stream_nodes_);
     node_stream_map_.resize(graph_viewer_.MaxNodeIndex() + 1);
     //int node_cnt = 0;
@@ -2085,7 +2087,7 @@ Status SequentialPlanner::CreatePlan(
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-std::unordered_map<std::string, INodePartitioner::NodePartitionerType> INodePartitioner::name_type_map = {{std::string{"DummyPartitioner"}, NodePartitionerType::DummyPartition}};
+std::unordered_map<std::string, INodePartitioner::NodePartitionerType> INodePartitioner::name_type_map = {{std::string{"DummyPartition"}, NodePartitionerType::DummyPartition}};
 
 //INodePartitioner::INodePartitioner(const std::string& configuration_file, const logging::Logger& logger) : configuration_file_(configuration_file, logger) {}
 
@@ -2094,11 +2096,13 @@ class DummyPartitioner : public INodePartitioner {
   DummyPartitioner(const logging::Logger& logger, const std::string& configuration_file) : INodePartitioner(logger, configuration_file) {
     Initialize();
   }
-  void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& stream_nodes) override;
-  void DumpPartition() const override;
-  Status IsInitialized() const override {
-    return status_;
+  ~DummyPartitioner() {
+    if (need_dump_) {
+      DumpPartition();
+    }
   }
+  void DumpPartition() const;
+  void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& stream_nodes) override;
   virtual const std::string& Name() const override {
     return name;
   }
@@ -2108,13 +2112,11 @@ class DummyPartitioner : public INodePartitioner {
   int num_streams_{};
   std::map<std::string, int> max_streams_;
   std::vector<std::vector<std::string>> node_names_by_stream_;
-  Status status_{};
+  bool need_dump_ = false;
   static const std::string name;
-  static std::mutex mtx; // TODO: switch to rwlock to ensure thread-safety when multiple threads read/write the config file
 };
 
 const std::string DummyPartitioner::name = "DummyPartition";
-std::mutex DummyPartitioner::mtx;
 
 /*
 Format of the configuration file for dummpy partition:
@@ -2137,33 +2139,24 @@ void DummyPartitioner::Initialize() {
   if (configuration_file_.empty()) {
     return;
   }
-  std::lock_guard<std::mutex> guard(mtx);
   std::ifstream if_stream(configuration_file_);
   if (if_stream.is_open()) {
-    int eps = 0;
-    //int at = 0;
     std::string line;
     if (!std::getline(if_stream, line) || line != Name()) {
       EXIT_ON_ERR("configuration file should start with a line of partition name");
     }
-    //++at;
     if (std::getline(if_stream, line)) {
       auto columns = INodePartitioner::Split(line,':');
       if (columns.size() != 2 || columns[0] != "ExecutionProviders") {
         EXIT_ON_ERR("2nd line of configuration file should be of format: ExecutionProviders,<an integer>");
       }
-      for (char c : columns[1]) {
-        if (!isalpha(c)) {
-          EXIT_ON_ERR("2nd line, the ExecutionProviders should followed by a integer");
-        }
-      }
-      eps = atoi(columns[1].c_str()); //TODO:
+      int eps = atoi(columns[1].c_str());
       if (eps <= 0) {
         EXIT_ON_ERR("2nd line, the number of ExecutionProviders must be a positive value");
       }
       for (int i = 0; i < eps; ++i) {
         if (std::getline(if_stream, line)) {
-          auto columns = INodePartitioner::Split(line,':');
+          columns = INodePartitioner::Split(line,':');
           if (columns.size() != 2) {
             EXIT_ON_ERR("invalid configuration - failed to read execution provider stream setting")
           }
@@ -2183,7 +2176,9 @@ void DummyPartitioner::Initialize() {
       if (node_names_by_stream_.size() != num_streams_) {
         EXIT_ON_ERR("invalid configuration - the total number of line of streams mismatch with the sum of execution provider stream setting");
       }
-    }  // else means file is empty, will fill it with default settings
+    } else {
+      need_dump_ = true;
+    }
     if_stream.close();
   }
 }
@@ -2192,16 +2187,18 @@ void DummyPartitioner::DumpPartition() const {
   if (configuration_file_.empty()) {
     return;
   }
-  std::lock_guard<std::mutex> guard(mtx);
   std::ofstream of_stream(configuration_file_, std::ios_base::out | std::ios_base::trunc);
   if (of_stream.is_open()) {
     of_stream << Name() << std::endl;
+    of_stream << "ExecutionProviders:" << max_streams_.size() << std::endl;
     for (const auto& kv : max_streams_) {
       of_stream << kv.first << ":" << kv.second << std::endl;
     }
     for (const auto& nodes : node_names_by_stream_) {
-      std::copy(nodes.begin(), prev(nodes.end()), std::ostream_iterator<std::string>(of_stream, ","));
-      of_stream << "," << nodes.back() << std::endl;
+      std::copy(nodes.begin(), nodes.end() - 1, std::ostream_iterator<std::string>(of_stream, ","));
+      if (!nodes.empty()) {
+        of_stream << nodes.back() << std::endl;
+      }
     }
     of_stream.close();
   } else {

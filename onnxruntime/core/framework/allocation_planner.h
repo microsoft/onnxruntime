@@ -86,11 +86,10 @@ class INodePartitioner {
     DummyPartition = 0,
     Unknown,
   };
-  virtual ~INodePartitioner() { DumpPartition(); };
+  virtual ~INodePartitioner() {};
   static std::unique_ptr<INodePartitioner> CreateNodePartitioner(const logging::Logger& logger, const std::string& configuration_file = "");
   virtual void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& stream_nodes) = 0;
-  virtual void DumpPartition() const {}; // do nothing by default
-  virtual Status IsInitialized() const = 0;
+  Status GetStatus() const { return status_; }
   virtual const std::string& Name() const = 0;
 
  protected:
@@ -99,6 +98,7 @@ class INodePartitioner {
   INodePartitioner(const logging::Logger& logger, const std::string& configuration_file) : logger_(logger), configuration_file_(configuration_file) {}
   const logging::Logger& logger_;
   std::string configuration_file_{};
+  Status status_{};
 };
 
 class SequentialPlanner {

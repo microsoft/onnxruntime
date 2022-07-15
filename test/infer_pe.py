@@ -14,10 +14,8 @@ sess_opt.execution_mode = ort.ExecutionMode.ORT_PARALLEL
 sess_opt.optimized_model_filepath = "bug.opt.onnx"
 sess_opt.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
 # e.g.for "op1,op2,op3;op4,op5", [op1,op2,op3],[op4,op5] will occupy separate streams exclusively#
-sess_opt.grouped_ops = 'MemcpyToHost,MemcpyFromHost'
 # grouped_ops has priority over streams_per_ep, which will only be applied to ops not refered in grouped_ops
-sess_opt.streams_per_ep = 'CPUExecutionProvider:1;CUDAExecutionProvider:2' 
-sess_opt.max_streams_per_ep = 'CPUExecutionProvider:1;CUDAExecutionProvider:4' 
+sess_opt.add_session_config_entry('session.node_partition_config_file', 'dummpy_config.cfg')
 sess_opt.log_severity_level = 0
 #sess_opt.log_verbosity_level = 255
 model = ort.InferenceSession(onnx_path, sess_opt, providers=['CUDAExecutionProvider'])
