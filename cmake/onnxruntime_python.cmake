@@ -150,6 +150,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
+    ${PROVIDERS_XNNPACK}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -693,6 +694,19 @@ if (onnxruntime_USE_OPENVINO)
       COMMAND ${CMAKE_COMMAND} -E copy
           $<TARGET_FILE:onnxruntime_providers_openvino>
           $<TARGET_FILE:onnxruntime_providers_shared>
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    )
+endif()
+
+if (DEFINED ENV{OPENVINO_MANYLINUX})
+    file(GLOB onnxruntime_python_openvino_python_srcs CONFIGURE_DEPENDS
+        "${ONNXRUNTIME_ROOT}/core/providers/openvino/scripts/*"
+    )
+
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${onnxruntime_python_openvino_python_srcs}
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
     )
 endif()

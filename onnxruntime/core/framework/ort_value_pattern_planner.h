@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
 #include "core/framework/mem_pattern_planner.h"
 #include "core/framework/execution_plan_base.h"
 #include "core/framework/allocation_planner.h"
@@ -26,12 +27,13 @@ class OrtValuePatternPlanner {
 #endif
   common::Status TraceAllocation(int ort_value_idx, size_t size);
   common::Status TraceFree(int ort_value_index);
-  common::Status GeneratePatterns(MemoryPatternGroup* out);
+  common::Status GeneratePatterns(MemoryPatternGroup& out);
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtValuePatternPlanner);
 
  private:
   // This map itself is const after the construction
-  std::map<OrtMemoryInfo, std::unique_ptr<MemPatternPlanner>> planner_map_;
+  // MemPatternPlanner has copying disabled to using node map
+  NodeHashMap<OrtMemoryInfo, MemPatternPlanner> planner_map_;
   const ExecutionPlanBase& execution_planner_;
 };
 }  // namespace onnxruntime

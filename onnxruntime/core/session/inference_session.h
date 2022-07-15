@@ -349,13 +349,15 @@ class InferenceSession {
    *                              copy/checks.
    * @param cache Contains node arg name to OrtValue map stashed from previous run
    *              for frontier tensors
+   * @param partial_graph_index Index of the partial graph to run.
    */
   common::Status PartialRun(onnxruntime::RunOptions& run_options,
                             const std::vector<OrtValue>& feeds,
                             std::vector<OrtValue>& fetches,
                             PartialGraphExecutionState& state,
                             FeedsFetchesManager& feeds_fetches_manager,
-                            const OrtValueCachePtr& cache);
+                            const OrtValueCachePtr& cache,
+                            int32_t partial_graph_index);
 #endif
 
   /**
@@ -663,6 +665,12 @@ class InferenceSession {
   // when use_per_session_threads is true.
   std::basic_string<ORTCHAR_T> thread_pool_name_;
   std::basic_string<ORTCHAR_T> inter_thread_pool_name_;
+
+  // This option allows to decrease CPU usage between infrequent
+  // requests and forces any TP threads spinning stop immediately when the last of
+  // concurrent ExecuteGraph() call returns.
+  // Spinning is restarted on the next Run()
+  bool force_spinning_stop_between_runs_ = false;
 
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;

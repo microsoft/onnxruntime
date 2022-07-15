@@ -15,7 +15,10 @@ class T5DecoderSubgraph : public Subgraph {
   T5DecoderSubgraph(
       const onnxruntime::Node& node_in,
       const std::string& attribute_name,
-      const GraphViewer& subgraph_in) : Subgraph(node_in, attribute_name, subgraph_in) {}
+      const GraphViewer& subgraph_in) : Subgraph(node_in, attribute_name, subgraph_in),
+                                        has_hidden_state_(false) {
+        first_present_output_index_ = 1;
+      }
 
   // Create inputs for first inference of decoder subgraph.
   Status CreateInitialFeeds(
@@ -25,13 +28,40 @@ class T5DecoderSubgraph : public Subgraph {
       const std::vector<OrtValue>& encoder_fetches,
       std::vector<OrtValue>& decoder_feeds,
       const BeamSearchDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
+      const BeamSearchDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
+      const BeamSearchDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
+      const BeamSearchDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
+      int num_beam,
       void* stream);
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs) override;
 
-  constexpr static int kFirstPastInputIndex = 3;
-  constexpr static int kFirstPresentOutputIndex = 1;
+  void SetPastInputIndex(bool has_hidden_state) {
+    has_hidden_state_ = has_hidden_state;
+    if (!has_hidden_state_) {
+      first_past_input_index_ = 2;
+    } else {
+      first_past_input_index_ = 3;
+    }
+  }
+
+  int GetFirstPastInputIndex() const {
+    return first_past_input_index_;
+  }
+
+  int GetFirstPresentOutputIndex() const {
+    return first_present_output_index_;
+  }
+
+  int HasHiddenStates() const {
+    return has_hidden_state_;
+  }
+
+ private:
+  int first_past_input_index_;
+  int first_present_output_index_;
+  bool has_hidden_state_;
 };
 
 }  // namespace transformers

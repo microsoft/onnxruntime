@@ -118,7 +118,11 @@ Status Optional::Compute(OpKernelContext* ctx) const {
 
   } else {  // No input was provided - we use the type proto to construct the output OrtValue
 
-    CheckValidTypeProto(*type_proto_);
+    if (!CheckValidTypeProto(*type_proto_)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "The TypeProto attribute in the Optional op ",
+                             "can only be of type(tensor) or (seq(tensor))");
+    }
 
     // type is either Tensor or TensorSeq (we have validated this already in CheckValidTypeProto())
     if (type_proto_->has_tensor_type()) {

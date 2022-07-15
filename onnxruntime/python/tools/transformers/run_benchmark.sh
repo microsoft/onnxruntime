@@ -137,7 +137,7 @@ run_one_test() {
     fi
 
     if [ "$run_ort_trt" = true ] ; then
-      trt_options="--provider tensorrt --disable_ort_io_binding"
+      trt_options="--provider tensorrt"
       echo python $benchmark_script -m $1 $onnx_export_options $trt_options $2 $3 $4 >> benchmark.log
       echo python $benchmark_script -m $1 $benchmark_options $trt_options $2 $3 $4 -i $input_counts >> benchmark.log
       if [ "$run_tests" = true ] ; then
