@@ -1,4 +1,5 @@
 import os
+import sys
 import tvm
 import numpy
 import tempfile
@@ -12,6 +13,10 @@ from numpy.testing import assert_almost_equal
 
 
 numpy.random.seed(32)
+
+
+def is_windows():
+    return sys.platform.startswith("win")
 
 
 def get_model_with_dynamic_shapes() -> ModelProto:
@@ -126,7 +131,7 @@ def serialize_virtual_machine(vm_exec: tvm.runtime.vm.Executable) -> AnyStr:
     temp_directory = tempfile.mkdtemp()
     path_consts = os.path.join(temp_directory, "consts")
     vm_exec.move_late_bound_consts(path_consts, byte_limit=256)
-    lib_path = os.path.join(temp_directory, f"model.so")
+    lib_path = os.path.join(temp_directory, f"model.{'dll' if is_windows() else 'so'}")
     code_path = os.path.join(temp_directory, f"model.ro")
     code, lib = vm_exec.save()
     lib.export_library(lib_path)
