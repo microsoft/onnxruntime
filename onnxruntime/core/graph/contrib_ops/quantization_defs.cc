@@ -589,17 +589,17 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
 QLinearSoftmax computes the normalized exponential values for the given input:
 Softmax(input, axis) = Exp(input) / ReduceSum(Exp(input), axis=axis, keepdims=1)
 The input does not need to explicitly be a 2D vector. The "axis" attribute
-indicates the dimension along which QLinearSoftmax will be performed.
-The output tensor has the same shape
-and contains the QLinearSoftmax values of the corresponding input.
+indicates the dimension along which QLinearSoftmax will be performed for onnx v.13+.
+or the dimention coerced to NxD Matrix fo onnx v.12-
+The output tensor has the same shape.
 )DOC")
-      .Attr("axis", "apply softmax to elements for dimensions axis or higher", AttributeProto::INT, static_cast<int64_t>(-1))
-      .Input(0, "X", "The input tensor that's coerced into a 2D matrix of size (NxD)", "T")
-      .Input(1, "x_scale", "Scale of quantized input 'X'. It must be a scalar.", "tensor(float)")
+      .Attr("axis", "apply softmax to elements for dimensions axis, or all dims along with axis according to opversion", AttributeProto::INT, static_cast<int64_t>(-1))
+      .Input(0, "X", "The input tensor", "T")
+      .Input(1, "X_scale", "Scale of quantized input 'X'. It must be a scalar.", "tensor(float)")
       .Input(2, "x_zero_point",
             "Zero point tensor for input 'X'."
             "It must be a scalar.",
-            "T")
+            "T", OpSchema::Optional)
       .Input(3, "y_scale", "Scale of quantized output 'Y'. It must be a scalar.", "tensor(float)")
       .Input(4, "y_zero_point",
             "Zero point tensor for output 'Y'. "
@@ -607,9 +607,7 @@ and contains the QLinearSoftmax values of the corresponding input.
             "T")
       .Output(0, "Y",
               "Output data tensor from pooling across the input "
-              "tensor. The output tensor has the same rank as the input. "
-              "with the N and C value keep it value, while the other"
-              "dimensions are all 1.",
+              "tensor. The output tensor has the same rank as the input. ",
               "T")
       .TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"}, "Constrain input and output types to singed/unsigned int8 tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
