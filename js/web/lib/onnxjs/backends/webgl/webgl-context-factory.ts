@@ -84,9 +84,7 @@ export function createNewWebGLContext(contextId?: 'webgl'|'webgl2'): WebGLContex
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
-declare let OffscreenCanvas: {
-  new(width: number, height: number): HTMLCanvasElement;
-};
+declare let OffscreenCanvas: {new (width: number, height: number): HTMLCanvasElement;};
 
 function createCanvas(): HTMLCanvasElement {
   if (typeof document === 'undefined') {
