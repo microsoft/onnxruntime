@@ -8,8 +8,6 @@ import os
 import sys
 from typing import Dict, Optional
 
-import onnx
-
 # In ORT Package the symbolic_shape_infer.py is in ../tools
 file_path = os.path.dirname(__file__)
 if os.path.exists(os.path.join(file_path, "../tools/symbolic_shape_infer.py")):
@@ -30,7 +28,7 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
         self.is_inferred_: bool = False
         self.dynamic_axis_mapping_: Optional[Dict[str, int]] = None
 
-    def infer(self, dynamic_axis_mapping: Optional[Dict[str, int]], max_runs: int = 32):
+    def infer(self, dynamic_axis_mapping: Optional[Dict[str, int]], max_runs: int = 128):
         """Run shape inference, and try replace dynamic axis from string to integer when mapping is provided.
 
         Args:
@@ -61,23 +59,34 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
         self.is_inferred_ = True
         return self.all_shapes_inferred_
 
-    # Override _get_sympy_shape() in symbolic_shape_infer.py to ensure shape inference by giving the actual value of dynamic axis
     def _get_sympy_shape(self, node, idx):
+        """Override it to ensure shape inference by giving the actual value of dynamic axis."""
         sympy_shape = []
-        for d in self._get_shape(node, idx):
-            if isinstance(d, str):
-                if d in self.dynamic_axis_mapping_.keys():
-                    sympy_shape.append(self.dynamic_axis_mapping_[d])
-                elif d in self.symbolic_dims_:
-                    sympy_shape.append(self.symbolic_dims_[d])
+
+        shape = self._get_shape(node, idx)
+        if shape:
+            for dim in shape:
+                if isinstance(dim, str):
+                    if dim in self.dynamic_axis_mapping_.keys():
+                        sympy_shape.append(self.dynamic_axis_mapping_[dim])
+                    elif dim in self.symbolic_dims_:
+                        sympy_shape.append(self.symbolic_dims_[dim])
+                    else:
+                        sympy_shape.append(sympy.Symbol(dim, integer=True))
                 else:
-                    sympy_shape.append(sympy.Symbol(d, integer=True))
-            else:
-                assert d is not None
-                sympy_shape.append(d)
+                    assert dim is not None
+                    sympy_shape.append(d)
         return sympy_shape
 
     def get_edge_shape(self, edge):
+        """Get shape of an edge.
+
+        Args:
+            edge (str): name of edge
+
+        Returns:
+            _type_: Optional[List[int]]
+        """
         assert self.all_shapes_inferred_
         if edge not in self.known_vi_:
             print("Cannot retrieve the shape of " + str(edge))
@@ -87,13 +96,25 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
         shape = get_shape_from_type_proto(type_proto)
 
         if shape is not None and self.dynamic_axis_mapping_ is not None:
-            for i, d in enumerate(shape):
-                if isinstance(d, str) and d in self.dynamic_axis_mapping_.keys():
-                    shape[i] = self.dynamic_axis_mapping_[d]
+            for i, dim in enumerate(shape):
+                if isinstance(dim, str) and dim in self.dynamic_axis_mapping_.keys():
+                    shape[i] = self.dynamic_axis_mapping_[dim]
 
         return shape
 
     def compare_shape(self, edge, edge_other):
+        """Compare shape of two edges.
+
+        Args:
+            edge (str): name of edge
+            edge_other (str): name of another edge
+
+        Raises:
+            Exception: At least one shape is missed for edges to compare
+
+        Returns:
+            bool: whether the shape is same or not
+        """
         assert self.all_shapes_inferred_
         shape = self.get_edge_shape(edge)
         shape_other = self.get_edge_shape(edge_other)

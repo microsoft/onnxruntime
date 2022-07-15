@@ -1,6 +1,8 @@
 import unittest
 
+import onnx
 import pytest
+import torch
 from parity_utilities import find_transformers_source
 
 if find_transformers_source():
@@ -19,7 +21,6 @@ class SymbolicShapeInferenceHelperTest(unittest.TestCase):
     def _load_onnx(self, model_name):
         input_names = MODELS[model_name][0]
         base_path = "../onnx_models/"
-        import torch
 
         config_modifier = ConfigModifier(None)
         fusion_options = None
@@ -45,8 +46,6 @@ class SymbolicShapeInferenceHelperTest(unittest.TestCase):
                 fusion_options,
             )
         model_path = base_path + model_name.replace("-", "_") + "_1.onnx"
-        import onnx
-
         return onnx.load_model(model_path)
 
     # TODO: use a static lightweight model for test

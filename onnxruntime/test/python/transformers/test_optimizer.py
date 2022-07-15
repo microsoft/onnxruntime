@@ -8,13 +8,15 @@
 
 # For live logging, use the command: pytest -o log_cli=true --log-cli-level=DEBUG
 
-import os
+import shutil
 import unittest
 
 import pytest
+import torch
 from model_loader import get_fusion_test_model, get_test_data_path
 from onnx import TensorProto, load_model
 from parity_utilities import find_transformers_source
+from transformers.utils import is_tf2onnx_available, is_tf_available
 
 if find_transformers_source():
     from benchmark_helper import ConfigModifier, OptimizerInfo, Precision
@@ -72,8 +74,6 @@ class TestBertOptimization(unittest.TestCase):
         validate_model=True,
     ):
         # Remove cached model so that CI machine will have space
-        import shutil
-
         shutil.rmtree("./cache_models", ignore_errors=True)
         shutil.rmtree("./onnx_models", ignore_errors=True)
         # expect fusion result list have the following keys
@@ -81,8 +81,6 @@ class TestBertOptimization(unittest.TestCase):
         model_fusion_statistics = {}
 
         input_names = MODELS[model_name][0]
-
-        import torch
 
         config_modifier = ConfigModifier(None)
         fusion_options = None
@@ -117,10 +115,6 @@ class TestBertOptimization(unittest.TestCase):
 
     def _test_optimizer_on_tf_model(self, model_name, expected_fusion_result_list, inputs_count, validate_model=True):
         # Remove cached model so that CI machine will have space
-        import shutil
-
-        from transformers.utils import is_tf2onnx_available, is_tf_available
-
         if not is_tf_available() or not is_tf2onnx_available():
             return
 
@@ -133,8 +127,6 @@ class TestBertOptimization(unittest.TestCase):
         print("testing mode ", model_name)
         print("testing input number = ", inputs_count)
         input_names = MODELS[model_name][0]
-
-        import torch
 
         config_modifier = ConfigModifier(None)
         fusion_options = None
