@@ -7,6 +7,7 @@
 
 #include <core/common/status.h>
 
+#include "core/framework/ortdevice.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/session_state_utils.h"
 #include "core/common/common.h"
@@ -247,8 +248,7 @@ common::Status SaveInitializedTensors(
   auto initialized_tensors_to_allocate = id_to_initialized_tensor;
   for (int ort_value_index : initializer_allocation_order) {
     const auto entry = initialized_tensors_to_allocate.find(ort_value_index);
-    auto location = exec_plan.GetLocation(ort_value_index).name;
-    if (!(utils::HasExternalData(*entry->second) && (strcmp(location, CPU) == 0))) {
+    if (!(utils::HasExternalData(*entry->second) && exec_plan.GetLocation(ort_value_index).device.Type() == OrtDevice::CPU)) {
       // can not trace string tensor
       ORT_ENFORCE(entry != initialized_tensors_to_allocate.end() &&
                   entry->second->data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING);
