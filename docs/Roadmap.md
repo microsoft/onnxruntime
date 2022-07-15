@@ -3,7 +3,7 @@ ONNX Runtime is an active, fast-paced project backed by a strong team of Microso
 ONNX Runtime as a robust, versatile, and high performance inference engine for DNN and traditional ML models.
 
 ## High Level Goals
-ONNX Runtime is a runtime accelerator that supports interoperable ML and DNN models based on the [ONNX](https://onnx.ai/) spec. For key technical design objectives and considerations, see [ONNX Runtime Inference High Level Design](./InferenceHighLevelDesign.md).
+ONNX Runtime is a runtime accelerator that supports interoperable ML and DNN models based on the [ONNX](https://onnx.ai/) spec. For key technical design objectives and considerations, see [ONNX Runtime Inference High Level Design](https://onnxruntime.ai/docs/reference/high-level-design.html).
 
 We recognize the challenges involved in operationalizing ML models performantly in an agile way, and we understand that high volume production services can be highly performance-sensitive and often need to support a variety of compute targets (we experience these first-hand at Microsoft across our vast array of products and services). 
 
