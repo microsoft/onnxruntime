@@ -40,7 +40,7 @@ void QLinearSoftmax<T>::BuildLookupTableIfFixed(const OpKernelInfo& info, uint32
   bool get_y_scale = info.TryGetConstantInput(3, &tensor_y_scale);
   bool get_y_zero_point = !info.node().InputDefs()[4]->Exists() || info.TryGetConstantInput(4, &tensor_y_zero_point);
   bool is_fixed_parameters = get_x_scale && get_x_zero_point && get_y_scale && get_y_zero_point;
-  ORT_ENFORCE(IsScalarOr1ElementVector(tensor_x_scale),
+  ORT_ENFORCE(tensor_x_scale == nullptr || IsScalarOr1ElementVector(tensor_x_scale),
               "QlinearBuildLookupTable : input X_scale must be a scalar or 1D tensor of size 1");
 
   if (is_fixed_parameters) {
@@ -121,24 +121,20 @@ common::Status QlinearSoftmaxCPU(size_t N,
   ThreadPool::TryParallelFor(
       thread_pool, N, TensorOpCost{1.0, 1.0, 1.0},
       [x_data, y_data, D, &lookup_table](std::ptrdiff_t first, std::ptrdiff_t last) {
-        int n = last - first;
-        if (n == 0) {
-          return;
-        }
         const uint8_t* x_t = x_data + first * D;
         uint8_t* y_t = y_data + first * D;
         for (; first < last; first++) {
           // reduceMax
           uint8_t xmax = *std::max_element(x_t, x_t + D);
-          const size_t adjustment = xmax ^ 255;
-          const uint32_t* t = (const uint32_t*)lookup_table + adjustment;
-          int size_n = D;
+          // we want the xmas to align with 255 for higher accuracy.
+          const uint32_t* tb = lookup_table + 255 - xmax;
+          size_t size_n = D;
           // reduceSum
           uint32_t vsum = 0;
           const uint8_t* x_t_cur = x_t;
           do {
             const size_t vx = *x_t_cur++;
-            vsum += t[vx];
+            vsum += tb[vx];
           } while (--size_n != 0);
           if (vsum == 0) {
             return;
@@ -149,7 +145,7 @@ common::Status QlinearSoftmaxCPU(size_t N,
           const uint32_t vrounding = (vsum >> 1);
           do {
             const size_t vx = *x_t_cur++;
-            const uint32_t vt = t[vx];
+            const uint32_t vt = tb[vx];
             // simulate round
             const uint32_t vq = ((vt << 8) + vrounding) / vsum;
             const uint8_t vy = vq > 255 ? UINT8_C(255) : (uint8_t)vq;
