@@ -138,7 +138,8 @@ hand_implemented = {
     "aten::addmm": Gemm("mat1", "mat2", "self", alpha="alpha", beta="beta"),
     "aten::add_.Tensor": SignatureOnly(),
     "aten::t": Transpose("self"),
-    "aten::mm.out": MatMul("self", "mat2"),
+    # MatMul("self", "mat2"), fails since it resizes based on self but should be based on result shape of the mult
+    "aten::mm.out": MakeTorchFallback(),
     "aten::zeros_like": ConstantOfShape(
         Shape("self")
     ),  # the default constant is 0, so don't need to speicify attribute
@@ -169,6 +170,10 @@ hand_implemented = {
     "aten::argmax.out": SignatureOnly(),
     "aten::nonzero": Transpose(NonZero("self")),
     "aten::nonzero.out": SignatureOnly(),
+    "aten::_log_softmax.out": MakeTorchFallback(),
+    "aten::nll_loss_forward.output": MakeTorchFallback(),
+    "aten::nll_loss_backward.grad_input": MakeTorchFallback(),
+    "aten::_log_softmax_backward_data.out": MakeTorchFallback(),
 }
 
 # If the aten op expects a specific output type that differs from self
