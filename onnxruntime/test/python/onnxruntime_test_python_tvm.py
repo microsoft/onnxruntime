@@ -1,3 +1,12 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
+"""
+Module for unit testing of TVM EP
+"""
+
 import os
 import sys
 import tempfile
@@ -16,23 +25,35 @@ numpy.random.seed(32)
 
 
 def is_windows():
+    """
+    Function to determine the Windows system
+    """
     return sys.platform.startswith("win")
 
 
 def get_model_with_dynamic_shapes() -> ModelProto:
-    X = make_tensor_value_info("X", TensorProto.FLOAT, [None, None])
-    A = make_tensor_value_info("A", TensorProto.FLOAT, [None, None])
-    B = make_tensor_value_info("B", TensorProto.FLOAT, [None, None])
-    Y = make_tensor_value_info("Y", TensorProto.FLOAT, [None, None])
+    """
+    Create model with Dynamic Shapes
+    """
+    x = make_tensor_value_info("X", TensorProto.FLOAT, [None, None])  # pylint: disable=invalid-name, no-member
+    a = make_tensor_value_info("A", TensorProto.FLOAT, [None, None])  # pylint: disable=invalid-name, no-member
+    b = make_tensor_value_info("B", TensorProto.FLOAT, [None, None])  # pylint: disable=invalid-name, no-member
+    y = make_tensor_value_info("Y", TensorProto.FLOAT, [None, None])  # pylint: disable=invalid-name, no-member
     node1 = make_node("MatMul", ["X", "A"], ["XA"])
     node2 = make_node("Add", ["XA", "B"], ["Y"])
-    graph = make_graph([node1, node2], "lr", [X, A, B], [Y])
+    graph = make_graph([node1, node2], "lr", [x, a, b], [y])
     onnx_model = make_model(graph)
     return onnx_model
 
 
 def get_model_with_fixed_shapes() -> ModelProto:
+    """
+    Create model with Static Shapes
+    """
     def change_input_shape(model: ModelProto, ind: int, shape: Tuple) -> None:
+        """
+        Function to change the input form
+        """
         dims = model.graph.input[ind].type.tensor_type.shape.dim
         assert len(dims) == len(shape), "Input rank and new shape rank do not match."
         for i, new_dim in enumerate(shape):
@@ -46,14 +67,20 @@ def get_model_with_fixed_shapes() -> ModelProto:
 
 
 def get_input_data_for_model_with_dynamic_shapes() -> Dict[AnyStr, numpy.ndarray]:
-    a = numpy.random.randn(2, 2).astype(numpy.float32)
-    b = numpy.random.randn(1, 2).astype(numpy.float32)
-    x = numpy.random.randn(1, 2).astype(numpy.float32)
+    """
+    Create input data for model with dynamic shapes
+    """
+    a = numpy.random.randn(2, 2).astype(numpy.float32)  # pylint: disable=invalid-name
+    b = numpy.random.randn(1, 2).astype(numpy.float32)  # pylint: disable=invalid-name
+    x = numpy.random.randn(1, 2).astype(numpy.float32)  # pylint: disable=invalid-name
     data = {"A": a, "B": b, "X": x}
     return data
 
 
 def get_input_data_for_model_with_fixed_shapes(onnx_model: ModelProto) -> Dict[AnyStr, numpy.ndarray]:
+    """
+    Create input data for model with static shapes
+    """
     def get_onnx_input_names(model: ModelProto) -> List[AnyStr]:
         inputs = [node.name for node in model.graph.input]
         initializer = [node.name for node in model.graph.initializer]
@@ -85,6 +112,9 @@ def get_input_data_for_model_with_fixed_shapes(onnx_model: ModelProto) -> Dict[A
 
 
 def get_input_names_and_shapes(data: Dict[AnyStr, numpy.ndarray]) -> Tuple[List[AnyStr], List[AnyStr]]:
+    """
+    Create text representations for model input names and shapes
+    """
     keys = list(data.keys())
     values = [data[key] for key in keys]
     return (
@@ -94,7 +124,14 @@ def get_input_names_and_shapes(data: Dict[AnyStr, numpy.ndarray]) -> Tuple[List[
 
 
 def get_cpu_output(onnx_model: ModelProto, data: Dict[AnyStr, numpy.ndarray]) -> List[numpy.ndarray]:
-    sess = onnxruntime.InferenceSession(onnx_model.SerializeToString(), providers=["CPUExecutionProvider"])
+    """
+    Run inference with CPUExecutionProvider
+    """
+    # pylint: disable=no-member
+    sess = onnxruntime.InferenceSession(
+        onnx_model.SerializeToString(),
+        providers=["CPUExecutionProvider"],
+    )
     output = sess.run(None, data)
     return output
 
@@ -102,14 +139,18 @@ def get_cpu_output(onnx_model: ModelProto, data: Dict[AnyStr, numpy.ndarray]) ->
 def get_tvm_output(
     onnx_model: ModelProto, data: Dict[AnyStr, numpy.ndarray], provider_options: Dict[AnyStr, Any]
 ) -> List[numpy.ndarray]:
-    so = onnxruntime.SessionOptions()
-    so.log_severity_level = 0
-    so.log_verbosity_level = 0
-    so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+    """
+    Run inference with TVMExecutionProvider
+    """
+    session_options = onnxruntime.SessionOptions()  # pylint: disable=no-member
+    session_options.log_severity_level = 0
+    session_options.log_verbosity_level = 0
+    # pylint: disable=no-member
+    session_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
 
     sess = onnxruntime.InferenceSession(
         onnx_model.SerializeToString(),
-        so,
+        session_options,
         providers=["TvmExecutionProvider"],
         provider_options=[provider_options],
     )
@@ -118,8 +159,12 @@ def get_tvm_output(
     return output
 
 
+# pylint: disable=no-member
 def compile_virtual_machine(model: ModelProto, target_str: AnyStr) -> tvm.runtime.vm.Executable:
-    ir_mod, params = tvm.relay.frontend.from_onnx(
+    """
+    Compile ONNX model using VirtualMachine
+    """
+    ir_mod, _ = tvm.relay.frontend.from_onnx(
         model,
         opset=model.opset_import[0].version,
         freeze_params=True,
@@ -129,20 +174,30 @@ def compile_virtual_machine(model: ModelProto, target_str: AnyStr) -> tvm.runtim
 
 
 def serialize_virtual_machine(vm_exec: tvm.runtime.vm.Executable) -> AnyStr:
+    """
+    Serialize VirtualMachine
+    """
     temp_directory = tempfile.mkdtemp()
     path_consts = os.path.join(temp_directory, "consts")
     vm_exec.move_late_bound_consts(path_consts, byte_limit=256)
     lib_path = os.path.join(temp_directory, f"model.{'dll' if is_windows() else 'so'}")
-    code_path = os.path.join(temp_directory, f"model.ro")
+    code_path = os.path.join(temp_directory, "model.ro")
     code, lib = vm_exec.save()
     lib.export_library(lib_path)
-    with open(code_path, "wb") as fo:
-        fo.write(code)
+    with open(code_path, "wb") as code_file:
+        code_file.write(code)
     return temp_directory
 
 
 class TestTVM(unittest.TestCase):
-    def test_accuracy_for_model_with_dynamic_shapes(self):
+    """
+    Unit tests for TVM EP
+    """
+    @staticmethod
+    def test_accuracy_for_model_with_dynamic_shapes():
+        """
+        Accuracy test for model with dynamic shapes
+        """
         onnx_model = get_model_with_dynamic_shapes()
         data = get_input_data_for_model_with_dynamic_shapes()
 
@@ -157,7 +212,11 @@ class TestTVM(unittest.TestCase):
 
         assert_almost_equal(cpu_output, tvm_output, decimal=5)
 
-    def test_accuracy_for_tvm_so(self):
+    @staticmethod
+    def test_accuracy_for_tvm_so():
+        """
+        Accuracy test for TVMso Ep
+        """
         onnx_model = get_model_with_fixed_shapes()
         data = get_input_data_for_model_with_fixed_shapes(onnx_model)
 
@@ -176,5 +235,5 @@ class TestTVM(unittest.TestCase):
 
 if __name__ == "__main__":
     if "TvmExecutionProvider" not in onnxruntime.get_available_providers():
-        raise AssertionError("Unable to find 'TvmExecutionProvider' in %r." % onnxruntime.get_available_providers())
+        raise AssertionError(f"Unable to find 'TvmExecutionProvider' in {onnxruntime.get_available_providers()}")
     unittest.main()
