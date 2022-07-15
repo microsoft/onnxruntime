@@ -11,11 +11,11 @@ import {downloadZip, extractFile} from './utils';
 
 const TEST_DATA_OPSET_VERSIONS = [
   ['opset16', '1.11.0'],
-  ['opset15', '1.10.0'],
-  ['opset14', '1.9.0'],
+  ['opset15', '1.10.2'],
+  ['opset14', '1.9.1'],
   ['opset13', '1.8.1'],
   ['opset12', '1.7.0'],
-  ['opset11', '1.6.0'],
+  ['opset11', '1.6.1'],
   ['opset10', '1.5.0'],
   ['opset9', '1.4.1'],
   ['opset8', '1.3.0'],
@@ -38,11 +38,11 @@ const main = async () => {
     const opset = opsetMapping[0];
     const onnxVersion = opsetMapping[1];
 
-    const resourceUri = `https://github.com/onnx/onnx/archive/refs/tags/v${onnxVersion}.zip`;
+    const resourceUri = `https://github.com/onnx/onnx/archive/refs/heads/rel-${onnxVersion}.zip`;
 
     log.info('PrepareTestData', `Downloading onnx ${opset}(v${onnxVersion}): ${resourceUri}`);
 
-    const folderPrefix = `onnx-${onnxVersion}/onnx/backend/test/data/node`;
+    const folderPrefix = `onnx-rel-${onnxVersion}/onnx/backend/test/data/node`;
 
     const buffer = await downloadZip(resourceUri);
     const zip = await jszip.loadAsync(buffer);
