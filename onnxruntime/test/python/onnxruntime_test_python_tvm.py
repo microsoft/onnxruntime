@@ -37,6 +37,7 @@ def get_model_with_fixed_shapes() -> ModelProto:
         assert len(dims) == len(shape), "Input rank and new shape rank do not match."
         for i, new_dim in enumerate(shape):
             model.graph.input[ind].type.tensor_type.shape.dim[i].dim_value = new_dim
+
     dynamic_model = get_model_with_dynamic_shapes()
     change_input_shape(dynamic_model, 0, (1, 2))  # X
     change_input_shape(dynamic_model, 1, (2, 2))  # A
