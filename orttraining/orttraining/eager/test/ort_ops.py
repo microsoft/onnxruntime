@@ -234,14 +234,18 @@ class OrtOpTests(unittest.TestCase):
 
     def test_log_softmax(self):
         device = self.get_device()
-        cpu_tensor = torch.rand(3, 5)
+        cpu_tensor = torch.rand(3, 5, 7)
         ort_tensor = cpu_tensor.to(device)
-        cpu_result_a = torch.log_softmax(cpu_tensor, dim=1)
-        ort_result_a = torch.log_softmax(ort_tensor, dim=1)
+        cpu_result_a = torch.log_softmax(cpu_tensor, dim=2)
+        ort_result_a = torch.log_softmax(ort_tensor, dim=2)
         assert torch.allclose(cpu_result_a, ort_result_a.cpu())
         cpu_result_b = torch.log_softmax(cpu_tensor, dim=0)
         ort_result_b = torch.log_softmax(ort_tensor, dim=0)
         assert torch.allclose(cpu_result_b, ort_result_b.cpu())
+        cpu_result_c = torch.log_softmax(cpu_tensor, dim=-1)
+        ort_result_c = torch.log_softmax(ort_tensor, dim=-1)
+        assert torch.allclose(cpu_result_c, ort_result_c.cpu())
+        assert torch.allclose(ort_result_a.cpu(), ort_result_c.cpu())
 
     def test_addmm(self):
         device = self.get_device()
@@ -289,9 +293,16 @@ class OrtOpTests(unittest.TestCase):
         cpu_b = torch.tensor([[1], [0], [1]], dtype=bool)
         ort_a = cpu_a.to(device)
         ort_b = cpu_b.to(device)
+        cpu_out = torch.tensor([], dtype=bool)
+        ort_out = cpu_out.to(device)
         cpu_result = torch.bitwise_and(cpu_a, cpu_b)
         ort_result = torch.bitwise_and(ort_a, ort_b)
         assert torch.equal(cpu_result, ort_result.cpu())
+        cpu_result = torch.bitwise_and(cpu_a, cpu_b, out=cpu_out)
+        ort_result = torch.bitwise_and(ort_a, ort_b, out=ort_out)
+        assert torch.equal(cpu_result, ort_result.cpu())
+        assert torch.equal(cpu_out, ort_out.cpu())
+        assert torch.equal(ort_result.cpu(), ort_out.cpu())
 
     def test_bitwise_and_fallback(self):
         device = self.get_device()
