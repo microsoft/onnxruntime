@@ -31,7 +31,6 @@ class FusionOptions:
 
         if model_type == "gpt2":
             self.enable_skip_layer_norm = False
-            self.enable_shape_inference = False
 
     def use_raw_attention_mask(self, use_raw_mask=True):
         if use_raw_mask:
