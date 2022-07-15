@@ -18,6 +18,8 @@
 namespace onnxruntime {
 namespace contrib {
 
+constexpr int OPSET13 = 13;
+
 namespace {
 template <typename T>
 void QlinearBuildLookupTableUint32(uint32_t* table,
@@ -68,7 +70,7 @@ QLinearSoftmax<T>::QLinearSoftmax(const OpKernelInfo& info)
   if (status.IsOK()) {
     axis_ = gsl::narrow_cast<int>(axis);
   } else {
-    if (opset_ < int(13)) {
+    if (opset_ < OPSET13) {
       axis_ = 1;  // opset-12 and below, the default axis value is 1
     } else {
       axis_ = -1;  // opset-13, the default axis value is -1
@@ -76,7 +78,7 @@ QLinearSoftmax<T>::QLinearSoftmax(const OpKernelInfo& info)
   }
   auto input_defs = node.InputDefs();
   const auto& x_shape = input_defs[0]->Shape();
-  size_t rank = x_shape->dim_size();
+  int rank = x_shape->dim_size();
   if (rank == 0) {
     return;
   }
@@ -84,8 +86,8 @@ QLinearSoftmax<T>::QLinearSoftmax(const OpKernelInfo& info)
     axis_ = static_cast<int>(HandleNegativeAxis(axis_, int64_t(rank)));
   }
   uint32_t reduce_size = gsl::narrow_cast<uint32_t>(x_shape->dim(axis_).dim_value());
-  if (opset_ < int(13)) {
-    for (size_t i = axis_ + 1; i < rank; i++) {
+  if (opset_ < OPSET13) {
+    for (int i = axis_ + 1; i < rank; i++) {
       reduce_size *= gsl::narrow_cast<uint32_t>(x_shape->dim(i).dim_value());
     }
   }
@@ -106,12 +108,12 @@ Status QLinearSoftmax<T>::Compute(OpKernelContext* ctx) const {
   }
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
   size_t D = X_shape[axis_];
-  if (opset_ < int(13)) {
+  if (opset_ < OPSET13) {
     D = X_shape.SizeFromDimension(axis_);
   }
   const uint32_t* lookup_table = GetLookupTable(ctx, D);
 
-  if (opset_ < int(13)) {
+  if (opset_ < OPSET13) {
     return ComputeImpl(*X, *Y, thread_pool, lookup_table);
   } else {
     return ComputeImplOpset13(ctx, *X, *Y, thread_pool, lookup_table);
