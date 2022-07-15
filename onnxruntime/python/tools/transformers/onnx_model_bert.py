@@ -338,6 +338,8 @@ class BertOnnxModel(OnnxModel):
         self.prune_graph()
 
     def optimize(self, options: FusionOptions = None, add_dynamic_axes=False):
+        self.utils.remove_identify_nodes()
+
         # Remove cast nodes that having same data type of input and output based on symbolic shape inference.
         self.utils.remove_useless_cast_nodes()
 
