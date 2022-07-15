@@ -33,11 +33,6 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   for (std::unique_ptr<api::NodeRef>& node : api_graph->Nodes()) {
     // Only QLinearConv needs to be handled explicitly. The rest will be transformed if needed during transpose
     // optimization.
-    const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
-    if (!graph_utils::IsSupportedProvider(NodeFromApiNode(*node), cpu_ep)) 
-    {
-      continue;
-    }
     if (node->OpType() == "QLinearConv") {
       auto domain = node->Domain();
 
