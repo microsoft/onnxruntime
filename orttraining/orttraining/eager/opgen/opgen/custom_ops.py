@@ -1,4 +1,4 @@
-from opgen.onnxops import BatchNormalization, Gemm
+from opgen.onnxops import BatchNormalization, Gemm, Concat
 
 ops = {
     "gemm": Gemm("A", "B", "C", "alpha", "beta", "transA", "transB"),

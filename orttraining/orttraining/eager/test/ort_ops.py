@@ -153,7 +153,7 @@ class OrtOpTests(unittest.TestCase):
         assert torch.allclose(mean.cpu(), mean_out.cpu()), "mean != mean_out"
         assert torch.allclose(var.cpu(), var_out.cpu()), "var != var_out"
 
-    def test_variadic_inputs():
+    def test_variadic_inputs(self):
         device = self.get_device()
         tensor = torch.ones(2, 2).to(device)
         expected = torch.ones(2, 6)

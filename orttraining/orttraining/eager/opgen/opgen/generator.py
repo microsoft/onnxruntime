@@ -449,7 +449,9 @@ class ORTGen:
                                 if self._is_inplace(return_info, torch_p):
                                     writer.writeline(f"for (int i = 0; i < {onnx_op.outputs.count}; i++) {{")
                                     writer.push_indent()
-                                    writer.writeline(f"{onnx_op.outputs}[i] = ort_input_{onnx_op_index}_{onnx_op.inputs[input_index]}[i];")
+                                    writer.writeline(
+                                        f"{onnx_op.outputs}[i] = ort_input_{onnx_op_index}_{onnx_op.inputs[input_index]}[i];"
+                                    )
                                     writer.pop_indent()
                                     writer.writeline("}")
                                     in_place_params[0] = cpp_param.identifier.value
@@ -501,7 +503,7 @@ class ORTGen:
             return_outputs = onnx_op.outputs
 
         # TODO: Pick the right "out" Torch parameter; do not assume the first one
-        # TODO: Handle mutliple results
+        # TODO: Handle multiple results
         # TODO: Assert return type
 
         if cpp_func.return_type.desugar().identifier_tokens[0].value == "void":
