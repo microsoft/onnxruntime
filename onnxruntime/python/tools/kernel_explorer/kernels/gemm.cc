@@ -5,7 +5,7 @@
 
 #include <pybind11/pybind11.h>
 
-#include "common.h"
+#include "core/providers/rocm/rocm_common.h"
 #include "device_array.h"
 #include "operator.h"
 
