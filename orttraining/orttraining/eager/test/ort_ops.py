@@ -304,7 +304,6 @@ class OrtOpTests(unittest.TestCase):
         assert torch.equal(cpu_out, ort_out.cpu())
         assert torch.equal(ort_result.cpu(), ort_out.cpu())
 
-
     def test_bitwise_and_fallback(self):
         device = self.get_device()
         # use randint because bitwise_and is not supported on floats
