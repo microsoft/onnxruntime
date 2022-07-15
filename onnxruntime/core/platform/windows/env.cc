@@ -400,9 +400,20 @@ class WindowsEnv : public Env {
     SYSTEM_INFO sysinfo;
     GetSystemInfo(&sysinfo);
     static const long page_size = sysinfo.dwPageSize;
+    static const long allocation_granularity = sysinfo.dwAllocationGranularity;
     const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
     const size_t mapped_length = length + offset_to_page;
     const FileOffsetType mapped_offset = offset - offset_to_page;
+    if (mapped_offset % allocation_granularity != 0) {
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+          "mapped offset must be a multiple of the allocation granularity",
+          " , mapped_offset = ", mapped_offset,
+          " , allocation_granularity = ", allocation_granularity,
+          " , errcode = ", error_code,
+          " - ", std::system_category().message(error_code));
+    }
+
     void* const mapped_base = MapViewOfFile(file_mapping_handle.get(),
                                             FILE_MAP_READ,
                                             0,
