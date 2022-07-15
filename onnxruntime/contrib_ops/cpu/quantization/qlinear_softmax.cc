@@ -3,6 +3,10 @@
 
 #include "contrib_ops/cpu/quantization/qlinear_softmax.h"
 
+#include <cstdint>
+#include <type_traits>
+#include <utility>
+
 #include "core/common/common.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/tensor/transpose.h"
@@ -10,13 +14,11 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 
-#include <cstdint>
-#include <type_traits>
-#include <utility>
 
 namespace onnxruntime {
 namespace contrib {
 
+namespace {
 template <typename T>
 void QlinearBuildLookupTableUint32(uint32_t* table,
                                    const float x_scale,
@@ -24,21 +26,21 @@ void QlinearBuildLookupTableUint32(uint32_t* table,
   static_assert(std::is_same<T, int8_t>::value ||
                 std::is_same<T, uint8_t>::value, "unspported type");
   const double qscale =
-      fmin(static_cast<double>(UINT32_MAX) / static_cast<double>(reduce_len), double(0x7fffff));
+      fmin(static_cast<double>(UINT32_MAX) / static_cast<double>(reduce_len), static_cast<double>(0x7fffff));
   for (int32_t i = 0; i < 256; i++) {
     double scaled_exp_xi = qscale * exp(static_cast<double>(i - 255) * static_cast<double>(x_scale));
     // we can't get the real max number of input tensor here, so we just assume 255.
     // in the process of computation, all numbers will have a shift to align 255
     if constexpr (std::is_same<T, int8_t>::value) {
       // 1 2 3 ......126 127 -128 -127 ..... -3 -2 -1
-      uint8_t index = i - 128;
+      uint8_t index = static_cast<uint8_t>(i - 128);
       table[index] = static_cast<uint32_t>(lrint(scaled_exp_xi));
     } else {
       table[i] = static_cast<uint32_t>(lrint(scaled_exp_xi));
     }
-
   }
 }
+}  // namespace
 
 template <typename T>
 void QLinearSoftmax<T>::BuildLookupTableIfFixed(const OpKernelInfo& info, uint32_t reduce_len) {
@@ -66,7 +68,7 @@ QLinearSoftmax<T>::QLinearSoftmax(const OpKernelInfo& info)
   if (status.IsOK()) {
     axis_ = gsl::narrow_cast<int>(axis);
   } else {
-    if (opset_ < 13) {
+    if (opset_ < int(13)) {
       axis_ = 1;  // opset-12 and below, the default axis value is 1
     } else {
       axis_ = -1;  // opset-13, the default axis value is -1
@@ -82,7 +84,7 @@ QLinearSoftmax<T>::QLinearSoftmax(const OpKernelInfo& info)
     axis_ = static_cast<int>(HandleNegativeAxis(axis_, int64_t(rank)));
   }
   uint32_t reduce_size = gsl::narrow_cast<uint32_t>(x_shape->dim(axis_).dim_value());
-  if (opset_ < 13) {
+  if (opset_ < int(13)) {
     for (size_t i = axis_ + 1; i < rank; i++) {
       reduce_size *= gsl::narrow_cast<uint32_t>(x_shape->dim(i).dim_value());
     }
@@ -104,12 +106,12 @@ Status QLinearSoftmax<T>::Compute(OpKernelContext* ctx) const {
   }
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
   size_t D = X_shape[axis_];
-  if (opset_ < 13) {
+  if (opset_ < int(13)) {
     D = X_shape.SizeFromDimension(axis_);
   }
   const uint32_t* lookup_table = GetLookupTable(ctx, D);
 
-  if (opset_ < 13) {
+  if (opset_ < int(13)) {
     return ComputeImpl(*X, *Y, thread_pool, lookup_table);
   } else {
     return ComputeImplOpset13(ctx, *X, *Y, thread_pool, lookup_table);
