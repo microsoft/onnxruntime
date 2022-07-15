@@ -1889,9 +1889,12 @@ Status InferenceSession::Run(const RunOptions& run_options,
         ORT_CHECK_AND_SET_RETVAL(start_func());
       }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#ifdef ENABLE_TRAINING
       if (run_options.only_execute_path_to_fetches) {
-        session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
+        // TODO: this method is not thread safe, if multiple Run happened in parallel we might hit race condition issue.
+        // currently it only used in training, there is no parallel run execution in training so it is ok.
+        // but it is better we can fix it with a better solution.
+        session_state_->UpdateToBeExecutedRange(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
       }
 #endif
 

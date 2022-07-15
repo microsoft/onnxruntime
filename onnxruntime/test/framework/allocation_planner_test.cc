@@ -340,7 +340,6 @@ class PlannerTest : public ::testing::Test {
     int id;
     index(name, id);
     EXPECT_EQ(plan_->allocation_plan[id].alloc_kind, kind) << "Error in allocation kind for " << name;
-    EXPECT_EQ(para_plan_->GetAllocationPlan()[id].alloc_kind, kind) << "Error in para allocation kind for " << name;
   }
 
   void CheckFreed(int /*step_number*/, std::initializer_list<std::string> /*freed_items*/) {

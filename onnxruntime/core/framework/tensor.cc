@@ -42,7 +42,8 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
           shape,
           allocator->Info(),
           [allocator](size_t len) { return allocator->Alloc(len); },
-          [allocator](void* buf) { allocator->Free(buf); }) {
+          [allocator](void* buf) { allocator->Free(buf); },
+          strides) {
 }
 
 Tensor::Tensor(MLDataType p_type, 

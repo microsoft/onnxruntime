@@ -7,6 +7,7 @@
 #include "core/common/common.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/iexecutor.h"
+#include "core/framework/program_region.h"
 
 namespace onnxruntime {
 
@@ -24,13 +25,6 @@ struct PartialGraphExecutionState {
 
   void SetProgramCounterStart(size_t start) { program_counter_start_ = start; }
   void SetProgramCounterEnd(size_t end) { program_counter_end_ = end; }
-
-  struct ProgramRegion {
-    size_t node_start;
-    size_t node_end;
-
-    std::vector<std::pair<size_t, size_t> > stream_pc_range;
-  };
 
   size_t GetProgramCounterStart() { return program_counter_start_; }
   size_t GetProgramCounterEnd() { return program_counter_end_; }

@@ -1,3 +1,4 @@
+#ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"
 #include "core/framework/session_state.h"
 #include "core/framework/execution_context.h"
@@ -5,7 +6,7 @@
 
 namespace onnxruntime {
 
-PartialGraphExecutionState::ProgramRegion& PartialGraphExecutionState::GetProgramRegions(const SessionState& session_state) {
+ProgramRegion& PartialGraphExecutionState::GetProgramRegions(const SessionState& session_state) {
   // check whether we can match an existing region
   auto it = std::find_if(program_regions_.begin(), program_regions_.end(), 
       [this](const ProgramRegion& region) {
@@ -74,3 +75,5 @@ ExecutionContext& PartialGraphExecutionState::GetExecutionContext(const std::vec
 }
 
 }
+
+#endif

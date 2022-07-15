@@ -111,11 +111,11 @@ public:
   }
 
 #ifdef ENABLE_TRAINING
-  PartialGraphExecutionState::ProgramRegion* GetCurrentRange() {
+  const ProgramRegion* GetCurrentRange() {
     return program_range_;
   }
 
-  void SetCurrentRange(PartialGraphExecutionState::ProgramRegion* range) {
+  void SetCurrentRange(const ProgramRegion* range) {
     program_range_ = range;
   }
 #endif 
@@ -133,7 +133,7 @@ public:
   Status task_status_{Status::OK()};
   SessionScope* session_scope_{};
 #ifdef ENABLE_TRAINING
-  PartialGraphExecutionState::ProgramRegion* program_range_{nullptr};
+  const ProgramRegion* program_range_{nullptr};
 #endif 
 };
 

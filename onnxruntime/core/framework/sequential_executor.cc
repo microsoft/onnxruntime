@@ -460,8 +460,6 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, const std:
                                       const bool& terminate_flag,
                                       const bool only_execute_path_to_fetches,
                                       bool single_thread_mode) {
-  if (only_execute_path_to_fetches)
-    ORT_THROW("NOT IMPLEMENTED YET.");
   auto* execution_plan = session_state.GetExecutionPlan();
   LOGS(logger, INFO) << "Number of streams: " << execution_plan->execution_plan.size();
   int32_t valid_streams = 0;
@@ -469,6 +467,8 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, const std:
     if (stream && stream->steps_.size() > 0)
       valid_streams++;
   }
+
+
 
   // prepare the execution context, notifications got initialized.
   ExecutionContext ctx(session_state,
@@ -483,6 +483,12 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, const std:
                        logger,
                        device_streams,
                        terminate_flag);
+#ifdef ENABLE_TRAINING
+  if (only_execute_path_to_fetches) {
+    auto* range = session_state.GetToBeExecutedRange(fetch_mlvalue_idxs);
+    ctx.SetCurrentRange(range);
+  }
+#endif
 
   SessionScope session_scope(session_state, *reinterpret_cast<const ExecutionFrame*>(ctx.GetExecutionFrame()));
   ctx.SetSessionScope(&session_scope);

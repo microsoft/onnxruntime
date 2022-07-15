@@ -39,6 +39,9 @@
 
 #include "core/framework/parallel_execution_plan.h"
 #include "core/framework/stream_handles.h"
+#ifdef ENABLE_TRAINING
+#include "core/framework/program_region.h"
+#endif
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -285,10 +288,11 @@ class SessionState {
   std::vector<BufferUniquePtr>& GetMutableWeightsBuffers() noexcept { return weights_buffers_; }
 
   const NodeIndexInfo& GetNodeIndexInfo() const;
-
+#ifdef ENABLE_TRAINING
+  void UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs);
+  const ProgramRegion* GetToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) const;
+#endif
 #if !defined(ORT_MINIMAL_BUILD)
-  void UpdateToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs);
-  const InlinedHashSet<NodeIndex>* GetToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs) const;
   Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                          flatbuffers::Offset<onnxruntime::fbs::SessionState>& fbs_session_state) const;
 #endif
@@ -505,11 +509,11 @@ class SessionState {
   // prepacked_weights_container_ can be nullptr if no caching is required for prepacked weights
   PrepackedWeightsContainer* const prepacked_weights_container_{};
 
-#if !defined(ORT_MINIMAL_BUILD)
+#ifdef ENABLE_TRAINING
 #ifndef DISABLE_ABSEIL
-  InlinedHashMap<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
+  InlinedHashMap<InlinedVector<int>, ProgramRegion> to_be_executed_range_;
 #else
-  std::map<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
+  std::map<InlinedVector<int>, ProgramRegion> to_be_executed_range_;
 #endif
 #endif
 

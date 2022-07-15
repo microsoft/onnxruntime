@@ -682,63 +682,57 @@ Status SessionState::GeneratePatternGroupCache(const gsl::span<const OrtValue>& 
   }
   // TODO: add check for single stream
   // Allocate all other activations.
-  for (auto& stream : exe_plan->execution_plan) {
-    int cur_node_index = -1;
-    for (auto& step_index : stream->step_node_index) {
-      if (step_index == cur_node_index) {
+  for (auto& step_index : graph_viewer_->GetNodesInTopologicalOrder()) {
+    int node_index = node_index_info.GetNodeOffset(step_index);
+    auto* node = graph_viewer_->GetNode(step_index);
+    int output_start = node_index + static_cast<int>(node->InputDefs().size()) +
+                        static_cast<int>(node->ImplicitInputDefs().size());
+    // allocate output
+    for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
+    const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
+    if (ml_value_idx == NodeIndexInfo::kInvalidEntry ||
+        (std::find(exe_plan->activation_allocation_order.begin(),
+                    exe_plan->activation_allocation_order.end(), ml_value_idx) !=
+            exe_plan->activation_allocation_order.end()))
         continue;
-      }
-      int node_index = node_index_info.GetNodeOffset(step_index);
-      auto* node = graph_viewer_->GetNode(step_index);
-      int output_start = node_index + static_cast<int>(node->InputDefs().size()) +
-                         static_cast<int>(node->ImplicitInputDefs().size());
-      // allocate output
-      for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
-        const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
-        if (ml_value_idx == NodeIndexInfo::kInvalidEntry ||
-            (std::find(exe_plan->activation_allocation_order.begin(),
-                       exe_plan->activation_allocation_order.end(), ml_value_idx) !=
-             exe_plan->activation_allocation_order.end()))
-          continue;
-        const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
-        if (!ml_type->IsTensorType())
-          continue;
-        const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
-        size_t size = 0;
-        TryCalculateSizeFromResolvedShape(ml_value_idx, resolved_shapes, size);
+    const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
+    if (!ml_type->IsTensorType())
+        continue;
+    const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+    size_t size = 0;
+    TryCalculateSizeFromResolvedShape(ml_value_idx, resolved_shapes, size);
 
-        // Plan memory if conditions are met.
-        if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
-            ml_data_type != DataTypeImpl::GetType<std::string>() && size != 0) {
-          size_t aligned_size = 0;
-          if (!IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(size, ml_data_type->Size(), &aligned_size)) {
-            return Status(ONNXRUNTIME, FAIL, "Size overflow");
-          }
-
-          ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
-
-          const auto& counter = exe_plan->allocation_plan[ml_value_idx].program_counter;
-          ORT_RETURN_IF_ERROR(mem_planner.TraceAllocation(ml_value_idx, counter, aligned_size));
+    // Plan memory if conditions are met.
+    if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
+        ml_data_type != DataTypeImpl::GetType<std::string>() && size != 0) {
+        size_t aligned_size = 0;
+        if (!IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(size, ml_data_type->Size(), &aligned_size)) {
+        return Status(ONNXRUNTIME, FAIL, "Size overflow");
         }
-      }
 
-      // release nodes
-      auto& release_actions = exe_plan->node_release_list[step_index];
-      for (auto it = release_actions.begin(); it != release_actions.end(); ++it) {
-        auto& action = exe_plan->release_actions[*it];
-        //if the value consumed by multiple stream, we can't pre-release it statically.
-        if (action.ref_count != 1)
-          continue;
+        ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
+
+        const auto& counter = exe_plan->allocation_plan[ml_value_idx].program_counter;
+        ORT_RETURN_IF_ERROR(mem_planner.TraceAllocation(ml_value_idx, counter, aligned_size));
+    }
+    }
+
+    // release nodes
+    auto& release_actions = exe_plan->node_release_list[step_index];
+    for (auto it = release_actions.begin(); it != release_actions.end(); ++it) {
+    auto& action = exe_plan->release_actions[*it];
+    //if the value consumed by multiple stream, we can't pre-release it statically.
+    if (action.ref_count != 1)
+        continue;
         
-        auto ml_value_idx = action.value_index;
-        const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
-        if (!ml_type->IsTensorType())
-          continue;
-        const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
-        if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
-          ORT_RETURN_IF_ERROR(mem_planner.TraceFree(ml_value_idx));
-        }
-      }
+    auto ml_value_idx = action.value_index;
+    const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
+    if (!ml_type->IsTensorType())
+        continue;
+    const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+    if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
+        ORT_RETURN_IF_ERROR(mem_planner.TraceFree(ml_value_idx));
+    }
     }
   }
 
@@ -947,13 +941,13 @@ const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
   return *node_index_info_;
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
-void SessionState::UpdateToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs) {
+#ifdef ENABLE_TRAINING
+void SessionState::UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) {
   InlinedVector<int> sorted_idxs;
   sorted_idxs.reserve(fetch_mlvalue_idxs.size());
   sorted_idxs.assign(fetch_mlvalue_idxs.begin(), fetch_mlvalue_idxs.end());
   std::sort(sorted_idxs.begin(), sorted_idxs.end());
-  if (to_be_executed_nodes_.find(sorted_idxs) != to_be_executed_nodes_.end())
+  if (to_be_executed_range_.find(sorted_idxs) != to_be_executed_range_.end())
     return;
 
   // Get the nodes generating the fetches.
@@ -973,19 +967,46 @@ void SessionState::UpdateToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_id
   // Reversely traverse to get reachable nodes.
   graph_.ReverseDFSFrom(
       nodes, {}, [&reachable_nodes](const Node* n) { reachable_nodes.insert(n->Index()); });
-  to_be_executed_nodes_.emplace(std::move(sorted_idxs), std::move(reachable_nodes));
+
+  //global start, end doesn't matters
+  ProgramRegion range;
+  
+  auto* plan = GetExecutionPlan();
+  for (auto& stream : plan->execution_plan) {
+    size_t cur = 0;
+    while (cur < stream->step_node_index.size() &&
+           reachable_nodes.find(stream->step_node_index[cur]) == reachable_nodes.end()) {
+      cur++;
+    }
+    size_t start = cur;
+    while (cur < stream->step_node_index.size() &&
+           reachable_nodes.find(stream->step_node_index[cur]) != reachable_nodes.end()) {
+      cur++;
+    }
+    size_t end = cur;
+    while (cur < stream->step_node_index.size()) {
+      if (reachable_nodes.find(stream->step_node_index[cur]) != reachable_nodes.end()) {
+        ORT_THROW("Non-continue execution happened, not expected");
+      }
+      cur++;
+    }
+    range.stream_pc_range.push_back({start, end});
+  }
+  to_be_executed_range_.emplace(std::move(sorted_idxs), std::move(range));
 }
 
-const InlinedHashSet<NodeIndex>* SessionState::GetToBeExecutedNodes(
+const ProgramRegion* SessionState::GetToBeExecutedRange(
     gsl::span<int const> fetch_mlvalue_idxs) const {
   InlinedVector<int> sorted_idxs;
   sorted_idxs.reserve(fetch_mlvalue_idxs.size());
   sorted_idxs.assign(fetch_mlvalue_idxs.begin(), fetch_mlvalue_idxs.end());
   std::sort(sorted_idxs.begin(), sorted_idxs.end());
-  auto it = to_be_executed_nodes_.find(sorted_idxs);
-  return (it != to_be_executed_nodes_.end()) ? &it->second : nullptr;
+  auto it = to_be_executed_range_.find(sorted_idxs);
+  return (it != to_be_executed_range_.end()) ? &it->second : nullptr;
 }
+#endif
 
+#if !defined(ORT_MINIMAL_BUILD)
 static Status GetSubGraphSessionStatesOrtFormat(
     flatbuffers::FlatBufferBuilder& builder,
     const std::unordered_map<NodeIndex, std::unordered_map<std::string, std::unique_ptr<SessionState>>>& subgraph_session_states,
