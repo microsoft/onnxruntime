@@ -158,7 +158,7 @@ hand_implemented = {
     "aten::ne.Tensor_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
     "aten::eq.Tensor_out": Cast(Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
     "aten::eq.Scalar_out": Cast(Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
-    "aten::bitwise_and.Tensor_out": MakeTorchFallback(),
+    "aten::bitwise_and.Tensor_out": And("self", "other"),  # This generates a fallback for all but Bool, as expected.
     "aten::masked_select": GatherND("self", Transpose(NonZero(Expand("mask", Shape("self"))))),
     "aten::_local_scalar_dense": MakeTorchFallback(),  # This function extracts a scalar value from
     #   a tensor with exactly one value; there's no need to try to do this on an ORT device.
