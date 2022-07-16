@@ -399,6 +399,7 @@ class WindowsEnv : public Env {
 
     SYSTEM_INFO sysinfo;
     GetSystemInfo(&sysinfo);
+
     static const DWORD page_size = sysinfo.dwPageSize;
     static const DWORD allocation_granularity = sysinfo.dwAllocationGranularity;
     const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
