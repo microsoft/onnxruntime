@@ -578,7 +578,12 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     const IndexedSubGraph& indexed_sub_graph = *capability->sub_graph;
     const IndexedSubGraph::MetaDef* metadef = indexed_sub_graph.GetMetaDef();
     if (!metadef) {
-      // Static kernel - use the kernel hash that was saved in the ORT format model
+      // Static kernel - use the kernel hash that was saved in the ORT format model.
+      auto* node = graph.GetNode(indexed_sub_graph.nodes[0]);
+      if (nullptr != node && node->GetExecutionProviderType().empty()) {
+        // The node was not fused or assigned. Assign it to this <provider>.
+        node->SetExecutionProviderType(type);
+      }
       continue;
     }
 
