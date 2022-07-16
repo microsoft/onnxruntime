@@ -6,7 +6,7 @@
 import logging
 import os
 import sys
-from typing import Dict, Optional
+from typing import Dict
 
 # In ORT Package the symbolic_shape_infer.py is in ../tools
 file_path = os.path.dirname(__file__)
@@ -84,7 +84,7 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
             edge (str): name of edge
 
         Returns:
-            _type_: Optional[List[int]]
+            Optional[List[int]]: the shape, or None if shape is unknown
         """
         assert self.all_shapes_inferred_
         if edge not in self.known_vi_:
