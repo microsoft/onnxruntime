@@ -16,7 +16,7 @@ import torch
 from model_loader import get_fusion_test_model, get_test_data_path
 from onnx import TensorProto, load_model
 from parity_utilities import find_transformers_source
-from transformers.utils import is_tf2onnx_available, is_tf_available
+from transformers import is_tf_available
 
 if find_transformers_source():
     from benchmark_helper import ConfigModifier, OptimizerInfo, Precision
@@ -114,10 +114,10 @@ class TestBertOptimization(unittest.TestCase):
         self.assertEqual(fusion_result_list, expected_fusion_result_list)
 
     def _test_optimizer_on_tf_model(self, model_name, expected_fusion_result_list, inputs_count, validate_model=True):
-        # Remove cached model so that CI machine will have space
-        if not is_tf_available() or not is_tf2onnx_available():
+        if not is_tf_available():
             return
 
+        # Remove cached model so that CI machine will have space
         shutil.rmtree("./cache_models", ignore_errors=True)
         shutil.rmtree("./onnx_models", ignore_errors=True)
 
