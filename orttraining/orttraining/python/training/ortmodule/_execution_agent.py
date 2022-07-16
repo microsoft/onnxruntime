@@ -5,8 +5,8 @@
 
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
-from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, OrtValue
 from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent
+from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, OrtValue
 
 
 class ExecutionAgentOutput:  # pylint: disable=R0903
@@ -96,6 +96,7 @@ class TrainingAgent(object):
         session_options=None,
         providers=None,
         provider_options=None,
+        local_rank=None,
     ):
         """
         :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
@@ -110,6 +111,8 @@ class TrainingAgent(object):
             providers are used with the default precedence.
         :param provider_options: Optional sequence of options dicts corresponding
             to the providers listed in 'providers'.
+        :param local_rank: Optional rank of current device, used for memory profiling only.
+            Default rank is 0 if not specified.
 
         The model type will be inferred unless explicitly set in the SessionOptions.
         To explicitly set:
@@ -137,6 +140,7 @@ class TrainingAgent(object):
             fw_outputs_device_info,
             bw_fetches_names,
             bw_outputs_device_info,
+            local_rank,
         )
 
     def run_forward(self, feeds, fetches, state, cache=None):

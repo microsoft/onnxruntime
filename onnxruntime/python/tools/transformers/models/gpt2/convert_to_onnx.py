@@ -135,6 +135,9 @@ def parse_arguments(argv=None):
     parser.add_argument("-e", "--use_external_data_format", required=False, action="store_true")
     parser.set_defaults(use_external_data_format=False)
 
+    parser.add_argument("--overwrite", required=False, action="store_true")
+    parser.set_defaults(overwrite=False)
+
     parser.add_argument(
         "--use_int32_inputs",
         required=False,
@@ -162,7 +165,7 @@ def parse_arguments(argv=None):
         "--repetition_penalty",
         type=float,
         default=1,
-        help="Positive. >1 to penalize and <1 to encorage.",
+        help="Positive. >1 to penalize and <1 to encourage.",
     )
     search_option_group.add_argument(
         "--temperature",
@@ -181,7 +184,7 @@ def parse_arguments(argv=None):
         "--length_penalty",
         type=float,
         default=1,
-        help="Positive. >1 to penalize and <1 to encorage short sentence.",
+        help="Positive. >1 to penalize and <1 to encourage short sentence.",
     )
 
     sampling_option_group = parser.add_argument_group("one step sampling options")
@@ -299,9 +302,6 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
     if args.precision == Precision.INT8:
         assert not args.use_gpu, "quantization only supports CPU"
 
-    if args.use_external_data_format:
-        assert not args.output.endswith(".onnx"), "output shall be a directory for --use_external_data_format"
-
     model_class = MODEL_CLASSES[args.model_class][0]
     use_padding = MODEL_CLASSES[args.model_class][2]
 
@@ -352,13 +352,13 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
         output_dir,
         args.model_name_or_path,
         args.model_class,
-        new_folder=args.use_external_data_format,
+        new_folder=(args.precision == Precision.INT8),
         remove_existing=["fp32", "fp16", "int8"],
     )  # Do not remove raw model to save time in parity test
 
     raw_onnx_model = onnx_model_paths["raw"]
 
-    if os.path.exists(raw_onnx_model):
+    if os.path.exists(raw_onnx_model) and not args.overwrite:
         logger.warning(f"Skip exporting ONNX model since it existed: {raw_onnx_model}")
     else:
         logger.info(f"Exporting ONNX model to {raw_onnx_model}")

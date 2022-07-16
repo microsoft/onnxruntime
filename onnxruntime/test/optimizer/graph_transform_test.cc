@@ -73,6 +73,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/compare_ortvalue.h"
 #include "test/framework/test_utils.h"
+#include "test/optimizer/graph_transform_test_builder.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
@@ -711,6 +712,37 @@ TEST_F(GraphTransformationTests, FuseCudaConvAddRelu) {
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 0);   // Add removed from graph
   ASSERT_TRUE(op_to_count["Relu"] == 0);  // Relu removed from graph
+}
+
+// Currently the ConvAddRelu fusion is only backed by a float kernel for the
+// the CUDA EP.
+
+// When we see the corresponding pattern for the fp16 data type, the fusion
+// should not be triggered as there is no kernel to back the fused pattern.
+
+// TODO(hasesh): Limit the test to using the CUDA EP for now as the level of
+// data type support in other compatible EPs is still yet to be ascertained.
+
+// TODO(hasesh): If at all the fp16 type is supported for the fusion, adjust/remove
+// this test.
+TEST_F(GraphTransformationTests, FuseCudaConvAddRelu_UnsupportedType) {
+  auto model_uri = MODEL_FOLDER "fusion/conv_add_relu_fp16.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  for (auto& node : p_model->MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kCudaExecutionProvider);
+  }
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Add"], 1);
+  ASSERT_EQ(op_to_count["Relu"], 1);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Add"], 1);   // Add not removed from graph (fusion not triggered)
+  ASSERT_EQ(op_to_count["Relu"], 1);  // Relu not removed from graph (fusion not triggered)
 }
 
 // Conv->Add->Relu will be left intact since there is Identity depend on Add
@@ -4991,6 +5023,69 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
     }
   }
 }
+
+#ifdef ENABLE_TRAINING
+TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
+  using Strategy = GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy;
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
+      auto* cast_out_0 = builder.MakeIntermediate();
+      auto* gelu_out = builder.MakeIntermediate();
+      auto* cast_out_1 = builder.MakeIntermediate();
+      auto* identity_out = builder.MakeOutput();
+
+      builder.AddNode("Cast", {input_arg}, {cast_out_0})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+      builder.AddNode("Gelu", {cast_out_0}, {gelu_out}, kMSDomain);
+      builder.AddNode("Cast", {gelu_out}, {cast_out_1})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+      builder.AddNode("Identity", {cast_out_1}, {identity_out});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 2);
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 0);
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<PropagateCastOps>(Strategy::FloodFill, 1);
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<BFloat16>({{2, -1, 3, -1}});
+      auto* cast_out_0 = builder.MakeIntermediate();
+      auto* gelu_out = builder.MakeIntermediate();
+      auto* cast_out_1 = builder.MakeIntermediate();
+      auto* identity_out = builder.MakeOutput();
+
+      builder.AddNode("Cast", {input_arg}, {cast_out_0})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+      builder.AddNode("Gelu", {cast_out_0}, {gelu_out}, kMSDomain);
+      builder.AddNode("Cast", {gelu_out}, {cast_out_1})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16));
+      builder.AddNode("Identity", {cast_out_1}, {identity_out});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 2);
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 2);
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<PropagateCastOps>(Strategy::FloodFill, 1);
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

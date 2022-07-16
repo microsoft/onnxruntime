@@ -42,6 +42,12 @@ void multi_tensor_axpby_cuda(int chunk_size,
                              float b,
                              int arg_to_check);
 
+// This function is adapted from NVIDIA/apex
+// https://github.com/NVIDIA/apex/blob/0c7d8e3fa9a095a1641a2290877436d0314b69c6/csrc/amp_C_frontend.cpp#L30
+std::tuple<at::Tensor, at::Tensor> multi_tensor_l2norm_cuda(int chunk_size, at::Tensor noop_flag,
+                                                            std::vector<std::vector<at::Tensor>> tensor_lists,
+                                                            at::optional<bool> per_tensor_python);
+
 class MemoryBuffer {
  public:
   MemoryBuffer(size_t numel, at::Tensor val) {
@@ -218,4 +224,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("unscale_fp16_grads_into_fp32_grads",
         &unscale_fp16_grads_into_fp32_grads,
         "Unscale those fp16 gradients into fp32 gradient buffers.");
+  m.def("multi_tensor_scale",
+        &multi_tensor_scale_cuda,
+        "Fused overflow check + scale for a list of contiguous tensors");
+  m.def("multi_tensor_l2norm",
+        &multi_tensor_l2norm_cuda,
+        "Computes L2 norm for a list of contiguous tensors");
 }

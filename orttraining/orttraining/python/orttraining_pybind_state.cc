@@ -137,7 +137,7 @@ struct PyGradientGraphBuilder {
 // TODO: this method does not handle parallel optimization.
 TrainingConfigurationResult ConfigureSessionForTraining(
     training::PipelineTrainingSession* sess, TrainingParameters& parameters) {
-  //TODO tix, refactor the mpi related code to populate all fields correctly by default.
+  // TODO tix, refactor the mpi related code to populate all fields correctly by default.
   ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size, "data_parallel_size: ", parameters.data_parallel_size, ", world_size: ", parameters.world_size);
   ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size, "horizontal_parallel_size: ", parameters.horizontal_parallel_size, ", world_size: ", parameters.world_size);
   ORT_ENFORCE(parameters.pipeline_parallel_size <= parameters.world_size, "pipeline_parallel_size: ", parameters.pipeline_parallel_size, ", world_size: ", parameters.world_size);
@@ -552,7 +552,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         NameMLValMap state_tensors;
         ORT_THROW_IF_ERROR(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->GetStateTensors(state_tensors));
         auto& data_transfer_manager = sess->GetSessionHandle()->GetDataTransferManager();
-        //convert to numpy array
+        // convert to numpy array
         std::map<std::string, py::object> rmap;
         for (auto& kv : state_tensors) {
           if (kv.second.IsTensor()) {
@@ -610,9 +610,10 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def(py::init([](PyInferenceSession* session, const std::vector<std::string>& fw_feed_names,
                        const std::vector<OrtDevice>& fw_outputs_device_info,
                        const std::vector<std::string>& bw_fetches_names,
-                       const std::vector<OrtDevice>& bw_outputs_device_info) {
+                       const std::vector<OrtDevice>& bw_outputs_device_info,
+                       int local_rank) {
         return std::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_outputs_device_info,
-                                               bw_fetches_names, bw_outputs_device_info);
+                                               bw_fetches_names, bw_outputs_device_info, local_rank);
       }))
       .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state, OrtValueCachePtr cache) -> void {
         Status status = agent->RunForward(feeds, fetches, *state, cache);
@@ -742,28 +743,28 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                                           const std::unordered_set<std::string>& y_node_arg_names,
                                           const std::unordered_set<std::string>& x_node_arg_names,
                                           const std::string loss_node_arg_name) {
-        std::shared_ptr<Model> model;
-        auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
-        logger_ptr->SetSeverity(logging::Severity::kINFO);
-        ONNX_NAMESPACE::ModelProto model_proto;
-        std::istringstream model_istream(serialized_model);
-        ORT_THROW_IF_ERROR(Model::Load(model_istream, &model_proto));
-        ORT_THROW_IF_ERROR(Model::Load(model_proto, model, nullptr, *logger_ptr));
-        GradientGraphConfiguration gradient_graph_config{};
-        gradient_graph_config.set_gradients_as_graph_outputs = true;
-        // Save some objects, otherwise they get lost.
-        auto gradient_graph_config_ptr = std::make_unique<GradientGraphConfiguration>(gradient_graph_config);
+                          std::shared_ptr<Model> model;
+                          auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
+                          logger_ptr->SetSeverity(logging::Severity::kINFO);
+                          ONNX_NAMESPACE::ModelProto model_proto;
+                          std::istringstream model_istream(serialized_model);
+                          ORT_THROW_IF_ERROR(Model::Load(model_istream, &model_proto));
+                          ORT_THROW_IF_ERROR(Model::Load(model_proto, model, nullptr, *logger_ptr));
+                          GradientGraphConfiguration gradient_graph_config{};
+                          gradient_graph_config.set_gradients_as_graph_outputs = true;
+                          // Save some objects, otherwise they get lost.
+                          auto gradient_graph_config_ptr = std::make_unique<GradientGraphConfiguration>(gradient_graph_config);
 
-        auto builder = std::make_unique<GradientGraphBuilder>(
-            &model->MainGraph(),
-            y_node_arg_names,
-            x_node_arg_names,
-            loss_node_arg_name,
-            *gradient_graph_config_ptr,
-            *logger_ptr);
+                          auto builder = std::make_unique<GradientGraphBuilder>(
+                              &model->MainGraph(),
+                              y_node_arg_names,
+                              x_node_arg_names,
+                              loss_node_arg_name,
+                              *gradient_graph_config_ptr,
+                              *logger_ptr);
 
-        return std::make_unique<PyGradientGraphBuilder>(std::move(builder), std::move(model), std::move(logger_ptr), std::move(gradient_graph_config_ptr));
-      }))
+                          return std::make_unique<PyGradientGraphBuilder>(std::move(builder), std::move(model), std::move(logger_ptr), std::move(gradient_graph_config_ptr));
+                        }))
       .def("build", [](PyGradientGraphBuilder* gradient_graph_builder) {
         ORT_THROW_IF_ERROR(gradient_graph_builder->builder->Build());
       })
