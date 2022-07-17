@@ -313,30 +313,38 @@ def run_perf_tests(model_setting, test_setting, perf_results, all_inputs):
     for intra_op_num_threads in candidate_threads:
         launch_test(model_setting, test_setting, perf_results, all_inputs, intra_op_num_threads)
 
+def one_input(bs, sl):
+  x = np.random.randint(2, size=(3, bs, sl))
+  x[0] = np.random.randint(9000, size=(1, bs, sl))
+  x[1] = np.random.randint(1, size=(1, bs, sl))
+  x[2] = np.random.randint(2, size=(1, bs, sl))
+  return {"id__mask__segment": x}
+
 
 def run_performance(model_setting, test_setting, perf_results):
-    input_ids, segment_ids, input_mask = get_bert_inputs(
-        model_setting.model_path,
-        model_setting.input_ids_name,
-        model_setting.segment_ids_name,
-        model_setting.input_mask_name,
-    )
+    #input_ids, segment_ids, input_mask = get_bert_inputs(
+    #    model_setting.model_path,
+    #    model_setting.input_ids_name,
+    #    model_setting.segment_ids_name,
+    #    model_setting.input_mask_name,
+    #)
 
-    # Do not generate random mask for performance test.
-    print(
-        f"Generating {test_setting.test_cases} samples for batch_size={test_setting.batch_size} sequence_length={test_setting.sequence_length}"
-    )
-    all_inputs = generate_test_data(
-        test_setting.batch_size,
-        test_setting.sequence_length,
-        test_setting.test_cases,
-        test_setting.seed,
-        test_setting.verbose,
-        input_ids,
-        segment_ids,
-        input_mask,
-        random_mask_length=False,
-    )
+    ## Do not generate random mask for performance test.
+    #print(
+    #    f"Generating {test_setting.test_cases} samples for batch_size={test_setting.batch_size} sequence_length={test_setting.sequence_length}"
+    #)
+    #all_inputs = generate_test_data(
+    #    test_setting.batch_size,
+    #    test_setting.sequence_length,
+    #    test_setting.test_cases,
+    #    test_setting.seed,
+    #    test_setting.verbose,
+    #    input_ids,
+    #    segment_ids,
+    #    input_mask,
+    #    random_mask_length=False,
+    #)
+    all_inputs = [one_input(test_setting.batch_size, test_setting.sequence_length) for i in range(test_setting.test_cases)]
 
     run_perf_tests(model_setting, test_setting, perf_results, all_inputs)
 
