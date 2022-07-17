@@ -156,7 +156,7 @@ TEST(FileIoTest, MapFileIntoMemory) {
   GetSystemInfo(&sysinfo);
   static const auto page_size = sysinfo.dwPageSize;
   static const auto allocation_granularity = sysinfo.dwAllocationGranularity;
-  ASSERT_GT(page_size, 0);
+  ASSERT_GT(page_size, static_cast<DWORD>(0));
 
   TempFilePath tmp(ORT_TSTR("map_file_test_"));
   const auto expected_data = GenerateData(page_size * 3 / 2);

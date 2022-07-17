@@ -369,7 +369,7 @@ class WindowsEnv : public Env {
           " - ", std::system_category().message(error_code));
     }
 
-#if WINVER >= _WIN32_WINNT_WIN8
+#if NTDDI_VERSION >= NTDDI_WIN10_RS5
     wil::unique_hfile file_mapping_handle{
         CreateFileMapping2(file_handle.get(),
                            nullptr,
@@ -418,7 +418,7 @@ class WindowsEnv : public Env {
     void* const mapped_base = MapViewOfFile(file_mapping_handle.get(),
                                             FILE_MAP_READ,
                                             0,
-                                            mapped_offset,
+                                            static_cast<DWORD>(mapped_offset),
                                             mapped_length);
 
     mapped_memory =
