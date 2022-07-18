@@ -1171,6 +1171,7 @@ TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInM
   //EXPECT_EQ(para_graph_plan->allocation_plan[input_data_index].location.device.Type(), OrtDevice::GPU);
 }
 
+/*
 TEST_F(PlannerTest, ParaPlanCreation) {
   TypeProto graph_in_type;
   graph_in_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -1615,7 +1616,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   // so.optimized_model_filepath = L"./optimized_ssd.onnx";
   InferenceSession sess{so, GetEnvironment()};
 
-  /*auto*/ status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
+  status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
   ASSERT_TRUE(status.IsOK());
   ASSERT_TRUE(model.Save(model, "./simplified_ssd.onnx").IsOK());
 
@@ -1652,7 +1653,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
     }  //if
   }    //for
   ASSERT_TRUE(reuse_pairs.empty());
-}
+}*/
 #endif  // USE_CUDA
 
 }  // namespace test
