@@ -27,43 +27,51 @@ def dtype_to_funcs(dtype):
     return type_map[dtype]
 
 
-def _test_gemm(size, dtype, func):
-    m, k, n = size
+def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=False):
+    a_shape = (k, m) if transa else (m, k)
+    b_shape = (n, k) if transb else (k, n)
 
     np.random.seed(0)
-    a = (np.random.rand(m, k).astype(dtype) - 0.5) * 2
-    b = (np.random.rand(k, n).astype(dtype) - 0.5) * 2
-    c = np.zeros((m, n)).astype(dtype)
+    a = (np.random.rand(*a_shape) * 2 - 1).astype(dtype)
+    b = (np.random.rand(*b_shape) * 2 - 1).astype(dtype)
 
+    my_c = np.zeros((m, n), dtype=dtype)
     dev_a = ke.DeviceArray(a)
     dev_b = ke.DeviceArray(b)
-    dev_c = ke.DeviceArray(c)
+    dev_c = ke.DeviceArray(my_c)
 
     f = getattr(ke, func)
-    va = f(ke.blas_op.N, ke.blas_op.N, n, m, k, 1.0, dev_b, n, dev_a, k, 0.0, dev_c, n)
-    va.Run()
 
+    opa = ke.blas_op.T if transa else ke.blas_op.N
+    opb = ke.blas_op.T if transb else ke.blas_op.N
+    lda = a_shape[1]
+    ldb = b_shape[1]
+    alpha = 1.0
+    beta = 0.0
+    my_gemm = f(opb, opa, n, m, k, alpha, dev_b, ldb, dev_a, lda, beta, dev_c, n)
+    my_gemm.Run()
     dev_c.UpdateHostNumpyArray()
-
-    ref_c = a @ b
 
     rtol = 1e-3 if dtype == "float16" else 1e-5
     atol = 1e-3 if dtype == "float16" else 1e-5
-    np.testing.assert_allclose(ref_c, c, rtol=rtol, atol=atol)
+
+    print(a, b)
+    ref_c = (a.T if transa else a) @ (b.T if transb else b)
+    np.testing.assert_allclose(ref_c, my_c, rtol=rtol, atol=atol)
+
+
+dtypes = ["float32", "float16"]
+transabs = product([True, False], repeat=2)
+basic_sizes = product([1, 3, 4, 16, 127, 128, 129, 133, 1024], repeat=3)
 
 
 @pytest.mark.parametrize(
-    "size",
-    # product([5, 9], repeat=3)
-    product([1, 3, 4, 16, 124, 125, 126, 127, 128, 129, 130, 131, 132], repeat=3),
+    "dtype, size, transab",
+    product(dtypes, basic_sizes, transabs),
 )
-def test_gemm_all_sizes(size):
-    # FIXME: float16 is causing high roundoff error here!
-    # dtypes = ["float16", "float32"]
-    dtypes = ["float32"]
-    for dtype in dtypes:
-        for f in dtype_to_funcs(dtype):
-            _test_gemm(size, dtype, f)
+def test_gemm_all_cases(dtype, size, transab):
+    for f in dtype_to_funcs(dtype):
+        _test_gemm(f, dtype, *size, *transab)
 
 
 def profile_gemm_func(size, dtype, func):
