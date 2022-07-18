@@ -111,8 +111,7 @@ class ReduceL1 final : public ReduceKernel<true> {
   ReduceL1(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    //return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_NORM1);
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MIOpen does not yet support reduce norm1.");
+    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_NORM1);
   }
 };
 
@@ -122,8 +121,7 @@ class ReduceL2 final : public ReduceKernel<true> {
   ReduceL2(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    //return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_NORM2);
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MIOpen does not yet support reduce norm2.");
+    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_NORM2);
   }
 };
 
