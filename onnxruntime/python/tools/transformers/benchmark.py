@@ -100,12 +100,10 @@ def get_onnx_model(torch_model,
                    use_raw_attention_mask,
                    overwrite,
                    model_fusion_statistics,
-                   fusion_options
-
-                   ):
+                   fusion_options):
     if torch_model:
         with torch.no_grad():
-            return export_onnx_model_from_pt(
+            (onnx_model_file, is_valid_onnx_model, vocab_size, max_input_size) = export_onnx_model_from_pt(
                 model_name,
                 MODELS[model_name][1],
                 MODELS[model_name][2],
@@ -124,6 +122,7 @@ def get_onnx_model(torch_model,
                 model_fusion_statistics,
                 fusion_options,
             )
+            return None, onnx_model_file, is_valid_onnx_model, vocab_size, max_input_size
     else:
         return export_onnx_model_from_tf(
             model_name,
@@ -147,25 +146,25 @@ def get_onnx_model(torch_model,
 
 
 def run_migraphx(
-    use_gpu,
-    model_names,
-    model_class,
-    config_modifier,
-    precision,
-    num_threads,
-    batch_sizes,
-    sequence_lengths,
-    repeat_times,
-    input_counts,
-    optimizer_info,
-    validate_onnx,
-    cache_dir,
-    onnx_dir,
-    overwrite,
-    use_raw_attention_mask,
-    model_fusion_statistics,
-    model_source,
-    args
+        use_gpu,
+        model_names,
+        model_class,
+        config_modifier,
+        precision,
+        num_threads,
+        batch_sizes,
+        sequence_lengths,
+        repeat_times,
+        input_counts,
+        optimizer_info,
+        validate_onnx,
+        cache_dir,
+        onnx_dir,
+        overwrite,
+        use_raw_attention_mask,
+        model_fusion_statistics,
+        model_source,
+        args
 ):
     import migraphx
     results = []
@@ -175,16 +174,21 @@ def run_migraphx(
         for num_inputs in input_counts:
             if num_inputs > len(all_input_names):
                 break
+            config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
 
             input_names = all_input_names[:num_inputs]
             args.model_type = MODELS[model_name][3]
             fusion_options = FusionOptions.parse(args)
-            
+
             torch_model = False
             if "pt" in model_source:
                 torch_model = True
 
-            (onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length,) = get_onnx_model(
+            (_,
+             onnx_model_file, 
+             is_valid_onnx_model, 
+             vocab_size, 
+             max_sequence_length) = get_onnx_model(
                 torch_model,
                 model_name,
                 model_class,
@@ -208,20 +212,20 @@ def run_migraphx(
             for batch_size in batch_sizes:
                 if batch_size <= 0:
                     continue
-                for sequence_length in sequence_lengths:                    
+                for sequence_length in sequence_lengths:
                     if max_sequence_length is not None and sequence_length > max_sequence_length:
                         continue
 
                     input_value_type = numpy.int64 if "pt" in model_source else numpy.int32
-                    
+
                     logger.info(
                         "Run migraphx on {} with input shape {}".format(model_name, [batch_size, sequence_length])
                     )
-                    logger.info(f"Run migraphx on {onnx_model_file}") 
+                    logger.info(f"Run migraphx on {onnx_model_file}")
 
                     model = migraphx.parse_onnx(onnx_model_file,
                                                 default_dim_value=batch_size,
-                                                map_input_dims={"input_ids": [batch_size,sequence_length]} )
+                                                map_input_dims={"input_ids": [batch_size, sequence_length]})
 
                     model.compile(migraphx.get_target("gpu" if use_gpu else "ref"))
                     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
@@ -233,7 +237,7 @@ def run_migraphx(
                         config,
                         input_value_type,
                     )
-                    
+
                     try:
                         runtimes = timeit.repeat(lambda: model.run(inputs), repeat=repeat_times, number=1)
                         result = {
