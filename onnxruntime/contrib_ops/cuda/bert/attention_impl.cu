@@ -125,7 +125,8 @@ bool QkvToContext(
 
   if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
           cublas, CUBLAS_OP_T, CUBLAS_OP_N, all_sequence_length, sequence_length, head_size, &alpha, k, head_size, present_size_per_batch,
-          q, head_size, size_per_batch, &zero, scratch1, all_sequence_length, temp_matrix_size, batches, prop))) {
+          q, head_size, size_per_batch, &zero, scratch1, all_sequence_length, temp_matrix_size, batches, prop),
+      cublas, stream)) {
     return false;
   }
 
@@ -156,7 +157,8 @@ bool QkvToContext(
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
   if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, head_size, sequence_length, all_sequence_length, &one, v, head_size, present_size_per_batch,
-          scratch2, all_sequence_length, temp_matrix_size, &zero, scratch3, head_size, size_per_batch, batches, prop))) {
+          scratch2, all_sequence_length, temp_matrix_size, &zero, scratch3, head_size, size_per_batch, batches, prop),
+                   cublas, stream)) {
     return false;
   }
 
@@ -310,13 +312,15 @@ bool DecoderQkvToContext(
   if (use_past && static_kv) {
     if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
       cublas, CUBLAS_OP_T, CUBLAS_OP_N, kv_sequence_length, sequence_length, head_size, &alpha, key_cache, head_size, strideA,
-      q, head_size, strideB, &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, prop))) {
+      q, head_size, strideB, &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, prop),
+                     cublas, stream)) {
       return false;
     }
   } else {
     if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
       cublas, CUBLAS_OP_T, CUBLAS_OP_N, kv_sequence_length, sequence_length, head_size, &alpha, k, head_size, strideA,
-      q, head_size, strideB, &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, prop))) {
+      q, head_size, strideB, &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, prop),
+                     cublas, stream)) {
       return false;
     }
   }
@@ -336,13 +340,15 @@ bool DecoderQkvToContext(
   if (use_past && static_kv) {
     if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, head_size, sequence_length, kv_sequence_length, &one, value_cache, head_size, strideA,
-      scratch2, kv_sequence_length, temp_matrix_size, &zero, scratch3, head_size, strideB, BN, prop))) {
+      scratch2, kv_sequence_length, temp_matrix_size, &zero, scratch3, head_size, strideB, BN, prop),
+                     cublas, stream)) {
       return false;
     }
   } else {
     if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, head_size, sequence_length, kv_sequence_length, &one, v, head_size, strideA,
-      scratch2, kv_sequence_length, temp_matrix_size, &zero, scratch3, head_size, strideB, BN, prop))) {
+      scratch2, kv_sequence_length, temp_matrix_size, &zero, scratch3, head_size, strideB, BN, prop),
+                     cublas, stream)) {
       return false;
     }
   }

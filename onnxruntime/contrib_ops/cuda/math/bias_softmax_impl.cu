@@ -302,7 +302,7 @@ Status DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
   CudnnTensor input_tensor, output_tensor;
   ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
   ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
-  cudnnSoftmaxForward(
+  CUDNN_RETURN_IF_ERROR(cudnnSoftmaxForward(
       cudaDnnHandle,
       CUDNN_SOFTMAX_ACCURATE,
       CUDNN_SOFTMAX_MODE_INSTANCE,
@@ -311,7 +311,7 @@ Status DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
       Y_data,
       &beta,
       output_tensor,
-      Y_data);
+      Y_data), cudaDnnHandle, stream);
 
   return Status::OK();
 }

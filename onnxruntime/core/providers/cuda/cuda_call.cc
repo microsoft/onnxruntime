@@ -84,6 +84,14 @@ const char* CudaErrString<ncclResult_t>(ncclResult_t e) {
 }
 #endif
 
+void set_cudnn_stream(cudnnHandle_t handle, cudaStream_t stream, cudnnStatus_t& output) {
+  output = cudnnSetStream(handle, stream);
+}
+
+void set_cublas_stream(cublasHandle_t handle, cudaStream_t stream, cublasStatus_t& output) {
+  output = cublasSetStream(handle, stream);
+}
+
 template <typename ERRTYPE, bool THRW>
 bool CudaCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg) {
   if (retCode != successCode) {
