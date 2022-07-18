@@ -3,7 +3,7 @@
 
 #pragma once
 #include <vector>
-#include "contrib_ops/cpu/transformers/beam_search_shared.h"
+#include "contrib_ops/cpu/transformers/generation_shared.h"
 #include "contrib_ops/cpu/transformers/generate_impl_base.h"
 
 namespace onnxruntime {
@@ -82,9 +82,9 @@ class GreedySearchBase : public GenerateBase {
                    void* cuda_stream,
                    IConsoleDumper* cuda_dumper,
                    GreedySearchParameters& params,
-                   const BeamSearchDeviceHelper::TopkFunc& topk_func,
-                   const BeamSearchDeviceHelper::GreedySearchProcessLogitsFunc<T>& process_logits_func,
-                   const BeamSearchDeviceHelper::DeviceCopyFunc<float>& device_copy_func)
+                   const GenerationDeviceHelper::TopkFunc& topk_func,
+                   const GenerationDeviceHelper::GreedySearchProcessLogitsFunc<T>& process_logits_func,
+                   const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func)
     : GenerateBase(context,
                    decoder_session_state,
                    thread_pool,
@@ -120,7 +120,7 @@ class GreedySearchBase : public GenerateBase {
   GreedySearchParameters* parameters_;
 
   // Device specific functions
-  BeamSearchDeviceHelper::GreedySearchProcessLogitsFunc<T> process_logits_func_;
+  GenerationDeviceHelper::GreedySearchProcessLogitsFunc<T> process_logits_func_;
 };
 
 template <typename T>
@@ -195,7 +195,7 @@ Status GreedySearchBase<T>::GenerateNextToken(
 
   greedy_state.sequences.AppendNextTokenToSequences(next_tokens);
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   greedy_state.sequences.PrintSequences(&cpu_dumper_);
 #endif
 

@@ -11,7 +11,7 @@
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_encoder.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
-#include "contrib_ops/cpu/transformers/beam_search_device_helper.h"
+#include "contrib_ops/cpu/transformers/generation_device_helper.h"
 
 namespace onnxruntime {
 class FeedsFetchesManager;
@@ -47,13 +47,13 @@ class GreedySearch : public IControlFlowKernel {
 
   // device helpers that is same for both GPT and encoder-decoder models.
   void SetDeviceHelpers(
-      const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
-      const BeamSearchDeviceHelper::TopkFunc& topk_func,
-      const BeamSearchDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
-      const BeamSearchDeviceHelper::GreedySearchProcessLogitsFunc<float>& process_logits_func,
-      const BeamSearchDeviceHelper::GreedySearchProcessLogitsFunc<MLFloat16>& process_logits_fp16_func,
-      const BeamSearchDeviceHelper::InitGreedyStateFunc<float>& init_greedy_state_func,
-      const BeamSearchDeviceHelper::InitGreedyStateFunc<MLFloat16>& init_greedy_state_fp16_func) {
+      const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
+      const GenerationDeviceHelper::TopkFunc& topk_func,
+      const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
+      const GenerationDeviceHelper::GreedySearchProcessLogitsFunc<float>& process_logits_func,
+      const GenerationDeviceHelper::GreedySearchProcessLogitsFunc<MLFloat16>& process_logits_fp16_func,
+      const GenerationDeviceHelper::InitGreedyStateFunc<float>& init_greedy_state_func,
+      const GenerationDeviceHelper::InitGreedyStateFunc<MLFloat16>& init_greedy_state_fp16_func) {
     add_to_feeds_func_ = add_to_feeds_func;
     topk_func_ = topk_func;
     device_copy_func_ = device_copy_func;
@@ -64,29 +64,29 @@ class GreedySearch : public IControlFlowKernel {
   }
 
   void SetDeviceHelpers_Gpt(
-      const BeamSearchDeviceHelper::UpdateGptFeedsFunc<float>& update_gpt_feeds_func,
-      const BeamSearchDeviceHelper::UpdateGptFeedsFunc<MLFloat16>& update_gpt_feeds_fp16_func) {
+      const GenerationDeviceHelper::UpdateGptFeedsFunc<float>& update_gpt_feeds_func,
+      const GenerationDeviceHelper::UpdateGptFeedsFunc<MLFloat16>& update_gpt_feeds_fp16_func) {
     update_gpt_feeds_func_ = update_gpt_feeds_func;
     update_gpt_feeds_fp16_func_ = update_gpt_feeds_fp16_func;
   }
 
  private:
   // Device specific functions
-  BeamSearchDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
-  BeamSearchDeviceHelper::TopkFunc topk_func_;
-  BeamSearchDeviceHelper::DeviceCopyFunc<float> device_copy_func_;
+  GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
+  GenerationDeviceHelper::TopkFunc topk_func_;
+  GenerationDeviceHelper::DeviceCopyFunc<float> device_copy_func_;
 
-  BeamSearchDeviceHelper::GreedySearchProcessLogitsFunc<float> process_logits_func_;
-  BeamSearchDeviceHelper::GreedySearchProcessLogitsFunc<MLFloat16> process_logits_fp16_func_;
+  GenerationDeviceHelper::GreedySearchProcessLogitsFunc<float> process_logits_func_;
+  GenerationDeviceHelper::GreedySearchProcessLogitsFunc<MLFloat16> process_logits_fp16_func_;
 
-  BeamSearchDeviceHelper::InitGreedyStateFunc<float> init_greedy_state_func_;
-  BeamSearchDeviceHelper::InitGreedyStateFunc<MLFloat16> init_greedy_state_fp16_func_;
+  GenerationDeviceHelper::InitGreedyStateFunc<float> init_greedy_state_func_;
+  GenerationDeviceHelper::InitGreedyStateFunc<MLFloat16> init_greedy_state_fp16_func_;
 
   //------------------------------------------------------------
   // Device specific functions for GPT
   //------------------------------------------------------------
-  BeamSearchDeviceHelper::UpdateGptFeedsFunc<float> update_gpt_feeds_func_;
-  BeamSearchDeviceHelper::UpdateGptFeedsFunc<MLFloat16> update_gpt_feeds_fp16_func_;
+  GenerationDeviceHelper::UpdateGptFeedsFunc<float> update_gpt_feeds_func_;
+  GenerationDeviceHelper::UpdateGptFeedsFunc<MLFloat16> update_gpt_feeds_fp16_func_;
 
   //------------------------------------------------------------
   // Subgraph and FeedsFetchesManager re-used for each subgraph execution.

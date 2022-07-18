@@ -34,7 +34,7 @@ int Sequences::GetSequenceLength() const {
   return current_length_;
 }
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
 void Sequences::PrintSequences(const IConsoleDumper* dumper) const {
   for (int i = 0; i < batch_beam_size_; i++) {
     gsl::span<const int32_t> sequence = GetSequence(i);

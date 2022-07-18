@@ -6,7 +6,7 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include "contrib_ops/cpu/transformers/beam_search_shared.h"
+#include "contrib_ops/cpu/transformers/generation_shared.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -39,8 +39,8 @@ class GenerateBase {
                concurrency::ThreadPool* thread_pool,
                void* cuda_stream,
                IConsoleDumper* cuda_dumper,
-               const BeamSearchDeviceHelper::TopkFunc& topk_func,
-               const BeamSearchDeviceHelper::DeviceCopyFunc<float>& device_copy_func)
+               const GenerationDeviceHelper::TopkFunc& topk_func,
+               const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func)
       : context_(context),
         decoder_session_state_(decoder_session_state),
         thread_pool_(thread_pool),
@@ -103,8 +103,8 @@ class GenerateBase {
   AllocatorPtr temp_space_allocator_;
 
   // Device specific functions
-  BeamSearchDeviceHelper::TopkFunc topk_func_;
-  BeamSearchDeviceHelper::DeviceCopyFunc<float> device_copy_func_;
+  GenerationDeviceHelper::TopkFunc topk_func_;
+  GenerationDeviceHelper::DeviceCopyFunc<float> device_copy_func_;
 };
 
 }  // namespace transformers

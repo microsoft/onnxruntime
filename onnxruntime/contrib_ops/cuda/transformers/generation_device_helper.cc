@@ -21,11 +21,11 @@ class ThreadPool;
 }
 }  // namespace onnxruntime
 
-#include "beam_search_device_helper.h"
+#include "generation_device_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
-namespace BeamSearchCudaDeviceHelper {
+namespace GenerationCudaDeviceHelper {
 
 Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
             AllocatorPtr allocator,
@@ -221,7 +221,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   ORT_UNUSED_PARAMETER(logits_processors);
 
-#ifndef DEBUG_BEAM_SEARCH
+#ifndef DEBUG_GENERATION
   ORT_UNUSED_PARAMETER(dumper);
 #endif
 
@@ -265,7 +265,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     }
   }
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   dumper->Print("logits", logits);
   if (input_length > 1 || logits_batch_size == batch_size) {
     dumper->Print("next_token_logits", next_token_logits.data(), batch_size, num_beams, vocab_size);
@@ -284,7 +284,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   dispatch_blockwise_softmax_forward<CudaT, float, float, true>(
       cuda_stream, Y_data, X_data, vocab_size, vocab_size, batch_size * num_beams);
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after softmax", next_token_scores.data(), batch_size, num_beams, vocab_size);
 #endif
 
@@ -317,7 +317,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       parameters->no_repeat_ngram_size,
       cuda_stream);
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after logits process", next_token_scores.data(), batch_size, num_beams, vocab_size);
 #endif
 
@@ -326,7 +326,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   cuda::LaunchAddProbsKernel(next_token_scores.data(), beam_state->beam_scores.data(),
                              batch_size, num_beams, vocab_size, cuda_stream);
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores adding beam_scores", next_token_scores.data(), batch_size, num_beams, vocab_size);
 #endif
 
@@ -361,7 +361,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
                            topk_scores, topk_indices));
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   dumper->Print("topk_scores", *(topk_scores.get()));
   dumper->Print("topk_indices", *(topk_indices.get()));
 #endif
@@ -375,7 +375,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   const float* data = topk_scores->Data<float>();
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   dumper->Print("next_scores before scorer", data, batch_size, top_k);
   dumper->Print("next_tokens before scorer", beam_state->next_tokens.data(), batch_size, top_k);
   dumper->Print("next_indices before scorer", beam_state->next_indices.data(), batch_size, top_k);
@@ -427,7 +427,7 @@ Status GreedySearchProcessLogits(
   const transformers::IConsoleDumper* dumper) {               // tensor dumper
   ORT_UNUSED_PARAMETER(logits_processors);
 
-#ifndef DEBUG_BEAM_SEARCH
+#ifndef DEBUG_GENERATION
   ORT_UNUSED_PARAMETER(dumper);
 #endif
 
@@ -463,7 +463,7 @@ Status GreedySearchProcessLogits(
     current_logits += input_length * vocab_size;
   }
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   dumper->Print("logits", logits);
   dumper->Print("next_token_scores", next_token_scores.data(), batch_size, vocab_size);
 #endif
@@ -496,7 +496,7 @@ Status GreedySearchProcessLogits(
       parameters->no_repeat_ngram_size,
       cuda_stream);
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after logits process", next_token_scores.data(), batch_size, vocab_size);
 #endif
 
@@ -525,7 +525,7 @@ Status GreedySearchProcessLogits(
   ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
                            topk_scores, topk_indices));
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   dumper->Print("topk_scores", *(topk_scores.get()));
   dumper->Print("topk_indices", *(topk_indices.get()));
 #endif
@@ -540,7 +540,7 @@ Status GreedySearchProcessLogits(
                                        cuda_stream));
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   dumper->Print("greedy_state->next_tokens", greedy_state->next_tokens.data(), 3, 1);
 #endif
   return Status::OK();
@@ -690,7 +690,7 @@ Status UpdateGptFeeds(
 
   next_inputs[2] = attention_mask;
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   dumper->Print("input_ids", input_ids);
   dumper->Print("position_ids", position_ids);
   dumper->Print("attention_mask", attention_mask);
@@ -758,7 +758,7 @@ Status UpdateDecoderFeeds(
                                        cudaMemcpyHostToDevice, reinterpret_cast<cudaStream_t>(stream)));
   next_inputs[0] = input_ids;
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   dumper->Print("input_ids", input_ids);
 #else
   ORT_UNUSED_PARAMETER(dumper);
@@ -1002,6 +1002,6 @@ template Status ExpandBuffer<MLFloat16>(
     AllocatorPtr allocator,
     OrtValue& expanded,
     bool only_copy_shape);
-}  // namespace BeamSearchCudaDeviceHelper
+}  // namespace GenerationCudaDeviceHelper
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -22,13 +22,13 @@ class GreedySearchGpt : public GreedySearchBase<T> {
                 void* cuda_stream,
                 IConsoleDumper* cuda_dumper,
                 GreedySearchParameters& params,
-                const BeamSearchDeviceHelper::CreateGptInputsFunc& create_inputs_func,
-                const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
-                const BeamSearchDeviceHelper::TopkFunc& topk_func,
-                const BeamSearchDeviceHelper::GreedySearchProcessLogitsFunc<T>& process_logits_func,
-                const BeamSearchDeviceHelper::InitGreedyStateFunc<T>& init_greedy_state_func,
-                const BeamSearchDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
-                const BeamSearchDeviceHelper::UpdateGptFeedsFunc<T>& update_feeds_func)
+                const GenerationDeviceHelper::CreateGptInputsFunc& create_inputs_func,
+                const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
+                const GenerationDeviceHelper::TopkFunc& topk_func,
+                const GenerationDeviceHelper::GreedySearchProcessLogitsFunc<T>& process_logits_func,
+                const GenerationDeviceHelper::InitGreedyStateFunc<T>& init_greedy_state_func,
+                const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
+                const GenerationDeviceHelper::UpdateGptFeedsFunc<T>& update_feeds_func)
       : GreedySearchBase<T>(context,
                             decoder_session_state,
                             thread_pool,
@@ -67,10 +67,10 @@ class GreedySearchGpt : public GreedySearchBase<T> {
   GptSubgraph& gpt_subgraph_;
 
   // Device specific functions
-  BeamSearchDeviceHelper::CreateGptInputsFunc create_inputs_func_;
-  BeamSearchDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
-  BeamSearchDeviceHelper::InitGreedyStateFunc<T> init_greedy_state_func_;
-  BeamSearchDeviceHelper::UpdateGptFeedsFunc<T> update_feeds_func_;
+  GenerationDeviceHelper::CreateGptInputsFunc create_inputs_func_;
+  GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
+  GenerationDeviceHelper::InitGreedyStateFunc<T> init_greedy_state_func_;
+  GenerationDeviceHelper::UpdateGptFeedsFunc<T> update_feeds_func_;
 };
 
 template <typename T>
@@ -151,7 +151,7 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
                            parameters->max_length,
                            parameters->sequence_length);
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   const IConsoleDumper* dumper = this->GetConsoleDumper();
   dumper->Print("input_ids", feeds[0]);
   dumper->Print("position_ids", feeds[1]);
@@ -172,7 +172,7 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
   int iteration_counter = 0;
   while (current_length < parameters->max_length) {
     iteration_counter++;
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
     auto cur_len = std::to_string(current_length);
     dumper->Print("***CurrentLength", cur_len, true);
 #endif

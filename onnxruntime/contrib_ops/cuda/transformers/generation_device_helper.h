@@ -8,7 +8,7 @@
 #include "core/providers/cuda/cuda_common.h"
 
 #include "gsl/gsl"
-#include "contrib_ops/cpu/transformers/beam_search_shared.h"
+#include "contrib_ops/cpu/transformers/generation_shared.h"
 
 namespace onnxruntime {
 namespace concurrency {
@@ -19,7 +19,7 @@ class ThreadPool;
 namespace onnxruntime {
 namespace contrib {
 // These are CUDA specific device helper implementations
-namespace BeamSearchCudaDeviceHelper {
+namespace GenerationCudaDeviceHelper {
 
 Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
             AllocatorPtr allocator,
@@ -124,6 +124,6 @@ Status ExpandBuffer(
     OrtValue& expanded,
     bool only_copy_shape);
 
-}  // namespace BeamSearchCudaDeviceHelper
+}  // namespace GenerationCudaDeviceHelper
 }  // namespace contrib
 }  // namespace onnxruntime

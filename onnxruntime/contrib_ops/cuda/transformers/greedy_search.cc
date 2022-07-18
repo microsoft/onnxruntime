@@ -4,7 +4,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "contrib_ops/cuda/transformers/greedy_search.h"
-#include "contrib_ops/cuda/transformers/beam_search_device_helper.h"
+#include "contrib_ops/cuda/transformers/generation_device_helper.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 
 namespace onnxruntime {
@@ -32,16 +32,16 @@ GreedySearch::GreedySearch(const OpKernelInfo& info)
     : onnxruntime::contrib::transformers::GreedySearch(info) {
   SetComputeStream(static_cast<void*>(info.GetExecutionProvider()->GetComputeStream()));
 
-  SetDeviceHelpers(BeamSearchCudaDeviceHelper::AddToFeeds,
-                   BeamSearchCudaDeviceHelper::TopK,
-                   BeamSearchCudaDeviceHelper::DeviceCopy<float>,
-                   BeamSearchCudaDeviceHelper::GreedySearchProcessLogits<float>,
-                   BeamSearchCudaDeviceHelper::GreedySearchProcessLogits<MLFloat16>,
-                   BeamSearchCudaDeviceHelper::InitGreedyState<float>,
-                   BeamSearchCudaDeviceHelper::InitGreedyState<MLFloat16>);
+  SetDeviceHelpers(GenerationCudaDeviceHelper::AddToFeeds,
+                   GenerationCudaDeviceHelper::TopK,
+                   GenerationCudaDeviceHelper::DeviceCopy<float>,
+                   GenerationCudaDeviceHelper::GreedySearchProcessLogits<float>,
+                   GenerationCudaDeviceHelper::GreedySearchProcessLogits<MLFloat16>,
+                   GenerationCudaDeviceHelper::InitGreedyState<float>,
+                   GenerationCudaDeviceHelper::InitGreedyState<MLFloat16>);
 
-  SetDeviceHelpers_Gpt(BeamSearchCudaDeviceHelper::UpdateGptFeeds<float>,
-                       BeamSearchCudaDeviceHelper::UpdateGptFeeds<MLFloat16>);
+  SetDeviceHelpers_Gpt(GenerationCudaDeviceHelper::UpdateGptFeeds<float>,
+                       GenerationCudaDeviceHelper::UpdateGptFeeds<MLFloat16>);
 
   SetConsoleDumper(&g_cuda_dumper_greedysearch);
 }

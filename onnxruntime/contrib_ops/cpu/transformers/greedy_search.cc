@@ -138,13 +138,13 @@ if (parameters_.model_type == 0) {  // GPT-2
         cuda_stream_,
         dumper_,
         parameters,
-        BeamSearchCpuDeviceHelper::CreateGptInputs,
-        add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
-        topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
-        process_logits_func_ ? process_logits_func_ : BeamSearchCpuDeviceHelper::GreedySearchProcessLogits<float>,
-        init_greedy_state_func_ ? init_greedy_state_func_ : BeamSearchCpuDeviceHelper::InitGreedyState<float>,
-        device_copy_func_ ? device_copy_func_ : BeamSearchCpuDeviceHelper::DeviceCopy<float>,
-        update_gpt_feeds_func_ ? update_gpt_feeds_func_ : BeamSearchCpuDeviceHelper::UpdateGptFeeds<float>};
+        GenerationCpuDeviceHelper::CreateGptInputs,
+        add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+        topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
+        process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::GreedySearchProcessLogits<float>,
+        init_greedy_state_func_ ? init_greedy_state_func_ : GenerationCpuDeviceHelper::InitGreedyState<float>,
+        device_copy_func_ ? device_copy_func_ : GenerationCpuDeviceHelper::DeviceCopy<float>,
+        update_gpt_feeds_func_ ? update_gpt_feeds_func_ : GenerationCpuDeviceHelper::UpdateGptFeeds<float>};
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(*decoder_feeds_fetches_manager_);
@@ -157,9 +157,9 @@ if (parameters_.model_type == 0) {  // GPT-2
         cuda_stream_,
         dumper_,
         parameters,
-        BeamSearchCpuDeviceHelper::CreateGptInputs,
-        add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
-        topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
+        GenerationCpuDeviceHelper::CreateGptInputs,
+        add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+        topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
         process_logits_fp16_func_,
         init_greedy_state_fp16_func_,
         device_copy_func_,

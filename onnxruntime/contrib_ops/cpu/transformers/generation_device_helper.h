@@ -12,7 +12,7 @@
 #include <vector>
 #include "gsl/gsl"
 #include "contrib_ops/cpu/transformers/logits_processor.h"
-#include "contrib_ops/cpu/transformers/beam_search_shared.h"
+#include "contrib_ops/cpu/transformers/generation_shared.h"
 
 namespace onnxruntime {
 class IExecutionProvider;
@@ -31,7 +31,7 @@ enum DeviceCopyDirection {
   deviceToDevice = 3
 };
 
-namespace BeamSearchDeviceHelper {
+namespace GenerationDeviceHelper {
 using TopkFunc = std::function<Status(
     const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
     AllocatorPtr allocator,
@@ -160,11 +160,11 @@ using ExpandBufferFunc = std::function<Status(
     AllocatorPtr allocator,
     OrtValue& expanded,
     bool only_copy_shape)>;
-}  // namespace BeamSearchDeviceHelper
+}  // namespace GenerationDeviceHelper
 
 
 // These are CPU specific device helper implementations
-namespace BeamSearchCpuDeviceHelper {
+namespace GenerationCpuDeviceHelper {
 Status TopK(
     const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
     AllocatorPtr allocator,
@@ -299,6 +299,6 @@ Status ExpandBuffer(
     OrtValue& expanded,
     bool only_copy_shape);
 
-}  // namespace BeamSearchCpuDeviceHelper
+}  // namespace GenerationCpuDeviceHelper
 }  // namespace contrib
 }  // namespace onnxruntime

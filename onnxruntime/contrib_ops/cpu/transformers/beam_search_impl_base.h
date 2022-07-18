@@ -124,10 +124,10 @@ class BeamSearchBase : public GenerateBase  {
                  void* cuda_stream,
                  IConsoleDumper* cuda_dumper,
                  BeamSearchParameters& params,
-                 const BeamSearchDeviceHelper::TopkFunc& topk_func,
-                 const BeamSearchDeviceHelper::ProcessLogitsFunc<T>& process_logits_func,
-                 const BeamSearchDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
-                 const BeamSearchDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func)
+                 const GenerationDeviceHelper::TopkFunc& topk_func,
+                 const GenerationDeviceHelper::ProcessLogitsFunc<T>& process_logits_func,
+                 const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
+                 const GenerationDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func)
       :  GenerateBase(context,
                       decoder_session_state,
                       thread_pool,
@@ -168,8 +168,8 @@ class BeamSearchBase : public GenerateBase  {
   std::unique_ptr<BeamSearchScorer> beam_scorer_;
 
   // Device specific functions
-  BeamSearchDeviceHelper::ProcessLogitsFunc<T> process_logits_func_;
-  BeamSearchDeviceHelper::DeviceCopyFunc<int32_t> device_copy_int32_func_;
+  GenerationDeviceHelper::ProcessLogitsFunc<T> process_logits_func_;
+  GenerationDeviceHelper::DeviceCopyFunc<int32_t> device_copy_int32_func_;
 };
 
 template <typename T>
@@ -305,7 +305,7 @@ Status BeamSearchBase<T>::GenerateNextToken(
   beam_next_tokens = beam_scorer_->GetNextTokens();
   beam_indices = beam_scorer_->GetNextIndices();
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   cpu_dumper_.Print("beam_scores from scorer", beam_scores.data(), parameters_->batch_size, parameters_->num_beams);
   cpu_dumper_.Print("beam_next_tokens", beam_next_tokens.data(), parameters_->batch_size, parameters_->num_beams);
   cpu_dumper_.Print("beam_indices", beam_indices.data(), parameters_->batch_size, parameters_->num_beams);
@@ -313,7 +313,7 @@ Status BeamSearchBase<T>::GenerateNextToken(
 
   cpu_state.sequences.AppendNextTokenToSequences(beam_indices, beam_next_tokens);
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   cpu_state.sequences.PrintSequences(&cpu_dumper_);
 #endif
   return Status::OK();

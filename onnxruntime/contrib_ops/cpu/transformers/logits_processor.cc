@@ -25,7 +25,7 @@ void NextTokenScores<T>::SetScore(int token_id, T score) {
   }
 }
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
 template <typename T>
 void DumpScores(const char* name, const NextTokenScores<T>& next_token_scores) {
   std::cout << name << std::endl;
@@ -45,7 +45,7 @@ void MinLengthLogitsProcessor<T>::Process(const ISequences* sequences,
     next_token_scores.SetScore(eos_token_id_, std::numeric_limits<T>::lowest());
   }
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   DumpScores("MinLengthLogitsProcessor", next_token_scores);
 #endif
 }
@@ -77,7 +77,7 @@ void RepetitionPenaltyLogitsProcessor<T>::Process(const ISequences* sequences,
     }
   }
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   DumpScores("RepetitionPenaltyLogitsProcessor", next_token_scores);
 #endif
 }
@@ -118,7 +118,7 @@ void NoRepeatNGramLogitsProcessor<T>::Process(const ISequences* sequences,
     }
   }
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   DumpScores("NoRepeatNGramLogitsProcessor", next_token_scores);
 #endif
 }
@@ -145,7 +145,7 @@ void VocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
     }
   }
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   DumpScores("VocabMaskLogitsProcessor", next_token_scores);
 #endif
 }
@@ -180,7 +180,7 @@ void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
     }
   }
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   DumpScores("PrefixVocabMaskLogitsProcessor", next_token_scores);
 #endif
 }

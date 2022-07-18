@@ -49,9 +49,9 @@ void LaunchNextTokenKernel(const int64_t* next_token_indices,
                            cudaStream_t stream);
 
 void LaunchTypeCastKernel(const int64_t* next_token_indices,
-                           int32_t* next_tokens,
-                           int batch_size,
-                           cudaStream_t stream);
+                          int32_t* next_tokens,
+                          int batch_size,
+                          cudaStream_t stream);
 
 void LaunchUpdateGptKernel(const int32_t* old_mask_data,
                            int32_t* mask_data,
