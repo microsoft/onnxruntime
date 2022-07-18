@@ -106,12 +106,12 @@ Status GreedySearchGpt<T>::UpdateFeeds(
                             next_inputs,
                             current_length,
                             position_ids,
+                            true,
                             next_tokens,
                             place_holder,
                             this->parameters_->num_beams,
                             gpt_subgraph_.GetFirstPastInputIndex(),
-                            gpt_subgraph_.GetFirstPresentOutputIndex(),
-                            this->GetConsoleDumper());
+                            gpt_subgraph_.GetFirstPresentOutputIndex());
 }
 
 template <typename T>
