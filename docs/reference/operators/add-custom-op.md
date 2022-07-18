@@ -37,7 +37,7 @@ A new op can be registered with ONNX Runtime using the Custom Operator API in [o
 * [Using Custom Ops with TF2ONNX](https://github.com/microsoft/onnxruntime-extensions/blob/main/tutorials/tf2onnx_custom_ops_tutorial.ipynb): This notebook covers converting a TF model using an existing custom op, defining new custom ops in Python to use in conversion, and defining new custom ops in C++.
 
 ## Calling a native operator from custom operator
-Since 1.12.0, onnxruntime allows its native operators to be called directly by a custom operator through APIs.
+Since 1.12.0, onnxruntime allows its native operators to be called directly by a custom operator through [API](https://github.com/microsoft/onnxruntime/blob/ced7c2deac958391414d2bbf951f86e2fc904b05/include/onnxruntime/core/session/onnxruntime_cxx_api.h#L1156).
 
 Steps are:
 
