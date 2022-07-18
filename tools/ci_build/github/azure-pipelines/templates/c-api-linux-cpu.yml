@@ -19,13 +19,17 @@ parameters:
 
 - name: OnnxruntimeNodejsBindingArch  
   type: string
+
+- name: PoolName
+  type: string
+  default: 'Linux-CPU'
   
 jobs:
 - job: Linux_C_API_Packaging_CPU_${{parameters.OnnxruntimeArch}}
   workspace:
     clean: all
   timeoutInMinutes:  210
-  pool: 'Linux-CPU'
+  pool: ${{parameters.PoolName}}
   steps:
     - template: set-version-number-variables-step.yml
     - template: get-docker-image-steps.yml
