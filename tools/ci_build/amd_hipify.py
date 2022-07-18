@@ -128,7 +128,6 @@ provider_excluded_files = [
     "nn/pool.cc",
     "nn/pool.h",
     "reduction/reduction_ops.cc",
-    "reduction/reduction_ops.h",
     "rnn/cudnn_rnn_base.cc",
     "rnn/cudnn_rnn_base.h",
     "rnn/gru.cc",
