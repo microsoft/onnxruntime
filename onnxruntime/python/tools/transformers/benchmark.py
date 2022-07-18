@@ -84,7 +84,66 @@ if "OMP_NUM_THREADS" not in os.environ:
     os.environ["OMP_NUM_THREADS"] = str(cpu_count)
 
 import torch
-from transformers import AutoConfig, AutoModel, AutoTokenizer, GPT2Model, LxmertConfig
+from transformers import AutoConfig, AutoModel, AutoTokenizer
+
+def get_onnx_model(torch_model,
+                   model_name,
+                   model_class,
+                   config_modifier,
+                   cache_dir,
+                   onnx_dir,
+                   input_names,
+                   use_gpu,
+                   precision,
+                   optimizer_info,
+                   validate_onnx,
+                   use_raw_attention_mask,
+                   overwrite,
+                   model_fusion_statistics,
+                   fusion_options
+
+                   ):
+    if torch_model:
+        with torch.no_grad():
+            return export_onnx_model_from_pt(
+                model_name,
+                MODELS[model_name][1],
+                MODELS[model_name][2],
+                MODELS[model_name][3],
+                model_class,
+                config_modifier,
+                cache_dir,
+                onnx_dir,
+                input_names,
+                use_gpu,
+                precision,
+                optimizer_info,
+                validate_onnx,
+                use_raw_attention_mask,
+                overwrite,
+                model_fusion_statistics,
+                fusion_options,
+            )
+    else:
+        return export_onnx_model_from_tf(
+            model_name,
+            MODELS[model_name][1],
+            MODELS[model_name][2],
+            MODELS[model_name][3],
+            model_class,
+            config_modifier,
+            cache_dir,
+            onnx_dir,
+            input_names,
+            use_gpu,
+            precision,
+            optimizer_info,
+            validate_onnx,
+            use_raw_attention_mask,
+            overwrite,
+            model_fusion_statistics,
+            fusion_options,
+        )
 
 
 def run_migraphx(
@@ -121,52 +180,27 @@ def run_migraphx(
             args.model_type = MODELS[model_name][3]
             fusion_options = FusionOptions.parse(args)
             
+            torch_model = False
             if "pt" in model_source:
-                with torch.no_grad():
-                    (
-                        onnx_model_file,
-                        is_valid_onnx_model,
-                        vocab_size,
-                        max_sequence_length,
-                    ) = export_onnx_model_from_pt(
-                        model_name,
-                        MODELS[model_name][1],
-                        MODELS[model_name][2],
-                        MODELS[model_name][3],
-                        model_class,
-                        config_modifier,
-                        cache_dir,
-                        onnx_dir,
-                        input_names,
-                        use_gpu,
-                        precision,
-                        optimizer_info,
-                        validate_onnx,
-                        use_raw_attention_mask,
-                        overwrite,
-                        model_fusion_statistics,
-                        fusion_options,
-                    )
-            if "tf" in model_source:
-                (onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length,)  = export_onnx_model_from_tf(
-                    model_name,
-                    MODELS[model_name][1],
-                    MODELS[model_name][2],
-                    MODELS[model_name][3],
-                    model_class,
-                    config_modifier,
-                    cache_dir,
-                    onnx_dir,
-                    input_names,
-                    use_gpu,
-                    precision,
-                    optimizer_info,
-                    validate_onnx,
-                    use_raw_attention_mask,
-                    overwrite,
-                    model_fusion_statistics,
-                    None,
-                )
+                torch_model = True
+
+            (onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length,) = get_onnx_model(
+                torch_model,
+                model_name,
+                model_class,
+                config_modifier,
+                cache_dir,
+                onnx_dir,
+                input_names,
+                use_gpu,
+                precision,
+                optimizer_info,
+                validate_onnx,
+                use_raw_attention_mask,
+                overwrite,
+                model_fusion_statistics,
+                fusion_options,
+            )
 
             if not is_valid_onnx_model:
                 continue
