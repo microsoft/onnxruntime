@@ -1086,41 +1086,34 @@ at::Tensor& mm_out(
     std::vector<at::ScalarType> supportedTypes =
       {at::kDouble, at::kLong, at::kHalf, at::kFloat, at::kBFloat16, at::kInt};
     !IsSupportedType(self, supportedTypes) ||
-    !IsSupportedType(mat2, supportedTypes)) {
+    !IsSupportedType(mat2, supportedTypes) ||
+    // to match cpu device behavior for torch.mm, verify the following and fall back to cpu to generate error message.
+    // 1. self and mat2 must be 2-D (matices)
+    self.dim() != 2 || mat2.dim() != 2 ||
+    // 2. self and mat2 can be multiplied
+    self.sizes()[1] != mat2.sizes()[0] ||
+    // 3. self, mat, and out are of the same type
+    self.scalar_type() != out.scalar_type() ||
+    self.scalar_type() != mat2.scalar_type()) {
     return at::native::call_fallback_fn<
       &at::native::cpu_fallback,
       ATEN_OP(mm_out)>::call(self, mat2, out);
   }
   auto& invoker = GetORTInvoker(self.device());
 
-  auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type(),mat2.scalar_type()}, {});
-
-  // to match cpu device behavior for torch.mm, we verify the following and fall back to cpu to generate error message.
-  if (
-  // 1. self and mat2 must be 2-D (matices)
-      self.dim() != 2 || mat2.dim() != 2
-  // 2. self and mat2 can be multipled
-      || self.sizes()[1] != mat2.sizes()[0]
-  // 3. self and out are of the same type
-      || self.scalar_type() != out.scalar_type()
-  // 4. self and mat2 are of the same type
-      || self.scalar_type() != mat2.scalar_type())
-    return at::native::call_fallback_fn<
-      &at::native::cpu_fallback,
-      ATEN_OP(mm_out)>::call(self, mat2, out);
-
+  auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type(), mat2.scalar_type()}, {});
 
   // resize the output and then create output ort value to be updated.
-  // out size is first dimension of self and 2nd dimesnion of mat2
+  // out size is first dimension of self and 2nd dimension of mat2
   resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), {self.sizes()[0], mat2.sizes()[1]});
   auto ort_input_out = create_ort_value(invoker, out);
 
   auto ort_input_0_self = create_ort_value(invoker, self);
-  if (self.scalar_type() != *promoted_type){
+  if (self.scalar_type() != *promoted_type) {
     ort_input_0_self = CastToType(invoker, ort_input_0_self, *promoted_type);
   }
   auto ort_input_0_mat2 = create_ort_value(invoker, mat2);
-  if (mat2.scalar_type() != *promoted_type){
+  if (mat2.scalar_type() != *promoted_type) {
     ort_input_0_mat2 = CastToType(invoker, ort_input_0_mat2, *promoted_type);
   }
 

@@ -536,18 +536,40 @@ class OrtOpTests(unittest.TestCase):
 
     def test_mm(self):
         device = self.get_device()
+
+        # out version test
         cpu_mat1 = torch.rand(3, 2)
         cpu_mat2 = torch.rand(2, 2)
         ort_mat1 = cpu_mat1.to(device)
         ort_mat2 = cpu_mat2.to(device)
         cpu_out = torch.tensor([])
         ort_out = cpu_out.to(device)
-
         cpu_result = torch.mm(cpu_mat1, cpu_mat2, out=cpu_out)
         ort_result = torch.mm(ort_mat1, ort_mat2, out=ort_out)
-
         assert torch.allclose(cpu_result, ort_result.cpu())
         assert torch.allclose(cpu_out, ort_out.cpu())
+        assert torch.allclose(cpu_result, ort_out.cpu())
+
+        # non-out version with alternate dimension matrices
+        cpu_mat1 = torch.rand(7, 5)
+        cpu_mat2 = torch.rand(5, 4)
+        ort_mat1 = cpu_mat1.to(device)
+        ort_mat2 = cpu_mat2.to(device)
+        cpu_result = torch.mm(cpu_mat1, cpu_mat2)
+        ort_result = torch.mm(ort_mat1, ort_mat2)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+
+        # check error cases
+        ort_mat1 = torch.rand(1, 1).to(device)
+        ort_bad_dim = torch.rand(2, 2).to(device)
+        ort_wrong_type = torch.ones(1, 1, dtype=torch.int).to(device)
+        ort_not_matrix = torch.ones(1).to(device)
+        with self.assertRaises(RuntimeError):
+            torch.mm(ort_mat1, ort_bad_dim)
+        with self.assertRaises(RuntimeError):
+            torch.mm(ort_mat1, ort_wrong_type)
+        with self.assertRaises(RuntimeError):
+            torch.mm(ort_mat1, ort_not_matrix)
 
 
 if __name__ == "__main__":
