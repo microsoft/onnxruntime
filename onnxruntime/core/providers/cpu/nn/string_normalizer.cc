@@ -8,7 +8,7 @@
 #ifdef _MSC_VER
 #include <codecvt>
 #include <locale.h>
-#elif defined(__APPLE__) or defined(__ANDROID__)
+#elif defined(__APPLE__) || defined(__ANDROID__)
 #include <codecvt>
 #else
 #include <limits>
