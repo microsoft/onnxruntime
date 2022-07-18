@@ -1088,11 +1088,11 @@ at::Tensor& mm_out(
     !IsSupportedType(self, supportedTypes) ||
     !IsSupportedType(mat2, supportedTypes) ||
     // to match cpu device behavior for torch.mm, verify the following and fall back to cpu to generate error message.
-    // 1. self and mat2 must be 2-D (matices)
+    // 1. self and mat2 must be 2-D (matrices)
     self.dim() != 2 || mat2.dim() != 2 ||
     // 2. self and mat2 can be multiplied
     self.sizes()[1] != mat2.sizes()[0] ||
-    // 3. self, mat, and out are of the same type
+    // 3. self, mat2, and out are of the same type
     self.scalar_type() != out.scalar_type() ||
     self.scalar_type() != mat2.scalar_type()) {
     return at::native::call_fallback_fn<
