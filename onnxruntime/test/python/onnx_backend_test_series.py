@@ -6,6 +6,7 @@ import collections
 import json
 import os
 import platform
+import re
 import sys
 import unittest
 from typing import Dict
@@ -75,7 +76,6 @@ def apply_filters(filters, category):
         if type(f) is list:
             opset_regex = f[0]
             filter_regex = f[1]
-            import re
             opset_match = re.match(opset_regex, opset_version)
             if opset_match is not None:
                 validated_filters.append(filter_regex)
