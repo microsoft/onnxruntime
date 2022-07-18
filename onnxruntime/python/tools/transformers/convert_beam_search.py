@@ -122,14 +122,20 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--verbose", required=False, action="store_true", help="Print more information",
+        "--verbose",
+        required=False,
+        action="store_true",
+        help="Print more information",
     )
     parser.set_defaults(verbose=False)
 
     output_group = parser.add_argument_group("Output options")
 
     output_group.add_argument(
-        "--output", required=True, type=str, help="Output path for onnx model with beam search.",
+        "--output",
+        required=True,
+        type=str,
+        help="Output path for onnx model with beam search.",
     )
 
     output_group.add_argument(
@@ -168,12 +174,18 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     model_group = parser.add_argument_group("Beam search parameters that stored in the output model")
 
     model_group.add_argument(
-        "--output_sequences_scores", required=False, action="store_true", help="output sequences scores",
+        "--output_sequences_scores",
+        required=False,
+        action="store_true",
+        help="output sequences scores",
     )
     model_group.set_defaults(output_sequences_scores=False)
 
     model_group.add_argument(
-        "--output_token_scores", required=False, action="store_true", help="output token scores",
+        "--output_token_scores",
+        required=False,
+        action="store_true",
+        help="output token scores",
     )
     model_group.set_defaults(output_token_scores=False)
 
@@ -181,7 +193,11 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     model_group.set_defaults(early_stopping=False)
 
     model_group.add_argument(
-        "--no_repeat_ngram_size", type=int, required=False, default=0, help="No repeat ngram size",
+        "--no_repeat_ngram_size",
+        type=int,
+        required=False,
+        default=0,
+        help="No repeat ngram size",
     )
 
     model_group.add_argument(
@@ -211,7 +227,11 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     beam_parameters_group.add_argument("--num_beams", type=int, required=False, default=4, help="Beam size")
 
     beam_parameters_group.add_argument(
-        "--num_return_sequences", type=int, required=False, default=1, help="Number of return sequence <= num_beams",
+        "--num_return_sequences",
+        type=int,
+        required=False,
+        default=1,
+        help="Number of return sequence <= num_beams",
     )
 
     beam_parameters_group.add_argument(
@@ -246,12 +266,18 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     test_group.set_defaults(use_gpu=False)
 
     test_group.add_argument(
-        "--disable_parity", required=False, action="store_true", help="do not run parity test",
+        "--disable_parity",
+        required=False,
+        action="store_true",
+        help="do not run parity test",
     )
     test_group.set_defaults(disable_parity=False)
 
     test_group.add_argument(
-        "--torch_performance", required=False, action="store_true", help="test PyTorch performance",
+        "--torch_performance",
+        required=False,
+        action="store_true",
+        help="test PyTorch performance",
     )
     test_group.set_defaults(torch_performance=False)
 
@@ -264,7 +290,10 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
 
     test_group.add_argument(
-        "--save_test_data", required=False, action="store_true", help="save test data for onnxruntimer_perf_test tool",
+        "--save_test_data",
+        required=False,
+        action="store_true",
+        help="save test data for onnxruntimer_perf_test tool",
     )
     test_group.set_defaults(save_test_data=False)
 
@@ -589,7 +618,10 @@ def verify_t5_encoder_decoder_init_subgraph(graph: onnx.GraphProto, precision: P
 
 
 def remove_shared_initializers(
-    graph1: GraphProto, graph2: GraphProto, shared_prefix: str = "shared_", min_elements: int = 1024,
+    graph1: GraphProto,
+    graph2: GraphProto,
+    shared_prefix: str = "shared_",
+    min_elements: int = 1024,
 ):
     """Remove intializers with same value from two graphs.
 
@@ -782,7 +814,12 @@ def convert_model(args: argparse.Namespace):
         assert args.output_sequences_scores, "--output_token_scores requires --output_sequences_scores"
         outputs.append("scores")
 
-    node = onnx.helper.make_node("BeamSearch", inputs=inputs, outputs=outputs, name=f"BeamSearch_{args.model_type}",)
+    node = onnx.helper.make_node(
+        "BeamSearch",
+        inputs=inputs,
+        outputs=outputs,
+        name=f"BeamSearch_{args.model_type}",
+    )
     node.domain = "com.microsoft"
     node.attribute.extend(
         [
@@ -853,7 +890,9 @@ def convert_model(args: argparse.Namespace):
 
     # graph outputs
     sequences = onnx.helper.make_tensor_value_info(
-        "sequences", TensorProto.INT32, ["batch_size", "num_return_sequences", "max_length"],
+        "sequences",
+        TensorProto.INT32,
+        ["batch_size", "num_return_sequences", "max_length"],
     )
 
     sequences_scores = onnx.helper.make_tensor_value_info(
@@ -861,7 +900,9 @@ def convert_model(args: argparse.Namespace):
     )
 
     scores = onnx.helper.make_tensor_value_info(
-        "scores", TensorProto.FLOAT, ["max_length - sequence_length", "batch_size", "num_beams", vocab_size],
+        "scores",
+        TensorProto.FLOAT,
+        ["max_length - sequence_length", "batch_size", "num_beams", vocab_size],
     )
 
     graph_outputs = [sequences]
@@ -878,7 +919,9 @@ def convert_model(args: argparse.Namespace):
 
     # Create the model
     new_model = onnx.helper.make_model(
-        new_graph, producer_name="onnxruntime.transformers", opset_imports=decoder_model.opset_import,
+        new_graph,
+        producer_name="onnxruntime.transformers",
+        opset_imports=decoder_model.opset_import,
     )
 
     # TODO(tianleiwu): move shared initializers from T5 encoder and decoder subgraphs to parent graph to save memory.
@@ -889,7 +932,10 @@ def convert_model(args: argparse.Namespace):
             logger.warning("Require onnx >= 1.12 to save large (>2GB) model!")
 
         OnnxModel.save(
-            new_model, args.output, save_as_external_data=True, all_tensors_to_one_file=True,
+            new_model,
+            args.output,
+            save_as_external_data=True,
+            all_tensors_to_one_file=True,
         )
     else:
         onnx.save(new_model, args.output)
@@ -949,7 +995,10 @@ def convert_greedy_search_model(args: argparse.Namespace):
     outputs = ["sequences"]
 
     node = onnx.helper.make_node(
-        "GreedySearch", inputs=inputs, outputs=outputs, name=f"GreedySearch_{args.model_type}",
+        "GreedySearch",
+        inputs=inputs,
+        outputs=outputs,
+        name=f"GreedySearch_{args.model_type}",
     )
     node.domain = "com.microsoft"
     node.attribute.extend(
@@ -979,7 +1028,11 @@ def convert_greedy_search_model(args: argparse.Namespace):
     ]
 
     # graph outputs
-    sequences = onnx.helper.make_tensor_value_info("sequences", TensorProto.INT32, ["batch_size", "max_length"],)
+    sequences = onnx.helper.make_tensor_value_info(
+        "sequences",
+        TensorProto.INT32,
+        ["batch_size", "max_length"],
+    )
 
     graph_outputs = [sequences]
 
@@ -989,7 +1042,9 @@ def convert_greedy_search_model(args: argparse.Namespace):
 
     # Create the model
     new_model = onnx.helper.make_model(
-        new_graph, producer_name="onnxruntime.transformers", opset_imports=decoder_model.opset_import,
+        new_graph,
+        producer_name="onnxruntime.transformers",
+        opset_imports=decoder_model.opset_import,
     )
 
     onnx.save(new_model, args.output)
@@ -1079,7 +1134,9 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
     tokenizer.pad_token = tokenizer.eos_token
 
     model = GPT2LMHeadModel.from_pretrained(
-        args.model_name_or_path, cache_dir=args.cache_dir, pad_token_id=tokenizer.eos_token_id,
+        args.model_name_or_path,
+        cache_dir=args.cache_dir,
+        pad_token_id=tokenizer.eos_token_id,
     )
 
     # Use different length sentences to test batching
@@ -1274,7 +1331,13 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
 
     if args.torch_performance:
         torch_latency_output = test_torch_performance(
-            args, model, input_ids, attention_mask, eos_token_id, pad_token_id, bad_words_ids,
+            args,
+            model,
+            input_ids,
+            attention_mask,
+            eos_token_id,
+            pad_token_id,
+            bad_words_ids,
         )
         print("Torch Latency", torch_latency_output)
 
@@ -1303,9 +1366,15 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
     tokenizer.padding_side = "left"
 
     if args.model_type == "t5":
-        model = T5ForConditionalGeneration.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir,)
+        model = T5ForConditionalGeneration.from_pretrained(
+            args.model_name_or_path,
+            cache_dir=args.cache_dir,
+        )
     else:
-        model = MT5ForConditionalGeneration.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir,)
+        model = MT5ForConditionalGeneration.from_pretrained(
+            args.model_name_or_path,
+            cache_dir=args.cache_dir,
+        )
 
     # Use different length sentences to test batching
     if sentences is None:
@@ -1450,7 +1519,13 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
 
     if args.torch_performance:
         torch_latency_output = test_torch_performance(
-            args, model, input_ids, attention_mask, eos_token_id, pad_token_id, bad_words_ids,
+            args,
+            model,
+            input_ids,
+            attention_mask,
+            eos_token_id,
+            pad_token_id,
+            bad_words_ids,
         )
         print("Torch Latency", torch_latency_output)
 
