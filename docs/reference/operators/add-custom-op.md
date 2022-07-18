@@ -36,6 +36,14 @@ A new op can be registered with ONNX Runtime using the Custom Operator API in [o
 
 * [Using Custom Ops with TF2ONNX](https://github.com/microsoft/onnxruntime-extensions/blob/main/tutorials/tf2onnx_custom_ops_tutorial.ipynb): This notebook covers converting a TF model using an existing custom op, defining new custom ops in Python to use in conversion, and defining new custom ops in C++.
 
+## Calling a native operator from custom operator
+Since 1.12.0, onnxruntime allows its native operators to be called from within a custom operator through APIs.
+Steps are:
+1. Create a native operator instance by providing type constraints and attributes.
+2. Call the operator by feeding with inputs and outputs.
+3. Recycle the operator.
+Please see examples [here](https://github.com/microsoft/onnxruntime/blob/ced7c2deac958391414d2bbf951f86e2fc904b05/onnxruntime/test/shared_lib/custom_op_utils.cc#L210).
+
 ## CUDA custom ops
 When a model is run on a GPU, ONNX Runtime will insert a `MemcpyToHost` op before a CPU custom op and append a `MemcpyFromHost` after it to make sure tensors are accessible throughout calling.
 
