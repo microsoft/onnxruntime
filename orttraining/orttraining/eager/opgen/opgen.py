@@ -4,13 +4,13 @@
 # Licensed under the MIT License.
 
 import argparse
-import os
 import sys
+import types
 from importlib.machinery import SourceFileLoader
 
-from opgen.generator import ORTGen as ORTGen
+from opgen.generator import ORTGen
 from opgen.parser import cpp_create_from_file as CPPParser
-from opgen.writer import SourceWriter as SourceWriter
+from opgen.writer import SourceWriter
 
 parser = argparse.ArgumentParser(description="Generate ORT ATen operations")
 parser.add_argument(
@@ -23,7 +23,9 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
-ops_module = SourceFileLoader("opgen.customop", args.ops_module).load_module()
+loader = SourceFileLoader("", args.ops_module)
+ops_module = types.ModuleType(loader.name)
+loader.exec_module(ops_module)
 
 ortgen = ORTGen(
     ops_module.ops,
