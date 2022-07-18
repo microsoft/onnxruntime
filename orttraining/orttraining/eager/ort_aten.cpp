@@ -1095,29 +1095,19 @@ at::Tensor& mm_out(
 
   auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type(),mat2.scalar_type()}, {});
 
-  // to match cpu device behavior for torch.mm, we verify the following in order and copied messaged from cpu output
-
+  // to match cpu device behavior for torch.mm, we verify the following and fall back to cpu to generate error message.
+  if (
   // 1. self and mat2 must be 2-D (matices)
-  if (self.dim() != 2)
-    throw std::runtime_error("self must be a matrix");
-  if (mat2.dim() != 2)
-    throw std::runtime_error("mat2 must be a matrix");
-
+      self.dim() != 2 || mat2.dim() != 2
   // 2. self and mat2 can be multipled
-  if (self.sizes()[1] != mat2.sizes()[0])
-    throw std::runtime_error(
-      c10::str("self and mat2 shapes cannot be multiplied (",
-      self.sizes()[0], "x", self.sizes()[1], " and ", mat2.sizes()[0], "x", mat2.sizes()[1], ")"));
-
+      || self.sizes()[1] != mat2.sizes()[0]
   // 3. self and out are of the same type
-  if (self.scalar_type() != out.scalar_type())
-    throw std::runtime_error(
-      c10::str("Expected out tensor to have dtype ", self.scalar_type(), " but got ", out.scalar_type(), " instead"));
-
+      || self.scalar_type() != out.scalar_type()
   // 4. self and mat2 are of the same type
-  if (self.scalar_type() != mat2.scalar_type())
-    throw std::runtime_error(
-      c10::str("expected scalar type ", self.scalar_type(), " but found ", mat2.scalar_type()));
+      || self.scalar_type() != mat2.scalar_type())
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(mm_out)>::call(self, mat2, out);
 
 
   // resize the output and then create output ort value to be updated.
