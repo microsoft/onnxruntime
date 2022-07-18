@@ -10,7 +10,7 @@ source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_eager_srcs})
 
 onnxruntime_add_static_library(onnxruntime_eager ${onnxruntime_eager_srcs})
 if(MSVC AND onnxruntime_ENABLE_EAGER_MODE)
-  set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.cpp" PROPERTIES COMPILE_FLAGS "/wd4100 /wd4458")
+  set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.cpp" PROPERTIES COMPILE_FLAGS "/wd4100 /wd4458 /wd4505")
   set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_customops.g.cpp" PROPERTIES COMPILE_FLAGS "/wd4100")
   set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_backends.cpp" PROPERTIES COMPILE_FLAGS "/wd4100")
   set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_hooks.cpp" PROPERTIES COMPILE_FLAGS "/wd4100")
@@ -32,5 +32,3 @@ set_target_properties(onnxruntime_eager PROPERTIES FOLDER "ONNXRuntime")
 if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_session PRIVATE ${ORTTRAINING_ROOT})
 endif()
-
-
