@@ -118,11 +118,11 @@ void InitGemm(py::module mod) {
       .def("Run", &RocBlasGemm<float>::Run);
 
   // half
-  py::class_<RocBlasGemm<BFloat16>>(mod, "RocblasGemm_half")
+  py::class_<RocBlasGemm<half>>(mod, "RocblasGemm_half")
       .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double, DeviceArray&, int64_t, DeviceArray&, int64_t, double, DeviceArray&, int64_t>())
-      .def("SetRepeats", &RocBlasGemm<BFloat16>::SetRepeats)
-      .def("Profile", &RocBlasGemm<BFloat16>::Profile)
-      .def("Run", &RocBlasGemm<BFloat16>::Run);
+      .def("SetRepeats", &RocBlasGemm<half>::SetRepeats)
+      .def("Profile", &RocBlasGemm<half>::Profile)
+      .def("Run", &RocBlasGemm<half>::Run);
 }
 
 }  // namespace onnxruntime
