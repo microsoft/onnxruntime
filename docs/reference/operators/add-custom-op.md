@@ -45,8 +45,9 @@ Steps are:
 2. Call the operator by feeding inputs and outputs.
 3. Recycle the operator.
 
+Note that the native op will be created on the same executioin provider as the custom op.
 Please see examples [here](https://github.com/microsoft/onnxruntime/blob/ced7c2deac958391414d2bbf951f86e2fc904b05/onnxruntime/test/shared_lib/custom_op_utils.cc#L210).
-By the feature, custom ops could be built on native operators not only for utilizing its functionality but also for customizations like state management, or pre-processing of inputs.
+With the feature, custom ops are empowered by native operators not only for functionalities but also for customizations like state management, or pre-processing of inputs.
 
 ## CUDA custom ops
 When a model is run on a GPU, ONNX Runtime will insert a `MemcpyToHost` op before a CPU custom op and append a `MemcpyFromHost` after it to make sure tensors are accessible throughout calling.
