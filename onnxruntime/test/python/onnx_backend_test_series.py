@@ -69,7 +69,7 @@ class OrtBackendTest(onnx.backend.test.runner.Runner):
 
 
 def apply_filters(filters, category):
-    opset_version = f'opset{onnx.defs.onnx_opset_version()}'
+    opset_version = f"opset{onnx.defs.onnx_opset_version()}"
     validated_filters = []
     for f in filters[category]:
         if type(f) is list:
