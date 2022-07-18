@@ -187,6 +187,8 @@ class GraphViewer {
   */
   const IndexedSubGraph* GetFilterInfo() const { return filter_info_; }
 
+  IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const { return graph_->GetSchemaRegistry(); }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);
   GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info);
