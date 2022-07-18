@@ -110,7 +110,7 @@ class Locale {
   std::locale loc_;
 };
 
-#if defined(__APPLE__) or defined(__ANDROID__)
+#if defined(__APPLE__) || defined(__ANDROID__)
 using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t>>;
 #else
 
