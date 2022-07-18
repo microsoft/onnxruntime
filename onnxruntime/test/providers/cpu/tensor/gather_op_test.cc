@@ -32,11 +32,8 @@ TEST(GatherOpTest, Gather_axis0) {
     test.Run();
   };
 
-#if defined(USE_NNAPI)
-  run_test(true);
-#else
   run_test(false);
-#endif
+  run_test(true);
 }
 
 TEST(GatherOpTest, Gather_negative_axis) {
@@ -59,11 +56,8 @@ TEST(GatherOpTest, Gather_negative_axis) {
     test.Run();
   };
 
-#if defined(USE_NNAPI)
-  run_test(true);
-#else
   run_test(false);
-#endif
+  run_test(true);
 }
 
 TEST(GatherOpTest, Gather_invalid_axis) {
@@ -87,11 +81,8 @@ TEST(GatherOpTest, Gather_invalid_axis) {
     test.Run(OpTester::ExpectResult::kExpectFailure, "axis must be in [-r, r-1]");
   };
 
-#if defined(USE_NNAPI)
-  run_test(true);
-#else
   run_test(false);
-#endif
+  run_test(true);
 }
 
 TEST(GatherOpTest, Gather_invalid_index_cpu) {
@@ -154,11 +145,8 @@ TEST(GatherOpTest, Gather_axis1) {
     test.Run();
   };
 
-#if defined(USE_NNAPI)
-  run_test(true);
-#else
   run_test(false);
-#endif
+  run_test(true);
 }
 
 TEST(GatherOpTest, Gather_axis2) {
@@ -184,11 +172,8 @@ TEST(GatherOpTest, Gather_axis2) {
     test.Run();
   };
 
-#if defined(USE_NNAPI)
-  run_test(true);
-#else
   run_test(false);
-#endif
+  run_test(true);
 }
 
 TEST(GatherOpTest, Gather_axis0_indices2d) {
@@ -210,11 +195,8 @@ TEST(GatherOpTest, Gather_axis0_indices2d) {
     test.Run();
   };
 
-#if defined(USE_NNAPI)
-  run_test(true);
-#else
   run_test(false);
-#endif
+  run_test(true);
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d) {
@@ -237,11 +219,8 @@ TEST(GatherOpTest, Gather_axis1_indices2d) {
     test.Run();
   };
 
-#if defined(USE_NNAPI)
-  run_test(true);
-#else
   run_test(false);
-#endif
+  run_test(true);
 }
 
 TEST(GatherOpTest, Gather_axis0_indicesInt32) {
