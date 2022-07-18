@@ -37,7 +37,6 @@
 #include "core/framework/memory_info.h"
 #endif
 
-#include "core/framework/parallel_execution_plan.h"
 #include "core/framework/stream_handles.h"
 #ifdef ENABLE_TRAINING
 #include "core/framework/program_region.h"
@@ -87,8 +86,6 @@ class MemoryInfo;
 // as a node may contain multiple subgraphs (e.g. 'If' has one for both the 'then' and 'else' branches).
 using SubgraphSessionStateMap =
     std::unordered_map<onnxruntime::NodeIndex, std::unordered_map<std::string, std::unique_ptr<SessionState>>>;
-
-struct ExecutionPlan;
 
 class SessionState {
  public:
@@ -186,12 +183,6 @@ class SessionState {
 
   // execution plan. nullptr until FinalizeSessionState is called
   const SequentialExecutionPlan* GetExecutionPlan() const;
-
-  //ParallelExecutionPlan* GetParalllelExecutionPlan();
-
-  //ExecutionPlan* GetTheExecutionPlan() const { return p_exec_plan_.get(); };
-
-  //const ParallelExecutionPlan& GetConstParalllelExecutionPlan() const;
 
   const std::vector<AllocPlanPerValue>& SessionState::GetPerAllocPlan() const;
 
@@ -470,9 +461,7 @@ class SessionState {
   // munmap memory region and close file descriptor
   std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
   std::vector<BufferUniquePtr> weights_buffers_;
-  std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan_ = nullptr; // TODO - remove this
-  std::unique_ptr<ParallelExecutionPlan> p_para_exec_plan_ = nullptr; // TODO - remote this
-  std::unique_ptr<ExecutionPlan> p_exec_plan_ = nullptr;
+  std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan_ = nullptr;
 
   const logging::Logger& logger_;
   profiling::Profiler& profiler_;

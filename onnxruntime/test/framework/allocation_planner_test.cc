@@ -148,8 +148,6 @@ class PlannerTest : public ::testing::Test {
   std::unique_ptr<SessionState> state_;
   ShapeMap shape_map_;
   std::unique_ptr<SequentialExecutionPlan> plan_;
-  //std::unique_ptr<ParallelExecutionPlan> para_plan_;
-  std::unique_ptr<ExecutionPlan> para_plan_;
 
  public:
   PlannerTest()
@@ -307,34 +305,6 @@ class PlannerTest : public ::testing::Test {
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     //AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
 
-    ProviderStreamMap provider_stream_map;
-    provider_stream_map["CPUExecutionProvider"] = 1;
-    provider_stream_map["CUDAExecutionProvider"] = 1;
-    OpStreamMap op_stream_map;
-    ParalllelPlannerTestContext paral_test_context(&shape_map_);
-
-    ExecutionPlanner para_planner(nullptr,
-                                  graph_viewer,
-                                  outer_scope_node_args,
-                                  execution_providers_,
-                                  kernel_create_info_map,
-                                  {},
-                                  {},
-                                  state_->GetOrtValueNameIdxMap(),
-                                  state_->GetStreamHandleRegistryInstance(),
-                                  provider_stream_map,
-                                  op_stream_map,
-                                  paral_test_context);
-    para_plan_ = std::make_unique<ExecutionPlan>();
-    ORT_ENFORCE(para_planner.CreatePlan(*para_plan_).IsOK(), "Failed to create execution plan");
-    //para_plan_ = std::make_unique<ParallelExecutionPlan>(*state_.get(), provider_stream_map, op_stream_map);
-    //std::unique_ptr<SequentialExecutionPlan> tmp_para_exec_plan_wrapper(para_plan_.get());
-    //status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph_), outer_scope_node_args, execution_providers_,
-    //                                       kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), paral_test_context,
-    //                                       tmp_para_exec_plan_wrapper);
-    //EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-    //tmp_para_exec_plan_wrapper.release();
-    //para_plan_->GenerateReusePlan(paral_test_context);
   }
 
   void CheckAllocKind(const std::string& name, AllocKind kind) {

@@ -19,7 +19,6 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/framework/parallel_execution_plan.h"
 
 using namespace ::onnxruntime::common;
 
@@ -245,10 +244,6 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
 
 const SequentialExecutionPlan* SessionState::GetExecutionPlan() const { return p_seq_exec_plan_.get(); }
 
-//ParallelExecutionPlan* SessionState::GetParalllelExecutionPlan() { return p_para_exec_plan_.get(); }
-//
-//const ParallelExecutionPlan& SessionState::GetConstParalllelExecutionPlan() const { return *p_para_exec_plan_; }
-
 void Print(const std::string& type, const std::vector<AllocPlanPerValue>& alloc_plans) {
   std::cout << type << std::endl;
   int i = 0;
@@ -260,13 +255,7 @@ void Print(const std::string& type, const std::vector<AllocPlanPerValue>& alloc_
 }
 
 const std::vector<AllocPlanPerValue>& SessionState::GetPerAllocPlan() const {
-  if (p_exec_plan_) {
-    // Print("seq plan", p_seq_exec_plan_->allocation_plan);
-    // Print("para plan", p_para_exec_plan_->GetAllocPlanPerValue());
-    return p_exec_plan_->GetAllocationPlan();
-  } else {
-    return p_seq_exec_plan_->allocation_plan;
-  }
+  return p_seq_exec_plan_->allocation_plan;
 }
 
 Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d,
@@ -1512,43 +1501,6 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
   AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
 
-  //ProviderStreamMap provider_stream_map;
-
-  //// read stream configuration from session option
-  //auto split = [](const std::string& s, char splitor) {
-  //  std::stringstream ss(s);
-  //  std::string tmp;
-  //  std::vector<std::string> ret;
-  //  while (std::getline(ss, tmp, splitor)) {
-  //    ret.push_back(std::move(tmp));
-  //  }
-  //  return ret;
-  //};
-
-  //if (!session_options.streams_per_ep.empty()) {
-  //  for (const auto& streams_per_ep : split(session_options.streams_per_ep, ';')) {
-  //    std::vector<std::string> stream_per_ep = split(streams_per_ep, ':');
-  //    provider_stream_map[stream_per_ep[0]] = atoi(stream_per_ep[1].c_str());
-  //  }
-  //}
-
-  //for (const auto& ep : execution_providers_.GetIds()) {
-  //  if (provider_stream_map.count(ep)) {
-  //    provider_stream_map[ep] = std::max(provider_stream_map[ep], 1);
-  //  } else {
-  //    provider_stream_map.emplace(ep, 1);
-  //  }
-  //}
-
-  //auto read_op_map_from_str = [split](const std::string grouped_ops) {
-  //  OpStreamMap op_stream_map;
-  //  std::vector<std::string> groups = split(grouped_ops, ';');
-  //  for (const auto& group : groups) {
-  //    op_stream_map.push_back(split(group, ','));
-  //  }
-  //  return op_stream_map;
-  //};
-  //SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);
   SequentialPlannerContext context(ExecutionMode::ORT_SEQUENTIAL, ExecutionOrder::DEFAULT, true);
   p_seq_exec_plan_ = std::make_unique<SequentialExecutionPlan>();
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
@@ -1565,51 +1517,6 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     p_seq_exec_plan_));
 
 
-  //ParalllelPlannerContext para_context;
-  //ExecutionPlanner planner(parent_node,
-  //                         *graph_viewer_,
-  //                         valid_outer_scope_node_args,
-  //                         execution_providers_,
-  //                         kernel_create_info_map_,
-  //                         subgraphs_kernel_create_info_maps,
-  //                         outer_scope_node_arg_to_location_map,
-  //                         ort_value_name_idx_map_,
-  //                         GetStreamHandleRegistryInstance(),
-  //                         provider_stream_map,
-  //                         read_op_map_from_str(session_options.grouped_ops),
-  //                         para_context);
-  //p_exec_plan_ = std::make_unique<ExecutionPlan>();
-  //ORT_RETURN_IF_ERROR(planner.CreatePlan(*p_exec_plan_));
-  //LOGS(logger_, INFO) << "p_exec_plan initialized";
-
-  //const Node* parent_node,
-  //                 const GraphViewer& graph_viewer,
-  //                 const std::vector<const NodeArg*>& outer_scope_node_args,
-  //                 const ExecutionProviders& providers,
-  //                 const KernelCreateInfoMap& kernel_create_info_map,
-  //                 const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
-  //                 const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
-  //                 const OrtValueNameIdxMap& ort_value_name_idx_map,
-  //                 IStreamCommandHandleRegistry& stream_handle_registry,
-  //                 const ProviderStreamMap& provider_stream_map,
-  //                 const OpStreamMap& op_stream_map,
-  //                 const ISequentialPlannerContext& context);
-
-  //p_para_exec_plan_ = std::make_unique<ParallelExecutionPlan>(*this, provider_stream_map, read_op_map_from_str(session_options.grouped_ops));
-  //std::unique_ptr<SequentialExecutionPlan> tmp_para_exec_plan_wrapper(p_para_exec_plan_.get());
-  //ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
-  //                                                  execution_providers_, kernel_create_info_map_,
-  //                                                  subgraphs_kernel_create_info_maps,
-  //                                                  outer_scope_node_arg_to_location_map,
-  //                                                  ort_value_name_idx_map_, para_context, tmp_para_exec_plan_wrapper));
-  //tmp_para_exec_plan_wrapper.release();
-  //p_para_exec_plan_->GenerateReusePlan(para_context);
-  //LOGS(logger_, INFO) << "p_para_exec_plan initialized";
-
-  // Record the allocation plan
-
-  // Uncomment the below to dump the allocation plan to std::cout
-  // LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   MemoryInfo::GenerateTensorMap(GetExecutionPlan(), GetOrtValueNameIdxMap());
 #endif
