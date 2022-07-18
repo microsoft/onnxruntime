@@ -585,17 +585,21 @@ function getBrowserNameFromEnv(env: TestRunnerCliArgs['env'], mode: 'debug'|'per
 }
 
 function selectChromeBrowser(mode: 'debug'|'perf'|'test', webgpu: boolean) {
-  let browserName = 'Chrome';
   if (webgpu) {
-    browserName += 'Canary';
-  }
-
-  switch (mode) {
-    case 'debug':
-      return browserName + 'Debug';
-    case 'perf':
-      return browserName + 'Perf';
-    default:
-      return browserName + 'Test';
+    switch (mode) {
+      case 'debug':
+        return 'ChromeCanaryDebug';
+      default:
+        return 'ChromeCanaryTest';
+    }
+  } else {
+    switch (mode) {
+      case 'debug':
+        return 'ChromeDebug';
+      case 'perf':
+        return 'ChromePerf';
+      default:
+        return 'ChromeTest';
+    }
   }
 }
