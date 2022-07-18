@@ -403,7 +403,7 @@ class WindowsEnv : public Env {
     static const DWORD page_size = sysinfo.dwPageSize;
     static const DWORD allocation_granularity = sysinfo.dwAllocationGranularity;
     const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
-    const size_t mapped_length = length + offset_to_page;
+    const size_t mapped_length = length + static_cast<size_t>(offset_to_page);
     const FileOffsetType mapped_offset = offset - offset_to_page;
     if (mapped_offset % allocation_granularity != 0) {
       const auto error_code = GetLastError();
