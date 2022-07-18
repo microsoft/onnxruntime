@@ -19,6 +19,8 @@
 #include "core/providers/xnnpack/nn/max_pool.h"
 #include "core/providers/xnnpack/nn/average_pool.h"
 #include "core/providers/xnnpack/nn/softmax.h"
+#include "core/providers/xnnpack/nn/gemm.h"
+
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -92,6 +94,7 @@ bool NodeSupportChecker::IsNodeSupported(const NodeUnit& nodeunit) {
       {"MaxPool", MaxPool::IsMaxPoolOnnxNodeSupported},
       {"AveragePool", AveragePool::IsAveragePoolOnnxNodeSupported},
       {"Softmax", Softmax::IsSoftmaxOnnxNodeSupported},
+      {"Gemm", Gemm::IsOnnxNodeSupported}
   };
 
   bool supported = false;

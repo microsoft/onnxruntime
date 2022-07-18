@@ -24,13 +24,13 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
   return info;
 }
 
-#define KERNEL_CREATE_INFO_VERSIONED(Start, End, Op) \
+#define KERNEL_CREATE_INFO_VERSIONED(Domain, Start, End, Op) \
   BuildKernelCreateInfo<                             \
-      ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, End, Op)>
+      ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, End, Op)>
 
-#define KERNEL_CREATE_INFO(Start, Op) \
+#define KERNEL_CREATE_INFO(Domain, Start, Op) \
   BuildKernelCreateInfo<              \
-      ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, Op)>
+      ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, Op)>
 
 #define KERNEL_CREATE_INFO_TYPED(Start, type, Op) \
   BuildKernelCreateInfo<                          \
@@ -49,11 +49,15 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWC
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider,
                                       kDynamicDomainByCreate, 1, QLinearSoftmax);
 
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, 12, Gemm);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Gemm);
+
 std::unique_ptr<KernelRegistry> RegisterKernels() {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
 
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
+
       KERNEL_CREATE_INFO(11, Conv),
       KERNEL_CREATE_INFO_VERSIONED(11, 11, MaxPool),
       KERNEL_CREATE_INFO(12, MaxPool),
@@ -70,6 +74,9 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO(1, QLinearAveragePool),
       BuildKernelCreateInfo<
           ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kDynamicDomainByCreate, 1, QLinearSoftmax)>,
+
+      KERNEL_CREATE_INFO_VERSIONED(kOnnxDomain, 7, 12, Gemm),
+      KERNEL_CREATE_INFO(kOnnxDomain, 13, Gemm)
   };
 
   for (auto& function_table_entry : function_table) {
