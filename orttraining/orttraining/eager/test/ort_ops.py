@@ -534,6 +534,21 @@ class OrtOpTests(unittest.TestCase):
             # check result between nonzero.out and nonzero
             assert torch.equal(ort_result.to("cpu"), ort_out_tensor.to("cpu"))
 
+    def test_mm(self):
+        device = self.get_device()
+        cpu_mat1 = torch.rand(3, 2)
+        cpu_mat2 = torch.rand(2, 2)
+        ort_mat1 = cpu_mat1.to(device)
+        ort_mat2 = cpu_mat2.to(device)
+        cpu_out = torch.tensor([])
+        ort_out = cpu_out.to(device)
+
+        cpu_result = torch.mm(cpu_mat1, cpu_mat2, out=cpu_out)
+        ort_result = torch.mm(ort_mat1, ort_mat2, out=ort_out)
+
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert torch.allclose(cpu_out, ort_out.cpu())
+
 
 if __name__ == "__main__":
     unittest.main()
