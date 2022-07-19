@@ -42,6 +42,9 @@ jobs:
           sudo chmod 666 /var/run/docker.sock
         fi
       displayName: Setup Docker Engine
+    - task: UseDotNet@2
+      inputs:
+        packageType: sdk
     - template: set-version-number-variables-step.yml
     - template: get-docker-image-steps.yml
       parameters:
