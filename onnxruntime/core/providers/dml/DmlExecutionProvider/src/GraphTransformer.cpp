@@ -75,8 +75,7 @@ namespace Dml
 
         for (auto& node : graph->Nodes())
         {
-            // We need to predict whether the nodes will be assigned to the DML transformer by Lotus,
-            // which occurs in IExecutionProvider::GetCapability.
+            // Ignore the nodes which were not assigned to the DML by ORT during IExecutionProvider::GetCapability()
 
             if (!onnxruntime::graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()))
             {
