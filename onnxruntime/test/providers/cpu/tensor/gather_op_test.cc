@@ -224,6 +224,8 @@ TEST(GatherOpTest, Gather_axis1_indices2d) {
 }
 
 TEST(GatherOpTest, Gather_axis0_indicesInt32) {
+  // NNAPI EP only supports float input data for now,
+  // the following two test cases cover int32_t indices with float input other than int64_t type for Nnapi
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 0LL);
   test.AddInput<float>("data", {2, 3, 4},
