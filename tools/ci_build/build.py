@@ -476,6 +476,9 @@ def parse_arguments():
     parser.add_argument("--use_nuphar", action="store_true", help="Build with nuphar")
     parser.add_argument("--use_tvm", action="store_true", help="Build with TVM")
     parser.add_argument("--tvm_cuda_runtime", action="store_true", default=False, help="Build TVM with CUDA support")
+    parser.add_argument(
+        "--use_tvm_hash", action="store_true", help="Build ipp-crypto for hash generation. It is used by TVM EP only"
+    )
     parser.add_argument("--use_tensorrt", action="store_true", help="Build with TensorRT")
     parser.add_argument(
         "--tensorrt_placeholder_builder", action="store_true", help="Instantiate Placeholder TensorRT Builder"
@@ -485,6 +488,12 @@ def parse_arguments():
     parser.add_argument("--migraphx_home", help="Path to MIGraphX installation dir")
     parser.add_argument("--use_full_protobuf", action="store_true", help="Use the full protobuf library")
 
+    parser.add_argument(
+        "--llvm_config",
+        type=str,
+        default="",
+        help="Path to llvm-config.exe for LLVM buit from sources. It is strongly needed for build on Windows",
+    )
     parser.add_argument(
         "--skip_onnx_tests",
         action="store_true",
@@ -833,6 +842,7 @@ def generate_build_tree(
         # set vars for TVM
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_TVM_CUDA_RUNTIME=" + ("ON" if args.use_tvm and args.tvm_cuda_runtime else "OFF"),
+        "-Donnxruntime_TVM_USE_HASH=" + ("ON" if args.use_tvm_hash else "OFF"),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         # By default - we currently support only cross compiling for ARM/ARM64
@@ -875,7 +885,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_TRAINING_TORCH_INTEROP=" + ("ON" if args.enable_training_torch_interop else "OFF"),
         # Enable advanced computations such as AVX for some traininig related ops.
         "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + ("ON" if args.enable_training else "OFF"),
-        "-Donnxruntime_USE_NCCL=" + ("OFF" if args.disable_nccl else "ON"),
+        "-Donnxruntime_USE_NCCL=" + ("ON" if args.enable_training and not args.disable_nccl else "OFF"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + ("ON" if args.build_micro_benchmarks else "OFF"),
         "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
         "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
@@ -915,6 +925,8 @@ def generate_build_tree(
         cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
     if args.use_tensorrt:
         cmake_args.append("-Donnxruntime_TENSORRT_HOME=" + tensorrt_home)
+    if args.llvm_config:
+        cmake_args.append("-Donnxruntime_TVM_USE_LLVM=" + args.llvm_config)
 
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.
@@ -1961,13 +1973,13 @@ def nuphar_run_python_tests(build_dir, configs):
 
 def tvm_run_python_tests(build_dir, configs):
     for config in configs:
-        if config == "Debug":
-            continue
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
             cwd = os.path.join(cwd, config)
-        dll_path = os.path.join(build_dir, config, "_deps", "tvm-build", config)
-        run_subprocess([sys.executable, "onnxruntime_test_python_tvm.py"], cwd=cwd, dll_path=dll_path)
+        python_path = os.path.join(build_dir, config, "_deps", "tvm-src", "python")
+        run_subprocess(
+            [sys.executable, "onnxruntime_test_python_tvm.py"], cwd=cwd, python_path=os.path.abspath(python_path)
+        )
 
 
 def run_nodejs_tests(nodejs_binding_dir):
@@ -2668,7 +2680,10 @@ def main():
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
             nuphar_run_python_tests(build_dir, configs)
 
-        if args.enable_pybind and not args.skip_onnx_tests and args.use_tvm:
+        # TODO(agladyshev):
+        # to support Windows, we need to update .github/workflows/windows.yml
+        # and add to the PATH variable the following value: C:Program Files\LLVM\bin
+        if args.enable_pybind and args.use_tvm and not is_windows():
             tvm_run_python_tests(build_dir, configs)
 
         # run node.js binding tests

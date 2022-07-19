@@ -3,19 +3,21 @@
 
 #pragma once
 
-#include <iostream>
-#include <memory>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
-#include "contrib_ops/rocm/bert/timer.h"
+#include <hip/hip_runtime.h>
+#include "contrib_ops/rocm/bert/util.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
 struct OpParams {
+  explicit OpParams(hipStream_t stream) : stream(stream) {}
   virtual std::string signature() const = 0;
+  hipStream_t stream;
 };
 
 class Op {
@@ -50,17 +52,29 @@ class Op {
 
 class TunableOp {
  public:
-  TunableOp() {}
+  explicit TunableOp(int default_id) : default_id_(default_id), tuning_(false) {}
 
-  void Run(const OpParams* op_params_) {
+  void Run(const OpParams* op_params) {
     int id;
-    if (kernel_map_.find(op_params_->signature()) == kernel_map_.end()) {
-      id = FindFastest(op_params_);
-      kernel_map_.insert({op_params_->signature(), id});
+    if (tuning_ == true && Condition(op_params)) {
+      if (kernel_map_.find(op_params->signature()) == kernel_map_.end()) {
+        id = FindFastest(op_params);
+        kernel_map_.insert({op_params->signature(), id});
+      } else {
+        id = kernel_map_[op_params->signature()];
+      }
     } else {
-      id = kernel_map_[op_params_->signature()];
+      id = default_id_;
     }
-    ops_[id]->Run(op_params_);
+    ops_[id]->Run(op_params);
+  }
+
+  void EnableTuning() {
+    tuning_ = true;
+  }
+
+  void DisableTuning() {
+    tuning_ = false;
   }
 
   virtual ~TunableOp() {}
@@ -69,12 +83,14 @@ class TunableOp {
   std::vector<std::unique_ptr<Op>> ops_;
 
  private:
-  int FindFastest(const OpParams* op_params_) {
+  virtual bool Condition(const OpParams* op_params) = 0;
+
+  int FindFastest(const OpParams* op_params) {
     assert(ops_.size() > 0);
-    float min_time = ops_[0]->Profile(op_params_);
+    float min_time = ops_[0]->Profile(op_params);
     int id = 0;
     for (int i = 1; i < ops_.size(); i++) {
-      float time = ops_[i]->Profile(op_params_);
+      float time = ops_[i]->Profile(op_params);
       if (time < min_time) {
         min_time = time;
         id = i;
@@ -84,6 +100,8 @@ class TunableOp {
   }
 
   std::map<std::string, int> kernel_map_;
+  int default_id_;
+  bool tuning_;
 };
 
 }  // namespace rocm
