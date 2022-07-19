@@ -47,7 +47,7 @@ def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=Fa
     ldb = b_shape[1]
     alpha = 1.0
     beta = 0.0
-    my_gemm = f(opb, opa, n, m, k, alpha, dev_b, ldb, dev_a, lda, beta, dev_c, n)
+    my_gemm = f(opa, opb, m, n, k, alpha, dev_a, lda, dev_b, ldb, beta, dev_c, n)
     my_gemm.Run()
     dev_c.UpdateHostNumpyArray()
 
@@ -93,7 +93,7 @@ def profile_gemm_func(func, dtype, m, n, k):
     ldb = b_shape[1]
     alpha = 1.0
     beta = 0.0
-    my_gemm = f(opb, opa, n, m, k, alpha, dev_b, ldb, dev_a, lda, beta, dev_c, n)
+    my_gemm = f(opa, opb, m, n, k, alpha, dev_a, lda, dev_b, ldb, beta, dev_c, n)
     time_ms = my_gemm.Profile()
 
     time_us = time_ms * 1000

@@ -20,7 +20,8 @@ enum class BlasOp {
   T,
 };
 
-// assume row majored
+// We don't assume the implementation is row-majored or column-majored. But for testing convenience, we assume all
+// our wrappers have row-majored convention, since it is the native layout to numpy and pytorch.
 template <typename T>
 class GemmBase : public Operator {
  public:
@@ -85,12 +86,14 @@ class RocBlasGemm : public GemmBase<T> {
   }
 
   void Run() {
+    // NOTE: rocblas assume the storage is column-majored, swapping A and B makes it have the same interface
+    // as those with row-majored convention.
     ROCBLAS_CALL_THROW(
-        rocblasGemmHelper(this->rocblas_handle_, this->opa_, this->opb_,
-                          this->m_, this->n_, this->k_,
+        rocblasGemmHelper(this->rocblas_handle_, this->opb_, this->opa_,
+                          this->n_, this->m_, this->k_,
                           &(this->alpha_),
-                          this->a_, this->lda_,
                           this->b_, this->ldb_,
+                          this->a_, this->lda_,
                           &(this->beta_),
                           this->c_, this->ldc_));
   }
