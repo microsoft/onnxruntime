@@ -260,7 +260,7 @@ export function loadTensorFromFile(pbFile: string): Tensor {
   }
 }
 
-function loadFiltersRegex(): Array<{opset?: RegExp | undefined; name: RegExp;}> {
+function loadFiltersRegex(): Array<{opset?: RegExp | undefined; name: RegExp}> {
   const filters: Array<string|[string, string]> = ['(FLOAT16)'];
   filters.push(...BACKEND_TEST_SERIES_FILTERS.current_failing_tests);
 
