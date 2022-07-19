@@ -18,7 +18,6 @@ namespace onnxruntime {
 enum class BlasOp {
   N,
   T,
-  // C,
 };
 
 // assume row majored
