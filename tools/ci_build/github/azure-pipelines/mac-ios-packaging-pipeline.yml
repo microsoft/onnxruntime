@@ -123,6 +123,7 @@ jobs:
   - script: |
       set -e -x
       appcenter test run xcuitest \
+        --debug \
         --app "AI-Frameworks/ORT-Mobile-iOS" \
         --devices $(app_center_test_devices) \
         --test-series "master" \
@@ -170,6 +171,7 @@ jobs:
   - script: |
       set -e -x
       appcenter test run xcuitest \
+        --debug \
         --app "AI-Frameworks/ORT-Mobile-iOS" \
         --devices $(app_center_test_devices) \
         --test-series "master" \
