@@ -28,7 +28,7 @@ jobs:
 - job: Linux_C_API_Packaging_CPU_${{parameters.OnnxruntimeArch}}
   variables:
     - name: skipComponentGovernanceDetection
-      value: ${{ eq(parameters.OnnxruntimeNodejsBindingArch, 'arm64') }}
+      value: true
       
   workspace:
     clean: all
