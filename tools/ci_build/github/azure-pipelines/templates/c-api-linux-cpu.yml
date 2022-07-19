@@ -42,7 +42,7 @@ jobs:
           sudo chmod 666 /var/run/docker.sock
         fi
       displayName: Install Docker Engine
-    - bass: |
+    - bash: |
         set -euo pipefail
         if ! which dotnet; then
           sudo apt-get install -y wget
