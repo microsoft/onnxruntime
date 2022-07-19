@@ -527,7 +527,7 @@ namespace Dml
         uint32_t deviceDataTypeMask = GetSupportedDeviceDataTypeMask();
 
         bool isFirstPartitionCall = std::none_of(graph.Nodes().begin(), graph.Nodes().end(), [](const onnxruntime::Node& node) {
-                return !node.GetExecutionProviderType().empty() && node.GetExecutionProviderType() == onnxruntime::kDmlExecutionProvider;
+                return node.GetExecutionProviderType() == onnxruntime::kDmlExecutionProvider;
             });
 
         if (isFirstPartitionCall)

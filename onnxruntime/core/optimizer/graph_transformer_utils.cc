@@ -59,7 +59,9 @@
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#ifdef USE_DML
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
+#endif
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #endif
@@ -213,9 +215,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                   onnxruntime::kCudaExecutionProvider,
                                                                   onnxruntime::kRocmExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_cuda_rocm_dml_eps = {onnxruntime::kCpuExecutionProvider,
-                                                                  onnxruntime::kCudaExecutionProvider,
-                                                                  onnxruntime::kRocmExecutionProvider,
-                                                                  onnxruntime::kDmlExecutionProvider};
+                                                                      onnxruntime::kCudaExecutionProvider,
+                                                                      onnxruntime::kRocmExecutionProvider,
+                                                                      onnxruntime::kDmlExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_eps = {onnxruntime::kCpuExecutionProvider,
                                                                             onnxruntime::kCudaExecutionProvider,
                                                                             onnxruntime::kRocmExecutionProvider,
@@ -284,9 +286,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // we will prefer NhwcTransformer once ort runs on x86-64 CPU, otherwise ConvAddActivationFusion is enabled.
       // this PR #6351 implemented similiar fusion-pattern but only for CUDA, and can only fuse conv-add-relu, while we can fuse more activation.
       transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(cpu_ep));
-
+#ifdef USE_DML
       const InlinedHashSet<std::string_view> dml_ep = {onnxruntime::kDmlExecutionProvider};
       transformers.emplace_back(std::make_unique<Dml::GraphTransformer>(dml_ep));
+#endif
 #endif
     } break;
 
