@@ -1129,6 +1129,45 @@ at::Tensor& mm_out(
   return out;
 }
 
+// aten::ceil.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+at::Tensor& ceil_out(
+  const at::Tensor& self,
+  // *,
+  at::Tensor& out) {
+  std::cout << "aten::ceil.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)\n";
+  ORT_LOG_FN(self, out);
+
+  auto& invoker = GetORTInvoker(self.device());
+  auto& execcutionProvider = invoker.GetCurrentExecutionProvider();
+
+  if (
+    !IsSupportedType(self, {at::kHalf,at::kBFloat16,at::kDouble,at::kFloat}) ||
+    (execcutionProvider.Type() == "CPUExecutionProvider" && self.scalar_type() != at::kFloat)) {
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(ceil_out)>::call(self, out);
+  }
+
+  // resize the output and then create output ort value to be updated.
+  resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), self.sizes());
+  auto ort_input_out = create_ort_value(invoker, out);
+
+  auto ort_input_0_self = create_ort_value(invoker, self);
+
+  std::vector<OrtValue> ort_outputs_0_Ceil(1);
+  ort_outputs_0_Ceil[0] = ort_input_out;
+
+  auto status = invoker.Invoke("Ceil", {
+    std::move(ort_input_0_self),
+  }, ort_outputs_0_Ceil, nullptr);
+
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+
+
+  return out;
+}
 
 } // namespace aten
 

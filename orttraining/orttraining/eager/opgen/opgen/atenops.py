@@ -57,7 +57,6 @@ unary_ops_with_out = [
     "asinh",
     "atan",
     "atanh",
-    "ceil",
     "cos",
     "cosh",
     "erf",
@@ -124,6 +123,7 @@ for unary_op in unary_ops:
 # ---------------------------
 
 hand_implemented = {
+    "aten::ceil.out": SignatureOnly(),
     "aten::empty.memory_format": SignatureOnly(),
     "aten::empty_strided": SignatureOnly(),
     "aten::zero_": SignatureOnly(),
