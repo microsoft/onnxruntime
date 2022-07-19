@@ -66,34 +66,6 @@ struct ExtDataValueDeleter {
   }
 };
 
-// given a tensor proto with externdal data return an OrtValue with a tensor for
-// that data; the pointers for the tensor data and the tensor itself are owned
-// by the OrtValue's deleter
-static inline common::Status ExtDataTensorProtoToTensor(const Env& env,
-                                                        const std::basic_string<PATH_CHAR_TYPE>& proto_path,
-                                                        const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                                        Tensor& tensor, OrtCallback& ext_data_deleter) {
-  ORT_ENFORCE(utils::HasExternalData(tensor_proto));
-  ORT_ENFORCE(!proto_path.empty());
-
-  void* ext_data_buf = nullptr;
-  size_t ext_data_len = 0;
-  ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(env, proto_path.c_str(), tensor_proto,
-                                                       ext_data_buf, ext_data_len, ext_data_deleter));
-
-  // NB: creating a do-nothing allocator per tensor is wasteful; can perhaps be
-  // avoided if the Tensor class implements the do-nothing behavior when given a
-  // nullptr for the allocator argument
-  const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
-  std::vector<int64_t> tensor_shape_vec = utils::GetTensorShapeFromTensorProto(tensor_proto);
-  TensorShape tensor_shape{tensor_shape_vec};
-
-  auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, ext_data_buf, OrtMemoryInfo(CPU,
-                                           OrtAllocatorType::OrtDeviceAllocator));
-  tensor = std::move(*p_tensor);
-
-  return common::Status::OK();
-}
 
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* m,
@@ -127,20 +99,17 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       p_tensor = std::make_unique<Tensor>(type, tensor_shape, alloc);
     }
   }
-
   if (p_tensor->Location().device.Type() == OrtDevice::CPU) {
     // deserialize directly to CPU tensor
+    OrtCallback ext_data_deleter;
+    ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_tensor, ext_data_deleter));
     if (utils::HasExternalData(tensor_proto)) {
-      OrtCallback ext_data_deleter;
-      ORT_RETURN_IF_ERROR(ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_tensor, ext_data_deleter));
-
       ExtDataValueDeleter deleter{ext_data_deleter, p_tensor.get()};
 
       MLDataType ml_tensor_type = DataTypeImpl::GetType<Tensor>();
       ort_value.Init(p_tensor.release(), ml_tensor_type, deleter);
       return common::Status::OK();
     }
-    ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_tensor));
   } else {  // non-cpu tensor
     if (tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "string tensor is not supported for copying between allocators");
@@ -159,13 +128,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       p_deserialize_tensor = std::make_unique<Tensor>(type, tensor_shape, default_cpu_alloc);
     }
 
-    OrtCallback ext_data_deleter;
-    if (utils::HasExternalData(tensor_proto)) {
-      ORT_RETURN_IF_ERROR(ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_deserialize_tensor,
-                                                     ext_data_deleter));
-    } else {
-      ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
-    }
+    ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
     // TODO!! Need a temp buffer allocator for non-escape buffers that maybe too big for stack allocation.
 
     Status copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
