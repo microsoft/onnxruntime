@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <type_traits>
+#include "python/tools/kernel_explorer/kernels/gemm.h"
 
+#include <type_traits>
 #include <pybind11/pybind11.h>
 
 #include "core/providers/rocm/rocm_common.h"
-#include "device_array.h"
-#include "operator.h"
-
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
+#include "python/tools/kernel_explorer/device_array.h"
+#include "python/tools/kernel_explorer/operator.h"
 
 namespace py = pybind11;
 
