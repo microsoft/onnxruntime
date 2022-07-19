@@ -4,6 +4,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include "core/graph/basic_types.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 
@@ -157,6 +158,11 @@ bool IsValidSupportedNodeGroup(const std::vector<const Node*>& supported_node_gr
 
 // Get string representation of a Shape
 std::string Shape2String(const std::vector<uint32_t>& shape);
+
+uint32_t ShapeSize(const Shape& shape, size_t begin_idx, size_t end_idx);
+inline uint32_t ShapeSize(const Shape& shape) {
+  return ShapeSize(shape, 0, shape.size());
+}
 
 // Check the given input is an initializer tensor
 // input_name is the name of the initializer
