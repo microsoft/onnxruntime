@@ -48,7 +48,7 @@ jobs:
           sudo apt-get install -y wget
           wget  https://dot.net/v1/dotnet-install.sh
           chmod 755 dotnet-install.sh
-          ./dotnet-install.sh -c Current
+          sudo ./dotnet-install.sh -c Current --install-dir /usr/bin
           rm dotnet-install.sh
         fi
       displayName: Install Dotnet
