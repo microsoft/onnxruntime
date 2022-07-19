@@ -34,7 +34,6 @@ template <typename GeluComputationMode>
 template <typename T>
 void BiasGeluGrad_dX<GeluComputationMode>::KernelLaunchDispatcher<T>::operator()(
     cudaStream_t stream,
-    const cudaDeviceProp& prop,
     int64_t input_size, int64_t bias_size,
     const Tensor& dY, const Tensor& X, const Tensor& B,
     Tensor& dX) const {
@@ -42,7 +41,6 @@ void BiasGeluGrad_dX<GeluComputationMode>::KernelLaunchDispatcher<T>::operator()
 
   LaunchBiasGeluGradDxKernel<CudaT, GeluComputationMode>(
       stream,
-      prop,
       input_size, bias_size,
       reinterpret_cast<const CudaT*>(dY.template Data<T>()),
       reinterpret_cast<const CudaT*>(X.template Data<T>()),
@@ -71,9 +69,9 @@ Status BiasGeluGrad_dX<GeluComputationMode>::ComputeInternal(OpKernelContext* co
   ORT_ENFORCE(dX);
 
   const auto input_size = input_shape.Size(), bias_size = bias_shape.Size();
-  auto& device_prop = GetDeviceProp();
+
   utils::MLTypeCallDispatcher<MLFloat16, float, double, BFloat16> dispatcher{X->GetElementType()};
-  dispatcher.Invoke<KernelLaunchDispatcher>(Stream(), device_prop, input_size, bias_size, *dY, *X, *B, *dX);
+  dispatcher.Invoke<KernelLaunchDispatcher>(Stream(), input_size, bias_size, *dY, *X, *B, *dX);
 
   return Status::OK();
 }

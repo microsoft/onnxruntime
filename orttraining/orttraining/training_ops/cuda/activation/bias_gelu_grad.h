@@ -19,7 +19,6 @@ class BiasGeluGrad_dX : public CudaKernel {
   struct KernelLaunchDispatcher {
     void operator()(
         cudaStream_t stream,
-        const cudaDeviceProp& prop,
         int64_t input_size, int64_t bias_size,
         const Tensor& dY, const Tensor& X, const Tensor& B,
         Tensor& dX) const;
