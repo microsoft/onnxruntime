@@ -1382,6 +1382,12 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     // State transitions, called from other threads
 
+    // We employ mutex for synchronizing on Blocked/Waking state (EnsureAwake/SeBlocked)
+    // to wakeup the thread in the event it goes to sleep. Because thread status
+    // is an atomic member the lock is not necessary to update it.
+    // Thus, we do not obtain the mutex when we set Active/Spinning state for the thread.
+    // While manipulating under the mutex, we employ relaxed semantics so the compiler is not restricted
+    // any further.
     void EnsureAwake() {
       ThreadStatus seen = GetStatus();
       if (seen == ThreadStatus::Blocking ||
@@ -1402,7 +1408,10 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     }
 
     // State transitions, called only from the thread itself
-
+    // The lock is only used in the synchronization between EnsureAwake and SetBlocked,
+    // while the Active vs Spinning states are just used as a hint for work stealing
+    // (prefer to steal from a thread that is actively running a task, rather than stealing from
+    // a thread that is spinning and likely to pick up the task itself).
     void SetActive() {
       status = ThreadStatus::Active;
     }
