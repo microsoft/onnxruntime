@@ -106,10 +106,10 @@ jobs:
 
     - template: component-governance-component-detection-steps.yml
       parameters :
-      ${{ if not(eq('${{parameters.OnnxruntimeNodejsBindingArch}}', 'arm64')) }}:
-        condition : 'succeeded'
-      ${{ else }}:
-        condition : ''
+        ${{ if not(eq('${{parameters.OnnxruntimeNodejsBindingArch}}', 'arm64')) }}:
+          condition : 'succeeded'
+        ${{ else }}:
+          condition : ''
         
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
