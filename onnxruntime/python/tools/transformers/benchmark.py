@@ -87,21 +87,23 @@ if "OMP_NUM_THREADS" not in os.environ:
 import torch
 from transformers import AutoConfig, AutoTokenizer
 
-def get_onnx_model(torch_model,
-                   model_name,
-                   model_class,
-                   config_modifier,
-                   cache_dir,
-                   onnx_dir,
-                   input_names,
-                   use_gpu,
-                   precision,
-                   optimizer_info,
-                   validate_onnx,
-                   use_raw_attention_mask,
-                   overwrite,
-                   model_fusion_statistics,
-                   fusion_options):
+def get_onnx_model(
+    torch_model,
+    model_name,
+    model_class,
+    config_modifier,
+    cache_dir,
+    onnx_dir,
+    input_names,
+    use_gpu,
+    precision,
+    optimizer_info,
+    validate_onnx,
+    use_raw_attention_mask,
+    overwrite,
+    model_fusion_statistics,
+    fusion_options
+):
     if torch_model:
         with torch.no_grad():
             (onnx_model_file, is_valid_onnx_model, vocab_size, max_input_size) = export_onnx_model_from_pt(
@@ -147,25 +149,25 @@ def get_onnx_model(torch_model,
 
 
 def run_migraphx(
-        use_gpu,
-        model_names,
-        model_class,
-        config_modifier,
-        precision,
-        num_threads,
-        batch_sizes,
-        sequence_lengths,
-        repeat_times,
-        input_counts,
-        optimizer_info,
-        validate_onnx,
-        cache_dir,
-        onnx_dir,
-        overwrite,
-        use_raw_attention_mask,
-        model_fusion_statistics,
-        model_source,
-        args
+    use_gpu,
+    model_names,
+    model_class,
+    config_modifier,
+    precision,
+    num_threads,
+    batch_sizes,
+    sequence_lengths,
+    repeat_times,
+    input_counts,
+    optimizer_info,
+    validate_onnx,
+    cache_dir,
+    onnx_dir,
+    overwrite,
+    use_raw_attention_mask,
+    model_fusion_statistics,
+    model_source,
+    args
 ):
     results = []
 
@@ -183,11 +185,7 @@ def run_migraphx(
             if "pt" in model_source:
                 torch_model = True
 
-            (_,
-             onnx_model_file, 
-             is_valid_onnx_model, 
-             vocab_size, 
-             max_sequence_length) = get_onnx_model(
+            (_, onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length) = get_onnx_model(
                 torch_model,
                 model_name,
                 model_class,
@@ -1019,26 +1017,26 @@ def main():
 
         if enable_migraphx:
             results += run_migraphx(
-                    args.use_gpu,
-                    args.models,
-                    args.model_class,
-                    config_modifier,
-                    args.precision,
-                    num_threads,
-                    args.batch_sizes,
-                    args.sequence_lengths,
-                    args.test_times,
-                    args.input_counts,
-                    args.optimizer_info,
-                    args.validate_onnx,
-                    args.cache_dir,
-                    args.onnx_dir,
-                    args.overwrite,
-                    True,
-                    {},
-                    args.model_source,
-                    args,
-                )
+                args.use_gpu,
+                args.models,
+                args.model_class,
+                config_modifier,
+                args.precision,
+                num_threads,
+                args.batch_sizes,
+                args.sequence_lengths,
+                args.test_times,
+                args.input_counts,
+                args.optimizer_info,
+                args.validate_onnx,
+                args.cache_dir,
+                args.onnx_dir,
+                args.overwrite,
+                True,
+                {},
+                args.model_source,
+                args,
+            )
 
 
         model_fusion_statistics = {}
