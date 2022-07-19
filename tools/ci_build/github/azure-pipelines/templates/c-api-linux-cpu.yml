@@ -46,16 +46,6 @@ jobs:
           sudo chmod 666 /var/run/docker.sock
         fi
       displayName: Install Docker Engine
-    # - bash: |
-    #     set -euo pipefail
-    #     if ! which dotnet; then
-    #       sudo apt-get install -y wget
-    #       wget  https://dot.net/v1/dotnet-install.sh
-    #       chmod 755 dotnet-install.sh
-    #       sudo ./dotnet-install.sh -c Current --install-dir /usr/bin
-    #       rm dotnet-install.sh
-    #     fi
-    #   displayName: Install Dotnet
     - template: set-version-number-variables-step.yml
     - template: get-docker-image-steps.yml
       parameters:
