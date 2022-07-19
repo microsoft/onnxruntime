@@ -37,7 +37,7 @@ A new op can be registered with ONNX Runtime using the Custom Operator API in [o
 * [Using Custom Ops with TF2ONNX](https://github.com/microsoft/onnxruntime-extensions/blob/main/tutorials/tf2onnx_custom_ops_tutorial.ipynb): This notebook covers converting a TF model using an existing custom op, defining new custom ops in Python to use in conversion, and defining new custom ops in C++.
 
 ## Calling a native operator from custom operator
-To simplify implementation of custom operators, nativeonnxruntime operators can directly be invoked. For example, some custom ops might have to do GEMM or TopK in between other computations. 
+To simplify implementation of custom operators, native onnxruntime operators can directly be invoked. For example, some custom ops might have to do GEMM or TopK in between other computations. 
 This may also be useful for preprocessing and postprocessing on a node, such as Conv, for state management purpose. To achieve this, the Conv node can be wrapped up by a custom operator such as CustomConv,
 within which the input and output could be cached and processed.
 
