@@ -1,7 +1,4 @@
 # This file contains the ADO job that build libonnxruntime.so on Linux
-variables:
-  - name: skipComponentGovernanceDetection
-    value: true
 parameters:
 - name: AdditionalBuildFlags
   displayName: Additional build flags for build.py
@@ -31,6 +28,9 @@ jobs:
 - job: Linux_C_API_Packaging_CPU_${{parameters.OnnxruntimeArch}}
   workspace:
     clean: all
+  variables:
+  - name: skipComponentGovernanceDetection
+    value: true
   timeoutInMinutes:  210
   pool: ${{parameters.PoolName}}
   steps:
