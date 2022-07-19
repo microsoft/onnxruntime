@@ -1,4 +1,4 @@
-<!-- 
+<!--
 Keep in sync with doco generated from /docs/execution-providers/NNAPI-ExecutionProvider.md on the gh_pages branch
 -->
 |Operator|Note|
@@ -10,12 +10,14 @@ Keep in sync with doco generated from /docs/execution-providers/NNAPI-ExecutionP
 |ai.onnx:Clip||
 |ai.onnx:Concat||
 |ai.onnx:Conv|Only 2D Conv is supported.<br/>Weights and bias should be constant.|
+|ai.onnx:DepthToSpace|Only DCR mode DepthToSpace is supported.|
 |ai.onnx:DequantizeLinear|All quantization scales and zero points should be constant.|
 |ai.onnx:Div||
 |ai.onnx:Elu||
 |ai.onnx:Exp||
 |ai.onnx:Flatten||
 |ai.onnx:Floor||
+|ai.onnx:Gather|Input indices should be an initializer if not int32 type.|
 |ai.onnx:Gemm|If input B is not constant, transB should be 1.|
 |ai.onnx:GlobalAveragePool|Only 2D Pool is supported.|
 |ai.onnx:GlobalMaxPool|Only 2D Pool is supported.|
@@ -27,7 +29,9 @@ Keep in sync with doco generated from /docs/execution-providers/NNAPI-ExecutionP
 |ai.onnx:Min||
 |ai.onnx:Mul||
 |ai.onnx:Neg||
+|ai.onnx:Pad|Only constant mode Pad is supported.|
 |ai.onnx:Pow||
+|ai.onnx:PRelu||
 |ai.onnx:QLinearConv|Only 2D Conv is supported.<br/>Weights and bias should be constant.<br/>All quantization scales and zero points should be constant.|
 |ai.onnx:QLinearMatMul|All quantization scales and zero points should be constant.|
 |ai.onnx:QuantizeLinear|All quantization scales and zero points should be constant.|
@@ -43,6 +47,7 @@ Keep in sync with doco generated from /docs/execution-providers/NNAPI-ExecutionP
 |ai.onnx:Sub||
 |ai.onnx:Tanh||
 |ai.onnx:Transpose||
+|ai.onnx:Unsqueeze||
 |com.microsoft:QLinearAdd|All quantization scales and zero points should be constant.|
 |com.microsoft:QLinearAveragePool|Only 2D Pool is supported.<br/>All quantization scales and zero points should be constant.|
 |com.microsoft:QLinearSigmoid|All quantization scales and zero points should be constant.|
