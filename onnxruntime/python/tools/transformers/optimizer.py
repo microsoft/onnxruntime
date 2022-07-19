@@ -142,8 +142,8 @@ def optimize_by_fusion(
 
     if model.producer_name and producer != model.producer_name:
         logger.warning(
-            f"Model producer not matched: Expect {producer}, Got {model.producer_name} {model.producer_version}."
-            + "Please specify correct --model_type parameter."
+            f'Model producer not matched: Expected "{producer}", Got "{model.producer_name}".'
+            "Please specify correct --model_type parameter."
         )
 
     if optimization_options is None:
