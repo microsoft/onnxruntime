@@ -55,6 +55,10 @@ common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_prot
  */
 common::Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
                                    const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                   Tensor& tensor, OrtCallback&);
+
+common::Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
+                                   const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                    Tensor& tensor);
 
 /** Creates a TensorProto from a Tensor.
