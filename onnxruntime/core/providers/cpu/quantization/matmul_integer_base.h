@@ -53,7 +53,7 @@ class MatMulIntegerBase : public OpKernel {
       // if and when we try to cache this pre-packed buffer for sharing between sessions.
       memset(packed_b_data, 0, packed_b_size);
 
-      packed_b_ = BufferUniquePtr(packed_b_data, BufferDeleter(alloc));
+      packed_b_ = BufferUniquePtr(packed_b_data, BufferDeleter(std::move(alloc)));
       MlasGemmPackB(N, K, b_data, N, a_is_signed, b_is_signed_, packed_b_data);
 
       bool share_prepacked_weights = (prepacked_weights != nullptr);
