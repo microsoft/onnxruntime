@@ -29,6 +29,7 @@ jobs:
       - name: 'Add LLVM-Dev binaries to the PATH'
         run: |
           echo "C:/Miniconda/Library/bin" >> $GITHUB_PATH
+          echo "C:/Program Files/LLVM/bin" >> $GITHUB_PATH
       - name: 'Setup TVM EP Python requirements'
         run: |
           python3 -m pip install -r ${{ github.workspace }}/tools/ci_build/github/linux/tvm/requirements.txt

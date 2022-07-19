@@ -2685,11 +2685,8 @@ def main():
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
             nuphar_run_python_tests(build_dir, configs)
 
-        # TODO(agladyshev):
-        # to support Windows, we need to update .github/workflows/windows.yml
-        # and add to the PATH variable the following value: C:Program Files\LLVM\bin
-        if args.enable_pybind and args.use_tvm and not is_windows():
-            tvm_run_python_tests(build_dir, configs)
+        if args.enable_pybind and args.use_tvm:
+             tvm_run_python_tests(build_dir, configs)
 
         # run node.js binding tests
         if args.build_nodejs and not args.skip_nodejs_tests:
