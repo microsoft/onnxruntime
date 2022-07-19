@@ -480,7 +480,7 @@ pip3 install numpy
 # Build the latest cmake
 mkdir /code
 cd /code
-wget https://cmake.org/files/v3.13/cmake-3.16.1.tar.gz;
+wget https://cmake.org/files/v3.16/cmake-3.16.1.tar.gz;
 tar zxf cmake-3.16.1.tar.gz
 
 cd /code/cmake-3.16.1
