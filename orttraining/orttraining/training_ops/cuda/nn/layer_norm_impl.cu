@@ -493,7 +493,7 @@ void HostLayerNormGradient(
   U* part_grad_beta,
   const int part_size) {
   const int warp_size = prop.warpSize;
-  ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
+  ORT_ENFORCE(warp_size == GPU_WARP_SIZE_HOST);
 
   const dim3 threads2(warp_size, 4, 1);
   const dim3 blocks2((n2 + threads2.x - 1) / threads2.x, part_size, 1);

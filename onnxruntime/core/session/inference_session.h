@@ -22,7 +22,6 @@
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/framework/session_options.h"
-#include "core/framework/allocatormgr.h"
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
@@ -350,13 +349,15 @@ class InferenceSession {
    *                              copy/checks.
    * @param cache Contains node arg name to OrtValue map stashed from previous run
    *              for frontier tensors
+   * @param partial_graph_index Index of the partial graph to run.
    */
   common::Status PartialRun(onnxruntime::RunOptions& run_options,
                             const std::vector<OrtValue>& feeds,
                             std::vector<OrtValue>& fetches,
                             PartialGraphExecutionState& state,
                             FeedsFetchesManager& feeds_fetches_manager,
-                            const OrtValueCachePtr& cache);
+                            const OrtValueCachePtr& cache,
+                            int32_t partial_graph_index);
 #endif
 
   /**
@@ -449,10 +450,6 @@ class InferenceSession {
    * @return a ptr to the allocator or nullptr if not available
    */
   AllocatorPtr GetAllocator(const OrtMemoryInfo& mem_info) const;
-
-  std::shared_ptr<onnxruntime::AllocatorManager> GetAllocatorManager() {
-    return allocator_manager_;
-  }
 
   /**
    *Get InferenceSession logger.
@@ -669,6 +666,12 @@ class InferenceSession {
   std::basic_string<ORTCHAR_T> thread_pool_name_;
   std::basic_string<ORTCHAR_T> inter_thread_pool_name_;
 
+  // This option allows to decrease CPU usage between infrequent
+  // requests and forces any TP threads spinning stop immediately when the last of
+  // concurrent ExecuteGraph() call returns.
+  // Spinning is restarted on the next Run()
+  bool force_spinning_stop_between_runs_ = false;
+
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
 
@@ -718,11 +721,12 @@ class InferenceSession {
   DataTransferManager data_transfer_mgr_;
 
   // Number of concurrently running executors
-  std::atomic<int> current_num_runs_;
+  std::atomic<int> current_num_runs_ = 0;
 
   mutable onnxruntime::OrtMutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
   bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
   bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
+  bool is_concurrent_run_supported_ = true;      // Graph execution in Run is GUARDED_BY(session_mutex_) if false
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
   InterOpDomains interop_domains_;
@@ -779,8 +783,6 @@ class InferenceSession {
   // specifies that ORT should use the model bytes directly by setting the session config option
   // "session.use_ort_model_bytes_directly" to "1", this will be empty
   std::vector<uint8_t> ort_format_model_bytes_data_holder_;
-
-  std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
 
   // Container to store pre-packed weights to share between sessions.
   // The life-cycle of the cache itself is maintained by the user and the user will ensure
