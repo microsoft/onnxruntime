@@ -650,7 +650,6 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
         env, external_data_file_path.c_str(), file_offset, raw_data_len,
         raw_data, callback));
     const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
-    std::vector<int64_t> tensor_shape_vec = utils::GetTensorShapeFromTensorProto(tensor_proto);
     TensorShape tensor_shape{tensor_shape_vec};
     auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, raw_data, OrtMemoryInfo(CPU,
                                              OrtAllocatorType::OrtDeviceAllocator));
