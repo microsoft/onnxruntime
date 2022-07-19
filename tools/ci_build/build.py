@@ -1977,7 +1977,9 @@ def tvm_run_python_tests(build_dir, configs):
         if is_windows():
             cwd = os.path.join(cwd, config)
         python_path = os.path.join(build_dir, config, "_deps", "tvm-src", "python")
-        run_subprocess([sys.executable, "onnxruntime_test_python_tvm.py"], cwd=cwd, python_path=python_path)
+        run_subprocess(
+            [sys.executable, "onnxruntime_test_python_tvm.py"], cwd=cwd, python_path=os.path.abspath(python_path)
+        )
 
 
 def run_nodejs_tests(nodejs_binding_dir):
