@@ -82,7 +82,8 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                          {{"AveragePool", {}},
                                                           {"LeakyRelu", {}},
                                                           {"GlobalAveragePool", {}},
-                                                          {"Sigmoid", {}}},
+                                                          {"Sigmoid", {}},
+                                                          {"Softmax", {}}},
                                                          std::move(selector),
                                                          std::move(action));
 #else
