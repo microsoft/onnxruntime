@@ -31,6 +31,7 @@ jobs:
   timeoutInMinutes:  210
   pool: ${{parameters.PoolName}}
   steps:
+    - task: DockerInstaller@0
     - template: set-version-number-variables-step.yml
     - template: get-docker-image-steps.yml
       parameters:
