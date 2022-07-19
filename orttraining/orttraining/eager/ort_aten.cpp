@@ -507,9 +507,9 @@ at::Tensor empty_strided(
   at::IntArrayRef size,
   at::IntArrayRef stride,
   c10::optional<at::ScalarType> dtype_opt,
-  c10::optional<at::Layout> layout_opt, // Ignored because there's no ONNX support.
-  c10::optional<at::Device> device_opt, // Will be ORT by the time this is dispatched.
-  c10::optional<bool> pin_memory_opt) { // Ignored because there's no ONNX support.
+  c10::optional<at::Layout> layout_opt,  // Ignored because there's no ONNX support.
+  c10::optional<at::Device> device_opt,  // Will be ORT by the time this is dispatched.
+  c10::optional<bool> pin_memory_opt) {  // Ignored because there's no ONNX support.
   ORT_LOG_FN(size, stride, dtype_opt, layout_opt, device_opt, pin_memory_opt);
 
   OrtValue ot;
@@ -532,7 +532,7 @@ at::Tensor empty_memory_format(
   c10::optional<at::Layout> layout_opt,
   c10::optional<at::Device> device_opt,
   c10::optional<bool> pin_memory,
-  c10::optional<at::MemoryFormat> memory_format) { // Ignored because there's no ONNX support.
+  c10::optional<at::MemoryFormat> memory_format) {  // Ignored because there's no ONNX support.
   ORT_LOG_FN(size, dtype_opt, layout_opt, device_opt, pin_memory, memory_format);
 
   // Use the strided impl with default (no strides specified).
