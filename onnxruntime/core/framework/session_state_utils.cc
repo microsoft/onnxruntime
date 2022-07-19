@@ -103,6 +103,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     OrtCallback ext_data_deleter;
     ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_tensor, ext_data_deleter));
     if (utils::HasExternalData(tensor_proto)) {
+      // NB: when data is external and is on CPU, give the OrtValue the special deleter since the data is not
+      // owned by OrtValue nor Tensor.
       ExtDataValueDeleter deleter{ext_data_deleter, p_tensor.get()};
 
       MLDataType ml_tensor_type = DataTypeImpl::GetType<Tensor>();

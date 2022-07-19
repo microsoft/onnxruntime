@@ -671,6 +671,7 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not have raw data");
   }
 
+  // NB: exit early when data is external, avoid calling UnpackTensor (which copies).
   if (endian::native == endian::little && raw_data != nullptr && callback.f != nullptr && utils::HasExternalData(tensor_proto)) {
     return Status::OK();
   }
