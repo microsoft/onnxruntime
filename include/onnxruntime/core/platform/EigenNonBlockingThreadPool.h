@@ -777,10 +777,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     fn = q.PushBack(std::move(fn));
     if (!fn) {
       // The queue accepted the work; ensure that the thread will pick it up
-      // td.EnsureAwake();
-      for (auto i = 0u; i < num_threads_; i++) {
-        worker_data_[i].EnsureAwake(); // wake up all to ensure task stealing
-      }
+      td.EnsureAwake();
     } else {
       // Run the work directly if the queue rejected the work
       fn();

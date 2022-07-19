@@ -15,7 +15,6 @@
 #endif
 
 #include "core/framework/compute_capability.h"
-#include "core/common/spin_pause.h"
 
 namespace {
 struct KernelRegistryAndStatus {

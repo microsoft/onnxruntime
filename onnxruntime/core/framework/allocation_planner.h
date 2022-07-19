@@ -115,8 +115,6 @@ class SequentialPlanner {
       const ISequentialPlannerContext& context,
       const ExecutionProviders& execution_providers,
       const IStreamCommandHandleRegistry& stream_handle_registry,
-      //const ProviderStreamMap& provider_stream_map,
-      //const OpStreamMap& op_stream_map,
       const std::string& partition_config_file,
       const logging::Logger& logger,
       std::unique_ptr<SequentialExecutionPlan>& plan);
