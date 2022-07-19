@@ -17,9 +17,10 @@ class AdamWOptimizer final : public CudaKernel, public contrib::AdamWOptimizerBa
   AdamWOptimizer(const OpKernelInfo& info) : CudaKernel(info), contrib::AdamWOptimizerBase(info) {
   }
 
-  Status CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor) const override;
-
   Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  Status CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor) const override;
 };
 
 }  // namespace cuda

@@ -18,14 +18,15 @@ class AdamWOptimizer final : public OpKernel, public AdamWOptimizerBase {
       : OpKernel(info), AdamWOptimizerBase(info) {
   }
 
-  Status CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor) const override;
-
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  Status AdamWComputeMode0(AdamWOptimizerBase::Prepare& p, float lr, float alpha_correction,
+  Status CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor) const override;
+  Status AdamWComputeMode0(Tensor& weight, Tensor& gradient, Tensor& momentums_1, Tensor& momentums_2, float lr,
+                           float alpha_correction,
                            float beta_correction) const;
-  Status AdamWComputeMode1(AdamWOptimizerBase::Prepare& p, float lr, float lr_corrected) const;
+  Status AdamWComputeMode1(Tensor& weight, Tensor& gradient, Tensor& momentums_1, Tensor& momentums_2, float lr,
+                           float lr_corrected) const;
 };
 
 }  // namespace contrib

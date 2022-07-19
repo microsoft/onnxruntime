@@ -106,57 +106,45 @@ ONNX_OPERATOR_KERNEL_EX(
     AdamWOptimizer<float>);
 
 template <typename T>
-Status AdamWOptimizer<T>::AdamWComputeMode0(AdamWOptimizerBase::Prepare& p, float lr, float alpha_correction,
-                                            float beta_correction) const {
-  for (size_t weight_index = 0; weight_index < p.num_of_weights; ++weight_index) {
-    Tensor& weight = const_cast<Tensor&>(p.weights->Get(weight_index));
-    Tensor& gradient = const_cast<Tensor&>(p.gradients->Get(weight_index));
-    Tensor& momentums_1 = const_cast<Tensor&>(p.momentums_1->Get(weight_index));
-    Tensor& momentums_2 = const_cast<Tensor&>(p.momentums_2->Get(weight_index));
+Status AdamWOptimizer<T>::AdamWComputeMode0(Tensor& weight, Tensor& gradient, Tensor& momentums_1, Tensor& momentums_2,
+                                            float lr, float alpha_correction, float beta_correction) const {
+  // Perform weight decay.
+  MakeEigenArrayMap<T>(weight) = MakeEigenArrayMap<T>(weight) - (MakeEigenArrayMap<T>(weight) * lr * weight_decay_);
 
-    // Perform weight decay.
-    MakeEigenArrayMap<T>(weight) = MakeEigenArrayMap<T>(weight) - (MakeEigenArrayMap<T>(weight) * lr * weight_decay_);
+  // Compute exponentially-averaged historical gradient.
+  MakeEigenArrayMap<T>(momentums_1) = alpha_ * MakeEigenArrayMap<T>(momentums_1) +
+                                      (1.f - alpha_) * MakeEigenArrayMap<T>(gradient);
 
-    // Compute exponentially-averaged historical gradient.
-    MakeEigenArrayMap<T>(momentums_1) = alpha_ * MakeEigenArrayMap<T>(momentums_1) +
-                                        (1.f - alpha_) * MakeEigenArrayMap<T>(gradient);
+  // Compute exponentially-averaged historical squared gradient.
+  MakeEigenArrayMap<T>(momentums_2) = beta_ * MakeEigenArrayMap<T>(momentums_2) +
+                                      (1.f - beta_) * MakeEigenArrayMap<T>(gradient) * MakeEigenArrayMap<T>(gradient);
 
-    // Compute exponentially-averaged historical squared gradient.
-    MakeEigenArrayMap<T>(momentums_2) = beta_ * MakeEigenArrayMap<T>(momentums_2) +
-                                        (1.f - beta_) * MakeEigenArrayMap<T>(gradient) * MakeEigenArrayMap<T>(gradient);
-
-    // Compute the new weight.
-    auto denom = (MakeEigenArrayMap<T>(momentums_2) / beta_correction).sqrt() + epsilon_;
-    MakeEigenArrayMap<T>(weight) = MakeEigenArrayMap<T>(weight) -
-                                   (lr * MakeEigenArrayMap<T>(momentums_1)) / (alpha_correction * denom);
-  }
+  // Compute the new weight.
+  auto denom = (MakeEigenArrayMap<T>(momentums_2) / beta_correction).sqrt() + epsilon_;
+  MakeEigenArrayMap<T>(weight) = MakeEigenArrayMap<T>(weight) -
+                                 (lr * MakeEigenArrayMap<T>(momentums_1)) / (alpha_correction * denom);
 
   return Status::OK();
 }
 
 template <typename T>
-Status AdamWOptimizer<T>::AdamWComputeMode1(AdamWOptimizerBase::Prepare& p, float lr, float lr_corrected) const {
-  for (size_t weight_index = 0; weight_index < p.num_of_weights; ++weight_index) {
-    Tensor& weight = const_cast<Tensor&>(p.weights->Get(weight_index));
-    Tensor& gradient = const_cast<Tensor&>(p.gradients->Get(weight_index));
-    Tensor& momentums_1 = const_cast<Tensor&>(p.momentums_1->Get(weight_index));
-    Tensor& momentums_2 = const_cast<Tensor&>(p.momentums_2->Get(weight_index));
+Status AdamWOptimizer<T>::AdamWComputeMode1(Tensor& weight, Tensor& gradient, Tensor& momentums_1, Tensor& momentums_2,
+                                            float lr, float lr_corrected) const {
+  // Compute exponentially-averaged historical gradient.
+  MakeEigenArrayMap<T>(momentums_1) = alpha_ * MakeEigenArrayMap<T>(momentums_1) +
+                                      (1.f - alpha_) * MakeEigenArrayMap<T>(gradient);
 
-    // Compute exponentially-averaged historical gradient.
-    MakeEigenArrayMap<T>(momentums_1) = alpha_ * MakeEigenArrayMap<T>(momentums_1) +
-                                        (1.f - alpha_) * MakeEigenArrayMap<T>(gradient);
+  // Compute exponentially-averaged historical squared gradient.
+  MakeEigenArrayMap<T>(momentums_2) = beta_ * MakeEigenArrayMap<T>(momentums_2) +
+                                      (1.f - beta_) * MakeEigenArrayMap<T>(gradient) * MakeEigenArrayMap<T>(gradient);
 
-    // Compute exponentially-averaged historical squared gradient.
-    MakeEigenArrayMap<T>(momentums_2) = beta_ * MakeEigenArrayMap<T>(momentums_2) +
-                                        (1.f - beta_) * MakeEigenArrayMap<T>(gradient) * MakeEigenArrayMap<T>(gradient);
+  auto denom = MakeEigenArrayMap<T>(momentums_2).sqrt() + epsilon_;
+  MakeEigenArrayMap<T>(weight) = MakeEigenArrayMap<T>(weight) -
+                                 (lr_corrected * MakeEigenArrayMap<T>(momentums_1) / denom);
 
-    auto denom = MakeEigenArrayMap<T>(momentums_2).sqrt() + epsilon_;
-    MakeEigenArrayMap<T>(weight) = MakeEigenArrayMap<T>(weight) -
-                                   (lr_corrected * MakeEigenArrayMap<T>(momentums_1) / denom);
+  // Perform weight decay.
+  MakeEigenArrayMap<T>(weight) = MakeEigenArrayMap<T>(weight) - (lr * weight_decay_ * MakeEigenArrayMap<T>(weight));
 
-    // Perform weight decay.
-    MakeEigenArrayMap<T>(weight) = MakeEigenArrayMap<T>(weight) - (lr * weight_decay_ * MakeEigenArrayMap<T>(weight));
-  }
   return Status::OK();
 }
 
@@ -198,14 +186,22 @@ Status AdamWOptimizer<T>::Compute(OpKernelContext* ctx) const {
     //         src/transformers/optimization.py,
     //         bias correction is applied on learning rate, then use lr_corrected for subsequent computations.
     //         weight decay is applied after weight is updated.
-    if (adam_mode_ == 0) {
-      ORT_RETURN_IF_ERROR(
-          AdamWComputeMode0(p, lr, alpha_correction, beta_correction));
-    } else if (adam_mode_ == 1) {
-      ORT_RETURN_IF_ERROR(
-          AdamWComputeMode1(p, lr, lr_corrected));
-    } else {
-      ORT_THROW("Unsupported Adamw optimizer mode.");
+
+    for (size_t weight_index = 0; weight_index < p.num_of_weights; ++weight_index) {
+      Tensor& weight = const_cast<Tensor&>(p.weights->Get(weight_index));
+      Tensor& gradient = const_cast<Tensor&>(p.gradients->Get(weight_index));
+      Tensor& momentums_1 = const_cast<Tensor&>(p.momentums_1->Get(weight_index));
+      Tensor& momentums_2 = const_cast<Tensor&>(p.momentums_2->Get(weight_index));
+
+      if (adam_mode_ == 0) {
+        ORT_RETURN_IF_ERROR(
+            AdamWComputeMode0(weight, gradient, momentums_1, momentums_2, lr, alpha_correction, beta_correction));
+      } else if (adam_mode_ == 1) {
+        ORT_RETURN_IF_ERROR(
+            AdamWComputeMode1(weight, gradient, momentums_1, momentums_2, lr, lr_corrected));
+      } else {
+        ORT_THROW("Unsupported Adamw optimizer mode.");
+      }
     }
 
     *updated_flag_ptr = 1;

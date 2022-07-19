@@ -40,7 +40,7 @@ class MultipleParametersModule(torch.nn.Module):
 def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_count, adam_mode, json_file_name, device):
     """Generate test data using specified model/data and other configs."""
 
-    is_cuda = device == 'cuda'
+    is_cuda = device == "cuda"
 
     def _sync_stream():
         if is_cuda is True:
