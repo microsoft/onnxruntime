@@ -11,12 +11,13 @@ import unittest
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
+from op_test_utils import TestCaseTempDir, TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
+from pathlib import Path
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 
-class TestOpGlobalAveragePool(unittest.TestCase):
+class TestOpGlobalAveragePool(TestCaseTempDir):
     def input_feeds(self, n, name2shape):
         input_data_list = []
         for i in range(n):
@@ -83,6 +84,7 @@ class TestOpGlobalAveragePool(unittest.TestCase):
     def quantize_gavgpool_test(self, activation_type, weight_type, extra_options={}):
         np.random.seed(1)
         model_fp32_path = "gavg_pool_fp32.onnx"
+        model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
         data_reader = self.input_feeds(1, {"input": [1, 8, 33, 33]})
         self.construct_model_gavgpool(model_fp32_path, [1, 8, 33, 33], [16, 8, 3, 3], [1, 16, 1, 1])
 
@@ -90,7 +92,11 @@ class TestOpGlobalAveragePool(unittest.TestCase):
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
         model_q8_path = "gavg_pool_{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_q8_path = Path(self._tmp_model_dir.name).joinpath(model_q8_path).as_posix()
+        model_q8_qdq_dyn_path = "gavg_pool_{}{}_qdq.onnx".format(activation_type_str, weight_type_str)
+        model_q8_qdq_dyn_path = Path(self._tmp_model_dir.name).joinpath(model_q8_qdq_dyn_path).as_posix()
 
+        # Test Static
         data_reader.rewind()
         quantize_static(
             model_fp32_path,
@@ -101,7 +107,6 @@ class TestOpGlobalAveragePool(unittest.TestCase):
             weight_type=weight_type,
             extra_options=extra_options,
         )
-
         quant_nodes = {
             "QLinearConv": 1,
             "GlobalAveragePool": 1,
@@ -127,6 +132,34 @@ class TestOpGlobalAveragePool(unittest.TestCase):
         check_qtype_by_node_type(self, model_q8_path, qnode_io_qtypes)
         data_reader.rewind()
         check_model_correctness(self, model_fp32_path, model_q8_path, data_reader.get_next())
+
+        # Test QDQ Dynamic
+        data_reader.rewind()
+        quantize_dynamic(
+            model_fp32_path,
+            model_q8_qdq_dyn_path,
+            quant_format=QuantFormat.QDQ,
+            activation_type=activation_type,
+            weight_type=weight_type,
+            extra_options=extra_options,
+            op_types_to_quantize=["GlobalAveragePool", "Conv"],
+        )
+        quant_nodes = {
+            "Conv": 1,
+            "GlobalAveragePool": 2,
+            "QuantizeLinear": 1,
+            "DequantizeLinear": 2,
+        }
+        check_op_type_count(self, model_q8_qdq_dyn_path, **quant_nodes)
+        qnode_io_qtypes = {
+            "QuantizeLinear": [
+                ["i", 2, activation_proto_qtype],
+                ["o", 0, activation_proto_qtype],
+            ]
+        }
+        check_qtype_by_node_type(self, model_q8_qdq_dyn_path, qnode_io_qtypes)
+        data_reader.rewind()
+        check_model_correctness(self, model_fp32_path, model_q8_qdq_dyn_path, data_reader.get_next())
 
     def test_quantize_gavgpool(self):
         self.quantize_gavgpool_test(QuantType.QUInt8, QuantType.QUInt8, extra_options={})

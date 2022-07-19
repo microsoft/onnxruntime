@@ -11,12 +11,14 @@ import unittest
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count
+from op_test_utils import TestCaseTempDir, TestDataFeeds, check_model_correctness, check_op_type_count
+from pathlib import Path
+from onnxruntime.tools import symbolic_shape_infer
 
-from onnxruntime.quantization import quantize_dynamic
+from onnxruntime.quantization import QuantFormat, quantize_dynamic
 
 
-class TestOpAttention(unittest.TestCase):
+class TestOpAttention(TestCaseTempDir):
     def input_feeds(self, n, name2shape):
         input_data_list = []
         for i in range(n):
@@ -66,6 +68,7 @@ class TestOpAttention(unittest.TestCase):
         matmul_node = make_matmul_node(attention_output_name, [10, 10], "matmul.weight", output_name)
 
         # make graph
+        # attention_tensor = helper.make_tensor_value_info(attention_output_name, TensorProto.FLOAT, [1, 10, 30])
         input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, [1, -1, 10])
         output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, [1, -1, 10])
         graph_name = "attention_test"
@@ -80,11 +83,15 @@ class TestOpAttention(unittest.TestCase):
         model.ir_version = onnx.IR_VERSION
 
         onnx.save(model, output_model_path)
+        model_inferenced = symbolic_shape_infer.SymbolicShapeInference.infer_shapes(model)
+        onnx.save(model_inferenced, output_model_path)
 
     def dynamic_attention_quant_test(self, model_fp32_path, model_int8_path, per_channel, reduce_range):
+        # Test Attention QOperator Dynamic
         quantize_dynamic(
             model_fp32_path,
             model_int8_path,
+            quant_format=QuantFormat.QOperator,
             per_channel=per_channel,
             reduce_range=reduce_range,
         )
@@ -97,10 +104,29 @@ class TestOpAttention(unittest.TestCase):
             {"input": np.random.rand(1, 5, 10).astype(np.float32)},
         )
 
+        # Test Attention QDQ Dynamic
+        quantize_dynamic(
+            model_fp32_path,
+            model_int8_path,
+            quant_format=QuantFormat.QDQ,
+            per_channel=per_channel,
+            reduce_range=reduce_range,
+        )
+        quant_nodes = {"Attention": 1, "MatMul": 1, "QuantizeLinear":2, "DequantizeLinear":4}
+        check_op_type_count(self, model_int8_path, **quant_nodes)
+        check_model_correctness(
+            self,
+            model_fp32_path,
+            model_int8_path,
+            {"input": np.random.rand(1, 5, 10).astype(np.float32)},
+        )
+
     def test_quantize_attention(self):
         np.random.seed(1)
         model_fp32_path = "attention_fp32.onnx"
+        model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
         model_int8_path = "attention_fp32.quant.onnx"
+        model_int8_path = Path(self._tmp_model_dir.name).joinpath(model_int8_path).as_posix()
         self.construct_model_attention_and_matmul(model_fp32_path)
 
         self.dynamic_attention_quant_test(model_fp32_path, model_int8_path, True, True)

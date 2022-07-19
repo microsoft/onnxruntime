@@ -59,7 +59,6 @@ class ONNXQuantizer:
         op_types_to_quantize,
         extra_options={},
     ):
-
         if not model_has_infer_metadata(model):
             model = save_and_reload_model(model)
         self.value_infos = {vi.name: vi for vi in model.graph.value_info}

@@ -1,9 +1,14 @@
 from pathlib import Path
 
+import unittest
+import tempfile
 import sys
 from tabnanny import check
 import numpy as np
 import onnx
+
+import os
+from onnx import numpy_helper
 
 import onnxruntime
 from onnxruntime.quantization import CalibrationDataReader
@@ -23,6 +28,14 @@ class TestDataFeeds(CalibrationDataReader):
     def rewind(self):
         self.iter_next = iter(self.data_feeds)
 
+class TestCaseTempDir(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="test_op.")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp_model_dir.cleanup()
 
 def InputFeedsNegOneZeroOne(n, name2shape):
     """
@@ -84,6 +97,12 @@ def check_model_correctness(testcase, model_path_origin, model_path_to_check, in
     
     target_results = target_sess.run([], inputs)
     testcase.assertEqual(len(origin_results), len(target_results), "result count are different")
+    np.set_printoptions(threshold=sys.maxsize)
+    print('TARGET')
+    print(target_results)
+    print('ORIGIN')
+    print(origin_results)
+    
     for idx, ref_output in enumerate(origin_results):
         output = target_results[idx]
         np.testing.assert_allclose(ref_output, output, rtol=rtol, atol=atol)

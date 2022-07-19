@@ -6,6 +6,7 @@
 import unittest
 import urllib.request
 from pathlib import Path
+from op_test_utils import TestCaseTempDir
 
 import numpy as np
 import onnx
@@ -336,13 +337,13 @@ def compare_two_models(model_1, model_2):
     return check_1 and check_2
 
 
-class TestQAT(unittest.TestCase):
+class TestQAT(TestCaseTempDir):
     def test_remove_fakequant_nodes(self):
 
-        model_names = ["qat_model_1.onnx", "qat_model_2.onnx"]
+        model_names = [Path(self._tmp_model_dir.name).joinpath("qat_model_1.onnx").as_posix(), Path(self._tmp_model_dir.name).joinpath("qat_model_2.onnx").as_posix()]
         qat_support_model_names = [
-            "qat_support_model_1.onnx",
-            "qat_support_model_2.onnx",
+            Path(self._tmp_model_dir.name).joinpath("qat_support_model_1.onnx").as_posix(),
+            Path(self._tmp_model_dir.name).joinpath("qat_support_model_2.onnx").as_posix(),
         ]
 
         test_models, test_initializers = generate_qat_model(model_names)

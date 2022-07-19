@@ -1,6 +1,8 @@
 import onnx
 from onnx import onnx_pb as onnx_proto
 
+from .qdq_base_operator import QDQOperatorBase
+
 from ..quant_utils import attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
 
@@ -59,3 +61,28 @@ class AttentionQuant(QuantOperatorBase):
         nodes.append(qattention_node)
 
         self.quantizer.new_nodes += nodes
+
+class QDQAttention(QDQOperatorBase):
+    def __init__(self, onnx_quantizer, onnx_node):
+        super().__init__(onnx_quantizer, onnx_node)
+
+    def quantize(self):
+        node = self.node
+        assert node.op_type == "Attention"
+
+        self.quantizer.tensors_to_quantize.append(node.input[0])
+        self.quantizer.tensors_to_quantize.append(node.input[1])
+        if not self.disable_qdq_for_node_output:
+            self.quantizer.tensors_to_quantize.append(node.output[0])
+
+
+        # TODO: Test disable output
+        # TODO: How it works the is_per_channel option?
+
+        # for tensor_name in nodes_to_iterate:
+        #     # only support per-channel quantization on weight
+        #     if self.quantizer.is_per_channel() and find_by_name(tensor_name, self.quantizer.model.initializer()):
+        #         channel_axis = self.quantizer.qdq_op_type_per_channel_support_to_axis.get(node.op_type, 1)
+        #         self.quantizer.quantize_tensor_per_channel(tensor_name, channel_axis)
+        #     else:
+        #         self.quantizer.quantize_tensor(tensor_name)

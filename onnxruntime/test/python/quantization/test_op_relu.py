@@ -11,12 +11,13 @@ import unittest
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
+from op_test_utils import TestCaseTempDir, TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
+from pathlib import Path
 
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_static, quantize_dynamic
 
 
-class TestOpRelu(unittest.TestCase):
+class TestOpRelu(TestCaseTempDir):
     def input_feeds(self, n, name2shape):
         input_data_list = []
         for i in range(n):
@@ -110,6 +111,7 @@ class TestOpRelu(unittest.TestCase):
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
         model_int8_path = "relu_fp32.quant_{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_int8_path = Path(self._tmp_model_dir.name).joinpath(model_int8_path).as_posix()
 
         data_reader.rewind()
         quantize_static(
@@ -149,6 +151,7 @@ class TestOpRelu(unittest.TestCase):
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
         model_int8_path = "relu_fp32.quant_dqd_{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_int8_path = Path(self._tmp_model_dir.name).joinpath(model_int8_path).as_posix()
 
         data_reader.rewind()
         quantize_static(
@@ -176,9 +179,50 @@ class TestOpRelu(unittest.TestCase):
         data_reader.rewind()
         check_model_correctness(self, model_fp32_path, model_int8_path, data_reader.get_next())
 
+    def dynamic_quant_test_qdq(
+        self,
+        model_fp32_path,
+        data_reader,
+        activation_type,
+        weight_type,
+        extra_options={},
+    ):
+        activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
+        activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
+        weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
+        model_int8_path = "relu_fp32.quant_dqd_dyn_{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_int8_path = Path(self._tmp_model_dir.name).joinpath(model_int8_path).as_posix()
+
+        data_reader.rewind()
+        quantize_dynamic(
+            model_fp32_path,
+            model_int8_path,
+            quant_format=QuantFormat.QDQ,
+            activation_type=activation_type,
+            weight_type=weight_type,
+            extra_options=extra_options,
+            op_types_to_quantize={'Relu', 'Gemm', 'MatMul'}
+        )
+
+        relu_count = 0 if activation_type == QuantType.QUInt8 else 1
+        q_count = 2
+        dq_count = 4
+        quant_nodes = {"MatMul": 2, "QuantizeLinear": q_count, "DequantizeLinear": dq_count, "Relu": relu_count}
+        check_op_type_count(self, model_int8_path, **quant_nodes)
+        qnode_io_qtypes = {
+            "QuantizeLinear": [
+                ["i", 2, activation_proto_qtype],
+                ["o", 0, activation_proto_qtype],
+            ]
+        }
+        check_qtype_by_node_type(self, model_int8_path, qnode_io_qtypes)
+        data_reader.rewind()
+        check_model_correctness(self, model_fp32_path, model_int8_path, data_reader.get_next())
+
     def test_quantize_gemm(self):
         np.random.seed(1)
         model_fp32_path = "relu_fp32.onnx"
+        model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
         self.construct_model_gemm(model_fp32_path)
         data_reader = self.input_feeds(1, {"input": [5, 10]})
 
@@ -198,6 +242,7 @@ class TestOpRelu(unittest.TestCase):
     def test_quantize_relu_s8s8(self):
         np.random.seed(1)
         model_fp32_path = "relu_fp32.onnx"
+        model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
         self.construct_model_gemm(model_fp32_path)
         data_reader = self.input_feeds(1, {"input": [5, 10]})
 
@@ -209,6 +254,13 @@ class TestOpRelu(unittest.TestCase):
             extra_options={"ActivationSymmetric": True},
         )
         self.static_quant_test_qdq(
+            model_fp32_path,
+            data_reader,
+            activation_type=QuantType.QInt8,
+            weight_type=QuantType.QInt8,
+            extra_options={"ActivationSymmetric": True},
+        )
+        self.dynamic_quant_test_qdq(
             model_fp32_path,
             data_reader,
             activation_type=QuantType.QInt8,

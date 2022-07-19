@@ -1,6 +1,6 @@
 from .operators.activation import QDQRemovableActivation, QLinearActivation
 from .operators.argmax import QArgMax
-from .operators.attention import AttentionQuant
+from .operators.attention import AttentionQuant, QDQAttention
 from .operators.base_operator import QuantOperatorBase
 from .operators.binary_op import QLinearBinaryOp
 from .operators.concat import QDQConcat, QLinearConcat
@@ -10,7 +10,7 @@ from .operators.embed_layernorm import EmbedLayerNormalizationQuant
 from .operators.gather import GatherQuant
 from .operators.gavgpool import QGlobalAveragePool
 from .operators.gemm import QDQGemm, QLinearGemm
-from .operators.lstm import LSTMQuant
+from .operators.lstm import LSTMQuant, QDQLSTM
 from .operators.matmul import MatMulInteger, QDQMatMul, QLinearMatMul
 from .operators.maxpool import QDQMaxPool, QMaxPool
 from .operators.pad import QPad
@@ -19,6 +19,8 @@ from .operators.qdq_base_operator import QDQOperatorBase
 from .operators.resize import QDQResize, QResize
 from .operators.split import QSplit
 from .quant_utils import QuantizationMode
+
+import logging
 
 CommonOpsRegistry = {
     "Gather": GatherQuant,
@@ -78,9 +80,8 @@ QDQDynamicRegistry = {
     "Conv": QDQConv,
     "Gemm": QDQGemm,
     "MatMul": QDQMatMul,
-    "Attention": QDQOperatorBase,
-    "LSTM": QDQOperatorBase,
-    "Resize": QDQResize, # TODO: We want this here?
+    "Attention": QDQAttention,
+    "LSTM": QDQLSTM,
 }
 IntegerOpsRegistry.update(CommonOpsRegistry) # Is this ok?
 
@@ -101,6 +102,15 @@ def CreateOpQuantizer(onnx_quantizer, node):
 def CreateQDQQuantizer(onnx_quantizer, node):
     if onnx_quantizer.static and node.op_type in QDQRegistry.keys():
         return QDQRegistry[node.op_type](onnx_quantizer, node)
-    elif not onnx_quantizer.static and node.op_type in QDQDynamicRegistry.keys():
-        return QDQDynamicRegistry[node.op_type](onnx_quantizer, node)
+    elif not onnx_quantizer.static: 
+        if node.op_type in QDQDynamicRegistry.keys():
+            return QDQDynamicRegistry[node.op_type](onnx_quantizer, node)
+        else:
+            # TODO: Is it better to handle this elsewhere??????
+            logging.warning(
+                "WARNING: {} not supported for Dynamic QDQ quantization.".format(
+                    node.op_type
+                )
+            )
+            return None
     return QDQOperatorBase(onnx_quantizer, node)

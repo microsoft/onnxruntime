@@ -11,11 +11,13 @@ import unittest
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
+from op_test_utils import TestCaseTempDir
+from pathlib import Path
 
 from onnxruntime import quantization
 
 
-class TestSymmetricFlag(unittest.TestCase):
+class TestSymmetricFlag(TestCaseTempDir):
     def setUp(self):
 
         # Set up symmetrically and asymmetrically disributed values for activations
@@ -45,7 +47,7 @@ class TestSymmetricFlag(unittest.TestCase):
         )
 
     def perform_quantization(self, activations, weight, act_sym, wgt_sym):
-
+        
         # One-layer convolution model
         act = helper.make_tensor_value_info("ACT", TensorProto.FLOAT, activations[0].shape)
         wgt = helper.make_tensor_value_info("WGT", TensorProto.FLOAT, weight.shape)
@@ -54,7 +56,12 @@ class TestSymmetricFlag(unittest.TestCase):
         conv_node = onnx.helper.make_node("Conv", ["ACT", "WGT"], ["RES"])
         graph = helper.make_graph([conv_node], "test", [act], [res], initializer=[wgt_init])
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 11)])
-        onnx.save(model, "model.onnx")
+        fp32_model_path = "model.onnx"
+        fp32_model_path = Path(self._tmp_model_dir.name).joinpath(fp32_model_path).as_posix()
+        onnx.save(model, fp32_model_path)
+        quant_model_path = "quantized-model.onnx"
+        quant_model_path = Path(self._tmp_model_dir.name).joinpath(quant_model_path).as_posix()
+
 
         # Quantize model
         class DummyDataReader(quantization.CalibrationDataReader):
@@ -65,8 +72,8 @@ class TestSymmetricFlag(unittest.TestCase):
                 return next(self.iterator, None)
 
         quantization.quantize_static(
-            model_input="model.onnx",
-            model_output="quantized-model.onnx",
+            model_input=fp32_model_path,
+            model_output=quant_model_path,
             calibration_data_reader=DummyDataReader(),
             quant_format=quantization.QuantFormat.QOperator,
             activation_type=quantization.QuantType.QInt8,
@@ -76,7 +83,7 @@ class TestSymmetricFlag(unittest.TestCase):
         )
 
         # Extract quantization parameters: scales and zero points for activations, weights, and results
-        model = onnx.load("quantized-model.onnx")
+        model = onnx.load(quant_model_path)
         act_zp = [init for init in model.graph.initializer if init.name == "ACT_zero_point"][0].int32_data[0]
         act_sc = [init for init in model.graph.initializer if init.name == "ACT_scale"][0].float_data[0]
         wgt_zp = [init for init in model.graph.initializer if init.name == "WGT_zero_point"][0].int32_data[0]

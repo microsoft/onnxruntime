@@ -155,6 +155,7 @@ class QDQQuantizer(ONNXQuantizer):
         for node in self.model.nodes():
             if self.should_quantize_node(node):
                 op_quantizer = CreateQDQQuantizer(self, node)
+                if op_quantizer == None: continue # TODO: is this an appropriate way to handle the unsupported Dyn QDQ Op case?
                 op_quantizer.quantize()
 
                 if self.dedicated_qdq_pair:
@@ -162,7 +163,6 @@ class QDQQuantizer(ONNXQuantizer):
                         if tensor_name not in self.tensor_to_its_receiving_nodes:
                             self.tensor_to_its_receiving_nodes[tensor_name] = []
                         self.tensor_to_its_receiving_nodes[tensor_name].append(node)
-
         self.quantize_tensors()
         self.quantize_weights_per_channel()
         self.quantize_bias_tensors()

@@ -17,10 +17,12 @@ from op_test_utils import (
     check_op_type_count,
     check_op_type_order,
     check_qtype_by_node_type,
+    TestCaseTempDir,
 )
+from pathlib import Path
 
 import onnxruntime
-from onnxruntime.quantization import QuantType, quantize_dynamic
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
@@ -31,8 +33,7 @@ def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
     init = numpy_helper.from_array(tensor, input_name)
     return init
 
-
-class TestONNXModel(unittest.TestCase):
+class TestONNXModel(TestCaseTempDir):
     def construct_model(self, model_path):
         #       input
         #      /    |
@@ -69,27 +70,51 @@ class TestONNXModel(unittest.TestCase):
     def dynamic_quant_conv_test(self, weight_type, extra_options={}):
         np.random.seed(1)
         model_fp32_path = "conv_bias.fp32.onnx"
-        self.construct_model(model_fp32_path)
-
-        activation_proto_qtype = TensorProto.UINT8
+        temp_model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
+        self.construct_model(temp_model_fp32_path)
+        
         activation_type_str = "u8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_int8_path = "conv_bias.quant.{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_int8_qdq_path = "conv_bias.quant.qdq.{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_int8_qop_path = "conv_bias.quant.qop.{}{}.onnx".format(activation_type_str, weight_type_str)
+        test_model_int8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_int8_qdq_path).as_posix()
+        test_model_int8_qop_path = Path(self._tmp_model_dir.name).joinpath(model_int8_qop_path).as_posix()
 
+        # Test Dynamic QOperator
         quantize_dynamic(
-            model_fp32_path,
-            model_int8_path,
+            temp_model_fp32_path,
+            test_model_int8_qop_path,
             weight_type=weight_type,
             extra_options=extra_options,
         )
+        activation_proto_qtype = TensorProto.UINT8
         quant_nodes = {"ConvInteger": 2}
-        check_op_type_count(self, model_int8_path, **quant_nodes)
+        check_op_type_count(self, test_model_int8_qop_path, **quant_nodes)
         qnode_io_qtypes = {"ConvInteger": [["i", 2, activation_proto_qtype]]}
-        check_qtype_by_node_type(self, model_int8_path, qnode_io_qtypes)
+        check_qtype_by_node_type(self, test_model_int8_qop_path, qnode_io_qtypes)
         check_model_correctness(
             self,
-            model_fp32_path,
-            model_int8_path,
+            temp_model_fp32_path,
+            test_model_int8_qop_path,
+            {"input": np.random.rand(4, 2, 8, 8).astype(np.float32)},
+        )
+
+        # Test Dynamic QDQ
+        quantize_dynamic(
+            temp_model_fp32_path,
+            test_model_int8_qdq_path,
+            quant_format=QuantFormat.QDQ,
+            weight_type=weight_type,
+            extra_options=extra_options,
+        )
+        quant_nodes = {"Conv": 2}
+        check_op_type_count(self, test_model_int8_qdq_path, **quant_nodes)
+        qnode_io_qtypes = {"Conv": [["i", 1, 1]]}
+        check_qtype_by_node_type(self, test_model_int8_qdq_path, qnode_io_qtypes)
+        check_model_correctness(
+            self,
+            temp_model_fp32_path,
+            test_model_int8_qdq_path,
             {"input": np.random.rand(4, 2, 8, 8).astype(np.float32)},
         )
 

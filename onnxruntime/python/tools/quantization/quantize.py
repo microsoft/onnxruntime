@@ -200,7 +200,7 @@ def quantize_dynamic(
     nodes_to_exclude=[],
     optimize_model=True,
     use_external_data_format=False,
-    quant_format=QuantFormat.QOperator, # TODO: ADDED THIS OPTION
+    quant_format=QuantFormat.QOperator,
     activation_type=QuantType.QUInt8,
     extra_options={},
 ):
@@ -242,7 +242,7 @@ def quantize_dynamic(
     mode = QuantizationMode.IntegerOps
 
     model = load_model(Path(model_input), optimize_model)
-
+    
     if "MatMulConstBOnly" not in extra_options:
         extra_options["MatMulConstBOnly"] = True
 
@@ -265,14 +265,13 @@ def quantize_dynamic(
         )
 
     ### NEW QDQ Quantizer added to dynamic_quantize
-    # TODO Add an if for this: quant_format=QuantFormat.QDQ
     else:
         if not op_types_to_quantize or len(op_types_to_quantize) == 0:
             op_types_to_quantize = list(QDQDynamicRegistry.keys())
         # if "OpTypesToExcludeOutputQuantizatioin" not in extra_options: # TODO Is this a good default?
         #     extra_options['OpTypesToExcludeOutputQuantizatioin'] = op_types_to_quantize # ['Conv', 'Matmul', 'MatMul', 'Gemm', 'Attention']
         if "OpTypesToExcludeOutputQuantizatioin" not in extra_options: # TODO Is this a good default?
-            extra_options['OpTypesToExcludeOutputQuantizatioin'] = ['Conv', 'Matmul', 'MatMul', 'Gemm', 'Attention']
+            extra_options['OpTypesToExcludeOutputQuantizatioin'] = ['Conv', 'Matmul', 'MatMul', 'Gemm', 'Attention','LSTM']
         quantizer = QDQQuantizer(
             model,
             per_channel,
