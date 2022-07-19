@@ -144,6 +144,18 @@ class FusionUtils:
             logger.info(f"Removed {removed_count} cascaded Cast nodes")
             self.model.prune_graph()
 
+    def remove_identity_nodes(self):
+        """Remove Identity nodes, except those right before graph output."""
+        nodes_to_remove = []
+        for node in self.model.nodes():
+            if node.op_type == "Identity":
+                if node.output[0] not in self.model.get_graphs_output_names():
+                    self.model.replace_input_of_all_nodes(node.output[0], node.input[0])
+                    nodes_to_remove.append(node)
+
+        self.model.remove_nodes(nodes_to_remove)
+        logger.info(f"Removed {len(nodes_to_remove)} Identity nodes")
+
     def remove_useless_cast_nodes(self):
         """Remove cast nodes that are not needed: input and output has same data type."""
         shape_infer = self.model.infer_runtime_shape(update=True)

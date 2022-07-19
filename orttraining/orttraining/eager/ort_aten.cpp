@@ -372,6 +372,37 @@ OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at:
 }
 
 /*
+ * Utility method to calculate the resulting shape of tensor after a reduction operation.
+ *
+ * @param dimToReduce The dimension to reduce. If null, then shape is 0 dimension.
+ * @param keepdim Whether to retain dim or not. Ignored if dimToReduce is null.
+ */
+inline at::DimVector calculate_reduction_shape(
+  const at::Tensor& self,
+  c10::optional<int64_t> dimToReduce,
+  bool keepdim) {
+  at::DimVector shape;
+
+  // If we have dim value, then reduce that dimension.
+  // else, return empty shape (corresponding to 0-D tensor)
+  if (dimToReduce.has_value()) {
+    shape = at::DimVector(self.sizes());
+    int64_t effectiveDimToReduce = *dimToReduce;
+    at::maybe_wrap_dims_n(&effectiveDimToReduce, 1, self.dim());
+
+    if (keepdim) {
+      shape[effectiveDimToReduce] = 1;
+    } else {
+      shape.erase(shape.begin() + effectiveDimToReduce);
+    }
+  } else {
+    shape = at::DimVector();
+  }
+
+  return shape;
+}
+
+/*
  * Utility function for resizing output tensor
  * Only resizes if:
  *   - The shape is different
@@ -806,16 +837,26 @@ at::Tensor& out) {
   auto ort_input_self =
     create_ort_value(invoker, dim.has_value() ? self : self.reshape({-1}));
 
-  // Remove this hand signature once the generator can support this one line below.
   int64_t l_axis = dim.has_value() ? *dim : 0;
+  bool keepdim_effective_value = dim.has_value() ? keepdim : false;
 
   NodeAttributes attrs(2);
   attrs["axis"] = create_ort_attribute(
-  "axis", l_axis, at::ScalarType::Int);
+    "axis", l_axis, at::ScalarType::Int);
   attrs["keepdims"] = create_ort_attribute(
-  "keepdims", keepdim, at::ScalarType::Int);
+    "keepdims", keepdim_effective_value, at::ScalarType::Bool);
 
   std::vector<OrtValue> ort_outputs_0_ArgMax(1);
+
+  // Calculate the size of the out tensor, based on self tensor, dimension input, and keepdim input
+  auto shape = calculate_reduction_shape(self, dim, keepdim);
+
+  resize_output(invoker,
+                dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()),
+                at::IntArrayRef{shape});
+
+  auto ort_input_out = create_ort_value(invoker, out);
+  ort_outputs_0_ArgMax[0] = ort_input_out;
 
   auto status = invoker.Invoke("ArgMax", {
   std::move(ort_input_self),
@@ -825,12 +866,6 @@ at::Tensor& out) {
   throw std::runtime_error(
   "ORT return failure status:" + status.ErrorMessage());
 
-  at::TensorOptions tensor_options = out.options();
-
-  // generator also needs to do this to handle the out param!
-  out = aten_tensor_from_ort(
-  std::move(ort_outputs_0_ArgMax[0]),
-  tensor_options);
   return out;
 }
 
@@ -1070,6 +1105,64 @@ at::Tensor& _log_softmax_out(
 
   return out;
 }
+
+// aten::mm.out(Tensor self, Tensor mat2, *, Tensor(a!) out) -> Tensor(a!)
+// mm is for matrix multiplication and does not broadcast.
+// https://pytorch.org/docs/stable/generated/torch.mm.html
+at::Tensor& mm_out(
+  const at::Tensor& self,
+  const at::Tensor& mat2,
+  // *,
+  at::Tensor& out) {
+  ORT_LOG_FN(self, mat2, out);
+
+  if (
+    std::vector<at::ScalarType> supportedTypes =
+      {at::kDouble, at::kLong, at::kHalf, at::kFloat, at::kBFloat16, at::kInt};
+    !IsSupportedType(self, supportedTypes) ||
+    !IsSupportedType(mat2, supportedTypes) ||
+    // to match cpu device behavior for torch.mm, verify the following and fall back to cpu to generate error message.
+    // 1. self and mat2 must be 2-D (matrices)
+    self.dim() != 2 || mat2.dim() != 2 ||
+    // 2. self and mat2 can be multiplied
+    self.sizes()[1] != mat2.sizes()[0] ||
+    // 3. self, mat2, and out are of the same type
+    self.scalar_type() != out.scalar_type() ||
+    self.scalar_type() != mat2.scalar_type()) {
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(mm_out)>::call(self, mat2, out);
+  }
+  auto& invoker = GetORTInvoker(self.device());
+
+  auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type(), mat2.scalar_type()}, {});
+
+  // resize the output and then create output ort value to be updated.
+  // out size is first dimension of self and 2nd dimension of mat2
+  resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), {self.sizes()[0], mat2.sizes()[1]});
+  auto ort_input_out = create_ort_value(invoker, out);
+
+  auto ort_input_0_self = create_ort_value(invoker, self);
+  if (self.scalar_type() != *promoted_type) {
+    ort_input_0_self = CastToType(invoker, ort_input_0_self, *promoted_type);
+  }
+  auto ort_input_0_mat2 = create_ort_value(invoker, mat2);
+  if (mat2.scalar_type() != *promoted_type) {
+    ort_input_0_mat2 = CastToType(invoker, ort_input_0_mat2, *promoted_type);
+  }
+
+  std::vector<OrtValue> ort_outputs_0_MatMul(1);
+  ort_outputs_0_MatMul[0] = ort_input_out;
+
+  auto status = invoker.Invoke("MatMul", {
+    std::move(ort_input_0_self),
+    std::move(ort_input_0_mat2),
+  }, ort_outputs_0_MatMul, nullptr);
+  CHECK_STATUS(status);
+
+  return out;
+}
+
 
 }  // namespace aten
 

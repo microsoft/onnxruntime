@@ -139,7 +139,7 @@ hand_implemented = {
     "aten::add_.Tensor": SignatureOnly(),
     "aten::t": Transpose("self"),
     # MatMul("self", "mat2"), fails since it resizes based on self but should be based on result shape of the mult
-    "aten::mm.out": MakeTorchFallback(),
+    "aten::mm.out": SignatureOnly(),
     "aten::zeros_like": ConstantOfShape(
         Shape("self")
     ),  # the default constant is 0, so don't need to speicify attribute

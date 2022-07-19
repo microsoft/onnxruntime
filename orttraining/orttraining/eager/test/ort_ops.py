@@ -265,12 +265,62 @@ class OrtOpTests(unittest.TestCase):
 
     def test_argmax(self):
         device = self.get_device()
-        cpu_tensor = torch.rand(3, 5)
+        cpu_tensor = torch.rand(3, 5, 7, 8)
         ort_tensor = cpu_tensor.to(device)
+
+        # Scenario: basic (no dim parameters)
+        cpu_result = torch.argmax(cpu_tensor)
+        ort_result = torch.argmax(ort_tensor)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert cpu_result.dim() == ort_result.dim()
+
+        # Scenario: specify dim parameter
         cpu_result = torch.argmax(cpu_tensor, dim=1)
         ort_result = torch.argmax(ort_tensor, dim=1)
         assert torch.allclose(cpu_result, ort_result.cpu())
         assert cpu_result.dim() == ort_result.dim()
+
+        # Scenario: specify dim and keepdim parameters
+        cpu_result = torch.argmax(cpu_tensor, dim=1, keepdim=True)
+        ort_result = torch.argmax(ort_tensor, dim=1, keepdim=True)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert cpu_result.dim() == ort_result.dim()
+
+        # Scenario: specify negative dim value
+        cpu_result = torch.argmax(cpu_tensor, dim=-1)
+        ort_result = torch.argmax(ort_tensor, dim=-1)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert cpu_result.dim() == ort_result.dim()
+
+        # Scenario: basic out (no dim parameters)
+        cpu_out_tensor = torch.tensor([], dtype=torch.long)
+        ort_out_tensor = cpu_out_tensor.to(device)
+        cpu_result = torch.argmax(cpu_tensor, out=cpu_out_tensor)
+        ort_result = torch.argmax(ort_tensor, out=ort_out_tensor)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert cpu_result.dim() == ort_result.dim()
+        assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
+        assert cpu_out_tensor.dim() == ort_out_tensor.dim()
+
+        # Scenario: out with dim parameter
+        cpu_out_tensor = torch.tensor([], dtype=torch.long)
+        ort_out_tensor = cpu_out_tensor.to(device)
+        cpu_result = torch.argmax(cpu_tensor, dim=1, out=cpu_out_tensor)
+        ort_result = torch.argmax(ort_tensor, dim=1, out=ort_out_tensor)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert cpu_result.dim() == ort_result.dim()
+        assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
+        assert cpu_out_tensor.dim() == ort_out_tensor.dim()
+
+        # Scenario: out with dim and keepdim parameters
+        cpu_out_tensor = torch.tensor([], dtype=torch.long)
+        ort_out_tensor = cpu_out_tensor.to(device)
+        cpu_result = torch.argmax(cpu_tensor, dim=1, keepdim=True, out=cpu_out_tensor)
+        ort_result = torch.argmax(ort_tensor, dim=1, keepdim=True, out=ort_out_tensor)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert cpu_result.dim() == ort_result.dim()
+        assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
+        assert cpu_out_tensor.dim() == ort_out_tensor.dim()
 
     def test_masked_select(self):
         device = self.get_device()
@@ -551,6 +601,43 @@ class OrtOpTests(unittest.TestCase):
 
             # check result between nonzero.out and nonzero
             assert torch.equal(ort_result.to("cpu"), ort_out_tensor.to("cpu"))
+
+    def test_mm(self):
+        device = self.get_device()
+
+        # out version test
+        cpu_mat1 = torch.rand(3, 2)
+        cpu_mat2 = torch.rand(2, 2)
+        ort_mat1 = cpu_mat1.to(device)
+        ort_mat2 = cpu_mat2.to(device)
+        cpu_out = torch.tensor([])
+        ort_out = cpu_out.to(device)
+        cpu_result = torch.mm(cpu_mat1, cpu_mat2, out=cpu_out)
+        ort_result = torch.mm(ort_mat1, ort_mat2, out=ort_out)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert torch.allclose(cpu_out, ort_out.cpu())
+        assert torch.allclose(cpu_result, ort_out.cpu())
+
+        # non-out version with alternate dimension matrices
+        cpu_mat1 = torch.rand(7, 5)
+        cpu_mat2 = torch.rand(5, 4)
+        ort_mat1 = cpu_mat1.to(device)
+        ort_mat2 = cpu_mat2.to(device)
+        cpu_result = torch.mm(cpu_mat1, cpu_mat2)
+        ort_result = torch.mm(ort_mat1, ort_mat2)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+
+        # check error cases
+        ort_mat1 = torch.rand(1, 1).to(device)
+        ort_bad_dim = torch.rand(2, 2).to(device)
+        ort_wrong_type = torch.ones(1, 1, dtype=torch.int).to(device)
+        ort_not_matrix = torch.ones(1).to(device)
+        with self.assertRaises(RuntimeError):
+            torch.mm(ort_mat1, ort_bad_dim)
+        with self.assertRaises(RuntimeError):
+            torch.mm(ort_mat1, ort_wrong_type)
+        with self.assertRaises(RuntimeError):
+            torch.mm(ort_mat1, ort_not_matrix)
 
 
 if __name__ == "__main__":
