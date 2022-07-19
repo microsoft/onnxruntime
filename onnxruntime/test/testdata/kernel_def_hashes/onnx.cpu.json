@@ -320,6 +320,14 @@
         8175374217867982592
     ],
     [
+        "Ceil ai.onnx CPUExecutionProvider",
+        2528060464777091296
+    ],
+    [
+        "Ceil ai.onnx CPUExecutionProvider",
+        5223275170825338616
+    ],
+    [
         "Celu ai.onnx CPUExecutionProvider",
         6586235226200663216
     ],
