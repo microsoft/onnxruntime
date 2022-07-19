@@ -49,6 +49,7 @@ from enum import Enum
 
 import numpy
 import onnx
+import migraphx
 import psutil
 from benchmark_helper import (
     ConfigModifier,
@@ -84,7 +85,7 @@ if "OMP_NUM_THREADS" not in os.environ:
     os.environ["OMP_NUM_THREADS"] = str(cpu_count)
 
 import torch
-from transformers import AutoConfig, AutoModel, AutoTokenizer
+from transformers import AutoConfig, AutoTokenizer
 
 def get_onnx_model(torch_model,
                    model_name,
@@ -166,7 +167,6 @@ def run_migraphx(
         model_source,
         args
 ):
-    import migraphx
     results = []
 
     for model_name in model_names:
