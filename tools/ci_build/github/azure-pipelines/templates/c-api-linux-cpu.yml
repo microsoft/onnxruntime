@@ -105,7 +105,7 @@ jobs:
           artifactName: 'drop-onnxruntime-nodejs-linux-${{parameters.OnnxruntimeArch}}'
     - ${{ if not(eq(parameters.OnnxruntimeNodejsBindingArch, 'arm64')) }}:
       - template: component-governance-component-detection-steps.yml
-        parametes:
+        parameters:
           condition: 'succeeded'
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
