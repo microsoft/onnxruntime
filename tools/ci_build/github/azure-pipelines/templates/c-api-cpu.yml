@@ -56,7 +56,8 @@ jobs:
 
 - template: c-api-linux-cpu.yml
   variables:
-    skipComponentGovernanceDetection: true
+    - name: skipComponentGovernanceDetection
+      value: true
   parameters:        
     AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
     BaseImage: 'arm64v8/centos:7'
