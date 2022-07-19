@@ -3,6 +3,7 @@
 
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamw.h"
 #include "core/framework/op_kernel.h"
+#include "core/platform/threadpool.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -32,28 +33,35 @@ Status AdamWOptimizerBase::PrepareForCompute(OpKernelContext* ctx, AdamWOptimize
   prepare.grouped_tensor_sizes.resize(prepare.num_of_weights);
   prepare.grouped_tensor_pointers.resize(prepare.num_of_weights);
 
-  for (size_t i = 0; i < prepare.num_of_weights; ++i) {
-    const Tensor& weight_tensor = prepare.weights->Get(i);
-    const Tensor& gradient_tensor = prepare.gradients->Get(i);
-    const Tensor& momentum_1_tensor = prepare.momentums_1->Get(i);
-    const Tensor& momentum_2_tensor = prepare.momentums_2->Get(i);
+  const double cost = 1.0;
+  auto* tp = ctx->GetOperatorThreadPool();
 
-    // Check the weight/gradient/momentums at the same index should have same shape.
-    ORT_RETURN_IF_NOT(weight_tensor.Shape() == gradient_tensor.Shape(),
+  concurrency::ThreadPool::TryParallelFor(
+      tp, prepare.num_of_weights, cost, [&prepare](std::ptrdiff_t begin, std::ptrdiff_t end) {
+        for (std::ptrdiff_t index = begin; index != end; ++index) {
+          int i = static_cast<int>(index);
+          const Tensor& weight_tensor = prepare.weights->Get(i);
+          const Tensor& gradient_tensor = prepare.gradients->Get(i);
+          const Tensor& momentum_1_tensor = prepare.momentums_1->Get(i);
+          const Tensor& momentum_2_tensor = prepare.momentums_2->Get(i);
+
+          // Check the weight/gradient/momentums at the same index should have same shape.
+          ORT_ENFORCE(weight_tensor.Shape() == gradient_tensor.Shape(),
                       "Shape of weight and gradient mismatch, weight index:", i);
-    ORT_RETURN_IF_NOT(gradient_tensor.Shape() == momentum_1_tensor.Shape(),
+          ORT_ENFORCE(gradient_tensor.Shape() == momentum_1_tensor.Shape(),
                       "Shape of gradient and momentum_1 mismatch, weight index:", i);
-    ORT_RETURN_IF_NOT(momentum_1_tensor.Shape() == momentum_2_tensor.Shape(),
+          ORT_ENFORCE(momentum_1_tensor.Shape() == momentum_2_tensor.Shape(),
                       "Shape of momentum_1 and momentum_2 mismatch, weight index:", i);
 
-    prepare.grouped_tensor_sizes[i] = static_cast<int>(weight_tensor.Shape().Size());
+          prepare.grouped_tensor_sizes[i] = static_cast<int>(weight_tensor.Shape().Size());
 
-    prepare.grouped_tensor_pointers[i] = {
-        const_cast<float*>(weight_tensor.Data<float>()),
-        const_cast<float*>(gradient_tensor.Data<float>()),
-        const_cast<float*>(momentum_1_tensor.Data<float>()),
-        const_cast<float*>(momentum_2_tensor.Data<float>())};
-  }
+          prepare.grouped_tensor_pointers[i] = {
+              const_cast<float*>(weight_tensor.Data<float>()),
+              const_cast<float*>(gradient_tensor.Data<float>()),
+              const_cast<float*>(momentum_1_tensor.Data<float>()),
+              const_cast<float*>(momentum_2_tensor.Data<float>())};
+        }
+      });
 
   prepare.updated_flag = ctx->Output(0, prepare.step->Shape());
   prepare.updated_weights = ctx->Output<TensorSeq>(1);
