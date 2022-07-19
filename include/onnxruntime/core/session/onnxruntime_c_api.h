@@ -3495,7 +3495,6 @@ struct OrtApi {
   * \since Version 1.13
   */
   const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
-
 };
 
 /*
