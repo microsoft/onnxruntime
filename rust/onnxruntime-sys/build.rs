@@ -274,7 +274,7 @@ impl OnnxPrebuiltArchive for Os {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum Accelerator {
     None,
     Gpu,
@@ -427,7 +427,19 @@ fn prepare_libort_dir() -> PathBuf {
                 );
             }
         }),
-        Ok("compile") => unimplemented!(),
+        Ok("compile") => prepare_libort_dir_compiled(),
         _ => panic!("Unknown value for {:?}", ORT_ENV_STRATEGY),
     }
+}
+
+fn prepare_libort_dir_compiled() -> PathBuf {
+    let mut config = cmake::Config::new("../../cmake");
+
+    config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
+
+    if env::var(ORT_ENV_GPU).unwrap_or_default().parse() == Ok(Accelerator::Gpu) {
+        config.define("onnxruntime_USE_CUDA", "ON");
+    }
+
+    config.build()
 }

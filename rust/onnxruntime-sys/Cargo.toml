@@ -20,6 +20,7 @@ keywords = ["neuralnetworks", "onnx", "bindings"]
 
 [build-dependencies]
 bindgen = { version = "0.60", optional = true }
+cmake = "0.1"
 ureq = "2.1"
 
 # Used on Windows
