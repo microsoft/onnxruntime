@@ -1072,6 +1072,64 @@ at::Tensor& _log_softmax_out(
   return out;
 }
 
+// aten::mm.out(Tensor self, Tensor mat2, *, Tensor(a!) out) -> Tensor(a!)
+// mm is for matrix multiplication and does not broadcast.
+// https://pytorch.org/docs/stable/generated/torch.mm.html
+at::Tensor& mm_out(
+  const at::Tensor& self,
+  const at::Tensor& mat2,
+  // *,
+  at::Tensor& out) {
+  ORT_LOG_FN(self, mat2, out);
+
+  if (
+    std::vector<at::ScalarType> supportedTypes =
+      {at::kDouble, at::kLong, at::kHalf, at::kFloat, at::kBFloat16, at::kInt};
+    !IsSupportedType(self, supportedTypes) ||
+    !IsSupportedType(mat2, supportedTypes) ||
+    // to match cpu device behavior for torch.mm, verify the following and fall back to cpu to generate error message.
+    // 1. self and mat2 must be 2-D (matrices)
+    self.dim() != 2 || mat2.dim() != 2 ||
+    // 2. self and mat2 can be multiplied
+    self.sizes()[1] != mat2.sizes()[0] ||
+    // 3. self, mat2, and out are of the same type
+    self.scalar_type() != out.scalar_type() ||
+    self.scalar_type() != mat2.scalar_type()) {
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(mm_out)>::call(self, mat2, out);
+  }
+  auto& invoker = GetORTInvoker(self.device());
+
+  auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type(), mat2.scalar_type()}, {});
+
+  // resize the output and then create output ort value to be updated.
+  // out size is first dimension of self and 2nd dimension of mat2
+  resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), {self.sizes()[0], mat2.sizes()[1]});
+  auto ort_input_out = create_ort_value(invoker, out);
+
+  auto ort_input_0_self = create_ort_value(invoker, self);
+  if (self.scalar_type() != *promoted_type) {
+    ort_input_0_self = CastToType(invoker, ort_input_0_self, *promoted_type);
+  }
+  auto ort_input_0_mat2 = create_ort_value(invoker, mat2);
+  if (mat2.scalar_type() != *promoted_type) {
+    ort_input_0_mat2 = CastToType(invoker, ort_input_0_mat2, *promoted_type);
+  }
+
+  std::vector<OrtValue> ort_outputs_0_MatMul(1);
+  ort_outputs_0_MatMul[0] = ort_input_out;
+
+  auto status = invoker.Invoke("MatMul", {
+    std::move(ort_input_0_self),
+    std::move(ort_input_0_mat2),
+  }, ort_outputs_0_MatMul, nullptr);
+  CHECK_STATUS(status);
+
+  return out;
+}
+
+
 } // namespace aten
 
 //#pragma endregion
