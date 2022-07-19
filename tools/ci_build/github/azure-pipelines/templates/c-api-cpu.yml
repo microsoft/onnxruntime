@@ -55,7 +55,7 @@ jobs:
     PoolName: 'Linux-CPU'
 
 - template: c-api-linux-cpu.yml
-  variable:
+  variables:
     skipComponentGovernanceDetection: true
   parameters:        
     AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
