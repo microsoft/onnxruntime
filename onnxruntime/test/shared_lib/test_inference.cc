@@ -2166,7 +2166,8 @@ TEST(CApiTest, TestCudaMemcpyToHostWithSequenceTensors) {
 
 #endif
 
-#if !defined(DISABLE_OPTIONAL_TYPE)
+// Reduced Ops build doesn't support OptionalHasElement (16) yet
+#if !defined(REDUCED_OPS_BUILD) && !defined(DISABLE_OPTIONAL_TYPE)
 TEST(CApiTest, GH_11717) {
   const auto* model_path = OPTIONAL_TYPE_GH_11717_MODEL;
   Ort::SessionOptions session_options{};

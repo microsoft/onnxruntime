@@ -23,7 +23,8 @@ endif()
 
 # when onnxruntime-extensions is not a subdirectory of onnxruntime,
 # output binary directory must be explicitly specified.
-add_subdirectory(${onnxruntime_EXTENSIONS_PATH} ${onnxruntime_EXTENSIONS_PATH}/_subbuild EXCLUDE_FROM_ALL)
+# and the output binary path is the same as CMake FetchContent pattern
+add_subdirectory(${onnxruntime_EXTENSIONS_PATH} ${CMAKE_BINARY_DIR}/_deps/extensions-subbuild EXCLUDE_FROM_ALL)
 
 # target library or executable are defined in CMakeLists.txt of onnxruntime-extensions
 target_include_directories(ocos_operators PRIVATE ${RE2_INCLUDE_DIR} external/json/include)

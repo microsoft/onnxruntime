@@ -314,14 +314,14 @@ void DmlCommandRecorder::Open()
 {
     assert(m_currentDescriptorHeap == nullptr);
 
-    ID3D12CommandAllocator* allocator = m_commandAllocatorRing.GetCurrentAllocator();
+    ID3D12CommandAllocator* allocator = m_commandAllocatorRing.GetNextAllocator(m_queue->GetNextCompletionEvent());
 
     if (m_cachedCommandLists.empty())
     {
         ORT_THROW_IF_FAILED(m_d3dDevice->CreateCommandList(
             0,
             m_queue->GetType(),
-            m_commandAllocatorRing.GetCurrentAllocator(),
+            allocator,
             nullptr,
             IID_GRAPHICS_PPV_ARGS(m_currentCommandList.ReleaseAndGetAddressOf())));   
     }
@@ -331,9 +331,6 @@ void DmlCommandRecorder::Open()
         m_cachedCommandLists.pop_front();
         ORT_THROW_IF_FAILED(m_currentCommandList->Reset(allocator, nullptr));
     }
-
-    // The current command allocator will become eligible for reset once this command list completes execution
-    m_commandAllocatorRing.AdvanceAllocator(m_queue->GetNextCompletionEvent());
 }
 
 void DmlCommandRecorder::CloseAndExecute()

@@ -73,7 +73,7 @@ jint throwOrtException(JNIEnv *env, int messageId, const char *message);
 
 jint convertErrorCode(OrtErrorCode code);
 
-void checkOrtStatus(JNIEnv * env, const OrtApi * api, OrtStatus * status);
+OrtErrorCode checkOrtStatus(JNIEnv * env, const OrtApi * api, OrtStatus * status);
 
 #ifdef __cplusplus
 }

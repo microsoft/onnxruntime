@@ -17,7 +17,9 @@
 #include "tvm_allocator.h"  // NOLINT(build/include_subdir)
 #include "tvm_utils.h"  // NOLINT(build/include_subdir)
 #include "tvm_api.h"  // NOLINT(build/include_subdir)
+#ifdef USE_TVM_HASH
 #include "hash_alg/hasher.h"  // NOLINT(build/include_subdir)
+#endif
 
 using ONNX_NAMESPACE::TensorShapeProto;
 
@@ -107,10 +109,12 @@ common::Status TvmSoExecutionProvider::Compile(const std::vector<FusedNodeAndGra
   for (auto& fused_node_graph : fused_nodes_and_graphs) {
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
+#ifdef USE_TVM_HASH
     if (options_.check_hash) {
-      ORT_ENFORCE(checkHash(fused_node.ModelPath().ToPathString()),
+      ORT_ENFORCE(checkHash(ToUTF8String(fused_node.ModelPath().ToPathString())),
                   "Hash check shows that used tuning files were not obtained for the given onnx-model");
     }
+#endif
     const std::string func_name = fused_node.Name();
 
     compilers_[func_name] = std::make_shared<TVMSoCompiler>();
@@ -150,6 +154,7 @@ void TvmSoExecutionProvider::printOptions() {
   LOGS(*GetLogger(), INFO) << options_;
 }
 
+#ifdef USE_TVM_HASH
 bool TvmSoExecutionProvider::checkHash(const std::string& onnx_path) const {
   auto hasher = Hasher("sha256");
   std::string onnx_str = readFromFile(onnx_path);
@@ -164,6 +169,7 @@ bool TvmSoExecutionProvider::checkHash(const std::string& onnx_path) const {
   }
   return onnx_hash == hash;
 }
+#endif
 
 std::shared_ptr<TvmModule> TvmSoExecutionProvider::compileModel(const std::string& func_name,
                                                                 const GraphViewer& graph_viewer,

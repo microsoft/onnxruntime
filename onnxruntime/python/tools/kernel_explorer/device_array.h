@@ -3,18 +3,14 @@
 
 #pragma once
 
-#include "hip/hip_runtime.h"
-
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+#include "core/providers/rocm/rocm_common.h"
+#include "contrib_ops/rocm/bert/util.h"
 
 namespace py = pybind11;
 
-#ifdef NDEBUG
-#define HIP_ASSERT(x) x
-#else
-#define HIP_ASSERT(x) (assert((x)==hipSuccess))
-#endif
+namespace onnxruntime {
 
 class DeviceArray {
  public:
@@ -22,15 +18,15 @@ class DeviceArray {
     py::buffer_info buf = x.request();
     size_ = buf.size;
     itemsize_ = buf.itemsize;
-    HIP_ASSERT(hipMalloc(&x_device_, size_ * itemsize_));
+    HIP_CALL_THROW(hipMalloc(&x_device_, size_ * itemsize_));
     x_host_ = x.request().ptr;
-    HIP_ASSERT(hipMemcpy(x_device_, x_host_, size_ * itemsize_, hipMemcpyHostToDevice));
+    HIP_CALL_THROW(hipMemcpy(x_device_, x_host_, size_ * itemsize_, hipMemcpyHostToDevice));
   }
   DeviceArray(const DeviceArray&) = delete;
   DeviceArray& operator=(DeviceArray&) = delete;
 
   void UpdateHostNumpyArray() {
-    HIP_ASSERT(hipMemcpy(x_host_, x_device_, size_ * itemsize_, hipMemcpyDeviceToHost));
+    HIP_CALL_THROW(hipMemcpy(x_host_, x_device_, size_ * itemsize_, hipMemcpyDeviceToHost));
   }
 
   void* ptr() const {
@@ -38,7 +34,7 @@ class DeviceArray {
   }
 
   ~DeviceArray() {
-    HIP_ASSERT(hipFree(x_device_));
+    HIP_CALL_THROW(hipFree(x_device_));
   }
 
  private:
@@ -47,3 +43,5 @@ class DeviceArray {
   ssize_t size_;
   ssize_t itemsize_;
 };
+
+}  // namespace onnxruntime
