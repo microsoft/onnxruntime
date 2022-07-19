@@ -594,10 +594,10 @@ class OrtOpTests(unittest.TestCase):
         cpu_out_tensor = torch.tensor([], dtype=torch.double)
         ort_out_tensor = cpu_out_tensor.to(device)
         cpu_result = torch.ceil(cpu_tensor, out=cpu_out_tensor)
-        # ort_result = torch.ceil(ort_tensor, out=ort_out_tensor)
-        # assert torch.allclose(cpu_result, ort_result.cpu())
-        # assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
-        # assert torch.allclose(ort_result.cpu(), ort_out_tensor.cpu())
+        ort_result = torch.ceil(ort_tensor, out=ort_out_tensor)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
+        assert torch.allclose(ort_result.cpu(), ort_out_tensor.cpu())
 
 
 if __name__ == "__main__":
