@@ -41,11 +41,20 @@ jobs:
           sudo apt-get install -y docker-ce docker-ce-cli containerd.io
           sudo chmod 666 /var/run/docker.sock
         fi
-      displayName: Setup Docker Engine
-    - task: UseDotNet@2
+      displayName: Install Docker Engine
+    - bass: |
+        set -euo pipefail
+        if ! which dotnet; then
+          sudo apt-get install -y wget
+          wget  https://dot.net/v1/dotnet-install.sh
+          chmod 755 dotnet-install.sh
+          ./dotnet-install.sh -c Current
+          rm dotnet-install.sh
+        fi
+      displayName: Install Dotnet
       inputs:
         packageType: sdk
-        version: 3.1.x
+        version: 3.1x
     - template: set-version-number-variables-step.yml
     - template: get-docker-image-steps.yml
       parameters:
