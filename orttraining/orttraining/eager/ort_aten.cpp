@@ -368,18 +368,19 @@ OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at:
 /*
  * Utility method to calculate the resulting shape of tensor after a reduction operation.
  *
- * @param dimToReduce The dimension to reduce. If null, then flattens input vector to single dimension.
+ * @param dimToReduce The dimension to reduce. If null, then shape is 0 dimension.
  * @param keepdim Whether to retain dim or not. Ignored if dimToReduce is null.
  */
 inline at::DimVector calculate_reduction_shape(
   const at::Tensor& self,
   c10::optional<int64_t> dimToReduce,
   bool keepdim) {
-  auto shape = at::DimVector(self.sizes());
+  at::DimVector shape;
 
   // If we have dim value, then reduce that dimension.
-  // else, flatten to a single dimension.
+  // else, return empty shape (corresponding to 0-D tensor)
   if (dimToReduce.has_value()) {
+    shape = at::DimVector(self.sizes());
     int64_t effectiveDimToReduce = *dimToReduce;
     at::maybe_wrap_dims_n(&effectiveDimToReduce, 1, self.dim());
 
@@ -389,9 +390,7 @@ inline at::DimVector calculate_reduction_shape(
       shape.erase(shape.begin() + effectiveDimToReduce);
     }
   } else {
-    for (int dim = shape.size() - 1; dim >= 0; dim--) {
-      shape.erase(shape.begin() + dim);
-    }
+    shape = at::DimVector();
   }
 
   return shape;
