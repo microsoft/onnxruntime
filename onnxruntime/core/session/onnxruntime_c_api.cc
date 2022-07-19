@@ -759,6 +759,10 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input name cannot be empty");
     }
 
+    if (!input[i]) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input OrtValue ptr cannot be NULL");
+    }
+
     feed_names[i] = input_names[i];
     auto& ort_value = feeds[i] = *reinterpret_cast<const ::OrtValue*>(input[i]);
 
