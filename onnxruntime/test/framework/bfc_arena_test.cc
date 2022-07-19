@@ -308,7 +308,7 @@ public:
 
 struct StreamMock : public Stream {
 public:
-  StreamMock::StreamMock() : Stream(nullptr, nullptr) {}
+  StreamMock() : Stream(nullptr, nullptr) {}
   std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override {
     return std::make_unique<NotificationMock>(this);
   }

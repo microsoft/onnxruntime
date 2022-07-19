@@ -65,11 +65,11 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   node_index_info_ = std::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
 
   allocation_plan_.resize(ort_value_name_idx_map_.MaxIdx() + 1);
-  auto init_allocation_plan = [this](const NodeArg& arg, size_t index) -> Status {
-    int idx;
-    ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetIdx(arg.Name(), idx));
-    allocation_plan_[idx].location = allocator_ptr_->Info();
-  };
+//  auto init_allocation_plan = [this](const NodeArg& arg, size_t index) -> Status {
+//    int idx;
+//    ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetIdx(arg.Name(), idx));
+//    allocation_plan_[idx].location = allocator_ptr_->Info();
+//  };
 }
 
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
@@ -107,11 +107,11 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   node_index_info_ = std::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
 
   allocation_plan_.resize(ort_value_name_idx_map_.MaxIdx() + 1);
-  auto init_allocation_plan = [this](const NodeArg& arg, size_t index) -> Status {
-    int idx;
-    ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetIdx(arg.Name(), idx));
-    allocation_plan_[idx].location = allocator_ptr_->Info();
-  };
+//  auto init_allocation_plan = [this](const NodeArg& arg, size_t index) -> Status {
+//    int idx;
+//    ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetIdx(arg.Name(), idx));
+//    allocation_plan_[idx].location = allocator_ptr_->Info();
+//  };
 }
 
 Status OptimizerExecutionFrame::Info::TryFindKernel(const Node* node, const KernelCreateInfo** out) const{

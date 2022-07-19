@@ -19,23 +19,23 @@ struct ReleasePlan {
   std::unique_ptr<std::atomic_int[]> value_ref_counts_;
 };
 
-class DeviceStreamColloectionImpl;
-class DeviceStreamColloection {
+class DeviceStreamCollectionImpl;
+class DeviceStreamCollection {
  public:
-  DeviceStreamColloection(size_t num_streams);
-  ~DeviceStreamColloection();
+  DeviceStreamCollection(size_t num_streams);
+  ~DeviceStreamCollection();
   void SetDeviceStream(size_t, std::unique_ptr<Stream> stream);
   void SetDeviceStream(size_t, Stream* stream);
   const std::vector<Stream*>& GetStreams() const;
   size_t NumStreams() const;
 
  private:
-  std::unique_ptr<DeviceStreamColloectionImpl> impl_;
+  std::unique_ptr<DeviceStreamCollectionImpl> impl_;
 };
 
 /*
-* LIMITATION: 
-* CountDownBarrier is only for scenario that the v is set 
+* LIMITATION:
+* CountDownBarrier is only for scenario that the v is set
 * to the # of consumers and each consumer calls Dec() exactly once.
 */
 class CountDownBarrier {
@@ -73,7 +73,7 @@ public:
                    const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                    size_t num_barriers,
                    const logging::Logger& sess_logger,
-                   const DeviceStreamColloection& device_streams_map,
+                   const DeviceStreamCollection& device_streams_map,
                    const bool& terminate_flag);
 
   const SessionState& GetSessionState() const;
@@ -118,7 +118,7 @@ public:
   void SetCurrentRange(const ProgramRegion* range) {
     program_range_ = range;
   }
-#endif 
+#endif
 
  private:
   const SessionState* session_state;
@@ -126,7 +126,7 @@ public:
   const logging::Logger* logger;
   std::vector<std::unique_ptr<synchronize::Notification>> notifications;
   std::unique_ptr<ReleasePlan> release_plan;
-  const DeviceStreamColloection& device_stream_map_;
+  const DeviceStreamCollection& device_stream_map_;
   std::vector<CountDownBarrier> count_down_barriers_;
   CountDownBarrier remain_tasks_;
   const bool& terminate_flag_;
@@ -134,13 +134,13 @@ public:
   SessionScope* session_scope_{};
 #ifdef ENABLE_TRAINING
   const ProgramRegion* program_range_{nullptr};
-#endif 
+#endif
 };
 
 using NotificationIndex = size_t;
 
 void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since);
-void ScheduleDownstream(ExecutionContext& ctx, 
+void ScheduleDownstream(ExecutionContext& ctx,
     onnxruntime::NotificationIndex notification_index,
     bool single_thread_mode);
 }

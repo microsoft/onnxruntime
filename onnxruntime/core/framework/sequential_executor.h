@@ -17,15 +17,16 @@
 
 #ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"
-#endif 
+#endif
 
 namespace onnxruntime {
 
 class ExecutionContext;
+class DeviceStreamCollection;
 
 onnxruntime::Status BindToDeviceStream(Stream* parent_stream,
                                   const SequentialExecutionPlan& execution_plan,
-                                  DeviceStreamColloection& device_stream_map,
+                                  DeviceStreamCollection& device_stream_map,
                                   IStreamCommandHandleRegistry& stream_handle_registry);
 
 onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t stream_idx);
@@ -35,7 +36,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, const std:
                                       std::vector<OrtValue>& fetches,
                                       const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                       const logging::Logger& logger,
-                                      const DeviceStreamColloection& device_streams,
+                                      const DeviceStreamCollection& device_streams,
                                       const bool& terminate_flag,
                                       const bool only_execute_path_to_fetches,
                                       bool single_thread_mode);
@@ -46,7 +47,7 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, con
                                           std::vector<OrtValue>& fetches,
                                           const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                           const logging::Logger& logger,
-                                          const DeviceStreamColloection& device_streams,
+                                          const DeviceStreamCollection& device_streams,
                                           const bool& terminate_flag,
                                           bool single_thread_mode,
                                           PartialGraphExecutionState& state,

@@ -14,7 +14,7 @@ namespace onnxruntime {
 typedef std::unordered_map<std::string, OrtValue> OrtValueCache;
 typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
 class ExecutionContext;
-class DeviceStreamColloection;
+class DeviceStreamCollection;
 
 struct PartialGraphExecutionState {
  public:
@@ -36,8 +36,8 @@ struct PartialGraphExecutionState {
                                       const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                       const SessionState& session_state,
                                       const logging::Logger& sess_logger,
-                                      const DeviceStreamColloection& device_streams_map,
-                                      const bool& terminate_flag); 
+                                      const DeviceStreamCollection& device_streams_map,
+                                      const bool& terminate_flag);
 
  private:
   std::unique_ptr<ExecutionContext> execution_context_;

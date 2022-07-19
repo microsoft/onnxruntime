@@ -17,7 +17,7 @@
 
 namespace onnxruntime {
 
-common::Status IDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
+common::Status IDataTransfer::CopyTensor(const Tensor& /*src*/, Tensor& /*dst*/) const {
   ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
 }
 

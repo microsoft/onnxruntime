@@ -283,17 +283,17 @@ class PlannerTest : public ::testing::Test {
      public:
       // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
       // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
-      virtual WaitNotificationFn GetWaitHandle(const std::string& notification_owner_ep_type, const std::string& executor_ep_type) const override {
+      virtual WaitNotificationFn GetWaitHandle(const std::string& /*notification_owner_ep_type*/, const std::string& /*executor_ep_type*/) const override {
         return nullptr;
       }
 
-      virtual CreateStreamFn GetCreateStreamFn(const std::string& execution_provider_type) const override {
+      virtual CreateStreamFn GetCreateStreamFn(const std::string& /*execution_provider_type*/) const override {
         return nullptr;
       }
 
-      virtual void RegisterWaitFn(const std::string& notification_ep_type, const std::string& ep_type, WaitNotificationFn fn) {}
+      virtual void RegisterWaitFn(const std::string& /*notification_ep_type*/, const std::string& /*ep_type*/, WaitNotificationFn /*fn*/) {}
 
-      virtual void RegisterCreateStreamFn(const std::string& ep_type, CreateStreamFn f) {}
+      virtual void RegisterCreateStreamFn(const std::string& /*ep_type*/, CreateStreamFn /*f*/) {}
     };
 
     onnxruntime::GraphViewer graph_viewer{graph_};
@@ -1372,7 +1372,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
     auto& conv_2_bias = main_graph.GetOrCreateNodeArg("conv_2_bias", &conv_2_bias_type);
     auto& conv_3_bias = main_graph.GetOrCreateNodeArg("conv_3_bias", &conv_3_bias_type);
     auto& conv_4_bias = main_graph.GetOrCreateNodeArg("conv_4_bias", &conv_4_bias_type);
-    
+
     auto& conv_0_out = main_graph.GetOrCreateNodeArg("conv_0_out", &conv_0_out_type);
     auto& conv_1_out = main_graph.GetOrCreateNodeArg("conv_1_out", &conv_1_out_type);
     auto& conv_2_out = main_graph.GetOrCreateNodeArg("conv_2_out", &conv_2_out_type);
@@ -1382,14 +1382,14 @@ TEST_F(PlannerTest, ParaPlanCreation) {
     auto& graph_out = main_graph.GetOrCreateNodeArg("graph_out", &graph_out_type);
 
     NodeAttributes conv_0_attributes;
-    
+
     ONNX_NAMESPACE::AttributeProto dilation;
     dilation.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
     dilation.add_ints(1);
     dilation.add_ints(1);
     dilation.set_name("dilations");
     conv_0_attributes["dilations"] = dilation;
-    
+
     ONNX_NAMESPACE::AttributeProto group;
     group.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
     group.set_i(1);
@@ -1428,7 +1428,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
     ceil_mode.set_i(0);
     ceil_mode.set_name("ceil_mode");
     maxpool_0_attributes["ceil_mode"] = ceil_mode;
-    
+
     ONNX_NAMESPACE::AttributeProto maxpool_0_kernel_shape;
     maxpool_0_kernel_shape.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
     maxpool_0_kernel_shape.add_ints(3);

@@ -749,7 +749,6 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
                     _Inout_updates_all_(output_names_len) OrtValue** output) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
-  constexpr int queue_id = 0;
 
   std::vector<std::string> feed_names(input_len);
   std::vector<OrtValue> feeds(input_len);
@@ -760,7 +759,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
     }
 
     feed_names[i] = input_names[i];
-    auto& ort_value = feeds[i] = *reinterpret_cast<const ::OrtValue*>(input[i]);
+    feeds[i] = *reinterpret_cast<const ::OrtValue*>(input[i]);
   }
 
   // Create output feed

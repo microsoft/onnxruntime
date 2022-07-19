@@ -397,7 +397,7 @@ class KernelScope {
 
 onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t stream_idx) {
   auto* p_kernel = ctx.GetSessionState().GetKernel(idx);
-  auto* intra_tp = ctx.GetSessionState().GetThreadPool();
+  //auto* intra_tp = ctx.GetSessionState().GetThreadPool();
 
   // TODO: set terminate flag from run_option
   OpKernelContextInternal kernel_ctx(ctx.GetSessionState(),
@@ -456,9 +456,9 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, const std:
                                       std::vector<OrtValue>& fetches,
                                       const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                       const logging::Logger& logger,
-                                      const DeviceStreamColloection& device_streams,
+                                      const DeviceStreamCollection& device_streams,
                                       const bool& terminate_flag,
-                                      const bool only_execute_path_to_fetches,
+                                      const bool /*only_execute_path_to_fetches*/,
                                       bool single_thread_mode) {
   auto* execution_plan = session_state.GetExecutionPlan();
   LOGS(logger, INFO) << "Number of streams: " << execution_plan->execution_plan.size();
@@ -495,7 +495,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, const std:
 
   auto* tp = single_thread_mode ? nullptr : session_state.GetInterOpThreadPool();
 
-  for (int i = 0; i < execution_plan->execution_plan.size(); ++i) {
+  for (size_t i = 0; i < execution_plan->execution_plan.size(); ++i) {
     if (!execution_plan->execution_plan[i]->steps_.empty()) {
       concurrency::ThreadPool::Schedule(tp, [i, &ctx]() {
         RunSince(i, ctx, 0);
@@ -514,7 +514,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, const std:
 
 onnxruntime::Status BindToDeviceStream(Stream* parent_stream,
     const SequentialExecutionPlan& execution_plan,
-    DeviceStreamColloection& device_stream_map,
+    DeviceStreamCollection& device_stream_map,
     IStreamCommandHandleRegistry& stream_handle_registry) {
   for (size_t i = 0; i < execution_plan.execution_plan.size(); ++i) {
     auto& logic_stream = execution_plan.execution_plan[i];
@@ -553,7 +553,7 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, con
                                           std::vector<OrtValue>& fetches,
                                           const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                           const logging::Logger& logger,
-                                          const DeviceStreamColloection& device_streams,
+                                          const DeviceStreamCollection& device_streams,
                                           const bool& terminate_flag,
                                           bool single_thread_mode,
                                           PartialGraphExecutionState& state,

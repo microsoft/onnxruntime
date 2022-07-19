@@ -81,7 +81,7 @@ std::ostream& operator<<(std::ostream& out, AllocKind alloc_kind) {
 std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionPlan*, const SessionState*> planinfo) {
   const SequentialExecutionPlan& plan = *planinfo.first;
   const SessionState& session_state = *planinfo.second;
-  auto& graph = session_state.GetGraphViewer();
+//  auto& graph = session_state.GetGraphViewer();
   std::unordered_map<int, std::string> index_to_name;
 
   out << "Allocation Plan:\n";
@@ -131,9 +131,9 @@ static const KernelCreateInfo& GetKernelCreateInfo(
 
 class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
 public:
-  BarrierStep(size_t id) : SequentialExecutionPlan::ExecutionStep(), 
+  BarrierStep(size_t id) : SequentialExecutionPlan::ExecutionStep(),
       barrier_id{id},
-      func_([](size_t barrier_idx, void* ctx, size_t stream_idx, bool& continue_flag) {
+      func_([](size_t barrier_idx, void* ctx, size_t /*stream_idx*/, bool& continue_flag) {
         ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
         continue_flag = execution_context->DecCountDownBarrier(barrier_idx);
         return Status::OK();
@@ -259,7 +259,7 @@ class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
  public:
   TriggerDownstreamStep(NotificationIndex notification_index) : SequentialExecutionPlan::ExecutionStep(),
                                                                 notification_idx(notification_index),
-                                                                func_([](NotificationIndex notification_index, void* ctx, size_t stream_idx, bool& continue_flag) {
+                                                                func_([](NotificationIndex notification_index, void* ctx, size_t /*stream_idx*/, bool& continue_flag) {
                                                                   ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
                                                                   ScheduleDownstream(*execution_context, notification_index, /*single thread mode*/ false);
                                                                   continue_flag = true;
@@ -669,7 +669,7 @@ class PlannerImpl {
     return false;
   }
 
-  void Initialize(size_t num_graph_nodes, size_t num_ml_values) {
+  void Initialize(size_t /*num_graph_nodes*/, size_t num_ml_values) {
     // All ml-value indices must be in range 0 .. num_ml_values-1
     ort_value_info_.resize(num_ml_values);
 
@@ -957,7 +957,7 @@ class PlannerImpl {
 
         auto outputs = pnode->OutputDefs();
         auto num_outputs = outputs.size();
-        bool has_external_outputs = HasExternalOutputs(*pnode);
+        //bool has_external_outputs = HasExternalOutputs(*pnode);
         for (size_t i = 0; i < num_outputs; ++i) {
           auto* node_output = outputs[i];
           if (!node_output->Exists()) continue;
@@ -1192,7 +1192,7 @@ class PlannerImpl {
     std::function<void(NodeIndex)> TryReuseInput = [&](NodeIndex node_index) {
       auto* node = graph_viewer.GetNode(node_index);
 
-      for (int output_arg_num = 0; output_arg_num < node->OutputDefs().size(); output_arg_num++) {
+      for (size_t output_arg_num = 0; output_arg_num < node->OutputDefs().size(); output_arg_num++) {
         auto p_output_arg = node->OutputDefs()[output_arg_num];
         OrtValueIndex output_idx_global{};
 
@@ -1222,7 +1222,8 @@ class PlannerImpl {
         }
 
         for (auto& pair : alias_map) {
-          if (pair.second == output_arg_num) {
+          size_t alias_map_second = (size_t)pair.second;
+          if (alias_map_second == output_arg_num) {
             // we _must_ reuse this input to satisfy aliasing requirement: (e.g., for reshape)
             if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
               auto p_input_arg = input_args[pair.first];
@@ -1276,7 +1277,8 @@ class PlannerImpl {
 
         const auto& inplace_map = ci.kernel_def->MayInplace();
         for (auto& pair : inplace_map) {
-          if (pair.second == output_arg_num) {
+          size_t inplace_map_second = (size_t)pair.second;
+          if (inplace_map_second == output_arg_num) {
             if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
               auto p_input_arg = input_args[pair.first];
               if (p_input_arg->Exists()) {
@@ -1305,7 +1307,7 @@ class PlannerImpl {
       auto* node = graph_viewer.GetNode(node_index);
       const auto& output_defs = node->OutputDefs();
 
-      for (int output_idx_local = 0; output_idx_local < output_defs.size(); ++output_idx_local) {
+      for (size_t output_idx_local = 0; output_idx_local < output_defs.size(); ++output_idx_local) {
         const auto& node_output = output_defs[output_idx_local];
         if (!node_output->Exists()) continue;
         OrtValueIndex output_idx_global{};
@@ -1426,7 +1428,7 @@ class PlannerImpl {
     if (!IsSingleStream()) {
       // use parallel execution context to generate a baseline first (no memory sharing)
       context_ = &parallel_context;
-    } 
+    }
     // compute use count first
     ORT_RETURN_IF_ERROR(ComputeReuseCount());
     ORT_RETURN_IF_ERROR(ComputeSingleStreamReusePlan());
@@ -1435,7 +1437,7 @@ class PlannerImpl {
     ORT_RETURN_IF_ERROR(OptimizeReusePlanForMultiStream());
     //restore context
     context_ = backup_context;
-    
+
     return Status::OK();
   }
 
@@ -1675,7 +1677,7 @@ class PlannerImpl {
           }
         }
     }
-    
+
     }
     return Status::OK();
   }
@@ -1694,7 +1696,7 @@ class PlannerImpl {
 
   // Convert information in execution plan and memory reuse plan into release plan
   Status GenerateDeallocationPlan() {
-       
+
     // 1. build the consumer list for each value
     std::vector<std::vector<NodeIndex>> value_consumers;
     int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
@@ -1730,9 +1732,9 @@ class PlannerImpl {
       plan_.node_release_list[node_index].push_back(release_action_idx);
     };
     plan_.node_release_list.resize(graph_viewer_.MaxNodeIndex() + 1);
-    for (auto i = 0; i < value_consumers.size(); ++i) {
+    for (size_t i = 0; i < value_consumers.size(); ++i) {
       if (!value_consumers[i].empty()) {
-        plan_.release_actions.push_back(SequentialExecutionPlan::ReleaseAction{i, 0});
+        plan_.release_actions.push_back(SequentialExecutionPlan::ReleaseAction{static_cast<int>(i), 0});  // TODO: narrowing conversion
         auto release_action_idx = plan_.release_actions.size() - 1;
         // check whether we can static determine where to release.
         // TODO: here we use a temporary simple solution is only static release when all the consumers are on the same stream
@@ -1740,7 +1742,7 @@ class PlannerImpl {
         // will optimize it later
         bool is_all_consumer_same_stream = true;
         auto stream_idx = node_stream_map_[value_consumers[i][0]];
-        for (auto j = 1; j < value_consumers[i].size(); ++j) {
+        for (size_t j = 1; j < value_consumers[i].size(); ++j) {
           if (node_stream_map_[value_consumers[i][j]] != stream_idx) {
             is_all_consumer_same_stream = false;
             break;
@@ -1767,7 +1769,7 @@ class PlannerImpl {
     partitioner->PartitionNodes(graph_viewer_, stream_nodes_);
     node_stream_map_.resize(graph_viewer_.MaxNodeIndex() + 1);
     //int node_cnt = 0;
-    for (int i = 0; i < stream_nodes_.size(); ++i) {
+    for (size_t i = 0; i < stream_nodes_.size(); ++i) {
       for (auto node_index : stream_nodes_[i]) {
         node_stream_map_[node_index] = i;
         //node_cnt++;
@@ -1802,7 +1804,7 @@ class PlannerImpl {
   //    int iter_{};
   //  };  //StreamRange
 
-  //  
+  //
   //  std::map<std::string, std::unique_ptr<StreamRange>> stream_map;
   //  for (const auto& iter : provider_stream_map) {
   //    const auto& provider_name = iter.first;
@@ -1816,7 +1818,7 @@ class PlannerImpl {
 
   //  for (const auto& iter : op_stream_map) {
   //    for (const auto& op : iter) {
-  //      stream_map.insert({op, std::make_unique<StreamRange>(static_cast<int>(num_logic_streams_), 
+  //      stream_map.insert({op, std::make_unique<StreamRange>(static_cast<int>(num_logic_streams_),
   //          static_cast<int>(num_logic_streams_) + 1)});
   //    }
   //    num_logic_streams_++;
@@ -1847,13 +1849,13 @@ class PlannerImpl {
                             const IStreamCommandHandleRegistry& stream_handle_registry) {
     //1. create logic stream instance
     auto& execution_plan = plan_.execution_plan;
-    for (auto i = 0; i < num_logic_streams_; ++i) {
+    for (size_t i = 0; i < num_logic_streams_; ++i) {
       execution_plan.emplace_back(std::make_unique<SequentialExecutionPlan::LogicStream>());
     }
     //2. for each node, if any of its consumer partitioned to another stream, generate a notification
     size_t num_notifications = 0;
     std::unordered_map<NodeIndex, NotificationIndex> node_to_notification;
-    for (auto i = 0; i < num_logic_streams_; ++i) {
+    for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
@@ -1865,7 +1867,7 @@ class PlannerImpl {
       }
     }
     //3. Check the nodes in each logical stream, set EP instance;
-    for (auto i = 0; i < num_logic_streams_; ++i) {
+    for (size_t i = 0; i < num_logic_streams_; ++i) {
       std::set<const IExecutionProvider*> providers;
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
@@ -1888,14 +1890,14 @@ class PlannerImpl {
       }
     }
     //5. add commands to logic queue
-    for (auto i = 0; i < num_logic_streams_; ++i) {
-      for (auto j = 0; j < stream_nodes_[i].size(); ++j) {
+    for (size_t i = 0; i < num_logic_streams_; ++i) {
+      for (size_t j = 0; j < stream_nodes_[i].size(); ++j) {
         auto node_index = stream_nodes_[i][j];
         if (j > 0) {
           // add dependency for current logic stream
           dependence_graph_[node_index].insert(stream_nodes_[i][j - 1]);
         }
-        auto cur_stream_idx = node_stream_map_[node_index];
+        //auto cur_stream_idx = node_stream_map_[node_index];
         // check if any producer is not in current stream, if yes, create a wait
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
@@ -1906,7 +1908,7 @@ class PlannerImpl {
             NotificationIndex notification_index = notfication_it->second;
             // push a barrier
             size_t barrier_id = plan_.num_barriers++;
-            plan_.downstream_map[notification_index].push_back({i, 
+            plan_.downstream_map[notification_index].push_back({i,
                 static_cast<int>(execution_plan[i]->steps_.size())});
             execution_plan[i]->steps_.emplace_back(std::make_unique<BarrierStep>(barrier_id));
 #ifdef ENABLE_TRAINING
@@ -1963,7 +1965,7 @@ class PlannerImpl {
     for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
       auto* node = graph_viewer_.GetNode(node_index);
       const auto& output_defs = node->OutputDefs();
-      for (int output_idx_local = 0; output_idx_local < output_defs.size(); ++output_idx_local) {
+      for (size_t output_idx_local = 0; output_idx_local < output_defs.size(); ++output_idx_local) {
         const auto& node_output = output_defs[output_idx_local];
         if (!node_output->Exists()) continue;
         OrtValueIndex output_idx_global;
@@ -2045,7 +2047,7 @@ Status PlannerImpl::CreatePlan(const ExecutionProviders& execution_providers,
   for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
     auto* node = graph_viewer_.GetNode(node_index);
     const auto& output_defs = node->OutputDefs();
-    for (int output_idx_local = 0; output_idx_local < output_defs.size(); ++output_idx_local) {
+    for (size_t output_idx_local = 0; output_idx_local < output_defs.size(); ++output_idx_local) {
       const auto& node_output = output_defs[output_idx_local];
       if (!node_output->Exists()) continue;
       OrtValueIndex output_idx_global;
@@ -2200,7 +2202,7 @@ void DummyPartitioner::Initialize() {
           EXIT_ON_ERR("invalid configuration - the line of node names is empty");
         }
       }
-      if (node_names_by_stream_.size() != num_streams_) {
+      if (node_names_by_stream_.size() != (size_t)num_streams_) {
         EXIT_ON_ERR("invalid configuration - the total number of line of streams mismatch with the sum of execution provider stream setting");
       }
     } else {
@@ -2266,7 +2268,7 @@ void DummyPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_view
     }
   }
   std::unordered_map<std::string, int> node_stream_map;
-  for (int i = 0; i < node_names_by_stream_.size(); ++i) {
+  for (size_t i = 0; i < node_names_by_stream_.size(); ++i) {
     for (const auto& node_name : node_names_by_stream_[i]) {
       node_stream_map[node_name] = i;
     }

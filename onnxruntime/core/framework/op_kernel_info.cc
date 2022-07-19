@@ -84,7 +84,7 @@ const OrtMemoryInfo& OpKernelInfo::GetInputLocation(int input_index) const {
   auto& input_arg_name = node_.InputDefs()[input_index]->Name();
   int input_arg_index = -1;
   ORT_ENFORCE(ort_value_name_idx_map_.GetIdx(input_arg_name, input_arg_index).IsOK());
-  ORT_ENFORCE(input_arg_index < allocation_plan_.size());
+  ORT_ENFORCE((size_t)input_arg_index < allocation_plan_.size());
   return allocation_plan_[input_arg_index].location;
 }
 
@@ -92,7 +92,7 @@ const OrtMemoryInfo& OpKernelInfo::GetOutputLocation(int output_index) const {
   auto& output_arg_name = node_.OutputDefs()[output_index]->Name();
   int output_arg_index = -1;
   ORT_ENFORCE(ort_value_name_idx_map_.GetIdx(output_arg_name, output_arg_index).IsOK());
-  ORT_ENFORCE(output_arg_index < allocation_plan_.size());
+  ORT_ENFORCE((size_t)output_arg_index < allocation_plan_.size());
   return allocation_plan_[output_arg_index].location;
 }
 

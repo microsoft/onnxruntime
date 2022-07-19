@@ -8,7 +8,7 @@ namespace onnxruntime {
 
 ProgramRegion& PartialGraphExecutionState::GetProgramRegions(const SessionState& session_state) {
   // check whether we can match an existing region
-  auto it = std::find_if(program_regions_.begin(), program_regions_.end(), 
+  auto it = std::find_if(program_regions_.begin(), program_regions_.end(),
       [this](const ProgramRegion& region) {
          return region.node_start == this->GetProgramCounterStart() && region.node_end == this->GetProgramCounterEnd();
       });
@@ -22,12 +22,12 @@ ProgramRegion& PartialGraphExecutionState::GetProgramRegions(const SessionState&
   auto* plan = session_state.GetExecutionPlan();
   for (auto& stream : plan->execution_plan) {
     size_t cur = 0;
-    while (cur < stream->step_node_index.size() && 
+    while (cur < stream->step_node_index.size() &&
            stream->step_node_index[cur] < new_region.node_start) {
       cur++;
     }
     size_t start = cur;
-    while (cur < stream->step_node_index.size() && 
+    while (cur < stream->step_node_index.size() &&
            stream->step_node_index[cur] <= new_region.node_end) {
       cur++;
     }
@@ -42,7 +42,7 @@ ExecutionContext& PartialGraphExecutionState::GetExecutionContext(const std::vec
     const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
     const SessionState& session_state,
     const logging::Logger& sess_logger,
-    const DeviceStreamColloection& device_streams_map,
+    const DeviceStreamCollection& device_streams_map,
     const bool& terminate_flag) {
   if (execution_context_ == nullptr) {
     auto* execution_plan = session_state.GetExecutionPlan();

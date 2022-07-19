@@ -258,7 +258,7 @@ void Loop::Init(const OpKernelInfo& info) {
   concat_output_func_ = ConcatenateCpuOutput;
 }
 
-std::unique_ptr<OpKernel> Loop::Create(const OpKernelInfo& info, const ConcatOutput& concat_output_func, void* stream) {
+std::unique_ptr<OpKernel> Loop::Create(const OpKernelInfo& info, const ConcatOutput& concat_output_func, void* /*stream*/) {
   auto result = std::make_unique<Loop>(info);
   result->SetConcatOutputFunc(concat_output_func);
   return result;

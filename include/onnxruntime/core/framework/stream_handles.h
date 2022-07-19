@@ -25,7 +25,7 @@ struct Stream {
   // TODO: do we really need it to be a dynamic map?
   std::unordered_map<Stream*, uint64_t> other_stream_clock;
 
-  Stream::Stream(StreamHandle h, const IExecutionProvider* p) : handle(h), provider(p) {}
+  Stream(StreamHandle h, const IExecutionProvider* p) : handle(h), provider(p) {}
 
   uint64_t BumpTimeStampAndReturn() {
     return ++timestamp;
@@ -42,7 +42,7 @@ struct Stream {
   }
 
   virtual ~Stream() {}
-  virtual std::unique_ptr<synchronize::Notification> CreateNotification(size_t num_consumers) {
+  virtual std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) {
     return {};
   };
   virtual void Flush(){};

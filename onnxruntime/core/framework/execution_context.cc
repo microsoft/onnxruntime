@@ -7,13 +7,13 @@
 
 namespace onnxruntime {
 
-class DeviceStreamColloectionImpl {
+class DeviceStreamCollectionImpl {
  public:
-  DeviceStreamColloectionImpl(size_t num_streams) : num_streams_(num_streams) {
+  DeviceStreamCollectionImpl(size_t num_streams) : num_streams_(num_streams) {
     device_streams_.resize(num_streams, nullptr);
   }
 
-  virtual ~DeviceStreamColloectionImpl() {
+  virtual ~DeviceStreamCollectionImpl() {
     for (auto& device_stream : device_streams_) {
       if (device_stream) {
         device_stream->Flush();
@@ -60,23 +60,23 @@ class DeviceStreamColloectionImpl {
 };
 
 
-DeviceStreamColloection::DeviceStreamColloection(size_t num_streams) : impl_(std::make_unique<DeviceStreamColloectionImpl>(num_streams)) {}
+DeviceStreamCollection::DeviceStreamCollection(size_t num_streams) : impl_(std::make_unique<DeviceStreamCollectionImpl>(num_streams)) {}
 
-DeviceStreamColloection::~DeviceStreamColloection() {}
+DeviceStreamCollection::~DeviceStreamCollection() {}
 
-void DeviceStreamColloection::SetDeviceStream(size_t idx, std::unique_ptr<Stream> stream) {
+void DeviceStreamCollection::SetDeviceStream(size_t idx, std::unique_ptr<Stream> stream) {
   impl_->SetDeviceStream(idx, std::move(stream));
 }
 
-void DeviceStreamColloection::SetDeviceStream(size_t idx, Stream* stream) {
+void DeviceStreamCollection::SetDeviceStream(size_t idx, Stream* stream) {
   impl_->SetDeviceStream(idx, stream);
 }
 
-const std::vector<Stream*>& DeviceStreamColloection::GetStreams() const {
+const std::vector<Stream*>& DeviceStreamCollection::GetStreams() const {
   return impl_->GetStreams();
 }
 
-size_t DeviceStreamColloection::NumStreams() const {
+size_t DeviceStreamCollection::NumStreams() const {
   return impl_->NumStreams();
 }
 
@@ -90,7 +90,7 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
                 const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                 size_t num_barriers,
                 const logging::Logger& sess_logger,
-                const DeviceStreamColloection& device_streams_map,
+                const DeviceStreamCollection& device_streams_map,
                 const bool& terminate_flag) : session_state(&sess_state),
                                                 logger(&sess_logger),
                                                 device_stream_map_(device_streams_map),
@@ -98,7 +98,7 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
                                                 terminate_flag_(terminate_flag) {
   auto& device_streams = device_stream_map_.GetStreams();
 
-  for (auto i = 0; i < notification_owners.size(); ++i) {
+  for (size_t i = 0; i < notification_owners.size(); ++i) {
     auto& stream = device_streams[notification_owners[i]];
     if (stream)
       notifications.push_back(std::move(stream->CreateNotification(/*TODO: calculate num of consumers*/ 0)));
@@ -109,7 +109,7 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
   // create frame
   frame = std::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, sess_state, &device_streams);
   // init barreris
-  for (auto i = 0; i < num_barriers; ++i) {
+  for (size_t i = 0; i < num_barriers; ++i) {
     count_down_barriers_[i].Set(2);
   }
   remain_tasks_.Set(num_streams);
@@ -117,7 +117,7 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
   auto& release_actions = session_state->GetExecutionPlan()->release_actions;
   release_plan = std::make_unique<ReleasePlan>();
   release_plan->value_ref_counts_.reset(new std::atomic_int[release_actions.size()]);
-  for (auto i = 0; i < release_actions.size(); ++i) {
+  for (size_t i = 0; i < release_actions.size(); ++i) {
     release_plan->value_ref_counts_[i] = static_cast<int>(release_actions[i].ref_count);
   }
 }
@@ -195,7 +195,8 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
 
   while (since < end) {
     if (ctx.TerminateFlag()) {
-      ctx.SetStatus(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true."));
+      Status status_made = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
+      ctx.SetStatus(status_made);
       return;
     }
     bool continue_flag = true;
@@ -234,13 +235,13 @@ void ScheduleDownstream(ExecutionContext& ctx,
   auto it = downstream_map.find(notification_index);
   if (it != downstream_map.end()) {
     for (auto downstream : it->second) {
-      concurrency::ThreadPool::Schedule(tp, 
+      concurrency::ThreadPool::Schedule(tp,
           [ctx_ptr, downstream]() {
         RunSince(downstream.first, *ctx_ptr, downstream.second);
       });
     }
   }
-  
+
 }
 
 }

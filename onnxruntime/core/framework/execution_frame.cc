@@ -646,7 +646,7 @@ static Status AllocateTensorSequence(OrtValue& ort_value) {
 #if !defined(DISABLE_SPARSE_TENSORS)
 static Status AllocateSparseTensor(OrtValue& mlvalue, const DataTypeImpl& ml_type, AllocatorPtr allocator,
                                    const TensorShape& shape,
-                                   const SessionState& session_state) {
+                                   const SessionState& /*session_state*/) {
   auto element_type = ml_type.AsSparseTensorType()->GetElementType();
   SparseTensor::InitOrtValue(element_type, shape, std::move(allocator), mlvalue);
 

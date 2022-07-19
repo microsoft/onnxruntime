@@ -557,22 +557,23 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const FeedsFetchesManager& feeds_fetches_manager,
                                        const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                        const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                       ExecutionMode execution_mode, const bool& terminate_flag,
+                                       ExecutionMode /*execution_mode*/, const bool& terminate_flag,
                                        const logging::Logger& logger, const bool only_execute_path_to_fetches = false,
                                        Stream* parent_stream = nullptr) {
-  
+
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
   auto* execution_plan = session_state.GetExecutionPlan();
-  DeviceStreamColloection device_stream_collection(execution_plan->execution_plan.size());
+
+  DeviceStreamCollection device_stream_collection(execution_plan->execution_plan.size());
 
   bool single_stream = session_state.GetExecutionPlan()->NumberOfValidStream();
   bool is_subgraph = session_state.GetGraphViewer().ParentNode() != nullptr;
   // in following two cases, we execute the workload in main thread:
   // 1. only have 1 stream, it could be the CPU sequential inference scenario, or GPU case when all the nodes are running on GPU.
-  // 2. execute a subgraph. Because in current implmentation, the execute of subgraph is launched through parent kernel. 
-  //    the parent kernel will occupy a thread in thread pool. if we use multiple threads to execute subgraph, it may cause 
-  //    deadlock when we reach the limitation of thread pool. 
+  // 2. execute a subgraph. Because in current implmentation, the execute of subgraph is launched through parent kernel.
+  //    the parent kernel will occupy a thread in thread pool. if we use multiple threads to execute subgraph, it may cause
+  //    deadlock when we reach the limitation of thread pool.
   bool single_thread_mode = single_stream || is_subgraph;
 
   ORT_ENFORCE(BindToDeviceStream(parent_stream, *execution_plan, device_stream_collection, session_state.GetStreamHandleRegistryInstance()).IsOK());
@@ -688,7 +689,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
   bool single_thread_mode = single_stream || is_subgraph;
 
   auto* execution_plan = session_state.GetExecutionPlan();
-  DeviceStreamColloection device_stream_collection(execution_plan->execution_plan.size());
+  DeviceStreamCollection device_stream_collection(execution_plan->execution_plan.size());
 
   ORT_ENFORCE(BindToDeviceStream(parent_stream, *execution_plan, device_stream_collection, session_state.GetStreamHandleRegistryInstance()).IsOK());
   // see if we can skip copies due to the types of execution providers available
@@ -702,7 +703,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
                                      terminate_flag,
                                      // single thread mode
                                      single_thread_mode,
-                                     state, 
+                                     state,
                                      cache);
   } else {
     const std::vector<OrtValue>* p_feeds = &feeds;
