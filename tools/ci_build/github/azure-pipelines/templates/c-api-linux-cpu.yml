@@ -26,11 +26,12 @@ parameters:
   
 jobs:
 - job: Linux_C_API_Packaging_CPU_${{parameters.OnnxruntimeArch}}
+  
   workspace:
     clean: all
   variables:
   - name: skipComponentGovernanceDetection
-    value: true
+    value: ${{eq('${{parameters.OnnxruntimeNodejsBindingArch}}', 'arm64')}}
   timeoutInMinutes:  210
   pool: ${{parameters.PoolName}}
   steps:
@@ -105,8 +106,10 @@ jobs:
 
     - template: component-governance-component-detection-steps.yml
       parameters :
+        ${{ if not(eq('${{parameters.OnnxruntimeNodejsBindingArch}}', 'arm64')) }}:
         condition : 'succeeded'
-
+        ${{ else }}:
+        condition : ''
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
