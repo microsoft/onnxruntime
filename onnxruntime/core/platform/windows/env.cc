@@ -33,7 +33,6 @@ limitations under the License.
 #include <wil/Resource.h>
 
 #include "core/platform/path_lib.h"  // for LoopDir()
-#include <iostream>
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
@@ -124,8 +123,7 @@ class WindowsThread : public EnvThread {
     ORT_TRY {
       ret = p->start_address(p->index, p->param);
     }
-    ORT_CATCH(const std::exception& e) {
-      std::cout << e.what() << std::endl;
+    ORT_CATCH(const std::exception&) {
       p->param->Cancel();
       ret = 1;
     }

@@ -338,9 +338,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         inter_op_thread_pool_ =
             concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
         if (inter_op_thread_pool_ == nullptr) {
-          LOGS(*session_logger_, WARNING) << "Using PARALLEL when inter_op_thread_pool_ is null!";
-          //LOGS(*session_logger_, INFO) << "Failed to create the inter-op thread pool for the parallel executor, setting ExecutionMode to SEQUENTIAL";
-          //session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+          LOGS(*session_logger_, INFO) << "Failed to create the inter-op thread pool for the parallel executor, setting ExecutionMode to SEQUENTIAL";
+          session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
         }
       }
     }
@@ -360,9 +359,6 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
   telemetry_ = {};
   allocator_manager_ = std::make_shared<onnxruntime::AllocatorManager>();
-
-  // read patition config file path, default empty
-  // session_options_.node_partition_config_file = session_options.config_options.GetConfigOrDefault(kNodePartitionConfigFile, "");
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env)
