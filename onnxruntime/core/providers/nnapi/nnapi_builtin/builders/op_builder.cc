@@ -2498,7 +2498,8 @@ void GatherOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
   const auto& indices_name = inputs[1].node_arg.Name();
   int32_t indices_data_type;
   GetType(node_unit.Inputs()[1].node_arg, indices_data_type);
-  if (Contains(model_builder.GetInitializerTensors(), indices_name) && indices_data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+  if (Contains(model_builder.GetInitializerTensors(), indices_name) &&
+      indices_data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     // Skip the second input `indices` for Gather if it is an initializer
     model_builder.AddInitializerToSkip(indices_name);
   }
@@ -2523,7 +2524,8 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   int32_t indices_data_type;
   GetType(node_unit.Inputs()[1].node_arg, indices_data_type);
-  if (Contains(model_builder.GetInitializerTensors(), input2) && indices_data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+  if (Contains(model_builder.GetInitializerTensors(), input2) &&
+      indices_data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     // Add indices operand into nnapi
     const auto& indices_tensor = *initializers.at(input2);
     std::vector<uint8_t> unpacked_tensor;
