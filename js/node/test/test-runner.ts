@@ -57,7 +57,7 @@ export function run(testDataRoot: string): void {
         // add cases
         describe(`${opset}/${model}`, () => {
           let session: InferenceSession|null = null;
-          let skipModel = shouldSkipModel(model, ['cpu']);
+          let skipModel = shouldSkipModel(model, opset, ['cpu']);
           if (!skipModel) {
             before(async () => {
               try {
