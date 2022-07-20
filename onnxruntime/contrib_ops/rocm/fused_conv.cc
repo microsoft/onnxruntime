@@ -77,13 +77,25 @@ class FusedConv : public onnxruntime::rocm::Conv<T> {
       return Status::OK();
     }
 
-    // Create new Fusion descriptor when dims changed
-    if (input_dims_changed || w_dims_changed || !fusion_.plan) {
-        (void)CreateFusionDesc();
-    }
-
     bool has_z = nullptr != Base::s_.z_data;
     bool has_b = nullptr != Base::s_.b_data;
+
+    // TODO: Can be removed once MIOpen supports multiple Bias operators in
+    //       single Fusion plan.
+    bool should_try_fusion_api = true;
+    if (has_z && has_b && this->unsupported_fusion_both_z_b_) {
+      should_try_fusion_api = false;
+    }
+
+    if (should_try_fusion_api) {
+      // Create new Fusion descriptor when dims changed
+      if (input_dims_changed || w_dims_changed || !fusion_.plan)  {
+        if (Status::OK() != CreateFusionDesc() && has_z && has_b) {
+          this->unsupported_fusion_both_z_b_.store(true);
+        }
+      }
+    }
+
     typedef typename onnxruntime::rocm::ToHipType<T>::MappedType HipT;
     const auto alpha = onnxruntime::rocm::Consts<HipT>::One;
     const auto beta = onnxruntime::rocm::Consts<HipT>::Zero;
@@ -242,6 +254,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T> {
     }
   };
   mutable FusedConvFusionData fusion_;
+  static std::atomic_bool unsupported_fusion_both_z_b_;
 
   Status CreateFusionDesc() const {
     FusedConvFusionData fusion;
@@ -290,6 +303,9 @@ class FusedConv : public onnxruntime::rocm::Conv<T> {
     return miopenStatusSuccess;
   }
 };
+
+template <typename T>
+std::atomic_bool FusedConv<T>::unsupported_fusion_both_z_b_(false);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     FusedConv,
