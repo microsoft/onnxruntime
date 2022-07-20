@@ -26,10 +26,10 @@ For more details on ONNX Release versions, see [this page](https://github.com/on
 
 | ONNX Runtime release version | ONNX release version | ONNX opset version | ONNX ML opset version | Supported ONNX IR version | [Windows ML Availability](https://docs.microsoft.com/en-us/windows/ai/windows-ml/release-notes/)|
 |------------------------------|--------------------|--------------------|----------------------|------------------|------------------|
-| 1.12.0 | **1.10** down to 1.2 | 15 | 2 | 7 | Windows AI 1.11+ |
-| 1.11.0 | **1.10** down to 1.2 | 15 | 2 | 7 | Windows AI 1.11+ |
-| 1.10.0 | **1.10** down to 1.2 | 15 | 2 | 7 | Windows AI 1.10+ |
-| 1.9.0 | **1.10** down to 1.2 | 15 | 2 | 7 | Windows AI 1.9+ |
+| 1.12.0 | **1.10** down to 1.2 | 17 | 3 | 8 | Windows AI 1.11+ |
+| 1.11.0 | **1.10** down to 1.2 | 16 | 2 | 8 | Windows AI 1.11+ |
+| 1.10.0 | **1.10** down to 1.2 | 15 | 2 | 8 | Windows AI 1.10+ |
+| 1.9.0 | **1.10** down to 1.2 | 15 | 2 | 8 | Windows AI 1.9+ |
 | 1.8.2 | **1.9** down to 1.2 | 14 | 2 | 7 | Windows AI 1.8+ |
 | 1.8.1 | **1.9** down to 1.2 | 14 | 2 | 7 | Windows AI 1.8+ |
 | 1.8.0 | **1.9** down to 1.2 | 14 | 2 | 7 | Windows AI 1.8+ |
@@ -56,14 +56,13 @@ A variety of tools can be used to create ONNX models. Unless otherwise noted, pl
 
 |Tool|Recommended Version|Supported ONNX version(s)|
 |---|---|---|
-|[PyTorch](https://pytorch.org/)|[Latest stable](https://pytorch.org/get-started/locally/)|1.2-1.6|
-|[ONNXMLTools](https://pypi.org/project/onnxmltools/)<br>CoreML, LightGBM, XGBoost, LibSVM|[Latest stable](https://github.com/onnx/onnxmltools/releases)|1.2-1.6|
-|[ONNXMLTools](https://pypi.org/project/onnxmltools/)<br> SparkML|[Latest stable](https://github.com/onnx/onnxmltools/releases)|1.4-1.5|
-|[SKLearn-ONNX](https://pypi.org/project/skl2onnx/)|[Latest stable](https://github.com/onnx/sklearn-onnx/releases)|1.2-1.6|
-|[Keras-ONNX](https://pypi.org/project/keras2onnx/)|[Latest stable](https://github.com/onnx/keras-onnx/releases)|1.2-1.6|
-|[Tensorflow-ONNX](https://pypi.org/project/tf2onnx/)|[Latest stable](https://github.com/onnx/tensorflow-onnx/releases)|1.2-1.6|
+|[PyTorch](https://pytorch.org/)|[Latest stable](https://pytorch.org/get-started/locally/)|1.2-1.11|
+|[ONNXMLTools](https://pypi.org/project/onnxmltools/)<br>CatBoost, CoreML, LightGBM, XGBoost, LibSVM|[Latest stable](https://github.com/onnx/onnxmltools/releases)|1.2-1.11|
+|[ONNXMLTools](https://pypi.org/project/onnxmltools/)<br> SparkML|[Latest stable](https://github.com/onnx/onnxmltools/releases)|1.4-1.11|
+|[SKLearn-ONNX](https://pypi.org/project/skl2onnx/)|[Latest stable](https://github.com/onnx/sklearn-onnx/releases)|1.2-1.11|
+|[Tensorflow-ONNX](https://pypi.org/project/tf2onnx/)|[Latest stable](https://github.com/onnx/tensorflow-onnx/releases)|1.4-1.11|
 |[WinMLTools](https://docs.microsoft.com/en-us/windows/ai/windows-ml/convert-model-winmltools)|[Latest stable](https://pypi.org/project/winmltools/)|1.2-1.6|
-|[Paddle2ONNX](https://pypi.org/project/paddle2onnx/)| [Latest stable](https://github.com/PaddlePaddle/Paddle2ONNX/releases) | 1.6-1.9 |
+|[Paddle2ONNX](https://pypi.org/project/paddle2onnx/)| [Latest stable](https://github.com/PaddlePaddle/Paddle2ONNX/releases) | 1.10-1.11 |
 |[AutoML](https://docs.microsoft.com/en-us/azure/machine-learning/service/concept-automated-ml)|[1.0.39+](https://pypi.org/project/azureml-automl-core)|1.5|
 | |[1.0.33](https://pypi.org/project/azureml-automl-core/1.0.33/)|1.4|
 
