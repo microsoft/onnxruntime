@@ -18,7 +18,7 @@
 //       get the actually Android system version.
 //       If running on an actual Android system, this value will be ignored
 #ifndef ORT_NNAPI_MAX_SUPPORTED_API_LEVEL
-#define ORT_NNAPI_MAX_SUPPORTED_API_LEVEL 30
+#define ORT_NNAPI_MAX_SUPPORTED_API_LEVEL 31
 #endif
 
 namespace onnxruntime {

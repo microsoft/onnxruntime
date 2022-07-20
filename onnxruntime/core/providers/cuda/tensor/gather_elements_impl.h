@@ -9,19 +9,11 @@
 namespace onnxruntime {
 namespace cuda {
 
-void GatherElementsImpl(
-    cudaStream_t stream,
-    const int64_t rank,  // both inputs have same rank and this is validated in the main Compute
-    const void* input_data,
-    const int64_t input_dim_along_axis,
-    const int64_t input_stride_along_axis,
-    const TArray<int64_t>& masked_input_strides,
-    const void* indices_data,
-    const int64_t indices_size,
-    const TArray<fast_divmod>& indices_strides,
-    void* output_data,
-    size_t element_size,
-    size_t index_element_size);
+template <typename T, typename TIndex>
+void GatherElementsImpl(cudaStream_t stream, const int64_t rank, const int64_t axis, const T* input_data,
+                        const int64_t input_dim_along_axis, const int64_t input_stride_along_axis,
+                        const TArray<int64_t>& masked_input_strides, const TIndex* indices_data,
+                        const int64_t indices_size, const TArray<fast_divmod>& indices_fdms, T* output_data);
 
 }  // namespace cuda
 }  // namespace onnxruntime

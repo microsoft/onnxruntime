@@ -15,6 +15,7 @@ filenames = [
     os.path.join(os.path.dirname(__file__), "multi_tensor_adam.cu"),
     os.path.join(os.path.dirname(__file__), "multi_tensor_scale_kernel.cu"),
     os.path.join(os.path.dirname(__file__), "multi_tensor_axpby_kernel.cu"),
+    os.path.join(os.path.dirname(__file__), "multi_tensor_l2norm_kernel.cu"),
 ]
 
 use_rocm = True if os.environ["ONNXRUNTIME_ROCM_VERSION"] else False

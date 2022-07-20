@@ -151,18 +151,16 @@ class QDQQuantizer(ONNXQuantizer):
         self.model.remove_nodes(self.nodes_to_remove)
 
     def quantize_model(self):
-        if self.dedicated_qdq_pair:
-            for node in self.model.nodes():
-                if self.should_quantize(node):
+        for node in self.model.nodes():
+            if self.should_quantize_node(node):
+                op_quantizer = CreateQDQQuantizer(self, node)
+                op_quantizer.quantize()
+
+                if self.dedicated_qdq_pair:
                     for tensor_name in node.input:
                         if tensor_name not in self.tensor_to_its_receiving_nodes:
                             self.tensor_to_its_receiving_nodes[tensor_name] = []
                         self.tensor_to_its_receiving_nodes[tensor_name].append(node)
-
-        for node in self.model.nodes():
-            if self.should_quantize(node):
-                op_quantizer = CreateQDQQuantizer(self, node)
-                op_quantizer.quantize()
 
         self.quantize_tensors()
         self.quantize_weights_per_channel()
@@ -231,7 +229,7 @@ class QDQQuantizer(ONNXQuantizer):
 
                 if data_found == False:
                     raise ValueError(
-                        "Quantization parameters are not specified for param {}."
+                        "Quantization parameters are not specified for param {}. "
                         "In static mode quantization params for inputs and outputs of nodes to be quantized are required.".format(
                             tensor_name
                         )

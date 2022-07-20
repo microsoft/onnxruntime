@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Collections.Generic;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -336,8 +337,8 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(
                 NativeMethods.OrtSessionOptionsAppendExecutionProvider_CoreML(handle, (uint)coremlFlags));
 #else
-#if !__ANDROID__
-            // the CoreML EP entry point is registered unless this is Android but is only valid if this is OSX
+#if __ENABLE_COREML__
+            // only attempt if this is OSX
             if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
                 NativeApiStatus.VerifySuccess(
@@ -384,9 +385,43 @@ namespace Microsoft.ML.OnnxRuntime
             }
 #endif
         }
-#endregion //ExecutionProviderAppends
 
-#region Public Methods
+        /// <summary>
+        /// Append SNPE or XNNPACK execution provider
+        /// </summary>
+        /// <param name="providerName">Execution provider to add. 'SNPE' or 'XNNPACK' are currently supported.</param>
+        /// <param name="providerOptions">Optional key/value pairs to specify execution provider options.</param>
+        public void AppendExecutionProvider(string providerName, Dictionary<string, string> providerOptions = null)
+        {
+            if (providerName != "SNPE" && providerName != "XNNPACK")
+            {
+                throw new NotSupportedException(
+                    "Only SNPE and XNNPACK execution providers can be enabled by this method.");
+            }
+
+            using (var cleanupList = new DisposableList<IDisposable>())
+            {
+                string[] ep = { providerName }; // put in array so we can use ConvertNamesToUtf8 for everything
+                var epArray = NativeOnnxValueHelper.ConvertNamesToUtf8(ep, n => n, cleanupList);
+
+                if (providerOptions == null)
+                {
+                    providerOptions = new Dictionary<string, string>();
+                }
+                
+                var keysArray = NativeOnnxValueHelper.ConvertNamesToUtf8(
+                    providerOptions.Keys.ToArray(), n => n, cleanupList);
+
+                var valuesArray = NativeOnnxValueHelper.ConvertNamesToUtf8(
+                    providerOptions.Values.ToArray(), n => n, cleanupList);
+                
+                NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider(
+                    handle, epArray[0], keysArray, valuesArray, (UIntPtr)providerOptions.Count));
+            }
+        }
+        #endregion //ExecutionProviderAppends
+
+        #region Public Methods
         /// <summary>
         /// (Deprecated) Loads a DLL named 'libraryPath' and looks for this entry point:
         /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);

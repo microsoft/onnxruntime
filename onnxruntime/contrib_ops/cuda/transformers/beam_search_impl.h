@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include <stdint.h>
 #include <cuda_fp16.h>
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -46,12 +48,12 @@ void LaunchNextTokenKernel(const int64_t* next_token_indices,
                            int vocab_size,
                            cudaStream_t stream);
 
-void LaunchUpdateKernel(const int32_t* old_mask_data,
-                        int32_t* mask_data,
-                        int32_t* next_positions,
-                        int batch_beam_size,
-                        int current_length,
-                        cudaStream_t stream);
+void LaunchUpdateGptKernel(const int32_t* old_mask_data,
+                           int32_t* mask_data,
+                           int32_t* next_positions,
+                           int batch_beam_size,
+                           int current_length,
+                           cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib
