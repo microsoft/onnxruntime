@@ -29,7 +29,7 @@ Keep in sync with doco generated from /docs/execution-providers/NNAPI-ExecutionP
 |ai.onnx:Min||
 |ai.onnx:Mul||
 |ai.onnx:Neg||
-|ai.onnx:Pad|Only constant mode Pad is supported.|
+|ai.onnx:Pad|Only constant mode Pad is supported.<br/>Input pads and constant_value should be constant.<br/>Input pads values should be non-negative.|
 |ai.onnx:Pow||
 |ai.onnx:PRelu||
 |ai.onnx:QLinearConv|Only 2D Conv is supported.<br/>Weights and bias should be constant.<br/>All quantization scales and zero points should be constant.|
@@ -43,11 +43,11 @@ Keep in sync with doco generated from /docs/execution-providers/NNAPI-ExecutionP
 |ai.onnx:Slice||
 |ai.onnx:Softmax||
 |ai.onnx:Sqrt||
-|ai.onnx:Squeeze||
+|ai.onnx:Squeeze|Input axes must be constant.|
 |ai.onnx:Sub||
 |ai.onnx:Tanh||
 |ai.onnx:Transpose||
-|ai.onnx:Unsqueeze||
+|ai.onnx:Unsqueeze|Input axes must be constant.|
 |com.microsoft:QLinearAdd|All quantization scales and zero points should be constant.|
 |com.microsoft:QLinearAveragePool|Only 2D Pool is supported.<br/>All quantization scales and zero points should be constant.|
 |com.microsoft:QLinearSigmoid|All quantization scales and zero points should be constant.|
