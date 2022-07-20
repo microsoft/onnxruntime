@@ -13,6 +13,7 @@
 
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
+#include "gsl/gsl-lite.hpp"
 
 
 namespace onnxruntime {
@@ -64,9 +65,13 @@ template <typename T>
 QLinearSoftmax<T>::QLinearSoftmax(const OpKernelInfo& info)
     : OpKernel(info) {
   const auto& node = info.node();
-  opset_ = node.SinceVersion();
+  int64_t opset = -1;
+  Status status = info.GetAttr<int64_t>("opset", &opset);
+  ORT_ENFORCE(status.IsOK(), "opset must be existed in attributes of QlinearSoftmax");
+  opset_ = gsl::narrow_cast<int>(opset);
+
   int64_t axis = -1;
-  Status status = info.GetAttr<int64_t>("axis", &axis);
+  status = info.GetAttr<int64_t>("axis", &axis);
   if (status.IsOK()) {
     axis_ = gsl::narrow_cast<int>(axis);
   } else {
