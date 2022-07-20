@@ -147,7 +147,7 @@ class PlannerTest : public ::testing::Test {
   profiling::Profiler profiler_;
   std::unique_ptr<SessionState> state_;
   ShapeMap shape_map_;
-  std::unique_ptr<SequentialExecutionPlan> plan_;
+  std::optional<SequentialExecutionPlan> plan_;
 
  public:
   PlannerTest()
@@ -225,8 +225,7 @@ class PlannerTest : public ::testing::Test {
     ASSERT_NE(ep, nullptr);
     auto info = std::make_unique<OpKernelInfo>(
         *p_node, kernel_def, *ep, state_->GetInitializedTensors(), state_->GetOrtValueNameIdxMap(),
-        state_->GetDataTransferMgr(),
-        state_->GetPerAllocPlan());
+        state_->GetDataTransferMgr());
 
     op_kernel_infos_.push_back(std::move(info));
     if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider)) {
@@ -272,7 +271,7 @@ class PlannerTest : public ::testing::Test {
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     SequentialPlannerTestContext test_context(&shape_map_);
-    plan_ = std::make_unique<SequentialExecutionPlan>();
+    plan_.emplace();
 
     //mocks
     ExecutionProviders providers;

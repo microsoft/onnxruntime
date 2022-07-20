@@ -19,12 +19,6 @@ struct NodeCompare {
   bool operator()(const Node* n1, const Node* n2) const;
 };
 
-enum class DataLayout {
-  NCHW,
-  NHWC,
-  NCHWC,
-};
-
 /**
 @class GraphViewer
 Class that provides a read-only view of the Graph.
@@ -87,7 +81,7 @@ class GraphViewer {
   const std::vector<const NodeArg*>& GetOutputs() const noexcept;
 
   /** Returns true if one or more of the Node outputs are Graph outputs.
-  */
+   */
   bool NodeProducesGraphOutput(const Node& node) const;
 
   /** Gets all ValueInfo NodeArg instances in the Graph.
@@ -214,7 +208,8 @@ class GraphViewer {
   // if we're limiting the view to an IndexedSubGraph we need to create a few pieces of infrastructure that would
   // usually come from the full graph
   const IndexedSubGraph* filter_info_{nullptr};
-  std::unordered_set<NodeIndex> filtered_node_indices_;
+  using FilteredNodeSet = InlinedHashSet<NodeIndex>;
+  FilteredNodeSet filtered_node_indices_;
   std::vector<const NodeArg*> filtered_node_inputs_;
   std::vector<const NodeArg*> filtered_node_inputs_including_initializers_;
   std::vector<const NodeArg*> filtered_node_outputs_;

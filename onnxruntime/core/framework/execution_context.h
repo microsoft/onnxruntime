@@ -80,7 +80,7 @@ public:
 
   const logging::Logger& GetLogger() const;
 
-  IExecutionFrame* GetExecutionFrame();
+  ExecutionFrame* GetExecutionFrame();
 
   synchronize::Notification* GetNotification(size_t idx);
 

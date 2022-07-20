@@ -837,9 +837,6 @@ struct OpKernelInfo final {
 
   const Node& node() const noexcept { return g_host->OpKernelInfo__node(this); }
 
-  const OrtMemoryInfo& GetInputLocation(int input_index) const { return g_host->OpKernelInfo__GetInputLocation(this, input_index); }
-  const OrtMemoryInfo& GetOutputLocation(int output_index) const { return g_host->OpKernelInfo__GetOutputLocation(this, output_index); }
-
   OpKernelInfo() = delete;
   OpKernelInfo(const OpKernelInfo&) = delete;
   void operator=(const OpKernelInfo&) = delete;
@@ -1029,7 +1026,7 @@ struct SparseTensor final {
 };
 #endif
 
-//TensorSeq
+// TensorSeq
 struct TensorSeq final {
   MLDataType DataType() const noexcept { return g_host->TensorSeq__DataType(this); }
   void SetType(MLDataType elem_type) { g_host->TensorSeq__SetType(this, elem_type); }

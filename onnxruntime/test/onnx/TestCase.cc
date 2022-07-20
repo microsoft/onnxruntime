@@ -5,6 +5,14 @@
 
 #include "TestCase.h"
 
+#include <cctype>
+#include <fstream>
+#include <memory>
+#include <sstream>
+#include <map>
+#include <regex>
+#include <string>
+
 #include "callback.h"
 #include "heap_buffer.h"
 #include "mem_buffer.h"
@@ -21,13 +29,6 @@
 #include "core/framework/allocator.h"
 #include "core/framework/TensorSeq.h"
 #include "re2/re2.h"
-
-#include <cctype>
-#include <fstream>
-#include <memory>
-#include <sstream>
-#include <map>
-#include <regex>
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
@@ -417,7 +418,7 @@ static bool read_config_file(const std::basic_string<PATH_CHAR_TYPE>& path, std:
   return true;
 }
 
-//load tensors from disk
+// load tensors from disk
 template <typename PATH_STRING_TYPE>
 static void LoadTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::TensorProto& input_pb) {
   int tensor_fd;
@@ -432,7 +433,7 @@ static void LoadTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::TensorPr
   }
 }
 
-//load sequence tensors from disk
+// load sequence tensors from disk
 template <typename PATH_STRING_TYPE>
 static void LoadSequenceTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::SequenceProto& input_pb) {
   int tensor_fd;
@@ -475,7 +476,7 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
       test_data_dirs_[id], (is_input ? ORT_TSTR("inputs.pb") : ORT_TSTR("outputs.pb")));
   int test_data_pb_fd;
   auto st = Env::Default().FileOpenRd(test_data_pb, test_data_pb_fd);
-  if (st.IsOK()) {  //has an all-in-one input file
+  if (st.IsOK()) {  // has an all-in-one input file
     std::ostringstream oss;
     {
       std::lock_guard<OrtMutex> l(m_);
@@ -727,7 +728,7 @@ OnnxTestCase::OnnxTestCase(const std::string& test_case_name, _In_ std::unique_p
 
 void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
                const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
-               double default_per_sample_tolerance, double default_relative_per_sample_tolerance,
+               const TestTolerances& tolerances,
                const std::unordered_set<std::basic_string<ORTCHAR_T>>& disabled_tests,
                const std::function<void(std::unique_ptr<ITestCase>)>& process_function) {
   std::vector<std::basic_string<PATH_CHAR_TYPE>> paths(input_paths);
@@ -781,11 +782,37 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
         ORT_NOT_IMPLEMENTED(ToUTF8String(filename_str), " is not supported");
       }
 
+      const auto tolerance_key = ToUTF8String(my_dir_name);
+
       std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info),
-                                                        default_per_sample_tolerance,
-                                                        default_relative_per_sample_tolerance);
+                                                        tolerances.absolute(tolerance_key),
+                                                        tolerances.relative(tolerance_key));
       process_function(std::move(l));
       return true;
     });
   }
+}
+
+TestTolerances::TestTolerances(
+    double absolute_default, double relative_default,
+    const Map& absolute_overrides,
+    const Map& relative_overrides) : absolute_default_(absolute_default),
+                                     relative_default_(relative_default),
+                                     absolute_overrides_(absolute_overrides),
+                                     relative_overrides_(relative_overrides) {}
+
+double TestTolerances::absolute(const std::string& name) const {
+  const auto iter = absolute_overrides_.find(name);
+  if (iter == absolute_overrides_.end()) {
+    return absolute_default_;
+  }
+  return iter->second;
+}
+
+double TestTolerances::relative(const std::string& name) const {
+  const auto iter = relative_overrides_.find(name);
+  if (iter == relative_overrides_.end()) {
+    return relative_default_;
+  }
+  return iter->second;
 }

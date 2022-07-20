@@ -137,6 +137,10 @@ void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id
   std::vector<OrtValue> fetches;
   ASSERT_STATUS_OK(session_object2.Run(run_options, feeds, output_names, &fetches));
   VerifyOutputs(output_names, expected_fetches, fetches, params);
+
+  if (params.graph_verifier) {
+    (*params.graph_verifier)(graph2);
+  }
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)

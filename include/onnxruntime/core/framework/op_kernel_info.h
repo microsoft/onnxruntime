@@ -28,9 +28,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
                         const IExecutionProvider& execution_provider,
                         const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                         const OrtValueNameIdxMap& mlvalue_name_idx_map,
-                        const DataTransferManager& data_transfer_mgr,
-                        // the allocation plan for all the tensors, indexed by the ortvalue index which you can lookup from mlvalue_name_idx_map
-                        const std::vector<AllocPlanPerValue>& allocation_plan);
+                        const DataTransferManager& data_transfer_mgr);
 
   OpKernelInfo(const OpKernelInfo& other);
 
@@ -48,9 +46,6 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const;
 
-  const OrtMemoryInfo& GetInputLocation(int input_index) const;
-  const OrtMemoryInfo& GetOutputLocation(int output_index) const;
-
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);
   ORT_DISALLOW_ASSIGNMENT(OpKernelInfo);
@@ -64,8 +59,6 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
   const DataTransferManager& data_transfer_mgr_;
   ProtoHelperNodeContext proto_helper_context_;
-  // reference to the allocation plan for all the tensors
-  const std::vector<AllocPlanPerValue>& allocation_plan_;
 };
 
 }  // namespace onnxruntime

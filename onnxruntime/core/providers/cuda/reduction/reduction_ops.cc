@@ -9,7 +9,7 @@
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #ifdef ENABLE_TRAINING
-#include "orttraining/training_ops/cpu/aten_ops/aten_op.h"
+#include "contrib_ops/cpu/aten_ops/aten_op.h"
 #endif
 
 using namespace onnxruntime::common;
