@@ -11,9 +11,11 @@ redirect_from: /docs/how-to/build/web
 
 There are 2 steps to build ONNX Runtime Web:
 
-- build ONNX Runtime for WebAssembly
-  - or skip and download a pre-built artifacts
-- build onnxruntime-web (NPM package)
+- Obtaining ONNX Runtime WebAssembly artifacts - can be done by - 
+  - Building ONNX Runtime for WebAssembly 
+  - Download the pre-built artifacts
+- Build onnxruntime-web (NPM package)
+  - This step requires the ONNX Runtime WebAssembly artifacts
 
 ## Contents
 {: .no_toc }
@@ -60,10 +62,22 @@ There are 2 steps to build ONNX Runtime Web:
 
 ### Build Instructions
 
+ONNX Runtime WebAssembly can be built with or without multi-thread and Single Instruction Multiple Data (SIMD) support.
+This support is added/removed by appending the following flags to the build command, the default build option is without.
+
+| build flag              | usage                           |
+| ----------------------- | ------------------------------- |
+| `--enable_wasm_threads` | build with multi-thread support |
+| `--enable_wasm_simd`    | build with SIMD support         |
+
+A complete build for ONNX runtime WebAssembly artifacts will contain 4 ".wasm" files, covering all ON/OFF configuration of these flags.
+The build command below should be run for each of the configurations.
+
 in `<ORT_ROOT>/`, run one of the following commands to build WebAssembly:
 
 ```sh
 # In windows, use 'build' to replace './build.sh'
+# It's recommended to use '--skip_tests` due to performance and memory hogging concerns - please review FAQ for more details
 
 # The following command build debug.
 ./build.sh --build_wasm
@@ -75,14 +89,7 @@ in `<ORT_ROOT>/`, run one of the following commands to build WebAssembly:
 ./build.sh --config Release --build_wasm --skip_tests --disable_wasm_exception_catching --disable_rtti
 ```
 
-ONNX Runtime WebAssembly can be built with or without multi-thread/SIMD support, specified by appending the following flags.
-
-| build flag              | usage                           |
-| ----------------------- | ------------------------------- |
-| `--enable_wasm_threads` | build with multi-thread support |
-| `--enable_wasm_simd`    | build with SIMD support         |
-
-To get all build artifacts of ONNX Runtime WebAssembly, it needs 4 times of build with the combinations of ON/OFF of the 2 flags. A full list of build artifacts are as below:
+A full list of build artifacts are as below:
 
 | file name                   | `--enable_wasm_threads` | `--enable_wasm_simd` |
 | --------------------------- | ----------------------- | -------------------- |
@@ -96,7 +103,9 @@ To get all build artifacts of ONNX Runtime WebAssembly, it needs 4 times of buil
 
 ### Minimal Build Support
 
-ONNX Runtime WebAssembly can be built with flag `--minimal_build`. This will generate smaller artifacts and also have a less runtime memory usage. An ORT format model is required. A detailed instruction will come soon. See also [ORT format Conversion](../reference/ort-format-models.md).
+ONNX Runtime WebAssembly can be built with flag `--minimal_build`. This will generate smaller artifacts and also have a less runtime memory usage. 
+In order to use this ONNX Runtime confiruation an ORT format model is required (vs. ONNX format). 
+A detailed guide will come soon. for more info please see also [ORT format Conversion](../reference/ort-format-models.md).
 
 ### FAQ
 
