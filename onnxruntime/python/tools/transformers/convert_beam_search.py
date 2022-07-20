@@ -677,7 +677,7 @@ def remove_shared_initializers(
         if value_info.name in mapping_initializers_2:
             value_info.name = mapping_initializers_2[value_info.name]
 
-    # Rename nodes inputs in graph 1:
+    # Rename nodes inputs in graph 2:
     for node in graph2.node:
         for j in range(len(node.input)):
             if node.input[j] in mapping_initializers_2:
@@ -853,8 +853,6 @@ def convert_model(args: argparse.Namespace):
         )
     else:
         node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
-
-    from onnx import TensorProto
 
     # graph inputs
     input_ids = onnx.helper.make_tensor_value_info("input_ids", TensorProto.INT32, ["batch_size", "sequence_length"])

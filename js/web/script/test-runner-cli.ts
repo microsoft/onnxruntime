@@ -451,7 +451,11 @@ function run(config: Test.Config) {
     // STEP 5. use Karma to run test
     npmlog.info('TestRunnerCli.Run', '(5/5) Running karma to start test runner...');
     const karmaCommand = path.join(npmBin, 'karma');
-    const browser = getBrowserNameFromEnv(args.env, args.debug);
+    const browser = getBrowserNameFromEnv(
+        args.env,
+        args.bundleMode === 'perf' ? 'perf' :
+            args.debug             ? 'debug' :
+                                     'test');
     const karmaArgs = ['start', `--browsers ${browser}`];
     if (args.debug) {
       karmaArgs.push('--log-level info --timeout-mocha 9999999');
@@ -552,10 +556,10 @@ function saveConfig(config: Test.Config) {
   fs.writeJSONSync(path.join(TEST_ROOT, './testdata-config.json'), config);
 }
 
-function getBrowserNameFromEnv(env: TestRunnerCliArgs['env'], debug?: boolean) {
+function getBrowserNameFromEnv(env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test') {
   switch (env) {
     case 'chrome':
-      return debug ? 'ChromeDebug' : 'ChromeTest';
+      return selectChromeBrowser(mode);
     case 'edge':
       return 'Edge';
     case 'firefox':
@@ -568,5 +572,16 @@ function getBrowserNameFromEnv(env: TestRunnerCliArgs['env'], debug?: boolean) {
       return process.env.ORT_WEB_TEST_BS_BROWSERS!;
     default:
       throw new Error(`env "${env}" not supported.`);
+  }
+}
+
+function selectChromeBrowser(mode: 'debug'|'perf'|'test') {
+  switch (mode) {
+    case 'debug':
+      return 'ChromeDebug';
+    case 'perf':
+      return 'ChromePerf';
+    default:
+      return 'ChromeTest';
   }
 }

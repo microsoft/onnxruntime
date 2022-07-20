@@ -1,10 +1,7 @@
 from copy import deepcopy
 
 import torch
-from opgen.generator import MakeTorchFallback as MakeTorchFallback
-from opgen.generator import ONNXOp as ONNXOp
-from opgen.generator import ORTGen as ORTGen
-from opgen.generator import SignatureOnly as SignatureOnly
+from opgen.generator import MakeTorchFallback, ONNXOp, SignatureOnly
 from opgen.onnxops import *
 from packaging import version
 
@@ -45,6 +42,7 @@ class GeluGrad(ONNXOp):
 
 ops = {}
 type_promotion_ops = []
+aten_output_type = {}
 
 # the following op list is for ops that have a .out version. Often this is the only op needing to be implemented
 # and the regular and inplace(_) version derive from the .out.
@@ -68,7 +66,6 @@ unary_ops_with_out = [
     "hardsigmoid",
     "log",
     "neg",
-    "nonzero",
     "reciprocal",
     "round",
     "sigmoid",
@@ -92,7 +89,6 @@ unary_ops = [
     "det",
     "isinf",
     "isnan",
-    "nonzero",
     "relu",
     "selu",
 ]
@@ -142,7 +138,8 @@ hand_implemented = {
     "aten::addmm": Gemm("mat1", "mat2", "self", alpha="alpha", beta="beta"),
     "aten::add_.Tensor": SignatureOnly(),
     "aten::t": Transpose("self"),
-    "aten::mm.out": MatMul("self", "mat2"),
+    # MatMul("self", "mat2"), fails since it resizes based on self but should be based on result shape of the mult
+    "aten::mm.out": SignatureOnly(),
     "aten::zeros_like": ConstantOfShape(
         Shape("self")
     ),  # the default constant is 0, so don't need to speicify attribute
@@ -161,15 +158,27 @@ hand_implemented = {
     "aten::ne.Tensor_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
     "aten::eq.Tensor_out": Cast(Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
     "aten::eq.Scalar_out": Cast(Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
-    "aten::bitwise_and.Tensor_out": MakeTorchFallback(),
-    "aten::masked_select": MakeTorchFallback(),
-    "aten::_local_scalar_dense": MakeTorchFallback(),
+    "aten::bitwise_and.Tensor_out": And("self", "other"),  # This generates a fallback for all but Bool, as expected.
+    "aten::masked_select": GatherND("self", Transpose(NonZero(Expand("mask", Shape("self"))))),
+    "aten::_local_scalar_dense": MakeTorchFallback(),  # This function extracts a scalar value from
+    #   a tensor with exactly one value; there's no need to try to do this on an ORT device.
+    #   See CPU impl at pytorch/blob/master/aten/src/ATen/native/Scalar.cpp
     "aten::gt.Scalar_out": MakeTorchFallback(),
     "aten::lt.Scalar_out": MakeTorchFallback(),
     "aten::equal": SignatureOnly(),
     "aten::_softmax": Softmax("self", axis="dim"),
     "aten::argmax.out": SignatureOnly(),
+    "aten::nonzero": Transpose(NonZero("self")),
+    "aten::nonzero.out": SignatureOnly(),
+    "aten::_log_softmax.out": SignatureOnly(),
+    "aten::nll_loss_forward.output": MakeTorchFallback(),
+    "aten::nll_loss_backward.grad_input": MakeTorchFallback(),
+    "aten::_log_softmax_backward_data.out": MakeTorchFallback(),
 }
+
+# If the aten op expects a specific output type that differs from self
+# add the op and type to aten_output_type
+aten_output_type["aten::nonzero"] = "at::ScalarType::Long"
 
 # Signature of gelu_backward was changed in this commit id 983ba5e585485ed61a0c0012ef6944f5685e3d97 and PR 61439
 # This is done to make sure it is backward and future compatible
