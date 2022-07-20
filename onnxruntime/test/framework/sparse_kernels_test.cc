@@ -705,6 +705,30 @@ struct InsertIndices {
       // Conversion on the fly to the target data type
       std::vector<T> indices(indices_data.cbegin(), indices_data.cend());
       indices_tp.mutable_raw_data()->assign(reinterpret_cast<const char*>(indices.data()), indices.size() * sizeof(T));
+      char *bytes;
+      bytes = (char*)(indices_tp.mutable_raw_data()->c_str());
+      if (1)
+      {
+          /* Convert TensorProto to Little Endian as expected by UnpackInitializerData */
+#ifdef DEBUG_AIX
+          std::cout << "Doing byte swapping for little endian sparse_kernels_test.cc" << std::endl;
+#endif
+          const size_t element_size = sizeof(T);
+          size_t num_elements = indices_tp.raw_data().size() / element_size;
+
+          for (size_t i = 0; i < num_elements; ++i) {
+              char* start_byte = bytes + i * element_size;
+              char* end_byte = start_byte + element_size - 1;
+              /* keep swapping */
+              for (size_t count = 0; count < element_size / 2; ++count) {
+                  char temp = *start_byte;
+                  *start_byte = *end_byte;
+                  *end_byte = temp;
+                  ++start_byte;
+                  --end_byte;
+              }
+          }
+      }
     }
   }
 };
@@ -837,6 +861,26 @@ static void TestConversion(
 template <typename T>
 static void RawDataWriter(const std::vector<T>& values, TensorProto& tp, TensorProto_DataType datatype) {
   tp.set_data_type(datatype);
+  char* bytes = (char*)values.data();
+  if (1) {
+#ifdef DEBUG_AIX
+         std::cout<<"Doing byte swapping in RawDataWriter sparse_kernels_test.cc "<<std::endl;
+#endif
+         const size_t element_size = sizeof(T);
+         const size_t num_elements = values.size();
+         for (size_t i = 0; i < num_elements; ++i) {
+             char* start_byte = bytes + i * element_size;
+             char* end_byte = start_byte + element_size - 1;
+             /* keep swapping */
+             for (size_t count = 0; count < element_size / 2; ++count) {
+                  char temp = *start_byte;
+                  *start_byte = *end_byte;
+                  *end_byte = temp;
+                  ++start_byte;
+                  --end_byte;
+             }
+         }
+  }
   tp.set_raw_data(values.data(), values.size() * sizeof(T));
 }
 

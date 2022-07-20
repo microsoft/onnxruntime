@@ -9,7 +9,7 @@
 #ifdef _WIN32
 #include "getopt.h"
 #else
-#include <getopt.h>
+// #include <getopt.h>
 #include <thread>
 #endif
 #include "TestResultStat.h"
@@ -26,6 +26,7 @@
 #include "nlohmann/json.hpp"
 
 using namespace onnxruntime;
+std::unique_ptr<Ort::Env> ort_env;
 
 namespace {
 void usage() {
