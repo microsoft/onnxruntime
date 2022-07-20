@@ -1,0 +1,46 @@
+[package]
+authors = ["Nicolas Bigaouette <nbigaouette@gmail.com>"]
+edition = "2018"
+name = "onnxruntime"
+version = "0.0.14"
+
+description = "Wrapper around Microsoft's ONNX Runtime"
+documentation = "https://docs.rs/onnxruntime"
+homepage = "https://github.com/nbigaouette/onnxruntime-rs"
+license = "MIT OR Apache-2.0"
+readme = "../README.md"
+repository = "https://github.com/nbigaouette/onnxruntime-rs"
+
+categories = ["science"]
+keywords = ["neuralnetworks", "onnx", "bindings"]
+
+[[test]]
+name = "integration_tests"
+required-features = ["model-fetching"]
+
+[dependencies]
+onnxruntime-sys = { version = "0.0.14", path = "../onnxruntime-sys" }
+
+lazy_static = "1.4"
+ndarray = "0.15"
+thiserror = "1.0"
+tracing = "0.1"
+
+# Enabled with 'model-fetching' feature
+ureq = { version = "2.1", optional = true }
+
+[dev-dependencies]
+image = "0.23"
+test-log = { version = "0.2", default-features = false, features = ["trace"] }
+tracing-subscriber = "0.2"
+ureq = "2.1"
+
+[features]
+# Fetch model from ONNX Model Zoo (https://github.com/onnx/models)
+model-fetching = ["ureq"]
+# Disable build script; used for https://docs.rs
+disable-sys-build-script = ["onnxruntime-sys/disable-sys-build-script"]
+generate-bindings = ["onnxruntime-sys/generate-bindings"]
+
+[package.metadata.docs.rs]
+features = ["disable-sys-build-script", "model-fetching"]
