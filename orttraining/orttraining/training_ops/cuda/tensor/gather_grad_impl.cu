@@ -178,8 +178,9 @@ void DirectSumImpl(
   uint32_t grid_z = 1;
   const uint32_t max_grid_y = static_cast<uint32_t>(prop.maxGridSize[1]);
   if (grid_y > max_grid_y) {
-    grid_z = CeilDiv(grid_y, max_grid_y);
-    grid_y = max_grid_y;
+    uint32_t sqrt = static_cast<uint32_t>(std::sqrt(static_cast<double>(grid_y)));
+    if (sqrt * sqrt < grid_y) sqrt += 1;
+    grid_y = grid_z = sqrt;
   }
   dim3 grid(CeilDiv(num_gathered_indices, 4), grid_y, grid_z);
 
