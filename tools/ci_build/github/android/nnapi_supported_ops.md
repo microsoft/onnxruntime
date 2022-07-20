@@ -43,11 +43,11 @@ Keep in sync with doco generated from /docs/execution-providers/NNAPI-ExecutionP
 |ai.onnx:Slice||
 |ai.onnx:Softmax||
 |ai.onnx:Sqrt||
-|ai.onnx:Squeeze|Input axes must be constant.|
+|ai.onnx:Squeeze|Input axes should be constant.|
 |ai.onnx:Sub||
 |ai.onnx:Tanh||
 |ai.onnx:Transpose||
-|ai.onnx:Unsqueeze|Input axes must be constant.|
+|ai.onnx:Unsqueeze|Input axes should be constant.|
 |com.microsoft:QLinearAdd|All quantization scales and zero points should be constant.|
 |com.microsoft:QLinearAveragePool|Only 2D Pool is supported.<br/>All quantization scales and zero points should be constant.|
 |com.microsoft:QLinearSigmoid|All quantization scales and zero points should be constant.|
