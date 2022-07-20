@@ -535,21 +535,21 @@ class OrtOpTests(unittest.TestCase):
                 "torch." + math_sign_ops + "(ort_tensor_int, ort_scalar_int_lt, out=ort_out_tensor)", "<string>", "eval"
             )
         )
-        ort_int_int_not_result = eval(
+        ort_int_int_gt_result = eval(
             compile("torch." + math_sign_ops + "(ort_tensor_int, ort_scalar_int_gt)", "<string>", "eval")
         )
-        ort_float_float_result = eval(
+        ort_float_float_lt_result = eval(
             compile("torch." + math_sign_ops + "(ort_tensor_float, float_lt)", "<string>", "eval")
         )
-        ort_float_float_not_result = eval(
+        ort_float_float_gt_result = eval(
             compile("torch." + math_sign_ops + "(ort_tensor_float, float_gt)", "<string>", "eval")
         )
 
         assert torch.equal(cpu_out_tensor, ort_out_tensor.to("cpu"))
         assert torch.equal(cpu_int_int_result, ort_int_int_result.to("cpu"))
-        assert torch.equal(cpu_int_int_gt_result, ort_int_int_not_result.to("cpu"))
-        assert torch.equal(cpu_float_float_lt_result, ort_float_float_result.to("cpu"))
-        assert torch.equal(cpu_float_float_gt_result, ort_float_float_not_result.to("cpu"))
+        assert torch.equal(cpu_int_int_gt_result, ort_int_int_gt_result.to("cpu"))
+        assert torch.equal(cpu_float_float_lt_result, ort_float_float_lt_result.to("cpu"))
+        assert torch.equal(cpu_float_float_gt_result, ort_float_float_gt_result.to("cpu"))
 
     def test_fill(self):
         device = self.get_device()
