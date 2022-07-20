@@ -31,7 +31,7 @@ class AveragePool : public OpKernel {
 
   XnnpackOperator op0_;
   std::optional<std::pair<float, float>> clip_min_max_;
-  QuantParam quant_param_;
+  OpQuantParam quant_param_;
   OpComputeType avgpool_type_ = OpComputeType::op_compute_type_invalid;
 };
 }  // namespace xnnpack

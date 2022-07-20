@@ -47,7 +47,7 @@ class Conv : public OpKernel {
   xnn_caches xnn_caches_ = {0, 0};
   xnn_weights_cache weights_cache_;
 #endif
-  QuantParam quant_param_;
+  OpQuantParam quant_param_;
   OpComputeType conv_type_ = OpComputeType::op_compute_type_invalid;
 };
 

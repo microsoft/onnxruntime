@@ -9,6 +9,7 @@
 #include "core/providers/utils.h"
 #include "core/providers/xnnpack/detail/utils.h"
 #include "core/framework/tensorprotoutils.h"
+#include "gsl/gsl-lite.hpp"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -21,7 +22,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
                            const Tensor& Weight, const Tensor* Bias,
                            struct xnn_operator*& p,
                            xnn_caches_t caches_t,
-                           QuantParam* quant_param,
+                           const OpQuantParam& quant_param,
                            OpComputeType conv_type) {
   uint32_t kernel_height = gsl::narrow<uint32_t>(kernel_shape[0]);
   uint32_t kernel_width = gsl::narrow<uint32_t>(kernel_shape[1]);
@@ -43,7 +44,8 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
 
   xnn_status status = xnn_status::xnn_status_uninitialized;
   p = nullptr;
-
+  float foutput_min = clip_min_max ? clip_min_max->first : -INFINITY;
+  float foutput_max = clip_min_max ? clip_min_max->second : INFINITY;
   // with the following IC and OC number, we can cover depthwise and regular conv at the same time
   // the equation 'IC (group_input_channels) == C ' set up when group_count==1 (regular convolution)
   // and OC (group_output_channels) follows the same rule.
@@ -54,8 +56,6 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
   size_t group_input_channels = gsl::narrow<size_t>(C / group_count);   // either C or 1
   size_t group_output_channels = gsl::narrow<size_t>(M / group_count);  // either M or M/C
   if (conv_type == OpComputeType::op_compute_type_fp32) {
-    float output_min = clip_min_max ? clip_min_max->first : -INFINITY;
-    float output_max = clip_min_max ? clip_min_max->second : INFINITY;
     auto* B_data = Bias ? Bias->Data<float>() : nullptr;
     status = xnn_create_convolution2d_nhwc_f32(
         input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
@@ -66,12 +66,17 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         group_input_channels, group_output_channels,  // groups, group_input_channels, group_output_channels
         C, M,                                         // input channel stride, output channel stride
         Weight.Data<float>(), B_data,
-        output_min, output_max, flags,
+        foutput_min, foutput_max, flags,
         caches_t,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qs8) {
-    int8_t output_min = -126;
-    int8_t output_max = 126;
+    const float output_scale = quant_param[2].first[0];
+    const int32_t output_zero_point = quant_param[2].second;
+    const int8_t output_min =
+        gsl::narrow<int8_t>(lrintf(fminf(fmaxf(foutput_min / output_scale + output_zero_point, -128.0f), 127.0f)));
+    const int8_t output_max =
+        gsl::narrow<int8_t>(lrintf(fminf(fmaxf(foutput_max / output_scale + output_zero_point, -128.0f), 127.0f)));
+
     auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
     status = xnn_create_convolution2d_nhwc_qs8(
         input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
@@ -82,17 +87,21 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         group_input_channels,
         group_output_channels,
         C, M,
-        gsl::narrow<int8_t>(quant_param->X_zero_point_value), quant_param->X_scale_value,
-        quant_param->W_scale_value, Weight.Data<int8_t>(), B_data,
-        gsl::narrow<int8_t>(quant_param->Y_zero_point_value), quant_param->Y_scale_value,
+        quant_param[0].second, quant_param[0].first[0],
+        quant_param[1].first[0], Weight.Data<int8_t>(), B_data,
+        quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
         caches_t,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qs8_per_channel) {
     auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
-    int8_t output_min = -126;
-    int8_t output_max = 126;
+    const float output_scale = quant_param[2].first[0];
+    const int32_t output_zero_point = quant_param[2].second;
+    const int8_t output_min =
+        gsl::narrow<int8_t>(lrintf(fminf(fmaxf(foutput_min / output_scale + output_zero_point, -128.0f), 127.0f)));
+    const int8_t output_max =
+        gsl::narrow<int8_t>(lrintf(fminf(fmaxf(foutput_max / output_scale + output_zero_point, -128.0f), 127.0f)));
     status = xnn_create_convolution2d_nhwc_qc8(
         input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
         kernel_height, kernel_width,
@@ -102,18 +111,23 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         group_input_channels,
         group_output_channels,
         C, M,
-        gsl::narrow<int8_t>(quant_param->X_zero_point_value), quant_param->X_scale_value,
-        quant_param->W_scale_tensor->template Data<float>(),
+        // zero_point will convert to int8_t automatically
+        quant_param[0].second, quant_param[0].first[0],
+        quant_param[1].first.data(),
         Weight.Data<int8_t>(), B_data,
-        quant_param->Y_zero_point_value, quant_param->Y_scale_value,
+        quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
         caches_t,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qu8) {
     auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
-    uint8_t output_min = clip_min_max ? gsl::narrow<uint8_t>(clip_min_max->first) : 0;
-    uint8_t output_max = clip_min_max ? gsl::narrow<uint8_t>(clip_min_max->second) : 255;
+    const float output_scale = quant_param[2].first[0];
+    const int32_t output_zero_point = quant_param[2].second;
+    const uint8_t output_min =
+        gsl::narrow<uint8_t>(lrintf(fminf(fmaxf(foutput_min / output_scale + output_zero_point, 0.0f), 255.0f)));
+    const uint8_t output_max =
+        gsl::narrow<uint8_t>(lrintf(fminf(fmaxf(foutput_max / output_scale + output_zero_point, 0.0f), 255.0f)));
     status = xnn_create_convolution2d_nhwc_qu8(
         input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
         kernel_height, kernel_width,
@@ -123,36 +137,33 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         group_input_channels,
         group_output_channels,
         C, M,
-        quant_param->X_zero_point_value, quant_param->X_scale_value,
-        quant_param->W_zero_point_value, quant_param->W_scale_value,
+        quant_param[0].second, quant_param[0].first[0],
+        quant_param[1].second, quant_param[1].first[0],
         Weight.Data<uint8_t>(), B_data,
-        quant_param->Y_zero_point_value, quant_param->Y_scale_value,
+        quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
         caches_t,
         &p);
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Failed to create xnnpack kernel. unsupported kernel type  ");
   }
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Failed to create xnnpack kernel. xnn_create_convolution2d_nhwc_f32 returned ", status);
+                           "Failed to create xnnpack kernel. xnn_create_convolution2d_nhwc_",
+                           OpTypeToString(conv_type), " returned ", status);
   }
 
   return Status::OK();
 }
 
-static OpComputeType ParseQuantParamAndConType(const OpKernelInfo& info, QuantParam& quant_param_, int32_t x_dtype) {
-  InputTensorOrder tensor_index = {0, 1, 2, 3, 4, 5, 6, 7, 8};
-  ParseQuantParamFromInfoByOrder(info, tensor_index, quant_param_);
+static OpComputeType ParseQuantParamAndConType(const OpKernelInfo& info, OpQuantParam& quant_param, int32_t x_dtype) {
+  quant_param = ParseQuantParamForOp(info, x_dtype, 2);
   OpComputeType conv_type = OpComputeType::op_compute_type_invalid;
   if (x_dtype == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
     // The rules of per-channel quantization is that:
-    // X-tensor share the same scalar-scale and zp as per-tensor quantization
-    // while we have separate quantization params for each conv kernel,
-    // and there is total output-channels of kernels
-    if (quant_param_.W_scale_tensor) {
+    // X-tensor share the same scalar-scale and zp under per-tensor quantization
+    // But we have separate quantization params for each conv output-channel,
+    // and there is total output-channels of scales
+    if (quant_param[1].first.size() > 1) {
       conv_type = OpComputeType::op_compute_type_qs8_per_channel;
     } else {
       conv_type = OpComputeType::op_compute_type_qs8;
@@ -404,9 +415,13 @@ Conv::Conv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_{info} {
   auto input_dtype = X.TypeAsProto()->tensor_type().elem_type();
   if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     conv_type_ = OpComputeType::op_compute_type_fp32;
-  } else {
+  } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_INT8 ||
+             input_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     weight_index = 3;
     conv_type_ = ParseQuantParamAndConType(info, quant_param_, input_dtype);
+  } else {
+    auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*X.TypeAsProto()));
+    ORT_THROW("unsupported Conv in XnnpackEP, we have FLOAT|UINT8|INT8, but got ", stype);
   }
   ORT_ENFORCE(info.TryGetConstantInput(weight_index, &W),
               "Weight input was not constant initializer. XNNPACK EP should not have asked for the node. Node name:",
@@ -477,7 +492,7 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 #else
                                    0,
 #endif
-                                   &quant_param_, conv_type_);
+                                   quant_param_, conv_type_);
     ORT_RETURN_IF_ERROR(ret);
     op0_.reset(p);
   }
@@ -527,12 +542,11 @@ Status Conv::Compute(OpKernelContext* context) const {
   } else if (conv_type_ == OpComputeType::op_compute_type_qs8_per_channel) {
     status = xnn_setup_convolution2d_nhwc_qc8(op0_.get(), N, H, W, X.Data<int8_t>(), Y->MutableData<int8_t>(),
                                               nullptr /*threadpool*/);  // TBD: how to handle threading
-  } else {
-    status = xnn_status_invalid_state;
   }
 
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_convolution2d_nhwc_f32 returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_convolution2d_nhwc_",
+                           OpTypeToString(conv_type_), "returned ", status);
   }
 
   status = xnn_run_operator(op0_.get(), nullptr);

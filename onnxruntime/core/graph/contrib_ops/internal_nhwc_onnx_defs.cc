@@ -3,13 +3,15 @@
 
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
+#include "onnx/onnx_pb.h"
 
 namespace onnxruntime {
 namespace internal_nhwc_onnx {
+using ONNX_NAMESPACE::AttributeProto;
 
 void RegisterInternalNHWCOpset() {
 ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearSoftmax)
-    .SinceVersion(11)
+    .SinceVersion(1)
     .SetDomain(onnxruntime::kMSInternalNHWCDomain)
     .SetDoc(R"DOC(
 QLinearSoftmax computes the normalized exponential values for the given input:
@@ -21,6 +23,8 @@ indicates the dimension along which QLinearSoftmax will be performed.
 The output tensor has the same shape
 and contains the QLinearSoftmax values of the corresponding input.
 )DOC")
+                             .Attr("opset", "use to mark SinceVersion", AttributeProto::INT, static_cast<int64_t>(1))
+                             .Attr("axis", "use to mark SinceVersion", AttributeProto::INT, static_cast<int64_t>(-1))
                              .Input(0, "X",
                                     "The input tensor that's coerced into a 2D matrix of size (NxD)",
                                     "T")

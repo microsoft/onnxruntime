@@ -41,28 +41,7 @@ enum TensorQuantType : uint8_t {
   TensorTypeFp16,
 };
 
-struct InputTensorOrder {
-  int X_IN = -1;
-  int X_SCALE = -1;
-  int X_ZERO_POINT = -1;
-  int W_CONST = -1;
-  int W_SCALE = -1;
-  int W_ZERO_POINT = -1;
-  int Y_SCALE = -1;
-  int Y_ZERO_POINT = -1;
-  int BIAS = -1;
-};
-
-struct QuantParam {
-  uint8_t X_zero_point_value = 0;
-  uint8_t W_zero_point_value = 0;
-  uint8_t Y_zero_point_value = 0;
-
-  float X_scale_value = 0;
-  float W_scale_value = 0;
-  const Tensor* W_scale_tensor = nullptr;
-  float Y_scale_value = 0;
-};
+using OpQuantParam = std::vector<std::pair<std::vector<float>, uint8_t>>;
 
 enum class QuantizedOpType : uint8_t {
   QLinearConv,
@@ -101,19 +80,13 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& unit_node
 
 bool GetType(const NodeArg& node_arg, int32_t& type);
 bool GetShape(const NodeArg& node_arg, TensorShapeVector& shape);
-bool ParseQuantParamFromInfoByOrder(const OpKernelInfo& info,
-                                    const InputTensorOrder& scale_zp_indexs,
-                                    QuantParam& quant_param);
 
 TensorQuantType GetTensorQuantType(const onnxruntime::NodeUnit& node_unit, int32_t io_index,
                                    bool is_output, const onnxruntime::GraphViewer& graph_viewer);
-/*const onnx::TensorProto* GetQuantizationScale(const InitializedTensorSet& initializers,
-                                              const NodeUnitIODef& io_def);
 
-const onnx::TensorProto* GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
-                                                  const NodeUnitIODef& io_def);
-*/
+OpQuantParam ParseQuantParamForOp(const OpKernelInfo& info, int32_t x_dtype, size_t howManyInputScaleAndZp);
 const char* TensorQtypeToString(enum TensorQuantType type);
+const char* OpTypeToString(OpComputeType opCtype);
 
 }  // namespace xnnpack
 }  // namespace onnxruntime

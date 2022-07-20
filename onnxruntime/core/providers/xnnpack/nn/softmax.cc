@@ -5,10 +5,12 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/math/softmax_shared.h"
+#include "core/optimizer/initializer.h"
 
 namespace onnxruntime {
 namespace xnnpack {
-
+std::pair<const onnx::TensorProto*, const onnx::TensorProto*> GetQuantizationZeroPointAndScale(const GraphViewer& graphview,
+                                                                                               const NodeUnitIODef& io_def);
 namespace {
 static bool IsQuantSoftmaxSupported(const NodeUnit& node_unit, const GraphViewer& graph) {
   bool supported = false;
@@ -19,6 +21,20 @@ static bool IsQuantSoftmaxSupported(const NodeUnit& node_unit, const GraphViewer
     if (x_input_type != TensorTypeUint8 ||
         output_type != TensorTypeUint8) {
       break;
+    }
+    // to verify softmax output scale and zp is 1/256 and 0, otherwise xnnpack ep has to do extra requantization
+    // idealy, QlinearSoftmax or QDQSoftmax will keep this output scale and zp, but we have to handle some 
+    // qdq models converted from other framework
+    auto [scale_tensor, zero_tensor] = GetQuantizationZeroPointAndScale(graph, node_unit.Outputs()[0]);
+    Initializer q_scale(*scale_tensor, node_unit.ModelPath());
+    if (fabs(*q_scale.data<float>() - 1.0f / 256.0f) > 0.0001f) {
+      break;
+    }
+    if (scale_tensor) {
+      Initializer q_zp(*zero_tensor, node_unit.ModelPath());
+      if (*q_zp.raw_data() != 0) {
+        break;
+      }
     }
     supported = true;
   } while (false);
@@ -93,9 +109,28 @@ bool Softmax::IsSoftmaxOnnxNodeSupported(const NodeUnit& node_unit,
 
 Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
   const auto& node = info.node();
-  opset_ = node.SinceVersion();
+  auto input_defs = node.InputDefs();
+  int x_dtype = 0;
+  ORT_ENFORCE(GetType(*input_defs[0], x_dtype));
+  if (x_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    op_type_ = OpComputeType::op_compute_type_fp32;
+  } else if (x_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    op_type_ = OpComputeType::op_compute_type_qu8;
+  } else {
+    auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*input_defs[0]->TypeAsProto()));
+    ORT_THROW("unsupported Conv in softmax, we have FLOAT|UINT8, but got ", stype);
+  }
 
-  int64_t axis;
+  if (op_type_ == OpComputeType::op_compute_type_fp32) {
+    opset_ = node.SinceVersion();
+  } else {
+    // Qlinearsoftmax's opset keep 1, we have to parse it by "opset"
+    int64_t opset = -1;
+    Status status = info.GetAttr<int64_t>("opset", &opset);
+    ORT_ENFORCE(status.IsOK(), "opset must be existed in attributes of QlinearSoftmax");
+    opset_ = gsl::narrow_cast<int>(opset);
+  }
+  int64_t axis = -1;
   Status status = info.GetAttr<int64_t>("axis", &axis);
   // our op checker function has ensured that axis must be the last dim
   // The "semantic" meaning of axis has changed in opset-13.
@@ -111,8 +146,7 @@ Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
     }
   }
 
-  // we have check it in GetCapability
-  auto input_defs = node.InputDefs();
+  // we have checked it in GetCapability
   const auto& x_shape = input_defs[0]->Shape();
   size_t rank = x_shape->dim_size();
   if (rank == 0) {
@@ -120,16 +154,6 @@ Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
   }
   if (axis_ < 0) {
     axis_ = gsl::narrow<int>(HandleNegativeAxis(axis_, int64_t(rank)));
-  }
-
-  int kernel_dtype = 0;
-  ORT_ENFORCE(GetType(*input_defs[0], kernel_dtype));
-  if (kernel_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    op_type_ = OpComputeType::op_compute_type_fp32;
-  } else if (kernel_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    op_type_ = OpComputeType::op_compute_type_qu8;
-  } else {
-    ORT_THROW("error kernel type input, expected uint8|float, but got `", kernel_dtype, "`");
   }
 
   uint32_t channels = gsl::narrow_cast<uint32_t>(x_shape->dim(axis_).dim_value());
@@ -143,16 +167,15 @@ Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
   struct xnn_operator* p = nullptr;
   if (op_type_ == OpComputeType::op_compute_type_qu8) {
     // the order of input tensor, x,x_scale, x_zp, y_scale, y_zp
-    InputTensorOrder tensor_index = {-1, 1, 2, -1, -1, -1, 3, 4, -1};
-    ParseQuantParamFromInfoByOrder(info, tensor_index, quant_param_);
+    quant_param_ = ParseQuantParamForOp(info, x_dtype, 1);
     xstatus = xnn_create_softmax_nc_qu8(
         channels,
         channels,
         channels,
-        quant_param_.X_scale_value,
-        gsl::narrow_cast<uint8_t>(quant_param_.Y_zero_point_value),
-        quant_param_.Y_scale_value,
-        0,  // flags,
+        quant_param_[0].first[0],  // x_scale
+        quant_param_[1].second,    // y_zp
+        quant_param_[1].first[0],  // y_scale
+        0,                         // flags,
         &p);
   } else if (op_type_ == OpComputeType::op_compute_type_fp32) {
     xstatus = xnn_create_softmax_nc_f32(
@@ -162,7 +185,8 @@ Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
         0,  // flags,
         &p);
   }
-  ORT_ENFORCE(xstatus == xnn_status_success, "xnn_create_softmax_nc failed. Status:", xstatus);
+  ORT_ENFORCE(xstatus == xnn_status_success, "xnn_create_softmax_nc_",
+              OpTypeToString(op_type_), " failed. Status:", xstatus);
   op0_.reset(p);
 }
 
@@ -183,19 +207,20 @@ Status Softmax::Compute(OpKernelContext* ctx) const {
     status = xnn_setup_softmax_nc_qu8(
         op0_.get(),
         N,
-        X->template Data<uint8_t>(),
-        Y->template MutableData<uint8_t>(),
+        X->Data<uint8_t>(),
+        Y->MutableData<uint8_t>(),
         nullptr);
   } else {
     status = xnn_setup_softmax_nc_f32(
         op0_.get(),
         N,
-        X->template Data<float>(),
-        Y->template MutableData<float>(),
+        X->Data<float>(),
+        Y->MutableData<float>(),
         nullptr);
   }
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_softmax_nc_type returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_softmax_nc_",
+                           OpTypeToString(op_type_), " returned ", status);
   }
   status = xnn_run_operator(op0_.get(), nullptr);
   if (status != xnn_status_success) {
@@ -204,12 +229,16 @@ Status Softmax::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Softmax, kOnnxDomain, 1, 13, kXnnpackExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Softmax, kOnnxDomain, 1, 12, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                                   Softmax);
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(QLinearSoftmax, kMSInternalNHWCDomain, 1, 13, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
-                                  Softmax);
+ONNX_OPERATOR_KERNEL_EX(Softmax, kOnnxDomain, 13, kXnnpackExecutionProvider,
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                        Softmax);
+
+ONNX_OPERATOR_KERNEL_EX(QLinearSoftmax, kMSInternalNHWCDomain, 1, kXnnpackExecutionProvider,
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
+                        Softmax);
 
 }  // namespace xnnpack
 }  // namespace onnxruntime

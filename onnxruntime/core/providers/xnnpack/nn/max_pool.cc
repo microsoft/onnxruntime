@@ -12,6 +12,10 @@
 
 namespace onnxruntime {
 namespace xnnpack {
+const onnx::TensorProto* GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
+                                                  const NodeUnitIODef& io_def);
+const onnx::TensorProto* GetQuantizationScale(const InitializedTensorSet& initializers,
+                                              const NodeUnitIODef& io_def);
 namespace {
 static bool IsQuantizedMaxPool(QuantizedOpType quant_op_type) {
   return (quant_op_type == QuantizedOpType::QLinearMaxPool) ||
@@ -24,15 +28,18 @@ static bool IsValidQuantMaxPool(const NodeUnit& node_unit, const GraphViewer& gr
     TensorQuantType x_input_type, output_type;
     x_input_type = GetTensorQuantType(node_unit, 0, false, graph);
     output_type = GetTensorQuantType(node_unit, 0, true, graph);
-    if (x_input_type != TensorTypeUint8 || output_type != TensorTypeUint8) {
+    if (x_input_type != output_type ||
+        (x_input_type != TensorTypeUint8 &&
+         x_input_type != TensorTypeInt8)) {
       break;
     }
+
     supported = true;
   } while (false);
   return supported;
 }
 
-}
+}  // namespace
 
 // MaxPool doesn't have any quantization params
 bool MaxPool::IsMaxPoolOnnxNodeSupported(const NodeUnit& node_unit,
@@ -54,7 +61,8 @@ bool MaxPool::IsMaxPoolOnnxNodeSupported(const NodeUnit& node_unit,
     // input of maxpool could be fp16/fp32/fp64,i8/u8 according to ONNX
     if (x_type == nullptr ||
         (x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-            x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8)) {
+         x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8 &&
+         x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
       break;
     }
 
@@ -183,10 +191,23 @@ MaxPool::MaxPool(const OpKernelInfo& info)
                                               dilation_height, dilation_width,
                                               C, C, C,  // channels, input_pixel_stride, output_pixel_stride
                                               output_min, output_max, flags, &p);
+  } else if (X_arg.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
+    maxpool_type_ = OpComputeType::op_compute_type_qs8;
+    int8_t output_min = -126;
+    int8_t output_max = 126;
+    status = xnn_create_max_pooling2d_nhwc_s8(input_padding_top, input_padding_right,
+                                              input_padding_bottom, input_padding_left,
+                                              pooling_height, pooling_width,
+                                              stride_height, stride_width,
+                                              dilation_height, dilation_width,
+                                              C, C, C,  // channels, input_pixel_stride, output_pixel_stride
+                                              output_min, output_max, flags, &p);
   } else {
-    // it's impossible, as we have checked it in op_checker
+    auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*X_arg.TypeAsProto()));
+    ORT_THROW("unsupported Conv in maxpool, we have FLOAT|UINT8, but got ", stype);
   }
-  ORT_ENFORCE(status == xnn_status_success, "xnn_create_max_pooling2d_nhwc_type failed. Status:", status);
+  ORT_ENFORCE(status == xnn_status_success, "xnn_create_max_pooling2d_nhwc_",
+              OpTypeToString(maxpool_type_), "failed. Status:", status);
 
   op0_.reset(p);
 }
@@ -214,14 +235,19 @@ Status MaxPool::Compute(OpKernelContext* context) const {
     status = xnn_setup_max_pooling2d_nhwc_f32(op0_.get(), N, H, W,
                                               X.Data<float>(), Y->MutableData<float>(),
                                               nullptr /*threadpool */);  // TBD: how to handle threading
-  } else {
+  } else if (maxpool_type_ == OpComputeType::op_compute_type_qu8) {
     status = xnn_setup_max_pooling2d_nhwc_u8(op0_.get(), N, H, W,
                                              X.Data<uint8_t>(), Y->MutableData<uint8_t>(),
+                                             nullptr /*threadpool */);  // TBD: how to handle threading
+  } else {
+    status = xnn_setup_max_pooling2d_nhwc_s8(op0_.get(), N, H, W,
+                                             X.Data<int8_t>(), Y->MutableData<int8_t>(),
                                              nullptr /*threadpool */);  // TBD: how to handle threading
   }
 
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_max_pooling2d_nhwc_f32 returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_max_pooling2d_nhwc_",
+                           OpTypeToString(maxpool_type_), " returned ", status);
   }
 
   status = xnn_run_operator(op0_.get(), nullptr);
@@ -235,13 +261,15 @@ Status MaxPool::Compute(OpKernelContext* context) const {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(MaxPool, kMSInternalNHWCDomain, 11, 11, kXnnpackExecutionProvider,
                                   KernelDefBuilder()
                                       .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                                            DataTypeImpl::GetTensorType<uint8_t>()}),
+                                                            DataTypeImpl::GetTensorType<uint8_t>(),
+                                                            DataTypeImpl::GetTensorType<int8_t>()}),
                                   MaxPool);
-
+// qlinearmaxpool is not essential
 ONNX_OPERATOR_KERNEL_EX(MaxPool, kMSInternalNHWCDomain, 12, kXnnpackExecutionProvider,
                         KernelDefBuilder()
                             .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                                  DataTypeImpl::GetTensorType<uint8_t>()}),
+                                                  DataTypeImpl::GetTensorType<uint8_t>(),
+                                                  DataTypeImpl::GetTensorType<int8_t>()}),
                         MaxPool);
 }  // namespace xnnpack
 }  // namespace onnxruntime

@@ -6,6 +6,7 @@
 #include "core/graph/graph.h"
 #include "core/providers/utils.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/providers/xnnpack/detail/utils.h"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -14,7 +15,7 @@ static Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
                                   int64_t C,
                                   const std::optional<std::pair<float, float>>& clip_min_max,
                                   struct xnn_operator*& p,
-                                  QuantParam* quant_param,
+                                  const OpQuantParam& quant_param,
                                   OpComputeType avgpool_type) {
   uint32_t input_padding_top = gsl::narrow<uint32_t>(pool_attrs.pads[0]);
   uint32_t input_padding_left = gsl::narrow<uint32_t>(pool_attrs.pads[1]);
@@ -31,7 +32,7 @@ static Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
     flags |= XNN_FLAG_TENSORFLOW_SAME_PADDING;
   }
 
-  xnn_status status;
+  xnn_status status = xnn_status_unsupported_parameter;
   if (avgpool_type == OpComputeType::op_compute_type_fp32) {
     float output_min = clip_min_max ? clip_min_max->first : -INFINITY;
     float output_max = clip_min_max ? clip_min_max->second : INFINITY;
@@ -43,24 +44,23 @@ static Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
                                                    C, C, C,  // channels, input_pixel_stride, output_pixel_stride
                                                    output_min, output_max, flags, &p);
   } else if (avgpool_type == OpComputeType::op_compute_type_qu8) {
-    uint8_t output_min = clip_min_max ? gsl::narrow<uint8_t>(clip_min_max->first) : 0;
-    uint8_t output_max = clip_min_max ? gsl::narrow<uint8_t>(clip_min_max->second) : 255;
+    uint8_t output_min = 0;
+    uint8_t output_max = 255;
     status = xnn_create_average_pooling2d_nhwc_qu8(input_padding_top, input_padding_right,
                                                    input_padding_bottom, input_padding_left,
                                                    pooling_height, pooling_width,
                                                    stride_height, stride_width,
                                                    C, C, C,  // channels, input_pixel_stride, output_pixel_stride
-                                                   quant_param->X_zero_point_value,
-                                                   quant_param->X_scale_value,
-                                                   quant_param->Y_zero_point_value,
-                                                   quant_param->Y_scale_value,
+                                                   quant_param[0].second,
+                                                   quant_param[0].first[0],
+                                                   quant_param[1].second,
+                                                   quant_param[1].first[0],
                                                    output_min, output_max, flags, &p);
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "error kernel type input, expected uint8|float");
   }
 
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_average_pooling2d_nhwc_ failed. Status:", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_average_pooling2d_nhwc_",
+                           OpTypeToString(avgpool_type), " failed. Status:", status);
   }
   return Status::OK();
 }
@@ -192,21 +192,23 @@ AveragePool::AveragePool(const OpKernelInfo& info)
   // exception of the batch size. Can be removed once we've run more models using xnnpack AveragePool.
   auto inferred_output_shape = utils::GetTensorShapeFromTensorShapeProto(*Node().OutputDefs()[0]->Shape());
   ORT_ENFORCE(inferred_output_shape[1] == output_dims_[1] &&
-              inferred_output_shape[2] == output_dims_[2] &&
-              inferred_output_shape[3] == output_dims_[3],
+                  inferred_output_shape[2] == output_dims_[2] &&
+                  inferred_output_shape[3] == output_dims_[3],
               "Shape mismatch between inferred value and calculated value.");
   const auto& input_dtype = X_arg.TypeAsProto()->tensor_type().elem_type();
   if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     avgpool_type_ = OpComputeType::op_compute_type_fp32;
   } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     // the order of input tensor, x,x_scale, x_zp, y_scale, y_zp
-    InputTensorOrder tensor_index = {0, 1, 2, -1, -1, -1, 3, 4, -1};
-    ParseQuantParamFromInfoByOrder(info, tensor_index, quant_param_);
+    quant_param_ = ParseQuantParamForOp(info, input_dtype, 1);
     avgpool_type_ = OpComputeType::op_compute_type_qu8;
+  } else {
+    auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*X_arg.TypeAsProto()));
+    ORT_THROW("unsupported AveragePool in XnnpackEP, we have FLOAT|UINT8, but got ", stype);
   }
   struct xnn_operator* p;
   auto ret = CreateXnnpackKernel(pool_attrs_, C, clip_min_max_, p,
-                                 &quant_param_, avgpool_type_);
+                                 quant_param_, avgpool_type_);
   ORT_ENFORCE(ret.IsOK(), ret.ErrorMessage());
   op0_.reset(p);
 }
@@ -241,7 +243,8 @@ Status AveragePool::Compute(OpKernelContext* context) const {
   }
 
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_average_pooling2d_nhwc_ returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_average_pooling2d_nhwc_",
+                           OpTypeToString(avgpool_type_), " returned ", status);
   }
 
   status = xnn_run_operator(op0_.get(), nullptr);
@@ -258,9 +261,9 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     AveragePool);
 
-ONNX_OPERATOR_TYPED_KERNEL_EX(
+ONNX_OPERATOR_KERNEL_EX(
     QLinearAveragePool, kMSInternalNHWCDomain, 1,
-    uint8_t, kXnnpackExecutionProvider,
+    kXnnpackExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
     AveragePool);
 

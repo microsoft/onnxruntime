@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <random>
+#include <string>
 
 #include "core/common/logging/logging.h"
 #include "core/framework/utils.h"
@@ -52,7 +53,6 @@ TEST(XnnpackEP, TestNhwcConvReluClipFusion) {
   std::vector<float> input_x = generator.Uniform<float>(input_shape_x.GetDims(), -128, 128);
 
   OrtValue ml_value_x;
-  OrtValue ml_value_w;
   CreateMLValue<float>(input_shape_x.GetDims(), input_x.data(), OrtMemoryInfo(), &ml_value_x);
 
   NameMLValMap feeds;
@@ -182,25 +182,62 @@ static void RunModelTest(
                             helper.feeds_, params);
 }
 
+static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* graph_name, float scale_factor = 1.0f) {
+  std::function<void(const Graph&)> verify = [](const Graph& graph) -> void {
+    ASSERT_EQ(graph.NumberOfNodes(), 5) << "Transpose*2 + dq +q +qlinearconv "
+                                           "leaving 5 nodes.";
+  };
+  EPVerificationParams params;
+  params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
+  // Xnnpack has higher precision than CPU_S8S8,
+  // we can either give a higher tolerance,or disable Graph_Optimizations for cpu-ep
+  params.fp32_abs_err = 1.8f / scale_factor;
+  params.graph_verifier = &verify;
+
+  RandomValueGenerator generator;
+  TensorShape input_shape_x{1, 3, 24, 24};
+  std::vector<float> input_x = generator.Uniform<float>(input_shape_x.GetDims(),
+                                                        -128 * scale_factor, 128 * scale_factor);
+  OrtValue ml_value_x;
+  CreateMLValue<float>(input_shape_x.GetDims(), input_x.data(), OrtMemoryInfo(), &ml_value_x);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("input", ml_value_x));
+
+  auto ep = DefaultXnnpackExecutionProvider();
+  RunAndVerifyOutputsWithEP(ort_model_path, graph_name, std::move(ep), feeds, params);
+}
+
 TEST(XnnpackEP, TestQDQConvU8U8) {
   RunModelTest(BuildQDQConvTestCase<uint8_t /* InputType */,
-                                       uint8_t /* WeightType */,
-                                       int32_t /* BiasType */,
-                                       uint8_t /* OutputType */>(
-                      {1, 1, 5, 5} /* input_shape */,
-                      {1, 1, 3, 3} /* weights_shape */),
-                  "xnnpack_qdq_test_graph_conv_u8u8",
-                  {ExpectedEPNodeAssignment::Some});  // two transpose nodes would be added before and after
+                                    uint8_t /* WeightType */,
+                                    int32_t /* BiasType */,
+                                    uint8_t /* OutputType */>(
+                   {1, 1, 5, 5} /* input_shape */,
+                   {1, 1, 3, 3} /* weights_shape */),
+               "xnnpack_qdq_test_graph_conv_u8u8",
+               {ExpectedEPNodeAssignment::Some});  // two transpose nodes would be added before and after
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_qdq_u8u8.onnx";
+  RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_u8u8");
 }
+
 TEST(XnnpackEP, TestQDQConvS8S8) {
   RunModelTest(BuildQDQConvTestCase<int8_t /* InputType */,
-                                       int8_t /* WeightType */,
-                                       int32_t /* BiasType */,
-                                       int8_t /* OutputType */>(
-                      {1, 1, 5, 5} /* input_shape */,
-                      {1, 1, 3, 3} /* weights_shape */),
-                  "xnnpack_qdq_test_graph_conv_s8s8",
-                  {ExpectedEPNodeAssignment::Some, 0.2f});
+                                     int8_t /* WeightType */,
+                                     int32_t /* BiasType */,
+                                     int8_t /* OutputType */>(
+                    {1, 1, 5, 5} /* input_shape */,
+                    {1, 1, 3, 3} /* weights_shape */),
+                "xnnpack_qdq_test_graph_conv_s8s8",
+                {ExpectedEPNodeAssignment::Some, 0.2f});
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_qdq_s8s8.onnx";
+  RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_s8s8", 0.7f);
+}
+
+TEST(XnnpackEP, TestQDQConvS8S8_per_channel) {
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_qdq_s8s8_perchannel.onnx";
+  RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_s8s8_perchannel", 0.2f);
 }
 
 TEST(XnnpackEP, TestAveragePool) {
@@ -223,44 +260,78 @@ TEST(XnnpackEP, TestAveragePool) {
 
 TEST(XnnpackEP, TestQDQAveragePool) {
   RunModelTest(BuildQDQAveragePoolTestCase<uint8_t /* InputType */,
-                                              uint8_t /* OutputType */>(
-                      {1, 1, 30, 30} /* input_shape */, static_cast<int64_t>(1)),
-                  "xnnpack_qdq_test_graph_averagepool",
-                  {
-                      ExpectedEPNodeAssignment::Some,
-                      1e-2f /* fp32_abs_err */,
-                  });
+                                           uint8_t /* OutputType */>(
+                   {1, 1, 30, 30} /* input_shape */, static_cast<int64_t>(1)),
+               "xnnpack_qdq_test_graph_averagepool",
+               {
+                   ExpectedEPNodeAssignment::Some,
+                   1e-2f /* fp32_abs_err */,
+               });
 }
+
+TEST(XnnpackEP, TestMaxPool) {
+  const std::vector<int64_t> input_shape = {1, 2, 13, 13};
+  auto modelBuilder = [&input_shape](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+    auto* output_arg = builder.MakeOutput();
+    Node& pool_node = builder.AddNode("MaxPool", {input_arg}, {output_arg});
+    std::vector<int64_t> pads((input_shape.size() - 2) * 2, 1);
+    pool_node.AddAttribute("pads", pads);
+    std::vector<int64_t> kernel_shape(input_shape.size() - 2, 3);
+    pool_node.AddAttribute("kernel_shape", kernel_shape);
+  };
+  RunModelTest(modelBuilder, "xnnpack_test_graph_maxpool",
+               {
+                   ExpectedEPNodeAssignment::Some,
+                   1e-2f /* fp32_abs_err */,
+               });
+}
+
+TEST(XnnpackEP, TestQDQMaxPool_u8) {
+  RunModelTest(BuildQDQMaxPoolTestCase<uint8_t /* InputType */,
+                                       uint8_t /* OutputType */>(
+                   {1, 1, 30, 30} /* input_shape */, true),
+               "xnnpack_qdq_test_graph_maxpool_u8",
+               {
+                   ExpectedEPNodeAssignment::Some,
+                   1e-2f /* fp32_abs_err */,
+               });
+}
+
+TEST(XnnpackEP, TestQDQMaxPool_s8) {
+  std::function<void(const Graph&)> verify = [](const Graph& graph) -> void {
+    ASSERT_EQ(graph.NumberOfNodes(), 5) << "Transpose *2 +dq + q +pool"
+                                           " leaving 5 nodes.";
+  };
+
+  RunModelTest(BuildQDQMaxPoolTestCase<int8_t /* InputType */,
+                                       int8_t /* OutputType */>(
+                   {1, 1, 30, 30} /* input_shape */, true),
+               "xnnpack_qdq_test_graph_maxpool_s8",
+               {ExpectedEPNodeAssignment::Some,
+                1e-2f /* fp32_abs_err */, &verify});
+  verify = [](const Graph& graph) -> void {
+    ASSERT_EQ(graph.NumberOfNodes(), 7) << "Transpose *2 +dq*2 + q*2 +pool"
+                                           " leaving 7 nodes.";
+  };
+  RunModelTest(BuildQDQMaxPoolTestCase<int8_t /* InputType */,
+                                       int8_t /* OutputType */>(
+                   {1, 1, 30, 30} /* input_shape */, false),
+               "xnnpack_qdq_test_graph_maxpool_s8",
+               {ExpectedEPNodeAssignment::Some,
+                1e-2f /* fp32_abs_err */, &verify});
+}
+
 // xnnpack only support the last dim as reduced axis,
 // we are expected that the other reduce axis would be handled by CPUEP
 TEST(XnnpackEP, TestQDQSoftMax_axisZero_v13) {
   RunModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
-                      {1, 2, 3, 32} /* input_shape */,
-                      static_cast<int64_t>(0) /* axis */,
-                      1.f / 256 /* output_scales */,
-                      0 /* output_zp */),
-                  "xnnpack_qdq_test_graph_softmax",
-                  {ExpectedEPNodeAssignment::None});
-}
-
-TEST(XnnpackEP, TestSoftMax_axisZero_v12) {
-  const std::vector<int64_t> input_shape = {1, 2, 3, 5};
-  int64_t axis = input_shape.size() - 1;
-  auto modelCreater = [input_shape, axis](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<float>(input_shape,
-                                               std::numeric_limits<float>::min(),
-                                               std::numeric_limits<float>::max());
-
-    auto* output_arg = builder.MakeOutput();
-
-    // add SoftMax
-    Node& softmax_node = builder.AddNode("Softmax", {input_arg}, {output_arg});
-    softmax_node.AddAttribute("axis", axis);
-    softmax_node.SetSinceVersion(12);
-  };
-  RunModelTest(modelCreater,
-               "xnnpack_test_graph_softmax",
-               {ExpectedEPNodeAssignment::All});
+                   {1, 2, 3, 32} /* input_shape */,
+                   static_cast<int64_t>(0) /* axis */,
+                   1.f / 256 /* output_scales */,
+                   0 /* output_zp */),
+               "xnnpack_qdq_test_graph_softmax",
+               {ExpectedEPNodeAssignment::None});
 }
 
 TEST(XnnpackEP, TestSoftMax_axisLast) {
@@ -284,12 +355,12 @@ TEST(XnnpackEP, TestSoftMax_axisLast) {
 
 TEST(XnnpackEP, TestQDQSoftMax_axisLast) {
   RunModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
-                      {1, 2, 3, 5} /* input_shape */,
-                      static_cast<int64_t>(3) /* axis */,
-                      1.f / 256 /* output_scales */,
-                      0 /* output_zp */),
-                  "xnnpack_qdq_test_graph_softmax",
-                  {ExpectedEPNodeAssignment::All});
+                   {1, 2, 3, 5} /* input_shape */,
+                   static_cast<int64_t>(3) /* axis */,
+                   1.f / 256 /* output_scales */,
+                   0 /* output_zp */),
+               "xnnpack_qdq_test_graph_softmax",
+               {ExpectedEPNodeAssignment::All});
 }
 #endif
 

@@ -801,7 +801,6 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   // and the node_unit has only one output node.
   const auto& output_node_arg = node_unit.Outputs()[0].node_arg;
   const auto& output_name = output_node_arg.Name();
-  const auto& output_node = *node_unit.GetOutputNodes()[0];
 
   // Check if the Reshape output is a graph output, if so we cannot skip the Reshape
   // We do not care the case where the Reshape output is a dead end
@@ -814,7 +813,7 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   }
 
   // We will go through all the output edges
-  for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {
+  for (auto it = node_unit.OutputEdgesBegin(0), end = node_unit.OutputEdgesEnd(0); it != end; ++it) {
     const auto& dest_node_unit = model_builder.GetNodeUnit(&it->GetNode());
     const auto& op_type = dest_node_unit.OpType();
     // TODO add quantized matmul when reshape support quantized input
