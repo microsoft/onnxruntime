@@ -25,81 +25,81 @@ else:
     from onnxruntime.transformers.models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
 
 
-# class TestBeamSearchGpt(unittest.TestCase):
-#     """Test BeamSearch for GPT-2 model"""
+class TestBeamSearchGpt(unittest.TestCase):
+    """Test BeamSearch for GPT-2 model"""
 
-#     def setUp(self):
-#         self.model_name = "gpt2"
-#         self.gpt2_onnx_path = os.path.join(".", "onnx_models", "gpt2_past_fp32_shape.onnx")
-#         self.beam_search_onnx_path = os.path.join(".", "onnx_models", "gpt2_beam_search.onnx")
-#         self.default_arguments = [
-#             f"-m {self.model_name}",
-#             f"--decoder_onnx {self.gpt2_onnx_path}",
-#             f"--output {self.beam_search_onnx_path}",
-#             "--output_sequences_score",
-#             "--repetition_penalty 2.0",
-#         ]
-#         self.sentences = [
-#             "The product is released",
-#             "I enjoy walking in the park",
-#             "Test best way to invest",
-#         ]
-#         self.enable_cuda = torch.cuda.is_available() and "CUDAExecutionProvider" in get_available_providers()
-#         self.remove_onnx_files()
+    def setUp(self):
+        self.model_name = "gpt2"
+        self.gpt2_onnx_path = os.path.join(".", "onnx_models", "gpt2_past_fp32_shape.onnx")
+        self.beam_search_onnx_path = os.path.join(".", "onnx_models", "gpt2_beam_search.onnx")
+        self.default_arguments = [
+            f"-m {self.model_name}",
+            f"--decoder_onnx {self.gpt2_onnx_path}",
+            f"--output {self.beam_search_onnx_path}",
+            "--output_sequences_score",
+            "--repetition_penalty 2.0",
+        ]
+        self.sentences = [
+            "The product is released",
+            "I enjoy walking in the park",
+            "Test best way to invest",
+        ]
+        self.enable_cuda = torch.cuda.is_available() and "CUDAExecutionProvider" in get_available_providers()
+        self.remove_onnx_files()
 
-#     def tearDown(self):
-#         self.remove_onnx_files()
+    def tearDown(self):
+        self.remove_onnx_files()
 
-#     def remove_onnx_files(self):
-#         if os.path.exists(self.gpt2_onnx_path):
-#             os.remove(self.gpt2_onnx_path)
+    def remove_onnx_files(self):
+        if os.path.exists(self.gpt2_onnx_path):
+            os.remove(self.gpt2_onnx_path)
 
-#         if os.path.exists(self.beam_search_onnx_path):
-#             os.remove(self.beam_search_onnx_path)
+        if os.path.exists(self.beam_search_onnx_path):
+            os.remove(self.beam_search_onnx_path)
 
-#     def run_beam_search(self, extra_arguments: str, sentences=None, append_arguments=True):
-#         if append_arguments:
-#             arguments = " ".join(self.default_arguments + [extra_arguments]).split()
-#         else:
-#             arguments = extra_arguments.split()
+    def run_beam_search(self, extra_arguments: str, sentences=None, append_arguments=True):
+        if append_arguments:
+            arguments = " ".join(self.default_arguments + [extra_arguments]).split()
+        else:
+            arguments = extra_arguments.split()
 
-#         # Test CPU
-#         result = run(arguments, sentences=self.sentences if sentences is None else sentences)
-#         self.assertTrue(result["parity"], f"ORT and PyTorch result is different on CPU for arguments {arguments}")
+        # Test CPU
+        result = run(arguments, sentences=self.sentences if sentences is None else sentences)
+        self.assertTrue(result["parity"], f"ORT and PyTorch result is different on CPU for arguments {arguments}")
 
-#         # Test GPU
-#         if self.enable_cuda:
-#             if "--use_gpu" not in arguments:
-#                 arguments.append("--use_gpu")
-#             result = run(arguments, sentences=self.sentences if sentences is None else sentences)
-#             self.assertTrue(result["parity"], f"ORT and PyTorch result is different on GPU for arguments {arguments}")
+        # Test GPU
+        if self.enable_cuda:
+            if "--use_gpu" not in arguments:
+                arguments.append("--use_gpu")
+            result = run(arguments, sentences=self.sentences if sentences is None else sentences)
+            self.assertTrue(result["parity"], f"ORT and PyTorch result is different on GPU for arguments {arguments}")
 
-#         os.remove(self.beam_search_onnx_path)
+        os.remove(self.beam_search_onnx_path)
 
-#     @pytest.mark.slow
-#     def test_return_sequences(self):
-#         for return_sequences in [1, 2]:
-#             self.run_beam_search(f"--num_return_sequences {return_sequences}")
+    @pytest.mark.slow
+    def test_return_sequences(self):
+        for return_sequences in [1, 2]:
+            self.run_beam_search(f"--num_return_sequences {return_sequences}")
 
-#     @pytest.mark.slow
-#     def test_early_stopping(self):
-#         self.run_beam_search("--early_stopping")
+    @pytest.mark.slow
+    def test_early_stopping(self):
+        self.run_beam_search("--early_stopping")
 
-#     @pytest.mark.slow
-#     def test_length_penalty(self):
-#         for length_penalty in [0.5, 2.0]:
-#             self.run_beam_search(f"--length_penalty {length_penalty}")
+    @pytest.mark.slow
+    def test_length_penalty(self):
+        for length_penalty in [0.5, 2.0]:
+            self.run_beam_search(f"--length_penalty {length_penalty}")
 
-#     @pytest.mark.slow
-#     def test_no_repeat_ngram(self):
-#         for ngram_size in [1, 2]:
-#             self.run_beam_search(f"--no_repeat_ngram_size {ngram_size}")
+    @pytest.mark.slow
+    def test_no_repeat_ngram(self):
+        for ngram_size in [1, 2]:
+            self.run_beam_search(f"--no_repeat_ngram_size {ngram_size}")
 
-#     @pytest.mark.slow
-#     def test_external_data(self):
-#         self.run_beam_search(
-#             f"-m gpt2 -e --output {self.beam_search_onnx_path}", sentences=None, append_arguments=False
-#         )
+    @pytest.mark.slow
+    def test_external_data(self):
+        self.run_beam_search(
+            f"-m gpt2 -e --output {self.beam_search_onnx_path}", sentences=None, append_arguments=False
+        )
 
 
 class TestBeamSearchT5(unittest.TestCase):
@@ -179,36 +179,36 @@ class TestBeamSearchT5(unittest.TestCase):
 
         os.remove(self.beam_search_onnx_path)
 
-    # @pytest.mark.slow
-    # def test_return_sequences(self):
-    #     for return_sequences in [1, 2]:
-    #         self.run_beam_search(f"--num_return_sequences {return_sequences}")
+    @pytest.mark.slow
+    def test_return_sequences(self):
+        for return_sequences in [1, 2]:
+            self.run_beam_search(f"--num_return_sequences {return_sequences}")
 
-    # @pytest.mark.slow
-    # def test_early_stopping(self):
-    #     self.run_beam_search("--early_stopping")
+    @pytest.mark.slow
+    def test_early_stopping(self):
+        self.run_beam_search("--early_stopping")
 
-    # @pytest.mark.slow
-    # def test_length_penalty(self):
-    #     for length_penalty in [0.5, 2.0]:
-    #         self.run_beam_search(f"--length_penalty {length_penalty}")
+    @pytest.mark.slow
+    def test_length_penalty(self):
+        for length_penalty in [0.5, 2.0]:
+            self.run_beam_search(f"--length_penalty {length_penalty}")
 
-    # @pytest.mark.slow
-    # def test_no_repeat_ngram(self):
-    #     for ngram_size in [1, 2]:
-    #         self.run_beam_search(f"--no_repeat_ngram_size {ngram_size}")
+    @pytest.mark.slow
+    def test_no_repeat_ngram(self):
+        for ngram_size in [1, 2]:
+            self.run_beam_search(f"--no_repeat_ngram_size {ngram_size}")
 
     @pytest.mark.slow
     def test_custom_attention_mask(self):
         self.run_beam_search("--custom_attention_mask")
 
-    # @pytest.mark.slow
-    # def test_external_data(self):
-    #     self.run_beam_search(
-    #         f"-m t5-small --model_type t5 -e --output {self.beam_search_onnx_path}",
-    #         sentences=None,
-    #         append_arguments=False,
-    #     )
+    @pytest.mark.slow
+    def test_external_data(self):
+        self.run_beam_search(
+            f"-m t5-small --model_type t5 -e --output {self.beam_search_onnx_path}",
+            sentences=None,
+            append_arguments=False,
+        )
 
 
 if __name__ == "__main__":
