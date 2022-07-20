@@ -139,7 +139,7 @@ class SymbolicShapeInference:
             "Gather": self._infer_Gather,
             "GatherElements": self._infer_GatherElements,
             "GatherND": self._infer_GatherND,
-            "Gelu": self._pass_on_shape_and_type,
+            "Identity": self._pass_on_shape_and_type,
             "If": self._infer_If,
             "Loop": self._infer_Loop,
             "MatMul": self._infer_MatMul,
@@ -1535,7 +1535,7 @@ class SymbolicShapeInference:
             handle_negative_axis(ax, self._get_shape_rank(node, i + num_scan_states))
             for i, ax in enumerate(scan_input_axes)
         ]
-        # We may have cases where the subgraph has optionial inputs that appear in both subgraph's input and initializer,
+        # We may have cases where the subgraph has optional inputs that appear in both subgraph's input and initializer,
         # but not in the node's input. In such cases, the input model might be invalid, but let's skip those optional inputs.
         assert len(subgraph.input) >= len(node.input)
         subgraph_inputs = subgraph.input[: len(node.input)]
@@ -2389,6 +2389,29 @@ def parse_arguments():
         type=int,
         default=0,
     )
+    parser.add_argument(
+        "--save_as_external_data",
+        help="Saving an ONNX model to external data",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--all_tensors_to_one_file",
+        help="Saving all the external data to one file",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--external_data_location",
+        help="The file location to save the external file",
+        default="./",
+    )
+    parser.add_argument(
+        "--external_data_size_threshold",
+        help="The size threshold for external data",
+        type=int,
+        default=1024,
+    )
     return parser.parse_args()
 
 
@@ -2406,5 +2429,16 @@ if __name__ == "__main__":
         args.verbose,
     )
     if args.output and out_mp:
-        onnx.save(out_mp, args.output)
+        if args.save_as_external_data:
+            onnx.save_model(
+                out_mp,
+                args.output,
+                save_as_external_data=True,
+                all_tensors_to_one_file=args.all_tensors_to_one_file,
+                location=args.external_data_location,
+                size_threshold=args.external_data_size_threshold,
+                convert_attribute=False,
+            )
+        else:
+            onnx.save(out_mp, args.output)
         logger.info("Done!")

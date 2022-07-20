@@ -255,7 +255,7 @@ void NhwcUpsampleBilinearInteger(const int32_t batch_size,
     const T* const Xdata = XdataBase + n * (input_height * input_width) * num_channels;
     T* const Ydata = YdataBase + n * (output_height * output_width) * num_channels;
     concurrency::ThreadPool::TryParallelFor(
-        tp, output_height * output_width,
+        tp, static_cast<std::ptrdiff_t>(output_height) * output_width,
         static_cast<double>(num_channels * 2),
         [&](std::ptrdiff_t first, std::ptrdiff_t last) {
           for (std::ptrdiff_t i = first; i < last; ++i) {

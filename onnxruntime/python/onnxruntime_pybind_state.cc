@@ -618,11 +618,19 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 
         } else if (option.first == "enable_opencl_throttling") {
           if (option.second == "True") {
-            params.use_compiled_network = true;
+            params.enable_opencl_throttling = true;
           } else if (option.second == "False") {
-            params.use_compiled_network = false;
+            params.enable_opencl_throttling = false;
           } else {
             ORT_THROW("Invalid value passed for enable_opencl_throttling: ", option.second);
+          }
+        } else if (option.first == "enable_dynamic_shapes") {
+          if (option.second == "True") {
+            params.enable_dynamic_shapes = true;
+          } else if (option.second == "False") {
+            params.enable_dynamic_shapes = false;
+          } else {
+            ORT_THROW("Invalid value passed for enable_dynamic_shapes: ", option.second);
           }
         } else if (option.first == "device_id") {
           params.device_id = option.second.c_str();

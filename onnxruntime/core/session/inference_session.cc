@@ -264,6 +264,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   }
 
   use_per_session_threads_ = session_options.use_per_session_threads;
+  force_spinning_stop_between_runs_ = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigForceSpinningStop, "0") == "1";
 
   if (use_per_session_threads_) {
     LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
@@ -1768,7 +1769,8 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
                                     std::vector<OrtValue>& fetches,
                                     PartialGraphExecutionState& state,
                                     FeedsFetchesManager& feeds_fetches_manager,
-                                    const OrtValueCachePtr& cache) {
+                                    const OrtValueCachePtr& cache,
+                                    int32_t partial_graph_index) {
   Status retval = Status::OK();
   std::vector<IExecutionProvider*> exec_providers_to_stop;
   exec_providers_to_stop.reserve(execution_providers_.NumProviders());
@@ -1814,7 +1816,7 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
     }
 #endif
     ORT_CHECK_AND_SET_RETVAL(utils::ExecutePartialGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
-                                                        run_logger, state, cache));
+                                                        run_logger, state, cache, partial_graph_index));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -1835,6 +1837,31 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
 }
 #endif
 
+namespace {
+// Concurrent runs counting and thread-pool spin control
+struct ThreadPoolSpinningSwitch {
+  concurrency::ThreadPool* intra_tp_{nullptr};
+  concurrency::ThreadPool* inter_tp_{nullptr};
+  std::atomic<int>& concurrent_num_runs_;
+  // __Ctor Refcounting and spinning control
+  ThreadPoolSpinningSwitch(concurrency::ThreadPool* intra_tp,
+                           concurrency::ThreadPool* inter_tp,
+                           std::atomic<int>& ref) noexcept
+      : intra_tp_(intra_tp), inter_tp_(inter_tp), concurrent_num_runs_(ref) {
+    if (concurrent_num_runs_.fetch_add(1, std::memory_order_relaxed) == 0) {
+      if (intra_tp_) intra_tp_->EnableSpinning();
+      if (inter_tp_) inter_tp_->EnableSpinning();
+    }
+  }
+  ~ThreadPoolSpinningSwitch() {
+    if (1 == concurrent_num_runs_.fetch_sub(1, std::memory_order_acq_rel)) {
+      if (intra_tp_) intra_tp_->DisableSpinning();
+      if (inter_tp_) inter_tp_->DisableSpinning();
+    }
+  }
+};
+}  // namespace
+
 Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
                              const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
@@ -1852,12 +1879,20 @@ Status InferenceSession::Run(const RunOptions& run_options,
   Status retval = Status::OK();
   const Env& env = Env::Default();
 
+  // Increment/decrement concurrent_num_runs_ and control
+  // session threads spinning as configured. Do nothing for graph replay except the counter.
+  const bool control_spinning = use_per_session_threads_ &&
+                                force_spinning_stop_between_runs_ &&
+                                !cached_execution_provider_for_graph_replay_.IsGraphCaptured();
+  auto* intra_tp = (control_spinning) ? thread_pool_.get() : nullptr;
+  auto* inter_tp = (control_spinning) ? inter_op_thread_pool_.get() : nullptr;
+  ThreadPoolSpinningSwitch runs_refcounter_and_tp_spin_control(intra_tp, inter_tp, current_num_runs_);
+
   // Check if this Run() is simply going to be a CUDA Graph replay.
   if (cached_execution_provider_for_graph_replay_.IsGraphCaptured()) {
     LOGS(*session_logger_, INFO) << "Replaying the captured "
                                  << cached_execution_provider_for_graph_replay_.Type()
                                  << " CUDA Graph for this model with tag: " << run_options.run_tag;
-    ++current_num_runs_;
     ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph());
   } else {
     std::vector<IExecutionProvider*> exec_providers_to_stop;
@@ -1902,8 +1937,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
         LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
       }
 
-      ++current_num_runs_;
-
       // scope of owned_run_logger is just the call to Execute.
       // If Execute ever becomes async we need a different approach
       std::unique_ptr<logging::Logger> owned_run_logger;
@@ -1939,6 +1972,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
       session_state_->IncrementGraphExecutionCounter();
 #endif
+
       ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                    session_options_.execution_mode, run_options.terminate, run_logger,
                                                    run_options.only_execute_path_to_fetches));
@@ -1962,7 +1996,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
       ShrinkMemoryArenas(arenas_to_shrink);
     }
   }
-  --current_num_runs_;
 
   // keep track of telemetry
   ++telemetry_.total_runs_since_last_;

@@ -85,16 +85,16 @@ struct MemoryInfoMap {
 
  private:
   MemoryInfoMapT map_;
-  size_t ptr_offset{0};  //The start ptr of the raw data
+  size_t ptr_offset{0};  // The start ptr of the raw data
 };
 
 class MemoryInfo {
  public:
-  //We separate the memory types into 3 categories.
+  // We separate the memory types into 3 categories.
   //(1) Initializers: Which are planned and allocated before session run.
   //(2) StaticActivation: Which are planned statically and allocatedly accordingly
   //(3) DynamicActivation: Which are allocated during runtime.
-  //The reason with this separations is they start with different memory offsets, so diffcult to visualize them in the same session.
+  // The reason with this separations is they start with different memory offsets, so diffcult to visualize them in the same session.
   enum MapType {
     Initializer = 0,
     StaticActivation,
@@ -109,7 +109,7 @@ class MemoryInfo {
 
     IntervalT lifetime_interval{0, 0};
     bool inplace_reuse{false};
-    OrtValueIndex reused_buffer{0};  //The index of the reused tensor, if no reuse, it is its own tensor.
+    OrtValueIndex reused_buffer{0};  // The index of the reused tensor, if no reuse, it is its own tensor.
     AllocKind alloc_kind{AllocKind::kAllocate};
     OrtMemoryInfo location;
   };
@@ -122,15 +122,16 @@ class MemoryInfo {
 
   struct MemoryInfoProfile {
    public:
-    //Create sessions in the profiler.
-    //p_name: session name
-    //pid: sessionid
-    //map_type: Initalizer, static_activation, dynamic_activation. We have this separtion because they are using different memory offsets.
-    //group_name: The group_name that is recorded previously using function "AddRecordingTensorGroup". Used for generating customized sessions for a group of tensors
-    //Top_k: The steps with the top-k highest memory consumptions are plot. When top_k == 0, we plot all the steps
-    //device_t: The type of the device where the tensors are.
-    static void CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& group_name,
-                             const size_t top_k, const OrtDevice::DeviceType device_t = OrtDevice::GPU);
+    // Create sessions in the profiler.
+    // p_name: session name
+    // pid: sessionid
+    // map_type: Initializer, static_activation, dynamic_activation. We have this separtion because they are using different memory offsets.
+    // group_name: The group_name that is recorded previously using function "AddRecordingTensorGroup". Used for generating customized sessions for a group of tensors
+    // Top_k: The steps with the top-k highest memory consumptions are plot. When top_k == 0, we plot all the steps
+    // device_t: The type of the device where the tensors are.
+    static void CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type,
+                             const std::string& group_name, const size_t top_k,
+                             const OrtDevice::DeviceType device_t = OrtDevice::GPU);
 
     static const std::vector<std::string>& GetEvents() { return events; }
 
@@ -147,18 +148,21 @@ class MemoryInfo {
     static size_t pid_;
     static const std::vector<std::string> color_names;
     static std::vector<std::string> events;
-    //Key: the hash function of device+map_type. Value: (key: The time step. value: The allocation information)
+    // Key: the hash function of device+map_type. Value: (key: The time step. value: The allocation information)
     static std::unordered_map<size_t, std::unordered_map<size_t, AllocationSummary> > summary_;
     MemoryInfoProfile() = default;
 
     static std::string CreateMetadataEvent(const std::string& process_name, size_t process_id);
-    static std::string CreateMemoryEvent(size_t pid, size_t tid, const std::string& name, size_t offset, size_t size, const std::string& color_name);
+    static std::string CreateMemoryEvent(size_t pid, size_t tid, const std::string& name, size_t offset, size_t size,
+                                         const std::string& color_name);
 
-    static std::string CreateSummaryEvent(size_t pid, size_t tid, const AllocationSummary& summary, size_t size, size_t bytes_for_pattern);
+    static std::string CreateSummaryEvent(size_t pid, size_t tid, const AllocationSummary& summary, size_t size,
+                                          size_t bytes_for_pattern);
   };
 
-  static void GenerateTensorMap(const SequentialExecutionPlan* execution_plan, const OrtValueNameIdxMap& value_name_idx_map);
-  static void RecordPatternInfo(const MemoryPatternGroup& mem_patterns,  const MapType& type);
+  static void GenerateTensorMap(const SequentialExecutionPlan* execution_plan,
+                                const OrtValueNameIdxMap& value_name_idx_map);
+  static void RecordPatternInfo(const MemoryPatternGroup& mem_patterns, const MapType& type);
 
   static void RecordInitializerAllocInfo(const std::unordered_map<int, OrtValue>& tensor_map);
   static void RecordActivationAllocInfo(const OrtValueIndex idx, const OrtValue& value);
@@ -178,7 +182,7 @@ class MemoryInfo {
     }
   }
 
-  //Get the Allocation Information for tensor with index = idx;
+  // Get the Allocation Information for tensor with index = idx;
   static const AllocInfoPerTensor* AllocPlan(const OrtValueIndex& idx) {
     if (tensor_alloc_info_map_.find(idx) != tensor_alloc_info_map_.end())
       return &tensor_alloc_info_map_.at(idx);
@@ -186,16 +190,17 @@ class MemoryInfo {
       return nullptr;
   }
 
-  //Create or add a tensor to a group. This is used to display the trace of specific group of tensors of interest
-  //group_name: The name of the group of tensors
-  //tensor_name: The tensor_name which is generated by argdef when building the graph
+  // Create or add a tensor to a group. This is used to display the trace of specific group of tensors of interest
+  // group_name: The name of the group of tensors
+  // tensor_name: The tensor_name which is generated by argdef when building the graph
   static void AddRecordingTensorGroup(const std::string& group_name, const std::string& tensor_name) {
     customized_recording_group_[group_name][tensor_name] = true;
   }
 
   static bool InRecordingTensorGroup(const std::string& group_name, const std::string& tensor_name) {
     if (customized_recording_group_.find(group_name) == customized_recording_group_.end()) return false;
-    if (customized_recording_group_.at(group_name).find(tensor_name) == customized_recording_group_.at(group_name).end()) return false;
+    if (customized_recording_group_.at(group_name).find(tensor_name) ==
+        customized_recording_group_.at(group_name).end()) return false;
     return true;
   }
 
@@ -208,21 +213,21 @@ class MemoryInfo {
     return tensor_alloc_info_map_[idx].inplace_reuse;
   }
 
-  //Key: The map type. E.g., initializer, activation. Value: A map from the tensor index to its memory information
+  // Key: The map type. E.g., initializer, activation. Value: A map from the tensor index to its memory information
   static std::map<OrtMemoryInfo, std::map<MapType, MemoryInfoMap> > tensors_memory_info_map_;
 
-  //Key: The tensor index. Value: The Allocation information per tensor
+  // Key: The tensor index. Value: The Allocation information per tensor
   static std::map<OrtValueIndex, AllocInfoPerTensor> tensor_alloc_info_map_;
 
-  //Key: The group name. Value: (key: The tensor name, value: not used (Use std::map for faster lookup).).
+  // Key: The group name. Value: (key: The tensor name, value: not used (Use std::map for faster lookup).).
   static std::map<const std::string, std::map<const std::string, bool> > customized_recording_group_;
 
-  //TODO: The dynamic and statically planned alignments may not be the same, need to check
-  static const int alignment = 256;
+  // TODO: The dynamic and statically planned alignments may not be the same, need to check
+  static const int alignment_ = 256;
   static size_t iteration_;
   static size_t num_node_size_;
   static int local_rank_;
-  //Memory Profile
+  // Memory Profile
   static std::map<MapType, std::set<size_t> > time_step_trace_;
 };
 
