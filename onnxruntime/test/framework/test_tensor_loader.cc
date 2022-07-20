@@ -72,6 +72,21 @@ static void run_external_data_test() {
   std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(filename.c_str()),
                                                                          DeleteFileFromDisk);
   float test_data[] = {1.0f, 2.2f, 3.5f};
+  int element_size = sizeof(float); 
+  char *bytes = (char *)&test_data;
+  const size_t num_elements = sizeof(test_data);
+  for (size_t i = 0; i < num_elements; ++i) {
+         char* start_byte =  bytes + i * element_size;
+         char* end_byte = start_byte + element_size - 1;
+         /* keep swapping */
+         for (size_t count = 0; count < element_size / 2; ++count) {
+              char temp = *start_byte;
+              *start_byte = *end_byte;
+              *end_byte = temp;
+              ++start_byte;
+              --end_byte;
+         }
+  }
   ASSERT_EQ(sizeof(test_data), fwrite(test_data, 1, sizeof(test_data), fp));
   ASSERT_EQ(0, fclose(fp));
   // construct a tensor proto
@@ -97,7 +112,7 @@ static void run_external_data_test() {
     ASSERT_NE(len, (DWORD)0);
     cwd.append(ORT_TSTR("\\fake.onnx"));
 #else
-    char* p = getcwd(nullptr, 0);
+    char* p = getcwd(nullptr, 512);
     ASSERT_NE(p, nullptr);
     cwd = p;
     free(p);

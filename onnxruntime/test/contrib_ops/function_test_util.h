@@ -102,11 +102,33 @@ struct FunctionTestCase {
 
   template <typename T, bool GenData = true>
   void AddInput(std::string input_name, std::vector<int64_t> shape) {
+    std::vector<int64_t> shapeforrandom;
+    shapeforrandom = shape;
+    char *bytes1 = (char *)shape.data();
+    if (1) {
+#ifdef DEBUG_AIX
+         std::cout<<"Doing byte swapping in AddInput test/contrib_ops/function_test_util.h "<<std::endl;
+#endif
+         const size_t element_size = sizeof(T);
+         const size_t num_elements = shape.size()/element_size;
+         for (size_t i = 0; i < num_elements; ++i) {
+             char* start_byte = bytes1 + i * element_size;
+             char* end_byte = start_byte + element_size - 1;
+             /* keep swapping */
+             for (size_t count = 0; count < element_size / 2; ++count) {
+                  char temp = *start_byte;
+                  *start_byte = *end_byte;
+                  *end_byte = temp;
+                  ++start_byte;
+                  --end_byte;
+             }
+         }
+    }
     auto arg_type = TensorType(utils::ToTensorProtoElementType<T>(), shape);
     input_args.emplace_back(input_name, &arg_type);
 
     if (GenData) {
-      std::vector<T> data = random<T>(shape);
+      std::vector<T> data = random<T>(shapeforrandom);
       OrtValue ort_value;
       CreateMLValue<T>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
       input_values.push_back(std::make_pair(input_name, ort_value));
