@@ -228,6 +228,8 @@ def squeeze(g, self, dim=None):
 # exporting to Split with SplitGrad as gradient graph.
 @register_symbolic("ConstantChunk", "prim")
 def prim_ConstantChunk(g, self, chunks, dim):
+    if chunks == 1:
+        return self
     input_shape_dim = g.op(
         "Gather", g.op("Shape", self), g.op("Constant", value_t=torch.tensor([dim], dtype=torch.long)), axis_i=0
     )
