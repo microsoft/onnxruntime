@@ -8,9 +8,10 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph.h"
 #include "core/providers/common.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_helpers.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
-#include "helper.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -1431,6 +1432,16 @@ int GemmOpSupportChecker::GetMinSupportedOpSet(const NodeUnit& node_unit) const 
 
 bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& params) const {
+  // check batch matmul first, then fall back to checking single gemm/matmul
+  {
+    const bool is_supported_batch_matmul =
+        op_builder_helpers::IsSupportedBatchMatMul(node_unit, params.android_feature_level);
+    LOGS_DEFAULT(VERBOSE) << "Supported batch matmul: [" << is_supported_batch_matmul << "]";
+    if (is_supported_batch_matmul) {
+      return true;
+    }
+  }
+
   const auto& op_type = node_unit.OpType();
   const auto& inputs = node_unit.Inputs();
   const bool is_qlinear_matmul = op_type == "QLinearMatMul";
@@ -1520,53 +1531,6 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
   }
 
   return true;
-}
-
-#pragma endregion
-
-#pragma region op_matmul
-
-class MatMulOpSupportChecker : public BaseOpSupportChecker {
- private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                         const OpSupportCheckParams& params) const override;
-
-  int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& node_unit,
-                                           const OpSupportCheckParams& params) const override;
-};
-
-bool MatMulOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                               const OpSupportCheckParams& params) const {
-  const auto& inputs = node_unit.Inputs();
-
-  // verify shapes
-  // A and B should have at least two dimensions and have the same leading dimensions except for the last two
-  Shape a_shape;
-  if (!GetShape(inputs[0].node_arg, a_shape)) {
-    return false;
-  }
-
-  Shape b_shape;
-  if (!GetShape(inputs[1].node_arg, b_shape)) {
-    return false;
-  }
-
-  if (a_shape.size() < 2 ||
-      a_shape.size() != b_shape.size() ||
-      !std::equal(a_shape.begin(), a_shape.end() - 2,
-                  b_shape.begin(), b_shape.end() - 2)) {
-    LOGS_DEFAULT(VERBOSE)
-        << "A and B must have at least two dimensions and have the same leading dimensions except for the last two. "
-        << "A shape: " << Shape2String(a_shape) << ", B shape: " << Shape2String(b_shape);
-    return false;
-  }
-
-  return true;
-}
-
-int32_t MatMulOpSupportChecker::GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
-                                                                 const OpSupportCheckParams& /* params */) const {
-  return ANEURALNETWORKS_FEATURE_LEVEL_3;  // for ANEURALNETWORKS_SPLIT
 }
 
 #pragma endregion

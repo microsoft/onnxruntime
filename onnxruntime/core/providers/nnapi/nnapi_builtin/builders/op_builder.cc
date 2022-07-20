@@ -1688,6 +1688,11 @@ bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
 }
 
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  if (op_builder_helpers::IsSupportedBatchMatMul(node_unit, model_builder.GetNNAPIFeatureLevel())) {
+    // no initializers to skip for batch matmul
+    return;
+  }
+
   const auto& inputs = node_unit.Inputs();
   if (IsQuantizedOp(node_unit)) {
     if (node_unit.OpType() == "QLinearMatMul" || node_unit.OpType() == "MatMul") {                 // QLinearMatMul/QDQMatMul
@@ -1724,6 +1729,10 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 }
 
 Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  if (op_builder_helpers::IsSupportedBatchMatMul(node_unit, model_builder.GetNNAPIFeatureLevel())) {
+    return op_builder_helpers::BuildBatchMatMul(model_builder, node_unit);
+  }
+
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());

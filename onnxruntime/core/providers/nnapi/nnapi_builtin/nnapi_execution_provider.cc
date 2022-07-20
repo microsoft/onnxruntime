@@ -7,7 +7,7 @@
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
-#include "core/platform/env.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
@@ -123,6 +123,10 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   std::unordered_set<std::string> node_outputs_in_current_group{};
 
+  const size_t max_nodes_in_group = ParseEnvironmentVariableWithDefault<size_t>("ORT_NNAPI_MAX_PARTITION_SIZE", 100);
+  LOGS_DEFAULT(VERBOSE) << "max nodes in group: " << max_nodes_in_group;
+  size_t count = 0;
+
   const auto is_node_supported = [&](const Node& node) -> bool {
     const NodeUnit* node_unit = node_unit_map.at(&node);
     bool supported = false;
@@ -137,6 +141,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
       supported = !excluded &&
                   nnapi::IsNodeSupportedInGroup(*node_unit, graph_viewer, params,
                                                 node_outputs_in_current_group);
+      if (++count > max_nodes_in_group) supported = false;  // TODO for testing
       node_unit_supported_result[node_unit] = supported;
     }
 
@@ -163,6 +168,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   const auto on_group_closed = [&](const std::vector<const Node*>& group) -> bool {
     // reset per-partition node group tracking
     node_outputs_in_current_group.clear();
+    count = 0;  // TODO for testing
     return nnapi::IsValidSupportedNodeGroup(group);
   };
 

@@ -104,12 +104,75 @@ Status AddNnapiSplit(ModelBuilder& model_builder,
   return Status::OK();
 }
 
-Status BuildBatchedMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) {
-  // we will implement batched MatMul with multiple NNAPI operations
+bool IsSupportedBatchMatMul(const NodeUnit& node_unit, int32_t nnapi_feature_level) {
+  // Currently, batch matmul is composed of various operations including ANEURALNETWORKS_SPLIT which requires
+  // ANEURALNETWORKS_FEATURE_LEVEL_3.
+  const auto min_nnapi_feature_level = ANEURALNETWORKS_FEATURE_LEVEL_3;
+  if (nnapi_feature_level < min_nnapi_feature_level) {
+    LOGS_DEFAULT(VERBOSE) << "Minimum NNAPI feature level required: " << min_nnapi_feature_level
+                          << ", actual: " << nnapi_feature_level;
+    return false;
+  }
+
+  // Only support non-QDQ MatMul for now.
+  // TODO could be expanded to support QLinearMatMul and QDQ MatMul
+  if (node_unit.UnitType() != NodeUnit::Type::SingleNode ||
+      node_unit.OpType() != "MatMul") {
+    LOGS_DEFAULT(VERBOSE) << "Unsupported op type: "
+                          << (node_unit.UnitType() == NodeUnit::Type::QDQGroup ? "QDQ " : "") << node_unit.OpType();
+    return false;
+  }
+
   const auto& inputs = node_unit.Inputs();
 
+  // Verify shapes
+  // A and B should have at least three dimensions* and have the same leading dimensions except for the last two.
+  // [*] Having two dimensions is valid for a matmul but for simplicity we don't support it in the current batch
+  // matmul implementation. That case is handled by the regular gemm/matmul op building logic.
+  Shape a_shape;
+  if (!GetShape(inputs[0].node_arg, a_shape)) {
+    return false;
+  }
+
+  Shape b_shape;
+  if (!GetShape(inputs[1].node_arg, b_shape)) {
+    return false;
+  }
+
+  if (a_shape.size() < 3 ||
+      a_shape.size() != b_shape.size() ||
+      !std::equal(a_shape.begin(), a_shape.end() - 2,
+                  b_shape.begin(), b_shape.end() - 2)) {
+    LOGS_DEFAULT(VERBOSE)
+        << "A and B must have at least three dimensions and have the same leading dimensions except for the last two. "
+        << "A shape: " << Shape2String(a_shape) << ", B shape: " << Shape2String(b_shape);
+    return false;
+  }
+
+  // Verify type
+  int32_t a_type;
+  if (!GetType(inputs[0].node_arg, a_type)) {
+    return false;
+  }
+
+  // Only support float for now.
+  // TODO could be expanded to support other types
+  if (a_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    LOGS_DEFAULT(VERBOSE) << "Unsupported element data type: " << a_type;
+    return false;
+  }
+
+  return true;
+}
+
+Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) {
+  // we will implement batch MatMul by composing NNAPI operations
+  // this could be replaced with ANEURALNETWORKS_BATCH_MATMUL when that is more widely supported
+
+  // pre-conditions are checked in IsSupportedBatchMatMul()
   // assuming A and B have at least three dimensions and the same leading dimensions other than the last two
-  // TODO should this support 2D inputs?
+
+  const auto& inputs = node_unit.Inputs();
 
   Shape a_shape;
   ORT_RETURN_IF_NOT(GetShape(inputs[0].node_arg, a_shape), "Failed to get A's shape.");
@@ -179,7 +242,7 @@ Status BuildBatchedMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit
       std::vector<std::string> outputs;
       outputs.reserve(batch_size);
       for (size_t i = 0; i < batch_size; ++i) {
-        outputs.push_back(MakeString(input, "/split_", i));
+        outputs.push_back(model_builder.GetUniqueName(MakeString(input, "/split_", i)));
       }
       ORT_RETURN_IF_ERROR(AddNnapiSplit(model_builder, input, 0, outputs));
       outputs_result = std::move(outputs);
@@ -202,7 +265,7 @@ Status BuildBatchedMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit
     const std::string bias = model_builder.GetUniqueName(node_unit.Name() + "/zero_bias");
     {
       if (model_builder.GetOperandTypes().at(b).type != Type::TENSOR_FLOAT32) {
-        ORT_NOT_IMPLEMENTED("Only float32 input is supported now.");
+        ORT_NOT_IMPLEMENTED("Only float input is supported now.");
       }
       const Shape bias_shape{n};
       const std::vector<float> buffer(n, 0.0f);

@@ -37,6 +37,8 @@ Status AddNnapiSplit(ModelBuilder& model_builder,
                      int32_t axis,
                      const std::vector<std::string>& outputs);
 
-Status BuildBatchedMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit);
+bool IsSupportedBatchMatMul(const NodeUnit& node_unit, int32_t nnapi_feature_level);
+
+Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit);
 
 }

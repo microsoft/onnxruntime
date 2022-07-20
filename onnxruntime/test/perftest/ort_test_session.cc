@@ -386,7 +386,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       if (key == "runtime") {
         std::set<std::string> supported_runtime = {"CPU", "GPU_FP32", "GPU", "GPU_FLOAT16", "DSP", "AIP_FIXED_TF"};
         if (supported_runtime.find(value) == supported_runtime.end()) {
-          ORT_THROW(R"(Wrong configuration value for the key 'runtime'. 
+          ORT_THROW(R"(Wrong configuration value for the key 'runtime'.
 select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)");
         }
       } else if (key == "priority") {
@@ -394,7 +394,7 @@ select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)"
       } else if (key == "buffer_type") {
         std::set<std::string> supported_buffer_type = {"TF8", "TF16", "UINT8", "FLOAT", "ITENSOR"};
         if (supported_buffer_type.find(value) == supported_buffer_type.end()) {
-          ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'. 
+          ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'.
 select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         }
       } else {
@@ -563,6 +563,28 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   }
 }
 
+template<typename T>
+void FillTensorDataTyped(Ort::Value& tensor, size_t count, T value = T{}){
+  T* data = tensor.GetTensorMutableData<T>();
+  std::fill_n(data, count, value);
+}
+
+void FillTensorData(Ort::Value& tensor) {
+  auto type_and_shape = tensor.GetTensorTypeAndShapeInfo();
+  auto count = type_and_shape.GetElementCount();
+  auto element_type = type_and_shape.GetElementType();
+  switch(element_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+      FillTensorDataTyped<int32_t>(tensor, count);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+      FillTensorDataTyped<float>(tensor, count);
+      break;
+    default:
+      ORT_THROW("Unsupported tensor data type: ", element_type);
+  }
+}
+
 bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData() {
   // iterate over all input nodes
   for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
@@ -582,6 +604,7 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData() {
       auto allocator = static_cast<OrtAllocator*>(Ort::AllocatorWithDefaultOptions());
       Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
                                                          input_node_dim.size(), tensor_info.GetElementType());
+      FillTensorData(input_tensor);
       PreLoadTestData(0, i, std::move(input_tensor));
     }
   }
