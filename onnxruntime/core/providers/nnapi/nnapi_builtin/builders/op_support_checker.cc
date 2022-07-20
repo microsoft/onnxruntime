@@ -2149,10 +2149,22 @@ bool GatherOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
     return false;
   }
 
+  // Here in GatherOpSupportChecker::IsOpSupportedImpl, we removed the restriction that 2nd input "indices" must be an initializer
+  // to accommodate the support for some models such as mobileBERT. It doesn't need to be an initializer for int32 as NNAPI Gather
+  // uses int32 for indices so the type matches.
+  // However, we still require indices of other types to be an initializer as we convert the data to int32 during model building.
+  // TODO: We could potentially support non-initializer inputs for the other types if we inserted a cast.
   const auto& indices_name = inputs[1].node_arg.Name();
-  if (!Contains(initializers, indices_name)) {
-    LOGS_DEFAULT(VERBOSE) << "Indices of Gather must be known";
+
+  int32_t indices_type;
+  if (!GetType(node_unit.Inputs()[1].node_arg, indices_type))
     return false;
+
+  if (indices_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    if (!Contains(initializers, indices_name)) {
+      LOGS_DEFAULT(VERBOSE) << "Indices of Gather must be known.";
+      return false;
+    }
   }
 
   return true;

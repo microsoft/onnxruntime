@@ -885,7 +885,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_TRAINING_TORCH_INTEROP=" + ("ON" if args.enable_training_torch_interop else "OFF"),
         # Enable advanced computations such as AVX for some traininig related ops.
         "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + ("ON" if args.enable_training else "OFF"),
-        "-Donnxruntime_USE_NCCL=" + ("OFF" if args.disable_nccl else "ON"),
+        "-Donnxruntime_USE_NCCL=" + ("ON" if args.enable_training and not args.disable_nccl else "OFF"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + ("ON" if args.build_micro_benchmarks else "OFF"),
         "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
         "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
@@ -1973,13 +1973,13 @@ def nuphar_run_python_tests(build_dir, configs):
 
 def tvm_run_python_tests(build_dir, configs):
     for config in configs:
-        if config == "Debug":
-            continue
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
             cwd = os.path.join(cwd, config)
-        dll_path = os.path.join(build_dir, config, "_deps", "tvm-build", config)
-        run_subprocess([sys.executable, "onnxruntime_test_python_tvm.py"], cwd=cwd, dll_path=dll_path)
+        python_path = os.path.join(build_dir, config, "_deps", "tvm-src", "python")
+        run_subprocess(
+            [sys.executable, "onnxruntime_test_python_tvm.py"], cwd=cwd, python_path=os.path.abspath(python_path)
+        )
 
 
 def run_nodejs_tests(nodejs_binding_dir):
@@ -2680,7 +2680,10 @@ def main():
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
             nuphar_run_python_tests(build_dir, configs)
 
-        if args.enable_pybind and not args.skip_onnx_tests and args.use_tvm:
+        # TODO(agladyshev):
+        # to support Windows, we need to update .github/workflows/windows.yml
+        # and add to the PATH variable the following value: C:Program Files\LLVM\bin
+        if args.enable_pybind and args.use_tvm and not is_windows():
             tvm_run_python_tests(build_dir, configs)
 
         # run node.js binding tests
