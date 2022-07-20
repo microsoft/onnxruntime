@@ -87,7 +87,8 @@ class RocBlasGemm : public GemmBase<T> {
 
   void Run() {
     // NOTE: rocblas assume the storage is column-majored, swapping A and B makes it have the same interface
-    // as those with row-majored convention.
+    // as those with row-majored convention. That is, if you treat the storage as row-majored but view the matrices as
+    // transposed, then by using the property Transpose(A*B) = Tranpose(B)*Transpose(A), the correctness is obvious.
     ROCBLAS_CALL_THROW(
         rocblasGemmHelper(this->rocblas_handle_, this->opb_, this->opa_,
                           this->n_, this->m_, this->k_,
