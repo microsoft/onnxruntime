@@ -172,6 +172,7 @@ class PosixThread : public EnvThread {
         auto [err_no, err_msg] = GetSystemError();
         ORT_THROW("pthread_create failed, error code: ", err_no, " error msg: ", err_msg);
       }
+/*
 #if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__)
       if (!thread_options.affinity.empty()) {
         cpu_set_t cpuset;
@@ -184,6 +185,7 @@ class PosixThread : public EnvThread {
         }
       }
 #endif
+*/
     }
   }
 

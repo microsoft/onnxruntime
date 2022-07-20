@@ -463,14 +463,54 @@ static NodeArg* ExtractEmbedding(Graph& graph,
     if (!CheckEmbeddingData(data, batch_size, element_count)) {
       return nullptr;
     }
-
+   char* bytes = (char*)data;
+   /*onnx is little endian serialized always-tweak byte order if needed*/
+   if (1) {
+#ifdef DEBUG_AIX
+     std::cout<<"DEBUG Doing byte swapping in EmbedNormalFusion"<<std::endl;
+#endif
+     const size_t element_size = sizeof(float);
+     const size_t num_elements = element_count;
+     for (size_t i = 0; i < num_elements; ++i) {
+         char* start_byte = bytes + i * element_size;
+         char* end_byte = start_byte + element_size - 1;
+         /* keep swapping */
+         for (size_t count = 0; count < element_size / 2; ++count) {
+              char temp = *start_byte;
+              *start_byte = *end_byte;
+              *end_byte = temp;
+              ++start_byte;
+              --end_byte;
+         }
+      }
+    }
     initializer.set_raw_data(data, gsl::narrow<size_t>(element_count) * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
     const MLFloat16* data = old_initializer.data<MLFloat16>();
     if (!CheckEmbeddingData(data, batch_size, element_count)) {
       return nullptr;
     }
-
+    char* bytes_1 = (char*)data;
+    /*onnx is little endian serialized always-tweak byte order if needed*/
+    if (1) {
+#ifdef DEBUG_AIX
+       std::cout<<"DEBUG Doing byte swapping in EmbedNormalFusion"<<std::endl;
+#endif
+       const size_t element_size = sizeof(MLFloat16);
+       const size_t num_elements = element_count;
+       for (size_t i = 0; i < num_elements; ++i) {
+         char* start_byte = bytes_1 + i * element_size;
+         char* end_byte = start_byte + element_size - 1;
+         /* keep swapping */
+         for (size_t count = 0; count < element_size / 2; ++count) {
+              char temp = *start_byte;
+              *start_byte = *end_byte;
+              *end_byte = temp;
+              ++start_byte;
+              --end_byte;
+         }
+      }
+    }
     initializer.set_raw_data(data, gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
   }
 

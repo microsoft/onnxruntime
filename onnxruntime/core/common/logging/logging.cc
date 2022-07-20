@@ -17,7 +17,7 @@
 #if defined(__MACH__) || defined(__wasm__)
 #include <pthread.h>
 #else
-#include <sys/syscall.h>
+//#include <sys/syscall.h>
 #endif
 #endif
 #include "core/platform/ort_mutex.h"
@@ -221,7 +221,7 @@ unsigned int GetThreadId() {
 #elif defined(__wasm__)
   return static_cast<unsigned int>(pthread_self());
 #else
-  return static_cast<unsigned int>(syscall(SYS_gettid));
+  return static_cast<unsigned int>(thread_self());
 #endif
 }
 
@@ -234,7 +234,7 @@ unsigned int GetProcessId() {
 #elif defined(__MACH__) || defined(__wasm__)
   return static_cast<unsigned int>(getpid());
 #else
-  return static_cast<unsigned int>(syscall(SYS_getpid));
+  return static_cast<unsigned int>(getpid());
 #endif
 }
 

@@ -82,7 +82,7 @@ add_dependencies(onnxruntime_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
 # But our test files don't use the shared library so this must be set for them.
 # For Win32 it generates an absolute path for shared providers based on the location of the executable/onnxruntime.dll
 if (UNIX AND NOT APPLE AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_BUILD_WEBASSEMBLY)
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
+#  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
 endif()
 
 if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB)

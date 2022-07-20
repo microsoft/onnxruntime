@@ -181,7 +181,7 @@ void Gemv(CBLAS_TRANSPOSE TransA,
     }
     case CblasTrans: {
       y_vec.noalias() += alpha * (ConstEigenMatrixMap<T>(A, N, M) *
-                                  ConstEigenVectorMap<T>(x, M));
+                                  ConstEigenMatrixMap<T>(x, M, 1));
       return;
     }
     default:

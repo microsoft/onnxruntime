@@ -136,7 +136,8 @@ void ThreadPoolProfiler::MainThreadStat::LogCore() {
 #elif defined(__wasm__)
   core_ = emscripten_num_logical_cores();
 #else
-  core_ = sched_getcpu();
+//  core_ = sched_getcpu();
+core_ = mycpu();
 #endif
 }
 
@@ -218,7 +219,8 @@ void ThreadPoolProfiler::LogRun(int thread_idx) {
 #elif defined(__wasm__)
       child_thread_stats_[thread_idx].core_ = emscripten_num_logical_cores();
 #else
-      child_thread_stats_[thread_idx].core_ = sched_getcpu();
+//      child_thread_stats_[thread_idx].core_ = sched_getcpu();
+        child_thread_stats_[thread_idx].core_ = mycpu();
 #endif
       child_thread_stats_[thread_idx].last_logged_point_ = now;
     }

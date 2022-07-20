@@ -126,6 +126,27 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
     } else {
       MergeWeights<float>(q_weight, k_weight, v_weight, result, hidden_size);
     }
+#ifdef DEBUG_AIX
+    std::cout<<"DEBUG Doing byte swapping in attention_fusion.cc for "<<initializer.mutable_name()<<std::endl;
+#endif
+    char* bytes_1 = (char*)result.data();
+    /*onnx is little endian serialized always-tweak byte order if needed*/
+     if (1) {
+      const size_t element_size = sizeof(float);
+      const size_t num_elements = element_count;
+      for (size_t i = 0; i < num_elements; ++i) {
+         char* start_byte = bytes_1 + i * element_size;
+         char* end_byte = start_byte + element_size - 1;
+         /* keep swapping */
+         for (size_t count = 0; count < element_size / 2; ++count) {
+              char temp = *start_byte;
+              *start_byte = *end_byte;
+              *end_byte = temp;
+              ++start_byte;
+              --end_byte;
+         }
+      }
+    }
     initializer.set_raw_data(result.data(), gsl::narrow<size_t>(element_count) * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
     const MLFloat16* q_weight = q_initializer.data<MLFloat16>();
@@ -137,6 +158,27 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
       MergeMatMulWeights<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size);
     } else {
       MergeWeights<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size);
+    }
+    char* bytes_2 = (char*)result.data();
+    /*onnx is little endian serialized always-tweak byte order if needed*/
+     if (1) {
+#ifdef DEBUG_AIX
+      std::cout<<"DEBUG Doing byte swapping 2 in attention_fusion.cc for "<<initializer.mutable_name()<<std::endl;
+#endif
+      const size_t element_size = sizeof(MLFloat16);
+      const size_t num_elements = element_count;
+      for (size_t i = 0; i < num_elements; ++i) {
+         char* start_byte = bytes_2 + i * element_size;
+         char* end_byte = start_byte + element_size - 1;
+         /* keep swapping */
+         for (size_t count = 0; count < element_size / 2; ++count) {
+              char temp = *start_byte;
+              *start_byte = *end_byte;
+              *end_byte = temp;
+              ++start_byte;
+              --end_byte;
+         }
+      }
     }
     initializer.set_raw_data(result.data(), gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
   }

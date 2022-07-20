@@ -45,7 +45,32 @@ void KernelDef::CalculateHash() {
   // kernel definition)
 
   hash_str(op_name_);
-  hash_int(op_since_version_start_);
+  // std::cout<<"hash[0] "<<hash[0]<<" hash[1] "<<hash[1]<<" hash[2] "<<hash[2]<<" hash[3] "<<hash[3]<<std::endl;
+  
+  int op_since_version_start_le_val=op_since_version_start_;
+  //std::cout<<"op_since_version_start_le_val"<<op_since_version_start_le_val<<std::endl;
+  char* bytes = (char*)&op_since_version_start_le_val;
+  /*onnx is little endian serialized always-tweak byte order if needed*/
+  if (1) {
+         const size_t element_size = sizeof(int);
+         const size_t num_elements = 1;
+         for (size_t i = 0; i < num_elements; ++i) {
+             char* start_byte = bytes + i * element_size;
+             char* end_byte = start_byte + element_size - 1;
+             /* keep swapping */
+             for (size_t count = 0; count < element_size / 2; ++count) {
+                  char temp = *start_byte;
+                  *start_byte = *end_byte;
+                  *end_byte = temp;
+                  ++start_byte;
+                  --end_byte;
+             }
+         }
+   }
+  //std::cout<<"op_since_version_start_le_val"<<op_since_version_start_le_val<<std::endl;
+ 
+  hash_int(op_since_version_start_le_val);
+  //std::cout<<"hash[0] "<<hash[0]<<" hash[1] "<<hash[1]<<" hash[2] "<<hash[2]<<" hash[3] "<<hash[3]<<std::endl;
 
   // If we include op_since_version_end_ the hash of an existing op changes when it's superseded.
   // e.g. Unsqueeze 11 had no end version until Unsqueeze 13, at which point the existing op is changed to have

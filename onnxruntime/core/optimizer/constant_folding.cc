@@ -78,6 +78,27 @@ static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
     shape_constant.set_name(constant_arg_out->Name());
     shape_constant.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
     shape_constant.add_dims(clamped_slice_length);
+#ifdef DEBUG_AIX
+    std::cout<<"DEBUG byte swapping in shape_constant"<<std::endl;
+#endif
+    char* bytes = (char*)(dim_values.data() + start);
+    /*onnx is little endian serialized always-tweak byte order if needed*/                                                                                                                                
+    if (1) {                                                                                                                                                                                              
+         const size_t element_size = sizeof(int64_t);
+         const size_t num_elements = clamped_slice_length;
+         for (size_t i = 0; i < num_elements; ++i) {                                                                                                                                                      
+             char* start_byte = bytes + i * element_size;                                                                                                                                                 
+             char* end_byte = start_byte + element_size - 1;                                                                                                                                              
+             /* keep swapping */                                                                                                                                                                          
+             for (size_t count = 0; count < element_size / 2; ++count) {                                                                                                                                  
+                  char temp = *start_byte;                                                                                                                                                                
+                  *start_byte = *end_byte;                                                                                                                                                                
+                  *end_byte = temp;                                                                                                                                                                       
+                  ++start_byte;                                                                                                                                                                           
+                  --end_byte;
+             }
+         }
+    }
     shape_constant.set_raw_data(dim_values.data() + start,
                                 clamped_slice_length * sizeof(int64_t));
     ONNX_NAMESPACE::TensorShapeProto result_shape;

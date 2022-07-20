@@ -93,7 +93,8 @@ function(AddTest)
     target_compile_options(${_UT_TARGET} PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
-    target_compile_options(${_UT_TARGET} PRIVATE "-Wno-error=uninitialized")
+#    target_compile_options(${_UT_TARGET} PRIVATE "-Wno-error=uninitialized")
+    target_compile_options(${_UT_TARGET} PRIVATE "-Wno-error") 
   endif()
 
   set(TEST_ARGS ${_UT_TEST_ARGS})
@@ -511,6 +512,8 @@ set(ONNXRUNTIME_TEST_LIBS
     ${ONNXRUNTIME_MLAS_LIBS}
     onnxruntime_common
     onnxruntime_flatbuffers
+    iconv
+    gtest  
 )
 
 if (onnxruntime_ENABLE_TRAINING)
@@ -724,6 +727,14 @@ if (MSVC)
 else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
 endif()
+
+# For AIX
+target_link_options(onnxruntime_test_all PRIVATE "-Wl,-bkeepfile:CMakeFiles/onnxruntime_test_all.dir${TEST_SRC_DIR}/common/logging/logging_test.cc.o")
+target_link_options(onnxruntime_test_all PRIVATE "-Wl,-bkeepfile:CMakeFiles/onnxruntime_test_all.dir${TEST_SRC_DIR}/common/logging/sinks_test.cc.o")
+target_link_options(onnxruntime_test_all PRIVATE "-Wl,-bkeepfile:CMakeFiles/onnxruntime_test_all.dir${TEST_SRC_DIR}/quantization/quantization_test.cc.o")
+target_link_options(onnxruntime_test_all PRIVATE "-Wl,-bkeepfile:CMakeFiles/onnxruntime_test_all.dir${TEST_SRC_DIR}/framework/tensor_test.cc.o")
+target_link_options(onnxruntime_test_all PRIVATE "-Wl,-bkeepfile:CMakeFiles/onnxruntime_test_all.dir${TEST_SRC_DIR}/framework/bfc_arena_test.cc.o")
+
 # the default logger tests conflict with the need to have an overall default logger
 # so skip in this type of
 target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
@@ -1017,16 +1028,16 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   file(GLOB onnxruntime_perf_test_src CONFIGURE_DEPENDS
     ${onnxruntime_perf_test_src_patterns}
     )
-  onnxruntime_add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src} ${ONNXRUNTIME_ROOT}/core/platform/path_lib.cc)
+#  onnxruntime_add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src} ${ONNXRUNTIME_ROOT}/core/platform/path_lib.cc)
   if(MSVC)
     target_compile_options(onnxruntime_perf_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
   endif()
-  target_include_directories(onnxruntime_perf_test PRIVATE ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
-          ${eigen_INCLUDE_DIRS} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
-          ${CMAKE_CURRENT_BINARY_DIR})
+  #target_include_directories(onnxruntime_perf_test PRIVATE ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
+  #       ${eigen_INCLUDE_DIRS} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
+  #       ${CMAKE_CURRENT_BINARY_DIR})
   if (onnxruntime_USE_ROCM)
-    target_include_directories(onnxruntime_perf_test PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
+#    target_include_directories(onnxruntime_perf_test PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
   endif()
   if (WIN32)
     target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
@@ -1055,7 +1066,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       list(APPEND onnxruntime_perf_test_libs ${android_shared_libs})
     endif()
-    target_link_libraries(onnxruntime_perf_test PRIVATE ${onnxruntime_perf_test_libs} Threads::Threads)
+#    target_link_libraries(onnxruntime_perf_test PRIVATE ${onnxruntime_perf_test_libs} Threads::Threads)
     if(WIN32)
       target_link_libraries(onnxruntime_perf_test PRIVATE debug dbghelp advapi32)
     endif()
@@ -1068,7 +1079,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   else()
     target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
   endif()
-  set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
+  #set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
   if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS AND NOT onnxruntime_BUILD_SHARED_LIB)
     target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)
@@ -1088,7 +1099,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
     #################################################################
     # test inference using shared lib
-    set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto)
+    #set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto)
+    set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_common onnx_proto)
+ 
     if(NOT WIN32)
       list(APPEND onnxruntime_shared_lib_test_LIBS nsync_cpp)
       if(onnxruntime_USE_SNPE)
@@ -1244,7 +1257,7 @@ if(UNIX)
   if (APPLE)
     set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker -dead_strip")
   else()
-    set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.lds -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+#    set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.lds -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
   endif()
 else()
   set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-DEF:${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.def")
@@ -1313,7 +1326,8 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   if(APPLE)
     set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/exported_symbols.lst")
   elseif(UNIX)
-    set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/version_script.lds -Xlinker --gc-sections -Xlinker -rpath=\\$ORIGIN")
+#    set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/version_script.lds -Xlinker --gc-sections -Xlinker -rpath=\\$ORIGIN")
+     set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -bE:${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/version_script.lds ")
   elseif(WIN32)
     set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/symbols.def")
   else()

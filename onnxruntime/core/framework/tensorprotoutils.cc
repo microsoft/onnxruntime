@@ -773,9 +773,9 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
 
 ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name) {
   // Given we are using the raw_data field in the protobuf, this will work only for little-endian format.
-  ORT_IF_CONSTEXPR(endian::native != endian::little) {
-    ORT_THROW("Big endian not supported");
-  }
+  // ORT_IF_CONSTEXPR(endian::native != endian::little) {
+ //    ORT_THROW("Big endian not supported");
+ //}
 
   // Set name, dimensions, type, and data of the TensorProto.
   ONNX_NAMESPACE::TensorProto tensor_proto;
@@ -795,6 +795,26 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std:
       *mutable_string_data->Add() = *f;
     }
   } else {
+
+    // std::cout<<"In TensorToTensorProto before set_raw_data ( Doing Byte Swapping ) tensorprotoutils.cc"<<std::endl;
+    char* bytes = (char*)tensor.DataRaw();
+    /*onnx is little endian serialized always-tweak byte order if needed*/
+    if (1) {
+         const size_t element_size = tensor.DataType()->Size();
+         const size_t num_elements = tensor.Shape().Size();
+         for (size_t i = 0; i < num_elements; ++i) {
+             char* start_byte = bytes + i * element_size;
+             char* end_byte = start_byte + element_size - 1;
+             /* keep swapping */
+             for (size_t count = 0; count < element_size / 2; ++count) {
+                  char temp = *start_byte;
+                  *start_byte = *end_byte;
+                  *end_byte = temp;
+                  ++start_byte;
+                  --end_byte;
+             }
+         }
+    }
     tensor_proto.set_raw_data(tensor.DataRaw(), tensor.SizeInBytes());
   }
 
@@ -1180,6 +1200,42 @@ static void SparsifyGeneric(const void* dense_raw_data, size_t n_dense_elements,
   } else {
     indices.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
     indices.set_raw_data(std::string());
+  }
+
+  char *bytes = (char*)(indices.mutable_raw_data()->c_str());
+  size_t elem_sz = 1;
+  switch(indices.data_type())
+  {
+      case TensorProto_DataType_INT8:
+      elem_sz=1;
+      break;
+
+      case TensorProto_DataType_INT16:
+      elem_sz = sizeof(uint16_t);
+      break;
+   
+      case TensorProto_DataType_INT32:
+      elem_sz = sizeof(uint32_t);
+      break;
+  }
+  /* Convert indices to Little endian as expected by UnpackTensorWithRawDataImpl */
+  if(1)
+  {
+      // std::cout<<"Doing byte swapping for little endian tensorprotoutils.cc" << std::endl;
+      size_t num_elements = indices.raw_data().size() / elem_sz;
+
+      for (size_t i = 0; i < num_elements; ++i) {
+          char* start_byte = bytes + i * elem_sz;
+          char* end_byte = start_byte + elem_sz - 1;
+          /* keep swapping */
+          for (size_t count = 0; count < elem_sz / 2; ++count) {
+               char temp = *start_byte;
+               *start_byte = *end_byte;
+               *end_byte = temp;
+               ++start_byte;
+               --end_byte;
+          }
+      }
   }
   nnz = gathered_indices.size();
 }
