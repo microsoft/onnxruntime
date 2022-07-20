@@ -72,12 +72,6 @@ bool DepthToSpaceOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderI
     LOGS(logger, VERBOSE) << "DepthToSpace only supports 4d shape, input is " << input_size << "d shape.";
   }
 
-  // CoreML spec ReorganizeDataLayer DEPTH_TO_SPACE mode only accepts input with one batch ([C, H, W]).
-  if (input_shape[0] != 1) {
-    LOGS(logger, VERBOSE) << "The batch size of DepthToSpace [" << input_shape[0] << "] is not supported.";
-    return false;
-  }
-
   NodeAttrHelper helper(node);
   if (node.SinceVersion() >= 11) {
     // For now, only DCR mode DepthToSpace is supported
