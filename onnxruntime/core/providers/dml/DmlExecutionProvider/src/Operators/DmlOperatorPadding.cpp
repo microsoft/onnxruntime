@@ -95,6 +95,23 @@ public:
     }
 };
 
+void CALLBACK QueryPad(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
+{
+    // DML_PADDING1_OPERATOR_DESC doesn't support negative padding counts i.e. StartPadding and EndPadding
+    // can't contain negative elements.
+    // For opset < 11,
+    //      if attribute 'pads' contains negative element, fall back to CPU
+    // opset >= 11
+    //      DML EP continues to produce wrong result. [TODO: After DML1.9 release, introduce new API for pad to
+    //      handle negative values for StartPadding and EndPadding]
+    *isSupported = true;
+
+    MLOperatorAttributes attributes(context);
+    
+    std::vector<int32_t> padding = attributes.GetOptionalAttributeVectorInt32(AttrName::Pads);
+    *isSupported = std::none_of(padding.begin(), padding.end(), [](int32_t padCount) {return padCount < 0; });
+}
+
 DML_OP_DEFINE_CREATION_FUNCTION(Pad7, VersionedKernel<DmlOperatorPadding, 7>);
 DML_OP_DEFINE_CREATION_FUNCTION(Pad11, VersionedKernel<DmlOperatorPadding, 11>);
 DML_OP_DEFINE_CREATION_FUNCTION(Pad13, VersionedKernel<DmlOperatorPadding, 13>);

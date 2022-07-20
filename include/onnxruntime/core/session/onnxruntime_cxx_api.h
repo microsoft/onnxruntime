@@ -20,6 +20,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include <utility>
 #include <type_traits>
 
@@ -249,6 +250,22 @@ struct TypeInfo;
 struct Value;
 struct ModelMetadata;
 
+namespace detail {
+// Light functor to release memory with OrtAllocator
+struct AllocatedFree {
+  OrtAllocator* allocator_;
+  explicit AllocatedFree(OrtAllocator* allocator)
+      : allocator_(allocator) {}
+  void operator()(void* ptr) const { if(ptr) allocator_->Free(allocator_, ptr); }
+};
+}  // namespace detail
+
+/** \brief unique_ptr typedef used to own strings allocated by OrtAllocators
+ *  and release them at the end of the scope. The lifespan of the given allocator
+ *  must eclipse the lifespan of AllocatedStringPtr instance
+ */
+using AllocatedStringPtr = std::unique_ptr<char, detail::AllocatedFree>;
+
 /** \brief The Env (Environment)
 *
 * The Env holds the logging state used by all other objects.
@@ -357,20 +374,23 @@ struct SessionOptions : Base<OrtSessionOptions> {
 
   SessionOptions& DisablePerSessionThreads();  ///< Wraps OrtApi::DisablePerSessionThreads
 
-  SessionOptions& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddSessionConfigEntry
-  SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);         ///< Wraps OrtApi::AddInitializer
+  SessionOptions& AddConfigEntry(const char* config_key, const char* config_value);                                      ///< Wraps OrtApi::AddSessionConfigEntry
+  SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);                                             ///< Wraps OrtApi::AddInitializer
   SessionOptions& AddExternalInitializers(const std::vector<std::string>& names, const std::vector<Value>& ort_values);  ///< Wraps OrtApi::AddExternalInitializers
 
-  SessionOptions& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA
-  SessionOptions& AppendExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options);     ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA_V2
-  SessionOptions& AppendExecutionProvider_ROCM(const OrtROCMProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_ROCM
-  SessionOptions& AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_OpenVINO
-  SessionOptions& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
-  SessionOptions& AppendExecutionProvider_TensorRT_V2(const OrtTensorRTProviderOptionsV2& provider_options); ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
-  SessionOptions& AppendExecutionProvider_MIGraphX(const OrtMIGraphXProviderOptions& provider_options); ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
+  SessionOptions& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);               ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA
+  SessionOptions& AppendExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA_V2
+  SessionOptions& AppendExecutionProvider_ROCM(const OrtROCMProviderOptions& provider_options);               ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_ROCM
+  SessionOptions& AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_OpenVINO
+  SessionOptions& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
+  SessionOptions& AppendExecutionProvider_TensorRT_V2(const OrtTensorRTProviderOptionsV2& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
+  SessionOptions& AppendExecutionProvider_MIGraphX(const OrtMIGraphXProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
+  /// Wraps OrtApi::SessionOptionsAppendExecutionProvider. Currently supports SNPE and XNNPACK.
+  SessionOptions& AppendExecutionProvider(const std::string& provider_name,
+                                          const std::unordered_map<std::string, std::string>& provider_options = {});
 
   SessionOptions& SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn);  ///< Wraps OrtApi::SessionOptionsSetCustomCreateThreadFn
-  SessionOptions& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);   ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions
+  SessionOptions& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);      ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions
   SessionOptions& SetCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);        ///< Wraps OrtApi::SessionOptionsSetCustomJoinThreadFn
 };
 
@@ -381,13 +401,108 @@ struct ModelMetadata : Base<OrtModelMetadata> {
   explicit ModelMetadata(std::nullptr_t) {}                                   ///< Create an empty ModelMetadata object, must be assigned a valid one to be used
   explicit ModelMetadata(OrtModelMetadata* p) : Base<OrtModelMetadata>{p} {}  ///< Used for interop with the C API
 
-  char* GetProducerName(OrtAllocator* allocator) const;                                     ///< Wraps OrtApi::ModelMetadataGetProducerName
-  char* GetGraphName(OrtAllocator* allocator) const;                                        ///< Wraps OrtApi::ModelMetadataGetGraphName
-  char* GetDomain(OrtAllocator* allocator) const;                                           ///< Wraps OrtApi::ModelMetadataGetDomain
+  /** \deprecated use GetProducerNameAllocated()
+  * [[deprecated]] 
+  * This interface produces a pointer that must be released
+  * by the specified allocator and is often leaked. Not exception safe.
+  */
+  char* GetProducerName(OrtAllocator* allocator) const;                                    ///< Wraps OrtApi::ModelMetadataGetProducerName
+
+  /** \brief Returns a copy of the producer name.
+  * 
+  * \param allocator to allocate memory for the copy of the name returned
+  * \return a instance of smart pointer that would deallocate the buffer when out of scope.
+  *  The OrtAllocator instances must be valid at the point of memory release.
+  */
+  AllocatedStringPtr GetProducerNameAllocated(OrtAllocator* allocator) const;  ///< Wraps OrtApi::ModelMetadataGetProducerName
+
+  /** \deprecated use GetGraphNameAllocated()
+  * [[deprecated]] 
+  * This interface produces a pointer that must be released
+  * by the specified allocator and is often leaked. Not exception safe.
+  */
+  char* GetGraphName(OrtAllocator* allocator) const;                                       ///< Wraps OrtApi::ModelMetadataGetGraphName
+
+  /** \brief Returns a copy of the graph name.
+  * 
+  * \param allocator to allocate memory for the copy of the name returned
+  * \return a instance of smart pointer that would deallocate the buffer when out of scope.
+  *  The OrtAllocator instances must be valid at the point of memory release.
+  */
+  AllocatedStringPtr GetGraphNameAllocated(OrtAllocator* allocator) const;  ///< Wraps OrtApi::ModelMetadataGetGraphName
+
+  /** \deprecated use GetDomainAllocated()
+  * [[deprecated]] 
+  * This interface produces a pointer that must be released
+  * by the specified allocator and is often leaked. Not exception safe.
+  */
+  char* GetDomain(OrtAllocator* allocator) const;                                          ///< Wraps OrtApi::ModelMetadataGetDomain
+
+  /** \brief Returns a copy of the domain name.
+  * 
+  * \param allocator to allocate memory for the copy of the name returned
+  * \return a instance of smart pointer that would deallocate the buffer when out of scope.
+  *  The OrtAllocator instances must be valid at the point of memory release.
+  */
+  AllocatedStringPtr GetDomainAllocated(OrtAllocator* allocator) const;  ///< Wraps OrtApi::ModelMetadataGetDomain
+
+  /** \deprecated use GetDescriptionAllocated()
+  * [[deprecated]] 
+  * This interface produces a pointer that must be released
+  * by the specified allocator and is often leaked. Not exception safe.
+  */
   char* GetDescription(OrtAllocator* allocator) const;                                      ///< Wraps OrtApi::ModelMetadataGetDescription
+
+  /** \brief Returns a copy of the description.
+  * 
+  * \param allocator to allocate memory for the copy of the string returned
+  * \return a instance of smart pointer that would deallocate the buffer when out of scope.
+  *  The OrtAllocator instances must be valid at the point of memory release.
+  */
+  AllocatedStringPtr GetDescriptionAllocated(OrtAllocator* allocator) const;  ///< Wraps OrtApi::ModelMetadataGetDescription
+
+  /** \deprecated use GetGraphDescriptionAllocated()
+  * [[deprecated]] 
+  * This interface produces a pointer that must be released
+  * by the specified allocator and is often leaked. Not exception safe.
+  */
   char* GetGraphDescription(OrtAllocator* allocator) const;                                 ///< Wraps OrtApi::ModelMetadataGetGraphDescription
+
+  /** \brief Returns a copy of the graph description.
+  * 
+  * \param allocator to allocate memory for the copy of the string returned
+  * \return a instance of smart pointer that would deallocate the buffer when out of scope.
+  *  The OrtAllocator instances must be valid at the point of memory release.
+  */
+  AllocatedStringPtr GetGraphDescriptionAllocated(OrtAllocator* allocator) const;           ///< Wraps OrtApi::ModelMetadataGetGraphDescription
+
+  /** \deprecated use GetCustomMetadataMapKeysAllocated()
+  * [[deprecated]] 
+  * This interface produces multiple pointers that must be released
+  * by the specified allocator and is often leaked. Not exception safe.
+  */
   char** GetCustomMetadataMapKeys(OrtAllocator* allocator, _Out_ int64_t& num_keys) const;  ///< Wraps OrtApi::ModelMetadataGetCustomMetadataMapKeys
+
+  std::vector<AllocatedStringPtr> GetCustomMetadataMapKeysAllocated(OrtAllocator* allocator) const;  ///< Wraps OrtApi::ModelMetadataGetCustomMetadataMapKeys
+
+  /** \deprecated use LookupCustomMetadataMapAllocated()
+  * [[deprecated]] 
+  * This interface produces a pointer that must be released
+  * by the specified allocator and is often leaked. Not exception safe.
+  */
   char* LookupCustomMetadataMap(const char* key, OrtAllocator* allocator) const;            ///< Wraps OrtApi::ModelMetadataLookupCustomMetadataMap
+
+  /** \brief Looks up a value by a key in the Custom Metadata map
+  * 
+  * \param zero terminated string key to lookup
+  * \param allocator to allocate memory for the copy of the string returned
+  * \return a instance of smart pointer that would deallocate the buffer when out of scope.
+  *  maybe nullptr if key is not found.
+  * 
+  *  The OrtAllocator instances must be valid at the point of memory release.
+  */
+  AllocatedStringPtr LookupCustomMetadataMapAllocated(const char* key, OrtAllocator* allocator) const;  ///< Wraps OrtApi::ModelMetadataLookupCustomMetadataMap
+
   int64_t GetVersion() const;                                                               ///< Wraps OrtApi::ModelMetadataGetVersion
 };
 
@@ -432,12 +547,70 @@ struct Session : Base<OrtSession> {
   size_t GetOutputCount() const;                  ///< Returns the number of model outputs
   size_t GetOverridableInitializerCount() const;  ///< Returns the number of inputs that have defaults that can be overridden
 
-  char* GetInputName(size_t index, OrtAllocator* allocator) const;                   ///< Wraps OrtApi::SessionGetInputName
-  char* GetOutputName(size_t index, OrtAllocator* allocator) const;                  ///< Wraps OrtApi::SessionGetOutputName
+  /** \deprecated use GetInputNameAllocated()
+  * [[deprecated]] 
+  * This interface produces a pointer that must be released
+  * by the specified allocator and is often leaked. Not exception safe.
+  */
+  char* GetInputName(size_t index, OrtAllocator* allocator) const;  ///< Wraps OrtApi::SessionGetInputName
+
+  /** \brief Returns a copy of input name at the specified index.
+  * 
+  * \param index must less than the value returned by GetInputCount()
+  * \param allocator to allocate memory for the copy of the name returned
+  * \return a instance of smart pointer that would deallocate the buffer when out of scope.
+  *  The OrtAllocator instances must be valid at the point of memory release.
+  */
+  AllocatedStringPtr GetInputNameAllocated(size_t index, OrtAllocator* allocator) const;
+
+  /** \deprecated use GetOutputNameAllocated()
+  * [[deprecated]] 
+  * This interface produces a pointer that must be released
+  * by the specified allocator and is often leaked. Not exception safe.
+  */
+  char* GetOutputName(size_t index, OrtAllocator* allocator) const;  ///< Wraps OrtApi::SessionGetOutputName
+
+  /** \brief Returns a copy of output name at then specified index.
+  * 
+  * \param index must less than the value returned by GetOutputCount()
+  * \param allocator to allocate memory for the copy of the name returned
+  * \return a instance of smart pointer that would deallocate the buffer when out of scope.
+  *  The OrtAllocator instances must be valid at the point of memory release.
+  */
+  AllocatedStringPtr GetOutputNameAllocated(size_t index, OrtAllocator* allocator) const;
+
+  /** \deprecated use GetOverridableInitializerNameAllocated()
+  * [[deprecated]] 
+  * This interface produces a pointer that must be released
+  * by the specified allocator and is often leaked. Not exception safe.
+  */
   char* GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerName
-  char* EndProfiling(OrtAllocator* allocator) const;                                 ///< Wraps OrtApi::SessionEndProfiling
-  uint64_t GetProfilingStartTimeNs() const;                                          ///< Wraps OrtApi::SessionGetProfilingStartTimeNs
-  ModelMetadata GetModelMetadata() const;                                            ///< Wraps OrtApi::SessionGetModelMetadata
+
+  /** \brief Returns a copy of the overridable initializer name at then specified index.
+  * 
+  * \param index must less than the value returned by GetOverridableInitializerCount()
+  * \param allocator to allocate memory for the copy of the name returned
+  * \return a instance of smart pointer that would deallocate the buffer when out of scope.
+  *  The OrtAllocator instances must be valid at the point of memory release.
+  */
+  AllocatedStringPtr GetOverridableInitializerNameAllocated(size_t index, OrtAllocator* allocator) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerName
+
+  /** \deprecated use EndProfilingAllocated()
+  * [[deprecated]] 
+  * This interface produces a pointer that must be released
+  * by the specified allocator and is often leaked. Not exception safe.
+  */
+  char* EndProfiling(OrtAllocator* allocator) const;  ///< Wraps OrtApi::SessionEndProfiling
+
+  /** \brief Returns a copy of the profiling file name.
+  * 
+  * \param allocator to allocate memory for the copy of the string returned
+  * \return a instance of smart pointer that would deallocate the buffer when out of scope.
+  *  The OrtAllocator instances must be valid at the point of memory release.
+  */
+  AllocatedStringPtr EndProfilingAllocated(OrtAllocator* allocator) const;  ///< Wraps OrtApi::SessionEndProfiling
+  uint64_t GetProfilingStartTimeNs() const;                                 ///< Wraps OrtApi::SessionGetProfilingStartTimeNs
+  ModelMetadata GetModelMetadata() const;                                   ///< Wraps OrtApi::SessionGetModelMetadata
 
   TypeInfo GetInputTypeInfo(size_t index) const;                   ///< Wraps OrtApi::SessionGetInputTypeInfo
   TypeInfo GetOutputTypeInfo(size_t index) const;                  ///< Wraps OrtApi::SessionGetOutputTypeInfo
@@ -973,24 +1146,24 @@ struct CustomOpApi {
 
   void ThrowOnError(OrtStatus* result);
 
-  void CreateOpAttr(_In_ const char* name,
-                    _In_ const void* data,
-                    _In_ int len,
-                    _In_ OrtOpAttrType type,
-                    _Outptr_ OrtOpAttr** op_attr);
+  OrtOpAttr* CreateOpAttr(_In_ const char* name,
+                          _In_ const void* data,
+                          _In_ int len,
+                          _In_ OrtOpAttrType type);
 
   void ReleaseOpAttr(_Frees_ptr_opt_ OrtOpAttr* op_attr);
 
-  void CreateOp(_In_ const OrtKernelInfo* info,
-                _In_ const char* op_name,
-                _In_ const char* domain,
-                int version,
-                _In_opt_ const char** type_constraint_names,
-                _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
-                int type_constraint_count,
-                _In_opt_ const OrtOpAttr* const* attr_values,
-                int attr_count,
-                _Outptr_ OrtOp** ort_op);
+  OrtOp* CreateOp(_In_ const OrtKernelInfo* info,
+                  _In_ const char* op_name,
+                  _In_ const char* domain,
+                  _In_ int version,
+                  _In_opt_ const char** type_constraint_names,
+                  _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
+                  _In_opt_ int type_constraint_count,
+                  _In_opt_ const OrtOpAttr* const* attr_values,
+                  _In_opt_ int attr_count,
+                  _In_ int input_count,
+                  _In_ int output_count);
 
   void InvokeOp(_In_ const OrtKernelContext* context,
                 _In_ const OrtOp* ort_op,
@@ -1000,6 +1173,10 @@ struct CustomOpApi {
                 _In_ int output_count);
 
   void ReleaseOp(_Frees_ptr_opt_ OrtOp* ort_op);
+
+  OrtKernelInfo* CopyKernelInfo(_In_ const OrtKernelInfo* info);
+
+  void ReleaseKernelInfo(_Frees_ptr_opt_ OrtKernelInfo* info_copy);
 
  private:
   const OrtApi& api_;

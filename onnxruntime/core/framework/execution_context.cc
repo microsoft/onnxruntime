@@ -126,7 +126,7 @@ const SessionState& ExecutionContext::GetSessionState() const { return *session_
 
 const logging::Logger& ExecutionContext::GetLogger() const { return *logger; }
 
-IExecutionFrame* ExecutionContext::GetExecutionFrame() { return frame.get(); }
+ExecutionFrame* ExecutionContext::GetExecutionFrame() { return frame.get(); }
 
 synchronize::Notification* ExecutionContext::GetNotification(size_t idx) { return notifications[idx].get(); }
 

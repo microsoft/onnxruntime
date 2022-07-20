@@ -106,7 +106,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int k = hidden_size;
 
   size_t qkv_size = batch_size * sequence_length * 3 * hidden_size * element_size;
-  auto gemm_buffer = GetScratchBuffer<T>(qkv_size, OrtStream(context));
+  auto gemm_buffer = GetScratchBuffer<void>(qkv_size, OrtStream(context));
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
@@ -149,7 +149,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // Fully connection for global projection.
   // Note that Q only need handle global query tokens if we split GEMM to global Q/K/V separately.
   // When there is no global token, need not run glboal GEMM.
-  auto global_gemm_buffer = GetScratchBuffer<T>(max_num_global > 0 ? qkv_size : 0, OrtStream(context));
+  auto global_gemm_buffer = GetScratchBuffer<void>(max_num_global > 0 ? qkv_size : 0, OrtStream(context));
 
   if (max_num_global > 0) {
 

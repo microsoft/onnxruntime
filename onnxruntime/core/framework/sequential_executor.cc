@@ -509,6 +509,21 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, const std:
 
   ORT_RETURN_IF_ERROR(ctx.TaskStatus());
   ORT_RETURN_IF_ERROR(ctx.GetExecutionFrame()->GetOutputs(fetches));
+  if (ctx.GetExecutionFrame()->HasMemoryPatternPlanner()) {
+    bool all_tensors = true;
+    for (const auto& feed : feeds) {
+      if (!(feed.IsTensor())) {
+        all_tensors = false;
+        break;
+      }
+    }
+
+    if (all_tensors) {
+      MemoryPatternGroup mem_patterns;
+      ORT_RETURN_IF_ERROR(ctx.GetExecutionFrame()->GeneratePatterns(mem_patterns));
+      ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(feeds, std::move(mem_patterns)));
+    }
+  }
   return Status::OK();
 }
 

@@ -43,10 +43,31 @@ void GraphViewerToProto(const GraphViewer& graph_view,
   }
 
   if (include_initializer) {
+    std::unordered_set<std::string> current_scope_initializer_set;
+
     auto& initializers = graph_view.GetAllInitializedTensors();
     for (auto& it : initializers) {
       auto* p_initializer = graph_proto.add_initializer();
       *p_initializer = *(it.second);
+      current_scope_initializer_set.insert(it.first);
+    }
+
+
+    // handle outer scope value which is a constant initializer
+    if (include_outer_scope_args) {
+      for (auto& node_idx : graph_view.GetNodesInTopologicalOrder()) {
+        const auto& node = graph_view.GetNode(node_idx);
+        for (const auto& input : node->InputDefs()) {
+          if (current_scope_initializer_set.find(input->Name()) != current_scope_initializer_set.end()) {
+            continue;
+          }
+          if (graph_view.IsConstantInitializer(input->Name(), true)) {
+            auto* p_initializer = graph_proto.add_initializer();
+            *p_initializer = *(graph_view.GetConstantInitializer(input->Name(), true));
+            current_scope_initializer_set.insert(input->Name());
+          }
+        }
+      }
     }
   }
 }

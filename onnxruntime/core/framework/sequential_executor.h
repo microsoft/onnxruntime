@@ -22,6 +22,7 @@
 namespace onnxruntime {
 
 class ExecutionContext;
+class DeviceStreamColloection;
 
 onnxruntime::Status BindToDeviceStream(Stream* parent_stream,
                                   const SequentialExecutionPlan& execution_plan,

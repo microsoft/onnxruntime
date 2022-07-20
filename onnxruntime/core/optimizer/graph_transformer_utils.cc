@@ -18,6 +18,9 @@
 
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/attention_fusion.h"
+#ifdef MLAS_TARGET_AMD64_IX86
+#include "core/optimizer/avx2_weight_s8_to_u8.h"
+#endif
 #include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
@@ -59,6 +62,9 @@
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#ifdef ENABLE_TRAINING
+#include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
+#endif
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -182,13 +188,15 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<ReshapeFusion>());
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(
           session_options.free_dimension_overrides));
-      auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
-      transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
 
       if (!disable_quant_qdq) {
         transformers.emplace_back(std::make_unique<QDQPropagationTransformer>());
       }
 
+      // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
+      // shouldn't affect the end result - just easier to debug any issue if it's last.
+      auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
+      transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
     } break;
 
     case TransformerLevel::Level2: {
@@ -235,6 +243,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<EmbedLayerNormFusion>(cpu_cuda_rocm_eps));
 
       transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_rocm_eps));
+#ifdef ENABLE_TRAINING
+      transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_eps));
+#endif
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(cpu_cuda_rocm_eps));
@@ -250,6 +261,16 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       if (enable_gelu_approximation) {
         transformers.emplace_back(std::make_unique<GeluApproximation>(cpu_cuda_rocm_eps));
       }
+
+#ifdef MLAS_TARGET_AMD64_IX86
+      const bool avx2_precision_mode =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsAvx2PrecisionMode, "0") == "1"
+          && MlasPlatformU8S8Overflow();
+
+      if (avx2_precision_mode) {
+        transformers.emplace_back(std::make_unique<Avx2WeightS8ToU8Transformer>(cpu_ep));
+      }
+#endif
 
 #endif
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their

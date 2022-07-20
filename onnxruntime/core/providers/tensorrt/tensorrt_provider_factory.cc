@@ -5,6 +5,7 @@
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #include <atomic>
 #include "tensorrt_execution_provider.h"
+#include "tensorrt_provider_factory_creator.h"
 #include "core/framework/provider_options.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include <string.h>
@@ -30,14 +31,10 @@ std::unique_ptr<IExecutionProvider> TensorrtProviderFactory::CreateProvider() {
   return std::make_unique<TensorrtExecutionProvider>(info_);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id) {
+std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) {
   TensorrtExecutionProviderInfo info;
   info.device_id = device_id;
   info.has_trt_options = false;
-  return std::make_shared<onnxruntime::TensorrtProviderFactory>(info);
-}
-
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const TensorrtExecutionProviderInfo& info) {
   return std::make_shared<onnxruntime::TensorrtProviderFactory>(info);
 }
 
@@ -71,6 +68,7 @@ struct Tensorrt_Provider : Provider {
     info.engine_decryption_enable = options.trt_engine_decryption_enable != 0;
     info.engine_decryption_lib_path = options.trt_engine_decryption_lib_path == nullptr ? "" : options.trt_engine_decryption_lib_path;
     info.force_sequential_engine_build = options.trt_force_sequential_engine_build != 0;
+    info.context_memory_sharing_enable = options.trt_context_memory_sharing_enable != 0;
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -85,7 +83,7 @@ struct Tensorrt_Provider : Provider {
     trt_options.trt_int8_enable = internal_options.int8_enable;
 
     char* dest = nullptr;
-    auto str_size = internal_options.int8_calibration_table_name.size(); 
+    auto str_size = internal_options.int8_calibration_table_name.size();
     if (str_size == 0) {
       trt_options.trt_int8_calibration_table_name = nullptr;
     } else {
@@ -136,6 +134,7 @@ struct Tensorrt_Provider : Provider {
     }
 
     trt_options.trt_force_sequential_engine_build = internal_options.force_sequential_engine_build;
+    trt_options.trt_context_memory_sharing_enable = internal_options.context_memory_sharing_enable;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {

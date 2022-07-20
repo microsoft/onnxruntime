@@ -77,7 +77,7 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   auto kernel_def = KernelDefBuilder().SetName("Variable").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
 
   OpKernelInfo p_info(node, *kernel_def, *cpu_execution_provider, s.GetConstantInitializedTensors(),
-                      s.GetOrtValueNameIdxMap(), s.GetDataTransferMgr(), s.GetPerAllocPlan());
+                      s.GetOrtValueNameIdxMap(), s.GetDataTransferMgr());
   unique_ptr<TestOpKernel> p_kernel;
   p_kernel.reset(new TestOpKernel(p_info));
   size_t orig_num_outputs = p_kernel->Node().OutputDefs().size();
@@ -143,8 +143,8 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
                              DefaultLoggingManager().DefaultLogger(), profiler);
 
   GraphPartitioner partitioner(krm, execution_providers);
-  status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(), 
-                                layout_transformer::TransformLayoutForCompilingEP);
+  status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
+                                 layout_transformer::TransformLayoutForEP);
   ASSERT_TRUE(status.IsOK()) << status;
 
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
@@ -210,7 +210,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers);
     status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
-                                   layout_transformer::TransformLayoutForCompilingEP);
+                                   layout_transformer::TransformLayoutForEP);
     ASSERT_TRUE(status.IsOK()) << status;
 
     // Finalize the session state
@@ -260,7 +260,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers);
     status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
-                                   layout_transformer::TransformLayoutForCompilingEP);
+                                   layout_transformer::TransformLayoutForEP);
     ASSERT_TRUE(status.IsOK()) << status;
 
     // Finalize the session state
