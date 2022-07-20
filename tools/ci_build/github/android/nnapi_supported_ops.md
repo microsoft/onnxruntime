@@ -17,7 +17,7 @@ Keep in sync with doco generated from /docs/execution-providers/NNAPI-ExecutionP
 |ai.onnx:Exp||
 |ai.onnx:Flatten||
 |ai.onnx:Floor||
-|ai.onnx:Gather|Input indices should be an initializer if not int32 type.|
+|ai.onnx:Gather|Input indices should be constant if not int32 type.|
 |ai.onnx:Gemm|If input B is not constant, transB should be 1.|
 |ai.onnx:GlobalAveragePool|Only 2D Pool is supported.|
 |ai.onnx:GlobalMaxPool|Only 2D Pool is supported.|
