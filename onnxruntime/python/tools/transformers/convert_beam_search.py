@@ -1324,7 +1324,15 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
         inputs["vocab_mask"] = vocab_mask
 
     if args.custom_attention_mask:
-        inputs["attention_mask"] = np.ones(input_ids.shape, dtype=np.int32)
+        attention_mask = np.ones(input_ids.shape, dtype=np.int32)
+        for i in range(input_ids.shape[0]):
+            abs_pos = 0
+            for j in range(input_ids.shape[1]):
+                if input_ids[i][j] == pad_token_id and abs_pos == 0:
+                    attention_mask[i][j] = 0
+                else:
+                    abs_pos += 1
+        inputs["attention_mask"] = attention_mask
 
     if args.save_test_data:
         test_data_dir = Path(args.output).parent.as_posix()
