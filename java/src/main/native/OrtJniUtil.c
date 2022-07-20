@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2022 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -181,6 +181,37 @@ size_t onnxTypeSize(ONNXTensorElementDataType type) {
         default:
             return 0;
     }
+}
+
+JavaTensorTypeShape getTensorTypeShape(JNIEnv * jniEnv, const OrtApi * api, const OrtValue * value) {
+  JavaTensorTypeShape output;
+  output.valid = 0;
+
+  OrtTensorTypeAndShapeInfo* info;
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorTypeAndShape(value, &info));
+  if (code != ORT_OK) {
+    return output;
+  }
+  code = checkOrtStatus(jniEnv, api, api->GetDimensionsCount(info, &output.dimensions));
+  if (code != ORT_OK) {
+    api->ReleaseTensorTypeAndShapeInfo(info);
+    return output;
+  }
+  code = checkOrtStatus(jniEnv, api, api->GetTensorShapeElementCount(info, &output.arrSize));
+  if (code != ORT_OK) {
+    api->ReleaseTensorTypeAndShapeInfo(info);
+    return output;
+  }
+  code = checkOrtStatus(jniEnv, api, api->GetTensorElementType(info, &output.onnxTypeEnum));
+  api->ReleaseTensorTypeAndShapeInfo(info);
+  if (code != ORT_OK) {
+    return output;
+  }
+
+  // If all the elements extracted properly this is a valid struct
+  output.valid = 1;
+
+  return output;
 }
 
 typedef union FP32 {
