@@ -2766,6 +2766,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>axis</tt> : int</dt>
 <dd>apply softmax to elements for dimensions axis,or all dims along with axis according to op-version</dd>
+<dt><tt>opset</tt> : int</dt>
+<dd>use to mark SinceVersion</dd>
 </dl>
 
 #### Inputs
