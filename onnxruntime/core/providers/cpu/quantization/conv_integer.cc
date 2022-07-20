@@ -133,6 +133,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
               strides[0],
               strides[1],
               col_buffer_data,
+              thread_pool,
               input_offset);
         } else {
           math::Im2col<uint8_t, StorageOrder::NCHW>()(
@@ -146,6 +147,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
               pads.data(),
               static_cast<int>(kernel_rank),
               col_buffer_data,
+              thread_pool,
               false,
               input_offset);
         }

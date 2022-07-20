@@ -77,10 +77,12 @@ Status NhwcMaxPool<T8Bits>::Compute(OpKernelContext* context) const {
   int64_t col_buffer_batch_count = std::min(output_image_size, output_batch_count);
   auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(const T8Bits*)) * kernel_size * col_buffer_batch_count);
   BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
-  std::vector<T8Bits> padding_data(static_cast<size_t>(C), std::numeric_limits<T8Bits>::lowest());
+  InlinedVector<T8Bits> padding_data(static_cast<size_t>(C), std::numeric_limits<T8Bits>::lowest());
 
   const auto* Xdata = X->Data<T8Bits>();
   auto* Ydata = Y->MutableData<T8Bits>();
+
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
 
   for (int64_t image_id = 0; image_id < N; ++image_id) {
     for (int64_t output_start = 0; output_start < output_image_size;) {
@@ -97,6 +99,7 @@ Status NhwcMaxPool<T8Bits>::Compute(OpKernelContext* context) const {
           static_cast<ptrdiff_t>(spatial_dims),
           output_start,
           output_count,
+          tp,
           static_cast<T8Bits const**>(col_buffer.get()),
           padding_data.data());
       MlasMaximumPool(

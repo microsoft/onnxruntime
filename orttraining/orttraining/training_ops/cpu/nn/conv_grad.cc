@@ -79,7 +79,6 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
   const T* Wdata = W->template Data<T>();
   const T* dYdata = dY->template Data<T>();
 
-
   BufferUniquePtr bias_multiplier(alloc->Alloc(sizeof(T) * output_image_size), BufferDeleter(alloc));
   T* bias_multiplier_data = nullptr;
   Tensor* dB = context->Output(2, {M});
@@ -94,7 +93,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
                               bias_multiplier_data,
                               &CPUMathUtil::Instance());
   }
-  
+
   T* dWdata = nullptr;
   if (dW) {
     dWdata = dW->template MutableData<T>();
@@ -124,7 +123,8 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
                 pads[1],
                 1,
                 strides[0],
-                col_buffer_data);
+                col_buffer_data,
+                tp);
           } else if (kernel_rank == 2) {
             math::Im2col<T, StorageOrder::NCHW>()(
                 Xdata + group_id * X_offset,
@@ -141,7 +141,8 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
                 pads[3],
                 strides[0],
                 strides[1],
-                col_buffer_data);
+                col_buffer_data,
+                tp);
           } else {
             math::Im2col<T, StorageOrder::NCHW>()(
                 Xdata + group_id * X_offset,
@@ -153,7 +154,8 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
                 dilations.data(),
                 pads.data(),
                 static_cast<int>(kernel_shape.size()),
-                col_buffer_data);
+                col_buffer_data,
+                tp);
           }
         }
         // Gradient with respect to W, filter.
@@ -188,7 +190,6 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
     dYdata += Y_offset * conv_attrs_.group;
   }
 
-
   Tensor* dX = context->Output(0, X->Shape());
   if (dX) {
     T* dXdata = dX->template MutableData<T>();
@@ -210,7 +211,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
             tp);
 
         if (kernel_rank == 2) {
-          math::Col2im<T, CPUMathUtil, StorageOrder::NCHW>(
+          math::Col2imPar<T, StorageOrder::NCHW>(
               col_buffer_data,
               C / conv_attrs_.group,
               input_shape[0],
@@ -226,9 +227,10 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
               strides[0],
               strides[1],
               dXdata,
-              &CPUMathUtil::Instance());
+              &CPUMathUtil::Instance(),
+              tp);
         } else {
-          math::Col2imNd<T, CPUMathUtil, StorageOrder::NCHW>(
+          math::Col2imNdPar<T, StorageOrder::NCHW>(
               col_buffer_data,
               input_shape.GetDims().data(),
               output_shape.GetDims().data(),
@@ -240,7 +242,8 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
               pads.data(),
               static_cast<int>(kernel_shape.size()),
               dXdata,
-              &CPUMathUtil::Instance());
+              &CPUMathUtil::Instance(),
+              tp);
         }
         dXdata += X_offset;
         dYdata += Y_offset;
@@ -260,4 +263,3 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace contrib
 }  // namespace onnxruntime
-

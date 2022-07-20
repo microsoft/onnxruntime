@@ -40,6 +40,7 @@ enum CBLAS_SIDE { CblasLeft = 141,
 #endif
 
 namespace onnxruntime {
+class CPUMathUtil;
 namespace concurrency {
 class ThreadPool;
 }
@@ -198,8 +199,9 @@ struct Im2col<T, StorageOrder::NCHW> {
       int64_t stride_h,
       int64_t stride_w,
       T* data_col,
+      concurrency::ThreadPool* tp,
       T padding_value = 0);
-  void operator()(
+  void operator() (
       const T* data_im,
       const int64_t* input_shape,
       const int64_t* output_shape,
@@ -210,6 +212,7 @@ struct Im2col<T, StorageOrder::NCHW> {
       const int64_t* pad,
       ptrdiff_t rank,
       T* data_col,
+      concurrency::ThreadPool* tp,
       bool accumulate_output = false,
       T padding_value = 0);
 };
@@ -233,8 +236,10 @@ struct Im2col<T, StorageOrder::NHWC> {
       int64_t output_w,
       int64_t output_start,
       int64_t output_count,
+      concurrency::ThreadPool* tp,
       T* data_col,
       T padding_value = 0);
+
   void operator()(
       const T* data_im,
       int64_t group_channels,
@@ -246,6 +251,7 @@ struct Im2col<T, StorageOrder::NHWC> {
       const int64_t* dilation,
       const int64_t* pad,
       ptrdiff_t rank,
+      concurrency::ThreadPool* tp,
       T* data_col,
       T padding_value = 0);
   void operator()(
@@ -260,12 +266,13 @@ struct Im2col<T, StorageOrder::NHWC> {
       ptrdiff_t rank,
       int64_t output_start,
       int64_t output_count,
+      concurrency::ThreadPool* tp,
       T const** data_indirection,
       const T* padding_ptr);
 };
 
-template <typename T, class Provider, int order>
-void Col2imNd(
+template <typename T, int order>
+void Col2imNdPar(
     const T* data_col,
     const int64_t* img_shape,
     const int64_t* output_shape,
@@ -277,7 +284,8 @@ void Col2imNd(
     const int64_t* pad,
     ptrdiff_t N,
     T* data_img,
-    Provider* provider);
+    CPUMathUtil* context,
+    concurrency::ThreadPool*);
 
 template <typename T, class Provider, int order>
 void Col2im(
@@ -297,6 +305,27 @@ void Col2im(
     int64_t stride_w,
     T* data_im,
     Provider* provider);
+
+template <typename T, int order>
+void Col2imPar(
+    const T* data_col,
+    int64_t channels,
+    int64_t height,
+    int64_t width,
+    int64_t patch_h,
+    int64_t patch_w,
+    int64_t dilation_h,
+    int64_t dilation_w,
+    int64_t pad_t,
+    int64_t pad_l,
+    int64_t pad_b,
+    int64_t pad_r,
+    int64_t stride_h,
+    int64_t stride_w,
+    T* data_im,
+    CPUMathUtil* context,
+    concurrency::ThreadPool* tp);
+
 
 template <typename T, typename TypedCopy>
 void CopyMatrix(

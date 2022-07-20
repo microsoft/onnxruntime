@@ -11,7 +11,6 @@
 #include "core/util/qmath.h"
 #include "core/mlas/inc/mlas.h"
 
-
 namespace onnxruntime {
 
 using ConvPadVector = ConvAttributes::ConvPadVector;
@@ -159,9 +158,9 @@ class QLinearConv : public OpKernel {
     // We need a better partiton when we have a big filter tensor and very small activation tensor
     // TODO!! we should partition the weight tensor instead
     constexpr int64_t BIG_WEIGHT = 1024 * 1024;
-    if (weights >= BIG_WEIGHT && task_count < (degree_of_parallelism / 8) ) {
-        int32_t s1 = static_cast<int32_t>((output_image_size + degree_of_parallelism - 1) / degree_of_parallelism);
-        output_stride = std::max(s1, min_stride);
+    if (weights >= BIG_WEIGHT && task_count < (degree_of_parallelism / 8)) {
+      int32_t s1 = static_cast<int32_t>((output_image_size + degree_of_parallelism - 1) / degree_of_parallelism);
+      output_stride = std::max(s1, min_stride);
     }
 
     return output_stride;
@@ -739,6 +738,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
             dilations.data(),
             pads.data(),
             static_cast<int64_t>(kernel_rank),
+            thread_pool,
             static_cast<ActType*>(col_buffer.get()) + group_id * col_buffer_size,
             X_zero_point_value);
       }
@@ -763,6 +763,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
             static_cast<ptrdiff_t>(kernel_rank),
             output_start,
             output_count,
+            nullptr,
             worker_indirection_buffer,
             padding_data.data());
       }
@@ -837,6 +838,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
                   output_shape[1],
                   output_start,
                   output_count,
+                  nullptr,
                   worker_col_buffer,
                   X_zero_point_value);
             } else if (kernel_rank == 1) {
@@ -857,6 +859,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
                   output_shape[0],
                   output_start,
                   output_count,
+                  nullptr,
                   worker_col_buffer,
                   X_zero_point_value);
             } else {
