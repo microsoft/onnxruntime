@@ -14,12 +14,12 @@ namespace torch_ort {
 namespace eager {
 
 template <typename T> class ORTLogHelper {
-public:
+ public:
   ORTLogHelper(const T &value) : value_{value} {}
 
   const T &GetValue() const { return value_; }
 
-private:
+ private:
   const T &value_;
 };
 

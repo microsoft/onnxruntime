@@ -86,7 +86,7 @@ struct ORTGuardImpl final : public c10::impl::DeviceGuardImplInterface {
 
   //#pragma endregion events
 
-private:
+ private:
   thread_local static at::DeviceIndex current_device_;
   thread_local static std::map<at::DeviceIndex, at::StreamId> current_streams_;
 };

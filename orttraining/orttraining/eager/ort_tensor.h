@@ -11,7 +11,7 @@ namespace torch_ort {
 namespace eager {
 
 class ORTTensorImpl final : public c10::TensorImpl {
-public:
+ public:
   explicit ORTTensorImpl(OrtValue tensor, const at::TensorOptions &options)
       : c10::TensorImpl(c10::DispatchKeySet{c10::DispatchKey::ORT}, options.dtype(), options.device()) {
     set_tensor(tensor);
@@ -45,7 +45,7 @@ public:
 
   at::IntArrayRef strides() const override;
 
-private:
+ private:
   void cacheSizeMetadata();
   OrtValue tensor_;
 };

@@ -18,7 +18,7 @@ namespace eager {
 using ProviderInfoMap = std::unordered_map<std::string, onnxruntime::ProviderOptions>;
 
 class ORTBackendsManager {
-public:
+ public:
   ORTBackendsManager(const onnxruntime::logging::Logger &logger);
 
   onnxruntime::Status set_device(size_t device_index, const std::string &provider_type,
@@ -32,7 +32,7 @@ public:
 
   const ProviderInfoMap &GetOrtDeviceProviderInfo(size_t torch_device_index) const;
 
-private:
+ private:
   std::map<at::DeviceIndex, std::unique_ptr<onnxruntime::ORTInvoker>> backends_;
   const onnxruntime::logging::Logger &logger_;
   // custom op schema registry
