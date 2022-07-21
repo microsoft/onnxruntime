@@ -59,15 +59,6 @@ void LaunchNextTokenKernel(const int64_t* next_token_indices,
                                                       total_elements);
 }
 
-__global__ void TypeCastKernel(const int64_t* next_token_indices,
-                               int32_t* next_tokens,
-                               int total_elements) {
-  int index = blockIdx.x * blockDim.x + threadIdx.x;
-  if (index < total_elements) {
-    next_tokens[index] = gsl::narrow_cast<int32_t>(next_token_indices[index]);
-  }
-}
-
 template <typename T>
 __global__ void LogitsProcessKernel(
     T* next_token_scores,

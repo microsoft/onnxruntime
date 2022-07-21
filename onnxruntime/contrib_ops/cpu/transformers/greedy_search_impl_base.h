@@ -36,6 +36,7 @@ struct GreedySearchState : public IGreedySearchState<T> {
     this->next_tokens_cpu = AllocateBuffer<int64_t>(cpu_allocator,
                                                     next_tokens_cpu_buffer_,
                                                     SafeInt<size_t>(batch_size));
+    this->next_tokens = AllocateBuffer<int32_t>(cpu_allocator, next_tokens_buffer_, SafeInt<size_t>(batch_size));
 
     // below buffers are on cpu or cuda
     size_t next_token_size = SafeInt<size_t>(batch_size) * vocab_size;
@@ -43,9 +44,9 @@ struct GreedySearchState : public IGreedySearchState<T> {
     this->next_positions = AllocateBuffer<int32_t>(allocator, next_positions_buffer_, batch_size);
 
 
-    if (is_cuda) {
-      // buffers used by CUDA operator but not by CPU operator.
-      this->next_tokens = AllocateBuffer<int32_t>(allocator, next_tokens_buffer_, SafeInt<size_t>(batch_size));
+    if (!is_cuda) {
+      // buffers used by CPU operator but not by CUDA operator.
+
     }
   }
 
@@ -183,12 +184,12 @@ Status GreedySearchBase<T>::GenerateNextToken(
   // Process logits to get next token scores
   ORT_RETURN_IF_ERROR(ProcessLogits(logits, greedy_state, this->temp_space_allocator_, counter));
 
+  next_tokens = greedy_state.next_tokens;
   for (size_t i = 0; i < next_tokens.size(); i++) {
     next_tokens[i] = gsl::narrow_cast<int32_t>(greedy_state.next_tokens_cpu[i]);
   }
 
   gsl::span<bool>& eos_meet = greedy_state.eos_meet;
-
   for (size_t batch_id = 0; batch_id < next_tokens.size(); ++batch_id) {
     if (next_tokens[batch_id] == eos_token_id) {
       eos_meet[batch_id] = true;

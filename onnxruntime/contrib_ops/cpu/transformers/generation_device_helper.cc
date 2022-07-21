@@ -473,7 +473,7 @@ Status GreedySearchProcessLogits(
 #endif
 
   gsl::span<const int64_t> next_token_indices = topk_indices->DataAsSpan<int64_t>();
-  gsl::copy(next_token_indices, greedy_state->next_tokens_cpu)
+  gsl::copy(next_token_indices, greedy_state->next_tokens_cpu);
 
 #ifdef DEBUG_GENERATION
   gsl::span<const int64_t> next_tokens(greedy_state->next_tokens_cpu.data(),
