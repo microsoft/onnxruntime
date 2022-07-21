@@ -775,7 +775,16 @@ var validCombos = {
     "linux,Python,ARM64,TVM":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
         
-    "linux,Python,AMD,TVM":
+    "windows,Python,X64,TVM":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
+
+    "windows,Python,X86,TVM":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
+
+    "windows,Python,ARM32,TVM":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
+        
+    "windows,Python,ARM64,TVM":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
         
     "linux,C-API,X64,OpenVINO":
