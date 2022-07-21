@@ -97,5 +97,5 @@ Unless otherwise noted, please use the latest released version of the tools to c
 |[SKLearn-ONNX](https://pypi.org/project/skl2onnx/)|[Latest stable](https://github.com/onnx/sklearn-onnx/releases)|
 |[WinMLTools](https://docs.microsoft.com/en-us/windows/ai/windows-ml/convert-model-winmltools)|[Latest stable](https://pypi.org/project/winmltools/)|
 |[AzureML AutoML](https://docs.microsoft.com/en-us/azure/machine-learning/service/concept-automated-ml)|[1.0.39+](https://pypi.org/project/azureml-automl-core) (ONNX v1.5) <br/>[1.0.33](https://pypi.org/project/azureml-automl-core/1.0.33/) (ONNX v1.4) |
-|[Paddle2ONNX](https://pypi.org/project/paddle2onnx/)| [Latest stable](https://github.com/PaddlePaddle/Paddle2ONNX/releases) |[SKLearn-ONNX](https://pypi.org/project/skl2onnx/)|[Latest stable](https://github.com/onnx/sklearn-onnx/releases)|
+|[Paddle2ONNX](https://pypi.org/project/paddle2onnx/)| [Latest stable](https://github.com/PaddlePaddle/Paddle2ONNX/releases) |
 
