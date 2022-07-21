@@ -1256,9 +1256,9 @@ class PlannerImpl {
         if (variadic_alias_offsets.has_value()) {
           int input_offset = variadic_alias_offsets->first;
           int output_offset = variadic_alias_offsets->second;
-          int alias_input_index = output_arg_num - output_offset + input_offset;
+          size_t alias_input_index = output_arg_num - output_offset + input_offset;
 
-          if (alias_input_index >= 0 && static_cast<size_t>(alias_input_index) < input_args.size()) {
+          if (alias_input_index >= 0 && alias_input_index < input_args.size()) {
             auto p_input_arg = input_args[alias_input_index];
 
             if (p_input_arg->Exists()) {
@@ -2200,7 +2200,7 @@ void DummyPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_view
       }
     }
   }
-  std::unordered_map<std::string, int> node_stream_map;
+  std::unordered_map<std::string, size_t> node_stream_map;
   for (size_t i = 0; i < node_names_by_stream_.size(); ++i) {
     for (const auto& node_name : node_names_by_stream_[i]) {
       node_stream_map[node_name] = i;

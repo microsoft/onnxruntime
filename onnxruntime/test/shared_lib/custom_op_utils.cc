@@ -43,7 +43,6 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   //     and use the same compute stream to launch the custom op.
   // Here, an example for (1) is shown (See test_inference.cc to see how this custom op is used.)
 #else
-  ORT_UNUSED_PARAMETER(compute_stream_);
   for (int64_t i = 0; i < size; i++) {
     out[i] = X[i] + Y[i];
   }
@@ -83,7 +82,6 @@ void MyCustomKernelMultipleDynamicInputs::Compute(OrtKernelContext* context) {
   //     and use the same compute stream to launch the custom op.
   // Here, an example for (1) is shown (See test_inference.cc to see how this custom op is used.)
 #else
-  ORT_UNUSED_PARAMETER(compute_stream_);
   for (int64_t i = 0; i < size; i++) {
     out[i] = static_cast<float>(X[i] + Y[i]);
   }

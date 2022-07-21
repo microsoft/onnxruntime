@@ -93,8 +93,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                           const char* custom_op_library_filename,
                           void** library_handle = nullptr,
                           bool test_session_creation_only = false,
-                          void* cuda_compute_stream = nullptr,
-                          bool use_external_cuda_stream = false) {
+                          void* cuda_compute_stream = nullptr) {
   Ort::SessionOptions session_options;
 
   if (provider_type == 1) {

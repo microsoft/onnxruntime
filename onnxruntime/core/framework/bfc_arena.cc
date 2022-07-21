@@ -321,7 +321,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   auto* chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream, false);
   // if not found, and dynamic cross stream reusing is enabled, try again
   if (!chunk && enable_cross_stream_reusing) {
-    auto* chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream, true);
+    chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream, true);
     if (chunk->stream && stream && chunk->stream != stream) {
         auto notificaiton = chunk->stream->CreateNotification(1);
         notificaiton->ActivateAndUpdate();

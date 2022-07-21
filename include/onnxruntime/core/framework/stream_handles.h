@@ -78,6 +78,7 @@ using CreateStreamFn = std::function<std::unique_ptr<Stream>(const IExecutionPro
 // make it interface so we can pass it through shared library based execution providers
 class IStreamCommandHandleRegistry {
  public:
+  virtual ~IStreamCommandHandleRegistry() {}
   // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
   // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
   virtual WaitNotificationFn GetWaitHandle(const std::string& notification_owner_ep_type, const std::string& executor_ep_type) const = 0;

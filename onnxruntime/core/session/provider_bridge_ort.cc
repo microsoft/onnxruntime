@@ -1032,7 +1032,7 @@ struct ProviderLibrary {
         provider_->Initialize();
       }
       return *provider_;
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
       Unload();  // If anything fails we unload the library and rethrow
       throw;
     }

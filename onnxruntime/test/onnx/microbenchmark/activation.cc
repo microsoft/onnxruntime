@@ -161,7 +161,7 @@ static void RunSingleNode(const std::string& op_name, const std::string& domain,
   MyIExecutionFrame f(*k.a, feed_mlvalue_idxs, feeds, {}, fetch_mlvalue_idxs, fetches, *k.ort_value_idx_map,
                       node_index_info);
   for (auto _ : state) {
-    OpKernelContext c(&f, k.kernel.get(), tp.get(), *k.test_logger);
+    OpKernelContext c(&f, k.kernel.get(), /*stream*/ nullptr, tp.get(), *k.test_logger);
     Status st = k.kernel->Compute(&c);
     if (!st.IsOK())
       state.SkipWithError(st.ErrorMessage().c_str());

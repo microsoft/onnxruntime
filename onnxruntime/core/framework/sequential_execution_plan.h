@@ -96,6 +96,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
   class ExecutionStep {
   public: 
+   virtual ~ExecutionStep() {}
    virtual StepCommandFn GetStepFun() = 0;
    virtual std::string Dump() const = 0;
   };
@@ -129,7 +130,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
   std::vector<size_t> notification_owners;
 
-  std::unordered_map<onnxruntime::NotificationIndex, std::vector<std::pair<int, int>>> downstream_map;
+  std::unordered_map<onnxruntime::NotificationIndex, std::vector<std::pair<size_t, size_t>>> downstream_map;
 
   size_t num_barriers{0};
 
