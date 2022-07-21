@@ -2,17 +2,17 @@
 // Licensed under the MIT License.
 
 #include "ort_aten.h"
-#include <c10/core/TensorImpl.h>
-#include <ATen/native/CPUFallback.h>
 #include <ATen/InferSize.h>
+#include <ATen/native/CPUFallback.h>
+#include <c10/core/TensorImpl.h>
 
-#include <torch/csrc/jit/ir/ir.h>
-#include <c10/util/irange.h>
 #include <ATen/WrapDimUtils.h>
+#include <c10/util/irange.h>
+#include <torch/csrc/jit/ir/ir.h>
 
 #include <algorithm>
-#include <vector>
 #include <utility>
+#include <vector>
 
 namespace torch_ort {
 namespace eager {
@@ -20,122 +20,104 @@ namespace eager {
 // #pragma region Helpers
 using NodeAttributes = onnxruntime::NodeAttributes;
 namespace {
-  inline bool is_device_supported(at::DeviceType type) {
-    return type == at::kORT || type == at::kCPU;
+inline bool is_device_supported(at::DeviceType type) { return type == at::kORT || type == at::kCPU; }
+
+inline void assert_tensor_supported(const at::Tensor &tensor) {
+  if (tensor.is_sparse()) {
+    throw std::runtime_error("ORT copy: sparse not supported");
   }
 
-  inline void assert_tensor_supported(const at::Tensor& tensor) {
-    if (tensor.is_sparse()) {
-      throw std::runtime_error("ORT copy: sparse not supported");
-    }
-
-    if (tensor.is_quantized()) {
-      throw std::runtime_error("ORT copy: quantized not supported");
-    }
-
-    if (!is_device_supported(tensor.device().type())) {
-      throw std::runtime_error("ORT copy: device not supported");
-    }
+  if (tensor.is_quantized()) {
+    throw std::runtime_error("ORT copy: quantized not supported");
   }
-}  // namespace
 
-at::Tensor aten_tensor_from_ort(
-  OrtValue&& ot,
-  const at::TensorOptions& options) {
-  return at::Tensor(c10::make_intrusive<ORTTensorImpl>(
-    std::move(ot),
-    options));
+  if (!is_device_supported(tensor.device().type())) {
+    throw std::runtime_error("ORT copy: device not supported");
+  }
+}
+} // namespace
+
+at::Tensor aten_tensor_from_ort(OrtValue &&ot, const at::TensorOptions &options) {
+  return at::Tensor(c10::make_intrusive<ORTTensorImpl>(std::move(ot), options));
 }
 
-const std::vector<at::Tensor> aten_tensor_from_ort(
-  std::vector<OrtValue>& ortvalues,
-  const at::TensorOptions& options) {
-    const size_t num_outputs = ortvalues.size();
-    std::vector<at::Tensor> atvalues = std::vector<at::Tensor>(num_outputs);
-    for (size_t i = 0; i < num_outputs; i++) {
-      atvalues[i] = at::Tensor(c10::make_intrusive<ORTTensorImpl>(
-        std::move(ortvalues[i]),
-        options));
-    }
-    return atvalues;
+const std::vector<at::Tensor> aten_tensor_from_ort(std::vector<OrtValue> &ortvalues, const at::TensorOptions &options) {
+  const size_t num_outputs = ortvalues.size();
+  std::vector<at::Tensor> atvalues = std::vector<at::Tensor>(num_outputs);
+  for (size_t i = 0; i < num_outputs; i++) {
+    atvalues[i] = at::Tensor(c10::make_intrusive<ORTTensorImpl>(std::move(ortvalues[i]), options));
+  }
+  return atvalues;
 }
 
-onnxruntime::MLDataType ort_scalar_type_from_aten(
-  at::ScalarType dtype) {
+onnxruntime::MLDataType ort_scalar_type_from_aten(at::ScalarType dtype) {
   switch (dtype) {
-    case at::kFloat:
-      return onnxruntime::DataTypeImpl::GetType<float>();
-    case at::kDouble:
-      return onnxruntime::DataTypeImpl::GetType<double>();
-    case at::kHalf:
-      return onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>();
-    case at::kBFloat16:
-      return onnxruntime::DataTypeImpl::GetType<onnxruntime::BFloat16>();
-    case at::kInt:
-      return onnxruntime::DataTypeImpl::GetType<int>();
-    case at::kShort:
-      return onnxruntime::DataTypeImpl::GetType<int16_t>();
-    case at::kLong:
-      return onnxruntime::DataTypeImpl::GetType<int64_t>();
-    case at::kBool:
-      return onnxruntime::DataTypeImpl::GetType<bool>();
-    default:
-      ORT_THROW("Unsupport aten scalar type: ", dtype);
+  case at::kFloat:
+    return onnxruntime::DataTypeImpl::GetType<float>();
+  case at::kDouble:
+    return onnxruntime::DataTypeImpl::GetType<double>();
+  case at::kHalf:
+    return onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>();
+  case at::kBFloat16:
+    return onnxruntime::DataTypeImpl::GetType<onnxruntime::BFloat16>();
+  case at::kInt:
+    return onnxruntime::DataTypeImpl::GetType<int>();
+  case at::kShort:
+    return onnxruntime::DataTypeImpl::GetType<int16_t>();
+  case at::kLong:
+    return onnxruntime::DataTypeImpl::GetType<int64_t>();
+  case at::kBool:
+    return onnxruntime::DataTypeImpl::GetType<bool>();
+  default:
+    ORT_THROW("Unsupport aten scalar type: ", dtype);
   }
 }
 
-OrtValue create_ort_value(
-  onnxruntime::ORTInvoker& invoker,
-  const at::Scalar& scalar) {
+OrtValue create_ort_value(onnxruntime::ORTInvoker &invoker, const at::Scalar &scalar) {
   return create_ort_value(invoker, scalar, scalar.type());
 }
 
-OrtValue create_ort_value(
-  onnxruntime::ORTInvoker& invoker,
-  const at::Scalar& scalar,
-  at::ScalarType type) {
+OrtValue create_ort_value(onnxruntime::ORTInvoker &invoker, const at::Scalar &scalar, at::ScalarType type) {
   OrtValue ort_val;
   onnxruntime::Tensor::InitOrtValue(ort_scalar_type_from_aten(type), onnxruntime::TensorShape({}),
                                     invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), ort_val);
-  auto* ort_tensor = ort_val.GetMutable<onnxruntime::Tensor>();
+  auto *ort_tensor = ort_val.GetMutable<onnxruntime::Tensor>();
   switch (type) {
-    case at::ScalarType::Float: {
-      float val = scalar.toFloat();
-      CopyVectorToTensor<float>(invoker, &val, 1, *ort_tensor);
-      break;
-    }
-    case at::ScalarType::BFloat16: {
-      at::BFloat16 valBFloat16 = scalar.toBFloat16();
-      Ort::BFloat16_t* valOrtBFloat16 = reinterpret_cast<Ort::BFloat16_t*>(&valBFloat16);
-      CopyVectorToTensor<Ort::BFloat16_t>(invoker, valOrtBFloat16, 1, *ort_tensor);
-      break;
-    }
-    case at::ScalarType::Double: {
-      double val = scalar.toDouble();
-      CopyVectorToTensor<double>(invoker, &val, 1, *ort_tensor);
-      break;
-    }
-    case at::ScalarType::Long: {
-      int64_t val = scalar.toLong();
-      CopyVectorToTensor<int64_t>(invoker, &val, 1, *ort_tensor);
-      break;
-    }
-    default:
-      // TODO(unknown): support more types
-      // For most at::ScalarType, it should be safe to just call value.to<>
-      // on it, but for now we want to explicitly know when we've encountered
-      // a new scalar type while bringing up ORT eager mode.
-      ORT_THROW("Unsupported: at::ScalarType::", scalar.type());
+  case at::ScalarType::Float: {
+    float val = scalar.toFloat();
+    CopyVectorToTensor<float>(invoker, &val, 1, *ort_tensor);
+    break;
+  }
+  case at::ScalarType::BFloat16: {
+    at::BFloat16 valBFloat16 = scalar.toBFloat16();
+    Ort::BFloat16_t *valOrtBFloat16 = reinterpret_cast<Ort::BFloat16_t *>(&valBFloat16);
+    CopyVectorToTensor<Ort::BFloat16_t>(invoker, valOrtBFloat16, 1, *ort_tensor);
+    break;
+  }
+  case at::ScalarType::Double: {
+    double val = scalar.toDouble();
+    CopyVectorToTensor<double>(invoker, &val, 1, *ort_tensor);
+    break;
+  }
+  case at::ScalarType::Long: {
+    int64_t val = scalar.toLong();
+    CopyVectorToTensor<int64_t>(invoker, &val, 1, *ort_tensor);
+    break;
+  }
+  default:
+    // TODO(unknown): support more types
+    // For most at::ScalarType, it should be safe to just call value.to<>
+    // on it, but for now we want to explicitly know when we've encountered
+    // a new scalar type while bringing up ORT eager mode.
+    ORT_THROW("Unsupported: at::ScalarType::", scalar.type());
   }
   return ort_val;
 }
 
-OrtValue create_ort_value(
-  onnxruntime::ORTInvoker& invoker,
-  const at::Tensor& tensor) {
+OrtValue create_ort_value(onnxruntime::ORTInvoker &invoker, const at::Tensor &tensor) {
   assert_tensor_supported(tensor);
 
-  auto* impl = dynamic_cast<ORTTensorImpl*>(tensor.unsafeGetTensorImpl());
+  auto *impl = dynamic_cast<ORTTensorImpl *>(tensor.unsafeGetTensorImpl());
   if (impl) {
     return impl->tensor();
   }
@@ -145,41 +127,33 @@ OrtValue create_ort_value(
   auto element_type = ort_scalar_type_from_aten(tensor.scalar_type());
 
   OrtValue ort_tensor;
-  onnxruntime::Tensor::InitOrtValue(
-    element_type,
-    onnxruntime::TensorShape(tensor.sizes().vec()),
-    tensor.data_ptr(),
-    *mem_info, ort_tensor,
-    0L,  // offset = 0 - because tensor.data_ptr() includes the underyling offset
-    tensor.strides().vec());
+  onnxruntime::Tensor::InitOrtValue(element_type, onnxruntime::TensorShape(tensor.sizes().vec()), tensor.data_ptr(),
+                                    *mem_info, ort_tensor,
+                                    0L, // offset = 0 - because tensor.data_ptr() includes the underyling offset
+                                    tensor.strides().vec());
   return ort_tensor;
 }
 
-OrtValue create_ort_value(const at::Tensor& tensor) {
-  auto& invoker = GetORTInvoker(tensor.device());
+OrtValue create_ort_value(const at::Tensor &tensor) {
+  auto &invoker = GetORTInvoker(tensor.device());
   return create_ort_value(invoker, tensor);
 }
 
-std::vector<OrtValue> create_ort_value(
-  onnxruntime::ORTInvoker& invoker,
-  at::TensorList values) {
-    auto output = std::vector<OrtValue>{};
-    for (auto element : values) {
-      output.push_back(create_ort_value(element));
-    }
-    return output;
+std::vector<OrtValue> create_ort_value(onnxruntime::ORTInvoker &invoker, at::TensorList values) {
+  auto output = std::vector<OrtValue>{};
+  for (auto element : values) {
+    output.push_back(create_ort_value(element));
+  }
+  return output;
 }
 
-onnx::AttributeProto create_ort_attribute(
-  const char* name,
-  at::Scalar value,
-  const bool isTensor,
-  at::ScalarType type) {
+onnx::AttributeProto create_ort_attribute(const char *name, at::Scalar value, const bool isTensor,
+                                          at::ScalarType type) {
   if (isTensor) {
     onnx::AttributeProto attr;
     attr.set_name(name);
     attr.set_type(onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR);
-    auto* constant_attribute_tensor_proto = attr.mutable_t();
+    auto *constant_attribute_tensor_proto = attr.mutable_t();
     constant_attribute_tensor_proto->mutable_dims()->Clear();
     // Creating a 1 dim tensor of size 1, so add that dim now.
     constant_attribute_tensor_proto->add_dims(1);
@@ -213,44 +187,36 @@ onnx::AttributeProto create_ort_attribute(
   }
 }
 
-onnx::AttributeProto create_ort_attribute(
-  const char* name,
-  at::Scalar value,
-  const bool isTensor) {
-    return create_ort_attribute(name, value, isTensor, value.type());
+onnx::AttributeProto create_ort_attribute(const char *name, at::Scalar value, const bool isTensor) {
+  return create_ort_attribute(name, value, isTensor, value.type());
 }
 
-onnx::AttributeProto create_ort_attribute(
-  const char* name,
-  at::Scalar value,
-  at::ScalarType type) {
+onnx::AttributeProto create_ort_attribute(const char *name, at::Scalar value, at::ScalarType type) {
   onnx::AttributeProto attr;
   attr.set_name(name);
   switch (type) {
-    case at::ScalarType::Float:
-    case at::ScalarType::Double:
-      attr.set_type(onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT);
-      attr.set_f(value.to<double>());
-      break;
-    case at::ScalarType::Bool:
-    case at::ScalarType::Int:
-    case at::ScalarType::Long:
-      attr.set_type(onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-      attr.set_i(value.to<int64_t>());
-      break;
-    default:
-      // For most at::ScalarType, it should be safe to just call value.to<>
-      // on it, but for now we want to explicitly know when we've encountered
-      // a new scalar type while bringing up ORT eager mode.
-      ORT_THROW("Unsupported: at::ScalarType::", value.type());
+  case at::ScalarType::Float:
+  case at::ScalarType::Double:
+    attr.set_type(onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT);
+    attr.set_f(value.to<double>());
+    break;
+  case at::ScalarType::Bool:
+  case at::ScalarType::Int:
+  case at::ScalarType::Long:
+    attr.set_type(onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
+    attr.set_i(value.to<int64_t>());
+    break;
+  default:
+    // For most at::ScalarType, it should be safe to just call value.to<>
+    // on it, but for now we want to explicitly know when we've encountered
+    // a new scalar type while bringing up ORT eager mode.
+    ORT_THROW("Unsupported: at::ScalarType::", value.type());
   }
 
   return attr;
 }
 
-onnx::AttributeProto create_ort_attribute(
-  const char* name,
-  const char* value) {
+onnx::AttributeProto create_ort_attribute(const char *name, const char *value) {
   onnx::AttributeProto attr;
   attr.set_name(name);
   attr.set_type(onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
@@ -258,9 +224,7 @@ onnx::AttributeProto create_ort_attribute(
   return attr;
 }
 
-onnx::AttributeProto create_ort_attribute(
-  const char* name,
-  const std::vector<int64_t> values) {
+onnx::AttributeProto create_ort_attribute(const char *name, const std::vector<int64_t> values) {
   onnx::AttributeProto attr;
   attr.set_name(name);
   attr.set_type(onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
@@ -271,56 +235,55 @@ onnx::AttributeProto create_ort_attribute(
   return attr;
 }
 
-bool IsSupportedType(at::Scalar scalar, const std::vector<at::ScalarType>& valid_types) {
+bool IsSupportedType(at::Scalar scalar, const std::vector<at::ScalarType> &valid_types) {
   return std::find(valid_types.begin(), valid_types.end(), scalar.type()) != valid_types.end();
 }
 
-bool IsSupportedType(at::Tensor tensor, const std::vector<at::ScalarType>& valid_types) {
+bool IsSupportedType(at::Tensor tensor, const std::vector<at::ScalarType> &valid_types) {
   return std::find(valid_types.begin(), valid_types.end(), tensor.scalar_type()) != valid_types.end();
 }
 
-bool IsSupportedType(at::IntArrayRef arrary, const std::vector<at::ScalarType>& valid_types) {
+bool IsSupportedType(at::IntArrayRef arrary, const std::vector<at::ScalarType> &valid_types) {
   return std::find(valid_types.begin(), valid_types.end(), at::kInt) != valid_types.end() ||
          std::find(valid_types.begin(), valid_types.end(), at::kLong) != valid_types.end();
 }
 
-bool IsSupportedType(int64_t val, const std::vector<at::ScalarType>& valid_types) {
+bool IsSupportedType(int64_t val, const std::vector<at::ScalarType> &valid_types) {
   return std::find(valid_types.begin(), valid_types.end(), at::kLong) != valid_types.end();
 }
 
-bool IsSupportedType(c10::optional<int64_t> val, const std::vector<at::ScalarType>& valid_types) {
+bool IsSupportedType(c10::optional<int64_t> val, const std::vector<at::ScalarType> &valid_types) {
   return IsSupportedType(val.value(), valid_types);
 }
 
-bool IsSupportedType(at::TensorList tensors, const std::vector<at::ScalarType>& valid_types) {
+bool IsSupportedType(at::TensorList tensors, const std::vector<at::ScalarType> &valid_types) {
   return IsSupportedType(tensors[0], valid_types);
 }
 
 ONNX_NAMESPACE::TensorProto_DataType GetONNXTensorProtoDataType(at::ScalarType dtype) {
   switch (dtype) {
-    case at::kFloat:
-      return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-    case at::kDouble:
-      return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
-    case at::kHalf:
-      return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-    case at::kBFloat16:
-      return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
-    case at::kInt:
-      return ONNX_NAMESPACE::TensorProto_DataType_INT32;
-    case at::kShort:
-      return ONNX_NAMESPACE::TensorProto_DataType_INT16;
-    case at::kLong:
-      return ONNX_NAMESPACE::TensorProto_DataType_INT64;
-    case at::kBool:
-      return ONNX_NAMESPACE::TensorProto_DataType_BOOL;
-    default:
-      ORT_THROW("Unsupport aten scalar type: ", dtype);
+  case at::kFloat:
+    return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+  case at::kDouble:
+    return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
+  case at::kHalf:
+    return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  case at::kBFloat16:
+    return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+  case at::kInt:
+    return ONNX_NAMESPACE::TensorProto_DataType_INT32;
+  case at::kShort:
+    return ONNX_NAMESPACE::TensorProto_DataType_INT16;
+  case at::kLong:
+    return ONNX_NAMESPACE::TensorProto_DataType_INT64;
+  case at::kBool:
+    return ONNX_NAMESPACE::TensorProto_DataType_BOOL;
+  default:
+    ORT_THROW("Unsupport aten scalar type: ", dtype);
   }
 }
 
-static c10::optional<at::ScalarType> PromoteScalarTypes(
-    const std::vector<at::ScalarType>& types) {
+static c10::optional<at::ScalarType> PromoteScalarTypes(const std::vector<at::ScalarType> &types) {
   if (types.empty()) {
     return at::nullopt;
   }
@@ -331,10 +294,8 @@ static c10::optional<at::ScalarType> PromoteScalarTypes(
   return st;
 }
 
-
-c10::optional<at::ScalarType> PromoteScalarTypesWithCategory(
-    const std::vector<at::ScalarType>& typesFromTensors,
-    const std::vector<at::ScalarType>& typesFromScalars) {
+c10::optional<at::ScalarType> PromoteScalarTypesWithCategory(const std::vector<at::ScalarType> &typesFromTensors,
+                                                             const std::vector<at::ScalarType> &typesFromScalars) {
   auto typeFromTensor = PromoteScalarTypes(typesFromTensors);
   auto typeFromScalar = PromoteScalarTypes(typesFromScalars);
 
@@ -366,19 +327,19 @@ c10::optional<at::ScalarType> PromoteScalarTypesWithCategory(
   return typeFromTensor;
 }
 
-OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at::ScalarType type) {
+OrtValue CastToType(onnxruntime::ORTInvoker &invoker, const OrtValue &input, at::ScalarType type) {
   std::vector<OrtValue> output(1);
   NodeAttributes attrs(2);
-  attrs["to"] = create_ort_attribute(
-    "to", GetONNXTensorProtoDataType(type), at::ScalarType::Long);
+  attrs["to"] = create_ort_attribute("to", GetONNXTensorProtoDataType(type), at::ScalarType::Long);
 
-  auto status = invoker.Invoke("Cast", {
-    std::move(input),
-  }, output, &attrs);
+  auto status = invoker.Invoke("Cast",
+                               {
+                                   std::move(input),
+                               },
+                               output, &attrs);
 
   if (!status.IsOK())
-    throw std::runtime_error(
-    "ORT return failure status:" + status.ErrorMessage());
+    throw std::runtime_error("ORT return failure status:" + status.ErrorMessage());
   return output[0];
 }
 
@@ -388,10 +349,8 @@ OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at:
  * @param dimToReduce The dimension to reduce. If null, then shape is 0 dimension.
  * @param keepdim Whether to retain dim or not. Ignored if dimToReduce is null.
  */
-inline at::DimVector calculate_reduction_shape(
-  const at::Tensor& self,
-  c10::optional<int64_t> dimToReduce,
-  bool keepdim) {
+inline at::DimVector calculate_reduction_shape(const at::Tensor &self, c10::optional<int64_t> dimToReduce,
+                                               bool keepdim) {
   at::DimVector shape;
 
   // If we have dim value, then reduce that dimension.
@@ -423,20 +382,16 @@ inline at::DimVector calculate_reduction_shape(
  * PyToch implementation of resize will warn about resizing
  * non-empty and indicate this is deprecated behavior that
  * can / will change.
-  *
+ *
  * In PyTorch repository see: aten/src/ATen/native/Resize.{h|cpp}
  */
-void resize_output(
-  onnxruntime::ORTInvoker& invoker,
-  ORTTensorImpl* output,
-  at::IntArrayRef shape) {
+void resize_output(onnxruntime::ORTInvoker &invoker, ORTTensorImpl *output, at::IntArrayRef shape) {
   if (output->sizes().equals(shape)) {
     return;
   }
 
   if (output->numel() != 0) {
-    throw std::runtime_error(
-      "resizing a non-empty output tensor is not supported.");
+    throw std::runtime_error("resizing a non-empty output tensor is not supported.");
   }
 
   resize_impl_ort_(invoker, output, shape);
@@ -473,10 +428,7 @@ void resize_output(
  *     CPU: aten/src/ATen/native/Resize.cpp
  *     CUDA: aten/src/ATen/native/cuda/Resize.cpp
  */
-void resize_impl_ort_(
-    onnxruntime::ORTInvoker& invoker,
-    ORTTensorImpl* self,
-    at::IntArrayRef size) {
+void resize_impl_ort_(onnxruntime::ORTInvoker &invoker, ORTTensorImpl *self, at::IntArrayRef size) {
   auto self_ort_value = self->tensor();
 
   // If shape and size are the same, then nothing to do
@@ -491,26 +443,23 @@ void resize_impl_ort_(
     // Requested size is the same, only shape is different.
     // Just resize existing tensor and return
 
-    OrtValue new_ort_value = reshape_invoke(
-              invoker,
-              self_ort_value,
-              size,
-              // invoke reshape kernel inplace
-              true);
+    OrtValue new_ort_value = reshape_invoke(invoker, self_ort_value, size,
+                                            // invoke reshape kernel inplace
+                                            true);
 
     // TODO(jamill): Investigate why reshape_invoke kernel does not update inplace
     self->set_tensor(new_ort_value);
   } else {
     // Requested size is different - allocate a new onnxruntime::tensor and update ORTTensorImpl
     // with new backing onnxruntime::tensor.
-    auto* self_ort_tensor = self_ort_value.GetMutable<onnxruntime::Tensor>();
+    auto *self_ort_tensor = self_ort_value.GetMutable<onnxruntime::Tensor>();
 
     OrtValue new_ort_value;
     onnxruntime::Tensor::InitOrtValue(self_ort_tensor->DataType(), new_shape,
                                       invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
                                       new_ort_value);
 
-    auto* new_ort_tensor = new_ort_value.GetMutable<onnxruntime::Tensor>();
+    auto *new_ort_tensor = new_ort_value.GetMutable<onnxruntime::Tensor>();
 
     // Copy over existing elements from current tensor as appropriate
     if (self_ort_tensor->SizeInBytes() == 0) {
@@ -521,10 +470,8 @@ void resize_impl_ort_(
       // See function comments to see details on why we need to create temporary ORTValue here
       // (Copying elements between tensors of different sizes is not supported)
       OrtValue tmp;
-      onnxruntime::Tensor::InitOrtValue(new_ort_tensor->DataType(), old_shape,
-                                        new_ort_tensor->MutableDataRaw(),
-                                        new_ort_tensor->Location(),
-                                        tmp);
+      onnxruntime::Tensor::InitOrtValue(new_ort_tensor->DataType(), old_shape, new_ort_tensor->MutableDataRaw(),
+                                        new_ort_tensor->Location(), tmp);
 
       copy(invoker, self_ort_value, tmp);
     } else if (new_ort_tensor->SizeInBytes() < self_ort_tensor->SizeInBytes()) {
@@ -533,10 +480,8 @@ void resize_impl_ort_(
       // See function comments to see details on why we need to create temporary ORTValue here
       // (Copying elements between tensors of different sizes is not supported)
       OrtValue tmp;
-      onnxruntime::Tensor::InitOrtValue(self_ort_tensor->DataType(), new_shape,
-                                        self_ort_tensor->MutableDataRaw(),
-                                        self_ort_tensor->Location(),
-                                        tmp);
+      onnxruntime::Tensor::InitOrtValue(self_ort_tensor->DataType(), new_shape, self_ort_tensor->MutableDataRaw(),
+                                        self_ort_tensor->Location(), tmp);
 
       copy(invoker, tmp, new_ort_value);
     }
@@ -551,36 +496,26 @@ void resize_impl_ort_(
 
 namespace aten {
 
-at::Tensor empty_strided(
-  at::IntArrayRef size,
-  at::IntArrayRef stride,
-  c10::optional<at::ScalarType> dtype_opt,
-  c10::optional<at::Layout> layout_opt,  // Ignored because there's no ONNX support.
-  c10::optional<at::Device> device_opt,  // Will be ORT by the time this is dispatched.
-  c10::optional<bool> pin_memory_opt) {  // Ignored because there's no ONNX support.
+at::Tensor empty_strided(at::IntArrayRef size, at::IntArrayRef stride, c10::optional<at::ScalarType> dtype_opt,
+                         c10::optional<at::Layout> layout_opt, // Ignored because there's no ONNX support.
+                         c10::optional<at::Device> device_opt, // Will be ORT by the time this is dispatched.
+                         c10::optional<bool> pin_memory_opt) { // Ignored because there's no ONNX support.
   ORT_LOG_FN(size, stride, dtype_opt, layout_opt, device_opt, pin_memory_opt);
 
   OrtValue ot;
   assert(device_opt.has_value());
   at::ScalarType dtype = c10::dtype_or_default(dtype_opt);
-  auto& invoker = GetORTInvoker(*device_opt);
+  auto &invoker = GetORTInvoker(*device_opt);
   onnxruntime::Tensor::InitOrtValue(ort_scalar_type_from_aten(dtype), onnxruntime::TensorShape(size.vec()),
                                     invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), ot,
                                     stride.vec());
-  return aten_tensor_from_ort(
-    std::move(ot),
-    at::TensorOptions()
-      .device(*device_opt)
-      .dtype(dtype));
+  return aten_tensor_from_ort(std::move(ot), at::TensorOptions().device(*device_opt).dtype(dtype));
 }
 
-at::Tensor empty_memory_format(
-  at::IntArrayRef size,
-  c10::optional<at::ScalarType> dtype_opt,
-  c10::optional<at::Layout> layout_opt,
-  c10::optional<at::Device> device_opt,
-  c10::optional<bool> pin_memory,
-  c10::optional<at::MemoryFormat> memory_format) {  // Ignored because there's no ONNX support.
+at::Tensor
+empty_memory_format(at::IntArrayRef size, c10::optional<at::ScalarType> dtype_opt, c10::optional<at::Layout> layout_opt,
+                    c10::optional<at::Device> device_opt, c10::optional<bool> pin_memory,
+                    c10::optional<at::MemoryFormat> memory_format) { // Ignored because there's no ONNX support.
   ORT_LOG_FN(size, dtype_opt, layout_opt, device_opt, pin_memory, memory_format);
 
   // Use the strided impl with default (no strides specified).
@@ -588,86 +523,65 @@ at::Tensor empty_memory_format(
 }
 
 // aten::as_strided(Tensor(a) self, int[] size, int[] stride, int? storage_offset=None) -> Tensor(a)
-at::Tensor as_strided(
-  const at::Tensor& self,
-  at::IntArrayRef size,
-  at::IntArrayRef stride,
-  c10::optional<int64_t> storage_offset) {
+at::Tensor as_strided(const at::Tensor &self, at::IntArrayRef size, at::IntArrayRef stride,
+                      c10::optional<int64_t> storage_offset) {
   ORT_LOG_FN(self, size, stride, storage_offset);
-  auto& invoker = GetORTInvoker(self.device());
+  auto &invoker = GetORTInvoker(self.device());
   auto ort_input = create_ort_value(invoker, self);
-  auto* tensor = ort_input.GetMutable<onnxruntime::Tensor>();
+  auto *tensor = ort_input.GetMutable<onnxruntime::Tensor>();
 
   auto byte_offset = storage_offset.has_value() ? (*storage_offset * tensor->DataType()->Size()) : 0;
   OrtValue ot;
   onnxruntime::Tensor::InitOrtValue(tensor->DataType(), onnxruntime::TensorShape(size.vec()), tensor->MutableDataRaw(),
                                     invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault)->Info(),
                                     ot, byte_offset, stride.vec());
-  return aten_tensor_from_ort(
-    std::move(ot),
-    self.options());
+  return aten_tensor_from_ort(std::move(ot), self.options());
 }
 
-at::Tensor _reshape_alias(
-  const at::Tensor& self,
-  at::IntArrayRef size,
-  at::IntArrayRef stride) {
+at::Tensor _reshape_alias(const at::Tensor &self, at::IntArrayRef size, at::IntArrayRef stride) {
   ORT_LOG_FN(self, size, stride);
   // TODO(unknown): support stride
-  auto& invoker = GetORTInvoker(self.device());
+  auto &invoker = GetORTInvoker(self.device());
   auto ort_input = create_ort_value(invoker, self);
-  return aten_tensor_from_ort(
-    reshape_invoke(
-      invoker,
-      ort_input,
-      size,
-      // invoke reshape kernel inplace
-      true),
-    self.options());
+  return aten_tensor_from_ort(reshape_invoke(invoker, ort_input, size,
+                                             // invoke reshape kernel inplace
+                                             true),
+                              self.options());
 }
 
-at::Tensor view(const at::Tensor& self, at::IntArrayRef size) {
+at::Tensor view(const at::Tensor &self, at::IntArrayRef size) {
   ORT_LOG_FN(self, size);
-  auto& invoker = GetORTInvoker(self.device());
+  auto &invoker = GetORTInvoker(self.device());
   auto ort_input = create_ort_value(invoker, self);
-  return aten_tensor_from_ort(
-    reshape_invoke(
-      invoker,
-      ort_input,
-      size,
-      // invoke reshape kernel inplace
-      true),
-    self.options());
+  return aten_tensor_from_ort(reshape_invoke(invoker, ort_input, size,
+                                             // invoke reshape kernel inplace
+                                             true),
+                              self.options());
 }
 
-at::Tensor& copy_(
-  at::Tensor& self,
-  const at::Tensor& src,
-  bool non_blocking) {
+at::Tensor &copy_(at::Tensor &self, const at::Tensor &src, bool non_blocking) {
   ORT_LOG_FN(self, src, non_blocking);
 
   assert_tensor_supported(self);
   assert_tensor_supported(src);
 
-  auto& invoker = GetORTInvoker(self.device().type() == at::kORT
-    ? self.device()
-    : src.device());
+  auto &invoker = GetORTInvoker(self.device().type() == at::kORT ? self.device() : src.device());
   const auto ort_src = create_ort_value(invoker, src);
   auto ort_self = create_ort_value(invoker, self);
   if (self.scalar_type() != src.scalar_type()) {
     // invoke cast first
     std::vector<OrtValue> ort_cast_output(1);
     onnxruntime::NodeAttributes attrs(1);
-    attrs["to"] = create_ort_attribute(
-      "to", (int64_t)GetONNXTensorProtoDataType(self.scalar_type()), at::kLong);
+    attrs["to"] = create_ort_attribute("to", (int64_t)GetONNXTensorProtoDataType(self.scalar_type()), at::kLong);
 
-    auto status = invoker.Invoke("Cast", {
-      std::move(ort_src),
-    }, ort_cast_output, &attrs);
+    auto status = invoker.Invoke("Cast",
+                                 {
+                                     std::move(ort_src),
+                                 },
+                                 ort_cast_output, &attrs);
 
     if (!status.IsOK())
-      throw std::runtime_error(
-        "ORT return failure status:" + status.ErrorMessage());
+      throw std::runtime_error("ORT return failure status:" + status.ErrorMessage());
 
     copy(invoker, ort_cast_output[0], ort_self);
   } else {
@@ -677,17 +591,13 @@ at::Tensor& copy_(
   return self;
 }
 
-at::Tensor _copy_from_and_resize(
-  const at::Tensor& self,
-  const at::Tensor& dst) {
+at::Tensor _copy_from_and_resize(const at::Tensor &self, const at::Tensor &dst) {
   ORT_LOG_FN(self, dst);
 
   assert_tensor_supported(self);
   assert_tensor_supported(dst);
 
-  auto& invoker = GetORTInvoker(self.device().type() == at::kORT
-    ? self.device()
-    : dst.device());
+  auto &invoker = GetORTInvoker(self.device().type() == at::kORT ? self.device() : dst.device());
   const auto ort_self = create_ort_value(invoker, self);
   auto ort_dst = create_ort_value(invoker, dst);
 
@@ -696,90 +606,76 @@ at::Tensor _copy_from_and_resize(
   return self;
 }
 
-at::Tensor& zero_(at::Tensor& self) {
-  auto& invoker = GetORTInvoker(self.device());
+at::Tensor &zero_(at::Tensor &self) {
+  auto &invoker = GetORTInvoker(self.device());
   auto ort_in_self = create_ort_value(invoker, self);
   OrtValue flag_val;
   // construct a constant tensor
   auto element_type = onnxruntime::DataTypeImpl::GetType<int64_t>();
   onnxruntime::Tensor::InitOrtValue(element_type, onnxruntime::TensorShape({}),
                                     invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), flag_val);
-  auto* ort_flag_tensor = flag_val.GetMutable<onnxruntime::Tensor>();
+  auto *ort_flag_tensor = flag_val.GetMutable<onnxruntime::Tensor>();
   int64_t one = 1;
   CopyVectorToTensor<int64_t>(invoker, &one, 1, *ort_flag_tensor);
 
   std::vector<OrtValue> ort_out = {ort_in_self};
 
-  auto status = invoker.Invoke(
-    "ZeroGradient", {
-      std::move(ort_in_self),
-      std::move(flag_val)
-    }, ort_out, nullptr, onnxruntime::kMSDomain, 1);
+  auto status = invoker.Invoke("ZeroGradient", {std::move(ort_in_self), std::move(flag_val)}, ort_out, nullptr,
+                               onnxruntime::kMSDomain, 1);
 
   if (!status.IsOK())
-    throw std::runtime_error(
-      "ORT return failure status:" + status.ErrorMessage());
+    throw std::runtime_error("ORT return failure status:" + status.ErrorMessage());
 
   return self;
 }
 
 // TODO(unknown): enhance opgen.py to support inplace binary operations.
 // aten::add_.Tensor(Tensor(a!) self, Tensor other, *, Scalar alpha=1) -> Tensor(a!)
-at::Tensor& add__Tensor(
-  at::Tensor& self,
-  const at::Tensor& other,
-  const at::Scalar& alpha) {
+at::Tensor &add__Tensor(at::Tensor &self, const at::Tensor &other, const at::Scalar &alpha) {
   ORT_LOG_FN(self, other, alpha);
 
   auto st = {at::kDouble, at::kLong, at::kHalf, at::kShort, at::kInt, at::kByte, at::kFloat, at::kBFloat16};
-  if (
-    !IsSupportedType(alpha, st) ||
-    !IsSupportedType(other, st) ||
-    !IsSupportedType(self, st)) {
-    return at::native::call_fallback_fn<
-      &at::native::cpu_fallback,
-      ATEN_OP(add__Tensor)>::call(self, other, alpha);
+  if (!IsSupportedType(alpha, st) || !IsSupportedType(other, st) || !IsSupportedType(self, st)) {
+    return at::native::call_fallback_fn<&at::native::cpu_fallback, ATEN_OP(add__Tensor)>::call(self, other, alpha);
   }
-  auto& invoker = GetORTInvoker(self.device());
+  auto &invoker = GetORTInvoker(self.device());
 
   auto ort_input_alpha = create_ort_value(invoker, alpha, other.scalar_type());
   auto ort_input_other = create_ort_value(invoker, other);
 
   std::vector<OrtValue> ort_outputs_0_Mul(1);
 
-  auto status = invoker.Invoke("Mul", {
-    std::move(ort_input_alpha),
-    std::move(ort_input_other),
-  }, ort_outputs_0_Mul, nullptr);
+  auto status = invoker.Invoke("Mul",
+                               {
+                                   std::move(ort_input_alpha),
+                                   std::move(ort_input_other),
+                               },
+                               ort_outputs_0_Mul, nullptr);
 
   if (!status.IsOK())
-    throw std::runtime_error(
-      "ORT return failure status:" + status.ErrorMessage());
+    throw std::runtime_error("ORT return failure status:" + status.ErrorMessage());
 
   auto ort_input_self = create_ort_value(invoker, self);
 
   std::vector<OrtValue> ort_outputs_1_Add(1);
   ort_outputs_1_Add[0] = ort_input_self;
 
-  status = invoker.Invoke("Add", {
-    std::move(ort_input_self),
-    std::move(ort_outputs_0_Mul[0]),
-  }, ort_outputs_1_Add, nullptr);
+  status = invoker.Invoke("Add",
+                          {
+                              std::move(ort_input_self),
+                              std::move(ort_outputs_0_Mul[0]),
+                          },
+                          ort_outputs_1_Add, nullptr);
 
   if (!status.IsOK())
-    throw std::runtime_error(
-      "ORT return failure status:" + status.ErrorMessage());
+    throw std::runtime_error("ORT return failure status:" + status.ErrorMessage());
 
   return self;
 }
 
 // aten::slice.Tensor(Tensor(a) self, int dim=0, int? start=None, int? end=None, int step=1) -> Tensor(a)
-at::Tensor slice_Tensor(
-  const at::Tensor& self,
-  int64_t dim,
-  c10::optional<int64_t> start,
-  c10::optional<int64_t> end,
-  int64_t step) {
+at::Tensor slice_Tensor(const at::Tensor &self, int64_t dim, c10::optional<int64_t> start, c10::optional<int64_t> end,
+                        int64_t step) {
   ORT_LOG_FN(self, dim, start, end, step);
   int64_t ndim = self.dim();
   if (ndim == 0) {
@@ -787,10 +683,10 @@ at::Tensor slice_Tensor(
   }
   dim = at::maybe_wrap_dim(dim, ndim);
 
-  auto& invoker = GetORTInvoker(self.device());
+  auto &invoker = GetORTInvoker(self.device());
   auto ort_input = create_ort_value(invoker, self);
-  auto* ort_tensor = ort_input.GetMutable<onnxruntime::Tensor>();
-  auto& shape = ort_tensor->Shape();
+  auto *ort_tensor = ort_input.GetMutable<onnxruntime::Tensor>();
+  auto &shape = ort_tensor->Shape();
   auto strides = ort_tensor->Strides();
   int64_t l_start = start.has_value() ? *start : 0;
   int64_t l_end = end.has_value() ? *end : shape[dim];
@@ -815,118 +711,101 @@ at::Tensor slice_Tensor(
   auto len = l_end - l_start;
   onnxruntime::TensorShapeVector new_shape = shape.AsShapeVector();
   onnxruntime::TensorShapeVector new_stride(strides.begin(), strides.end());
-  new_shape[dim] = (len + step - 1) / step;  // round-up
+  new_shape[dim] = (len + step - 1) / step; // round-up
   new_stride[dim] *= step;
 
   OrtValue ot;
   onnxruntime::Tensor::InitOrtValue(
       ort_tensor->DataType(), onnxruntime::TensorShape(new_shape), ort_tensor->MutableDataRaw(),
       invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault)->Info(), ot, byte_offset, new_stride);
-  return aten_tensor_from_ort(
-    std::move(ot),
-    self.options());
+  return aten_tensor_from_ort(std::move(ot), self.options());
 }
 
 // aten::argmax.out(Tensor self, int? dim=None, bool keepdim=False, *, Tensor(a!) out) -> Tensor(a!)
-at::Tensor& argmax_out(
-const at::Tensor& self,
-c10::optional<int64_t> dim,
-bool keepdim,
-// *,
-at::Tensor& out) {
+at::Tensor &argmax_out(const at::Tensor &self, c10::optional<int64_t> dim, bool keepdim,
+                       // *,
+                       at::Tensor &out) {
   ORT_LOG_FN(self, dim, keepdim, out);
 
   auto st = {at::kDouble, at::kLong, at::kHalf, at::kShort, at::kInt, at::kByte, at::kFloat, at::kBFloat16};
-  if (
-    !IsSupportedType(self, st)) {
-    return at::native::call_fallback_fn<
-    &at::native::cpu_fallback,
-    ATEN_OP(argmax_out)>::call(self, dim, keepdim, out);
+  if (!IsSupportedType(self, st)) {
+    return at::native::call_fallback_fn<&at::native::cpu_fallback, ATEN_OP(argmax_out)>::call(self, dim, keepdim, out);
   }
-  auto& invoker = GetORTInvoker(self.device());
+  auto &invoker = GetORTInvoker(self.device());
 
-  auto ort_input_self =
-    create_ort_value(invoker, dim.has_value() ? self : self.reshape({-1}));
+  auto ort_input_self = create_ort_value(invoker, dim.has_value() ? self : self.reshape({-1}));
 
   int64_t l_axis = dim.has_value() ? *dim : 0;
   bool keepdim_effective_value = dim.has_value() ? keepdim : false;
 
   NodeAttributes attrs(2);
-  attrs["axis"] = create_ort_attribute(
-    "axis", l_axis, at::ScalarType::Int);
-  attrs["keepdims"] = create_ort_attribute(
-    "keepdims", keepdim_effective_value, at::ScalarType::Bool);
+  attrs["axis"] = create_ort_attribute("axis", l_axis, at::ScalarType::Int);
+  attrs["keepdims"] = create_ort_attribute("keepdims", keepdim_effective_value, at::ScalarType::Bool);
 
   std::vector<OrtValue> ort_outputs_0_ArgMax(1);
 
   // Calculate the size of the out tensor, based on self tensor, dimension input, and keepdim input
   auto shape = calculate_reduction_shape(self, dim, keepdim);
 
-  resize_output(invoker,
-                dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()),
-                at::IntArrayRef{shape});
+  resize_output(invoker, dynamic_cast<ORTTensorImpl *>(out.unsafeGetTensorImpl()), at::IntArrayRef{shape});
 
   auto ort_input_out = create_ort_value(invoker, out);
   ort_outputs_0_ArgMax[0] = ort_input_out;
 
-  auto status = invoker.Invoke("ArgMax", {
-  std::move(ort_input_self),
-  }, ort_outputs_0_ArgMax, &attrs);
+  auto status = invoker.Invoke("ArgMax",
+                               {
+                                   std::move(ort_input_self),
+                               },
+                               ort_outputs_0_ArgMax, &attrs);
 
   if (!status.IsOK())
-  throw std::runtime_error(
-  "ORT return failure status:" + status.ErrorMessage());
+    throw std::runtime_error("ORT return failure status:" + status.ErrorMessage());
 
   return out;
 }
 
 // aten::equal(Tensor self, Tensor other) -> bool
-bool equal(
-  const at::Tensor& self,
-  const at::Tensor& other) {
+bool equal(const at::Tensor &self, const at::Tensor &other) {
   ORT_LOG_FN(self, other);
 
-  if (
-    std::vector<at::ScalarType> supportedTypes =
-      {at::kFloat, at::kBFloat16, at::kHalf, at::kDouble, at::kLong, at::kByte, at::kInt, at::kShort, at::kBool};
-    !IsSupportedType(self, supportedTypes) ||
-    !IsSupportedType(other, supportedTypes)) {
-    return at::native::call_fallback_fn<
-      &at::native::cpu_fallback,
-      ATEN_OP(equal)>::call(self, other);
+  if (std::vector<at::ScalarType> supportedTypes = {at::kFloat, at::kBFloat16, at::kHalf, at::kDouble, at::kLong,
+                                                    at::kByte, at::kInt, at::kShort, at::kBool};
+      !IsSupportedType(self, supportedTypes) || !IsSupportedType(other, supportedTypes)) {
+    return at::native::call_fallback_fn<&at::native::cpu_fallback, ATEN_OP(equal)>::call(self, other);
   }
 
-  auto& invoker = GetORTInvoker(self.device());
+  auto &invoker = GetORTInvoker(self.device());
 
   auto ort_input_self = create_ort_value(invoker, self);
   auto ort_input_other = create_ort_value(invoker, other);
 
-  auto& ort_tensor_self = ort_input_self.Get<onnxruntime::Tensor>();
-  auto& shape_self = ort_tensor_self.Shape();
-  auto& ort_tensor_other = ort_input_other.Get<onnxruntime::Tensor>();
-  auto& shape_other = ort_tensor_other.Shape();
+  auto &ort_tensor_self = ort_input_self.Get<onnxruntime::Tensor>();
+  auto &shape_self = ort_tensor_self.Shape();
+  auto &ort_tensor_other = ort_input_other.Get<onnxruntime::Tensor>();
+  auto &shape_other = ort_tensor_other.Shape();
 
   // ensure shape is equal
-  if (shape_self != shape_other) return false;
+  if (shape_self != shape_other)
+    return false;
 
   // to check content, we'll do elementwise comparison
   // then we'll reduce to the mininum value based on false
   // being less than true, so any false will reduce to false.
   std::vector<OrtValue> ort_outputs_0_Equal(1);
 
-  auto equalStatus = invoker.Invoke("Equal", {
-    std::move(ort_input_self),
-    std::move(ort_input_other),
-  }, ort_outputs_0_Equal, nullptr);
+  auto equalStatus = invoker.Invoke("Equal",
+                                    {
+                                        std::move(ort_input_self),
+                                        std::move(ort_input_other),
+                                    },
+                                    ort_outputs_0_Equal, nullptr);
 
   if (!equalStatus.IsOK())
-    throw std::runtime_error(
-      "ORT Equal return failure status:" + equalStatus.ErrorMessage());
+    throw std::runtime_error("ORT Equal return failure status:" + equalStatus.ErrorMessage());
 
   // now reduce the resulting tensor of bool values to its minimum value (any false)
   NodeAttributes attrs(1);
-  attrs["keepdims"] = create_ort_attribute(
-    "keepdims", 0, at::ScalarType::Int);
+  attrs["keepdims"] = create_ort_attribute("keepdims", 0, at::ScalarType::Int);
 
   std::vector<OrtValue> ort_outputs_0_ReduceMin(1);
 
@@ -934,24 +813,23 @@ bool equal(
   // GetONNXTensorProtoDataType doesn't support byte, which leaves us with int
   OrtValue equalAsInt = CastToType(invoker, ort_outputs_0_Equal[0], at::ScalarType::Int);
 
-  auto reduceStatus = invoker.Invoke("ReduceMin", {
-    std::move(equalAsInt),
-  }, ort_outputs_0_ReduceMin, &attrs);
+  auto reduceStatus = invoker.Invoke("ReduceMin",
+                                     {
+                                         std::move(equalAsInt),
+                                     },
+                                     ort_outputs_0_ReduceMin, &attrs);
 
   if (!reduceStatus.IsOK())
-    throw std::runtime_error(
-      "ORT ReduceMin return failure reduceStatus:" + reduceStatus.ErrorMessage());
+    throw std::runtime_error("ORT ReduceMin return failure reduceStatus:" + reduceStatus.ErrorMessage());
 
-  auto* ort_tensor = ort_outputs_0_ReduceMin[0].GetMutable<onnxruntime::Tensor>();
+  auto *ort_tensor = ort_outputs_0_ReduceMin[0].GetMutable<onnxruntime::Tensor>();
   // the first (and only) value of the tensor will be 0 for false else true
   return *(ort_tensor->Data<int>()) != 0;
 }
 
 // aten::resize_(Tensor(a!) self, int[] size, *, MemoryFormat? memory_format=None) -> Tensor(a!)
-const at::Tensor& resize_(
-    const at::Tensor& self,
-    at::IntArrayRef size,
-    c10::optional<at::MemoryFormat> optional_memory_format) {
+const at::Tensor &resize_(const at::Tensor &self, at::IntArrayRef size,
+                          c10::optional<at::MemoryFormat> optional_memory_format) {
   ORT_LOG_FN(self, size, optional_memory_format);
   assert_tensor_supported(self);
 
@@ -960,73 +838,65 @@ const at::Tensor& resize_(
     return self;
   }
 
-  auto& invoker = GetORTInvoker(self.device());
-  resize_impl_ort_(
-      invoker,
-      dynamic_cast<ORTTensorImpl*>(self.unsafeGetTensorImpl()),
-      size);
+  auto &invoker = GetORTInvoker(self.device());
+  resize_impl_ort_(invoker, dynamic_cast<ORTTensorImpl *>(self.unsafeGetTensorImpl()), size);
   return self;
 }
 
 // aten::fill_.Scalar(Tensor(a!) self, Scalar value) -> Tensor(a!)
-at::Tensor& fill__Scalar(
-  at::Tensor& self,
-  const at::Scalar& value) {
+at::Tensor &fill__Scalar(at::Tensor &self, const at::Scalar &value) {
   ORT_LOG_FN(self, value);
 
-  if (
-    std::vector<at::ScalarType> supportedTypes =
-      {at::kHalf, at::kFloat, at::kInt, at::kDouble, at::kByte, at::kShort, at::kLong, at::kBFloat16, at::kBool};
-    !IsSupportedType(self, supportedTypes)) {
+  if (std::vector<at::ScalarType> supportedTypes = {at::kHalf, at::kFloat, at::kInt, at::kDouble, at::kByte, at::kShort,
+                                                    at::kLong, at::kBFloat16, at::kBool};
+      !IsSupportedType(self, supportedTypes)) {
     std::cout << "fill__Scalar - Fell back to cpu!\n";
-    return at::native::call_fallback_fn<
-      &at::native::cpu_fallback,
-      ATEN_OP(fill__Scalar)>::call(self, value);
+    return at::native::call_fallback_fn<&at::native::cpu_fallback, ATEN_OP(fill__Scalar)>::call(self, value);
   }
-  auto& invoker = GetORTInvoker(self.device());
+  auto &invoker = GetORTInvoker(self.device());
 
   auto ort_input_self = create_ort_value(invoker, self);
 
   std::vector<OrtValue> ort_outputs_0_Shape(1);
 
-  auto status = invoker.Invoke("Shape", {
-    std::move(ort_input_self),
-  }, ort_outputs_0_Shape, nullptr);
+  auto status = invoker.Invoke("Shape",
+                               {
+                                   std::move(ort_input_self),
+                               },
+                               ort_outputs_0_Shape, nullptr);
 
   if (!status.IsOK())
-    throw std::runtime_error(
-      "ORT return failure status:" + status.ErrorMessage());
+    throw std::runtime_error("ORT return failure status:" + status.ErrorMessage());
 
   std::vector<OrtValue> ort_outputs_1_ConstantOfShape(1);
   ort_outputs_1_ConstantOfShape[0] = ort_input_self;
 
   NodeAttributes attrs(1);
-  attrs["value"] = create_ort_attribute(
-    "value", value, true, self.scalar_type());
+  attrs["value"] = create_ort_attribute("value", value, true, self.scalar_type());
 
-  status = invoker.Invoke("ConstantOfShape", {
-    std::move(ort_outputs_0_Shape[0]),
-  }, ort_outputs_1_ConstantOfShape, &attrs);
+  status = invoker.Invoke("ConstantOfShape",
+                          {
+                              std::move(ort_outputs_0_Shape[0]),
+                          },
+                          ort_outputs_1_ConstantOfShape, &attrs);
 
   if (!status.IsOK())
-    throw std::runtime_error(
-      "ORT return failure status:" + status.ErrorMessage());
+    throw std::runtime_error("ORT return failure status:" + status.ErrorMessage());
 
   return self;
 }
 
 // aten::nonzero.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
-at::Tensor& nonzero_out(
-  const at::Tensor& self,
-  // *,
-  at::Tensor& out) {
+at::Tensor &nonzero_out(const at::Tensor &self,
+                        // *,
+                        at::Tensor &out) {
   ORT_LOG_FN(self, out);
 
   auto temp = eager::aten::nonzero(self);
 
   // resize out, then copy nonzero result into it.
-  auto& invoker = GetORTInvoker(self.device());
-  resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), temp.sizes());
+  auto &invoker = GetORTInvoker(self.device());
+  resize_output(invoker, dynamic_cast<ORTTensorImpl *>(out.unsafeGetTensorImpl()), temp.sizes());
   auto ort_input_out = create_ort_value(invoker, out);
   auto ort_temp = create_ort_value(invoker, temp);
   copy(invoker, ort_temp, ort_input_out);
@@ -1035,24 +905,19 @@ at::Tensor& nonzero_out(
 }
 
 // aten::_log_softmax.out(Tensor self, int dim, bool half_to_float, *, Tensor(a!) out) -> Tensor(a!)
-at::Tensor& _log_softmax_out(
-  const at::Tensor& self,
-  int64_t dim,
-  bool half_to_float,
-  // *,
-  at::Tensor& out) {
+at::Tensor &_log_softmax_out(const at::Tensor &self, int64_t dim, bool half_to_float,
+                             // *,
+                             at::Tensor &out) {
   ORT_LOG_FN(self, dim, half_to_float, out);
 
-  if (
-    !IsSupportedType(self, {at::kBFloat16, at::kDouble, at::kFloat, at::kHalf})) {
-    return at::native::call_fallback_fn<
-      &at::native::cpu_fallback,
-      ATEN_OP(_log_softmax_out)>::call(self, dim, half_to_float, out);
+  if (!IsSupportedType(self, {at::kBFloat16, at::kDouble, at::kFloat, at::kHalf})) {
+    return at::native::call_fallback_fn<&at::native::cpu_fallback, ATEN_OP(_log_softmax_out)>::call(self, dim,
+                                                                                                    half_to_float, out);
   }
-  auto& invoker = GetORTInvoker(self.device());
+  auto &invoker = GetORTInvoker(self.device());
 
   // resize the output and then create output ort value to be updated.
-  resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), self.sizes());
+  resize_output(invoker, dynamic_cast<ORTTensorImpl *>(out.unsafeGetTensorImpl()), self.sizes());
   auto ort_input_out = create_ort_value(invoker, out);
   auto ort_input_0_self = create_ort_value(invoker, self);
 
@@ -1074,30 +939,33 @@ at::Tensor& _log_softmax_out(
     for (int64_t i = 0; i < ndim; i++)
       axes.push_back(i);
 
-    axes[dim] = ndim-1;
-    axes[ndim-1] = dim;
-    dim = ndim-1;
+    axes[dim] = ndim - 1;
+    axes[ndim - 1] = dim;
+    dim = ndim - 1;
 
     NodeAttributes attrs_0(1);
     attrs_0["perm"] = create_ort_attribute("perm", axes);
-    auto status = invoker.Invoke("Transpose", {
-      std::move(ort_input_0_self),
-    }, ort_outputs_0_Transpose, &attrs_0);
+    auto status = invoker.Invoke("Transpose",
+                                 {
+                                     std::move(ort_input_0_self),
+                                 },
+                                 ort_outputs_0_Transpose, &attrs_0);
     CHECK_STATUS(status);
   }
 
   NodeAttributes attrs_1(1);
-  attrs_1["axis"] = create_ort_attribute(
-    "axis", dim, at::ScalarType::Int);
+  attrs_1["axis"] = create_ort_attribute("axis", dim, at::ScalarType::Int);
 
   std::vector<OrtValue> ort_outputs_1_LogSoftmax(1);
   if (!need_transpose) {
     ort_outputs_1_LogSoftmax[0] = ort_input_out;
   }
 
-  auto status = invoker.Invoke("LogSoftmax", {
-    std::move(need_transpose ? ort_outputs_0_Transpose[0] : ort_input_0_self),
-  }, ort_outputs_1_LogSoftmax, &attrs_1);
+  auto status = invoker.Invoke("LogSoftmax",
+                               {
+                                   std::move(need_transpose ? ort_outputs_0_Transpose[0] : ort_input_0_self),
+                               },
+                               ort_outputs_1_LogSoftmax, &attrs_1);
   CHECK_STATUS(status);
 
   std::vector<OrtValue> ort_outputs_2_Transpose(1);
@@ -1108,9 +976,11 @@ at::Tensor& _log_softmax_out(
     NodeAttributes attrs_2(1);
     attrs_2["perm"] = create_ort_attribute("perm", axes);
 
-    status = invoker.Invoke("Transpose", {
-      std::move(ort_outputs_1_LogSoftmax[0]),
-    }, ort_outputs_2_Transpose, &attrs_2);
+    status = invoker.Invoke("Transpose",
+                            {
+                                std::move(ort_outputs_1_LogSoftmax[0]),
+                            },
+                            ort_outputs_2_Transpose, &attrs_2);
     CHECK_STATUS(status);
   }
 
@@ -1120,37 +990,30 @@ at::Tensor& _log_softmax_out(
 // aten::mm.out(Tensor self, Tensor mat2, *, Tensor(a!) out) -> Tensor(a!)
 // mm is for matrix multiplication and does not broadcast.
 // https://pytorch.org/docs/stable/generated/torch.mm.html
-at::Tensor& mm_out(
-  const at::Tensor& self,
-  const at::Tensor& mat2,
-  // *,
-  at::Tensor& out) {
+at::Tensor &mm_out(const at::Tensor &self, const at::Tensor &mat2,
+                   // *,
+                   at::Tensor &out) {
   ORT_LOG_FN(self, mat2, out);
 
-  if (
-    std::vector<at::ScalarType> supportedTypes =
-      {at::kDouble, at::kLong, at::kHalf, at::kFloat, at::kBFloat16, at::kInt};
-    !IsSupportedType(self, supportedTypes) ||
-    !IsSupportedType(mat2, supportedTypes) ||
-    // to match cpu device behavior for torch.mm, verify the following and fall back to cpu to generate error message.
-    // 1. self and mat2 must be 2-D (matrices)
-    self.dim() != 2 || mat2.dim() != 2 ||
-    // 2. self and mat2 can be multiplied
-    self.sizes()[1] != mat2.sizes()[0] ||
-    // 3. self, mat2, and out are of the same type
-    self.scalar_type() != out.scalar_type() ||
-    self.scalar_type() != mat2.scalar_type()) {
-    return at::native::call_fallback_fn<
-      &at::native::cpu_fallback,
-      ATEN_OP(mm_out)>::call(self, mat2, out);
+  if (std::vector<at::ScalarType> supportedTypes = {at::kDouble, at::kLong, at::kHalf, at::kFloat, at::kBFloat16,
+                                                    at::kInt};
+      !IsSupportedType(self, supportedTypes) || !IsSupportedType(mat2, supportedTypes) ||
+      // to match cpu device behavior for torch.mm, verify the following and fall back to cpu to generate error message.
+      // 1. self and mat2 must be 2-D (matrices)
+      self.dim() != 2 || mat2.dim() != 2 ||
+      // 2. self and mat2 can be multiplied
+      self.sizes()[1] != mat2.sizes()[0] ||
+      // 3. self, mat2, and out are of the same type
+      self.scalar_type() != out.scalar_type() || self.scalar_type() != mat2.scalar_type()) {
+    return at::native::call_fallback_fn<&at::native::cpu_fallback, ATEN_OP(mm_out)>::call(self, mat2, out);
   }
-  auto& invoker = GetORTInvoker(self.device());
+  auto &invoker = GetORTInvoker(self.device());
 
   auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type(), mat2.scalar_type()}, {});
 
   // resize the output and then create output ort value to be updated.
   // out size is first dimension of self and 2nd dimension of mat2
-  resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), {self.sizes()[0], mat2.sizes()[1]});
+  resize_output(invoker, dynamic_cast<ORTTensorImpl *>(out.unsafeGetTensorImpl()), {self.sizes()[0], mat2.sizes()[1]});
   auto ort_input_out = create_ort_value(invoker, out);
 
   auto ort_input_0_self = create_ort_value(invoker, self);
@@ -1165,19 +1028,20 @@ at::Tensor& mm_out(
   std::vector<OrtValue> ort_outputs_0_MatMul(1);
   ort_outputs_0_MatMul[0] = ort_input_out;
 
-  auto status = invoker.Invoke("MatMul", {
-    std::move(ort_input_0_self),
-    std::move(ort_input_0_mat2),
-  }, ort_outputs_0_MatMul, nullptr);
+  auto status = invoker.Invoke("MatMul",
+                               {
+                                   std::move(ort_input_0_self),
+                                   std::move(ort_input_0_mat2),
+                               },
+                               ort_outputs_0_MatMul, nullptr);
   CHECK_STATUS(status);
 
   return out;
 }
 
-
-}  // namespace aten
+} // namespace aten
 
 // #pragma endregion
 
-}  // namespace eager
-}  // namespace torch_ort
+} // namespace eager
+} // namespace torch_ort

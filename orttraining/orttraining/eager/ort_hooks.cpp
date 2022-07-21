@@ -8,9 +8,7 @@ namespace eager {
 
 struct ORTHooks : public at::ORTHooksInterface {
   ORTHooks(at::ORTHooksArgs) {}
-  std::string showConfig() const override {
-    return "  - ORT is enabled\n";
-  }
+  std::string showConfig() const override { return "  - ORT is enabled\n"; }
 };
 
 using at::ORTHooksRegistry;

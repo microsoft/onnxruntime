@@ -3,8 +3,8 @@
 
 #include <core/providers/cpu/cpu_execution_provider.h>
 
-#include "ort_util.h"
 #include "ort_backends.h"
+#include "ort_util.h"
 
 namespace torch_ort {
 namespace eager {
