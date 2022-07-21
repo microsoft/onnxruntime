@@ -94,10 +94,12 @@ def register():
 
 def unregister():
     """Unregister ONNX Runtime's built-in contrib ops."""
-    # TODO: replace this once PyTorch supports unregister natively.
-    # https://msdata.visualstudio.com/Vienna/_workitems/edit/1342343
     for name in _registered_ops:
-        ns, kind = name.split("::")
-        for version in sym_help._onnx_stable_opsets:
-            if version >= _OPSET_VERSION and sym_registry.is_registered_op(kind, ns, version):
-                del sym_registry._registry[(ns, version)][kind]
+        try:
+            torch.onnx.unregister_custom_op_symbolic(name, _OPSET_VERSION)
+        except AttributeError:
+            # unregister_custom_op_symbolic is not available before PyTorch 1.12
+            namespace, kind = name.split("::")
+            for version in sym_help._onnx_stable_opsets:
+                if version >= _OPSET_VERSION and sym_registry.is_registered_op(kind, namespace, version):
+                    del sym_registry._registry[(namespace, version)][kind]

@@ -1504,9 +1504,9 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 )
 
             if args.use_nnapi:
-                adb_shell("cd {0} && {0}/onnx_test_runner -e nnapi {0}/test".format(device_dir))
+                run_adb_shell("{0}/onnx_test_runner -e nnapi {0}/test".format(device_dir))
             else:
-                adb_shell("cd {0} && {0}/onnx_test_runner {0}/test".format(device_dir))
+                run_adb_shell("{0}/onnx_test_runner {0}/test".format(device_dir))
             # run shared_lib_test if necessary
             if args.build_shared_lib:
                 adb_push("libonnxruntime.so", device_dir, cwd=cwd)
