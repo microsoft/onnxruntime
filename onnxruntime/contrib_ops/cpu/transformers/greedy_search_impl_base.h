@@ -33,7 +33,7 @@ struct GreedySearchState : public IGreedySearchState<T> {
     this->eos_meet = AllocateBuffer<bool>(cpu_allocator, eos_meet_buffer_, batch_size);
     memset(this->eos_meet.data(), 0, this->eos_meet.size_bytes());
 
-    this->next_tokens_cpu = AllocateBuffer<int32_t>(cpu_allocator,
+    this->next_tokens_cpu = AllocateBuffer<int64_t>(cpu_allocator,
                                                     next_tokens_cpu_buffer_,
                                                     SafeInt<size_t>(batch_size));
 
@@ -182,7 +182,10 @@ Status GreedySearchBase<T>::GenerateNextToken(
     int eos_token_id) {
   // Process logits to get next token scores
   ORT_RETURN_IF_ERROR(ProcessLogits(logits, greedy_state, this->temp_space_allocator_, counter));
-  next_tokens = greedy_state.next_tokens_cpu;
+
+  for (size_t i = 0; i < next_tokens.size(); i++) {
+    next_tokens[i] = gsl::narrow_cast<int32_t>(greedy_state.next_tokens_cpu[i]);
+  }
 
   gsl::span<bool>& eos_meet = greedy_state.eos_meet;
 

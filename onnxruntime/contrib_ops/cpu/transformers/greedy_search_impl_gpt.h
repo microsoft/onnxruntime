@@ -62,6 +62,7 @@ class GreedySearchGpt : public GreedySearchBase<T> {
       std::vector<OrtValue>& next_inputs,
       int current_length,
       OrtValue& position_ids,
+      bool increase_position,
       gsl::span<const int32_t> next_tokens);
 
   GptSubgraph& gpt_subgraph_;
@@ -98,6 +99,7 @@ Status GreedySearchGpt<T>::UpdateFeeds(
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
+    bool increase_position,
     gsl::span<const int32_t> next_tokens) {
   gsl::span<const int32_t> place_holder;
   return update_feeds_func_(this->temp_space_allocator_,
@@ -106,7 +108,7 @@ Status GreedySearchGpt<T>::UpdateFeeds(
                             next_inputs,
                             current_length,
                             position_ids,
-                            true,
+                            increase_position,
                             next_tokens,
                             place_holder,
                             this->parameters_->num_beams,
@@ -142,7 +144,6 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
 
   init_greedy_state_func_(&greedy_state,
                           greedy_state.sequence_lengths,
-                          parameters->batch_size,
                           this->cuda_stream_);
 
   gsl::span<const int32_t> input_ids = expanded_input_ids_in_cpu.Get<Tensor>().DataAsSpan<int32_t>();
@@ -153,9 +154,6 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
 
 #ifdef DEBUG_GENERATION
   const IConsoleDumper* dumper = this->GetConsoleDumper();
-  dumper->Print("input_ids", feeds[0]);
-  dumper->Print("position_ids", feeds[1]);
-  dumper->Print("attention_mask", feeds[2]);
 #endif
 
   // position ids for all iterations except the first. It uses memory buffer owned by next_positions.
@@ -175,6 +173,9 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
 #ifdef DEBUG_GENERATION
     auto cur_len = std::to_string(current_length);
     dumper->Print("***CurrentLength", cur_len, true);
+    dumper->Print("input_ids", feeds[0]);
+    dumper->Print("position_ids", feeds[1]);
+    dumper->Print("attention_mask", feeds[2]);
 #endif
 
     status = utils::ExecuteSubgraph(this->decoder_session_state_,
@@ -213,8 +214,9 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
 
     // Prepare inputs for next round of subgraph call.
     if (current_length < parameters->max_length) {
+      bool increase_position = (iteration_counter > 1);
       ORT_RETURN_IF_ERROR(UpdateFeeds(fetches, feeds, current_length,
-                                      position_ids,
+                                      position_ids, increase_position,
                                       next_tokens.as_span<const int32_t>()));
     }
     fetches.clear();

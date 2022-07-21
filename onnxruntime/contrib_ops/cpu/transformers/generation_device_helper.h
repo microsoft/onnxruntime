@@ -69,7 +69,6 @@ template <typename T>
 using InitGreedyStateFunc = std::function<void(
     transformers::IGreedySearchState<T>* greedy_state,
     gsl::span<int32_t>& sequence_lengths,
-    int batch_size,
     void* stream)>;
 
 template <typename T>
@@ -188,7 +187,6 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
 template <typename T>
 void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
                      gsl::span<int32_t>& sequence_lengths,
-                     int batch_size,
                      void* stream);
 
 template <typename T>

@@ -6,25 +6,25 @@
 This converts GPT2 or T5 model to onnx with beam search operator.
 
 Example 1: convert gpt2 model with beam search:
-    python convert_beam_search.py -m gpt2 --output gpt2_beam_search.onnx
+    python convert_generation.py -m gpt2 --output gpt2_beam_search.onnx
 
 Example 2: convert T5 model with beam search in two steps:
     cd ./models/t5
     python convert_to_onnx.py -m t5-small
     cd ../..
-    python convert_beam_search.py -m t5-small --model_type t5                                   \
+    python convert_generation.py -m t5-small --model_type t5                                   \
         --decoder_onnx ./models/t5/onnx_models/t5-small_decoder.onnx                            \
         --encoder_decoder_init_onnx ./models/t5/onnx_models/t5-small_encoder_decoder_init.onnx  \
         --output ./models/t5/onnx_models/t5_small_beam_search.onnx
 
 Example 3: convert T5 model with beam search. All in one step:
-    python convert_beam_search.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx
+    python convert_generation.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx
 
 Example 4: convert MT5 model with external data file like mt5-base-beamsearch.onnx.data in below example.
-    python convert_beam_search.py -m google/mt5-base --model_type mt5 --output mt5-base-beamsearch.onnx -e
+    python convert_generation.py -m google/mt5-base --model_type mt5 --output mt5-base-beamsearch.onnx -e
 
 Example 5: convert gpt2 model with greedy search:
-    python convert_beam_search.py -m gpt2 --output gpt2_greedy_search.onnx --num_beams 1 --num_return_sequences 1
+    python convert_generation.py -m gpt2 --output gpt2_greedy_search.onnx --num_beams 1 --num_return_sequences 1
 """
 
 import argparse
@@ -34,6 +34,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+from enum import Enum
 
 import numpy as np
 import onnx
@@ -65,6 +66,12 @@ from onnx_model import OnnxModel
 
 logger = logging.getLogger("")
 
+class GenerationType(Enum):
+    BEAMSEARCH = "beam_search"
+    GREEDYSEARCH = "greedy_search"
+
+    def __str__(self):
+        return self.value
 
 def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     """Parse arguments
@@ -730,13 +737,27 @@ def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto
     return initializers
 
 
-def convert_model(args: argparse.Namespace):
+def convert_generation_model(args: argparse.Namespace, generation_type: GenerationType=GenerationType.BEAMSEARCH):
     """Convert model according to command line arguments.
 
     Args:
         args (argparse.Namespace): arguments parsed from command line
     """
     is_gpt2: bool = args.model_type == "gpt2"
+    is_greedysearch: bool = generation_type == GenerationType.GREEDYSEARCH
+
+    if is_greedysearch:
+        if not is_gpt2:
+            raise NotImplementedError("Currently only gpt2 with greedy search is supported")
+        if args.vocab_mask:
+            raise NotImplementedError("vocab_mask currently is not supported in greedy search")
+        if args.prefix_vocab_mask:
+            raise NotImplementedError("prefix_vocab_mask currently is not supported in greedy search")
+        if args.output_sequences_scores:
+            raise NotImplementedError("output_sequences_scores currently is not supported in greedy search")
+        if args.output_token_scores:
+            raise NotImplementedError("output_token_scores currently is not supported in greedy search")
+
     if is_gpt2:
         if args.decoder_onnx and os.path.exists(args.decoder_onnx):
             logger.info(f"skip convert_to_onnx since path existed: {args.decoder_onnx}")
@@ -786,7 +807,7 @@ def convert_model(args: argparse.Namespace):
     else:
         verify_t5_decoder_subgraph(decoder_model.graph, args.precision)
 
-    inputs = [
+    inputs = ([
         "input_ids",
         "max_length",
         "min_length",
@@ -794,16 +815,22 @@ def convert_model(args: argparse.Namespace):
         "num_return_sequences",
         "length_penalty",
         "repetition_penalty",
-    ]
+    ] if not is_greedysearch
+      else [
+        "input_ids",
+        "max_length",
+        "min_length",
+        "repetition_penalty",
+    ])
 
     if args.vocab_mask:
         inputs.append("vocab_mask")
-    else:
+    elif not is_greedysearch:
         inputs.append("")
 
     if args.prefix_vocab_mask:
         inputs.append("prefix_vocab_mask")
-    else:
+    elif not is_greedysearch:
         inputs.append("")
 
     outputs = ["sequences"]
@@ -814,22 +841,34 @@ def convert_model(args: argparse.Namespace):
         assert args.output_sequences_scores, "--output_token_scores requires --output_sequences_scores"
         outputs.append("scores")
 
-    node = onnx.helper.make_node(
+    node = (onnx.helper.make_node(
         "BeamSearch",
         inputs=inputs,
         outputs=outputs,
         name=f"BeamSearch_{args.model_type}",
-    )
+    ) if not is_greedysearch
+      else onnx.helper.make_node(
+        "GreedySearch",
+        inputs=inputs,
+        outputs=outputs,
+        name=f"GreedySearch_{args.model_type}",
+    ))
+
     node.domain = "com.microsoft"
-    node.attribute.extend(
-        [
+
+    attr_to_extend = ([
             onnx.helper.make_attribute("eos_token_id", eos_token_id),
             onnx.helper.make_attribute("pad_token_id", pad_token_id),
             onnx.helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
             onnx.helper.make_attribute("early_stopping", 1 if args.early_stopping else 0),
             onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
-        ]
-    )
+        ] if not is_greedysearch
+          else [
+            onnx.helper.make_attribute("eos_token_id", eos_token_id),
+            onnx.helper.make_attribute("pad_token_id", pad_token_id),
+            onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
+        ])
+    node.attribute.extend(attr_to_extend)
 
     initializers = []
     if args.model_type in ["t5", "mt5"]:
@@ -868,7 +907,7 @@ def convert_model(args: argparse.Namespace):
     length_penalty = onnx.helper.make_tensor_value_info("length_penalty", TensorProto.FLOAT, [1])
     repetition_penalty = onnx.helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
 
-    graph_inputs = [
+    graph_inputs = ([
         input_ids,
         max_length,
         min_length,
@@ -876,7 +915,13 @@ def convert_model(args: argparse.Namespace):
         num_return_sequences,
         length_penalty,
         repetition_penalty,
-    ]
+    ] if not is_greedysearch
+      else [
+          input_ids,
+          max_length,
+          min_length,
+          repetition_penalty,
+    ])
 
     if args.vocab_mask:
         vocab_mask = onnx.helper.make_tensor_value_info("vocab_mask", TensorProto.INT32, [vocab_size])
@@ -889,11 +934,16 @@ def convert_model(args: argparse.Namespace):
         graph_inputs.append(prefix_vocab_mask)
 
     # graph outputs
-    sequences = onnx.helper.make_tensor_value_info(
+    sequences = (onnx.helper.make_tensor_value_info(
         "sequences",
         TensorProto.INT32,
         ["batch_size", "num_return_sequences", "max_length"],
-    )
+    ) if not is_greedysearch
+      else onnx.helper.make_tensor_value_info(
+        "sequences",
+        TensorProto.INT32,
+        ["batch_size", "max_length"],
+    ))
 
     sequences_scores = onnx.helper.make_tensor_value_info(
         "sequences_scores", TensorProto.FLOAT, ["batch_size", "num_return_sequences"]
@@ -914,7 +964,11 @@ def convert_model(args: argparse.Namespace):
         graph_outputs.append(scores)
 
     new_graph = onnx.helper.make_graph(
-        [node], f"{args.model_type} beam search", graph_inputs, graph_outputs, initializers
+        [node],
+        f"{args.model_type} beam search" if not is_greedysearch else f"{args.model_type} greedy search",
+        graph_inputs,
+        graph_outputs,
+        initializers
     )
 
     # Create the model
@@ -1564,9 +1618,9 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
     is_greedy = args.num_beams == 1 and args.num_return_sequences == 1
 
     if args.model_type == "gpt2" and is_greedy:
-        convert_greedy_search_model(args)
+        convert_generation_model(args, GenerationType.GREEDYSEARCH)
     else:
-        convert_model(args)
+        convert_generation_model(args)
 
     logger.info("start testing model...")
     if args.model_type in ["t5", "mt5"]:

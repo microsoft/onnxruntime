@@ -17,11 +17,11 @@ from onnxruntime import get_available_providers
 
 if find_transformers_source() and find_transformers_source(["models", "t5"]):
     from benchmark_helper import Precision
-    from convert_beam_search import main as run
+    from convert_generation import main as run
     from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
 else:
     from onnxruntime.transformers.benchmark_helper import Precision
-    from onnxruntime.transformers.convert_beam_search import main as run
+    from onnxruntime.transformers.convert_generation import main as run
     from onnxruntime.transformers.models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
 
 

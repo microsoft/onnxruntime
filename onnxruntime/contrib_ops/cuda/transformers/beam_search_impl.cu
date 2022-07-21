@@ -64,20 +64,8 @@ __global__ void TypeCastKernel(const int64_t* next_token_indices,
                                int total_elements) {
   int index = blockIdx.x * blockDim.x + threadIdx.x;
   if (index < total_elements) {
-    next_tokens[index] = next_token_indices[index];
+    next_tokens[index] = gsl::narrow_cast<int32_t>(next_token_indices[index]);
   }
-}
-
-void LaunchTypeCastKernel(const int64_t* next_token_indices,
-                          int32_t* next_tokens,
-                          int batch_size,
-                          cudaStream_t stream) {
-int total_elements = batch_size;
-constexpr int blockSize = 256;
-const int gridSize = (total_elements + blockSize - 1) / blockSize;
-TypeCastKernel<<<gridSize, blockSize, 0, stream>>>(next_token_indices,
-                                                   next_tokens,
-                                                   total_elements);
 }
 
 template <typename T>

@@ -214,16 +214,12 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
 template <typename T>
 void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
                      gsl::span<int32_t>& sequence_lengths,
-                     int batch_size,
                      void* /*stream*/) {
   memset(greedy_state->next_token_scores.data(), 0, greedy_state->next_token_scores.size_bytes());
   memset(greedy_state->next_tokens.data(), 0, greedy_state->next_tokens.size_bytes());
   memset(greedy_state->next_positions.data(), 0, greedy_state->next_positions.size_bytes());
 
-  gsl::span<int32_t>& next_position = greedy_state->next_positions;
-  for (int i = 0; i < batch_size; i++) {
-    next_position[SafeInt<gsl::index>(i)] = sequence_lengths[i] - 1;
-  }
+  gsl::copy(sequence_lengths, greedy_state->next_positions);
 }
 
 template <typename T>
@@ -406,7 +402,6 @@ Status GreedySearchProcessLogits(
 
   int batch_size = parameters->batch_size;
   int vocab_size = parameters->vocab_size;
-  bool output_scores = parameters->output_scores;
 
   const T* logits_data = logits.Get<Tensor>().Data<T>();
 
@@ -440,9 +435,6 @@ Status GreedySearchProcessLogits(
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after logits processor", next_token_scores.data(), batch_size, 1, vocab_size);
 #endif
-
-  // TODO(wy): support output_scores
-  ORT_UNUSED_PARAMETER(output_scores);
 
   // next_tokens = torch.argmax(scores, dim=-1)
   int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), vocab_size};
@@ -481,14 +473,11 @@ Status GreedySearchProcessLogits(
 #endif
 
   gsl::span<const int64_t> next_token_indices = topk_indices->DataAsSpan<int64_t>();
-  for (int i = 0; i < batch_size; i++) {
-    greedy_state->next_tokens_cpu[i] = gsl::narrow_cast<int32_t>(next_token_indices[i]);
-  }
-
-  gsl::span<const int32_t> next_tokens(greedy_state->next_tokens_cpu.data(),
-                                       greedy_state->next_tokens_cpu.size());
+  gsl::copy(next_token_indices, greedy_state->next_tokens_cpu)
 
 #ifdef DEBUG_GENERATION
+  gsl::span<const int64_t> next_tokens(greedy_state->next_tokens_cpu.data(),
+                                       greedy_state->next_tokens_cpu.size());
   dumper->Print("next_tokens before scorer", next_tokens.data(), batch_size, top_k);
 #endif
 
@@ -811,7 +800,6 @@ template void InitBeamState<float>(
 template void InitGreedyState<float>(
     transformers::IGreedySearchState<float>* greedy_state,
     gsl::span<int32_t>& sequence_lengths,
-    int batch_size,
     void* stream);
 
 template Status ProcessLogits<float>(

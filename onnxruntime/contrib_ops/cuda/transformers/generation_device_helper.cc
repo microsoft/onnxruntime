@@ -191,16 +191,12 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
 template <typename T>
 void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
                      gsl::span<int32_t>& sequence_lengths,
-                     int batch_size,
                      void* stream) {
   cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream);
   cudaMemsetAsync(greedy_state->next_token_scores.data(), 0, greedy_state->next_token_scores.size_bytes(), cuda_stream);
   cudaMemsetAsync(greedy_state->next_tokens.data(), 0, greedy_state->next_tokens.size_bytes(), cuda_stream);
   cudaMemsetAsync(greedy_state->next_positions.data(), 0, greedy_state->next_positions.size_bytes(), cuda_stream);
 
-  for (int i = 0; i < batch_size; i++) {
-    sequence_lengths[i] = sequence_lengths[i] - 1;
-  }
   cudaMemcpyAsync(greedy_state->next_positions.data(), sequence_lengths.data(), sequence_lengths.size_bytes(),
                   cudaMemcpyHostToDevice, cuda_stream);
 }
@@ -530,10 +526,9 @@ Status GreedySearchProcessLogits(
 #endif
 
   const int64_t* next_token_indices = topk_indices->Data<int64_t>();
-  cuda::LaunchTypeCastKernel(next_token_indices, greedy_state->next_tokens.data(), batch_size, cuda_stream);
 
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens_cpu.data(),
-                                       greedy_state->next_tokens.data(),
+                                       next_token_indices,
                                        greedy_state->next_tokens_cpu.size_bytes(),
                                        cudaMemcpyDeviceToHost,
                                        cuda_stream));
@@ -829,7 +824,6 @@ template void InitBeamState<float>(
 template void InitGreedyState<float>(
     transformers::IGreedySearchState<float>* greedy_state,
     gsl::span<int32_t>& sequence_lengths,
-    int batch_size,
     void* stream);
 
 template Status ProcessLogits<float>(
@@ -895,7 +889,6 @@ template void InitBeamState<MLFloat16>(
 template void InitGreedyState<MLFloat16>(
     transformers::IGreedySearchState<MLFloat16>* greedy_state,
     gsl::span<int32_t>& sequence_lengths,
-    int batch_size,
     void* stream);
 
 template Status ProcessLogits<MLFloat16>(

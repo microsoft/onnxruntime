@@ -68,13 +68,13 @@ class GenerateBase {
         if (!scalar_tensor->Shape().IsScalar()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME,
                                  FAIL,
-                                 "'BeamSearch' input ", name, " should be a scalar. Got shape of ",
+                                 "Node input ", name, " should be a scalar. Got shape of ",
                                  scalar_tensor->Shape());
         }
       } else if (required) {
         return ORT_MAKE_STATUS(ONNXRUNTIME,
                                FAIL,
-                               "'BeamSearch' input ", name, " is required");
+                               "Node input ", name, " is required");
       }
       return Status::OK();
   }
