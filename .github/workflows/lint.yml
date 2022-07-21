@@ -50,7 +50,7 @@ jobs:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
           level: warning
-          filter_mode: diff_context
+          filter_mode: added
           lib: true
       - name: pylint
         uses: dciborow/action-pylint@0.0.7
