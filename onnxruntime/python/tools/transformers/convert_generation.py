@@ -32,9 +32,10 @@ import logging
 import os
 import sys
 import time
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
-from enum import Enum
+
 
 import numpy as np
 import onnx
