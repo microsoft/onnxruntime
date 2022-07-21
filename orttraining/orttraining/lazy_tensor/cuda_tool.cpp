@@ -45,8 +45,8 @@ void CUDAExecutionProviderPool::Initialize() {
     OrtCUDAProviderOptionsV2 provider_options{};
     provider_options.device_id = i;
     provider_options.do_copy_in_default_stream = true;
-    provider_options.alloc = *reinterpret_cast<void**>(&CudaAllocDelegate);
-    provider_options.free = *reinterpret_cast<void**>(&CudaFreeDelegate);
+    provider_options.alloc = reinterpret_cast<void*>(&CudaAllocDelegate);
+    provider_options.free = reinterpret_cast<void*>(&CudaFreeDelegate);
     auto factory = onnxruntime::CudaProviderFactoryCreator::Create(&provider_options);
     cuda_execution_providers_.emplace_back(std::move(factory->CreateProvider()));
   }
