@@ -87,26 +87,37 @@ onnxruntime::MLDataType ort_scalar_type_from_aten(
 OrtValue create_ort_value(
   onnxruntime::ORTInvoker& invoker,
   const at::Scalar& scalar) {
-  return create_ort_value(invoker, scalar, at::kFloat);
+  return create_ort_value(invoker, scalar, scalar.type());
 }
 
 OrtValue create_ort_value(
   onnxruntime::ORTInvoker& invoker,
   const at::Scalar& scalar,
   at::ScalarType type) {
-  float val = scalar.toFloat();
   OrtValue ort_val;
   onnxruntime::Tensor::InitOrtValue(ort_scalar_type_from_aten(type), onnxruntime::TensorShape({}),
                                     invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), ort_val);
   auto* ort_tensor = ort_val.GetMutable<onnxruntime::Tensor>();
   switch (type) {
-    case at::ScalarType::Float:
+    case at::ScalarType::Float: {
+      float val = scalar.toFloat();
       CopyVectorToTensor<float>(invoker, &val, 1, *ort_tensor);
       break;
+    }
     case at::ScalarType::BFloat16: {
       at::BFloat16 valBFloat16 = scalar.toBFloat16();
-      Ort::BFloat16_t *valOrtBFloat16 = reinterpret_cast<Ort::BFloat16_t *>(&valBFloat16);
+      Ort::BFloat16_t* valOrtBFloat16 = reinterpret_cast<Ort::BFloat16_t*>(&valBFloat16);
       CopyVectorToTensor<Ort::BFloat16_t>(invoker, valOrtBFloat16, 1, *ort_tensor);
+      break;
+    }
+    case at::ScalarType::Double: {
+      double val = scalar.toDouble();
+      CopyVectorToTensor<double>(invoker, &val, 1, *ort_tensor);
+      break;
+    }
+    case at::ScalarType::Long: {
+      int64_t val = scalar.toLong();
+      CopyVectorToTensor<int64_t>(invoker, &val, 1, *ort_tensor);
       break;
     }
     default:
