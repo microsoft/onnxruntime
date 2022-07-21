@@ -321,12 +321,12 @@ class ORTGen:
                 for op_input in onnx_op.inputs:
                     if isinstance(op_input, Outputs):
                         continue
-                cpp_param = cpp_func.get_parameter(op_input)
-                if cpp_param:
-                    if cpp_param.parameter_type.desugar().identifier_tokens[0].value == "Tensor":
-                        types_from_tensor.append(f"{op_input}.scalar_type()")
-                    elif cpp_param.parameter_type.desugar().identifier_tokens[0].value == "Scalar":
-                        types_from_scalar.append(f"{op_input}.type()")
+                    cpp_param = cpp_func.get_parameter(op_input)
+                    if cpp_param:
+                        if cpp_param.parameter_type.desugar().identifier_tokens[0].value == "Tensor":
+                            types_from_tensor.append(f"{op_input}.scalar_type()")
+                        elif cpp_param.parameter_type.desugar().identifier_tokens[0].value == "Scalar":
+                            types_from_scalar.append(f"{op_input}.type()")
             if len(types_from_tensor) > 0 or len(types_from_scalar) > 0:
                 need_type_promotion = True
                 writer.writeline(

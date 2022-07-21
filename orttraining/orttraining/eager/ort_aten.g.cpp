@@ -102,7 +102,7 @@ Tensor add_Tensor(
   }
   auto& invoker = GetORTInvoker(self.device());
   
-  auto promoted_type = PromoteScalarTypesWithCategory({other.scalar_type()}, {});
+  auto promoted_type = PromoteScalarTypesWithCategory({other.scalar_type(),self.scalar_type()}, {alpha.type()});
   
   auto ort_input_0_alpha = create_ort_value(invoker, alpha);
   if (alpha.type() != *promoted_type){
@@ -164,7 +164,7 @@ Tensor add_Scalar(
   }
   auto& invoker = GetORTInvoker(self.device());
   
-  auto promoted_type = PromoteScalarTypesWithCategory({}, {other.type()});
+  auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type()}, {alpha.type(),other.type()});
   
   auto ort_input_0_alpha = create_ort_value(invoker, alpha);
   if (alpha.type() != *promoted_type){
@@ -219,7 +219,7 @@ Tensor& add__Scalar(
   }
   auto& invoker = GetORTInvoker(self.device());
   
-  auto promoted_type = PromoteScalarTypesWithCategory({}, {other.type()});
+  auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type()}, {alpha.type(),other.type()});
   
   auto ort_input_0_alpha = create_ort_value(invoker, alpha);
   if (alpha.type() != *promoted_type){
@@ -552,7 +552,7 @@ Tensor div_Tensor(
   }
   auto& invoker = GetORTInvoker(self.device());
   
-  auto promoted_type = PromoteScalarTypesWithCategory({other.scalar_type()}, {});
+  auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type(),other.scalar_type()}, {});
   
   auto ort_input_0_self = create_ort_value(invoker, self);
   if (self.scalar_type() != *promoted_type){
@@ -592,7 +592,7 @@ Tensor& div__Tensor(
   }
   auto& invoker = GetORTInvoker(self.device());
   
-  auto promoted_type = PromoteScalarTypesWithCategory({other.scalar_type()}, {});
+  auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type(),other.scalar_type()}, {});
   
   auto ort_input_0_self = create_ort_value(invoker, self);
   if (self.scalar_type() != *promoted_type){
@@ -630,7 +630,7 @@ Tensor div_Scalar(
   }
   auto& invoker = GetORTInvoker(self.device());
   
-  auto promoted_type = PromoteScalarTypesWithCategory({}, {other.type()});
+  auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type()}, {other.type()});
   
   auto ort_input_0_self = create_ort_value(invoker, self);
   if (self.scalar_type() != *promoted_type){
@@ -670,7 +670,7 @@ Tensor& div__Scalar(
   }
   auto& invoker = GetORTInvoker(self.device());
   
-  auto promoted_type = PromoteScalarTypesWithCategory({}, {other.type()});
+  auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type()}, {other.type()});
   
   auto ort_input_0_self = create_ort_value(invoker, self);
   if (self.scalar_type() != *promoted_type){
@@ -926,7 +926,7 @@ Tensor mul_Tensor(
   }
   auto& invoker = GetORTInvoker(self.device());
   
-  auto promoted_type = PromoteScalarTypesWithCategory({other.scalar_type()}, {});
+  auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type(),other.scalar_type()}, {});
   
   auto ort_input_0_self = create_ort_value(invoker, self);
   if (self.scalar_type() != *promoted_type){
@@ -966,7 +966,7 @@ Tensor& mul__Tensor(
   }
   auto& invoker = GetORTInvoker(self.device());
   
-  auto promoted_type = PromoteScalarTypesWithCategory({other.scalar_type()}, {});
+  auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type(),other.scalar_type()}, {});
   
   auto ort_input_0_self = create_ort_value(invoker, self);
   if (self.scalar_type() != *promoted_type){
@@ -1004,7 +1004,7 @@ Tensor mul_Scalar(
   }
   auto& invoker = GetORTInvoker(self.device());
   
-  auto promoted_type = PromoteScalarTypesWithCategory({}, {other.type()});
+  auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type()}, {other.type()});
   
   auto ort_input_0_self = create_ort_value(invoker, self);
   if (self.scalar_type() != *promoted_type){
@@ -1044,7 +1044,7 @@ Tensor& mul__Scalar(
   }
   auto& invoker = GetORTInvoker(self.device());
   
-  auto promoted_type = PromoteScalarTypesWithCategory({}, {other.type()});
+  auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type()}, {other.type()});
   
   auto ort_input_0_self = create_ort_value(invoker, self);
   if (self.scalar_type() != *promoted_type){
@@ -1266,7 +1266,7 @@ Tensor gelu_backward(
   }
   auto& invoker = GetORTInvoker(grad.device());
   
-  auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type()}, {});
+  auto promoted_type = PromoteScalarTypesWithCategory({grad.scalar_type(),self.scalar_type()}, {});
   
   auto ort_input_0_grad = create_ort_value(invoker, grad);
   if (grad.scalar_type() != *promoted_type){
@@ -1778,7 +1778,7 @@ Tensor sub_Tensor(
   }
   auto& invoker = GetORTInvoker(self.device());
   
-  auto promoted_type = PromoteScalarTypesWithCategory({other.scalar_type()}, {});
+  auto promoted_type = PromoteScalarTypesWithCategory({other.scalar_type(),self.scalar_type()}, {alpha.type()});
   
   auto ort_input_0_alpha = create_ort_value(invoker, alpha);
   if (alpha.type() != *promoted_type){
@@ -1834,7 +1834,7 @@ Tensor& sub__Tensor(
   }
   auto& invoker = GetORTInvoker(self.device());
   
-  auto promoted_type = PromoteScalarTypesWithCategory({other.scalar_type()}, {});
+  auto promoted_type = PromoteScalarTypesWithCategory({other.scalar_type(),self.scalar_type()}, {alpha.type()});
   
   auto ort_input_0_alpha = create_ort_value(invoker, alpha);
   if (alpha.type() != *promoted_type){
@@ -1887,7 +1887,7 @@ Tensor sub_Scalar(
   }
   auto& invoker = GetORTInvoker(self.device());
   
-  auto promoted_type = PromoteScalarTypesWithCategory({}, {other.type()});
+  auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type()}, {alpha.type(),other.type()});
   
   auto ort_input_0_alpha = create_ort_value(invoker, alpha);
   if (alpha.type() != *promoted_type){
@@ -1942,7 +1942,7 @@ Tensor& sub__Scalar(
   }
   auto& invoker = GetORTInvoker(self.device());
   
-  auto promoted_type = PromoteScalarTypesWithCategory({}, {other.type()});
+  auto promoted_type = PromoteScalarTypesWithCategory({self.scalar_type()}, {alpha.type(),other.type()});
   
   auto ort_input_0_alpha = create_ort_value(invoker, alpha);
   if (alpha.type() != *promoted_type){
