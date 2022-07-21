@@ -194,7 +194,6 @@ void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
                      void* stream) {
   cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream);
   cudaMemsetAsync(greedy_state->next_token_scores.data(), 0, greedy_state->next_token_scores.size_bytes(), cuda_stream);
-  cudaMemsetAsync(greedy_state->next_tokens.data(), 0, greedy_state->next_tokens.size_bytes(), cuda_stream);
   cudaMemsetAsync(greedy_state->next_positions.data(), 0, greedy_state->next_positions.size_bytes(), cuda_stream);
 
   cudaMemcpyAsync(greedy_state->next_positions.data(), sequence_lengths.data(), sequence_lengths.size_bytes(),

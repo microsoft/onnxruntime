@@ -21,7 +21,7 @@ struct GreedySearchState : public IGreedySearchState<T> {
             int vocab_size,
             int sequence_length,
             int max_length,
-            bool is_cuda) {
+            bool /*is_cuda*/) {
     // below buffers are on cpu
     this->sequences_space = AllocateBuffer<int32_t>(cpu_allocator,
                                                     sequences_space_buffer_,
