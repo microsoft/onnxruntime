@@ -2494,9 +2494,15 @@ class GatherOpBuilder : public BaseOpBuilder {
 };
 
 void GatherOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  // Skip the second input `indices` for Gather
   const auto& inputs = node_unit.Inputs();
-  model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());  // indices
+  const auto& indices_name = inputs[1].node_arg.Name();
+  int32_t indices_data_type;
+  GetType(node_unit.Inputs()[1].node_arg, indices_data_type);
+  if (Contains(model_builder.GetInitializerTensors(), indices_name) &&
+      indices_data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    // Skip the second input `indices` for Gather if it is an initializer
+    model_builder.AddInitializerToSkip(indices_name);
+  }
 }
 
 Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2516,39 +2522,44 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   input_indices.push_back(operand_indices.at(input1));
   ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
 
-  // Add indices operand into nnapi
-  const auto& indices_tensor = *initializers.at(input2);
-  std::vector<uint8_t> unpacked_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(indices_tensor, unpacked_tensor));
+  int32_t indices_data_type;
+  GetType(node_unit.Inputs()[1].node_arg, indices_data_type);
+  if (Contains(model_builder.GetInitializerTensors(), input2) &&
+      indices_data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    // Add indices operand into nnapi
+    const auto& indices_tensor = *initializers.at(input2);
+    std::vector<uint8_t> unpacked_tensor;
+    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(indices_tensor, unpacked_tensor));
 
-  const auto data_type = indices_tensor.data_type();
-  const auto indices_shape = indices_tensor.dims();
-  uint32_t size = 1;
-  Shape indices_dimen;
-  indices_dimen.reserve(indices_tensor.dims_size());
-  for (auto i = 0; i < indices_tensor.dims_size(); i++) {
-    size *= indices_shape[i];
-    indices_dimen.push_back(static_cast<uint32_t>(indices_shape[i]));
-  }
-
-  std::vector<int32_t> indices(size);
-  // see https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#type-punning-arrays for the usage of memcpy here
-  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-    for (uint32_t i = 0; i < size; i++) {
-      int64_t index_i64;
-      memcpy(&index_i64, unpacked_tensor.data() + i * sizeof(int64_t), sizeof(int64_t));
-      indices[i] = SafeInt<int32_t>(index_i64);
+    const auto data_type = indices_tensor.data_type();
+    const auto indices_shape = indices_tensor.dims();
+    uint32_t size = 1;
+    Shape indices_dimen;
+    indices_dimen.reserve(indices_tensor.dims_size());
+    for (auto i = 0; i < indices_tensor.dims_size(); i++) {
+      size *= SafeInt<uint32_t>(indices_shape[i]);
+      indices_dimen.push_back(static_cast<uint32_t>(indices_shape[i]));
     }
-  } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-    for (uint32_t i = 0; i < size; i++) {
-      int32_t index;
-      memcpy(&index, unpacked_tensor.data() + i * sizeof(int32_t), sizeof(int32_t));
-      indices[i] = SafeInt<int32_t>(index);
-    }
-  }
 
-  OperandType indices_operand_type(Type::TENSOR_INT32, indices_dimen);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(input2, indices.data(), indices_operand_type));
+    std::vector<int32_t> indices(size);
+    // see https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#type-punning-arrays for the usage of memcpy here
+    if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+      for (uint32_t i = 0; i < size; i++) {
+        int64_t index_i64;
+        memcpy(&index_i64, unpacked_tensor.data() + i * sizeof(int64_t), sizeof(int64_t));
+        indices[i] = SafeInt<int32_t>(index_i64);
+      }
+    } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+      for (uint32_t i = 0; i < size; i++) {
+        int32_t index;
+        memcpy(&index, unpacked_tensor.data() + i * sizeof(int32_t), sizeof(int32_t));
+        indices[i] = SafeInt<int32_t>(index);
+      }
+    }
+
+    OperandType indices_operand_type(Type::TENSOR_INT32, indices_dimen);
+    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(input2, indices.data(), indices_operand_type));
+  }
   input_indices.push_back(operand_indices.at(input2));
   ORT_RETURN_IF_ERROR(shaper.Gather(input1, input2, axis, output));
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);

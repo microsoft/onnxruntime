@@ -145,7 +145,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
 #ifdef DEBUG_BEAM_SEARCH
   const IConsoleDumper* dumper = this->GetConsoleDumper();
-  for (size_t i = 0; i < encoder_feeds.size(); i++) {
+  for (int i = 0; i < this->encoder_subgraph_.num_subgraph_inputs; i++) {
     dumper->Print("encoder_feeds", static_cast<int>(i), true);
     dumper->Print("", encoder_feeds[i]);
   }
