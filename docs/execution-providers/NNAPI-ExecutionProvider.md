@@ -102,12 +102,14 @@ Following ops are supported by the NNAPI Execution Provider,
 |ai.onnx:Clip||
 |ai.onnx:Concat||
 |ai.onnx:Conv|Only 2D Conv is supported.<br/>Weights and bias should be constant.|
+|ai.onnx:DepthToSpace|Only DCR mode DepthToSpace is supported.|
 |ai.onnx:DequantizeLinear|All quantization scales and zero points should be constant.|
 |ai.onnx:Div||
 |ai.onnx:Elu||
 |ai.onnx:Exp||
 |ai.onnx:Flatten||
 |ai.onnx:Floor||
+|ai.onnx:Gather|Input indices should be constant if not int32 type.|
 |ai.onnx:Gemm|If input B is not constant, transB should be 1.|
 |ai.onnx:GlobalAveragePool|Only 2D Pool is supported.|
 |ai.onnx:GlobalMaxPool|Only 2D Pool is supported.|
@@ -119,7 +121,9 @@ Following ops are supported by the NNAPI Execution Provider,
 |ai.onnx:Min||
 |ai.onnx:Mul||
 |ai.onnx:Neg||
+|ai.onnx:Pad|Only constant mode Pad is supported.<br/>Input pads and constant_value should be constant.<br/>Input pads values should be non-negative.|
 |ai.onnx:Pow||
+|ai.onnx:PRelu||
 |ai.onnx:QLinearConv|Only 2D Conv is supported.<br/>Weights and bias should be constant.<br/>All quantization scales and zero points should be constant.|
 |ai.onnx:QLinearMatMul|All quantization scales and zero points should be constant.|
 |ai.onnx:QuantizeLinear|All quantization scales and zero points should be constant.|
@@ -131,10 +135,11 @@ Following ops are supported by the NNAPI Execution Provider,
 |ai.onnx:Slice||
 |ai.onnx:Softmax||
 |ai.onnx:Sqrt||
-|ai.onnx:Squeeze||
+|ai.onnx:Squeeze|Input axes should be constant.|
 |ai.onnx:Sub||
 |ai.onnx:Tanh||
 |ai.onnx:Transpose||
+|ai.onnx:Unsqueeze|Input axes should be constant.|
 |com.microsoft:QLinearAdd|All quantization scales and zero points should be constant.|
 |com.microsoft:QLinearAveragePool|Only 2D Pool is supported.<br/>All quantization scales and zero points should be constant.|
 |com.microsoft:QLinearSigmoid|All quantization scales and zero points should be constant.|
