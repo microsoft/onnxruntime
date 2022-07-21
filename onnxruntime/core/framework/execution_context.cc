@@ -171,7 +171,7 @@ void ExecutionContext::RecycleNodeInputs(onnxruntime::NodeIndex node_index) {
   auto* execution_plan = session_state->GetExecutionPlan();
   for (auto idx : execution_plan->node_release_list[node_index]) {
     if (--release_plan->value_ref_counts_[idx] == 0) {
-      ORT_ENFORCE(frame->ReleaseMLValue(execution_plan->release_actions[idx].value_index).IsOK());
+      ORT_ENFORCE(frame->ReleaseMLValue(static_cast<int>(execution_plan->release_actions[idx].value_index)).IsOK());
       LOGS(*logger, INFO) << "ort value " << execution_plan->release_actions[idx].value_index << " released";
     }
   }

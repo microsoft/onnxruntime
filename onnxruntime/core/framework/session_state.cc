@@ -740,7 +740,7 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
         continue;
     const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
     if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
-        ORT_RETURN_IF_ERROR(mem_planner.TraceFree(ml_value_idx));
+        ORT_RETURN_IF_ERROR(mem_planner.TraceFree(static_cast<int>(ml_value_idx)));
     }
     }
   }
