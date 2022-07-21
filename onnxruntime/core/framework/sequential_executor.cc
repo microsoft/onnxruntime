@@ -416,7 +416,6 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
     KernelScope kernel_scope(*session_scope, kernel_ctx, *p_kernel);
     //ORT_RETURN_IF_ERROR(p_kernel->Compute(&kernel_ctx));
     ORT_TRY {
-      bool reuse_cached_value = false;
 #ifdef ENABLE_TRAINING
       if (p_kernel->KernelDef().AllocateInputsContiguously()) {
         ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&kernel_ctx));
@@ -424,6 +423,7 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
       // Cache lookup. Currently we only cache single-output nodes,
       // to keep memory overhead impact in check. Hence we only look in cache
       // if the current node has one output.
+      bool reuse_cached_value = false;
       std::string cached_arg_name;
       auto& cache = ctx.GetOrtValueCache();
       if (cache != nullptr) {
@@ -435,12 +435,14 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
           }
         }
       }
-#endif
       if (!reuse_cached_value) {
         status = p_kernel->Compute(&kernel_ctx);
       } else {
         status = kernel_ctx.SetOutputMLValue(0, cache.get()->at(cached_arg_name));
       }
+#else
+      status = p_kernel->Compute(&kernel_ctx);
+#endif
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
