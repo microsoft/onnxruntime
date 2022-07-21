@@ -1258,7 +1258,7 @@ class PlannerImpl {
           int output_offset = variadic_alias_offsets->second;
           size_t alias_input_index = output_arg_num - output_offset + input_offset;
 
-          if (alias_input_index >= 0 && alias_input_index < input_args.size()) {
+          if (alias_input_index < input_args.size()) {
             auto p_input_arg = input_args[alias_input_index];
 
             if (p_input_arg->Exists()) {
