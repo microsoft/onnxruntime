@@ -1413,6 +1413,45 @@ void RegisterTrainingOpSchemas() {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(InPlaceAccumulatorV2)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "In-place accumulator for tensors. Differs from older op by adding `overwrite_flag` for reset, "
+          "and making output buffer as optional. Set the `overwrite_flag` to false for gradient accumulation "
+          "and to True for overwriting the accumulation buffer during gradient computation "
+          "(equivalent to reset grad + train step)")
+      .Input(0, "accumulation_buffer", "historical result of accumulator", "T")
+      .Input(1, "value", "the value that will be added to the accumulator", "T_GRAD")
+      .Input(2, "overwrite_flag", "Indicates if tensor should be overwritten. Default is accumulation",
+             "T_BOOL", OpSchema::Optional)
+      .Output(0, "updated_flag", "Whether the update was completed", "T_BOOL")
+      .Output(1, "accumulation_buffer_out", "updated result of accumulator", "T", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T_GRAD",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T_BOOL",
+          {"tensor(bool)"},
+          "Constrain types to boolean tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+        ONNX_NAMESPACE::TensorShapeProto updated_shape;
+        updated_shape.add_dim()->set_dim_value(1);
+        updateOutputShape(ctx, 0, updated_shape);
+        if (ctx.getNumOutputs() == 2) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          if (hasNInputShapes(ctx, 1)) {
+            propagateShapeFromInputToOutput(ctx, 0, 1);
+          }
+        }
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(ZeroGradient)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
