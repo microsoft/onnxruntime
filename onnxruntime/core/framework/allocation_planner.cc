@@ -81,7 +81,6 @@ std::ostream& operator<<(std::ostream& out, AllocKind alloc_kind) {
 std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionPlan*, const SessionState*> planinfo) {
   const SequentialExecutionPlan& plan = *planinfo.first;
   const SessionState& session_state = *planinfo.second;
-  //auto& graph = session_state.GetGraphViewer();
 
   const auto& name_idx_map = session_state.GetOrtValueNameIdxMap();
   InlinedHashMap<int, std::string_view> index_to_name;

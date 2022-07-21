@@ -458,7 +458,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, const std:
                                       const logging::Logger& logger,
                                       const DeviceStreamCollection& device_streams,
                                       const bool& terminate_flag,
-                                      const bool /*only_execute_path_to_fetches*/,
+                                      const bool only_execute_path_to_fetches,
                                       bool single_thread_mode) {
   auto* execution_plan = session_state.GetExecutionPlan();
   LOGS(logger, INFO) << "Number of streams: " << execution_plan->execution_plan.size();
@@ -488,6 +488,8 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, const std:
     auto* range = session_state.GetToBeExecutedRange(fetch_mlvalue_idxs);
     ctx.SetCurrentRange(range);
   }
+#else
+  ORT_UNUSED_PARAMETER(only_execute_path_to_fetches);
 #endif
 
   SessionScope session_scope(session_state, *reinterpret_cast<const ExecutionFrame*>(ctx.GetExecutionFrame()));

@@ -48,7 +48,7 @@ class Memcpy final : public OpKernel {
       }
     } else {
       // TODO: support aysnc copy for sparse tensor
-      
+
       // sync the stream frist, since it is a sync memory copy
       cudaStreamSynchronize(static_cast<cudaStream_t>(ctx->GetComputeStream()->handle));
       if (X_type->IsSparseTensorType()) {
@@ -163,9 +163,9 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
   }
 }
 
-CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t gpu_mem_limit,
-                                                          ArenaExtendStrategy arena_extend_strategy, CUDAExecutionProviderExternalAllocatorInfo external_allocator_info,
-                                                          OrtArenaCfg* default_memory_arena_cfg) {
+CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t /*gpu_mem_limit*/,
+                                                          ArenaExtendStrategy /*arena_extend_strategy*/, CUDAExecutionProviderExternalAllocatorInfo /*external_allocator_info*/,
+                                                          OrtArenaCfg* /*default_memory_arena_cfg*/) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
 
   CUBLAS_CONFIG_CALL_TRHOW(cublasCreate(&cublas_handle_));
@@ -269,7 +269,7 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
     std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
     if (!deferred_release_cpu_ptrs.empty()) {
       // iterate from the end
-      
+
       for (int i = static_cast<int>(deferred_release_cpu_ptrs.size()) - 1; i >= 0; i--) {
         CUDA_CALL_THROW(cudaEventSynchronize(deferred_release_cpu_ptrs[i].kernel_complete_event));
         cpu_alloc->Free(deferred_release_cpu_ptrs[i].cpu_ptr);
@@ -358,14 +358,14 @@ AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) co
     auto cuda_alloc = IExecutionProvider::GetAllocator(id, mem_type);
     if (!cuda_alloc) {
       // this means the program invoke GetAllocator before RegsiterAllocators,
-      // which only happnens in some UTs. 
-      // here is a hack to return another allocator instance. 
+      // which only happnens in some UTs.
+      // here is a hack to return another allocator instance.
       // need to fix this in the future.
       return CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
                                             info_.external_allocator_info, info_.default_memory_arena_cfg);
     }
   }
-  
+
   return IExecutionProvider::GetAllocator(id, mem_type);
 }
 
