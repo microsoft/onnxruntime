@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "ort_backends.h"
+#include "orttraining/eager/ort_backends.h"
 
 #include <memory>
 #include <string>
 
 #include "core/platform/env.h"
-#include "ort_log.h"
+#include "orttraining/eager/ort_log.h"
 #include "orttraining/python/orttraining_python_module_eager.h"
 #include <core/common/logging/sinks/clog_sink.h>
 #include <core/providers/cpu/cpu_execution_provider.h>

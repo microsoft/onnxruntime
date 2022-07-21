@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "ort_ops.h"
+#include "orttraining/eager/ort_ops.h"
 
 #include <algorithm>
 #include <memory>
@@ -9,8 +9,8 @@
 #include <vector>
 
 #include "core/providers/cpu/tensor/reshape_helper.h"
-#include "ort_log.h"
-#include "ort_util.h"
+#include "orttraining/eager/ort_log.h"
+#include "orttraining/eager/ort_util.h"
 
 namespace torch_ort {
 namespace eager {

@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "ort_eager_common.h"
+#include "orttraining/eager/ort_eager_common.h"
 
-#include "ort_backends.h"
-#include "ort_log.h"
+#include "orttraining/eager/ort_backends.h"
+#include "orttraining/eager/ort_log.h"
 
 namespace torch_ort {
 namespace eager {

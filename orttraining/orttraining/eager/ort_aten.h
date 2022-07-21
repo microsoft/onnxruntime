@@ -5,13 +5,13 @@
 
 #include <vector>
 
-#include "ort_eager_common.h"
+#include "orttraining/eager/ort_eager_common.h"
 #include <core/framework/ort_value.h>
 
-#include "ort_log.h"
-#include "ort_ops.h"
-#include "ort_tensor.h"
-#include "ort_util.h"
+#include "orttraining/eager/ort_log.h"
+#include "orttraining/eager/ort_ops.h"
+#include "orttraining/eager/ort_tensor.h"
+#include "orttraining/eager/ort_util.h"
 
 #define CHECK_STATUS(status)                                                                                           \
   if (!status.IsOK()) {                                                                                                \

@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "ort_tensor.h"
-#include "ort_util.h"
+#include "orttraining/eager/ort_tensor.h"
+#include "orttraining/eager/ort_util.h"
 
 namespace torch_ort {
 namespace eager {

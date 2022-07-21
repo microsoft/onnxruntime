@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensor.h"
-#include "ort_aten.h"
-#include "ort_backends.h"
-#include "ort_customops.h"
-#include "ort_eager_common.h"
-#include "ort_log.h"
+#include "orttraining/eager/ort_eager_common.h"
+#include "orttraining/eager/ort_log.h"
+#include "orttraining/eager/ort_aten.h"
+#include "orttraining/eager/ort_backends.h"
+#include "orttraining/eager/ort_customops.h"
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
 #include "orttraining/core/framework/torch/dlpack_python.h"
 #include "orttraining/python/orttraining_python_module_eager.h"

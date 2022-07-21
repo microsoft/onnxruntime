@@ -5,7 +5,7 @@
 
 #include <core/session/onnxruntime_cxx_api.h>
 
-#include "ort_backends.h"
+#include "orttraining/eager/ort_backends.h"
 
 namespace torch_ort {
 namespace eager {

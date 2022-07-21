@@ -5,7 +5,7 @@
 
 #include <algorithm>
 
-#include "ort_util.h"
+#include "orttraining/eager/ort_util.h"
 #include <core/eager/ort_kernel_invoker.h>
 #include <core/framework/ort_value.h>
 
