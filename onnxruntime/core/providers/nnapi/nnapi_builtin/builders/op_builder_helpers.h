@@ -14,7 +14,7 @@
 namespace onnxruntime::nnapi::op_builder_helpers {
 
 // adds a scalar operand to the NNAPI model and appends its index to `input_indices`
-template<typename T>
+template <typename T>
 Status AddScalarOperand(ModelBuilder& model_builder, std::vector<uint32_t>& input_indices, T scalar_value) {
   uint32_t index = 0;
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromScalar(std::move(scalar_value), index));
@@ -48,4 +48,4 @@ bool IsSupportedBatchMatMul(const NodeUnit& node_unit, int32_t nnapi_feature_lev
 // note: the pre-conditions of this function are checked in IsSupportedBatchMatMul()
 Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit);
 
-}
+}  // namespace onnxruntime::nnapi::op_builder_helpers

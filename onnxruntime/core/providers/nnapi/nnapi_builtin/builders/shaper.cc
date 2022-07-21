@@ -123,9 +123,9 @@ Status Shaper::Concat(const std::vector<std::string>& input_names,
   SHAPER_FUNC(Concat, input_names, axis, output_name);
 }
 
-Status Shaper::Split(const std::string& input_name, int32_t axis, int32_t count,
+Status Shaper::Split(const std::string& input_name, int32_t axis,
                      const std::vector<std::string>& output_names) {
-  SHAPER_FUNC(Split, input_name, axis, count, output_names);
+  SHAPER_FUNC(Split, input_name, axis, output_names);
 }
 
 Status Shaper::Squeeze(const std::string& input_name,
@@ -386,17 +386,10 @@ Status Shaper::ConcatImpl(const std::vector<std::string>& input_names,
   return Status::OK();
 }
 
-Status Shaper::SplitImpl(const std::string& input_name, int32_t axis, int32_t count,
+Status Shaper::SplitImpl(const std::string& input_name, int32_t axis,
                          const std::vector<std::string>& output_names) {
-  ORT_RETURN_IF_NOT(count > 0, "count [", count, "] must be greater than 0");
-  ORT_RETURN_IF_NOT(static_cast<size_t>(count) == output_names.size(),
-                    "count [", count, "] must match the number of outputs [", output_names.size(), "]");
-
   const auto& input_shape = shape_map_.at(input_name);
-  const auto& input_rank = input_shape.size();
-
-  ORT_RETURN_IF_NOT(0 <= axis && static_cast<size_t>(axis) < input_rank,
-                    "axis [", axis, "] must be in range [0, ", input_rank, ")");
+  const auto count = output_names.size();
 
   ORT_RETURN_IF_NOT(input_shape[axis] % count == 0,
                     "count [", count, "] does not evenly divide dimension ", axis, " [", input_shape[axis], "]");

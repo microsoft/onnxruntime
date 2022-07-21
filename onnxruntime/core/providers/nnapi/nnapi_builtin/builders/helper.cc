@@ -1,21 +1,23 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
+
+#include <functional>
 #include <iostream>
+#include <numeric>
 #include <string>
 #include <vector>
 
-#include "helper.h"
-
-#include "core/common/safeint.h"
 #include "core/common/logging/logging.h"
+#include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/graph/graph.h"
 #include "core/graph/graph_viewer.h"
+#include "core/graph/graph.h"
 #include "core/providers/common.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
-#include "op_support_checker.h"
 
 namespace onnxruntime {
 namespace nnapi {

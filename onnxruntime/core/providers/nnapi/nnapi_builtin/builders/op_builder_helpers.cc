@@ -3,6 +3,8 @@
 
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder_helpers.h"
 
+#include <algorithm>
+
 #include "gsl/gsl"
 
 #include "core/common/safeint.h"
@@ -80,12 +82,15 @@ Status AddNnapiSplit(ModelBuilder& model_builder,
   const auto& operand_types = model_builder.GetOperandTypes();
   auto& shaper = model_builder.GetShaper();
 
-  const auto count = gsl::narrow<int32_t>(outputs.size());
-  ORT_RETURN_IF_ERROR(shaper.Split(input, axis, count, outputs));
+  const auto input_rank = shaper[input].size();
+  axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_rank));
+
+  ORT_RETURN_IF_ERROR(shaper.Split(input, axis, outputs));
 
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ORT_RETURN_IF_ERROR(AddScalarOperand(model_builder, input_indices, axis));
+  const auto count = gsl::narrow<int32_t>(outputs.size());
   ORT_RETURN_IF_ERROR(AddScalarOperand(model_builder, input_indices, count));
 
   const OperandType& input_operand_type = operand_types.at(input);
@@ -348,4 +353,4 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
   return Status::OK();
 }
 
-}  // namespace onnxruntime::nnapi::matmul_helpers
+}  // namespace onnxruntime::nnapi::op_builder_helpers
