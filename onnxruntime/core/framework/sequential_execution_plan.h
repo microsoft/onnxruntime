@@ -18,7 +18,7 @@ namespace onnxruntime {
 // the ExecutionFrame).
 using OrtValueIndex = int;
 using OrtValueName = std::string;
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 // pair of start and end program counters,according to the execution plan
 using IntervalT = std::pair<size_t, size_t>;
 #endif
@@ -33,7 +33,7 @@ struct AllocPlanPerValue {
   // reused_buffer is valid only if alloc_kind == kReuse. It indicates
   // which OrtValue's buffer must be reused for this OrtValue.
   OrtValueIndex reused_buffer{0};
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   IntervalT life_interval{0, 0};
   IntervalT allocate_interval{0, 0};
   OrtValueIndex inplace_reuse{-1}; //No in-place reuse
@@ -95,7 +95,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   std::vector<OrtValueIndex> activation_allocation_order;
 
   class ExecutionStep {
-  public: 
+  public:
    virtual StepCommandFn GetStepFun() = 0;
    virtual std::string Dump() const = 0;
   };
@@ -113,7 +113,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   std::unordered_map<size_t, size_t> value_to_stream_map;
 
   struct ReleaseAction {
-    OrtValueIndex value_index;
+    size_t value_index;
     // 0 - no release needed
     // 1 - can be statically determined where to release
     // >1 - can't statically determined, need ref counting.
