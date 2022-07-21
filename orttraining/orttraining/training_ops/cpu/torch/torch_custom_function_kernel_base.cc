@@ -79,7 +79,6 @@ void PythonOpBase::Init(const OpKernelInfo& info) {
 
   // Output tensors.
   ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_tensor_types_));
-  ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_requires_grads", output_tensor_requires_grads_));
 
   CreateConstArgs();
   CreateArgPositions();

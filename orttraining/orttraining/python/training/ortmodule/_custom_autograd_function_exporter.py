@@ -125,15 +125,11 @@ def _export_pt_1_10(g, n, *args, **kwargs):
 
         output_tensor_types = []
         output_tensor_ranks = []
-        output_tensor_requires_grads = []
         for arg in n.outputs():
             # Type of tensor's elements.
             scalar_type = int(symbolic_helper.cast_pytorch_to_onnx[arg.type().scalarType()])
             output_tensor_types.append(scalar_type)
             output_tensor_ranks.append(arg.type().dim())
-            # If output has gradient.
-            requires_grad = 1 if arg.requires_grad() else 0
-            output_tensor_requires_grads.append(requires_grad)
 
         # TODO: add fully-qualified name.
         attrs = {
@@ -146,7 +142,6 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             "input_requires_grads_i": input_requires_grads,
             "output_tensor_types_i": output_tensor_types,
             "output_tensor_ranks_i": output_tensor_ranks,
-            "output_tensor_requires_grads_i": output_tensor_requires_grads,
             "training_mode_i": 1 if training_mode else 0,
         }
 
