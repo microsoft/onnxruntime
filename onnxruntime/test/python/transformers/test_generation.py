@@ -96,6 +96,10 @@ class TestBeamSearchGpt(unittest.TestCase):
             self.run_beam_search(f"--no_repeat_ngram_size {ngram_size}")
 
     @pytest.mark.slow
+    def test_greedy_search(self):
+        self.run_beam_search("--num_beams 1 --num_return_sequences 1")
+
+    @pytest.mark.slow
     def test_external_data(self):
         self.run_beam_search(
             f"-m gpt2 -e --output {self.beam_search_onnx_path}", sentences=None, append_arguments=False
