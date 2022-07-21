@@ -2,6 +2,12 @@
 // Licensed under the MIT License.
 
 #include "ort_ops.h"
+
+#include <algorithm>
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "core/providers/cpu/tensor/reshape_helper.h"
 #include "ort_log.h"
 #include "ort_util.h"

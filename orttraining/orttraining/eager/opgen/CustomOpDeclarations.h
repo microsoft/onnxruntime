@@ -1,3 +1,5 @@
+#include <tuple>
+
 Tensor gemm(const Tensor &A, const Tensor &B, const Tensor &C, double alpha, double beta, int64_t transA,
             int64_t transB);
 std::tuple<Tensor &, Tensor &, Tensor &> batchnorm_inplace(

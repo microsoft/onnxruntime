@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <string>
+
 #include "core/common/status.h"
 #include "onnx/defs/schema.h"
 #include "ort_eager_common.h"

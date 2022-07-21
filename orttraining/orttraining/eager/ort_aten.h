@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include "ort_eager_common.h"
 #include <core/framework/ort_value.h>
 
