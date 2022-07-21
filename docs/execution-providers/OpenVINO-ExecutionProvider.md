@@ -26,6 +26,8 @@ Pre-built packages and Docker images are published for OpenVINO™ Execution Pro
 
 ## Requirements
 
+ONNX Runtime OpenVINO™ Execution Provider is compatible with three last releases of OpenVINO™.
+
 |ONNX Runtime|OpenVINO™|Notes|
 |---|---|---|
 |1.11.0|2022.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v4.0)|
