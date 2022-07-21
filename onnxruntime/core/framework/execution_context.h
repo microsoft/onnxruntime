@@ -58,6 +58,8 @@ class CountDownBarrier {
 };
 
 class SessionScope;
+typedef std::unordered_map<std::string, OrtValue> OrtValueCache;
+typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
 
 // execution context that support to execute a command on stream.
 // The notifications got instantiated when execution context is constructed.
@@ -100,6 +102,16 @@ public:
 
   void RecycleNodeInputs(onnxruntime::NodeIndex node_index);
 
+#ifdef ENABLE_TRAINING
+  void SetOrtValueCache(OrtValueCachePtr cache) {
+    cache_ = std::move(cache);
+  }
+
+  OrtValueCachePtr& GetOrtValueCache() {
+    return cache_;
+  }
+#endif
+
   ~ExecutionContext();
 
   SessionScope* GetSessionScope() {
@@ -134,6 +146,7 @@ public:
   SessionScope* session_scope_{};
 #ifdef ENABLE_TRAINING
   const ProgramRegion* program_range_{nullptr};
+  OrtValueCachePtr cache_{nullptr};
 #endif
 };
 

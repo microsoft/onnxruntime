@@ -745,10 +745,6 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
     }
   }
 
-  for (auto& node_plan : exe_plan->execution_plan) {
-    
-  }
-
   if (!mem_planner.GeneratePatterns(output).IsOK()) {
     return Status(ONNXRUNTIME, FAIL, "Generate Memory Pattern failed");
   }

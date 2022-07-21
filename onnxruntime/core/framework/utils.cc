@@ -680,7 +680,8 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
                                    const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
                                    const OrtValueCachePtr& cache, const bool& terminate_flag,
-                                   int32_t partial_graph_index,
+                                   // TODO: handle the partial_graph_index
+                                   int32_t /*partial_graph_index*/,
                                    Stream* parent_stream) {
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
