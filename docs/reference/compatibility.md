@@ -68,6 +68,7 @@ ONNX Runtime supports all opsets from the latest released version of the [ONNX](
 
 | ONNX Runtime version | [ONNX version](https://github.com/onnx/onnx/blob/master/docs/Versioning.md) | ONNX opset version | ONNX ML opset version | ONNX IR version | [Windows ML Availability](https://docs.microsoft.com/en-us/windows/ai/windows-ml/release-notes/)|
 |------------------------------|--------------------|--------------------|----------------------|------------------|------------------|
+| 1.12 | **1.12** | 17 | 3 | 8 | Windows AI 1.12+ |
 | 1.11 | **1.11** | 16 | 2 | 8 | Windows AI 1.11+ |
 | 1.10 | **1.10** | 15 | 2 | 8 | Windows AI 1.10+ |
 | 1.9 | **1.10** | 15 | 2 | 8 | Windows AI 1.9+ |
@@ -91,10 +92,10 @@ Unless otherwise noted, please use the latest released version of the tools to c
 |Tool|Recommended Version|
 |---|---|
 |[PyTorch](https://pytorch.org/)|[Latest stable](https://pytorch.org/get-started/locally/)|
-|[ONNXMLTools](https://pypi.org/project/onnxmltools/)<br>CoreML, LightGBM, XGBoost, LibSVM|[Latest stable](https://github.com/onnx/onnxmltools/releases)|
-|[ONNXMLTools](https://pypi.org/project/onnxmltools/)<br> SparkML|[Latest stable](https://github.com/onnx/onnxmltools/releases)|
-|[SKLearn-ONNX](https://pypi.org/project/skl2onnx/)|[Latest stable](https://github.com/onnx/sklearn-onnx/releases)|
 |[Tensorflow-ONNX](https://pypi.org/project/tf2onnx/)|[Latest stable](https://github.com/onnx/tensorflow-onnx/releases)|
+|[ONNXMLTools](https://pypi.org/project/onnxmltools/)<br>CatBoost, CoreML, LightGBM, XGBoost, LibSVM, SparkML|[Latest stable](https://github.com/onnx/onnxmltools/releases)|
+|[SKLearn-ONNX](https://pypi.org/project/skl2onnx/)|[Latest stable](https://github.com/onnx/sklearn-onnx/releases)|
 |[WinMLTools](https://docs.microsoft.com/en-us/windows/ai/windows-ml/convert-model-winmltools)|[Latest stable](https://pypi.org/project/winmltools/)|
-|[AutoML](https://docs.microsoft.com/en-us/azure/machine-learning/service/concept-automated-ml)|[1.0.39+](https://pypi.org/project/azureml-automl-core) (ONNX v1.5) <br/>[1.0.33](https://pypi.org/project/azureml-automl-core/1.0.33/) (ONNX v1.4) |
+|[AzureML AutoML](https://docs.microsoft.com/en-us/azure/machine-learning/service/concept-automated-ml)|[1.0.39+](https://pypi.org/project/azureml-automl-core) (ONNX v1.5) <br/>[1.0.33](https://pypi.org/project/azureml-automl-core/1.0.33/) (ONNX v1.4) |
+|[Paddle2ONNX](https://pypi.org/project/paddle2onnx/)| [Latest stable](https://github.com/PaddlePaddle/Paddle2ONNX/releases) |[SKLearn-ONNX](https://pypi.org/project/skl2onnx/)|[Latest stable](https://github.com/onnx/sklearn-onnx/releases)|
 

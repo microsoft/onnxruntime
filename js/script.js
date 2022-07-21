@@ -724,6 +724,9 @@ var validCombos = {
     "mac,C#,X64,DefaultCPU":
         "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
 
+    "mac,C#,X64,CoreML":
+        "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+
     "windows,Python,X64,DefaultCPU":
         "pip install onnxruntime",
 
@@ -968,6 +971,9 @@ var validCombos = {
     "android,C++,ARM64,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
+    "android,C#,ARM64,NNAPI":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+    
     "android,Java,ARM64,NNAPI":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
     
@@ -975,6 +981,9 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,C++,X86,NNAPI":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+    
+    "android,C#,X86,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,Java,X64,NNAPI":
@@ -986,6 +995,9 @@ var validCombos = {
     "android,C++,X64,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
+    "android,C#,X64,NNAPI":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+
     "android,Java,X86,NNAPI":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
     
@@ -993,6 +1005,9 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,C++,ARM32,NNAPI":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+
+    "android,C#,ARM32,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,Java,ARM32,NNAPI":
@@ -1003,6 +1018,9 @@ var validCombos = {
     
     "android,C++,ARM64,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
+
+    "android,C#,ARM64,DefaultCPU":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,ARM64,DefaultCPU":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
@@ -1012,6 +1030,9 @@ var validCombos = {
     
     "android,C++,ARM32,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
+
+    "android,C#,ARM32,DefaultCPU":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,ARM32,DefaultCPU":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
@@ -1020,6 +1041,9 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,C++,X86,DefaultCPU":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
+
+    "android,C#,X86,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,X86,DefaultCPU":
@@ -1031,6 +1055,9 @@ var validCombos = {
     "android,C++,X64,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
+    "android,C#,X64,DefaultCPU":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
+
     "android,Java,X64,DefaultCPU":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
     
@@ -1125,16 +1152,19 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-rknpu' target='_blank'>here</a>",
 
     "mac,C-API,ARM64,CoreML":
-        "<i>Coming soon!</i>",
+        "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+
+    "mac,C#,ARM64,CoreML":
+      "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
     "mac,C++,ARM64,CoreML":
-        "<i>Coming soon!</i>",
+        "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
 
     "mac,Java,ARM64,CoreML":
-        "<i>Coming soon!</i>",
+      "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
     
     "mac,C-API,ARM64,CoreML":
-        "<i>Coming soon!</i>",
+      "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
 
     //power
     "linux,C-API,Power,DefaultCPU":
@@ -1144,8 +1174,26 @@ var validCombos = {
         "pip install onnxruntime-powerpc64le",
     
     "linux,Python,Power,DefaultCPU":
-        "pip install onnxruntime-powerpc64le"
+        "pip install onnxruntime-powerpc64le",
 
+     //SNPE
+    "windows,C-API,ARM64,SNPE":
+    "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
+
+    "windows,C++,ARM64,SNPE":
+    "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
+
+    "linux,C-API,ARM64,SNPE":
+    "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
+
+    "linux,C++,ARM64,SNPE":
+    "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
+
+    "android,C-API,ARM64,SNPE":
+    "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
+
+    "android,C++,ARM64,SNPE":
+    "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>"
 };
 
 function commandMessage(key) {
