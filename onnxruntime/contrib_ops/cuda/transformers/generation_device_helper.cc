@@ -535,7 +535,7 @@ Status GreedySearchProcessLogits(
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("greedy_state->next_tokens", greedy_state->next_tokens.data(), 3, 1);
+  dumper->Print("greedy_state->next_tokens", greedy_state->next_tokens.data(), batch_size, 1);
 #endif
   return Status::OK();
 }

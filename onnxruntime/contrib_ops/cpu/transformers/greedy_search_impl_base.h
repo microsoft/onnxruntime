@@ -42,12 +42,6 @@ struct GreedySearchState : public IGreedySearchState<T> {
     size_t next_token_size = SafeInt<size_t>(batch_size) * vocab_size;
     this->next_token_scores = AllocateBuffer<T>(allocator, next_token_scores_buffer_, next_token_size);
     this->next_positions = AllocateBuffer<int32_t>(allocator, next_positions_buffer_, batch_size);
-
-
-    if (!is_cuda) {
-      // buffers used by CPU operator but not by CUDA operator.
-
-    }
   }
 
   void SetSequence(gsl::span<const int32_t> input_ids_in_cpu,
