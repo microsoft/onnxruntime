@@ -2,9 +2,12 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <mutex>
 #include "core/providers/cuda/cuda_pch.h"
 
 namespace onnxruntime {
+
+class OrtMutex;
 
 // -----------------------------------------------------------------------
 // Error handling
@@ -18,8 +21,8 @@ void set_cudnn_stream(cudnnHandle_t handle, cudaStream_t stream, cudnnStatus_t& 
 void set_cublas_stream(cublasHandle_t handle, cudaStream_t stream, cublasStatus_t& output);
 
 template <typename ERRTYPE, typename HANDLETYPE>
-ERRTYPE cuda_lib_call_with_stream(cudaStream_t stream, 
-    HANDLETYPE handle, 
+ERRTYPE cuda_lib_call_with_stream(cudaStream_t stream,
+    HANDLETYPE handle,
     std::function<void(HANDLETYPE, cudaStream_t, ERRTYPE&)> set_stream_f,
     std::function<void(ERRTYPE&)> f,
     ERRTYPE successCode) {

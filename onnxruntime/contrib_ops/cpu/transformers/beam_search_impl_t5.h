@@ -141,7 +141,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                              ExecutionMode::ORT_SEQUENTIAL,
                                              this->context_.GetTerminateFlag(),
                                              this->context_.Logger(),
-                                             ort_stream_));
+                                             this->ort_stream_));
 
 #ifdef DEBUG_BEAM_SEARCH
   const IConsoleDumper* dumper = this->GetConsoleDumper();
@@ -251,7 +251,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                     ExecutionMode::ORT_SEQUENTIAL,
                                     this->context_.GetTerminateFlag(),
                                     this->context_.Logger(),
-                                    ort_stream_);
+                                    this->ort_stream_);
 
     ORT_RETURN_IF_ERROR(status);
 

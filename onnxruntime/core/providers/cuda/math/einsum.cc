@@ -30,7 +30,7 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
                              AllocatorPtr allocator, concurrency::ThreadPool* tp) const {
   cublasHandle_t cublas_handle = cuda_ep_->PerThreadCublasHandle();
   auto* stream = context->GetComputeStream();
-  ORT_RETURN_IF(!stream);
+  ORT_RETURN_IF(!stream, "stream is null");
   EinsumOp::EinsumCudaAssets einsum_cuda_assets(cublas_handle, cuda_ep_, context->GetComputeStream());
 
   // EinsumComputePreprocessor section -

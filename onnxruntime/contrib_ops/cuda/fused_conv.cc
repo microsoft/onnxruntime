@@ -37,8 +37,8 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
   Status ComputeInternal(OpKernelContext* context) const override {
     CUDNN_CONFIG_RETURN_IF_ERROR(status_);
     std::lock_guard<OrtMutex> lock(Base::s_.mutex);
-    CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetStream(Base::CudnnHandle(), Stream(context)));
-    CUBLAS_CONFIG_CALL_TRHOW(cublasSetStream(CublasHandle(), Stream(context)));
+    CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetStream(Base::CudnnHandle(), this->Stream(context)));
+    CUBLAS_CONFIG_CALL_TRHOW(cublasSetStream(Base::CublasHandle(), this->Stream(context)));
 
     ORT_RETURN_IF_ERROR(Base::UpdateState(context, true));
     if (Base::s_.Y->Shape().Size() == 0) {
@@ -49,7 +49,7 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
     typedef typename onnxruntime::cuda::ToCudaType<T>::MappedType CudaT;
     const auto alpha = onnxruntime::cuda::Consts<CudaT>::One;
     const auto beta = onnxruntime::cuda::Consts<CudaT>::Zero;
-    IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace(OrtStream(context));
+    IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace(this->OrtStream(context));
     auto cudnn_status = cudnnConvolutionBiasActivationForward(Base::CudnnHandle(),
                                                               &alpha,
                                                               Base::s_.x_tensor,

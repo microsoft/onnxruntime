@@ -227,7 +227,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manage
                                     ExecutionMode::ORT_SEQUENTIAL,
                                     this->context_.GetTerminateFlag(),
                                     this->context_.Logger(),
-                                    ort_stream_);
+                                    this->ort_stream_);
 
     ORT_RETURN_IF_ERROR(status);
 
