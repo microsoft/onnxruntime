@@ -18,7 +18,7 @@ OrtValue reshape_invoke(onnxruntime::ORTInvoker &invoker, OrtValue &input, V<int
   // the ort reshape kernel already handle the -1 in target shape
   // don't need to invoke at::infer_size here.
   OrtValue shape_tensor;
-  // todo: avoid the copy on this small shape vector;
+  // TODO(unknown): avoid the copy on this small shape vector;
   auto element_type = onnxruntime::DataTypeImpl::GetType<int64_t>();
   onnxruntime::Tensor::InitOrtValue(element_type, onnxruntime::TensorShape({(int64_t)shape.size()}),
                                     invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),

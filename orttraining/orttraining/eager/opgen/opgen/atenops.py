@@ -190,7 +190,7 @@ else:
     hand_implemented["aten::gelu_backward"] = GeluGrad("grad_output", "self")
 
 ops = {**ops, **hand_implemented}
-# TODO: this is a temporary allowlist for ops need type promotion
+# TODO(unknown): this is a temporary allowlist for ops need type promotion
 # Need to enhance the support for onnx type constrains to automatically
 # resolve whether the op need type promotion.
 # Will remove this list in the future.

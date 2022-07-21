@@ -58,7 +58,7 @@ int64_t ORTTensorImpl::size(int64_t d) const {
 }
 
 void ORTTensorImpl::cacheSizeMetadata() {
-  // TODO: wrap with change generation guard
+  // TODO(unknown): wrap with change generation guard
   auto &tensor = tensor_.Get<onnxruntime::Tensor>();
   const auto &shape = tensor.Shape();
   const auto dims = shape.GetDims();

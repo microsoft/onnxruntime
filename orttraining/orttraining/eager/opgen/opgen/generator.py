@@ -339,7 +339,7 @@ class ORTGen:
 
         # if the torch func has a return ref tensor, out is the last param, and self param is the first input
         # then we need to update and return out.
-        # TODO: make this more general to handle cases where the first param is not self such as
+        # TODO(unknown): make this more general to handle cases where the first param is not self such as
         # - cat.out(Tensor[] tensors, int dim=0, *, Tensor(a!) out) -> Tensor(a!)
         # - complex.out(Tensor real, Tensor imag, *, Tensor(a!) out) -> Tensor(a!)
         set_out_tensor = False
@@ -502,9 +502,9 @@ class ORTGen:
             # We'll potentially return back to Torch from this op
             return_outputs = onnx_op.outputs
 
-        # TODO: Pick the right "out" Torch parameter; do not assume the first one
-        # TODO: Handle multiple results
-        # TODO: Assert return type
+        # TODO(unknown): Pick the right "out" Torch parameter; do not assume the first one
+        # TODO(unknown): Handle multiple results
+        # TODO(unknown): Assert return type
 
         if cpp_func.return_type.desugar().identifier_tokens[0].value == "void":
             pass
@@ -514,7 +514,7 @@ class ORTGen:
                 writer.writeline(f"return {last_param.identifier.value};")
                 return
 
-            # TODO: revisit the hardcoded use of TensorList.
+            # TODO(unknown): revisit the hardcoded use of TensorList.
             writer.write(f"at::TensorOptions tensor_options = {first_param.identifier.value}")
             if first_param.parameter_type.desugar().identifier_tokens[0].value == "TensorList":
                 writer.write("[0]")
