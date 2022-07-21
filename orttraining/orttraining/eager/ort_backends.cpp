@@ -17,8 +17,8 @@ Environment &GetTrainingORTEnv();
 std::shared_ptr<IExecutionProvider> GetOrCreateExecutionProvider(const std::string &provider_type,
                                                                  const ProviderOptionsMap &provider_options_map,
                                                                  const SessionOptions &session_options);
-} // namespace python
-} // namespace onnxruntime
+}  // namespace python
+}  // namespace onnxruntime
 
 namespace torch_ort {
 namespace eager {
@@ -93,5 +93,5 @@ onnxruntime::ORTInvoker &ORTBackendsManager::GetInvoker(const at::Device device)
   }
 }
 
-} // namespace eager
-} // namespace torch_ort
+}  // namespace eager
+}  // namespace torch_ort

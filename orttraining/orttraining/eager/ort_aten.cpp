@@ -35,7 +35,7 @@ inline void assert_tensor_supported(const at::Tensor &tensor) {
     throw std::runtime_error("ORT copy: device not supported");
   }
 }
-} // namespace
+}  // namespace
 
 at::Tensor aten_tensor_from_ort(OrtValue &&ot, const at::TensorOptions &options) {
   return at::Tensor(c10::make_intrusive<ORTTensorImpl>(std::move(ot), options));
@@ -129,7 +129,7 @@ OrtValue create_ort_value(onnxruntime::ORTInvoker &invoker, const at::Tensor &te
   OrtValue ort_tensor;
   onnxruntime::Tensor::InitOrtValue(element_type, onnxruntime::TensorShape(tensor.sizes().vec()), tensor.data_ptr(),
                                     *mem_info, ort_tensor,
-                                    0L, // offset = 0 - because tensor.data_ptr() includes the underyling offset
+                                    0L,  // offset = 0 - because tensor.data_ptr() includes the underyling offset
                                     tensor.strides().vec());
   return ort_tensor;
 }
@@ -497,9 +497,9 @@ void resize_impl_ort_(onnxruntime::ORTInvoker &invoker, ORTTensorImpl *self, at:
 namespace aten {
 
 at::Tensor empty_strided(at::IntArrayRef size, at::IntArrayRef stride, c10::optional<at::ScalarType> dtype_opt,
-                         c10::optional<at::Layout> layout_opt, // Ignored because there's no ONNX support.
-                         c10::optional<at::Device> device_opt, // Will be ORT by the time this is dispatched.
-                         c10::optional<bool> pin_memory_opt) { // Ignored because there's no ONNX support.
+                         c10::optional<at::Layout> layout_opt,  // Ignored because there's no ONNX support.
+                         c10::optional<at::Device> device_opt,  // Will be ORT by the time this is dispatched.
+                         c10::optional<bool> pin_memory_opt) {  // Ignored because there's no ONNX support.
   ORT_LOG_FN(size, stride, dtype_opt, layout_opt, device_opt, pin_memory_opt);
 
   OrtValue ot;
@@ -515,7 +515,7 @@ at::Tensor empty_strided(at::IntArrayRef size, at::IntArrayRef stride, c10::opti
 at::Tensor
 empty_memory_format(at::IntArrayRef size, c10::optional<at::ScalarType> dtype_opt, c10::optional<at::Layout> layout_opt,
                     c10::optional<at::Device> device_opt, c10::optional<bool> pin_memory,
-                    c10::optional<at::MemoryFormat> memory_format) { // Ignored because there's no ONNX support.
+                    c10::optional<at::MemoryFormat> memory_format) {  // Ignored because there's no ONNX support.
   ORT_LOG_FN(size, dtype_opt, layout_opt, device_opt, pin_memory, memory_format);
 
   // Use the strided impl with default (no strides specified).
@@ -711,7 +711,7 @@ at::Tensor slice_Tensor(const at::Tensor &self, int64_t dim, c10::optional<int64
   auto len = l_end - l_start;
   onnxruntime::TensorShapeVector new_shape = shape.AsShapeVector();
   onnxruntime::TensorShapeVector new_stride(strides.begin(), strides.end());
-  new_shape[dim] = (len + step - 1) / step; // round-up
+  new_shape[dim] = (len + step - 1) / step;  // round-up
   new_stride[dim] *= step;
 
   OrtValue ot;
@@ -1039,9 +1039,9 @@ at::Tensor &mm_out(const at::Tensor &self, const at::Tensor &mat2,
   return out;
 }
 
-} // namespace aten
+}  // namespace aten
 
 // #pragma endregion
 
-} // namespace eager
-} // namespace torch_ort
+}  // namespace eager
+}  // namespace torch_ort

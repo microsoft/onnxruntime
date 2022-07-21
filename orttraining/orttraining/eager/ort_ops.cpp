@@ -34,5 +34,5 @@ template void createInplaceOutputValue<c10::ArrayRef>(OrtValue &input, c10::Arra
 template <typename T> using Vector = std::vector<T, std::allocator<T>>;
 template void createInplaceOutputValue<Vector>(OrtValue &input, Vector<int64_t> shape, OrtValue *p_mlvalue);
 
-} // namespace eager
-} // namespace torch_ort
+}  // namespace eager
+}  // namespace torch_ort

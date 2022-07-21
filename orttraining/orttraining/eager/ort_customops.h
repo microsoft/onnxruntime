@@ -10,5 +10,5 @@ namespace eager {
 
 void GenerateCustomOpsBindings(pybind11::module_ module);
 
-} // namespace eager
-} // namespace torch_ort
+}  // namespace eager
+}  // namespace torch_ort

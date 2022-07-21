@@ -82,5 +82,5 @@ at::IntArrayRef ORTTensorImpl::strides() const {
   return sizes_and_strides_.strides_arrayref();
 }
 
-} // namespace eager
-} // namespace torch_ort
+}  // namespace eager
+}  // namespace torch_ort

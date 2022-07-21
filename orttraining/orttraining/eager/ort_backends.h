@@ -45,5 +45,5 @@ private:
 
 onnxruntime::ORTInvoker &GetORTInvoker(const at::Device device);
 
-} // namespace eager
-} // namespace torch_ort
+}  // namespace eager
+}  // namespace torch_ort

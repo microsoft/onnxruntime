@@ -19,5 +19,5 @@ onnxruntime::TensorShapeVector GetStrides(gsl::span<const int64_t> shape) {
   return strides;
 }
 
-} // namespace eager
-} // namespace torch_ort
+}  // namespace eager
+}  // namespace torch_ort

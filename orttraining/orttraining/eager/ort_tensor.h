@@ -50,5 +50,5 @@ private:
   OrtValue tensor_;
 };
 
-} // namespace eager
-} // namespace torch_ort
+}  // namespace eager
+}  // namespace torch_ort

@@ -76,5 +76,5 @@ void addObjectMethodsForEager(py::module &m) {
         [](size_t torch_device_index) { return GetORTBackendsManager().GetOrtDeviceProviderInfo(torch_device_index); });
 }
 
-} // namespace python
-} // namespace onnxruntime
+}  // namespace python
+}  // namespace onnxruntime

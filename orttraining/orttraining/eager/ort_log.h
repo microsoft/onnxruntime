@@ -97,5 +97,5 @@ inline std::ostream &operator<<(std::ostream &out, const std::tuple<Arguments...
 #define ORT_LOG_FN(...) ORT_LOG_VERBOSE << __PRETTY_FUNCTION__
 #endif
 
-} // namespace eager
-} // namespace torch_ort
+}  // namespace eager
+}  // namespace torch_ort

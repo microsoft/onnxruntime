@@ -100,6 +100,6 @@ namespace aten {
 // aten::nonzero(Tensor self) -> Tensor
 at::Tensor nonzero(const at::Tensor &self);
 
-} // namespace aten
-} // namespace eager
-} // namespace torch_ort
+}  // namespace aten
+}  // namespace eager
+}  // namespace torch_ort

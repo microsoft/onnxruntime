@@ -37,5 +37,5 @@ OrtValue add(onnxruntime::ORTInvoker &invoker, const OrtValue &A, const OrtValue
 
 void copy(onnxruntime::ORTInvoker &invoker, const OrtValue &src, OrtValue &dst);
 
-} // namespace eager
-} // namespace torch_ort
+}  // namespace eager
+}  // namespace torch_ort

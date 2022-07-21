@@ -96,5 +96,5 @@ thread_local std::map<at::DeviceIndex, at::StreamId> ORTGuardImpl::current_strea
 
 C10_REGISTER_GUARD_IMPL(ORT, ORTGuardImpl);
 
-} // namespace eager
-} // namespace torch_ort
+}  // namespace eager
+}  // namespace torch_ort

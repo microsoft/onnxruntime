@@ -15,5 +15,5 @@ using at::ORTHooksRegistry;
 using at::RegistererORTHooksRegistry;
 REGISTER_ORT_HOOKS(ORTHooks);
 
-} // namespace eager
-} // namespace torch_ort
+}  // namespace eager
+}  // namespace torch_ort
