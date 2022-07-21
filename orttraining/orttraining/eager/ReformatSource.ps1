@@ -39,5 +39,5 @@ function EnsureTrailingEmptyLine {
 gci -Recurse -Include  *.h, *.cpp | foreach {
     Write-Host "Updating " $_.FullName
     EnsureTrailingEmptyLine $_
-    clang-format -i --style="{ColumnLimit: 120}" $_
+    clang-format -i --style="{ColumnLimit: 120, SpacesBeforeTrailingComments : 2}" $_
 }
