@@ -285,8 +285,8 @@ class ORTGen:
                     cpp_param = cpp_func.get_parameter(op_input)
                     supported_types_list = list(onnx_op.input_types[idx])
                     supported_types_list.sort()
-                    supported_types = ",".join([type for type in supported_types_list])
-                    writer.write("!IsSupportedType(%s, {%s})" % (cpp_param.identifier.value, supported_types))
+                    supported_types = ",".join(supported_types_list)
+                    writer.write(f"!IsSupportedType({cpp_param.identifier.value}, {{{supported_types}}})")
                     i += 1
             writer.writeline(") {")
             self._write_cpu_fall_back(writer, mapped_func)
