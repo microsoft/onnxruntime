@@ -19,12 +19,12 @@
   },
   "scripts": {
     "buildr": "tsc && node ./script/build --config=RelWithDebInfo",
-    "prepare": "tsc --build script && tsc",
+    "prepare": "tsc --build script test .",
     "rebuild": "tsc && node ./script/build --rebuild",
     "rebuildd": "tsc && node ./script/build --rebuild --config=Debug",
     "buildd": "tsc && node ./script/build --config=Debug",
     "build": "tsc && node ./script/build",
-    "test": "tsc --build test && mocha ./test/test-main",
+    "test": "tsc --build ../scripts && node ../scripts/prepare-onnx-node-tests && mocha ./test/test-main",
     "prepack": "node ./script/prepack",
     "rebuildr": "tsc && node ./script/build --rebuild --config=RelWithDebInfo"
   },

@@ -19,14 +19,33 @@ parameters:
 
 - name: OnnxruntimeNodejsBindingArch  
   type: string
+
+- name: PoolName
+  type: string
+  default: 'Linux-CPU'
   
 jobs:
 - job: Linux_C_API_Packaging_CPU_${{parameters.OnnxruntimeArch}}
+  
   workspace:
     clean: all
+  variables:
+  - name: skipComponentGovernanceDetection
+    value: ${{eq('${{parameters.OnnxruntimeNodejsBindingArch}}', 'arm64')}}
   timeoutInMinutes:  210
-  pool: 'Linux-CPU'
+  pool: ${{parameters.PoolName}}
   steps:
+    - bash: |
+        set -euo pipefail
+        if ! which docker; then
+          sudo apt-get install apt-transport-https ca-certificates curl software-properties-common
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+          sudo add-apt-repository "deb [arch=$(dpkg --print-architecture)] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+          sudo apt-get update
+          sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+          sudo chmod 666 /var/run/docker.sock
+        fi
+      displayName: Install Docker Engine
     - template: set-version-number-variables-step.yml
     - template: get-docker-image-steps.yml
       parameters:
@@ -74,11 +93,10 @@ jobs:
           arch: '${{parameters.OnnxruntimeNodejsBindingArch}}'
           os: 'linux'
           artifactName: 'drop-onnxruntime-nodejs-linux-${{parameters.OnnxruntimeArch}}'
-
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
-
+    - ${{ if not(eq(parameters.OnnxruntimeNodejsBindingArch, 'arm64')) }}:
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()

@@ -199,6 +199,10 @@ class TestBeamSearchT5(unittest.TestCase):
             self.run_beam_search(f"--no_repeat_ngram_size {ngram_size}")
 
     @pytest.mark.slow
+    def test_custom_attention_mask(self):
+        self.run_beam_search("--custom_attention_mask")
+
+    @pytest.mark.slow
     def test_external_data(self):
         self.run_beam_search(
             f"-m t5-small --model_type t5 -e --output {self.beam_search_onnx_path}",
