@@ -3592,10 +3592,7 @@ Return true if all elements are true and false otherwise.
       .Input(
           1,
           "inputs",
-          "There are 2*N inputs: "
-          "  N gradient inputs (as inputs of autograd.Function.backward) + "
-          "  N forward run activations of autograd.Function.apply."
-          "The N forward run inputs are used as control dependency between PythonOpGrad and PythonOp",
+          "The gradient inputs (as inputs of autograd.Function.backward).",
           "T",
           OpSchema::Variadic,
           /*is_homogeneous*/ false,
@@ -3669,8 +3666,7 @@ Return true if all elements are true and false otherwise.
         // Check if the inferred input types match those described in the
         // "input_tensor_types" attributes.
         const auto input_tensor_requires_grads = ctx.getAttribute("input_tensor_requires_grads");
-        // Expected input schema: [ctx, grad_input_1, ..., grad_input_N, unused_1, ..., unused_M]
-        // "unused" inputs are just control inputs and they are not used actual computation.
+        // Expected input schema: [ctx, grad_input_1, ..., grad_input_N]
         // Other variables are used to invoke autograd.Function.backward(ctx, grad_input1, ..., grad_input_N).
         // The "input_count" here means 1 + N.
         const auto input_count = input_tensor_requires_grads->ints().size();

@@ -99,7 +99,6 @@ void PythonOpBase::RunForward(OpKernelContext* context,
   // Constant arguments are created in ctor.
   std::vector<OrtValue> args = CreateOrtValueArgs(context, 0, context->InputCount());
   // Invoke Python calls.
-  std::string err;
   TorchProxy::GetInstance().Forward(
       OrtTorchFunctionPool::GetInstance().GetForwardCore(name_),
       input_requires_grads_,
@@ -243,9 +242,7 @@ void PythonOpGradBase::Init(const OpKernelInfo& info) {
 
 void PythonOpGradBase::RunBackward(OpKernelContext* context,
                                    std::vector<OrtValue>& returned_ortvalues) const {
-  // Todo (pengwa): this is fragile once we added more inputs, re-visist this
-  // for more robustness.
-  auto args = CreateOrtValueArgs(context, 1, (context->InputCount() - 1) / 2);
+  auto args = CreateOrtValueArgs(context, 1, context->InputCount() - 1);
   // This is called "const" because that's how Pytorch calls all non-tensor inputs.
   const Tensor* context_id_tensor = context->Input<Tensor>(0);
   ORT_ENFORCE(context_id_tensor, "Context ID (first input) should not be null.");
