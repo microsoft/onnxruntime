@@ -105,7 +105,7 @@ Status AddNnapiSplit(ModelBuilder& model_builder,
 }
 
 bool IsSupportedBatchMatMul(const NodeUnit& node_unit, int32_t nnapi_feature_level) {
-  // Currently, batch matmul is composed of various operations including ANEURALNETWORKS_SPLIT which requires
+  // Currently, batch MatMul is composed of various operations including ANEURALNETWORKS_SPLIT which requires
   // ANEURALNETWORKS_FEATURE_LEVEL_3.
   const auto min_nnapi_feature_level = ANEURALNETWORKS_FEATURE_LEVEL_3;
   if (nnapi_feature_level < min_nnapi_feature_level) {
@@ -127,8 +127,8 @@ bool IsSupportedBatchMatMul(const NodeUnit& node_unit, int32_t nnapi_feature_lev
 
   // Verify shapes
   // A and B should have at least three dimensions* and have the same leading dimensions except for the last two.
-  // [*] Having two dimensions is valid for a matmul but for simplicity we don't support it in the current batch
-  // matmul implementation. That case is handled by the regular gemm/matmul op building logic.
+  // [*] Having two dimensions is valid for a MatMul but for simplicity we don't support it in the current batch
+  // MatMul implementation. That case is handled by the regular Gemm/MatMul op building logic.
   Shape a_shape;
   if (!GetShape(inputs[0].node_arg, a_shape)) {
     return false;
@@ -169,7 +169,6 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
   // we will implement batch MatMul by composing NNAPI operations
   // this could be replaced with ANEURALNETWORKS_BATCH_MATMUL when that is more widely supported
 
-  // pre-conditions are checked in IsSupportedBatchMatMul()
   // assuming A and B have at least three dimensions and the same leading dimensions other than the last two
 
   const auto& inputs = node_unit.Inputs();
