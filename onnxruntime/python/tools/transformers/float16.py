@@ -76,11 +76,11 @@ def convert_tensor_float_to_float16(tensor, min_positive_val=5.96e-08, max_finit
         # convert raw_data (bytes type)
         if tensor.raw_data:
             # convert n.raw_data to float
-            float32_list = np.fromstring(tensor.raw_data, dtype="float32")
+            float32_list = np.frombuffer(tensor.raw_data, dtype="float32")
             # convert float to float16
             float16_list = convert_np_to_float16(float32_list, min_positive_val, max_finite_val)
             # convert float16 to bytes and write back to raw_data
-            tensor.raw_data = float16_list.tostring()
+            tensor.raw_data = float16_list.tobytes()
     return tensor
 
 
@@ -384,7 +384,7 @@ def float_to_float16_max_diff(tensor, min_positive_val=5.96e-08, max_finite_val=
         float32_data = np.array(tensor.float_data)
 
     if tensor.raw_data:
-        float32_data = np.fromstring(tensor.raw_data, dtype="float32")
+        float32_data = np.frombuffer(tensor.raw_data, dtype="float32")
 
     float16_data = convert_np_to_float16(float32_data, min_positive_val, max_finite_val)
     return np.amax(np.abs(float32_data - np.float32(float16_data)))
