@@ -1499,7 +1499,6 @@ if (onnxruntime_USE_TVM)
 
   # ipp-crypto
   if (onnxruntime_TVM_USE_HASH)
-    set(ARCH intel64 CACHE STRING "Only defined for TVM")
     add_subdirectory(${ipp_crypto_SOURCE_DIR} ${ipp_crypto_BINARY_DIR} EXCLUDE_FROM_ALL)
     set_target_properties(ippcp_s PROPERTIES FOLDER ${ipp_crypto_SOURCE_DIR})
     set(IPP_CRYPTO_INCLUDES ${ipp_crypto_INCLUDE_DIRS})
