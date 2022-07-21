@@ -564,8 +564,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   }
 }
 
-template<typename T>
-static void FillTensorDataTyped(Ort::Value& tensor, size_t count, T value = T{}){
+template <typename T>
+static void FillTensorDataTyped(Ort::Value& tensor, size_t count, T value = T{}) {
   T* data = tensor.GetTensorMutableData<T>();
   std::fill_n(data, count, value);
 }
@@ -580,7 +580,7 @@ static void InitializeTensorData(Ort::Value& tensor) {
     FillTensorDataTyped<T>(tensor, count); \
   } break
 
-  switch(element_type) {
+  switch (element_type) {
     CASE_FOR_TYPE(Ort::Float16_t);
     CASE_FOR_TYPE(Ort::BFloat16_t);
     CASE_FOR_TYPE(float);
