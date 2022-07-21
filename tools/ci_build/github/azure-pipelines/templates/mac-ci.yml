@@ -20,6 +20,7 @@ jobs:
     BuildCommand: ${{ parameters.BuildCommand }}
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
     MACOSX_DEPLOYMENT_TARGET: '10.14'
+    ComponentDetection.Timeout: 600
   steps:
     - checkout: self
       ${{ if ne(parameters.SubmoduleCheckoutMode, '') }}:

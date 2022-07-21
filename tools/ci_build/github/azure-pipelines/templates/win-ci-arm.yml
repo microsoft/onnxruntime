@@ -27,6 +27,7 @@ jobs:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DotNetExe: 'dotnet.exe'
     CUDA_VERSION: ${{ parameters.CudaVersion }}
+    ComponentDetection.Timeout: 600
 
   steps:
     - powershell: |

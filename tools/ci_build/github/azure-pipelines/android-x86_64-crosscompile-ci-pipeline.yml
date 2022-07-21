@@ -1,7 +1,7 @@
 # Known Limits
 # 1. Anchors are not supported in GHA
 # https://github.community/t/support-for-yaml-anchors/16128/90
-# 2. today most cloud-based CI services are still lacking hardware acceleration support from the host VM, 
+# 2. today most cloud-based CI services are still lacking hardware acceleration support from the host VM,
 # which is the no.1 blocker for running tests on modern Android Emulators (especially on recent API levels) on CI.
 
 jobs:
@@ -10,6 +10,8 @@ jobs:
   workspace:
     clean: all
   timeoutInMinutes: 30
+  variables:
+    ComponentDetection.Timeout: 600
   steps:
   # Onnx has no 3.9 python package available yet, need to use python 3.8
   # to avoid build onnx package
@@ -75,7 +77,7 @@ jobs:
       overWrite: true
 
   - task: CopyFiles@2
-    displayName: Copy test data 
+    displayName: Copy test data
     inputs:
       contents: 'build/**/testdata/**'
       targetFolder: $(Build.ArtifactStagingDirectory)
@@ -227,7 +229,7 @@ jobs:
     inputs:
       pathToPublish: $(Build.ArtifactStagingDirectory)
       artifactName: NNAPIBuildOutput
-      
+
   - template: templates/clean-agent-build-directory-step.yml
 
 - job: Test_NNAPI_EP
@@ -262,7 +264,7 @@ jobs:
         --start --emulator-extra-args="-partition-size 4096" \
         --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
       displayName: Start Android emulator
-      
+
     - script: |
         python3 tools/ci_build/build.py \
         --android \
@@ -310,7 +312,7 @@ jobs:
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
       displayName: Stop Android emulator
       condition: always()
-      
+
     - template: templates/clean-agent-build-directory-step.yml
 
 # The below jobs only run on master build
@@ -346,7 +348,7 @@ jobs:
           $(Build.BinariesDirectory)/protobuf \
           $(Build.SourcesDirectory)/protobuf_install
       displayName: Build Host Protoc
- 
+
     - script: |
         python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
@@ -380,7 +382,7 @@ jobs:
         --build_java \
         --code_coverage
       displayName: NNAPI EP, Build, Test, CodeCoverage on Android Emulator
-      
+
     - script: |
         python3 -m pip install gcovr && \
         python3 tools/ci_build/coverage.py \
@@ -408,9 +410,9 @@ jobs:
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
       displayName: Stop Android emulator
       condition: always()
-      
+
     - template: templates/clean-agent-build-directory-step.yml
-      
+
 - job: Update_Dashboard
   workspace:
     clean: all
@@ -419,7 +421,7 @@ jobs:
     value: true
   pool: 'Linux-CPU-2019'
   condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
-  dependsOn: 
+  dependsOn:
   - Test_CPU_EP
   - NNAPI_EP_MASTER
   steps:
@@ -437,5 +439,5 @@ jobs:
         scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
         arguments: '"$(Build.BinariesDirectory)/coverage_rpt.txt" "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" arm android nnapi'
         workingDirectory: '$(Build.BinariesDirectory)'
-      
+
     - template: templates/clean-agent-build-directory-step.yml

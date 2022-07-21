@@ -57,15 +57,16 @@ jobs:
   workspace:
     clean: all
   pool: ${{ parameters.ort_build_pool_name }}
-  timeoutInMinutes:  300  
-
+  timeoutInMinutes:  300
+  variables:
+    ComponentDetection.Timeout: 600
   steps:
     - template: telemetry-steps.yml
-    
+
     - task: UsePythonVersion@0
-      inputs: 
-        versionSpec: '3.7' 
-        addToPath: true 
+      inputs:
+        versionSpec: '3.7'
+        addToPath: true
         architecture: ${{ parameters.buildArch }}
 
     - task: NodeTool@0
@@ -83,16 +84,16 @@ jobs:
     - script: |
        python -m pip install -q setuptools wheel numpy
       workingDirectory: '$(Build.BinariesDirectory)'
-      displayName: 'Install python modules' 
+      displayName: 'Install python modules'
     - powershell: |
        $Env:USE_MSVC_STATIC_RUNTIME=1
        $Env:ONNX_ML=1
        $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ parameters.buildArch }}-windows-static"
        python setup.py bdist_wheel
        python -m pip uninstall -y onnx -qq
-       Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
-      workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'      
-      displayName: 'Install ONNX'    
+       Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
+      workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+      displayName: 'Install ONNX'
 
     - template: set-version-number-variables-step.yml
 
@@ -102,7 +103,7 @@ jobs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
         arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }}'
         workingDirectory: '$(Build.BinariesDirectory)'
- 
+
     - task: VSBuild@1
       displayName: 'Build'
       inputs:
@@ -127,7 +128,7 @@ jobs:
        dir *.dll
        mkdir $(Build.ArtifactStagingDirectory)\testdata
       workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo'
-      displayName: 'List built DLLs' 
+      displayName: 'List built DLLs'
 
     - template: c-api-artifacts-package-and-publish-steps-windows.yml
       parameters:
@@ -148,8 +149,8 @@ jobs:
     - task: PublishPipelineArtifact@1
       condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
       inputs:
-        targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\external\protobuf\cmake\RelWithDebInfo\protoc.exe' 
-        artifactName: 'drop-extra' 
+        targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\external\protobuf\cmake\RelWithDebInfo\protoc.exe'
+        artifactName: 'drop-extra'
 
 
     - task: CopyFiles@2
@@ -164,7 +165,7 @@ jobs:
     - task: PublishPipelineArtifact@1
       condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
       inputs:
-        targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\external\protobuf\cmake\RelWithDebInfo\protoc.exe' 
+        targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\external\protobuf\cmake\RelWithDebInfo\protoc.exe'
         artifactName: 'drop-nuget'
 
 
@@ -209,13 +210,13 @@ jobs:
           rd /s /q $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage
           dir /s /b $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
         workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo'
-        displayName: 'Add symbols and notices to Java'    
-      
+        displayName: 'Add symbols and notices to Java'
+
     - task: PublishBuildArtifacts@1
       condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
       displayName: 'Publish Java temp binaries'
       inputs:
-        pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}' 
+        pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
         artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}'
 
     - ${{ if eq(parameters['DoCompliance'], 'true') }}:
@@ -251,7 +252,7 @@ jobs:
            **/*.obj
            **/*.pdb
            **/*.dll
-          
+
       #Manually set msBuildCommandline so that we can also set CAExcludePath
       - task: SDLNativeRules@3
         displayName: 'Run the PREfast SDL Native Rules for MSBuild'
