@@ -28,7 +28,7 @@ Tensor& abs_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(abs_out)>::call(self, out);
@@ -60,7 +60,7 @@ Tensor& acos_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kFloat,at::kHalf,at::kDouble})) {
+    !IsSupportedType(self, {at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(acos_out)>::call(self, out);
@@ -93,9 +93,9 @@ Tensor add_Tensor(
   ORT_LOG_FN(self, other, alpha);
   
   if (
-    !IsSupportedType(alpha, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(other, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(self, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble})) {
+    !IsSupportedType(alpha, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(add_Tensor)>::call(self, other, alpha);
@@ -155,9 +155,9 @@ Tensor add_Scalar(
   ORT_LOG_FN(self, other, alpha);
   
   if (
-    !IsSupportedType(alpha, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(other, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(self, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble})) {
+    !IsSupportedType(alpha, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(add_Scalar)>::call(self, other, alpha);
@@ -210,9 +210,9 @@ Tensor& add__Scalar(
   ORT_LOG_FN(self, other, alpha);
   
   if (
-    !IsSupportedType(alpha, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(other, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(self, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble})) {
+    !IsSupportedType(alpha, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(add__Scalar)>::call(self, other, alpha);
@@ -271,7 +271,7 @@ Tensor& acosh_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kFloat,at::kHalf,at::kDouble})) {
+    !IsSupportedType(self, {at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(acosh_out)>::call(self, out);
@@ -303,7 +303,7 @@ Tensor& asinh_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kFloat,at::kHalf,at::kDouble})) {
+    !IsSupportedType(self, {at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(asinh_out)>::call(self, out);
@@ -335,7 +335,7 @@ Tensor& atanh_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kFloat,at::kHalf,at::kDouble})) {
+    !IsSupportedType(self, {at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(atanh_out)>::call(self, out);
@@ -374,7 +374,7 @@ Tensor& asin_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kFloat,at::kHalf,at::kDouble})) {
+    !IsSupportedType(self, {at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(asin_out)>::call(self, out);
@@ -406,7 +406,7 @@ Tensor& atan_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kFloat,at::kHalf,at::kDouble})) {
+    !IsSupportedType(self, {at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(atan_out)>::call(self, out);
@@ -438,7 +438,7 @@ Tensor& ceil_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kBFloat16,at::kHalf,at::kDouble,at::kFloat})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(ceil_out)>::call(self, out);
@@ -481,7 +481,7 @@ Tensor& cos_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kFloat,at::kHalf,at::kDouble})) {
+    !IsSupportedType(self, {at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(cos_out)>::call(self, out);
@@ -513,7 +513,7 @@ Tensor& cosh_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kFloat,at::kHalf,at::kDouble})) {
+    !IsSupportedType(self, {at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(cosh_out)>::call(self, out);
@@ -544,8 +544,8 @@ Tensor div_Tensor(
   ORT_LOG_FN(self, other);
   
   if (
-    !IsSupportedType(self, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(other, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(div_Tensor)>::call(self, other);
@@ -584,8 +584,8 @@ Tensor& div__Tensor(
   ORT_LOG_FN(self, other);
   
   if (
-    !IsSupportedType(self, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(other, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(div__Tensor)>::call(self, other);
@@ -622,8 +622,8 @@ Tensor div_Scalar(
   ORT_LOG_FN(self, other);
   
   if (
-    !IsSupportedType(self, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(other, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(div_Scalar)>::call(self, other);
@@ -662,8 +662,8 @@ Tensor& div__Scalar(
   ORT_LOG_FN(self, other);
   
   if (
-    !IsSupportedType(self, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(other, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(div__Scalar)>::call(self, other);
@@ -728,7 +728,7 @@ Tensor& erf_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(erf_out)>::call(self, out);
@@ -760,7 +760,7 @@ Tensor& exp_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kBFloat16,at::kHalf,at::kDouble,at::kFloat})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(exp_out)>::call(self, out);
@@ -797,7 +797,7 @@ Tensor& floor_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kBFloat16,at::kHalf,at::kDouble,at::kFloat})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(floor_out)>::call(self, out);
@@ -827,7 +827,7 @@ Tensor isnan(
   ORT_LOG_FN(self);
   
   if (
-    !IsSupportedType(self, {at::kBFloat16,at::kHalf,at::kDouble,at::kFloat})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(isnan)>::call(self);
@@ -857,7 +857,7 @@ Tensor& log_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kBFloat16,at::kHalf,at::kDouble,at::kFloat})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(log_out)>::call(self, out);
@@ -918,8 +918,8 @@ Tensor mul_Tensor(
   ORT_LOG_FN(self, other);
   
   if (
-    !IsSupportedType(self, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(other, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(mul_Tensor)>::call(self, other);
@@ -958,8 +958,8 @@ Tensor& mul__Tensor(
   ORT_LOG_FN(self, other);
   
   if (
-    !IsSupportedType(self, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(other, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(mul__Tensor)>::call(self, other);
@@ -996,8 +996,8 @@ Tensor mul_Scalar(
   ORT_LOG_FN(self, other);
   
   if (
-    !IsSupportedType(self, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(other, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(mul_Scalar)>::call(self, other);
@@ -1036,8 +1036,8 @@ Tensor& mul__Scalar(
   ORT_LOG_FN(self, other);
   
   if (
-    !IsSupportedType(self, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(other, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(mul__Scalar)>::call(self, other);
@@ -1075,7 +1075,7 @@ Tensor& reciprocal_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kBFloat16,at::kHalf,at::kDouble,at::kFloat})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(reciprocal_out)>::call(self, out);
@@ -1107,7 +1107,7 @@ Tensor& neg_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(neg_out)>::call(self, out);
@@ -1145,7 +1145,7 @@ Tensor& round_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kFloat,at::kHalf,at::kDouble})) {
+    !IsSupportedType(self, {at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(round_out)>::call(self, out);
@@ -1175,7 +1175,7 @@ Tensor relu(
   ORT_LOG_FN(self);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(relu)>::call(self);
@@ -1203,7 +1203,7 @@ Tensor& relu_(
   ORT_LOG_FN(self);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(relu_)>::call(self);
@@ -1298,7 +1298,7 @@ Tensor hardshrink(
   ORT_LOG_FN(self, lambd);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf})) {
+    !IsSupportedType(self, {at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(hardshrink)>::call(self, lambd);
@@ -1332,7 +1332,7 @@ Tensor selu(
   ORT_LOG_FN(self);
   
   if (
-    !IsSupportedType(self, {at::kFloat,at::kHalf,at::kDouble})) {
+    !IsSupportedType(self, {at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(selu)>::call(self);
@@ -1360,7 +1360,7 @@ Tensor& selu_(
   ORT_LOG_FN(self);
   
   if (
-    !IsSupportedType(self, {at::kFloat,at::kHalf,at::kDouble})) {
+    !IsSupportedType(self, {at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(selu_)>::call(self);
@@ -1388,7 +1388,7 @@ Tensor& sigmoid_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kBFloat16,at::kHalf,at::kDouble,at::kFloat})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(sigmoid_out)>::call(self, out);
@@ -1420,7 +1420,7 @@ Tensor& sin_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kFloat,at::kHalf,at::kDouble})) {
+    !IsSupportedType(self, {at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(sin_out)>::call(self, out);
@@ -1452,7 +1452,7 @@ Tensor& sinh_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kFloat,at::kHalf,at::kDouble})) {
+    !IsSupportedType(self, {at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(sinh_out)>::call(self, out);
@@ -1492,7 +1492,7 @@ Tensor _softmax(
   ORT_LOG_FN(self, dim, half_to_float);
   
   if (
-    !IsSupportedType(self, {at::kBFloat16,at::kHalf,at::kDouble,at::kFloat})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(_softmax)>::call(self, dim, half_to_float);
@@ -1528,7 +1528,7 @@ Tensor sum_dim_IntList(
   ORT_LOG_FN(self, dim, keepdim, dtype);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kFloat,at::kInt,at::kHalf}) || 
+    !IsSupportedType(self, {at::kBFloat16,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong}) || 
     !IsSupportedType(dim, {at::kLong})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
@@ -1565,7 +1565,7 @@ Tensor& sqrt_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kBFloat16,at::kHalf,at::kDouble,at::kFloat})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(sqrt_out)>::call(self, out);
@@ -1595,7 +1595,7 @@ Tensor t(
   ORT_LOG_FN(self);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf,at::kBool})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kBool,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(t)>::call(self);
@@ -1625,7 +1625,7 @@ Tensor& tan_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kFloat,at::kHalf,at::kDouble})) {
+    !IsSupportedType(self, {at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(tan_out)>::call(self, out);
@@ -1657,7 +1657,7 @@ Tensor& tanh_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kBFloat16,at::kHalf,at::kDouble,at::kFloat})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(tanh_out)>::call(self, out);
@@ -1726,7 +1726,7 @@ Tensor zeros_like(
   ORT_LOG_FN(self, dtype, layout, device, pin_memory, memory_format);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf,at::kBool})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kBool,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(zeros_like)>::call(self, dtype, layout, device, pin_memory, memory_format);
@@ -1769,9 +1769,9 @@ Tensor sub_Tensor(
   ORT_LOG_FN(self, other, alpha);
   
   if (
-    !IsSupportedType(alpha, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(other, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(self, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble})) {
+    !IsSupportedType(alpha, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(sub_Tensor)>::call(self, other, alpha);
@@ -1825,9 +1825,9 @@ Tensor& sub__Tensor(
   ORT_LOG_FN(self, other, alpha);
   
   if (
-    !IsSupportedType(alpha, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(other, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(self, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble})) {
+    !IsSupportedType(alpha, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(sub__Tensor)>::call(self, other, alpha);
@@ -1878,9 +1878,9 @@ Tensor sub_Scalar(
   ORT_LOG_FN(self, other, alpha);
   
   if (
-    !IsSupportedType(alpha, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(other, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(self, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble})) {
+    !IsSupportedType(alpha, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(sub_Scalar)>::call(self, other, alpha);
@@ -1933,9 +1933,9 @@ Tensor& sub__Scalar(
   ORT_LOG_FN(self, other, alpha);
   
   if (
-    !IsSupportedType(alpha, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(other, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble}) || 
-    !IsSupportedType(self, {at::kHalf,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kDouble})) {
+    !IsSupportedType(alpha, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(sub__Scalar)>::call(self, other, alpha);
@@ -1989,9 +1989,9 @@ Tensor addmm(
   ORT_LOG_FN(self, mat1, mat2, beta, alpha);
   
   if (
-    !IsSupportedType(mat1, {at::kDouble,at::kBFloat16,at::kLong,at::kFloat,at::kInt,at::kHalf}) || 
-    !IsSupportedType(mat2, {at::kDouble,at::kBFloat16,at::kLong,at::kFloat,at::kInt,at::kHalf}) || 
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kFloat,at::kInt,at::kHalf})) {
+    !IsSupportedType(mat1, {at::kBFloat16,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong}) || 
+    !IsSupportedType(mat2, {at::kBFloat16,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong}) || 
+    !IsSupportedType(self, {at::kBFloat16,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(addmm)>::call(self, mat1, mat2, beta, alpha);
@@ -2083,8 +2083,8 @@ Tensor& ne_Scalar_out(
   ORT_LOG_FN(self, other, out);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf,at::kBool}) || 
-    !IsSupportedType(other, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf,at::kBool})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kBool,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kBool,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(ne_Scalar_out)>::call(self, other, out);
@@ -2139,8 +2139,8 @@ Tensor& ne_Tensor_out(
   ORT_LOG_FN(self, other, out);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf,at::kBool}) || 
-    !IsSupportedType(other, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf,at::kBool})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kBool,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kBool,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(ne_Tensor_out)>::call(self, other, out);
@@ -2195,8 +2195,8 @@ Tensor& eq_Scalar_out(
   ORT_LOG_FN(self, other, out);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf,at::kBool}) || 
-    !IsSupportedType(other, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf,at::kBool})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kBool,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kBool,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(eq_Scalar_out)>::call(self, other, out);
@@ -2243,8 +2243,8 @@ Tensor& eq_Tensor_out(
   ORT_LOG_FN(self, other, out);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf,at::kBool}) || 
-    !IsSupportedType(other, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf,at::kBool})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kBool,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kBool,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(eq_Tensor_out)>::call(self, other, out);
@@ -2315,9 +2315,9 @@ Tensor masked_select(
   ORT_LOG_FN(self, mask);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf,at::kBool}) || 
-    !IsSupportedType(mask, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf,at::kBool}) || 
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf,at::kBool})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kBool,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(mask, {at::kBFloat16,at::kBool,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(self, {at::kBFloat16,at::kBool,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(masked_select)>::call(self, mask);
@@ -2387,7 +2387,7 @@ Tensor nonzero(
   ORT_LOG_FN(self);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf,at::kBool})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kBool,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(nonzero)>::call(self);
@@ -2425,7 +2425,7 @@ Tensor& sign_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(sign_out)>::call(self, out);
@@ -2456,8 +2456,8 @@ Tensor fmod_Scalar(
   ORT_LOG_FN(self, other);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf}) || 
-    !IsSupportedType(other, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(fmod_Scalar)>::call(self, other);
@@ -2492,8 +2492,8 @@ Tensor fmod_Tensor(
   ORT_LOG_FN(self, other);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf}) || 
-    !IsSupportedType(other, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}) || 
+    !IsSupportedType(other, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(fmod_Tensor)>::call(self, other);
@@ -2527,7 +2527,7 @@ Tensor min(
   ORT_LOG_FN(self);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kInt,at::kHalf})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(min)>::call(self);
@@ -2559,7 +2559,7 @@ Tensor max(
   ORT_LOG_FN(self);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kInt,at::kHalf})) {
+    !IsSupportedType(self, {at::kBFloat16,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(max)>::call(self);
@@ -2598,7 +2598,7 @@ Tensor _cat(
   
   assert(tensors.size()>0);
   if (
-    !IsSupportedType(tensors, {at::kDouble,at::kBFloat16,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf,at::kBool})) {
+    !IsSupportedType(tensors, {at::kBFloat16,at::kBool,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(_cat)>::call(tensors, dim);
@@ -2667,7 +2667,7 @@ Tensor& hardsigmoid_out(
   ORT_LOG_FN(self, out);
   
   if (
-    !IsSupportedType(self, {at::kFloat,at::kHalf,at::kDouble})) {
+    !IsSupportedType(self, {at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(hardsigmoid_out)>::call(self, out);
@@ -2698,7 +2698,7 @@ Tensor softshrink(
   ORT_LOG_FN(self, lambd);
   
   if (
-    !IsSupportedType(self, {at::kDouble,at::kLong,at::kByte,at::kFloat,at::kShort,at::kInt,at::kHalf})) {
+    !IsSupportedType(self, {at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(softshrink)>::call(self, lambd);
@@ -2732,7 +2732,7 @@ Tensor isinf(
   ORT_LOG_FN(self);
   
   if (
-    !IsSupportedType(self, {at::kFloat,at::kDouble})) {
+    !IsSupportedType(self, {at::kDouble,at::kFloat})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(isinf)>::call(self);
@@ -2760,7 +2760,7 @@ Tensor det(
   ORT_LOG_FN(self);
   
   if (
-    !IsSupportedType(self, {at::kFloat,at::kHalf,at::kDouble})) {
+    !IsSupportedType(self, {at::kDouble,at::kFloat,at::kHalf})) {
     return native::call_fallback_fn<
       &native::cpu_fallback,
       ATEN_OP(det)>::call(self);

@@ -283,7 +283,9 @@ class ORTGen:
                     if i == 0:
                         writer.push_indent()
                     cpp_param = cpp_func.get_parameter(op_input)
-                    supported_types = ",".join([type for type in onnx_op.input_types[idx]])
+                    supported_types_list = list(onnx_op.input_types[idx])
+                    supported_types_list.sort()
+                    supported_types = ",".join([type for type in supported_types_list])
                     writer.write("!IsSupportedType(%s, {%s})" % (cpp_param.identifier.value, supported_types))
                     i += 1
             writer.writeline(") {")
