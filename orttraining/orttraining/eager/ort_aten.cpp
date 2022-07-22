@@ -150,7 +150,7 @@ OrtValue create_ort_value(
       onnxruntime::TensorShape(tensor.sizes().vec()),
       tensor.data_ptr(),
       *mem_info, ort_tensor,
-      0L,  // offset = 0 - because tensor.data_ptr() includes the underyling offset
+      0L,  // offset = 0 - because tensor.data_ptr() includes the underlying offset
       tensor.strides().vec());
   return ort_tensor;
 }
@@ -371,10 +371,7 @@ OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at:
   attrs["to"] = create_ort_attribute(
       "to", GetONNXTensorProtoDataType(type), at::ScalarType::Long);
 
-  auto status = invoker.Invoke("Cast", {
-                                           std::move(input),
-                                       },
-                               output, &attrs);
+  auto status = invoker.Invoke("Cast", {std::move(input)}, output, &attrs);
 
   if (!status.IsOK())
     throw std::runtime_error(
@@ -649,9 +646,7 @@ at::Tensor& copy_(
   assert_tensor_supported(self);
   assert_tensor_supported(src);
 
-  auto& invoker = GetORTInvoker(self.device().type() == at::kORT
-                                    ? self.device()
-                                    : src.device());
+  auto& invoker = GetORTInvoker(self.device().type() == at::kORT ? self.device() : src.device());
   const auto ort_src = create_ort_value(invoker, src);
   auto ort_self = create_ort_value(invoker, self);
   if (self.scalar_type() != src.scalar_type()) {
@@ -686,9 +681,7 @@ at::Tensor _copy_from_and_resize(
   assert_tensor_supported(self);
   assert_tensor_supported(dst);
 
-  auto& invoker = GetORTInvoker(self.device().type() == at::kORT
-                                    ? self.device()
-                                    : dst.device());
+  auto& invoker = GetORTInvoker(self.device().type() == at::kORT ? self.device() : dst.device());
   const auto ort_self = create_ort_value(invoker, self);
   auto ort_dst = create_ort_value(invoker, dst);
 
@@ -760,10 +753,8 @@ at::Tensor& add__Tensor(
   std::vector<OrtValue> ort_outputs_1_Add(1);
   ort_outputs_1_Add[0] = ort_input_self;
 
-  status = invoker.Invoke("Add", {
-                                     std::move(ort_input_self),
-                                     std::move(ort_outputs_0_Mul[0]),
-                                 },
+  status = invoker.Invoke("Add",
+                          {std::move(ort_input_self), std::move(ort_outputs_0_Mul[0])},
                           ort_outputs_1_Add, nullptr);
 
   if (!status.IsOK())
