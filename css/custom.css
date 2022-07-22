@@ -229,10 +229,17 @@ h3.blue-text{
     color: #000000; 
 }
 
+.article-date{
+    color: #666666;
+    text-transform: uppercase;
+    font-size:14px; 
+}
+
 .news{
     background-color: #e8e8e8;
-    padding:3rem;
+    padding:2rem;
     font-size:18px;
+    margin: 2rem;
 }
 
 .alert{
@@ -651,6 +658,7 @@ a .abbr[data-original-title], a abbr[title]{
 }
 .news-img{
     padding-left: 3rem;
+    padding-top: 3rem;
 }
 .resources-img {
     position: relative;
