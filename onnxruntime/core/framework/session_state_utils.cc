@@ -61,7 +61,7 @@ struct ExtDataValueDeleter {
   OrtCallback ext_delete_cb;
   Tensor* p_tensor;
   void operator()(void*) noexcept {
-    this->ext_delete_cb.f(this->ext_delete_cb.param);
+    ext_delete_cb.f(ext_delete_cb.param);
     delete p_tensor;
   }
 };
@@ -77,7 +77,7 @@ static inline common::Status ExtDataTensorProtoToTensor(const Env& env,
   ORT_ENFORCE(!proto_path.empty());
 
   void* ext_data_buf = nullptr;
-  size_t ext_data_len = 0;
+  SafeInt<size_t> ext_data_len = 0;
   ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(env, proto_path.c_str(), tensor_proto,
                                                        ext_data_buf, ext_data_len, ext_data_deleter));
 
@@ -131,6 +131,9 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   if (p_tensor->Location().device.Type() == OrtDevice::CPU) {
     // deserialize directly to CPU tensor
     if (utils::HasExternalData(tensor_proto)) {
+      // NB: The file containing external data for the tensor is mmap'd. If the tensor will be used on CPU we can
+      // utilize the mmap'd buffer directly by calling ExtDataTensorProtoToTensor. If we called
+      // TensorProtoToTensor it would copy the data, causing unnecessary overhead
       OrtCallback ext_data_deleter;
       ORT_RETURN_IF_ERROR(ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_tensor, ext_data_deleter));
 
