@@ -15,7 +15,7 @@
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createTensor
         (JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jlong allocatorHandle, jobject dataObj, jlongArray shape, jint onnxTypeJava) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Convert type to ONNX C enum
@@ -64,11 +64,11 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createTensor
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createTensorFromBuffer
         (JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jlong allocatorHandle, jobject buffer, jint bufferPos, jlong bufferSize, jlongArray shape, jint onnxTypeJava) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     const OrtMemoryInfo* allocatorInfo;
-    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->AllocatorGetInfo(allocator,&allocatorInfo));
+    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->AllocatorGetInfo(allocator, &allocatorInfo));
     if (code != ORT_OK) {
       return (jlong) NULL;
     }
@@ -103,14 +103,15 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createTensorFromBuffer
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createString
         (JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jlong allocatorHandle, jstring input) {
-  (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+  (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
   OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
 
   // Create the OrtValue
   int64_t shapeArr = 1;
   OrtValue* ortValue;
-  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->CreateTensorAsOrtValue(allocator,&shapeArr,0,ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,&ortValue));
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->CreateTensorAsOrtValue(allocator, &shapeArr, 0,
+                                                                              ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING, &ortValue));
 
   if (code == ORT_OK) {
     // Create the buffer for the Java string
@@ -133,7 +134,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createString
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createStringTensor
         (JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jlong allocatorHandle, jobjectArray stringArr, jlongArray shape) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
 
@@ -187,7 +188,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createStringTensor
  */
 JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxTensor_getBuffer
         (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtValue* ortValue = (OrtValue *) handle;
     JavaTensorTypeShape typeShape = getTensorTypeShape(jniEnv, api, ortValue);
@@ -212,7 +213,7 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxTensor_getBuffer
  */
 JNIEXPORT jfloat JNICALL Java_ai_onnxruntime_OnnxTensor_getFloat
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     if (onnxType == 9) {
         uint16_t* arr = NULL;
@@ -235,7 +236,7 @@ JNIEXPORT jfloat JNICALL Java_ai_onnxruntime_OnnxTensor_getFloat
  */
 JNIEXPORT jdouble JNICALL Java_ai_onnxruntime_OnnxTensor_getDouble
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     jdouble* arr = NULL;
     checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
@@ -249,7 +250,7 @@ JNIEXPORT jdouble JNICALL Java_ai_onnxruntime_OnnxTensor_getDouble
  */
 JNIEXPORT jbyte JNICALL Java_ai_onnxruntime_OnnxTensor_getByte
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
   if (onnxType == 1) {
     uint8_t* arr;
@@ -271,7 +272,7 @@ JNIEXPORT jbyte JNICALL Java_ai_onnxruntime_OnnxTensor_getByte
  */
 JNIEXPORT jshort JNICALL Java_ai_onnxruntime_OnnxTensor_getShort
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
   if (onnxType == 3) {
     uint16_t* arr;
@@ -293,7 +294,7 @@ JNIEXPORT jshort JNICALL Java_ai_onnxruntime_OnnxTensor_getShort
  */
 JNIEXPORT jint JNICALL Java_ai_onnxruntime_OnnxTensor_getInt
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
   if (onnxType == 5) {
     uint32_t* arr;
@@ -315,7 +316,7 @@ JNIEXPORT jint JNICALL Java_ai_onnxruntime_OnnxTensor_getInt
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_getLong
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
   if (onnxType == 7) {
     uint64_t* arr;
@@ -337,16 +338,17 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_getLong
  */
 JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OnnxTensor_getString
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     // Extract a String array - if this becomes a performance issue we'll refactor later.
-    jobjectArray outputArray = createStringArrayFromTensor(jniEnv, api, (OrtAllocator*) allocatorHandle, (OrtValue*) handle);
+    jobjectArray outputArray = createStringArrayFromTensor(jniEnv, api, (OrtAllocator*) allocatorHandle,
+                                                           (OrtValue*) handle);
     if (outputArray != NULL) {
       // Get reference to the string
       jobject output = (*jniEnv)->GetObjectArrayElement(jniEnv, outputArray, 0);
 
       // Free array
-      (*jniEnv)->DeleteLocalRef(jniEnv,outputArray);
+      (*jniEnv)->DeleteLocalRef(jniEnv, outputArray);
 
       return output;
     } else {
@@ -361,7 +363,7 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OnnxTensor_getString
  */
 JNIEXPORT jboolean JNICALL Java_ai_onnxruntime_OnnxTensor_getBool
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     jboolean* arr;
     checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
@@ -375,7 +377,7 @@ JNIEXPORT jboolean JNICALL Java_ai_onnxruntime_OnnxTensor_getBool
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OnnxTensor_getArray
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle, jobject carrier) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtValue* value = (OrtValue*) handle;
     JavaTensorTypeShape typeShape = getTensorTypeShape(jniEnv, api, value);
