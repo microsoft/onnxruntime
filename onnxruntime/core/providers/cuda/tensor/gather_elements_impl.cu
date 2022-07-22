@@ -17,6 +17,8 @@ namespace {
 constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
 constexpr int kThreadWorkSize = 4;
 
+// General case to compute the input(for Gather)/output(for Scatter) and indices data offset given the thread ID
+// using strides and fast_divmods. The offsets are returned in a 2-element TArray.
 template <bool IsStridedIndices>
 struct OffsetCalculator {
   OffsetCalculator(const int rank, const TArray<int64_t> masked_input_strides, const TArray<fast_divmod> indices_fdms,
@@ -51,7 +53,9 @@ struct OffsetCalculator {
   TArray<CUDA_LONG> indices_strides_;
 };
 
-// Optimization for 2D case.
+// Optimization for 2D case to compute the input(for Gather)/output(for Scatter) and indices data offset
+// given the thread ID so we don't need FOR loop for fast_divmod computes.
+// The offsets are returned in a 2-element TArray.
 template <bool IsOuterAxis, bool IsStridedIndices>
 struct OffsetCalculatorFor2D {
   OffsetCalculatorFor2D(const fast_divmod indices_row_size_fdm, const int64_t input_row_size,

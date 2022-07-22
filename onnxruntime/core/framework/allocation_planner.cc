@@ -1021,7 +1021,7 @@ class PlannerImpl {
 #ifdef ENABLE_TRAINING
           if (is_strided_tensor) AllocPlan(current).is_strided_tensor = true;
 #else
-          ORT_ENFORCE(!is_strided_tensor);
+          ORT_ENFORCE(!is_strided_tensor, "Strided tensor is not supported in non-training build for now.");
 #endif  // ENABLE_TRAINING
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           InplaceReuse(reused, current);

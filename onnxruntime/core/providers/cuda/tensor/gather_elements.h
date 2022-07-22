@@ -17,6 +17,9 @@ struct GatherScatterElementsArgs;
 // shape(input)=[2,1,2,2,3,2,2], shape(indices)=[2,1,2,2,2,2,2], axis=3) is same as
 //     shape(input)=[4,2,3,4],shape(indices)=[4,2,2,4], axis=1
 // If indices is strided, dim i (outer) and dim j is contiguous when strides[i] = shape[j] * strides[j].
+// For example:
+// shape(indices)=[2,3,4,5], strides(indices)=[0,20,5,1], then dim-2 and dim-3 is contiguous (5==5*1),
+// dim-1 and dim-2 is contiguous (20==4*5), but dim-0 and dim-1 is not contiguous (0!=3*20).
 void CoalesceDimensions(TensorShapeVector& input_shape, TensorShapeVector& indices_shape,
                         TensorShapeVector* p_indices_strides, int64_t axis, GatherScatterElementsArgs& args);
 ONNX_NAMESPACE::TensorProto_DataType GetElementType(size_t element_size);

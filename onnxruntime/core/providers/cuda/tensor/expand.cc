@@ -59,9 +59,8 @@ static void CalcEffectiveDims(TensorShapeVector& x_dims, TensorShapeVector& y_di
 }
 
 #ifdef ENABLE_TRAINING
-static TensorShapeVector ComputeOutputStrides(const TensorShape& input_shapes,
-                                              const gsl::span<const int64_t>& input_strides,
-                                              const TensorShape& output_shapes) {
+TensorShapeVector ComputeOutputStrides(const TensorShape& input_shapes, const gsl::span<const int64_t>& input_strides,
+                                       const TensorShape& output_shapes) {
   const size_t rank = output_shapes.NumDimensions();
   const size_t input_rank = input_shapes.NumDimensions();
 

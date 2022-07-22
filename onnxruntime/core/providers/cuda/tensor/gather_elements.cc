@@ -174,11 +174,11 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   TensorShapeVector input_shape_vec = input_shape.AsShapeVector();
   TensorShapeVector indices_shape_vec = indices_shape.AsShapeVector();
   TensorShapeVector* p_indices_strides_vec = nullptr;
-  TensorShapeVector indices_strids_vec;
+  TensorShapeVector indices_strides_vec;
 #ifdef ENABLE_TRAINING
   if (!indices_tensor->IsContiguous()) {
-    indices_strids_vec = ToShapeVector(indices_tensor->Strides());
-    p_indices_strides_vec = &indices_strids_vec;
+    indices_strides_vec = ToShapeVector(indices_tensor->Strides());
+    p_indices_strides_vec = &indices_strides_vec;
   }
 #endif
   CoalesceDimensions(input_shape_vec, indices_shape_vec, p_indices_strides_vec, axis, args);
