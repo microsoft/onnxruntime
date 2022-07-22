@@ -461,6 +461,44 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   }
 }
 
+void GreedySearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  // Type inference
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+  // Shape inference
+  // input 0 (input_ids) shape: (batch_size, sequence_length)
+  // output 0 (sequences) shape: (batch_size, max_length)
+  // output 1 (scores) shape: (max_length - sequence_length, batch_size, num_beams, vocab_size)
+  if (!hasInputShape(ctx, 0)) {
+    return;
+  }
+  auto& input_ids_shape = getInputShape(ctx, 0);
+  auto& input_ids_dims = input_ids_shape.dim();
+  if (input_ids_dims.size() != 2) {
+    fail_shape_inference("Inputs 0 shall be 2 dimensions");
+  }
+  if (!(input_ids_dims[0].has_dim_value() && input_ids_dims[1].has_dim_value())) {
+    return;
+  }
+
+  int64_t batch_size = input_ids_dims[0].dim_value();
+
+  const auto max_length = ctx.getInputData(1);
+  if (max_length == nullptr) {  // not initializer
+    return;
+  }
+
+  int max_length_value = 0;
+  if (!ParseScalar(max_length, max_length_value) || max_length_value <= 0) {
+    fail_shape_inference("Failed to parse max_length or it is not positive integer scalar");
+  }
+
+  ONNX_NAMESPACE::TensorShapeProto sequences_shape;
+  sequences_shape.add_dim()->set_dim_value(batch_size);
+  sequences_shape.add_dim()->set_dim_value(max_length_value);
+  updateOutputShape(ctx, 0, sequences_shape);
+}
+
 constexpr const char* Gelu_ver1_doc =
     R"DOC(Gaussian Error Linear Unit.
 A high-performing neural network activation function.The GELU nonlinearity is
@@ -987,6 +1025,27 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                 .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
                                   BeamSearchShapeInference(ctx);
+                                }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(GreedySearch, 1,
+                            OpSchema()
+                                .SetDoc("Greedy Search for text generation.")
+                                .Attr("eos_token_id", "The id of the end-of-sequence token", AttributeProto::INT)
+                                .Attr("pad_token_id", "The id of the padding token", AttributeProto::INT)
+                                .Attr("decoder_start_token_id", "The id of the token that indicates decoding starts.", AttributeProto::INT, static_cast<int64_t>(-1))
+                                .Attr("model_type", "model type: 0 for decoder only like GPT-2; 1 for encoder decoder like Bart", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("decoder", "Decoder subgraph to execute in a loop.", AttributeProto::GRAPH)
+                                .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
+                                .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
+                                .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
+                                .Input(3, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
+                                .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, max_sequence_length)", "I")
+                                // TODO(wy): support no_repeat_ngram_size, vocab_mask, prefix_vocab_mask, scores,
+                                .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
+                                .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  GreedySearchShapeInference(ctx);
                                 }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(SampleOp, 1,

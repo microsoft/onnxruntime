@@ -29,8 +29,8 @@ class GptSubgraph : public Subgraph {
       gsl::span<int32_t>& sequence_lengths,
       OrtValue& expanded_input_ids,
       std::vector<OrtValue>& feeds,
-      const BeamSearchDeviceHelper::CreateGptInputsFunc& create_gpt_inputs_func,
-      const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
+      const GenerationDeviceHelper::CreateGptInputsFunc& create_gpt_inputs_func,
+      const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
       IAllocatorUniquePtr<char>& buffer);
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
