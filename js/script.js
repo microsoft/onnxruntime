@@ -841,18 +841,6 @@ var validCombos = {
     "linux,Python,ARM64,TensorRT":
         "pip install onnxruntime-gpu <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
-    "mac,C-API,X86,DefaultCPU":
-        "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/build/inferencing' target='_blank'>build from source</a>.",
-        
-    "mac,C++,X86,DefaultCPU":
-        "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/build/inferencing' target='_blank'>build from source</a>.",
-    
-    "mac,C#,X86,DefaultCPU":
-        "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/build/inferencing' target='_blank'>build from source</a>.",
-        
-    "mac,Python,X86,DefaultCPU":
-        "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/build/inferencing' target='_blank'>build from source</a>.",
-
     "windows,C-API,X86,DirectML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
     
@@ -980,9 +968,6 @@ var validCombos = {
     "android,C++,ARM64,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
-    "android,C#,ARM64,NNAPI":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
-    
     "android,Java,ARM64,NNAPI":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
     
@@ -993,7 +978,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,C#,X86,NNAPI":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>. <br/>Refer to sample <a href='https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/Xamarin' target='blank'>here</a>.",
     
     "android,Java,X64,NNAPI":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
@@ -1005,7 +990,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,C#,X64,NNAPI":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>. <br/>Refer to sample <a href='https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/Xamarin' target='blank'>here</a>.",
 
     "android,Java,X86,NNAPI":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
@@ -1017,7 +1002,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
 
     "android,C#,ARM32,NNAPI":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>. <br/>Refer to sample <a href='https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/Xamarin' target='blank'>here</a>.",
     
     "android,Java,ARM32,NNAPI":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
@@ -1028,9 +1013,6 @@ var validCombos = {
     "android,C++,ARM64,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
 
-    "android,C#,ARM64,DefaultCPU":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
-    
     "android,Java,ARM64,DefaultCPU":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
 
@@ -1041,7 +1023,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
 
     "android,C#,ARM32,DefaultCPU":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>. <br/>Refer to sample <a href='https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/Xamarin' target='blank'>here</a>.",
     
     "android,Java,ARM32,DefaultCPU":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
@@ -1053,7 +1035,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
 
     "android,C#,X86,DefaultCPU":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>. <br/>Refer to sample <a href='https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/Xamarin' target='blank'>here</a>.",
     
     "android,Java,X86,DefaultCPU":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
@@ -1065,7 +1047,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,C#,X64,DefaultCPU":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>. <br/>Refer to sample <a href='https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/Xamarin' target='blank'>here</a>.",
 
     "android,Java,X64,DefaultCPU":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
