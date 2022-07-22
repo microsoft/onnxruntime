@@ -482,7 +482,6 @@ void GreedySearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   }
 
   int64_t batch_size = input_ids_dims[0].dim_value();
-  int64_t sequence_length = input_ids_dims[1].dim_value();
 
   const auto max_length = ctx.getInputData(1);
   if (max_length == nullptr) {  // not initializer
