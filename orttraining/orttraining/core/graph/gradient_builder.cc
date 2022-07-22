@@ -1765,12 +1765,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
   // We filter out those non-tensor inputs when constructing PythonOpGrad's outputs.
   const std::string& input_convention = src_attrs.at("input_convention").s();
   int fw_tensor_input_index = 0;
-  // The element of updated_input_requires_grads is 1 if the i-th input of autograd.Function.apply
-  // requres grad; otherwise, the value is 0.
+  // The value for i-th element of updated_input_requires_grads is 1 if the i-th input of autograd.Function.apply
+  // requires grad; otherwise, the value is 0.
   std::vector<int64_t> updated_input_requires_grads;
-  // The element of bw_tensor_output_requires_grads is 1 if the i-th TENSOR input of autograd.Function.apply
-  // requres grad; otherwise, the value is 0. The major difference between updated_input_requires_grads and
-  // bw_tensor_output_requires_grads is that the latter contains only tensor input's requres_grad info.
+  // The value for i-th element of bw_tensor_output_requires_grads is 1 if the i-th TENSOR input of
+  // autograd.Function.apply requires grad; otherwise, the value is 0. The major difference between
+  // updated_input_requires_grads and bw_tensor_output_requires_grads is that the latter contains only tensor
+  // input's require grad info.
   std::vector<int64_t> bw_tensor_output_requires_grads;
   for (size_t i = 0; i < input_convention.length(); ++i) {
     if (input_convention[i] == 'd') {
@@ -1787,8 +1788,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
     }
   }
 
-  // Collect updated python op requre grads info, used for resetting after gradient graph build complete.
-  // PythonOp use cases gurantee node names are present and unique, so using it should be fine.
+  // Collect updated python op require grad info, used for resetting after gradient graph build complete.
+  // PythonOp use cases guarantee node names are present and unique, so using it should be fine.
   SetPythonOpRequireGradInfo(NodeName(), updated_input_requires_grads);
 
   ORT_ENFORCE(static_cast<size_t>(GetSrcNodeInputSize()) == bw_tensor_output_requires_grads.size(),

@@ -3422,7 +3422,7 @@ Return true if all elements are true and false otherwise.
           "input_requires_grads",
           "Flags to indicate whether the torch.autograd.apply's inputs require gradients "
           "(including flags for both tensor and non-tensor inputs). If not provided, all value in the vector is 0,"
-          "which means all inputs don't require grad.",
+          "which means all inputs don't require grad. Frontend needs this info to call into torch correctly.",
           AttributeProto::INTS,
           false)
       // Input Pytorch tensors.

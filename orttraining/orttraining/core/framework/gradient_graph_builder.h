@@ -144,7 +144,7 @@ class GradientGraphBuilder {
   // Tracks tensors that are stashed in the forward pass for later use in backward pass.
   std::unordered_set<std::string> stashed_tensors_;
 
-  // Tracks PythonOps' inputs requires_grads info. Frontend need this info to call into torch correctly.
+  // Tracks PythonOps' inputs requires_grads info.
   // Example: python_op_input_require_grad_info_[python_op_name] = [0, 1, 0].
   //   The 2nd input of PythonOp with name "python_op_name" is differentiable.
   //   The 1st and 3rd inputs are not differentiable.
