@@ -907,7 +907,7 @@ bool equal(
 
   auto equalStatus = invoker.Invoke("Equal",
                                     {std::move(ort_input_self), std::move(ort_input_other)},
-                                    t_outputs_0_Equal, nullptr);
+                                    ort_outputs_0_Equal, nullptr);
 
   if (!equalStatus.IsOK())
     throw std::runtime_error(
