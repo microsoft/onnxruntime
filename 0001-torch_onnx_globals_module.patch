@@ -1,0 +1,26 @@
+From b93f815964bb46a5b90f87fac57e338e1dc0bbf3 Mon Sep 17 00:00:00 2001
+From: Juan Paez <juanpaez@microsoft.com>
+Date: Thu, 21 Jul 2022 17:55:58 -0700
+Subject: [PATCH 1/1] torch_onnx_globals_module
+
+---
+ .../training/ortmodule/_custom_autograd_function_exporter.py   | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/orttraining/orttraining/python/training/ortmodule/_custom_autograd_function_exporter.py b/orttraining/orttraining/python/training/ortmodule/_custom_autograd_function_exporter.py
+index 1459d3b86..b3b816d74 100644
+--- a/orttraining/orttraining/python/training/ortmodule/_custom_autograd_function_exporter.py
++++ b/orttraining/orttraining/python/training/ortmodule/_custom_autograd_function_exporter.py
+@@ -43,7 +43,8 @@ def _export_pt_1_10(g, n, *args, **kwargs):
+         # TODO move to public API once exporter team exposes that
+         training_mode = None
+         runtime_pytorch_version = version.parse(torch.__version__.split("+")[0])
+-        if runtime_pytorch_version > version.parse("1.11"):
++        # _globals doesn't exist in torch 1.11.1
++        if runtime_pytorch_version >= version.parse("1.12"):
+             from torch.onnx import _globals
+ 
+             training_mode = _globals.GLOBALS.training_mode
+-- 
+2.25.1
+

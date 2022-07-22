@@ -43,7 +43,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         # TODO move to public API once exporter team exposes that
         training_mode = None
         runtime_pytorch_version = version.parse(torch.__version__.split("+")[0])
-        if runtime_pytorch_version > version.parse("1.11"):
+        if runtime_pytorch_version >= version.parse("1.12"):
             from torch.onnx import _globals
 
             training_mode = _globals.GLOBALS.training_mode
