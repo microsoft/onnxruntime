@@ -13,6 +13,8 @@ if (onnxruntime_USE_NUPHAR_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
 
+list(APPEND TEST_INC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/onnx")
+
 set(disabled_warnings)
 function(AddTest)
   cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS;TEST_ARGS" ${ARGN})
@@ -1114,6 +1116,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       list(APPEND onnxruntime_shared_lib_test_LIBS ${android_shared_libs})
     endif()
+    list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_graph onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2)
     AddTest(DYN
             TARGET onnxruntime_shared_lib_test
             SOURCES ${onnxruntime_shared_lib_test_SRC} ${onnxruntime_unittest_main_src}

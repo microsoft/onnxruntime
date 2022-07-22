@@ -5,6 +5,7 @@
 
 #include <string>
 #include <vector>
+#include "core/framework/ort_value.h"
 #include "core/common/gsl_suppress.h"
 #include "core/common/inlined_containers.h"
 #include "core/session/onnxruntime_c_api.h"
