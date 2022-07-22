@@ -465,11 +465,6 @@ void GreedySearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
-  if (ctx.getNumOutputs() > 1) {
-    // Here we assume that the third output exist only if second output exists.
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 3, 1);
-  }
-
   // Shape inference
   // input 0 (input_ids) shape: (batch_size, sequence_length)
   // output 0 (sequences) shape: (batch_size, max_length)
@@ -503,13 +498,6 @@ void GreedySearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   sequences_shape.add_dim()->set_dim_value(batch_size);
   sequences_shape.add_dim()->set_dim_value(max_length_value);
   updateOutputShape(ctx, 0, sequences_shape);
-  if (ctx.getNumOutputs() > 1) {
-    ONNX_NAMESPACE::TensorShapeProto scores_shape;
-    scores_shape.add_dim()->set_dim_value(max_length_value - sequence_length);
-    scores_shape.add_dim()->set_dim_value(batch_size);
-    scores_shape.add_dim();  // vocab_size is unknown
-    updateOutputShape(ctx, 1, scores_shape);
-  }
 }
 
 constexpr const char* Gelu_ver1_doc =

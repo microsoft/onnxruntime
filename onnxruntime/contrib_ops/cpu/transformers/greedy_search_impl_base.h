@@ -145,7 +145,7 @@ Status GreedySearchBase<T>::Initialize() {
   // This flag will be updated later when the scores output exists.
   parameters_->output_scores = false;
 
-  // Greedy search
+  // no_repeat_ngram_size is currently not supported in Greedy search
   parameters_->no_repeat_ngram_size = 0;
 
   if (!this->IsCuda()) {
