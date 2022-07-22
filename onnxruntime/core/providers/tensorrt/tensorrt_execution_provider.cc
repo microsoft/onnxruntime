@@ -989,7 +989,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   // If this is the case, TensorRT parser will complain the non-recognized TRT fused node and fail.
   for (const auto& index : nodes_vector) {
     const auto& node = graph.GetNode(node_index[index]);
-    if (node->OpType() == "If" || node->OpType() == "Loop") {
+    if (node->OpType() == "If" || node->OpType() == "Loop" || node->OpType() == "Scan") {
             continue;
     }
     filtered_nodes_vector.push_back(index);
