@@ -136,7 +136,6 @@ hand_implemented = {
     # manually implement Slice using stride and offset.
     "aten::slice.Tensor": SignatureOnly(),
     "aten::addmm": Gemm("mat1", "mat2", "self", alpha="alpha", beta="beta"),
-    "aten::add_.Tensor": SignatureOnly(),
     "aten::t": Transpose("self"),
     # MatMul("self", "mat2"), fails since it resizes based on self but should be based on result shape of the mult
     "aten::mm.out": SignatureOnly(),

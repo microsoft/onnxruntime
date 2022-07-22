@@ -716,54 +716,6 @@ at::Tensor& zero_(at::Tensor& self) {
   return self;
 }
 
-// TODO(unknown): enhance opgen.py to support inplace binary operations.
-// aten::add_.Tensor(Tensor(a!) self, Tensor other, *, Scalar alpha=1) -> Tensor(a!)
-at::Tensor& add__Tensor(
-    at::Tensor& self,
-    const at::Tensor& other,
-    const at::Scalar& alpha) {
-  ORT_LOG_FN(self, other, alpha);
-
-  auto st = {at::kDouble, at::kLong, at::kHalf, at::kShort, at::kInt, at::kByte, at::kFloat, at::kBFloat16};
-  if (
-      !IsSupportedType(alpha, st) ||
-      !IsSupportedType(other, st) ||
-      !IsSupportedType(self, st)) {
-    return at::native::call_fallback_fn<
-        &at::native::cpu_fallback,
-        ATEN_OP(add__Tensor)>::call(self, other, alpha);
-  }
-  auto& invoker = GetORTInvoker(self.device());
-
-  auto ort_input_alpha = create_ort_value(invoker, alpha, other.scalar_type());
-  auto ort_input_other = create_ort_value(invoker, other);
-
-  std::vector<OrtValue> ort_outputs_0_Mul(1);
-
-  auto status = invoker.Invoke("Mul",
-                               {std::move(ort_input_alpha), std::move(ort_input_other)},
-                               ort_outputs_0_Mul, nullptr);
-
-  if (!status.IsOK())
-    throw std::runtime_error(
-        "ORT return failure status:" + status.ErrorMessage());
-
-  auto ort_input_self = create_ort_value(invoker, self);
-
-  std::vector<OrtValue> ort_outputs_1_Add(1);
-  ort_outputs_1_Add[0] = ort_input_self;
-
-  status = invoker.Invoke("Add",
-                          {std::move(ort_input_self), std::move(ort_outputs_0_Mul[0])},
-                          ort_outputs_1_Add, nullptr);
-
-  if (!status.IsOK())
-    throw std::runtime_error(
-        "ORT return failure status:" + status.ErrorMessage());
-
-  return self;
-}
-
 // aten::slice.Tensor(Tensor(a) self, int dim=0, int? start=None, int? end=None, int step=1) -> Tensor(a)
 at::Tensor slice_Tensor(
     const at::Tensor& self,
