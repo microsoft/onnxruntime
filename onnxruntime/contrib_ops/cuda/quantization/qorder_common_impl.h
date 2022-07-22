@@ -15,10 +15,19 @@ void QOrderQuantize(
     cudaStream_t stream, const cudaDeviceProp& device_prop,
     const T* src, int8_t* dst, float scale, size_t N);
 
+// internally using fp32 computation to avoid precision lost
+void QOrderQuantize_Strict(
+    cudaStream_t stream, const cudaDeviceProp& device_prop,
+    const __half* src, int8_t* dst, float scale, size_t N);
+
 template <typename T>
 void QOrderDequantize(
     cudaStream_t stream, const cudaDeviceProp& device_prop,
     const int8_t* src, T* dst, float scale, size_t N);
+
+void QOrderDequantize_Strict(
+    cudaStream_t stream, const cudaDeviceProp& device_prop,
+    const int8_t* src, __half* dst, float scale, size_t N);
 
 // template <typename T>
 // void QOrderDequantizeToRow(
@@ -56,10 +65,11 @@ void QOrderDequantizeCol32ToRow(
     cudaStream_t stream, const cudaDeviceProp& device_prop,
     const int8_t* src, float* dst, float scale, unsigned batch, unsigned rows, unsigned cols);
 
+template <typename T>
 void QOrderLayerNorm(
     cudaStream_t stream, const cudaDeviceProp& device_prop, cublasLtOrder_t order,
     const int8_t* src, const float src_scale, int8_t* dst, const float dst_scale,
-    const __half* gamma, const __half* beta, const float epsilon,
+    const T* gamma, const T* beta, const float epsilon,
     const unsigned batch, const unsigned rows, const unsigned cols);
 
 void ReorderS8RowToCol32(

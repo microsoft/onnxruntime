@@ -145,9 +145,19 @@ void QOrderUnaryElementWiseShareMemoryImpl(
   }
 }
 
+
+struct QOrderUnaryOpComputeGelu {
+  static constexpr float sqrt2 = 1.4142135623730950488016887242097f;
+
+  __device__ __inline__ float operator()(const float& x) const {
+    return x * 0.5f * (1.0f + erff(x / sqrt2));
+  }
+};
+
+
 QORDER_UNARY_OP_SHAREMEMORY_DECLARATION(Gelu) {
-  QOrderUnaryElementWiseShareMemoryImpl<QOrderUnaryOpComputeFastGelu>(
-    stream, input_data, input_scale, output_data, output_scale, QOrderUnaryOpComputeFastGelu(), count);
+  QOrderUnaryElementWiseShareMemoryImpl<QOrderUnaryOpComputeGelu>(
+    stream, input_data, input_scale, output_data, output_scale, QOrderUnaryOpComputeGelu(), count);
 }
 
 

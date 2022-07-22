@@ -25,6 +25,9 @@ union U1S2 {
   short2 s2;
 };
 
+__device__ inline float to_float(const __half h) { return __half2float(h); }
+__device__ inline float to_float(const float f) { return f; }
+
 __device__ inline int8_t quantize_float_s8(const float val, const float inverse_scale) {
   float dqval = fmaxf(fminf(127.0f, val * inverse_scale), -128.0f);
   return static_cast<int8_t>(__float2int_rn(dqval));
@@ -57,9 +60,24 @@ __device__ inline char4 quantize_half4_char4(const __half4 val4, const __half2 i
   return char4{(char)shortxy.s2.x, (char)shortxy.s2.y, (char)shortzw.s2.x, (char)shortzw.s2.y};
 }
 
+__device__ inline char4 quantize_half4_char4_strict_fp32(const __half4 val4, const float inverse_scale) {
+  U1S2 shortxy, shortzw;
+  shortxy.s2.x = static_cast<short>(__float2int_rn(__half2float(val4.xy.x) * inverse_scale));
+  shortxy.s2.y = static_cast<short>(__float2int_rn(__half2float(val4.xy.y) * inverse_scale));
+  shortzw.s2.x = static_cast<short>(__float2int_rn(__half2float(val4.zw.x) * inverse_scale));
+  shortzw.s2.y = static_cast<short>(__float2int_rn(__half2float(val4.zw.y) * inverse_scale));
+  shortxy.u1 = __vmaxs2(__vmins2(shortxy.u1, 0x007F007F), 0xFF80FF80);
+  shortzw.u1 = __vmaxs2(__vmins2(shortzw.u1, 0x007F007F), 0xFF80FF80);
+  return char4{(char)shortxy.s2.x, (char)shortxy.s2.y, (char)shortzw.s2.x, (char)shortzw.s2.y};
+}
+
 __device__ inline __half4 deqantize_char4_half4(const char4 ch4, const __half2 scale2) {
   return {scale2 * __half2(__short2half_rn(ch4.x), __short2half_rn(ch4.y)),
           scale2 * __half2(__short2half_rn(ch4.z), __short2half_rn(ch4.w))};
+}
+
+__device__ inline __half4 deqantize_char4_half4_strict(const char4 ch4, const float scale) {
+  return __half4{{__float2half_rn(scale * ch4.x), __float2half_rn(scale * ch4.y)}, {__float2half_rn(scale * ch4.z), __float2half_rn(scale * ch4.w)}};
 }
 
 template <typename FloatT>
@@ -339,11 +357,27 @@ QOrderQuantizeKernel(const typename DequantizeVec<FloatVecT>::DequantizedScalarT
   }
 }
 
+template <unsigned ElementsPerThread = 4>
+__global__ void
+QOrderQuantizeHalfStrictKernel(const __half* __restrict__ src, int8_t* __restrict__ dst, size_t N, const float inverse_scale) {
+  unsigned inc_per_iter = blockDim.x * sizeof(char4);
+  size_t index = (size_t)blockIdx.x * blockDim.x * (sizeof(char4) * ElementsPerThread) + threadIdx.x * sizeof(char4);
+
+#pragma unroll
+  for (int i = 0; i < ElementsPerThread; i++) {
+    if (index < N) {
+      __half4 src_vals = *(const __half4*)(src + index);
+      *(char4*)(dst + index) = quantize_half4_char4_strict_fp32(src_vals, inverse_scale);
+      index += inc_per_iter;
+    }
+  }
+}
+
 template <typename T>
 void QOrderQuantize(cudaStream_t stream, const cudaDeviceProp& /* device_prop */,
                     const T* src, int8_t* dst, float scale, size_t N) {
-  if (N & 0x1fLL) {
-    throw std::runtime_error("N can not divide by 32!");
+  if (N & 0x3LL) {
+    throw std::runtime_error("N can not divide by 4!");
   }
 
   typedef typename FloatVecSelector<T>::FloatVecT FloatVecT;
@@ -355,6 +389,20 @@ void QOrderQuantize(cudaStream_t stream, const cudaDeviceProp& /* device_prop */
   T inverse_scale = (T)(1.0f / (scale));
   size_t blocks = (N + (EPB - 1)) / EPB;
   QOrderQuantizeKernel<FloatVecT, kElementsPerThread><<<blocks, threads, 0, stream>>>(src, dst, N, inverse_scale);
+}
+
+void QOrderQuantize_Strict(cudaStream_t stream, const cudaDeviceProp& /* device_prop*/,
+                           const __half* src, int8_t* dst, float scale, size_t N) {
+  if (N & 0x3LL) {
+    throw std::runtime_error("N can not divide by 4!");
+  }
+
+  static constexpr unsigned kElementsPerThread = 4;
+  unsigned int threads = 256;
+  unsigned int EPB = threads * sizeof(char4) * kElementsPerThread;
+  float inverse_scale = 1.0f / scale;
+  size_t blocks = (N + (EPB - 1)) / EPB;
+  QOrderQuantizeHalfStrictKernel<kElementsPerThread><<<blocks, threads, 0, stream>>>(src, dst, N, inverse_scale);
 }
 
 template void QOrderQuantize<float>(cudaStream_t stream, const cudaDeviceProp& device_prop,
@@ -392,8 +440,8 @@ QOrderDequantizeKernel(const int8_t* __restrict__ src,
 template <typename T>
 void QOrderDequantize(cudaStream_t stream, const cudaDeviceProp& /* device_prop */,
                       const int8_t* src, T* dst, float scale, size_t N) {
-  if (N & 0x1fLL) {
-    throw std::runtime_error("N can not divide by 32!");
+  if (N & 0x3LL) {
+    throw std::runtime_error("N can not divide by 4!");
   }
 
   typedef typename FloatVecSelector<T>::FloatVecT FloatVecT;
@@ -407,6 +455,36 @@ void QOrderDequantize(cudaStream_t stream, const cudaDeviceProp& /* device_prop 
   QOrderDequantizeKernel<FloatVecT, kElementsPerThread><<<blocks, threads, 0, stream>>>(src, dst, N, scale_as_T);
 }
 
+// block size: 256, Lets EPB = 256 * ElementCount(FloatVecT) * ElementsPerThreads
+// grid size: (N + BLOCK_SIZE * EPB - 1) / EPB
+template <unsigned ElementsPerThread = 4>
+__global__ void
+QOrderDequantizeKernel_Strict(const int8_t* __restrict__ src, const __half* __restrict__ dst, size_t N, const float scale) {
+  unsigned inc_per_iter = blockDim.x * sizeof(char4);
+  size_t index = (size_t)blockIdx.x * inc_per_iter * ElementsPerThread + threadIdx.x * sizeof(char4);
+#pragma unroll
+  for (int i = 0; i < ElementsPerThread; i++) {
+    if (index < N) {
+      char4 src_vals = *(const char4*)(src + index);
+      *(__half4*)(dst + index) = deqantize_char4_half4_strict(src_vals, scale);
+      index += inc_per_iter;
+    }
+  }
+}
+
+void QOrderDequantize_Strict(cudaStream_t stream, const cudaDeviceProp& device_prop,
+                             const int8_t* src, __half* dst, float scale, size_t N) {
+  if (N & 0x3LL) {
+    throw std::runtime_error("N can not divide by 4!");
+  }
+
+  static constexpr unsigned kElementsPerThread = 2;
+  unsigned int threads = 256;
+  unsigned int EPB = threads * sizeof(char4) * kElementsPerThread;
+  size_t blocks = (N + (EPB - 1)) / EPB;
+  QOrderDequantizeKernel_Strict<kElementsPerThread><<<blocks, threads, 0, stream>>>(src, dst, N, scale);
+}
+
 template void QOrderDequantize<float>(cudaStream_t stream, const cudaDeviceProp& device_prop,
                                       const int8_t* src, float* dst, float scale, size_t N);
 
@@ -417,7 +495,7 @@ template void QOrderDequantize<__half>(cudaStream_t stream, const cudaDeviceProp
 void QOrderDequantizeToRow(cublasLtOrder_t input_order, cudaStream_t stream, const cudaDeviceProp& device_prop,
                            const int8_t* src, __half* dst, float scale, unsigned batch, unsigned rows, unsigned cols) {
   if (input_order == CUBLASLT_ORDER_ROW) {
-    QOrderDequantize(stream, device_prop, src, dst, scale, (size_t)batch * rows * cols);
+    QOrderDequantize_Strict(stream, device_prop, src, dst, scale, (size_t)batch * rows * cols);
   } else if (input_order == CUBLASLT_ORDER_COL32) {
     QOrderDequantizeCol32ToRow(stream, device_prop, src, dst, scale, batch, rows, cols);
   } else {
@@ -428,7 +506,7 @@ void QOrderDequantizeToRow(cublasLtOrder_t input_order, cudaStream_t stream, con
 void QOrderQuantizeRowTo(cublasLtOrder_t output_order, cudaStream_t stream, const cudaDeviceProp& device_prop,
                          const __half* src, int8_t* dst, float scale, unsigned batch, unsigned rows, unsigned cols) {
   if (output_order == CUBLASLT_ORDER_ROW) {
-    QOrderQuantize(stream, device_prop, src, dst, scale, (size_t)batch * rows * cols);
+    QOrderQuantize_Strict(stream, device_prop, src, dst, scale, (size_t)batch * rows * cols);
   } else if (output_order == CUBLASLT_ORDER_COL32) {
     QOrderQuantizeRowToCol32(stream, device_prop, src, dst, scale, batch, rows, cols);
   } else {
@@ -444,9 +522,10 @@ void QOrderQuantizeRowTo(cublasLtOrder_t output_order, cudaStream_t stream, cons
 static constexpr unsigned QORDER_LAYERNORM_ROWS_PER_BLOCK = 8;  // 4, 8, 16, ...
 // block_size = (32, QORDER_LAYERNORM_ROWS_PER_BLOCK, 1)
 // grid_size = ((rows + QORDER_LAYERNORM_ROWS_PER_BLOCK - 1) / QORDER_LAYERNORM_ROWS_PER_BLOCK, batch, 1)
+template <typename T>
 __global__ void
 QOrderLayerNormCol32Kernel(const int8_t* __restrict__ src, const float src_scale, int8_t* __restrict__ dst, const float dst_scale,
-                           const __half* __restrict__ gamma, const __half* __restrict__ beta, const float epsilon,
+                           const T* __restrict__ gamma, const T* __restrict__ beta, const float epsilon,
                            const unsigned rows, const unsigned cols) {
   int32_t sum = 0;
   int32_t square_sum = 0;
@@ -473,15 +552,15 @@ QOrderLayerNormCol32Kernel(const int8_t* __restrict__ src, const float src_scale
   float4 f4;
   for (unsigned index = 0, c = threadIdx.x * 4; c < cols; c += 128, index += STRIDES_PER_WARP_ROUND) {
     char4 ch4 = __ldg((const char4*)(src + index));
-    f4.x = (src_scale * ch4.x - mean) * rvar * __half2float(gamma[c]);
-    f4.y = (src_scale * ch4.y - mean) * rvar * __half2float(gamma[c + 1]);
-    f4.z = (src_scale * ch4.z - mean) * rvar * __half2float(gamma[c + 2]);
-    f4.w = (src_scale * ch4.w - mean) * rvar * __half2float(gamma[c + 3]);
+    f4.x = (src_scale * ch4.x - mean) * rvar * to_float(gamma[c]);
+    f4.y = (src_scale * ch4.y - mean) * rvar * to_float(gamma[c + 1]);
+    f4.z = (src_scale * ch4.z - mean) * rvar * to_float(gamma[c + 2]);
+    f4.w = (src_scale * ch4.w - mean) * rvar * to_float(gamma[c + 3]);
     if (beta) {
-      f4.x += __half2float(beta[c]);
-      f4.y += __half2float(beta[c + 1]);
-      f4.z += __half2float(beta[c + 2]);
-      f4.w += __half2float(beta[c + 3]);
+      f4.x += to_float(beta[c]);
+      f4.y += to_float(beta[c + 1]);
+      f4.z += to_float(beta[c + 2]);
+      f4.w += to_float(beta[c + 3]);
     }
     *(char4*)(dst + index) = quantize_float4_char4(f4, dst_rscale);
   }
@@ -489,9 +568,10 @@ QOrderLayerNormCol32Kernel(const int8_t* __restrict__ src, const float src_scale
 
 // block_size = (32, QORDER_LAYERNORM_ROWS_PER_BLOCK, 1)
 // grid_size = ((rows + QORDER_LAYERNORM_ROWS_PER_BLOCK - 1) / QORDER_LAYERNORM_ROWS_PER_BLOCK, batch, 1)
+template <typename T>
 __global__ void
 QOrderLayerNormRowKernel(const int8_t* __restrict__ src, const float src_scale, int8_t* __restrict__ dst, const float dst_scale,
-                           const __half* __restrict__ gamma, const __half* __restrict__ beta, const float epsilon,
+                           const T* __restrict__ gamma, const T* __restrict__ beta, const float epsilon,
                            const unsigned rows, const unsigned cols) {
   int32_t sum = 0;
   int32_t square_sum = 0;
@@ -510,38 +590,53 @@ QOrderLayerNormRowKernel(const int8_t* __restrict__ src, const float src_scale, 
   sum = WarpReduceSum<int32_t>(sum);
   square_sum = WarpReduceSum<int32_t>(square_sum);
 
-  const float mean = src_scale * (float)sum / cols;
-  const float rvar = rsqrtf(src_scale * src_scale * ((double)square_sum - ((double)sum * sum / cols)) / cols + epsilon);
+  const float mean = __double2float_rn(src_scale * (double)sum / cols);
+  const float rvar = rsqrtf(src_scale * src_scale * __double2float_rn((double)square_sum - ((double)sum * (double)sum / (double)cols)) / cols + epsilon);
   const float dst_rscale = 1.0f / dst_scale;
   float4 f4;
   for (unsigned c = threadIdx.x << 2; c < cols; c += 128) {
     char4 ch4 = __ldg((const char4*)(src + c));
-    f4.x = (src_scale * ch4.x - mean) * rvar * __half2float(gamma[c]);
-    f4.y = (src_scale * ch4.y - mean) * rvar * __half2float(gamma[c + 1]);
-    f4.z = (src_scale * ch4.z - mean) * rvar * __half2float(gamma[c + 2]);
-    f4.w = (src_scale * ch4.w - mean) * rvar * __half2float(gamma[c + 3]);
+    f4.x = (src_scale * ch4.x - mean) * rvar * to_float(gamma[c]);
+    f4.y = (src_scale * ch4.y - mean) * rvar * to_float(gamma[c + 1]);
+    f4.z = (src_scale * ch4.z - mean) * rvar * to_float(gamma[c + 2]);
+    f4.w = (src_scale * ch4.w - mean) * rvar * to_float(gamma[c + 3]);
     if (beta) {
-      f4.x += __half2float(beta[c]);
-      f4.y += __half2float(beta[c + 1]);
-      f4.z += __half2float(beta[c + 2]);
-      f4.w += __half2float(beta[c + 3]);
+      f4.x += to_float(beta[c]);
+      f4.y += to_float(beta[c + 1]);
+      f4.z += to_float(beta[c + 2]);
+      f4.w += to_float(beta[c + 3]);
     }
     *(char4*)(dst + c) = quantize_float4_char4(f4, dst_rscale);
   }
 }
 
+template <typename T>
 void QOrderLayerNorm(cudaStream_t stream, const cudaDeviceProp& /*device_prop*/, cublasLtOrder_t order,
                      const int8_t* src, const float src_scale, int8_t* dst, const float dst_scale,
-                     const __half* gamma, const __half* beta, const float epsilon,
+                     const T* gamma, const T* beta, const float epsilon,
                      const unsigned batch, const unsigned rows, const unsigned cols) {
+  if (cols & (order == CUBLASLT_ORDER_COL32 ? 0x1FLL : 0x3LL)) {
+    throw std::runtime_error("cols can not divide by 4 in ROW order or 32 in COL32 order!");
+  }
+
   dim3 threads(32, QORDER_LAYERNORM_ROWS_PER_BLOCK, 1);
   dim3 blocks((unsigned)(rows + QORDER_LAYERNORM_ROWS_PER_BLOCK - 1) / QORDER_LAYERNORM_ROWS_PER_BLOCK, (unsigned)batch, 1);
   if (order == CUBLASLT_ORDER_COL32) {
-    QOrderLayerNormCol32Kernel<<<blocks, threads, 0, stream>>>(src, src_scale, dst, dst_scale, gamma, beta, epsilon, rows, cols);
+    QOrderLayerNormCol32Kernel<T><<<blocks, threads, 0, stream>>>(src, src_scale, dst, dst_scale, gamma, beta, epsilon, rows, cols);
   } else { // order == CUBLASLT_ORDER_ROW
-    QOrderLayerNormRowKernel<<<blocks, threads, 0, stream>>>(src, src_scale, dst, dst_scale, gamma, beta, epsilon, rows, cols);
+    QOrderLayerNormRowKernel<T><<<blocks, threads, 0, stream>>>(src, src_scale, dst, dst_scale, gamma, beta, epsilon, rows, cols);
   }
 }
+
+template void QOrderLayerNorm<float>(cudaStream_t stream, const cudaDeviceProp& /*device_prop*/, cublasLtOrder_t order,
+                     const int8_t* src, const float src_scale, int8_t* dst, const float dst_scale,
+                     const float* gamma, const float* beta, const float epsilon,
+                     const unsigned batch, const unsigned rows, const unsigned cols);
+
+template void QOrderLayerNorm<__half>(cudaStream_t stream, const cudaDeviceProp& /*device_prop*/, cublasLtOrder_t order,
+                     const int8_t* src, const float src_scale, int8_t* dst, const float dst_scale,
+                     const __half* gamma, const __half* beta, const float epsilon,
+                     const unsigned batch, const unsigned rows, const unsigned cols);
 
 // source matrix block 32 x 32, each thread handle 4 int8_t items,
 // thread block size should be (8 cols_in_4, 32 rows, 1)

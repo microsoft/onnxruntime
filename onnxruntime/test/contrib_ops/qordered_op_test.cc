@@ -152,7 +152,7 @@ static void RunQOrdered_Quantize_Test(
     std::vector<T> const& fvec,
     std::vector<int64_t> const& shape,
     OrderCublasLt order_q,
-    T scale) {
+    float scale) {
   auto qvec = QuantizeTransform(shape, scale, fvec, order_q);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -161,7 +161,7 @@ static void RunQOrdered_Quantize_Test(
   test_qorder.AddAttribute("order_input", (int64_t)ORDER_ROW);
   test_qorder.AddAttribute("order_output", (int64_t)order_q);
   test_qorder.AddInput<T>("input", shape, fvec);
-  test_qorder.AddInput<T>("scale_input", {}, {scale});
+  test_qorder.AddInput<float>("scale_input", {}, {scale});
   test_qorder.AddOutput("output", shape, qvec, false, 0.0f, 0.0f);
   test_qorder.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
@@ -196,27 +196,27 @@ TEST(QOrderedTest, FP32_Quantize_COL4_4R2_8C) {
 
 TEST(QOrderedTest, FP16_Quantize_COL) {
   std::vector<int64_t> shape = {3, 5, 32 * 2};
-  MLFloat16 scale = MLFloat16(2.0f);
+  float scale = 2.0f;
   std::vector<MLFloat16> fvec = GenData<MLFloat16>(shape, scale * 0.7685);
   RunQOrdered_Quantize_Test(fvec, shape, ORDER_COL, scale);
 }
 TEST(QOrderedTest, FP16_Quantize_ROW) {
   std::vector<int64_t> shape = {3, 5, 32 * 2};
-  MLFloat16 scale = MLFloat16(2.0f);
+  float scale = 2.0f;
   std::vector<MLFloat16> fvec = GenData<MLFloat16>(shape, scale * 0.7685);
   RunQOrdered_Quantize_Test(fvec, shape, ORDER_ROW, scale);
 }
 
 TEST(QOrderedTest, FP16_Quantize_COL32) {
   std::vector<int64_t> shape = {3, 5, 32 * 2};
-  MLFloat16 scale = MLFloat16(2.0f);
+  float scale = 2.0f;
   std::vector<MLFloat16> fvec = GenData<MLFloat16>(shape, scale * 0.7685);
   RunQOrdered_Quantize_Test(fvec, shape, ORDER_COL32, scale);
 }
 
 TEST(QOrderedTest, FP16_Quantize_COL4_4R2_8C) {
   std::vector<int64_t> shape = {3, 8 * 3, 32 * 2};
-  MLFloat16 scale = MLFloat16(2.0f);
+  float scale = 2.0f;
   std::vector<MLFloat16> fvec = GenData<MLFloat16>(shape, scale * 0.7685);
   RunQOrdered_Quantize_Test(fvec, shape, ORDER_COL4_4R2_8C, scale);
 }
@@ -226,17 +226,18 @@ static void RunQOrdered_Dequantize_Test(
     std::vector<int8_t> const& qvec,
     std::vector<int64_t> const& shape,
     OrderCublasLt order_q,
-    T scale) {
+    float scale) {
   auto fvec = DequantizeTransform<T>(shape, scale, qvec, order_q);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
 
   OpTester test_qorder("DequantizeWithOrder", 1, onnxruntime::kMSDomain);
+  test_qorder.AddAttribute("to", (int64_t)(std::is_same<T, float>::value ? onnx::TensorProto_DataType_FLOAT : onnx::TensorProto_DataType_FLOAT16));
   test_qorder.AddAttribute("order_input", (int64_t)order_q);
   test_qorder.AddAttribute("order_output", (int64_t)ORDER_ROW);
   test_qorder.template AddInput("input", shape, qvec);
-  test_qorder.AddInput<T>("scale_input", {}, {scale});
+  test_qorder.AddInput<float>("scale_input", {}, {scale});
   test_qorder.AddOutput("output", shape, fvec);
   test_qorder.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
@@ -246,28 +247,28 @@ TEST(QOrderedTest, FP32_Dequantize_COL32) {
   std::vector<int64_t> shape = {3, 5, 32 * 2};
   float scale = 2.0f;
   std::vector<int8_t> qvec = GenData<int8_t>(shape, 1.0f);
-  RunQOrdered_Dequantize_Test(qvec, shape, ORDER_COL32, scale);
+  RunQOrdered_Dequantize_Test<float>(qvec, shape, ORDER_COL32, scale);
 }
 
 TEST(QOrderedTest, FP32_Dequantize_ROW) {
   std::vector<int64_t> shape = {3, 5, 32 * 2};
   float scale = 2.0f;
   std::vector<int8_t> qvec = GenData<int8_t>(shape, 1.0f);
-  RunQOrdered_Dequantize_Test(qvec, shape, ORDER_ROW, scale);
+  RunQOrdered_Dequantize_Test<float>(qvec, shape, ORDER_ROW, scale);
 }
 
 TEST(QOrderedTest, FP16_Dequantize_COL32) {
   std::vector<int64_t> shape = {3, 5, 32 * 2};
-  MLFloat16 scale(2.0f);
+  float scale = 2.0f;
   std::vector<int8_t> qvec = GenData<int8_t>(shape, 1.0f);
-  RunQOrdered_Dequantize_Test(qvec, shape, ORDER_COL32, scale);
+  RunQOrdered_Dequantize_Test<MLFloat16>(qvec, shape, ORDER_COL32, scale);
 }
 
 TEST(QOrderedTest, FP16_Dequantize_ROW) {
   std::vector<int64_t> shape = {3, 5, 32 * 2};
-  MLFloat16 scale(2.0f);
+  float scale = 2.0f;
   std::vector<int8_t> qvec = GenData<int8_t>(shape, 1.0f);
-  RunQOrdered_Dequantize_Test(qvec, shape, ORDER_ROW, scale);
+  RunQOrdered_Dequantize_Test<MLFloat16>(qvec, shape, ORDER_ROW, scale);
 }
 
 static void RunQOrdered_MatMul_Test(
@@ -510,10 +511,11 @@ TEST(QOrderedTest, MatMul_bias_addC_broadcastC_COL_16x64x32_b2_1) {
                           true /* add bias */, true /* broadcast batch c */);
 }
 
+template <typename T> // MLFloat16 or float
 static void
 RunQOrdered_LayerNorm_WithData(std::vector<int64_t> const& shape, int axis, float epsilon, OrderCublasLt order,
                                const std::vector<int8_t>& vecX, float scale_x,
-                               const std::vector<MLFloat16>& vecGamma, const std::vector<MLFloat16>* vecBeta,
+                               const std::vector<T>& vecGamma, const std::vector<T>* vecBeta,
                                float scale_y, const std::vector<int8_t>& vecY) {
   std::vector<int64_t> bias_shape = {shape.back()};
   OpTester test_qorder("QOrderedLayerNormalization", 1, onnxruntime::kMSDomain);
@@ -523,11 +525,11 @@ RunQOrdered_LayerNorm_WithData(std::vector<int64_t> const& shape, int axis, floa
   test_qorder.AddAttribute("order_Y", (int64_t)order);
   test_qorder.AddInput<int8_t>("X", shape, vecX);
   test_qorder.AddInput<float>("scale_X", {}, {scale_x});
-  test_qorder.AddInput<MLFloat16>("scale", bias_shape, vecGamma);
+  test_qorder.AddInput<T>("scale", bias_shape, vecGamma);
   if (vecBeta) {
-    test_qorder.AddInput<MLFloat16>("B", bias_shape, *vecBeta);
+    test_qorder.AddInput<T>("B", bias_shape, *vecBeta);
   } else {
-    test_qorder.AddOptionalInputEdge<MLFloat16>();
+    test_qorder.AddOptionalInputEdge<T>();
   }
   test_qorder.AddInput<float>("scale_Y", {}, {scale_y});
   test_qorder.AddOutput<int8_t>("Y", shape, vecY, false, 0.0f, 0.0f /* abs error */);
@@ -618,6 +620,8 @@ TEST(QOrderedTest, LayerNorm_Data_1x32) {
 
   RunQOrdered_LayerNorm_WithData({1, 1, 32}, -1, 0.00001f, ORDER_ROW, vecX, scale_x, vecGamma, &vecBeta, scale_y, vecY);
   RunQOrdered_LayerNorm_WithData({1, 1, 32}, -1, 0.00001f, ORDER_COL32, vecX, scale_x, vecGamma, &vecBeta, scale_y, vecY);
+  RunQOrdered_LayerNorm_WithData({1, 1, 32}, -1, 0.00001f, ORDER_ROW, vecX, scale_x, vecGamma32, &vecBeta32, scale_y, vecY);
+  RunQOrdered_LayerNorm_WithData({1, 1, 32}, -1, 0.00001f, ORDER_COL32, vecX, scale_x, vecGamma32, &vecBeta32, scale_y, vecY);
 }
 
 TEST(QOrderedTest, LayerNorm_OrderRow_3x7x600) {

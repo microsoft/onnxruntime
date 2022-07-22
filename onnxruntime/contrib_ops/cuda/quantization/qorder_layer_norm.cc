@@ -23,7 +23,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("Q", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("S", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("F", DataTypeImpl::GetTensorType<MLFloat16>())
+        .TypeConstraint("F", BuildKernelDefConstraints<float, MLFloat16>())
         .InputMemoryType(OrtMemTypeCPUInput, 1)   // scale_X
         .InputMemoryType(OrtMemTypeCPUInput, 4),  // scale_Y
     QOrderedLayerNormalization);
@@ -45,7 +45,6 @@ Status QOrderedLayerNormalization::ComputeInternal(OpKernelContext* ctx) const {
   LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
 
   typedef typename ToCudaType<int8_t>::MappedType CudaQ;
-  typedef typename ToCudaType<MLFloat16>::MappedType CudaF;
 
   // Inputs
   const Tensor* X = ctx->Input<Tensor>(0);
@@ -53,8 +52,8 @@ Status QOrderedLayerNormalization::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* bias = ctx->Input<Tensor>(3);
 
   auto X_data = reinterpret_cast<const CudaQ*>(X->Data<int8_t>());
-  auto scale_data = reinterpret_cast<const CudaF*>(scale->Data<MLFloat16>());
-  auto bias_data = (nullptr == bias) ? nullptr : reinterpret_cast<const CudaF*>(bias->Data<MLFloat16>());
+  const void* scale_data = scale->DataRaw();
+  const void* bias_data = (nullptr == bias) ? nullptr : bias->DataRaw();
 
   const TensorShape& x_shape = X->Shape();
   ORT_ENFORCE(x_shape.GetDims().size() == 3, "input shape must be {batch, rows, cols}");
@@ -76,9 +75,15 @@ Status QOrderedLayerNormalization::ComputeInternal(OpKernelContext* ctx) const {
   const float* scale_x = ctx->Input<Tensor>(1)->Data<float>();
   const float* scale_y = ctx->Input<Tensor>(4)->Data<float>();
 
-  QOrderLayerNorm(Stream(), GetDeviceProp(), (cublasLtOrder_t)order_X_,
-                  X_data, *scale_x, Y_data, *scale_y, scale_data, bias_data, epsilon_,
-                  batch, rows, cols);
+  if (scale->IsDataType<MLFloat16>()) {
+    QOrderLayerNorm(Stream(), GetDeviceProp(), (cublasLtOrder_t)order_X_,
+                    X_data, *scale_x, Y_data, *scale_y, (const __half*)scale_data, (const __half*)bias_data, epsilon_,
+                    batch, rows, cols);
+  } else {
+    QOrderLayerNorm(Stream(), GetDeviceProp(), (cublasLtOrder_t)order_X_,
+                    X_data, *scale_x, Y_data, *scale_y, (const float*)scale_data, (const float*)bias_data, epsilon_,
+                    batch, rows, cols);
+  }
 
   LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
   return Status::OK();

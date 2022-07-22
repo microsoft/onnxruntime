@@ -1110,16 +1110,14 @@ If mask is provided, mask index (that is position of first 0 in mask, or number 
       .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
       .Attr("order_output", "cublasLt order of output matrix", AttributeProto::INT)
       .Input(0, "input", "TODO: input tensor of (ROWS, COLS). if less than 2d, will broadcast to (1, X). If 3d, it is treated as (B, ROWS, COS)", "F")
-      .Input(1, "scale_input", "scale of the input", "F")
+      .Input(1, "scale_input", "scale of the input", "S")
       .Output(0, "output", "output tensor", "Q")
       .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
       .TypeConstraint("F", {"tensor(float16)", "tensor(float)"}, "Constrain to float types")
+      .TypeConstraint("S", {"tensor(float)"}, "Constrain Scale to float32 types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto::INT8, 0);
-
-        if (!hasInputShape(ctx, 0))
-          return;
-
+        if (!hasInputShape(ctx, 0)) return;
         auto& input_shape = getInputShape(ctx, 0);
         updateOutputShape(ctx, 0, input_shape);
       }));
@@ -1128,17 +1126,16 @@ If mask is provided, mask index (that is position of first 0 in mask, or number 
       .SetDoc(R"DOC(Dequantize input matrix to specific layout used in cublaslt. attr to specify output type, float16 or float32)DOC")
       .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
       .Attr("order_output", "cublasLt order of output matrix", AttributeProto::INT)
+      .Attr("to", "The output data type, only support TensorProto_DataType_FLOAT (1) and TensorProto_DataType_FLOAT16 (10)", AttributeProto::INT)
       .Input(0, "input", "TODO: input tensor of (ROWS, COLS). if less than 2d, will broadcast to (1, X). If 3d, it is treated as (B, ROWS, COS)", "Q")
-      .Input(1, "scale_input", "scale of the input", "F")
+      .Input(1, "scale_input", "scale of the input", "S")
       .Output(0, "output", "output tensor", "F")
       .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
       .TypeConstraint("F", {"tensor(float16)", "tensor(float)"}, "Constrain to float types")
+      .TypeConstraint("S", {"tensor(float)"}, "Constrain Scale to float32 types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 1, 0);
-
-        if (!hasInputShape(ctx, 0))
-          return;
-
+        propagateElemTypeFromAttributeToOutput(ctx, "to", 0);
+        if (!hasInputShape(ctx, 0)) return;
         auto& input_shape = getInputShape(ctx, 0);
         updateOutputShape(ctx, 0, input_shape);
       }));
@@ -1277,8 +1274,8 @@ TODO: Support them if needed in the future.
       .Output(0, "Y", "Output data tensor.", "Q")
       .TypeConstraint(
           "F",
-          {"tensor(float16)"},
-          "Constrain input scale and bias could be float16 tensors.")
+          {"tensor(float16)", "tensor(float)"},
+          "Constrain input gamma and bias could be float16/float tensors. float may get better precision, float16 runs faster.")
       .TypeConstraint(
           "S",
           {"tensor(float)"},
