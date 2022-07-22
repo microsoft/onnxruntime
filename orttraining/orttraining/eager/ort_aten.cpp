@@ -371,7 +371,9 @@ OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at:
   attrs["to"] = create_ort_attribute(
       "to", GetONNXTensorProtoDataType(type), at::ScalarType::Long);
 
-  auto status = invoker.Invoke("Cast", {std::move(input)}, output, &attrs);
+  auto status = invoker.Invoke("Cast",
+                               {std::move(input)},
+                               output, &attrs);
 
   if (!status.IsOK())
     throw std::runtime_error(
@@ -656,9 +658,8 @@ at::Tensor& copy_(
     attrs["to"] = create_ort_attribute(
         "to", (int64_t)GetONNXTensorProtoDataType(self.scalar_type()), at::kLong);
 
-    auto status = invoker.Invoke("Cast", {
-                                             std::move(ort_src),
-                                         },
+    auto status = invoker.Invoke("Cast",
+                                 {std::move(ort_src)},
                                  ort_cast_output, &attrs);
 
     if (!status.IsOK())
@@ -704,8 +705,9 @@ at::Tensor& zero_(at::Tensor& self) {
 
   std::vector<OrtValue> ort_out = {ort_in_self};
 
-  auto status = invoker.Invoke(
-      "ZeroGradient", {std::move(ort_in_self), std::move(flag_val)}, ort_out, nullptr, onnxruntime::kMSDomain, 1);
+  auto status = invoker.Invoke("ZeroGradient",
+                               {std::move(ort_in_self), std::move(flag_val)},
+                               ort_out, nullptr, onnxruntime::kMSDomain, 1);
 
   if (!status.IsOK())
     throw std::runtime_error(
@@ -738,10 +740,8 @@ at::Tensor& add__Tensor(
 
   std::vector<OrtValue> ort_outputs_0_Mul(1);
 
-  auto status = invoker.Invoke("Mul", {
-                                          std::move(ort_input_alpha),
-                                          std::move(ort_input_other),
-                                      },
+  auto status = invoker.Invoke("Mul",
+                               {std::move(ort_input_alpha), std::move(ort_input_other)},
                                ort_outputs_0_Mul, nullptr);
 
   if (!status.IsOK())
@@ -860,9 +860,8 @@ at::Tensor& argmax_out(
   auto ort_input_out = create_ort_value(invoker, out);
   ort_outputs_0_ArgMax[0] = ort_input_out;
 
-  auto status = invoker.Invoke("ArgMax", {
-                                             std::move(ort_input_self),
-                                         },
+  auto status = invoker.Invoke("ArgMax",
+                               {std::move(ort_input_self)},
                                ort_outputs_0_ArgMax, &attrs);
 
   if (!status.IsOK())
@@ -906,11 +905,9 @@ bool equal(
   // being less than true, so any false will reduce to false.
   std::vector<OrtValue> ort_outputs_0_Equal(1);
 
-  auto equalStatus = invoker.Invoke("Equal", {
-                                                 std::move(ort_input_self),
-                                                 std::move(ort_input_other),
-                                             },
-                                    ort_outputs_0_Equal, nullptr);
+  auto equalStatus = invoker.Invoke("Equal",
+                                    {std::move(ort_input_self), std::move(ort_input_other)},
+                                    t_outputs_0_Equal, nullptr);
 
   if (!equalStatus.IsOK())
     throw std::runtime_error(
@@ -927,9 +924,8 @@ bool equal(
   // GetONNXTensorProtoDataType doesn't support byte, which leaves us with int
   OrtValue equalAsInt = CastToType(invoker, ort_outputs_0_Equal[0], at::ScalarType::Int);
 
-  auto reduceStatus = invoker.Invoke("ReduceMin", {
-                                                      std::move(equalAsInt),
-                                                  },
+  auto reduceStatus = invoker.Invoke("ReduceMin",
+                                     {std::move(equalAsInt)},
                                      ort_outputs_0_ReduceMin, &attrs);
 
   if (!reduceStatus.IsOK())
@@ -983,9 +979,8 @@ at::Tensor& fill__Scalar(
 
   std::vector<OrtValue> ort_outputs_0_Shape(1);
 
-  auto status = invoker.Invoke("Shape", {
-                                            std::move(ort_input_self),
-                                        },
+  auto status = invoker.Invoke("Shape",
+                               {std::move(ort_input_self)},
                                ort_outputs_0_Shape, nullptr);
 
   if (!status.IsOK())
@@ -999,9 +994,8 @@ at::Tensor& fill__Scalar(
   attrs["value"] = create_ort_attribute(
       "value", value, true, self.scalar_type());
 
-  status = invoker.Invoke("ConstantOfShape", {
-                                                 std::move(ort_outputs_0_Shape[0]),
-                                             },
+  status = invoker.Invoke("ConstantOfShape",
+                          {std::move(ort_outputs_0_Shape[0])},
                           ort_outputs_1_ConstantOfShape, &attrs);
 
   if (!status.IsOK())
@@ -1076,9 +1070,8 @@ at::Tensor& _log_softmax_out(
 
     NodeAttributes attrs_0(1);
     attrs_0["perm"] = create_ort_attribute("perm", axes);
-    auto status = invoker.Invoke("Transpose", {
-                                                  std::move(ort_input_0_self),
-                                              },
+    auto status = invoker.Invoke("Transpose",
+                                 {std::move(ort_input_0_self)},
                                  ort_outputs_0_Transpose, &attrs_0);
     CHECK_STATUS(status);
   }
@@ -1093,9 +1086,7 @@ at::Tensor& _log_softmax_out(
   }
 
   auto status = invoker.Invoke("LogSoftmax",
-                               {
-                                   std::move(need_transpose ? ort_outputs_0_Transpose[0] : ort_input_0_self),
-                               },
+                               {std::move(need_transpose ? ort_outputs_0_Transpose[0] : ort_input_0_self)},
                                ort_outputs_1_LogSoftmax, &attrs_1);
   CHECK_STATUS(status);
 
@@ -1107,9 +1098,8 @@ at::Tensor& _log_softmax_out(
     NodeAttributes attrs_2(1);
     attrs_2["perm"] = create_ort_attribute("perm", axes);
 
-    status = invoker.Invoke("Transpose", {
-                                             std::move(ort_outputs_1_LogSoftmax[0]),
-                                         },
+    status = invoker.Invoke("Transpose",
+                            {std::move(ort_outputs_1_LogSoftmax[0])},
                             ort_outputs_2_Transpose, &attrs_2);
     CHECK_STATUS(status);
   }
@@ -1165,10 +1155,8 @@ at::Tensor& mm_out(
   std::vector<OrtValue> ort_outputs_0_MatMul(1);
   ort_outputs_0_MatMul[0] = ort_input_out;
 
-  auto status = invoker.Invoke("MatMul", {
-                                             std::move(ort_input_0_self),
-                                             std::move(ort_input_0_mat2),
-                                         },
+  auto status = invoker.Invoke("MatMul",
+                               {std::move(ort_input_0_self), std::move(ort_input_0_mat2)},
                                ort_outputs_0_MatMul, nullptr);
   CHECK_STATUS(status);
 
