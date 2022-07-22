@@ -84,5 +84,11 @@ inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int6
   return true;
 }
 
+inline int warpSizeDynamic() {
+  hipDeviceProp_t deviceProp;
+  HIP_CALL_THROW(hipGetDeviceProperties(&deviceProp, 0));
+  return deviceProp.warpSize;
+}
+
 }  // namespace rocm
 }  // namespace onnxruntime
