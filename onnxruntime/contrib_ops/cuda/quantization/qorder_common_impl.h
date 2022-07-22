@@ -70,7 +70,7 @@ void QOrderLayerNorm(
     cudaStream_t stream, const cudaDeviceProp& device_prop, cublasLtOrder_t order,
     const int8_t* src, const float src_scale, int8_t* dst, const float dst_scale,
     const T* gamma, const T* beta, const float epsilon,
-    const unsigned batch, const unsigned rows, const unsigned cols);
+    unsigned batch, unsigned rows, unsigned cols);
 
 void ReorderS8RowToCol32(
     cudaStream_t stream, const cudaDeviceProp& device_prop,

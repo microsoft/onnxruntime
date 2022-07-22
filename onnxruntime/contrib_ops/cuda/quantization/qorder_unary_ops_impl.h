@@ -3,7 +3,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-
+#include <inttypes.h>
 #include <cuda_runtime.h>
 
 namespace onnxruntime {

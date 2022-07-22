@@ -60,9 +60,9 @@ Status QOrderedLayerNormalization::ComputeInternal(OpKernelContext* ctx) const {
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
   ORT_ENFORCE(axis == 2, "Currently only support on last axis}");
 
-  int batch = gsl::narrow<int>(x_shape.GetDims()[0]);
-  int64_t rows = gsl::narrow<int>(x_shape.GetDims()[1]);
-  int64_t cols = gsl::narrow<int>(x_shape.GetDims()[2]);
+  unsigned int batch = gsl::narrow<unsigned int>(x_shape.GetDims()[0]);
+  unsigned int rows = gsl::narrow<unsigned int>(x_shape.GetDims()[1]);
+  unsigned int cols = gsl::narrow<unsigned int>(x_shape.GetDims()[2]);
   ORT_ENFORCE(cols != 1, "cols should not be 1");
 
   // Outputs
@@ -77,12 +77,12 @@ Status QOrderedLayerNormalization::ComputeInternal(OpKernelContext* ctx) const {
 
   if (scale->IsDataType<MLFloat16>()) {
     QOrderLayerNorm(Stream(), GetDeviceProp(), (cublasLtOrder_t)order_X_,
-                    X_data, *scale_x, Y_data, *scale_y, (const __half*)scale_data, (const __half*)bias_data, epsilon_,
-                    batch, rows, cols);
+                    X_data, *scale_x, Y_data, *scale_y, (const __half*)scale_data, (const __half*)bias_data,
+                    static_cast<float>(epsilon_), batch, rows, cols);
   } else {
     QOrderLayerNorm(Stream(), GetDeviceProp(), (cublasLtOrder_t)order_X_,
-                    X_data, *scale_x, Y_data, *scale_y, (const float*)scale_data, (const float*)bias_data, epsilon_,
-                    batch, rows, cols);
+                    X_data, *scale_x, Y_data, *scale_y, (const float*)scale_data, (const float*)bias_data,
+                    static_cast<float>(epsilon_), batch, rows, cols);
   }
 
   LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
