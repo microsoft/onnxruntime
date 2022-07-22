@@ -15,7 +15,7 @@ namespace eager {
 
 template <typename T> class ORTLogHelper {
  public:
-  ORTLogHelper(const T &value) : value_{value} {}
+  explicit ORTLogHelper(const T &value) : value_{value} {}
 
   const T &GetValue() const { return value_; }
 
