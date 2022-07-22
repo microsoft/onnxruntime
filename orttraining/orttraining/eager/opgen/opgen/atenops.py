@@ -99,12 +99,18 @@ for binary_op, onnx_op in {
     "mul": Mul("self", "other"),
     "div": Div("self", "other"),
 }.items():
-    for dtype in ["Tensor", "Scalar"]:
-        for variant in ["", "_"]:
-            name = f"aten::{binary_op}{variant}.{dtype}"
-            if name not in ops:
-                ops[f"aten::{binary_op}{variant}.{dtype}"] = deepcopy(onnx_op)
-                type_promotion_ops.append(f"aten::{binary_op}{variant}.{dtype}")
+    # for Tensor, binary_op.out is used by both binary_op and bianry_op_, so we only generate .out
+    name = f"aten::{binary_op}.out"
+    if name not in ops:
+        ops[f"aten::{binary_op}.out"] = deepcopy(onnx_op)
+        type_promotion_ops.append(f"aten::{binary_op}.out")
+
+    # for Scalar, both binary_op and bianry_op_ need to be generated and .out is autogen by aten from bianry_op_
+    for variant in ["", "_"]:
+        name = f"aten::{binary_op}{variant}.Scalar"
+        if name not in ops:
+            ops[f"aten::{binary_op}{variant}.Scalar"] = deepcopy(onnx_op)
+            type_promotion_ops.append(f"aten::{binary_op}{variant}.Scalar")
 
 for unary_op in unary_ops_with_out:
     ops[f"aten::{unary_op}.out"] = onnx_ops[unary_op]("self")

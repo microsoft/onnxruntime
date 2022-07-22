@@ -60,6 +60,13 @@ class OrtOpTests(unittest.TestCase):
     def get_device(self):
         return torch_ort.device()
 
+    def test_fallback_to_cpu(self):
+        device = self.get_device()
+        cpu_ones = torch.ones(3, 3, dtype=bool)
+        ort_ones = cpu_ones.to(device)
+        # the onnx operator Mul does not support type bool.
+        assert torch.allclose(torch.mul(cpu_ones, cpu_ones), torch.mul(ort_ones, ort_ones).cpu())
+
     def test_add(self):
         device = self.get_device()
         cpu_ones = torch.Tensor([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
@@ -67,6 +74,13 @@ class OrtOpTests(unittest.TestCase):
         cpu_twos = cpu_ones + cpu_ones
         ort_twos = ort_ones + ort_ones
         assert torch.allclose(cpu_twos, ort_twos.cpu())
+
+        cpu_out_tensor = torch.tensor([])
+        ort_out_tensor = cpu_out_tensor.to(device)
+        cpu_threes = torch.add(cpu_ones, cpu_ones, alpha=2, out=cpu_out_tensor)
+        ort_threes = torch.add(ort_ones, ort_ones, alpha=2, out=ort_out_tensor)
+        assert torch.allclose(cpu_threes, ort_threes.cpu())
+        assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
 
     def test_type_promotion_add(self):
         device = self.get_device()
@@ -83,13 +97,6 @@ class OrtOpTests(unittest.TestCase):
         cpu_ones = torch.Tensor([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
         ort_ones = cpu_ones.to(device)
         assert torch.allclose(torch.add(cpu_ones, cpu_ones, alpha=2.5), torch.add(ort_ones, ort_ones, alpha=2.5).cpu())
-
-    # the onnx operator Mul does not support type bool. The following test verifies cpu fall back works.
-    def test_mul_bool(self):
-        device = self.get_device()
-        cpu_ones = torch.ones(3, 3, dtype=bool)
-        ort_ones = cpu_ones.to(device)
-        assert torch.allclose(torch.mul(cpu_ones, cpu_ones), torch.mul(ort_ones, ort_ones).cpu())
 
     # TODO: Add BFloat16 test coverage
     def test_add_(self):
