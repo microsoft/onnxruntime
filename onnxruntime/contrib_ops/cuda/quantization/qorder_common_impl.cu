@@ -39,6 +39,11 @@ __device__ inline char2 quantize_half2_char2(const __half2 xy, const __half2 inv
   return char2{(char)s2xy.s2.x, (char)s2xy.s2.y};
 }
 
+__device__ inline char4 quantize_float4_char4(const float4 val4, const float rscale) {
+  return char4{quantize_float_s8(val4.x, rscale), quantize_float_s8(val4.y, rscale),
+               quantize_float_s8(val4.z, rscale), quantize_float_s8(val4.w, rscale)};
+}
+
 __device__ inline char4 quantize_half4_char4(const __half4 val4, const __half2 inverse_scale2) {
   __half2 val4_xy = val4.xy * inverse_scale2;
   __half2 val4_zw = val4.zw * inverse_scale2;
@@ -462,22 +467,23 @@ QOrderLayerNormCol32Kernel(const int8_t* __restrict__ src, const float src_scale
   sum = WarpReduceSum<int32_t>(sum);
   square_sum = WarpReduceSum<int32_t>(square_sum);
 
-  const float mean = (src_scale * sum / cols);
-  const float rvar = rsqrtf(src_scale * src_scale * ((float)square_sum - ((float)sum * sum / cols)) / cols + epsilon);
-  const __half2 mean2 = __float2half2_rn(mean);
-  const __half2 var2 = __float2half2_rn(rvar);
-  const __half2 src_scale2 = __float2half2_rn(src_scale);
-  const __half2 dst_rscale2 = __float2half2_rn(1.0f / dst_scale);
-  const __half4 zero4 = {__float2half2_rn(0.0f), __float2half2_rn(0.0f)};
-
+  const float mean = src_scale * (float)sum / cols;
+  const float rvar = rsqrtf(src_scale * src_scale * ((double)square_sum - ((double)sum * sum / cols)) / cols + epsilon);
+  const float dst_rscale = 1.0f / dst_scale;
+  float4 f4;
   for (unsigned index = 0, c = threadIdx.x * 4; c < cols; c += 128, index += STRIDES_PER_WARP_ROUND) {
     char4 ch4 = __ldg((const char4*)(src + index));
-    __half4 dqval4 = deqantize_char4_half4(ch4, src_scale2);
-    const __half4 g4 = *((const __half4*)(gamma + c));
-    const __half4 b4 = (beta == nullptr) ? zero4 : *((const __half4*)(beta + c));
-    dqval4.xy = __hfma2(__hmul2(__hsub2(dqval4.xy, mean2), var2), g4.xy, b4.xy);
-    dqval4.zw = __hfma2(__hmul2(__hsub2(dqval4.zw, mean2), var2), g4.zw, b4.zw);
-    *(char4*)(dst + index) = quantize_half4_char4(dqval4, dst_rscale2);
+    f4.x = (src_scale * ch4.x - mean) * rvar * __half2float(gamma[c]);
+    f4.y = (src_scale * ch4.y - mean) * rvar * __half2float(gamma[c + 1]);
+    f4.z = (src_scale * ch4.z - mean) * rvar * __half2float(gamma[c + 2]);
+    f4.w = (src_scale * ch4.w - mean) * rvar * __half2float(gamma[c + 3]);
+    if (beta) {
+      f4.x += __half2float(beta[c]);
+      f4.y += __half2float(beta[c + 1]);
+      f4.z += __half2float(beta[c + 2]);
+      f4.w += __half2float(beta[c + 3]);
+    }
+    *(char4*)(dst + index) = quantize_float4_char4(f4, dst_rscale);
   }
 }
 
@@ -504,22 +510,23 @@ QOrderLayerNormRowKernel(const int8_t* __restrict__ src, const float src_scale, 
   sum = WarpReduceSum<int32_t>(sum);
   square_sum = WarpReduceSum<int32_t>(square_sum);
 
-  const float mean = (src_scale * sum / cols);
-  const float rvar = rsqrtf(src_scale * src_scale * ((float)square_sum - ((float)sum * sum / cols)) / cols + epsilon);
-  const __half2 mean2 = __float2half2_rn(mean);
-  const __half2 var2 = __float2half2_rn(rvar);
-  const __half2 src_scale2 = __float2half2_rn(src_scale);
-  const __half2 dst_rscale2 = __float2half2_rn(1.0f / dst_scale);
-  const __half4 zero4 = {__float2half2_rn(0.0f), __float2half2_rn(0.0f)};
-
+  const float mean = src_scale * (float)sum / cols;
+  const float rvar = rsqrtf(src_scale * src_scale * ((double)square_sum - ((double)sum * sum / cols)) / cols + epsilon);
+  const float dst_rscale = 1.0f / dst_scale;
+  float4 f4;
   for (unsigned c = threadIdx.x << 2; c < cols; c += 128) {
     char4 ch4 = __ldg((const char4*)(src + c));
-    __half4 dqval4 = deqantize_char4_half4(ch4, src_scale2);
-    const __half4 g4 = *((const __half4*)(gamma + c));
-    const __half4 b4 = (beta == nullptr) ? zero4 : *((const __half4*)(beta + c));
-    dqval4.xy = __hfma2(__hmul2(__hsub2(dqval4.xy, mean2), var2), g4.xy, b4.xy);
-    dqval4.zw = __hfma2(__hmul2(__hsub2(dqval4.zw, mean2), var2), g4.zw, b4.zw);
-    *(char4*)(dst + c) = quantize_half4_char4(dqval4, dst_rscale2);
+    f4.x = (src_scale * ch4.x - mean) * rvar * __half2float(gamma[c]);
+    f4.y = (src_scale * ch4.y - mean) * rvar * __half2float(gamma[c + 1]);
+    f4.z = (src_scale * ch4.z - mean) * rvar * __half2float(gamma[c + 2]);
+    f4.w = (src_scale * ch4.w - mean) * rvar * __half2float(gamma[c + 3]);
+    if (beta) {
+      f4.x += __half2float(beta[c]);
+      f4.y += __half2float(beta[c + 1]);
+      f4.z += __half2float(beta[c + 2]);
+      f4.w += __half2float(beta[c + 3]);
+    }
+    *(char4*)(dst + c) = quantize_float4_char4(f4, dst_rscale);
   }
 }
 
