@@ -827,7 +827,7 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
     }
 
     // Now the dest node is Gemm/Matmul, we want to make sure it is supported
-    if (!BaseOpBuilder::IsOpSupported(model_builder, node_unit)) {
+    if (!BaseOpBuilder::IsOpSupported(model_builder, dest_node_unit)) {
       return false;
     }
 
