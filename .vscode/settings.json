@@ -39,5 +39,23 @@
     "cpplint.filters": [
         "-build/include_subdir",
         "-runtime/references"
-    ]
+    ],
+    "files.associations": {
+        "tensor": "cpp",
+        "tuple": "cpp",
+        "*.tcc": "cpp",
+        "alignedvector3": "cpp",
+        "any": "cpp",
+        "array": "cpp",
+        "chrono": "cpp",
+        "functional": "cpp",
+        "istream": "cpp",
+        "memory_resource": "cpp",
+        "ostream": "cpp",
+        "ratio": "cpp",
+        "scoped_allocator": "cpp",
+        "type_traits": "cpp",
+        "utility": "cpp",
+        "variant": "cpp"
+    }
 }
