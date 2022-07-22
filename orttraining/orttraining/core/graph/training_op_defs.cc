@@ -3420,9 +3420,11 @@ Return true if all elements are true and false otherwise.
           AttributeProto::STRING)
       .Attr(
           "input_requires_grads",
-          "Flags to indicate whether the torch.autograd.apply's inputs require gradients (including flags for both tensor"
-          " and non-tensor inputs)",
-          AttributeProto::INTS)
+          "Flags to indicate whether the torch.autograd.apply's inputs require gradients "
+          "(including flags for both tensor and non-tensor inputs). If not provided, all value in the vector is 0,"
+          "which means all inputs don't require grad.",
+          AttributeProto::INTS,
+          false)
       // Input Pytorch tensors.
       .Attr(
           "input_tensor_types",

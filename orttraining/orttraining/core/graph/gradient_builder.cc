@@ -1753,27 +1753,27 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
   // Put other outputs.
   for (int i = 1; i < GetSrcNodeOutputSize(); ++i) {
     if (IsGradientAvailableForSrcNodeOutput(i)) {
+      // Only add FW outputs which
+      //  1. are tensors,
+      //  2. needs gradients (requires_grad=True in Pytorch).
       input_args.push_back(GO(i));
     } else {
       input_args.push_back(ArgDef());
     }
   }
 
-  // src_attrs["input_requires_grads"] stores all inputs's requires_grad attributes,
-  // including both tensor inputs and non-tensor inputs (e.g. constants), here we filter out
-  // those non-tensor inputs when constructing PythonOpGrad's outputs.
+  // We filter out those non-tensor inputs when constructing PythonOpGrad's outputs.
   const std::string& input_convention = src_attrs.at("input_convention").s();
-  const auto& fw_input_requires_grads = src_attrs["input_requires_grads"].ints();
-  std::vector<int64_t> bw_tensor_output_requires_grads;
   int fw_tensor_input_index = 0;
-
-  // PythonOp use cases gurantee node names are present and unique, so using it should be fine.
+  // The element of updated_input_requires_grads is 1 if the i-th input of autograd.Function.apply
+  // requres grad; otherwise, the value is 0.
   std::vector<int64_t> updated_input_requires_grads;
-  for (auto i = 0; i < fw_input_requires_grads.size(); ++i) {
-    if (input_convention[i] == 'd') {  // only handle gradients for tensor type inputs.
-      // We did not use value from src_attrs["input_requires_grads"] which is exported by
-      // torch. The value is not always correct, so we check the require grad info from
-      // ORT gradient graph.
+  // The element of bw_tensor_output_requires_grads is 1 if the i-th TENSOR input of autograd.Function.apply
+  // requres grad; otherwise, the value is 0. The major difference between updated_input_requires_grads and
+  // bw_tensor_output_requires_grads is that the latter contains only tensor input's requres_grad info.
+  std::vector<int64_t> bw_tensor_output_requires_grads;
+  for (size_t i = 0; i < input_convention.length(); ++i) {
+    if (input_convention[i] == 'd') {
       if (IsGradientRequiredForSrcNodeInput(fw_tensor_input_index)) {
         bw_tensor_output_requires_grads.push_back(1);
         updated_input_requires_grads.push_back(1);
@@ -1788,6 +1788,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
   }
 
   // Collect updated python op requre grads info, used for resetting after gradient graph build complete.
+  // PythonOp use cases gurantee node names are present and unique, so using it should be fine.
   SetPythonOpRequireGradInfo(NodeName(), updated_input_requires_grads);
 
   ORT_ENFORCE(static_cast<size_t>(GetSrcNodeInputSize()) == bw_tensor_output_requires_grads.size(),

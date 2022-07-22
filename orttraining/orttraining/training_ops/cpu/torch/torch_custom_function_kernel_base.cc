@@ -33,8 +33,8 @@ void PythonOpBase::Init(const OpKernelInfo& info) {
   is_training_mode_ = static_cast<bool>(info.GetAttrOrDefault("training_mode", static_cast<int64_t>(0)));
   ORT_THROW_IF_ERROR(info.GetAttr("input_convention", &input_convention_));
 
-  ORT_THROW_IF_ERROR(info.GetAttrs("input_requires_grads", input_requires_grads_));
-  ORT_ENFORCE(input_requires_grads_.size() == input_convention_.size());
+  input_requires_grads_ = info.GetAttrsOrDefault(
+      "input_requires_grads", std::vector<int64_t>(input_convention_.size(), 0));
 
   // Input tensors.
   ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_tensor_types_));

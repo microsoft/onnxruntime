@@ -405,9 +405,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
 
         try:
-            with torch.no_grad(), _logger.suppress_os_stream_output(
-                log_level=self._debug_options.logging.log_level
-            ):
+            with torch.no_grad(), _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level):
                 required_export_kwargs = {
                     "input_names": self._input_info.names,
                     "output_names": output_names,

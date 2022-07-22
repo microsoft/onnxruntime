@@ -114,7 +114,7 @@ def test_GeLU_custom_func_rets_not_as_module_output():
             # NOT as module outputs (which are consumed by subsquent computations).
             # This aims to trigger a GC for "out", saying, out is released,
             # the underlying std::shared<PyNode> still have other references.
-            # Otherwise, a segementfault will be triggered.
+            # Otherwise, a segment fault will be triggered.
             out = out * 9
             return out
 
@@ -416,9 +416,8 @@ def test_InplaceUpdateInputNotAsOutputNotRequireGrad():
     # this is the reason we ignore the gradient compare here.
     run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
 
-@pytest.mark.skip(
-    reason="disable due to exporter bug https://github.com/microsoft/onnx-converters-private/issues/37."
-)
+
+@pytest.mark.skip(reason="disable due to exporter bug https://github.com/microsoft/onnx-converters-private/issues/37.")
 def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
     class InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction(torch.autograd.Function):
         @staticmethod
@@ -571,9 +570,8 @@ def test_InplaceUpdateInputNotAsOutputRequireGrad():
 
 ##########################################################################################
 
-@pytest.mark.skip(
-    reason="disable due to exporter bug https://github.com/microsoft/onnx-converters-private/issues/37."
-)
+
+@pytest.mark.skip(reason="disable due to exporter bug https://github.com/microsoft/onnx-converters-private/issues/37.")
 def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
     class InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction(torch.autograd.Function):
         @staticmethod
@@ -1079,6 +1077,7 @@ def test_non_differentiable_autograd_function():
         print(y_ref)
 
         from onnxruntime.training.ortmodule._custom_autograd_function import enable_custom_autograd_support
+
         enable_custom_autograd_support()
         m = ORTModule(m)
 
