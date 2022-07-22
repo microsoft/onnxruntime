@@ -3,11 +3,11 @@
 
 #pragma once
 
-#include <sstream>
-
 #include <ATen/core/Tensor.h>
 #include <c10/core/Scalar.h>
 #include <c10/util/Optional.h>
+
+#include <sstream>
 #include <tuple>
 
 namespace torch_ort {

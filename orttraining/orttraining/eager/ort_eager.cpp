@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <core/session/provider_bridge_ort.h>
+
 #include "core/framework/tensor.h"
 #include "orttraining/eager/ort_eager_common.h"
 #include "orttraining/eager/ort_log.h"
@@ -11,7 +13,6 @@
 #include "orttraining/core/framework/torch/dlpack_python.h"
 #include "orttraining/python/orttraining_python_module_eager.h"
 #include "torch/csrc/autograd/python_variable.h"
-#include <core/session/provider_bridge_ort.h>
 
 namespace onnxruntime {
 namespace python {

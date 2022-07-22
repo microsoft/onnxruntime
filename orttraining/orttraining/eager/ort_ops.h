@@ -3,11 +3,11 @@
 
 #pragma once
 
-#include <algorithm>
-
 #include "orttraining/eager/ort_util.h"
 #include <core/eager/ort_kernel_invoker.h>
 #include <core/framework/ort_value.h>
+
+#include <algorithm>
 
 namespace torch_ort {
 namespace eager {

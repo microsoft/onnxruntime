@@ -3,16 +3,17 @@
 
 #include "orttraining/eager/ort_backends.h"
 
+#include <core/common/logging/sinks/clog_sink.h>
+#include <core/providers/cpu/cpu_execution_provider.h>
+#include <core/providers/cpu/cpu_provider_factory_creator.h>
+#include <core/providers/get_execution_providers.h>
+
 #include <memory>
 #include <string>
 
 #include "core/platform/env.h"
 #include "orttraining/eager/ort_log.h"
 #include "orttraining/python/orttraining_python_module_eager.h"
-#include <core/common/logging/sinks/clog_sink.h>
-#include <core/providers/cpu/cpu_execution_provider.h>
-#include <core/providers/cpu/cpu_provider_factory_creator.h>
-#include <core/providers/get_execution_providers.h>
 
 // use the environment from python module
 namespace onnxruntime {
