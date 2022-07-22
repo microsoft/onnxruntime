@@ -8,7 +8,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
-#if defined(ENABLE_TRAINING) && defined(USE_CUDA)
+#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
 #include "test/providers/kernel_compute_test_utils.h"
 #endif
 
@@ -210,7 +210,7 @@ void RunTestWrapper<std::string>() {
   test8.Run();
 }
 
-#if defined(ENABLE_TRAINING) && defined(USE_CUDA)
+#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
 template <typename T, typename TIndex>
 void RunKernelComputeTest(std::initializer_list<int64_t> input_dims, std::initializer_list<int64_t> indices_dims,
                           std::initializer_list<int64_t> indices_strides = {}, bool has_axis = false,
@@ -220,7 +220,12 @@ void RunKernelComputeTest(std::initializer_list<int64_t> input_dims, std::initia
   std::vector<T> output_data;
   int64_t new_axis = axis < 0 ? axis + static_cast<int64_t>(input_dims.size()) : axis;
   GetData(input_dims, indices_dims, indices_strides, new_axis, input_data, indices_data, output_data);
-  KernelComputeTester test("GatherElements", kCudaExecutionProvider);
+#ifdef USE_CUDA
+  const char* provider = kCudaExecutionProvider;
+#else  // USE_ROCM
+  const char* provider = kRocmExecutionProvider;
+#endif
+  KernelComputeTester test("GatherElements", provider);
   if (has_axis) test.AddAttribute<int64_t>("axis", axis);
   test.AddInput<T>("data", input_dims, input_data);
   test.AddInput<TIndex>("indices", indices_dims, indices_data, indices_strides);
@@ -310,7 +315,7 @@ TEST(GatherElementsOpTest, BigIndices) {
   test1.Run();
 }
 
-#if defined(ENABLE_TRAINING) && defined(USE_CUDA)
+#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
 TEST(GatherElementsOpTest, Strided_float) { RunKernelComputeTestWrapper<float>(); }
 
 TEST(GatherElementsOpTest, Strided_double) { RunKernelComputeTestWrapper<double>(); }

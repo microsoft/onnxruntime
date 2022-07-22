@@ -8,7 +8,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
-#if defined(ENABLE_TRAINING) && defined(USE_CUDA)
+#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
 #include "test/providers/kernel_compute_test_utils.h"
 #endif
 
@@ -135,7 +135,7 @@ void RunTestWrapper() {
   RunTest<T, int64_t>({2, 1, 1, 2, 3, 2, 3}, {2, 1, 1, 2, 3, 2, 2}, true, -5LL);
 }
 
-#if defined(ENABLE_TRAINING) && defined(USE_CUDA)
+#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
 template <typename T, typename TIndex>
 void RunKernelComputeTest(std::initializer_list<int64_t> input_dims, std::initializer_list<int64_t> indices_dims,
                           std::initializer_list<int64_t> indices_strides = {}, bool has_axis = false,
@@ -145,7 +145,12 @@ void RunKernelComputeTest(std::initializer_list<int64_t> input_dims, std::initia
   std::vector<T> dX_data;
   int64_t new_axis = axis < 0 ? axis + static_cast<int64_t>(input_dims.size()) : axis;
   GetData(input_dims, indices_dims, indices_strides, new_axis, dY_data, indices_data, dX_data);
-  onnxruntime::test::KernelComputeTester test("GatherElementsGrad", kCudaExecutionProvider, 1, kMSDomain);
+#ifdef USE_CUDA
+  const char* provider = kCudaExecutionProvider;
+#else  // USE_ROCM
+  const char* provider = kRocmExecutionProvider;
+#endif
+  onnxruntime::test::KernelComputeTester test("GatherElementsGrad", provider, 1, kMSDomain);
   if (has_axis) test.AddAttribute<int64_t>("axis", axis);
   test.AddInput<T>("dY", indices_dims, dY_data);
   test.AddInput<int64_t>("data_shape", {static_cast<int64_t>(input_dims.size())}, input_dims, {}, true);
@@ -192,7 +197,7 @@ TEST(GatherElementsGrad, IndicesUpdatesDontMatch) {
   test.Run(onnxruntime::test::OpTester::ExpectResult::kExpectFailure, "");
 }
 
-#if defined(ENABLE_TRAINING) && defined(USE_CUDA)
+#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
 TEST(GatherElementsGrad, Strided_float) { RunKernelComputeTestWrapper<float>(); }
 
 TEST(GatherElementsGrad, Strided_double) { RunKernelComputeTestWrapper<double>(); }

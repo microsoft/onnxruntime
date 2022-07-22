@@ -62,15 +62,15 @@ static void CalcEffectiveDims(TensorShapeVector& x_dims, TensorShapeVector& y_di
 static TensorShapeVector ComputeOutputStrides(const TensorShape& input_shapes,
                                               const gsl::span<const int64_t>& input_strides,
                                               const TensorShape& output_shapes) {
-  size_t rank = output_shapes.NumDimensions();
-  size_t input_rank = input_shapes.NumDimensions();
+  const size_t rank = output_shapes.NumDimensions();
+  const size_t input_rank = input_shapes.NumDimensions();
 
-  if (input_rank == 0) {
+  if (input_rank == 0 || input_shapes.Size() == 1) {
     return TensorShapeVector(rank, 0);
   }
 
   TensorShapeVector output_strides(rank);
-  size_t offset = rank - input_rank;
+  const size_t offset = rank - input_rank;
   for (size_t dim = rank - 1;; --dim) {
     int64_t stride = 0;
     int64_t input_dim_size = dim >= offset ? input_shapes[dim - offset] : 1;

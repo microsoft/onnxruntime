@@ -50,15 +50,18 @@ void Fill(cudaStream_t stream, T* output, T value, int64_t count);
 */
 template <typename T, int32_t capacity = 8>
 struct TArray {
+
 #if defined(USE_ROCM)
-  __host__ __device__ TArray() = default;
-  __host__ __device__ TArray(const TArray&) = default;
-  __host__ __device__ TArray& operator=(const TArray&) = default;
+#define TARRAY_CONSTRUCTOR_SPECIFIERS __host__ __device__
 #else
-  TArray() = default;
-  TArray(const TArray&) = default;
-  TArray& operator=(const TArray&) = default;
+#define TARRAY_CONSTRUCTOR_SPECIFIERS
 #endif
+
+  TARRAY_CONSTRUCTOR_SPECIFIERS TArray() = default;
+  TARRAY_CONSTRUCTOR_SPECIFIERS TArray(const TArray&) = default;
+  TARRAY_CONSTRUCTOR_SPECIFIERS TArray& operator=(const TArray&) = default;
+
+#undef TARRAY_CONSTRUCTOR_SPECIFIERS
 
   TArray(int32_t size) : size_(size), data_() {
     ORT_ENFORCE(
