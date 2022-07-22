@@ -37,7 +37,7 @@ namespace onnxruntime {
 class Tensor final {
  public:
 
-  // NB! Removing Create() methods in CPU EP. Still available in other EPs that are dynamically linked.
+  // NB! Removing Create() methods returning unique_ptr<Tensor>. Still available in other EPs that are dynamically linked.
   // Strive not to allocate Tensor with new/delete as it is a shallow class and using it by value is just fine.
   // Use InitOrtValue() methods to allocate for OrtValue.
 
