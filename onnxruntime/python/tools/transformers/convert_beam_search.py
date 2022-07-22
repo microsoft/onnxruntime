@@ -213,6 +213,14 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
     model_group.set_defaults(prefix_vocab_mask=False)
 
+    model_group.add_argument(
+        "--custom_attention_mask",
+        required=False,
+        action="store_true",
+        help="Enable custom_attention_mask. This mask can be used to replace default encoder attention mask",
+    )
+    model_group.set_defaults(custom_attention_mask=False)
+
     beam_parameters_group = parser.add_argument_group(
         "Beam search parameters not stored in the output model, for testing parity and performance"
     )
@@ -677,7 +685,7 @@ def remove_shared_initializers(
         if value_info.name in mapping_initializers_2:
             value_info.name = mapping_initializers_2[value_info.name]
 
-    # Rename nodes inputs in graph 1:
+    # Rename nodes inputs in graph 2:
     for node in graph2.node:
         for j in range(len(node.input)):
             if node.input[j] in mapping_initializers_2:
@@ -803,6 +811,11 @@ def convert_model(args: argparse.Namespace):
     else:
         inputs.append("")
 
+    if args.custom_attention_mask:
+        inputs.append("attention_mask")
+    else:
+        inputs.append("")
+
     outputs = ["sequences"]
     if args.output_sequences_scores:
         outputs.append("sequences_scores")
@@ -854,8 +867,6 @@ def convert_model(args: argparse.Namespace):
     else:
         node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
 
-    from onnx import TensorProto
-
     # graph inputs
     input_ids = onnx.helper.make_tensor_value_info("input_ids", TensorProto.INT32, ["batch_size", "sequence_length"])
     max_length = onnx.helper.make_tensor_value_info("max_length", TensorProto.INT32, [1])
@@ -884,6 +895,12 @@ def convert_model(args: argparse.Namespace):
             "prefix_vocab_mask", TensorProto.INT32, ["batch_size", vocab_size]
         )
         graph_inputs.append(prefix_vocab_mask)
+
+    if args.custom_attention_mask:
+        attention_mask = onnx.helper.make_tensor_value_info(
+            "attention_mask", TensorProto.INT32, ["batch_size", "sequence_length"]
+        )
+        graph_inputs.append(attention_mask)
 
     # graph outputs
     sequences = onnx.helper.make_tensor_value_info(
@@ -1114,6 +1131,9 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
         prefix_vocab_mask = np.ones((batch_size, vocab_size), dtype=np.int32)
         inputs["prefix_vocab_mask"] = prefix_vocab_mask
 
+    if args.custom_attention_mask:
+        inputs["attention_mask"] = np.ones(input_ids.shape, dtype=np.int32)
+
     logger.debug("ORT inputs", inputs)
     result = ort_session.run(None, inputs)
 
@@ -1303,6 +1323,17 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
     if args.vocab_mask:
         inputs["vocab_mask"] = vocab_mask
 
+    if args.custom_attention_mask:
+        attention_mask = np.ones(input_ids.shape, dtype=np.int32)
+        for i in range(input_ids.shape[0]):
+            abs_pos = 0
+            for j in range(input_ids.shape[1]):
+                if input_ids[i][j] == pad_token_id and abs_pos == 0:
+                    attention_mask[i][j] = 0
+                else:
+                    abs_pos += 1
+        inputs["attention_mask"] = attention_mask
+
     if args.save_test_data:
         test_data_dir = Path(args.output).parent.as_posix()
         logger.debug("test_data_dir", test_data_dir)
@@ -1403,6 +1434,9 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
             args.decoder_onnx and not args.encoder_decoder_init_onnx
         ):
             raise ValueError("--decoder_onnx shall use together with --encoder_decoder_init_onnx")
+    else:
+        if args.custom_attention_mask:
+            raise NotImplementedError("custom_attention_mask is only supported in t5 with beam search")
 
     convert_model(args)
 

@@ -177,6 +177,11 @@ module.exports = {
       'prefer-arrow/prefer-arrow-functions': 'off',
       'no-console': 'off'
     }
+  }, {
+    files: ['scripts/**/*.ts'], rules: {
+      'import/no-extraneous-dependencies': 'off',
+      'no-console': 'off'
+    }
   }],
   extends: [
     'eslint:recommended',

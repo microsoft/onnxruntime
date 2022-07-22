@@ -198,10 +198,6 @@ class ORTGen:
         writer.writeline('#include "ort_aten.h"')
         writer.writeline('#include "ort_log.h"')
         writer.writeline()
-        writer.writeline(
-            '#define CHECK_STATUS(status) if(!status.IsOK()) { std::stringstream err; err << "ORT return failure (line " << __LINE__ << "): " << status.ErrorMessage(); throw std::runtime_error(err.str()); }'
-        )
-        writer.writeline()
         writer.push_namespace("torch_ort")
         writer.push_namespace("eager")
         writer.writeline()
@@ -287,8 +283,8 @@ class ORTGen:
                     if i == 0:
                         writer.push_indent()
                     cpp_param = cpp_func.get_parameter(op_input)
-                    supported_types = ",".join([type for type in onnx_op.input_types[idx]])
-                    writer.write("!IsSupportedType(%s, {%s})" % (cpp_param.identifier.value, supported_types))
+                    supported_types = ",".join(sorted([type for type in onnx_op.input_types[idx]]))
+                    writer.write(f"!IsSupportedType({cpp_param.identifier.value}, {{{supported_types}}})")
                     i += 1
             writer.writeline(") {")
             self._write_cpu_fall_back(writer, mapped_func)
@@ -323,12 +319,12 @@ class ORTGen:
                 for op_input in onnx_op.inputs:
                     if isinstance(op_input, Outputs):
                         continue
-                cpp_param = cpp_func.get_parameter(op_input)
-                if cpp_param:
-                    if cpp_param.parameter_type.desugar().identifier_tokens[0].value == "Tensor":
-                        types_from_tensor.append(f"{op_input}.scalar_type()")
-                    elif cpp_param.parameter_type.desugar().identifier_tokens[0].value == "Scalar":
-                        types_from_scalar.append(f"{op_input}.type()")
+                    cpp_param = cpp_func.get_parameter(op_input)
+                    if cpp_param:
+                        if cpp_param.parameter_type.desugar().identifier_tokens[0].value == "Tensor":
+                            types_from_tensor.append(f"{op_input}.scalar_type()")
+                        elif cpp_param.parameter_type.desugar().identifier_tokens[0].value == "Scalar":
+                            types_from_scalar.append(f"{op_input}.type()")
             if len(types_from_tensor) > 0 or len(types_from_scalar) > 0:
                 need_type_promotion = True
                 writer.writeline(
@@ -443,24 +439,25 @@ class ORTGen:
                                     assert isinstance(
                                         output_param.member, ast.TupleMemberType
                                     ), "output_param.member must be of TupleMemberType"
-                                    output_alias = self._get_alias_info(output_param.member.element_type)
-                                    if (
-                                        output_alias
-                                        and self._get_alias_info(torch_p) == output_alias
-                                        and output_alias.is_writable
-                                    ):
+                                    if self._is_inplace(output_param.member.element_type, torch_p):
                                         writer.writeline(
                                             f"{onnx_op.outputs}[{output_index}] = ort_input_{onnx_op_index}_{onnx_op.inputs[input_index]};"
                                         )
                                         in_place_params[output_index] = cpp_param.identifier.value
                                         break
+                            elif isinstance(return_info, ast.ArrayType):
+                                if self._is_inplace(return_info, torch_p):
+                                    writer.writeline(f"for (int i = 0; i < {onnx_op.outputs.count}; i++) {{")
+                                    writer.push_indent()
+                                    writer.writeline(
+                                        f"{onnx_op.outputs}[i] = ort_input_{onnx_op_index}_{onnx_op.inputs[input_index]}[i];"
+                                    )
+                                    writer.pop_indent()
+                                    writer.writeline("}")
+                                    in_place_params[0] = cpp_param.identifier.value
+                                    break
                             else:
-                                output_alias = self._get_alias_info(return_info)
-                                if (
-                                    output_alias
-                                    and self._get_alias_info(torch_p) == output_alias
-                                    and output_alias.is_writable
-                                ):
+                                if self._is_inplace(return_info, torch_p):
                                     writer.writeline(
                                         f"{onnx_op.outputs}[0] = ort_input_{onnx_op_index}_{onnx_op.inputs[input_index]};"
                                     )
@@ -506,10 +503,12 @@ class ORTGen:
             return_outputs = onnx_op.outputs
 
         # TODO: Pick the right "out" Torch parameter; do not assume the first one
-        # TODO: Handle mutliple results
+        # TODO: Handle multiple results
         # TODO: Assert return type
 
-        if len(in_place_params) == 0:
+        if cpp_func.return_type.desugar().identifier_tokens[0].value == "void":
+            pass
+        elif len(in_place_params) == 0:
             # tensor options
             if set_out_tensor:
                 writer.writeline(f"return {last_param.identifier.value};")
@@ -542,23 +541,22 @@ class ORTGen:
                 writer.writeline("tensor_options);")
             writer.pop_indent()
             return
+        elif len(in_place_params) == 1:
+            writer.writeline(f"return {in_place_params[0]};")
         else:
-            if len(in_place_params) == 1:
-                writer.writeline(f"return {in_place_params[0]};")
-            else:
-                if not (
-                    isinstance(cpp_func.return_type, ast.TemplateType)
-                    and cpp_func.return_type.identifier_tokens[-1].value == "std::tuple"
-                ):
-                    raise Exception(f"")
-                tensorRef = "Tensor&," * len(in_place_params)
-                tensorRef = tensorRef[: len(tensorRef) - 1]
-                writer.write(f"return std::tuple<{tensorRef}>(")
-                for index, key in enumerate(sorted(in_place_params)):
-                    if index > 0:
-                        writer.write(", ")
-                    writer.write(in_place_params[key])
-                writer.writeline(");")
+            if not (
+                isinstance(cpp_func.return_type, ast.TemplateType)
+                and cpp_func.return_type.identifier_tokens[-1].value == "std::tuple"
+            ):
+                raise Exception(f"")
+            tensorRef = "Tensor&," * len(in_place_params)
+            tensorRef = tensorRef[: len(tensorRef) - 1]
+            writer.write(f"return std::tuple<{tensorRef}>(")
+            for index, key in enumerate(sorted(in_place_params)):
+                if index > 0:
+                    writer.write(", ")
+                writer.write(in_place_params[key])
+            writer.writeline(");")
 
     def _write_function_registrations(self, writer: writer.SourceWriter, generated_funcs: List[MappedOpFunction]):
         writer.writeline()
@@ -585,9 +583,8 @@ class ORTGen:
 
     def _write_custom_ops_registrations(self, writer: writer.SourceWriter, generated_funcs: List[MappedOpFunction]):
         writer.writeline()
-        writer.writeline("void GenerateCustomOpsBindings(pybind11::module_ m) {")
+        writer.writeline("TORCH_LIBRARY(ort, m) {")
         writer.push_indent()
-        writer.writeline('ORT_LOG_INFO << "GenerateCustomOpsBindings init";')
 
         for mapped_func in generated_funcs:
             cpp_func = mapped_func.cpp_func
@@ -696,3 +693,7 @@ class ORTGen:
                 cpp_param.torch_param.append(torch_param)
 
         return cpp_func
+
+    def _is_inplace(self, element_type, torch_p):
+        output_alias = self._get_alias_info(element_type)
+        return output_alias and self._get_alias_info(torch_p) == output_alias and output_alias.is_writable

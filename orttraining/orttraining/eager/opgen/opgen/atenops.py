@@ -138,7 +138,8 @@ hand_implemented = {
     "aten::addmm": Gemm("mat1", "mat2", "self", alpha="alpha", beta="beta"),
     "aten::add_.Tensor": SignatureOnly(),
     "aten::t": Transpose("self"),
-    "aten::mm.out": MatMul("self", "mat2"),
+    # MatMul("self", "mat2"), fails since it resizes based on self but should be based on result shape of the mult
+    "aten::mm.out": SignatureOnly(),
     "aten::zeros_like": ConstantOfShape(
         Shape("self")
     ),  # the default constant is 0, so don't need to speicify attribute
@@ -157,16 +158,24 @@ hand_implemented = {
     "aten::ne.Tensor_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
     "aten::eq.Tensor_out": Cast(Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
     "aten::eq.Scalar_out": Cast(Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
-    "aten::bitwise_and.Tensor_out": MakeTorchFallback(),
+    "aten::bitwise_and.Tensor_out": And("self", "other"),  # This generates a fallback for all but Bool, as expected.
     "aten::masked_select": GatherND("self", Transpose(NonZero(Expand("mask", Shape("self"))))),
-    "aten::_local_scalar_dense": MakeTorchFallback(),
-    "aten::gt.Scalar_out": MakeTorchFallback(),
-    "aten::lt.Scalar_out": MakeTorchFallback(),
+    "aten::_local_scalar_dense": MakeTorchFallback(),  # This function extracts a scalar value from
+    #   a tensor with exactly one value; there's no need to try to do this on an ORT device.
+    #   See CPU impl at pytorch/blob/master/aten/src/ATen/native/Scalar.cpp
+    "aten::lt.Scalar_out": Cast(Less(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
+    "aten::lt.Tensor_out": Cast(Less(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
+    "aten::gt.Scalar_out": Cast(Greater(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
+    "aten::gt.Tensor_out": Cast(Greater(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),
     "aten::equal": SignatureOnly(),
     "aten::_softmax": Softmax("self", axis="dim"),
     "aten::argmax.out": SignatureOnly(),
     "aten::nonzero": Transpose(NonZero("self")),
     "aten::nonzero.out": SignatureOnly(),
+    "aten::_log_softmax.out": SignatureOnly(),
+    "aten::nll_loss_forward.output": MakeTorchFallback(),
+    "aten::nll_loss_backward.grad_input": MakeTorchFallback(),
+    "aten::_log_softmax_backward_data.out": MakeTorchFallback(),
 }
 
 # If the aten op expects a specific output type that differs from self
@@ -185,4 +194,12 @@ ops = {**ops, **hand_implemented}
 # Need to enhance the support for onnx type constrains to automatically
 # resolve whether the op need type promotion.
 # Will remove this list in the future.
-type_promotion_ops = (*type_promotion_ops, "aten::gelu_backward")
+type_promotion_ops.append("aten::gelu_backward")
+type_promotion_ops.append("aten::gt.Tensor_out")
+type_promotion_ops.append("aten::lt.Tensor_out")
+type_promotion_ops.append("aten::gt.Scalar_out")
+type_promotion_ops.append("aten::lt.Scalar_out")
+type_promotion_ops.append("aten::ne.Tensor_out")
+type_promotion_ops.append("aten::eq.Tensor_out")
+type_promotion_ops.append("aten::ne.Scalar_out")
+type_promotion_ops.append("aten::eq.Scalar_out")
