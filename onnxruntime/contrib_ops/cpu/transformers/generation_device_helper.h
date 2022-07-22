@@ -12,7 +12,7 @@
 #include <vector>
 #include "gsl/gsl"
 #include "contrib_ops/cpu/transformers/logits_processor.h"
-#include "contrib_ops/cpu/transformers/beam_search_shared.h"
+#include "contrib_ops/cpu/transformers/generation_shared.h"
 
 namespace onnxruntime {
 class IExecutionProvider;
@@ -31,7 +31,7 @@ enum DeviceCopyDirection {
   deviceToDevice = 3
 };
 
-namespace BeamSearchDeviceHelper {
+namespace GenerationDeviceHelper {
 using TopkFunc = std::function<Status(
     const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
     AllocatorPtr allocator,
@@ -66,6 +66,12 @@ using InitBeamStateFunc = std::function<void(
     void* stream)>;
 
 template <typename T>
+using InitGreedyStateFunc = std::function<void(
+    transformers::IGreedySearchState<T>* greedy_state,
+    gsl::span<int32_t>& sequence_lengths,
+    void* stream)>;
+
+template <typename T>
 using ProcessLogitsFunc = std::function<Status(
     const OrtValue& logits,                                 // logits output of subgraph
     transformers::IBeamSearchState<T>* beam_state,          // state
@@ -79,6 +85,19 @@ using ProcessLogitsFunc = std::function<Status(
     int step,                                               // iteration counter
     void* stream,                                           // cuda stream (for CUDA only)
     const transformers::IConsoleDumper* dumper)>;           // tensor dumper
+
+template <typename T>
+using GreedySearchProcessLogitsFunc = std::function<Status(
+    const OrtValue& logits,                                     // logits output of subgraph
+    transformers::IGreedySearchState<T>* greedy_state,          // state
+    transformers::ISequences* sequences,                        // sequences
+    AllocatorPtr& allocator,                                    // default allocator
+    onnxruntime::concurrency::ThreadPool* thread_pool,          // thread pool (for CPU only)
+    transformers::ILogitsProcessorList* logits_processors,      // logits processors
+    const transformers::IBeamSearchParameters* parameters,      // parameters
+    int step,                                                   // iteration counter
+    void* stream,                                               // cuda stream (for CUDA only)
+    const transformers::IConsoleDumper* dumper)>;               // tensor dumper
 
 template <typename T>
 using DeviceCopyFunc = std::function<Status(
@@ -140,10 +159,10 @@ using ExpandBufferFunc = std::function<Status(
     AllocatorPtr allocator,
     OrtValue& expanded,
     bool only_copy_shape)>;
-}  // namespace BeamSearchDeviceHelper
+}  // namespace GenerationDeviceHelper
 
 // These are CPU specific device helper implementations
-namespace BeamSearchCpuDeviceHelper {
+namespace GenerationCpuDeviceHelper {
 Status TopK(
     const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
     AllocatorPtr allocator,
@@ -166,6 +185,11 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
                    void* stream);
 
 template <typename T>
+void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
+                     gsl::span<int32_t>& sequence_lengths,
+                     void* stream);
+
+template <typename T>
 Status ProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
                      transformers::IBeamSearchState<T>* beam_state,          // state
                      transformers::IBeamSearchCpuState* cpu_state,           // state in CPU
@@ -178,6 +202,18 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      int step,                                               // iteration counter
                      void* stream,                                           // cuda stream (for CUDA only)
                      const transformers::IConsoleDumper* dumper);            // tensor dumper
+
+template <typename T>
+Status GreedySearchProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
+                                 transformers::IGreedySearchState<T>* greedy_state,      // state
+                                 transformers::ISequences* sequences,                    // sequences
+                                 AllocatorPtr& allocator,                                // default allocator
+                                 onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
+                                 transformers::ILogitsProcessorList* logits_processors,  // logits processors
+                                 const transformers::IBeamSearchParameters* parameters,  // parameters
+                                 int step,                                               // iteration counter
+                                 void* stream,                                           // cuda stream (for CUDA only)
+                                 const transformers::IConsoleDumper* dumper);            // tensor dumper
 
 template <typename T>
 Status DeviceCopy(gsl::span<T> target,
@@ -260,6 +296,6 @@ Status ExpandBuffer(
     OrtValue& expanded,
     bool only_copy_shape);
 
-}  // namespace BeamSearchCpuDeviceHelper
+}  // namespace GenerationCpuDeviceHelper
 }  // namespace contrib
 }  // namespace onnxruntime

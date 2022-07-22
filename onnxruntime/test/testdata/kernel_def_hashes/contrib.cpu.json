@@ -16,6 +16,10 @@
         5387668728763060584
     ],
     [
+        "GreedySearch com.microsoft CPUExecutionProvider",
+        9790977725959310408
+    ],
+    [
         "ImageScaler ai.onnx CPUExecutionProvider",
         2013093418027264536
     ],
