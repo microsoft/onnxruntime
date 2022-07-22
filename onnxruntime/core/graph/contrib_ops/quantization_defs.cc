@@ -1143,7 +1143,7 @@ If mask is provided, mask index (that is position of first 0 in mask, or number 
   constexpr const char* QOrderedMatMul_ver1_doc = R"DOC(
 Quantize MatMul with order. Two type of order combination supported:
   *) When order_B is ORDER_COL, order_A must bu ORDER_ROW, MatMul will be implemented using B' * A' + bias + C' => D'.
-     bias is vector of {#cols of D}, C' should be batch 1. B' could be of batch 1.
+     bias is vector of {#cols of D}, C' should be batch 1. B' could be of batch 1. 
      Note B is reorder to ORDER_COL, or Transposed. Not Transposed first and then Reordered here.
   *) When order_B is specify ORDER_COL4_4R2_8C or ORDER_COL32_2R_4R4, orderA must be ORDER_COL32. MatMul will be implemented using alpha(A * B) + beta * C => D.
      bias is not supported here. B in fact is transposed first then reordered into ORDER_COL4_4R2_8C or ORDER_COL32_2R_4R4 here.
@@ -1244,14 +1244,11 @@ TODO: Support them if needed in the future.
              "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)"
              "or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).",
              "G", OpSchema::Optional)
-      .Input(8, "scale_output", "scale of the output", "S", OpSchema::Optional)
-      .Input(9, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
+      .Input(8, "scale_output", "scale of the output", "S")
       .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "Q")
-      .Output(1, "present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)", "T", OpSchema::Optional)
       .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
       .TypeConstraint("S", {"tensor(float)"}, "Constrain scales to float32 tensors.")
       .TypeConstraint("G", {"tensor(int32)"}, "Constrain to integer types")
-      .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
   // TODO: quantize the gamma and beta or not
