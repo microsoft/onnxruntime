@@ -594,7 +594,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                         feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
                                         logger));
   } else {
-    auto p_feeds = feeds;
+    auto feeds_to_use = feeds;
     std::vector<OrtValue>* p_fetches = &fetches;
     std::vector<OrtValue> device_feeds;
     std::vector<OrtValue> device_fetches;
@@ -602,7 +602,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
     if (device_copy_checks.input_copy_needed == DeviceCopyCheck::Copy) {
       const auto& feed_copy_info = feeds_fetches_manager.GetFeedsDeviceCopyInfo();
       ORT_RETURN_IF_ERROR(CopyInputsAcrossDevices(session_state, feeds, device_feeds, feed_copy_info));
-      p_feeds = device_feeds;
+      feeds_to_use = device_feeds;
     }
 
     auto num_outputs = fetches.size();
@@ -625,7 +625,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
     }
 
     ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
-                                        feeds_fetches_info.feeds_mlvalue_idxs, p_feeds,
+                                        feeds_fetches_info.feeds_mlvalue_idxs, feeds_to_use,
                                         feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
                                         logger));
 

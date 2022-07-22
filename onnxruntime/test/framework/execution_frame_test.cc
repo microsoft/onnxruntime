@@ -439,8 +439,8 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
     const void* orig_buffer = results[0].Get<Tensor>().DataRaw();
 
     RunOptions ro;
-    ASSERT_STATUS_OK(session.Run(ro, gsl::span<const std::string>(),
-                                 gsl::span<const OrtValue>(), AsSpan({std::string("values")}), &results, nullptr));
+    ASSERT_STATUS_OK(session.Run(ro, EmptySpan<const std::string>(),
+                                 EmptySpan<const OrtValue>(), AsSpan({std::string("values")}), &results, nullptr));
 
     EXPECT_EQ(results[0].Get<Tensor>().DataRaw(), orig_buffer);
     EXPECT_THAT(results[0].Get<Tensor>().DataAsSpan<float>(), ::testing::ContainerEq(gsl::make_span(expected)));

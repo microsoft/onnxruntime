@@ -48,7 +48,9 @@ class Subgraph {
   Status Setup(const SessionState& session_state,
                const SessionState& subgraph_session_state);
 
-  FeedsFetchesManager* GetFeedsFetchesManager() { return (feeds_fetches_manager_.has_value()) ? &feeds_fetches_manager_.value() : nullptr; }
+  FeedsFetchesManager* GetFeedsFetchesManager() { 
+    return (feeds_fetches_manager_.has_value()) ? &*feeds_fetches_manager_ : nullptr;
+  }
 
   const IExecutionProvider* GetProvider() const;
 
