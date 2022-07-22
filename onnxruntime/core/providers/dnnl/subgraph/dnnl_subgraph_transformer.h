@@ -30,7 +30,6 @@ class DnnlGraphTransformer {
   void ConvRelu(DnnlSubgraph& subgraph);
   void MatMulBinaryEltwise(DnnlSubgraph& subgraph);
   void RemoveMatMulIntegerZP(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer);
-  void MatMulIntToFloat(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer);
   void MatMulIntegerBinaryEltwise(DnnlSubgraph& subgraph);
   // This function checks a few things
   //   - the node in question has a single output

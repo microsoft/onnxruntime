@@ -23,7 +23,6 @@ void DnnlGraphTransformer::Apply(DnnlSubgraph& subgraph, const onnxruntime::Grap
   Gelu(subgraph, onnx_subgraph_viewer);
   FastGelu(subgraph, onnx_subgraph_viewer);
   RemoveMatMulIntegerZP(subgraph, onnx_subgraph_viewer);
-  //MatMulIntToFloat(subgraph, onnx_subgraph_viewer);
   MatMulIntegerBinaryEltwise(subgraph);
 }
 
@@ -844,56 +843,6 @@ void DnnlGraphTransformer::RemoveMatMulIntegerZP(DnnlSubgraph& subgraph, const o
     b_zero_point.RemoveConsumer(DnnlNodeArg(dnnl_node, 3, false));
     //detach b_zero_point from matmulint node
     dnnl_node->Inputs()[3] = nullptr;
-  }
-}
-
-void DnnlGraphTransformer::MatMulIntToFloat(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer) {
-  //global index of convrelu
-  static int matmul_int_to_float_index = 0;
-
-  //traverse with max index as there will be empty nodes due to fusion
-  size_t max_index = subgraph.GetMaxNodeIndex();
-  for (size_t index = 0; index < max_index; index++) {
-    auto dnnl_node = subgraph.GetDnnlNode(index);
-
-    //look for conv relu pattern
-    if (dnnl_node == nullptr || dnnl_node->OpType() != "MatMulInteger") {
-      continue;
-    }
-
-    if (!IsNodeFusable(subgraph, dnnl_node)) {
-      continue;
-    }
-
-    auto next_dnnl_node = dnnl_node->Output(0).GetConsumers()[0].GetNode();
-    if (next_dnnl_node == nullptr) {
-      continue;
-    }
-    if (next_dnnl_node->OpType() != "Cast") {
-      continue;
-    }
-
-    if (!IsNodeFusable(subgraph, next_dnnl_node)) {
-      continue;
-    }
-
-    //construct new node
-    auto new_node = std::make_unique<DnnlNode>();
-    new_node->Name() = dnnl_node->Name() + "_MatMulIntToFloat_" + std::to_string(matmul_int_to_float_index++);
-    new_node->OpType() = "MatMulInteger";
-    for (auto def : dnnl_node->Inputs()) {
-      new_node->Inputs().push_back(def);
-    }
-    for (auto def : next_dnnl_node->Outputs()) {
-      new_node->Outputs().push_back(def);
-    }
-    new_node->Attributes().insert(next_dnnl_node->Attributes());
-
-    //insert new node, remove original nodes, connect new edges
-    if (debug_log_) {
-      LOGS_DEFAULT(ERROR) << "MatMulInteger fusion of [" << dnnl_node->Name() << "] and [" << next_dnnl_node->Name() << "]";
-    }
-    ResolveFusion(subgraph, {dnnl_node->Index(), next_dnnl_node->Index()}, std::move(new_node));
   }
 }
 
