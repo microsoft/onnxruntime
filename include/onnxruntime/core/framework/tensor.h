@@ -37,8 +37,8 @@ namespace onnxruntime {
 class Tensor final {
  public:
 
-  // NB! Removing Create() methods in CPU EP. Still available in GPU. Strive not to allocate
-  // Tensor with new/delete as it is a shallow class and using it by value is just fine.
+  // NB! Removing Create() methods in CPU EP. Still available in other EPs that are dynamically linked.
+  // Strive not to allocate Tensor with new/delete as it is a shallow class and using it by value is just fine.
   // Use InitOrtValue() methods to allocate for OrtValue.
 
   Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
