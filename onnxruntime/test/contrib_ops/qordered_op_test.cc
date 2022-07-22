@@ -169,55 +169,55 @@ static void RunQOrdered_Quantize_Test(
 TEST(QOrderedTest, FP32_Quantize_COL) {
   std::vector<int64_t> shape = {3, 5, 32 * 2};
   float scale = 2.0f;
-  std::vector<float> fvec = GenData<float>(shape, scale * 0.7685);
+  std::vector<float> fvec = GenData<float>(shape, scale * 0.7685f);
   RunQOrdered_Quantize_Test(fvec, shape, ORDER_COL, scale);
 }
 
 TEST(QOrderedTest, FP32_Quantize_ROW) {
   std::vector<int64_t> shape = {3, 5, 32 * 2};
   float scale = 2.0f;
-  std::vector<float> fvec = GenData<float>(shape, scale * 0.7685);
+  std::vector<float> fvec = GenData<float>(shape, scale * 0.7685f);
   RunQOrdered_Quantize_Test(fvec, shape, ORDER_ROW, scale);
 }
 
 TEST(QOrderedTest, FP32_Quantize_COL32) {
   std::vector<int64_t> shape = {3, 5, 32 * 2};
   float scale = 2.0f;
-  std::vector<float> fvec = GenData<float>(shape, scale * 0.7685);
+  std::vector<float> fvec = GenData<float>(shape, scale * 0.7685f);
   RunQOrdered_Quantize_Test(fvec, shape, ORDER_COL32, scale);
 }
 
 TEST(QOrderedTest, FP32_Quantize_COL4_4R2_8C) {
   std::vector<int64_t> shape = {3, 8 * 3, 32 * 2};
   float scale(2.0f);
-  std::vector<float> fvec = GenData<float>(shape, scale * 0.7685);
+  std::vector<float> fvec = GenData<float>(shape, scale * 0.7685f);
   RunQOrdered_Quantize_Test(fvec, shape, ORDER_COL4_4R2_8C, scale);
 }
 
 TEST(QOrderedTest, FP16_Quantize_COL) {
   std::vector<int64_t> shape = {3, 5, 32 * 2};
   float scale = 2.0f;
-  std::vector<MLFloat16> fvec = GenData<MLFloat16>(shape, scale * 0.7685);
+  std::vector<MLFloat16> fvec = GenData<MLFloat16>(shape, scale * 0.7685f);
   RunQOrdered_Quantize_Test(fvec, shape, ORDER_COL, scale);
 }
 TEST(QOrderedTest, FP16_Quantize_ROW) {
   std::vector<int64_t> shape = {3, 5, 32 * 2};
   float scale = 2.0f;
-  std::vector<MLFloat16> fvec = GenData<MLFloat16>(shape, scale * 0.7685);
+  std::vector<MLFloat16> fvec = GenData<MLFloat16>(shape, scale * 0.7685f);
   RunQOrdered_Quantize_Test(fvec, shape, ORDER_ROW, scale);
 }
 
 TEST(QOrderedTest, FP16_Quantize_COL32) {
   std::vector<int64_t> shape = {3, 5, 32 * 2};
   float scale = 2.0f;
-  std::vector<MLFloat16> fvec = GenData<MLFloat16>(shape, scale * 0.7685);
+  std::vector<MLFloat16> fvec = GenData<MLFloat16>(shape, scale * 0.7685f);
   RunQOrdered_Quantize_Test(fvec, shape, ORDER_COL32, scale);
 }
 
 TEST(QOrderedTest, FP16_Quantize_COL4_4R2_8C) {
   std::vector<int64_t> shape = {3, 8 * 3, 32 * 2};
   float scale = 2.0f;
-  std::vector<MLFloat16> fvec = GenData<MLFloat16>(shape, scale * 0.7685);
+  std::vector<MLFloat16> fvec = GenData<MLFloat16>(shape, scale * 0.7685f);
   RunQOrdered_Quantize_Test(fvec, shape, ORDER_COL4_4R2_8C, scale);
 }
 
@@ -236,7 +236,7 @@ static void RunQOrdered_Dequantize_Test(
   test_qorder.AddAttribute("to", (int64_t)(std::is_same<T, float>::value ? onnx::TensorProto_DataType_FLOAT : onnx::TensorProto_DataType_FLOAT16));
   test_qorder.AddAttribute("order_input", (int64_t)order_q);
   test_qorder.AddAttribute("order_output", (int64_t)ORDER_ROW);
-  test_qorder.template AddInput("input", shape, qvec);
+  test_qorder.AddInput<int8_t>("input", shape, qvec);
   test_qorder.AddInput<float>("scale_input", {}, {scale});
   test_qorder.AddOutput("output", shape, fvec);
   test_qorder.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -563,8 +563,8 @@ RunQOrdered_LayerNorm_Test(std::vector<int64_t> const& shape, int axis, bool has
   for (int b = 0; b < batch; b++) {
     for (int r = 0; r < rows; r++) {
       // Var(X)=E[X*X]− E[X]* E[X]
-      int32_t sum_x = std::accumulate(bsrc, bsrc + cols, 0LL, std::plus<int32_t>());
-      int32_t sum_x2 = std::accumulate(bsrc, bsrc + cols, 0LL, [](int32_t s, int32_t v) { return s + v * v; });
+      int64_t sum_x = std::accumulate(bsrc, bsrc + cols, 0LL, std::plus<int64_t>());
+      int64_t sum_x2 = std::accumulate(bsrc, bsrc + cols, 0LL, [](int64_t s, int64_t v) { return s + v * v; });
       float u_x_scaled = scale_x * static_cast<float>(sum_x) / cols; // no precision lost in static_cast<float>(sum_x)
       float var_x_scaled = static_cast<float>(((double)sum_x2 - (double)sum_x * sum_x / cols) / cols) * scale_x * scale_x;
       float var_episilon = var_x_scaled + epsilon;
@@ -595,21 +595,21 @@ TEST(QOrderedTest, LayerNorm_Data_1x32) {
       0, -7, 26, 110, -34, 28, -61, -107, -35, -54, 69,
       -3, -58, -119, 61, -19, -115, 35, 76, 16, 54};
   std::vector<float> vecGamma32 = {
-      0.9536133, 0.9160156, 1.3310547, 1.0068359, 0.8095703,
-      1.0126953, 0.8876953, 1.4316406, 1.0947266, 1.0498047,
-      0.7373047, 1.0615234, 1.015625, 1.0751953, 1.0068359,
-      1.0908203, 1.2011719, 1.1962891, 0.91796875, 1.0947266,
-      1.3183594, 1.0185547, 1.0791016, 1.0273438, 0.8364258,
-      0.94873047, 1.0292969, 1.09375, 1.0371094, 1.1240234,
-      1.4384766, 1.0068359};
+      0.9536133f, 0.9160156f, 1.3310547f, 1.0068359f, 0.8095703f,
+      1.0126953f, 0.8876953f, 1.4316406f, 1.0947266f, 1.0498047f,
+      0.7373047f, 1.0615234f, 1.015625f, 1.0751953f, 1.0068359f,
+      1.0908203f, 1.2011719f, 1.1962891f, 0.91796875f, 1.0947266f,
+      1.3183594f, 1.0185547f, 1.0791016f, 1.0273438f, 0.8364258f,
+      0.94873047f, 1.0292969f, 1.09375f, 1.0371094f, 1.1240234f,
+      1.4384766f, 1.0068359f};
   std::vector<float> vecBeta32 = {
-      0.01411438, 0.18273926, -0.12414551, 0.09887695, -0.1114502,
-      -0.08227539, -0.04598999, -0.11322021, 0.12731934, -0.06591797,
-      -0.00662994, 0.04962158, -0.04281616, 0.07476807, 0.23010254,
-      0.1036377, 0.10852051, 0.10919189, -0.02905273, -0.0512085,
-      -0.1194458, 0.02661133, 0.05789185, -0.05239868, 0.17907715,
-      -0.01765442, -0.12255859, -0.09729004, 0.06591797, 0.02258301,
-      -0.01844788, -0.11999512};
+      0.01411438f, 0.18273926f, -0.12414551f, 0.09887695f, -0.1114502f,
+      -0.08227539f, -0.04598999f, -0.11322021f, 0.12731934f, -0.06591797f,
+      -0.00662994f, 0.04962158f, -0.04281616f, 0.07476807f, 0.23010254f,
+      0.1036377f, 0.10852051f, 0.10919189f, -0.02905273f, -0.0512085f,
+      -0.1194458f, 0.02661133f, 0.05789185f, -0.05239868f, 0.17907715f,
+      -0.01765442f, -0.12255859f, -0.09729004f, 0.06591797f, 0.02258301f,
+      -0.01844788f, -0.11999512f};
   std::vector<int8_t> vecY = {
       -84, -8, -22, 114, 64, -108, 30, -128, 33, 105, 71,
       2, -10, 28, 109, -26, 35, -57, -87, -37, -70, 61,
@@ -646,7 +646,7 @@ TEST(QOrderedTest, LayerNorm_OrderCol32_NoBias_3x11x96) {
 
 static void
 RunQOrdered_Gelu_Test(std::vector<int64_t> const& shape, float scale_X, float scale_Y, OrderCublasLt order) {
-  constexpr float sqrt_of_2 = std::sqrt(2.0f);
+  static const float sqrt_of_2 = std::sqrt(2.0f);
 
   int64_t N = std::accumulate(shape.begin(), shape.end(), int64_t{1LL}, std::multiplies<int64_t>());
   std::vector<int8_t> vecX = GenData<int8_t>(shape, 1.0f);
