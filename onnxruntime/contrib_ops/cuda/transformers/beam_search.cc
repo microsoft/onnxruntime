@@ -24,6 +24,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 4)    // 'num_return_sequences' needs to be on CPU
         .InputMemoryType(OrtMemTypeCPUInput, 5)    // 'length_penalty' needs to be on CPU
         .InputMemoryType(OrtMemTypeCPUInput, 6)    // 'repetition_penalty' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 9)    // 'attention_mask' needs to be on CPU
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)  // 'sequences' output on CPU
         .OutputMemoryType(OrtMemTypeCPUOutput, 1)  // 'sequences_scores' output on CPU
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
@@ -49,7 +50,10 @@ BeamSearch::BeamSearch(const OpKernelInfo& info)
                        BeamSearchCudaDeviceHelper::UpdateGptFeeds<MLFloat16>);
 
   SetDeviceHelpers_EncoderDecoder(BeamSearchCudaDeviceHelper::UpdateDecoderFeeds<float>,
-                                  BeamSearchCudaDeviceHelper::UpdateDecoderFeeds<MLFloat16>);
+                                  BeamSearchCudaDeviceHelper::UpdateDecoderFeeds<MLFloat16>,
+                                  BeamSearchCudaDeviceHelper::ExpandBuffer<int32_t>,
+                                  BeamSearchCudaDeviceHelper::ExpandBuffer<float>,
+                                  BeamSearchCudaDeviceHelper::ExpandBuffer<MLFloat16>);
 
   SetConsoleDumper(&g_cuda_dumper);
 }

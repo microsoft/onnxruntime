@@ -433,6 +433,11 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
     const auto& feed = feeds[i];
     if (feed.IsTensor()) {
       feed_locations[i] = feed.Get<Tensor>().Location().device;
+    } else if (feed.IsTensorSequence()) {
+      const auto& tensor_seq = feed.Get<TensorSeq>();
+      if (tensor_seq.Size() != std::size_t{0}) {
+        feed_locations[i] = tensor_seq.Get(0).Location().device;
+      }
     } else if (feed.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
       feed_locations[i] = feed.Get<SparseTensor>().Location().device;
@@ -646,10 +651,11 @@ common::Status ExecuteGraph(const SessionState& session_state,
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                                    const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
-                                   const OrtValueCachePtr& cache) {
+                                   const OrtValueCachePtr& cache,
+                                   int32_t partial_graph_index) {
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
-  PartialExecutor executor{state, cache};
+  PartialExecutor executor{state, cache, partial_graph_index};
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
 

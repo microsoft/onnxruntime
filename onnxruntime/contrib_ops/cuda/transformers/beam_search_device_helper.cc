@@ -221,6 +221,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   const TensorShape& logits_shape = logits.Get<Tensor>().Shape();
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
   auto input_length = logits_shape[1];
+  auto logits_batch_size = logits_shape[0];
 
   cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream);
 
@@ -228,21 +229,28 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   //    next_token_logits = logits[:, -1, :], and the result shape is (batch_size * num_beams, vocab_size)
   // When input_length == 1, use logits directly in SoftmaxCPU below so it only need for input_length > 1.
   gsl::span<T>& next_token_logits = beam_state->next_token_logits;
-  if (input_length > 1) {
-    // TODO(tianleiwu): use one kernel to replace a loop of memory copy.
+
+  // TODO(tianleiwu): use one kernel to replace a loop of memory copy.
+  if (input_length > 1 || logits_batch_size == batch_size) {
     const CudaT* current_logits = logits_data + (input_length - 1) * vocab_size;
     for (int i = 0; i < batch_beam_size; i++) {
       gsl::span<const T> source(reinterpret_cast<const T*>(current_logits), vocab_size);
       gsl::span<T> target = next_token_logits.subspan(i * vocab_size, vocab_size);
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), sizeof(T) * vocab_size,
                                            cudaMemcpyDeviceToDevice, cuda_stream));
-      current_logits += input_length * vocab_size;
+      if (logits_batch_size == batch_beam_size) {
+        current_logits += input_length * vocab_size;
+      } else if (logits_batch_size == batch_size && i % num_beams == num_beams - 1) {
+        current_logits += input_length * vocab_size;
+      }
     }
   }
 
 #ifdef DEBUG_BEAM_SEARCH
   dumper->Print("logits", logits);
-  dumper->Print("next_token_logits", next_token_logits.data(), batch_size, num_beams, vocab_size);
+  if (input_length > 1 || logits_batch_size == batch_size) {
+    dumper->Print("next_token_logits", next_token_logits.data(), batch_size, num_beams, vocab_size);
+  }
 #endif
 
   // Get scores for candidates of next token: next_token_scores = log_softmax(next_token_logits, dim=-1)
@@ -250,7 +258,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   // The output will be float for consideration of precision and easy integration with remaining parts.
   float* Y_data = next_token_scores.data();
-  const CudaT* X_data = input_length > 1 ? reinterpret_cast<const CudaT*>(next_token_logits.data()) : logits_data;
+  bool is_single_token = (input_length == 1 && logits_batch_size == batch_beam_size);
+  const CudaT* X_data = is_single_token ? logits_data : reinterpret_cast<const CudaT*>(next_token_logits.data());
 
   dispatch_blockwise_softmax_forward<CudaT, float, float, true>(
       cuda_stream, Y_data, X_data, vocab_size, vocab_size, batch_size * num_beams);
@@ -490,12 +499,12 @@ Status UpdateGptFeeds(
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
+    bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx,
-    const transformers::IConsoleDumper* dumper) {
+    int gpt_subgraph_first_present_output_idx) {
   // Update input_ids with next tokens.
   int batch_beam_size = static_cast<int>(beam_next_tokens.length());
   int64_t dims[] = {batch_beam_size, 1};
@@ -509,7 +518,7 @@ Status UpdateGptFeeds(
   next_inputs[0] = input_ids;
 
   // Update position IDs
-  int32_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+  int32_t* position_data = increase_position ? position_ids.GetMutable<Tensor>()->MutableData<int32_t>() : nullptr;
   next_inputs[1] = position_ids;
 
   // Update attention mask
@@ -527,14 +536,6 @@ Status UpdateGptFeeds(
                               reinterpret_cast<cudaStream_t>(stream));
 
   next_inputs[2] = attention_mask;
-
-#ifdef DEBUG_BEAM_SEARCH
-  dumper->Print("input_ids", input_ids);
-  dumper->Print("position_ids", position_ids);
-  dumper->Print("attention_mask", attention_mask);
-#else
-  ORT_UNUSED_PARAMETER(dumper);
-#endif
 
   // Update past state
   if (num_beams == 1) {
@@ -618,6 +619,53 @@ Status UpdateDecoderFeeds(
                             t5_decoder_first_past_input_idx, t5_decoder_first_present_output_idx, stream);
 }
 
+template <typename T>
+Status ExpandBuffer(void* stream,
+                    const OrtValue& input,
+                    int num_beams,
+                    AllocatorPtr allocator,
+                    OrtValue& expanded,
+                    bool only_copy_shape) {
+  // Input shape (batch_size, xxx). The input is required with data type T.
+  // Output shape (batch_size * num_beams, xxx)
+  const TensorShape& input_shape = input.Get<Tensor>().Shape();
+  const int64_t& batch_size = input_shape[0];
+  const int64_t& chunk_size = static_cast<int64_t>(input_shape.Size() / batch_size);
+
+  int64_t dims[4] = {0};
+  input_shape.CopyDims(dims, input_shape.NumDimensions());
+  dims[0] = batch_size * num_beams;
+  TensorShape expanded_shape(&dims[0], input_shape.NumDimensions());
+
+  MLDataType element_type = input.Get<Tensor>().DataType();
+  ORT_ENFORCE(element_type == DataTypeImpl::GetType<T>());
+  Tensor::InitOrtValue(element_type, expanded_shape, allocator, expanded);
+
+  if (only_copy_shape) {
+    return Status::OK();
+  }
+
+  cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream);
+
+  const T* input_data = input.Get<Tensor>().Data<T>();
+  T* expanded_data = expanded.GetMutable<Tensor>()->MutableData<T>();
+  T* target = expanded_data;
+  for (int i = 0; i < batch_size; i++) {
+    for (int j = 0; j < num_beams; j++) {
+      CUDA_RETURN_IF_ERROR(
+          cudaMemcpyAsync(
+              target,
+              input_data + i * chunk_size,
+              sizeof(T) * chunk_size,
+              cudaMemcpyDeviceToDevice,
+              cuda_stream));
+      target += chunk_size;
+    }
+  }
+
+  return Status::OK();
+}
+
 // Explicit template instantiations of functions
 template void InitBeamState<float>(transformers::IBeamSearchState<float>* beam_state,
                                    gsl::span<int32_t>& sequence_lengths,
@@ -657,12 +705,12 @@ template Status UpdateGptFeeds<float>(
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
+    bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx,
-    const transformers::IConsoleDumper* dumper);
+    int gpt_subgraph_first_present_output_idx);
 
 // Float16
 template void InitBeamState<MLFloat16>(transformers::IBeamSearchState<MLFloat16>* beam_state,
@@ -691,12 +739,12 @@ template Status UpdateGptFeeds<MLFloat16>(
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
+    bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx,
-    const transformers::IConsoleDumper* dumper);
+    int gpt_subgraph_first_present_output_idx);
 
 template Status UpdateDecoderFeeds<float>(
     AllocatorPtr allocator,
@@ -730,6 +778,29 @@ template Status UpdateDecoderFeeds<MLFloat16>(
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 
+template Status ExpandBuffer<int32_t>(
+    void* stream,
+    const OrtValue& input,
+    int num_beams,
+    AllocatorPtr allocator,
+    OrtValue& expanded,
+    bool only_copy_shape);
+
+template Status ExpandBuffer<float>(
+    void* stream,
+    const OrtValue& input,
+    int num_beams,
+    AllocatorPtr allocator,
+    OrtValue& expanded,
+    bool only_copy_shape);
+
+template Status ExpandBuffer<MLFloat16>(
+    void* stream,
+    const OrtValue& input,
+    int num_beams,
+    AllocatorPtr allocator,
+    OrtValue& expanded,
+    bool only_copy_shape);
 }  // namespace BeamSearchCudaDeviceHelper
 }  // namespace contrib
 }  // namespace onnxruntime
