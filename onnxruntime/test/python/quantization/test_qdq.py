@@ -23,7 +23,7 @@ class TestQDQFormat(TestCaseTempDir):
         for i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
-                inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
+                inputs.update({name: np.random.normal(.1, .5, shape).astype(np.float32)})
             input_data_list.extend([inputs])
         dr = TestDataFeeds(input_data_list)
         return dr
@@ -316,13 +316,13 @@ class TestQDQFormatConv(TestQDQFormat):
             reduce_range=per_channel,
             activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
-            extra_options={'OpTypesToExcludeOutputQuantizatioin': []}
+            # extra_options={'OpTypesToExcludeOutputQuantizatioin': []}
         )
         data_reader.rewind()
         qdq_nodes = {
             "Conv": 1,
-            "QuantizeLinear": 2,
-            "DequantizeLinear": 3,
+            "QuantizeLinear": 1,
+            "DequantizeLinear": 2,
         }
         check_op_type_count(self, model_int8_qdq_dyn_path, **qdq_nodes)
         check_model_correctness(self, model_fp32_path, model_int8_qdq_dyn_path, data_reader.get_next())
@@ -463,7 +463,7 @@ class TestQDQFormatConvClip(TestQDQFormat):
             activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             op_types_to_quantize=['Conv', 'Reshape'],
-            extra_options={'OpTypesToExcludeOutputQuantizatioin': []}
+            # extra_options={'OpTypesToExcludeOutputQuantizatioin': []}
         )
         # topo sort check
         if is_quant_type_int8:
@@ -474,23 +474,19 @@ class TestQDQFormatConvClip(TestQDQFormat):
                     "DequantizeLinear",
                     "ReduceMin",
                     "ReduceMax",
-                    "Abs",
-                    "Abs",
+                    "Min",
                     "Max",
+                    "Sub",
                     "Div",
+                    "Div",
+                    "Sub",
+                    "Floor",
+                    "Cast",
                     "QuantizeLinear",
                     "DequantizeLinear",
                     "Conv",
-                    "ReduceMin",
-                    "ReduceMax",
-                    "Abs",
-                    "Abs",
-                    "Max",
-                    "Div",
-                    "QuantizeLinear",
-                    "DequantizeLinear",
                     "Clip",
-                    "Reshape",
+                    "Reshape"
                 ],
             )
         else:
@@ -502,28 +498,18 @@ class TestQDQFormatConvClip(TestQDQFormat):
                     "ReduceMin",
                     "ReduceMax",
                     "Min",
-                    "Sub",
+                    "Max",
                     "Sub",
                     "Div",
                     "Div",
+                    "Sub",
                     "Floor",
                     "Cast",
                     "QuantizeLinear",
                     "DequantizeLinear",
                     "Conv",
-                    "ReduceMin",
-                    "ReduceMax",
-                    "Min",
-                    "Sub",
-                    "Sub",
-                    "Div",
-                    "Div",
-                    "Floor",
-                    "Cast",
-                    "QuantizeLinear",
-                    "DequantizeLinear",
                     "Clip",
-                    "Reshape",
+                    "Reshape"
                 ],
             )
         data_reader.rewind()
@@ -652,10 +638,14 @@ class TestQDQFormatConvRelu(TestQDQFormat):
                     "DequantizeLinear",
                     "ReduceMin",
                     "ReduceMax",
-                    "Abs",
-                    "Abs",
+                    "Min",
                     "Max",
+                    "Sub",
                     "Div",
+                    "Div",
+                    "Sub",
+                    "Floor",
+                    "Cast",
                     "QuantizeLinear",
                     "DequantizeLinear",
                     "Conv",
@@ -671,10 +661,11 @@ class TestQDQFormatConvRelu(TestQDQFormat):
                     "ReduceMin",
                     "ReduceMax",
                     "Min",
-                    "Sub",
+                    "Max",
                     "Sub",
                     "Div",
                     "Div",
+                    "Sub",
                     "Floor",
                     "Cast",
                     "QuantizeLinear",

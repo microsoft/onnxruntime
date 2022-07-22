@@ -24,7 +24,7 @@ class TestOpAttention(TestCaseTempDir):
         for i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
-                inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
+                inputs.update({name: np.random.normal(-1, 2, shape).astype(np.float32)})
             input_data_list.extend([inputs])
         dr = TestDataFeeds(input_data_list)
         return dr

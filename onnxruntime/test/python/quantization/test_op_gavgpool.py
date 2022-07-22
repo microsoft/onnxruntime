@@ -23,7 +23,7 @@ class TestOpGlobalAveragePool(TestCaseTempDir):
         for i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
-                inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
+                inputs.update({name: np.random.normal(-1.0, 1.0, shape).astype(np.float32)})
             input_data_list.extend([inputs])
         dr = TestDataFeeds(input_data_list)
         return dr
@@ -58,7 +58,7 @@ class TestOpGlobalAveragePool(TestCaseTempDir):
         # make Conv node
         weight_name = "conv_weight"
         conv_name = "conv_node"
-        conv_weight_data = np.random.normal(0, 0.1, weight_shape).astype(np.float32)
+        conv_weight_data = np.random.normal(-.5, 0.5, weight_shape).astype(np.float32)
         initializers.append(onnx.numpy_helper.from_array(conv_weight_data, name=weight_name))
         conv_node = onnx.helper.make_node("Conv", [conv_input, weight_name], [gavgpool_input_2nd], name=conv_name)
 
@@ -144,6 +144,7 @@ class TestOpGlobalAveragePool(TestCaseTempDir):
             extra_options=extra_options,
             op_types_to_quantize=["GlobalAveragePool", "Conv"],
         )
+
         quant_nodes = {
             "Conv": 1,
             "GlobalAveragePool": 2,

@@ -58,6 +58,7 @@ def quantize_static(
     optimize_model=True,
     use_external_data_format=False,
     calibrate_method=CalibrationMethod.MinMax,
+    calibration_file_path="augmented_model.onnx", #TODO: ok to add a new argument to this?
     extra_options={},
 ):
 
@@ -145,6 +146,7 @@ def quantize_static(
     calibrator = create_calibrator(
         model,
         op_types_to_quantize,
+        augmented_model_path=calibration_file_path,
         calibrate_method=calibrate_method,
         use_external_data_format=use_external_data_format,
         extra_options=calib_extra_options,

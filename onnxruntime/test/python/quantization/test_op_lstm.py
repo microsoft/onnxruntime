@@ -11,15 +11,11 @@ import unittest
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from onnx.backend.test.case.node.lstm import LSTM_Helper, LSTM
 from op_test_utils import TestCaseTempDir, TestDataFeeds, check_model_correctness, check_op_type_count
 from pathlib import Path
 from onnxruntime.tools import symbolic_shape_infer
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic
-
-import os
-from onnx import numpy_helper
 
 
 class TestOpLSTM(TestCaseTempDir):
@@ -28,7 +24,7 @@ class TestOpLSTM(TestCaseTempDir):
         for i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
-                inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
+                inputs.update({name: np.random.normal(0, 2, shape).astype(np.float32)})
             input_data_list.extend([inputs])
         dr = TestDataFeeds(input_data_list)
         return dr
@@ -52,33 +48,20 @@ class TestOpLSTM(TestCaseTempDir):
             number_of_gates = 4
             layout = 1
 
-            weight_data = np.random.normal(0, 0.1, [1, number_of_gates * hidden_size, input_size]).astype(np.float32)
+            weight_data = np.random.normal(0, 0.3, [1, number_of_gates * hidden_size, input_size]).astype(np.float32)
             initializers.append(onnx.numpy_helper.from_array(weight_data, name=weight_name))
 
-            bias_data = np.random.normal(0, 0.1, [1, number_of_gates * hidden_size, input_size]).astype(np.float32)
+            bias_data = np.random.normal(0, 0.3, [1, number_of_gates * hidden_size, input_size]).astype(np.float32)
             initializers.append(onnx.numpy_helper.from_array(bias_data, name=bias_name))
 
             return onnx.helper.make_node("LSTM", [input_name, weight_name, bias_name], [output_name],hidden_size=hidden_size)
 
-        def make_matmul_node(input_name, weight_shape, weight_name, output_name):
-            weight_data = np.random.normal(0, 0.1, weight_shape).astype(np.float32)
-            initializers.append(onnx.numpy_helper.from_array(weight_data, name=weight_name))
-
-            return onnx.helper.make_node("MatMul", [input_name, weight_name], [output_name])
-
         # make lstm node
-        lstm_output_name = "lstm_output"
         lstm_node = make_lstm_node(
             input_name, [10, 30], "qkv.weight", [30], "qkv.bias", output_name
         )
 
-        # lstm_node.attribute.extend([helper.make_attribute("num_heads", 5)])
-
-        # make matmul node
-        # matmul_node = make_matmul_node(lstm_output_name, [10, 10], "matmul.weight", output_name)
-
         # make graph
-        # lstm_tensor = helper.make_tensor_value_info(lstm_output_name, TensorProto.FLOAT, [1, 10, 30])
         input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, [1, -1, 2])
         output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, [1, -1, 2])
         graph_name = "lstm_test"
@@ -100,9 +83,9 @@ class TestOpLSTM(TestCaseTempDir):
         model_int8_qop_path = "lstm_int8.qop.onnx"
         model_int8_qop_path = Path(self._tmp_model_dir.name).joinpath(model_int8_qop_path).as_posix()
         model_int8_qdq_path = "lstm_int8.qdq.onnx"
-        # model_int8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_int8_qdq_path).as_posix()
+        model_int8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_int8_qdq_path).as_posix()
         model_uint8_qdq_path = "lstm_uint8.qdq.onnx"
-        # model_uint8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_qdq_path).as_posix()
+        model_uint8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_qdq_path).as_posix()
 
         inputarr = np.random.rand(1, 3, 2).astype(np.float32) #inputarr = [[[0.24056701, 0.49413764],[0.620923  , 0.8289809 ],[0.15604347, 0.01950543]]]
         
@@ -117,12 +100,12 @@ class TestOpLSTM(TestCaseTempDir):
 
         quant_nodes = {"DynamicQuantizeLSTM": 1}
         check_op_type_count(self, model_int8_qop_path, **quant_nodes)
-        # check_model_correctness(
-        #     self,
-        #     model_fp32_path,
-        #     model_int8_qop_path,
-        #     {"input": inputarr},
-        # )
+        check_model_correctness(
+            self,
+            model_fp32_path,
+            model_int8_qop_path,
+            {"input": inputarr},
+        )
 
         # Test LSTM QDQ Dynamic QInt8
         quantize_dynamic(
@@ -137,12 +120,12 @@ class TestOpLSTM(TestCaseTempDir):
 
         quant_nodes = {"LSTM": 1, "QuantizeLinear":1, "DequantizeLinear":2}
         check_op_type_count(self, model_int8_qdq_path, **quant_nodes)
-        # check_model_correctness(
-        #     self,
-        #     model_fp32_path,
-        #     model_int8_qdq_path,
-        #     {"input": inputarr},
-        # )
+        check_model_correctness(
+            self,
+            model_fp32_path,
+            model_int8_qdq_path,
+            {"input": inputarr},
+        )
 
         # Test LSTM QDQ Dynamic QUInt8 TODO: It has problems with certain inputs...
         quantize_dynamic(
@@ -157,12 +140,12 @@ class TestOpLSTM(TestCaseTempDir):
 
         quant_nodes = {"LSTM": 1, "QuantizeLinear":1, "DequantizeLinear":2}
         check_op_type_count(self, model_uint8_qdq_path, **quant_nodes)
-        # check_model_correctness(
-        #     self,
-        #     model_fp32_path,
-        #     model_uint8_qdq_path,
-        #     {"input": inputarr},
-        # )
+        check_model_correctness(
+            self,
+            model_fp32_path,
+            model_uint8_qdq_path,
+            {"input": inputarr},
+        )
 
         model = onnx.load(model_uint8_qdq_path)
         intermediate_layer_value_info = helper.ValueInfoProto()

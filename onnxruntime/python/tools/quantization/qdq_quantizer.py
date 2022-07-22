@@ -32,6 +32,8 @@ from .quant_utils import (
     generate_identified_filename,
     get_elem_index,
     get_mul_node,
+    get_qmin_qmax_for_qType,
+    get_qrange_for_qType,
     onnx_domain,
     quantize_nparray,
     type_to_name,
@@ -107,6 +109,9 @@ class QDQQuantizer(ONNXQuantizer):
             if "QDQOpTypePerChannelSupportToAxis" not in extra_options
             else extra_options["QDQOpTypePerChannelSupportToAxis"]
         )
+
+        # Name of initializer with minimum quantization value for qint8 or quint8
+        self.fixed_qmin_name = "fixed_qmin"
 
     def quantize_tensor(self, tensor_name):
         weight = find_by_name(tensor_name, self.model.initializer())
@@ -186,6 +191,247 @@ class QDQQuantizer(ONNXQuantizer):
             return True
         return False
 
+    def create_dynamic_subgraph(self, input_name, nodes_list, qType, symmetric=False):
+        """
+        Create nodes for dynamic quantization of input and add them to nodes_list.
+            parameter input_name: Name of the input.
+            parameter nodes_list: new nodes are appended to this list.
+            parameter qType: type to quantize to.
+            return: scale_name, zero_point_name, scale_shape, zero_point_shape.
+        """
+        if symmetric:
+            return self.create_dynamic_subgraph_symmetric(input_name, nodes_list, qType)
+
+        return self.create_dynamic_subgraph_asymmetric(input_name, nodes_list,qType)
+
+    def create_dynamic_subgraph_symmetric(self, input_name, nodes_list, qType):
+        """
+        Create nodes for dynamic symmetric quantization of input and add them to nodes_list
+            parameter input_name: Name of the input.
+            parameter nodes_list: new nodes are appended to this list.
+            return: scale_name, zero_point_name, scale_shape, zero_point_shape.
+        """
+
+        qrange_name = self.fixed_qrange_int8_name if qType == onnx_proto.TensorProto.INT8 else self.fixed_qrange_uint8_name
+        # Reduce min and Reduce max
+        input_scale_name = input_name + "_scale"
+
+        reduce_min_name = input_name + "_ReduceMin"
+        reduce_min_node = onnx.helper.make_node(
+            "ReduceMin",
+            [input_name],
+            [reduce_min_name + ":0"],
+            reduce_min_name,
+            keepdims=0,
+        )
+        nodes_list.append(reduce_min_node)
+
+        reduce_max_name = input_name + "_ReduceMax"
+        reduce_max_node = onnx.helper.make_node(
+            "ReduceMax",
+            [input_name],
+            [reduce_max_name + ":0"],
+            reduce_max_name,
+            keepdims=0,
+        )
+        nodes_list.append(reduce_max_node)
+
+        # Compute scale
+        #   Find abs(rmin)
+        reduce_min_abs_name = reduce_min_name + "_Abs"
+        reduce_min_abs_node = onnx.helper.make_node(
+            "Abs",
+            [reduce_min_node.output[0]],
+            [reduce_min_abs_name + ":0"],
+            reduce_min_abs_name,
+        )
+        nodes_list.append(reduce_min_abs_node)
+        #   Find abs(rmax)
+        reduce_max_abs_name = reduce_max_name + "_Abs"
+        reduce_max_abs_node = onnx.helper.make_node(
+            "Abs",
+            [reduce_max_node.output[0]],
+            [reduce_max_abs_name + ":0"],
+            reduce_max_abs_name,
+        )
+        nodes_list.append(reduce_max_abs_node)
+        #   Compute max of abs(rmin) and abs(rmax)
+        abs_max_name = input_name + "_Abs_Max"
+        abs_max_node = onnx.helper.make_node(
+            "Max",
+            [reduce_min_abs_node.output[0], reduce_max_abs_node.output[0]],
+            [abs_max_name + ":0"],
+            abs_max_name,
+        )
+        nodes_list.append(abs_max_node)
+        #   and divide by (quantize_range/2.0) which will be equal to max(...)*2.0/quantize_range
+        initializer_div = onnx.helper.make_tensor(
+            qrange_name,
+            onnx_proto.TensorProto.FLOAT,
+            [],
+            [get_qrange_for_qType(qType, reduce_range=self.reduce_range, symmetric=True) / 2.0],
+        )
+        self.model.add_initializer(initializer_div)
+        scale_div_name = input_name + "scale_Div"
+        scale_div_node = onnx.helper.make_node(
+            "Div",
+            [abs_max_node.output[0], qrange_name],
+            [input_scale_name],
+            scale_div_name,
+        )
+        nodes_list.append(scale_div_node)
+
+        # Zero point
+        qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range=self.reduce_range, symmetric=True)
+        zp = int((qmin + qmax) / 2)
+        initializer_zp = onnx.helper.make_tensor(self.fixed_zero_zp_name, qType, [], [zp])
+        self.model.add_initializer(initializer_zp)
+
+        return input_scale_name, self.fixed_zero_zp_name, [], []
+
+    def create_dynamic_subgraph_asymmetric(self, input_name, nodes_list, qType):
+        """
+        Create nodes for asymmetric dynamic quantization of input and add them to nodes_list
+            parameter input_name: Name of the input.
+            parameter nodes_list: new nodes are appended to this list.
+            return: scale_name, zero_point_name, scale_shape, zero_point_shape.
+        """
+        # Reduce min and Reduce max
+        input_scale_name = input_name + "_scale"
+        input_zp_name = input_name + "_zero_point"
+        qrange_name = self.fixed_qrange_int8_name if qType == onnx_proto.TensorProto.INT8 else self.fixed_qrange_uint8_name
+
+        # Add tensors for quantize range and zero value.
+        initializer_qrange = onnx.helper.make_tensor(
+            qrange_name,
+            onnx_proto.TensorProto.FLOAT,
+            [],
+            [get_qrange_for_qType(qType, reduce_range=self.reduce_range, symmetric=False)],
+        )
+        self.model.add_initializer(initializer_qrange)
+        initializer_qvalue = onnx.helper.make_tensor(self.fixed_zero_name, onnx_proto.TensorProto.FLOAT, [], [0.0])
+        self.model.add_initializer(initializer_qvalue)
+        qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range=self.reduce_range, symmetric=False)
+        initializer_qmin = onnx.helper.make_tensor(self.fixed_qmin_name, onnx_proto.TensorProto.FLOAT, [], [qmin])
+        self.model.add_initializer(initializer_qmin)
+
+        reduce_min_name = input_name + "_ReduceMin"
+        reduce_min_node = onnx.helper.make_node(
+            "ReduceMin",
+            [input_name],
+            [reduce_min_name + ":0"],
+            reduce_min_name,
+            keepdims=0,
+        )
+        nodes_list.append(reduce_min_node)
+        
+        zero_min_name = input_name + "_Min"
+        zero_min_node = onnx.helper.make_node(
+            "Min",
+            [reduce_min_name + ":0", self.fixed_zero_name],
+            [zero_min_name+":0"],
+            zero_min_name
+        )
+        nodes_list.append(zero_min_node)
+
+        reduce_max_name = input_name + "_ReduceMax"
+        reduce_max_node = onnx.helper.make_node(
+            "ReduceMax",
+            [input_name],
+            [reduce_max_name + ":0"],
+            reduce_max_name,
+            keepdims=0,
+        )
+        nodes_list.append(reduce_max_node)
+
+        zero_max_name = input_name + "_Max"
+        zero_max_node = onnx.helper.make_node(
+            "Max",
+            [reduce_max_name + ":0", self.fixed_zero_name],
+            [zero_max_name+":0"],
+            zero_max_name
+        )
+        nodes_list.append(zero_max_node)
+
+        # Compute Scale
+        #   Subtract rmax and rmin
+        scale_sub_name = input_name + "_scale_Sub"
+        scale_sub_node = onnx.helper.make_node(
+            "Sub",
+            [zero_max_node.output[0], zero_min_node.output[0]],
+            [scale_sub_name + ":0"],
+            scale_sub_name,
+        )
+        nodes_list.append(scale_sub_node)
+        #   and divide by quantize range
+        scale_div_name = input_name + "_scale_Div"
+        scale_div_node = onnx.helper.make_node(
+            "Div",
+            [scale_sub_node.output[0], qrange_name],
+            [input_scale_name],
+            scale_div_name,
+        )
+        nodes_list.append(scale_div_node)
+
+        # TODO: Test changes I think are right
+        #   Divide rmin by scale
+        zp_div_name = input_name + "_zero_point_Div"
+        zp_div_node = onnx.helper.make_node(
+            "Div",
+            [zero_min_node.output[0], input_scale_name],
+            [zp_div_name + ":0"],
+            zp_div_name,
+        )
+        nodes_list.append(zp_div_node)
+        # Compute zero point
+        #   Subtract zero and rmin/scale
+        zp_sub_name = input_name + "_zero_point_Sub"
+        zp_sub_node = onnx.helper.make_node(
+            "Sub",
+            [self.fixed_qmin_name, zp_div_node.output[0]],
+            [zp_sub_name + ":0"],
+            zp_sub_name,
+        )
+        nodes_list.append(zp_sub_node)
+
+        # TODO: this is how it was BEFORE the change
+        # # Compute zero point
+        # #   Subtract zero and rmin
+        # zp_sub_name = input_name + "_zero_point_Sub"
+        # zp_sub_node = onnx.helper.make_node(
+        #     "Sub",
+        #     [self.fixed_qmin_name, zero_min_node.output[0]],
+        #     [zp_sub_name + ":0"],
+        #     zp_sub_name,
+        # )
+        # nodes_list.append(zp_sub_node)
+        # #   Divide by scale
+        # zp_div_name = input_name + "_zero_point_Div"
+        # zp_div_node = onnx.helper.make_node(
+        #     "Div",
+        #     [zp_sub_node.output[0], input_scale_name],
+        #     [zp_div_name + ":0"],
+        #     zp_div_name,
+        # )
+        # nodes_list.append(zp_div_node)
+
+        # #   Compute floor
+        # zp_floor_name = input_name + "_zero_point_Floor"
+        # zp_floor_node = onnx.helper.make_node("Floor", zp_div_node.output, [zp_floor_name + ":0"], zp_floor_name)
+        # nodes_list.append(zp_floor_node)
+        
+        # TODO: Floor part of test
+        #   Compute floor
+        zp_floor_name = input_name + "_zero_point_Floor"
+        zp_floor_node = onnx.helper.make_node("Floor", zp_sub_node.output, [zp_floor_name + ":0"], zp_floor_name)
+        nodes_list.append(zp_floor_node)
+        #   Cast to integer
+        zp_cast_name = input_name + "_zero_point_Cast"
+        zp_cast_node = onnx.helper.make_node("Cast", zp_floor_node.output, [input_zp_name], zp_cast_name, to=qType) # TODO recast zp as int32 to avoid underflow...
+        nodes_list.append(zp_cast_node)
+
+        return input_scale_name, input_zp_name, [], []
+
     def quantize_tensors(self):
         for tensor_name in self.tensors_to_quantize:
             if tensor_name in self.quantized_value_map.keys():
@@ -237,40 +483,31 @@ class QDQQuantizer(ONNXQuantizer):
                                 tensor_name
                             )
                         )
-                    # TODO: Here we can add dynamic subgraph, given that we found no static params
+                    # Here we add dynamic subgraph, if we found no static params
                     # Scale and Zero Points not available for this input. Add nodes to dynamically compute it
                     qType = self.input_qType
-                    # ql_node_name = tensor_name + "_QuantizeLinear"
-                    if self.model.is_graph_output(tensor_name): # TODO: Had to do this to output quantize properly
+                    if self.model.is_graph_output(tensor_name): # Changes name to quantize output correctly
                         (
                             scale_name,
                             zp_name,
                             scale_shape,
                             zp_shape,
-                        ) = self._get_dynamic_input_quantization_params(tensor_name + "_QuantizeLinearInput", nodes, qType)
+                        ) = self.create_dynamic_subgraph(tensor_name + "_QuantizeLinearInput", nodes, qType, symmetric=self.is_activation_symmetric)
+                        # ) = self._get_dynamic_input_quantization_params(tensor_name + "_QuantizeLinearInput", nodes, qType)
                     else:
                         (
                             scale_name,
                             zp_name,
                             scale_shape,
                             zp_shape,
-                        ) = self._get_dynamic_input_quantization_params(tensor_name, nodes, qType)
-                    # qlinear_node = onnx.helper.make_node(
-                    #     "QuantizeLinear",
-                    #     [tensor_name, scale_name, zp_name],
-                    #     [output_name],
-                    #     ql_node_name,
-                    # )
-                    # self.quantized_value_map[tensor_name] = QuantizedValue(tensor_name, output_name, scale_name, zp_name, qType) # <- What do?
-                    # nodes + [qlinear_node]
-                    # ^^^^ NEW 
-
+                        ) = self.create_dynamic_subgraph(tensor_name, nodes, qType, symmetric=self.is_activation_symmetric)
+                        # ) = self._get_dynamic_input_quantization_params(tensor_name, nodes, qType)
                 if (
                     self.dedicated_qdq_pair
                     and tensor_name in self.tensor_to_its_receiving_nodes
                     and len(self.tensor_to_its_receiving_nodes[tensor_name]) > 1
                 ):
-                    # TODO: this if block must be tested. no output check makes me think it will break
+                    # TODO: This if block should be tested
                     num_dedicated_qdq_pair = len(self.tensor_to_its_receiving_nodes[tensor_name])
                     for i in range(num_dedicated_qdq_pair):
                         postfix = str(i + 1)

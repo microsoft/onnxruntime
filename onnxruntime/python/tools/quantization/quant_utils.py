@@ -199,7 +199,10 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):
     :return: qmin, qmax
     """
     if qType == onnx_proto.TensorProto.UINT8:
-        (qmin, qmax) = (0, 127) if reduce_range else (0, 255)
+        if symmetric:
+            (qmin, qmax) = (0, 128) if reduce_range else (0, 254) # TODO: IS this correct?
+        else:
+            (qmin, qmax) = (0, 128) if reduce_range else (0, 255)
     elif qType == onnx_proto.TensorProto.INT8:
         if symmetric:
             (qmin, qmax) = (-64, 64) if reduce_range else (-127, 127)

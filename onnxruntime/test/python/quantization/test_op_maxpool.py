@@ -30,7 +30,7 @@ class TestOpMaxPool(TestCaseTempDir):
         for i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
-                inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
+                inputs.update({name: np.random.normal(0, .2, shape).astype(np.float32)})
             input_data_list.extend([inputs])
         dr = TestDataFeeds(input_data_list)
         return dr
@@ -53,7 +53,7 @@ class TestOpMaxPool(TestCaseTempDir):
         # (identity_out)  (output)
         input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, conv_input_shape)
 
-        conv_weight_arr = np.random.randint(-1, 2, conv_weight_shape).astype(np.float32)
+        conv_weight_arr = np.random.normal(0, .1, conv_weight_shape).astype(np.float32)
         conv_weight_initializer = onnx.numpy_helper.from_array(conv_weight_arr, name="conv1_weight")
         conv_node = onnx.helper.make_node("Conv", ["input", "conv1_weight"], ["conv_output"], name="conv_node")
 

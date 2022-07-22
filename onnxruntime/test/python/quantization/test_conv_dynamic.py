@@ -99,7 +99,7 @@ class TestONNXModel(TestCaseTempDir):
             {"input": np.random.rand(4, 2, 8, 8).astype(np.float32)},
         )
 
-        # Test Dynamic QDQ
+        # Test Dynamic QDQ / Weight QUInt8, Activation QUInt8
         quantize_dynamic(
             temp_model_fp32_path,
             test_model_int8_qdq_path,
@@ -107,6 +107,27 @@ class TestONNXModel(TestCaseTempDir):
             weight_type=weight_type,
             extra_options=extra_options,
         )
+        quant_nodes = {"Conv": 2}
+        check_op_type_count(self, test_model_int8_qdq_path, **quant_nodes)
+        qnode_io_qtypes = {"Conv": [["i", 1, 1]]}
+        check_qtype_by_node_type(self, test_model_int8_qdq_path, qnode_io_qtypes)
+        check_model_correctness(
+            self,
+            temp_model_fp32_path,
+            test_model_int8_qdq_path,
+            {"input": np.random.rand(4, 2, 8, 8).astype(np.float32)},
+        )
+
+        # Test Dynamic QDQ / Weight QInt8, Activation QInt8
+        quantize_dynamic(
+            temp_model_fp32_path,
+            test_model_int8_qdq_path,
+            quant_format=QuantFormat.QDQ,
+            weight_type=QuantType.QInt8,
+            activation_type=QuantType.QInt8,
+            extra_options=extra_options,
+        )
+
         quant_nodes = {"Conv": 2}
         check_op_type_count(self, test_model_int8_qdq_path, **quant_nodes)
         qnode_io_qtypes = {"Conv": [["i", 1, 1]]}

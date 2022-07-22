@@ -222,7 +222,7 @@ class TestOpQuatizerPad(TestCaseTempDir):
             activation_type_str,
             weight_type_str,
         )
-        # model_i8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_i8_qdq_path).as_posix()
+        model_i8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_i8_qdq_path).as_posix()
         model_i8_qop_path = "pad_{}_i8_{}{}_{}{}_qop.onnx".format(
             quantize_mode,
             tag_pad_mode,

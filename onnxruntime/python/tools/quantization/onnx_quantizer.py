@@ -132,7 +132,7 @@ class ONNXQuantizer:
         # Used when static is False
         self.fixed_qrange_uint8_name = "fixed_quantization_range_uint8"
         self.fixed_qrange_int8_name = "fixed_quantization_range_int8"
-        # For uint8 data-type, to compute zero point, we subtract rmin from 0 (represented by fixed_zero_name tensor)
+        # For symmetric we subtract rmin from qmin (represented by fixed_zero_name tensor)
         self.fixed_zero_name = "fixed_zero"
         # For int8 data-type, zero point is always zero (respresented by fixed_zero_point_name tensor)
         self.fixed_zero_zp_name = "fixed_zero_zp"
