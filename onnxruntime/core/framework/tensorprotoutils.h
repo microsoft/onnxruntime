@@ -10,6 +10,7 @@
 #include "core/common/common.h"
 #include "core/common/path.h"
 #include "core/common/status.h"
+#include "core/common/safeint.h"
 #include "core/framework/endian_utils.h"
 #include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
@@ -79,7 +80,7 @@ common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& 
 // The ext_data_deleter argument is updated with a callback that owns/releases the data.
 common::Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
                                          const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                         void*& ext_data_buf, size_t& ext_data_len, OrtCallback& ext_data_deleter);
+                                         void*& ext_data_buf, SafeInt<size_t>& ext_data_len, OrtCallback& ext_data_deleter);
 
 // Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer
 // If AttributeProto contains a TensorProto, this tensor proto is converted as is including the case when the

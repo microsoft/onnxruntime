@@ -584,7 +584,7 @@ static Status GetFileContent(
 
 Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                 void*& ext_data_buf, size_t& ext_data_len, OrtCallback& ext_data_deleter) {
+                                 void*& ext_data_buf, SafeInt<size_t>& ext_data_len, OrtCallback& ext_data_deleter) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
   ORT_ENFORCE(model_path);
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
@@ -634,34 +634,10 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
   void* raw_data = nullptr;
   SafeInt<size_t> raw_data_len = 0;
   AutoDelete deleter_for_file_data;
+  OrtCallback& d = deleter_for_file_data.d;
 
   if (utils::HasExternalData(tensor_proto)) {
-    // Get the external data info
-    std::basic_string<ORTCHAR_T> external_data_file_path;
-    FileOffsetType file_offset;
-    std::basic_string<ORTCHAR_T> tensor_proto_dir;
-    if (model_path != nullptr) {
-      ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
-    }
-    ORT_RETURN_IF_ERROR(GetExternalDataInfo(
-        tensor_proto,
-        tensor_proto_dir.size() == 0 ? nullptr : tensor_proto_dir.c_str(),
-        external_data_file_path, file_offset, raw_data_len));
-
-    size_t file_length;
-    ORT_RETURN_IF_ERROR(env.GetFileLength(external_data_file_path.c_str(), file_length));
-
-    SafeInt<FileOffsetType> end_of_read(file_offset);
-    end_of_read += raw_data_len;
-    ORT_RETURN_IF(file_offset < 0 || end_of_read > gsl::narrow<FileOffsetType>(file_length),
-                  "External initializer: ", tensor_proto.name(),
-                  " offset: ", file_offset, " size to read: ", static_cast<size_t>(raw_data_len), " given file_length: ", file_length,
-                  " are out of bounds or can not be read in full.");
-
-    // load the file
-    ORT_RETURN_IF_ERROR(GetFileContent(
-        env, external_data_file_path.c_str(), file_offset, raw_data_len,
-        raw_data, deleter_for_file_data.d));
+    ORT_RETURN_IF_ERROR(GetExtDataFromTensorProto(env, model_path, tensor_proto, raw_data, raw_data_len, d));
   } else if (utils::HasRawData(tensor_proto)) {
     raw_data = const_cast<char*>(tensor_proto.raw_data().data());
     // TODO The line above has const-correctness issues. Below is a possible fix which copies the tensor_proto data
