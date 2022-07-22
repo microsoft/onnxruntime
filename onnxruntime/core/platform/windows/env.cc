@@ -369,7 +369,7 @@ class WindowsEnv : public Env {
           " - ", std::system_category().message(error_code));
     }
 
-#if NTDDI_VERSION >= NTDDI_WIN10_RS5
+#if NTDDI_VERSION >= NTDDI_WIN10_RS5 && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP | WINAPI_PARTITION_SYSTEM)
     wil::unique_hfile file_mapping_handle{
         CreateFileMapping2(file_handle.get(),
                            nullptr,
