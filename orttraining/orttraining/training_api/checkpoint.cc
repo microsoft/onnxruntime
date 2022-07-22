@@ -528,8 +528,8 @@ Status OrtLoadCustomPropertyInternal(const PathString& property_folder_path,
   return Status::OK();
 }
 
-Status OrtLoadInternal(std::vector<ONNX_NAMESPACE::TensorProto>& param_tensor_protos,
-                       const PathString& checkpoint_path) {
+Status OrtLoadInternal(const PathString& checkpoint_path,
+                       std::vector<ONNX_NAMESPACE::TensorProto>& param_tensor_protos) {
   // Find tensor proto files.
   std::vector<PathString> tensor_proto_filenames;
   FilterFilesFromDirectory(
@@ -547,12 +547,12 @@ Status OrtLoadInternal(std::vector<ONNX_NAMESPACE::TensorProto>& param_tensor_pr
   }
 
   // Load tensor protos to the tensorProto Vector
-  for (auto& tensor_file_path : tensor_proto_filenames) {
+  for (const auto& tensor_file_path : tensor_proto_filenames) {
     std::vector<ONNX_NAMESPACE::TensorProto> tensor_protos{};
-    auto tensor_file_full_path = ConcatPathComponent<PathChar>(checkpoint_path, tensor_file_path);
+    const auto tensor_file_full_path = ConcatPathComponent<PathChar>(checkpoint_path, tensor_file_path);
     LoadTensorProtoFromFile(tensor_file_full_path, tensor_protos, "[params]");
 
-    for (auto& tensor_proto : tensor_protos) {
+    for (const auto& tensor_proto : tensor_protos) {
       param_tensor_protos.push_back(tensor_proto);
     }
   }
@@ -583,9 +583,9 @@ Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointState& checkp
   return OrtLoadInternal(checkpoint_path, checkpoint_states);
 }
 
-Status LoadCheckpoint(std::vector<ONNX_NAMESPACE::TensorProto>& param_tensor_protos,
-                      const PathString& checkpoint_path) {
-  return OrtLoadInternal(param_tensor_protos, checkpoint_path);
+Status LoadCheckpoint(const PathString& checkpoint_path,
+                      std::vector<ONNX_NAMESPACE::TensorProto>& param_tensor_protos) {
+  return OrtLoadInternal(checkpoint_path, param_tensor_protos);
 }
 
 }  // namespace api

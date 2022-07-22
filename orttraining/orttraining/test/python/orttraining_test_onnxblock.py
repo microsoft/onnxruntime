@@ -138,6 +138,7 @@ def _get_models(device, N, D_in, H, D_out, zero_flag=False):
     """Returns the pt and onnx models for SimpleNet"""
     pt_model = SimpleNet(D_in, H, D_out).to(device)
 
+    # setting all initial weights to zero
     if zero_flag:
         with torch.no_grad():
             for param in pt_model.parameters():
@@ -565,6 +566,10 @@ def test_load_checkpoint():
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10
     _, zero_onnx_model = _get_models(device, N, D_in, H, D_out, zero_flag=True)
+    for i in range(len(zero_onnx_model.graph.initializer)):
+        zero_np = onnx.numpy_helper.to_array(zero_onnx_model.graph.initializer[i])
+        assert np.allclose(zero_np, np.zeros(zero_np.shape))
+
     _, onnx_model = _get_models(device, N, D_in, H, D_out)
 
     # Copy of onnx_model for comparison
@@ -588,11 +593,10 @@ def test_load_checkpoint():
         onnxblock.load_checkpoint(checkpoint_file_path, zero_onnx_model)
 
         # Then
-        length = len(onnx_model_copy.graph.initializer)
         onnx_model_copy.graph.initializer.sort(key=lambda x: x.name)
         zero_onnx_model.graph.initializer.sort(key=lambda x: x.name)
 
-        for i in range(length):
+        for i in range(len(onnx_model_copy.graph.initializer)):
             onnx_np = onnx.numpy_helper.to_array(onnx_model_copy.graph.initializer[i])
             zero_np = onnx.numpy_helper.to_array(zero_onnx_model.graph.initializer[i])
             assert np.allclose(onnx_np, zero_np)

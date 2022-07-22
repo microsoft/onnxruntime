@@ -30,9 +30,6 @@ def load_checkpoint(path_to_checkpoint, model):
 
     parameters_dict = {}
     for (i, initializer) in enumerate(model.graph.initializer):
-        tensor_proto = TensorProto()
-        tensor_proto.ParseFromString(parameters[i])
-        parameters_dict[initializer.name] = tensor_proto
-
-    for initializer in model.graph.initializer:
+        parameters_dict[initializer.name] = TensorProto()
+        parameters_dict[initializer.name].ParseFromString(parameters[i])
         initializer.CopyFrom(parameters_dict[initializer.name])

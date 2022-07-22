@@ -88,8 +88,8 @@ Status LoadCheckpoint(const PathString& checkpoint_path,
  * @param checkpoint_path folder where checkpoint is stored.
  * @return Status
  */
-Status LoadCheckpoint(std::vector<ONNX_NAMESPACE::TensorProto>& param_tensor_protos,
-                      const PathString& checkpoint_path);
+Status LoadCheckpoint(const PathString& checkpoint_path,
+                      std::vector<ONNX_NAMESPACE::TensorProto>& param_tensor_protos);
 
 }  // namespace api
 }  // namespace training

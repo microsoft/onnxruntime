@@ -950,11 +950,11 @@ for every transfered tensor.
   m.def("load_checkpoint",
         [](const std::string& checkpoint_path) {
           std::vector<TensorProto> tensor_protos;
-          ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpoint(tensor_protos, checkpoint_path));
+          ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpoint(checkpoint_path, tensor_protos));
           std::vector<py::bytes> tensor_protos_pybytes(tensor_protos.size());
 
-          auto parse_tensor_proto_to_pybytes =
-              [](std::vector<py::bytes>& tensor_protos_pybytes, std::vector<TensorProto>& tensor_protos) {
+          const auto parse_tensor_proto_to_pybytes =
+              [](std::vector<py::bytes>& tensor_protos_pybytes, const std::vector<TensorProto>& tensor_protos) {
                 for (size_t i = 0; i < tensor_protos.size(); ++i) {
                   std::string tensor_proto_str;
                   tensor_protos[i].SerializeToString(&tensor_proto_str);
