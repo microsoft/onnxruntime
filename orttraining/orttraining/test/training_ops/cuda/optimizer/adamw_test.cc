@@ -47,7 +47,7 @@ void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_inputs_for_each_ite
   testdata_ep_pair_vector.push_back(std::make_pair(
       ORT_TSTR("cpu/adamw_test_single_weight_mode_0.json"),
       DefaultCpuExecutionProvider()));
-#if USE_CUDA || USE_ROCM
+#if USE_CUDA
   testdata_ep_pair_vector.push_back(std::make_pair(
       ORT_TSTR("cuda/adamw_test_single_weight_mode_0.json"),
       DefaultCudaExecutionProvider()));
@@ -136,7 +136,7 @@ void TorchAdamWMultipleWeightsTestLoop10Steps(bool use_baseline_inputs_for_each_
   testdata_ep_pair_vector.push_back(std::make_pair(
       ORT_TSTR("cpu/adamw_test_multiple_weights_mode_0.json"),
       DefaultCpuExecutionProvider()));
-#if USE_CUDA || USE_ROCM
+#if USE_CUDA
   testdata_ep_pair_vector.push_back(std::make_pair(
       ORT_TSTR("cuda/adamw_test_multiple_weights_mode_0.json"),
       DefaultCudaExecutionProvider()));
@@ -219,7 +219,7 @@ void HFAdamWSingleWeightTestLoop10Steps(bool use_baseline_inputs_for_each_iterat
   testdata_ep_pair_vector.push_back(std::make_pair(
       ORT_TSTR("cpu/adamw_test_single_weight_mode_1.json"),
       DefaultCpuExecutionProvider()));
-#if USE_CUDA || USE_ROCM
+#if USE_CUDA
   testdata_ep_pair_vector.push_back(std::make_pair(
       ORT_TSTR("cuda/adamw_test_single_weight_mode_1.json"),
       DefaultCudaExecutionProvider()));
@@ -302,7 +302,7 @@ void HFAdamWMultipleWeightsTestLoop10Steps(
   testdata_ep_pair_vector.push_back(std::make_pair(
       ORT_TSTR("cpu/adamw_test_multiple_weights_mode_1.json"),
       DefaultCpuExecutionProvider()));
-#if USE_CUDA || USE_ROCM
+#if USE_CUDA
   testdata_ep_pair_vector.push_back(std::make_pair(
       ORT_TSTR("cuda/adamw_test_multiple_weights_mode_1.json"),
       DefaultCudaExecutionProvider()));
