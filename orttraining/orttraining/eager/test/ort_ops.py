@@ -21,7 +21,7 @@ class OrtOpTests(unittest.TestCase):
         device = self.get_device()
         cpu_ones = torch.ones(3, 3, dtype=bool)
         ort_ones = cpu_ones.to(device)
-        # the onnx operator Mul does not support type bool.
+        # the onnx operator Mul does not support type bool so will fallback to cpu.
         assert torch.allclose(torch.mul(cpu_ones, cpu_ones), torch.mul(ort_ones, ort_ones).cpu())
 
     def test_add(self):
