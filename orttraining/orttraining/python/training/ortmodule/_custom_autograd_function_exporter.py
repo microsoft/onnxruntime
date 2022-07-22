@@ -76,9 +76,6 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             if call_type == "d":
                 # Got a tensor variable.
                 tensor_args.append(arg)
-
-                requires_grad = 1 if arg.requires_grad() else 0
-
                 scalar_type = int(symbolic_helper.cast_pytorch_to_onnx[arg.type().scalarType()])
                 input_tensor_types.append(scalar_type)
                 input_tensor_ranks.append(arg.type().dim())
