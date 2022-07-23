@@ -46,7 +46,7 @@ struct OrtTensorDimensions : std::vector<int64_t> {
 };
 
 struct KernelOne {
-  KernelOne(OrtApi api)
+  KernelOne(const OrtApi& api)
       : api_(api),
         ort_(api_) {
   }
@@ -80,12 +80,12 @@ struct KernelOne {
   }
 
  private:
-  OrtApi api_;  // keep a copy of the struct, whose ref is used in the ort_
+  const OrtApi& api_;  // keep a copy of the struct, whose ref is used in the ort_
   Ort::CustomOpApi ort_;
 };
 
 struct KernelTwo {
-  KernelTwo(OrtApi api)
+  KernelTwo(const OrtApi& api)
       : api_(api),
         ort_(api_) {
   }
@@ -112,12 +112,12 @@ struct KernelTwo {
   }
 
  private:
-  OrtApi api_;  // keep a copy of the struct, whose ref is used in the ort_
+  const OrtApi& api_;  // keep a copy of the struct, whose ref is used in the ort_
   Ort::CustomOpApi ort_;
 };
 
 struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
-  void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) const {
+  void* CreateKernel(const OrtApi& api, const OrtKernelInfo* /* info */) const {
     return new KernelOne(api);
   };
 
@@ -136,7 +136,7 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
 } c_CustomOpOne;
 
 struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, KernelTwo> {
-  void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) const {
+  void* CreateKernel(const OrtApi& api, const OrtKernelInfo* /* info */) const {
     return new KernelTwo(api);
   };
 
