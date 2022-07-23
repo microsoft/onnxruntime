@@ -31,6 +31,7 @@
 #include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
 #include "contrib_ops/cpu/bert/longformer_attention_base.h"
 #include "contrib_ops/cpu/transformers/beam_search.h"
+#include "contrib_ops/cpu/transformers/greedy_search.h"
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op.h"
 #endif
@@ -542,6 +543,11 @@ namespace transformers {
 void BeamSearch::Init(const OpKernelInfo& info) { g_host_cpu.BeamSearch__Init(this, info); }
 Status BeamSearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.BeamSearch__Compute(this, ctx); }
 Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.BeamSearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
+
+void GreedySearch::Init(const OpKernelInfo& info) { g_host_cpu.GreedySearch__Init(this, info); }
+Status GreedySearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.GreedySearch__Compute(this, ctx); }
+Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.GreedySearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
+
 }  // namespace transformers
 
 #ifdef ENABLE_ATEN
