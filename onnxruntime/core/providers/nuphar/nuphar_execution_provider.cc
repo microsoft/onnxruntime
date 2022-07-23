@@ -453,7 +453,7 @@ Status NupharExecutionProvider::Compile(
     // Compute function
     // This is similar to the original OpKernel's Compute()
     info.compute_func =
-        [](FunctionState state, const OrtCustomOpApi*, OrtKernelContext* op_kernel_context) {
+        [](FunctionState state, const OrtApi*, OrtKernelContext* op_kernel_context) {
           NupharKernelState* s = reinterpret_cast<NupharKernelState*>(state);
           return s->Compute(reinterpret_cast<OpKernelContext*>(op_kernel_context));
         };
