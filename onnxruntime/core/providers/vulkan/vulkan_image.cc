@@ -68,7 +68,7 @@ VulkanImage::~VulkanImage() {
   }
 }
 
-void VulkanImage::Release() {
+void VulkanImage::Release() {    
   if (nullptr == vulkan_image_memory_.first) {
     return;
   }
