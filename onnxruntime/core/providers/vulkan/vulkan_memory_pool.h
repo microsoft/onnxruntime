@@ -61,7 +61,7 @@ class VulkanMemoryPool {
   // Free Unuseful Memory
   void clear();
 
-  const VkDevice& device() const {
+  const VkDevice& GetLogicalDevice() {
     return vulkan_logical_device;
   }
 

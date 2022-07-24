@@ -9,7 +9,9 @@ namespace onnxruntime {
 
 class VulkanCommandBuffer {
  public:
-  explicit VulkanCommandBuffer(const VulkanCommandPool& vulkan_command_pool);
+  VulkanCommandBuffer(const VkDevice& vulkan_logical_device,
+                      VulkanCommandPool& vulkan_command_pool);
+
   virtual ~VulkanCommandBuffer();
 
   VkCommandBuffer Get() const {
@@ -28,16 +30,18 @@ class VulkanCommandBuffer {
   void BarrierSource(VkBuffer source, size_t start, size_t end, BarrierType type = READ_WRITE) const;
 
  private:
+  const VkDevice& vulkan_logical_device_;
   VkCommandBuffer buffer_;
-  const VulkanCommandPool& vulkan_command_pool_;
+  VulkanCommandPool& vulkan_command_pool_;
 };
 
 class VulkanCommandPool {
  public:
   VulkanCommandPool(const VkDevice& vulkan_logical_device, uint32_t vulkan_queue_family_index);
+
   virtual ~VulkanCommandPool();
 
-  VulkanCommandBuffer* AllocBuffer() const;
+  VulkanCommandBuffer* AllocBuffer();
 
   VkCommandPool Get() const {
     return vulkan_command_pool_;
@@ -52,6 +56,7 @@ class VulkanCommandPool {
  private:
   const VkDevice& vulkan_logical_device_;
   VkCommandPool vulkan_command_pool_;
+  uint32_t vulkan_queue_family_index_;
   std::vector<VkCommandBuffer> free_vulkan_command_buffers_;
 };
 }  // namespace onnxruntime
