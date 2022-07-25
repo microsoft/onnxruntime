@@ -13,7 +13,7 @@ There are 2 steps to build ONNX Runtime Web:
 
 - Obtaining ONNX Runtime WebAssembly artifacts - can be done by - 
   - Building ONNX Runtime for WebAssembly 
-  - Download the pre-built artifacts
+  - Download the pre-built artifacts [instructions below](#prepare-onnx-runtime-webassembly-artifacts)
 - Build onnxruntime-web (NPM package)
   - This step requires the ONNX Runtime WebAssembly artifacts
 
@@ -77,7 +77,7 @@ in `<ORT_ROOT>/`, run one of the following commands to build WebAssembly:
 
 ```sh
 # In windows, use 'build' to replace './build.sh'
-# It's recommended to use '--skip_tests` due to performance and memory hogging concerns - please review FAQ for more details
+# It's recommended to use '--skip_tests` in Release & Debug + 'debug info' configruations - please review FAQ for more details
 
 # The following command build debug.
 ./build.sh --build_wasm
@@ -89,7 +89,7 @@ in `<ORT_ROOT>/`, run one of the following commands to build WebAssembly:
 ./build.sh --config Release --build_wasm --skip_tests --disable_wasm_exception_catching --disable_rtti
 ```
 
-A full list of build artifacts are as below:
+A full list of required build artifacts:
 
 | file name                   | `--enable_wasm_threads` | `--enable_wasm_simd` |
 | --------------------------- | ----------------------- | -------------------- |
@@ -105,7 +105,7 @@ A full list of build artifacts are as below:
 
 ONNX Runtime WebAssembly can be built with flag `--minimal_build`. This will generate smaller artifacts and also have a less runtime memory usage. 
 In order to use this ONNX Runtime confiruation an ORT format model is required (vs. ONNX format). 
-A detailed guide will come soon. for more info please see also [ORT format Conversion](../reference/ort-format-models.md).
+For more info please see also [ORT format Conversion](../reference/ort-format-models.md).
 
 ### FAQ
 
@@ -127,9 +127,9 @@ Q: I have a C++ project for web scenario, which runs a ML model using ONNX Runti
 
 > One important note is that ONNX Runtime has dependencies on lots of 3rd party libraries such as protobuf, onnx, and others. You may need copy necessary header files to your project. You also take care of cases of library version conflicts or emsdk version conflicts between ONNX Runtime and your project.
 
-## Build onnxruntime-web (NPM package)
+# Build onnxruntime-web (NPM package)
 
-### Prerequisites
+## Prerequisites
 
 - [Install](https://nodejs.org/) Node.js (16.0+)
 
@@ -137,15 +137,15 @@ Q: I have a C++ project for web scenario, which runs a ML model using ONNX Runti
 
 - Chrome or Edge browser for running tests.
 
-### Build Instructions
+## Build Instructions
 
-1. Install NPM packages
+### Install NPM packages
 
    1. in `<ORT_ROOT>/js/`, run `npm ci`.
    2. in `<ORT_ROOT>/js/common/`, run `npm ci`.
    3. in `<ORT_ROOT>/js/web/`, run `npm ci`.
 
-2. Prepare ONNX Runtime WebAssembly artifacts.
+### Prepare ONNX Runtime WebAssembly artifacts
 
    You can either use the prebuilt artifacts or build it by yourself.
 
@@ -176,7 +176,7 @@ Q: I have a C++ project for web scenario, which runs a ML model using ONNX Runti
          * ort-wasm-threaded.js (build with flag '--enable_wasm_threads')
          * ort-wasm-threaded.worker.js (build with flag '--enable_wasm_threads')
 
-3. Use following command in folder `<ORT_ROOT>/js/web` to build:
+Use following command in folder `<ORT_ROOT>/js/web` to build:
    ```
    npm run build
    ```
