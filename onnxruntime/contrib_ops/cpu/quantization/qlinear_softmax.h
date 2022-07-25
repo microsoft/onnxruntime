@@ -19,7 +19,7 @@ class QLinearSoftmax final : public OpKernel {
 
  private:
   const uint32_t* GetLookupTable(OpKernelContext* context, size_t reduce_len) const;
-  Status ComputeImpl(const Tensor& input, Tensor& output,
+  Status ComputeImpl(OpKernelContext* context, const Tensor& input, Tensor& output,
                      concurrency::ThreadPool* thread_pool, const uint32_t* lookup_table) const;
 
   Status ComputeImplOpset13(OpKernelContext* context, const Tensor& input, Tensor& output,

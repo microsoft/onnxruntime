@@ -225,6 +225,7 @@ class QDQQuantizer(ONNXQuantizer):
                     self.model.add_node(node)
                     self.model.replace_input_of_all_nodes(tensor_name, tensor_name + "_DequantizeLinear")
             else:
+                used_scale, used_zp = self.find_quant_scale_zp(tensor_name)
                 data_found, scale_name, zp_name, _, _ = self._get_quantization_params(tensor_name)
 
                 if data_found == False:
