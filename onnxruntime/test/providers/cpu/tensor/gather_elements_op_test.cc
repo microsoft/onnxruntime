@@ -5,8 +5,12 @@
 #include <cstdlib>
 
 #include "gtest/gtest.h"
-#include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/providers/provider_test_utils.h"
+
+#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+#include "test/providers/kernel_compute_test_utils.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -14,43 +18,57 @@ namespace test {
 namespace {
 
 template <typename T, typename TIndex>
-void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& indices_dims, bool has_axis = false,
-             int64_t axis = 0LL) {
-  size_t input_size =
-      static_cast<size_t>(std::accumulate(input_dims.begin(), input_dims.end(), 1LL, std::multiplies<int64_t>()));
-  size_t indices_size =
-      static_cast<size_t>(std::accumulate(indices_dims.begin(), indices_dims.end(), 1LL, std::multiplies<int64_t>()));
-  std::vector<T> input_data = ValueRange<T>(input_size, static_cast<T>(1.0f), static_cast<T>(1.0f));
+void GetData(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& indices_dims,
+             const std::vector<int64_t>& indices_strides, int64_t axis, std::vector<T>& input_data,
+             std::vector<TIndex>& indices_data, std::vector<T>& output_data) {
+  size_t input_size = static_cast<size_t>(detail::SizeFromDims(input_dims));
+  size_t indices_size = static_cast<size_t>(detail::SizeFromDims(indices_dims, indices_strides));
+  bool is_strided_indices = !indices_strides.empty();
+  size_t output_size = is_strided_indices ? static_cast<size_t>(detail::SizeFromDims(indices_dims)) : indices_size;
+  input_data = ValueRange<T>(input_size, static_cast<T>(1.0f), static_cast<T>(1.0f));
   size_t rank = input_dims.size();
   std::vector<int64_t> input_strides(rank);
-  std::vector<int64_t> indices_strides(rank);
-  input_strides[rank - 1] = indices_strides[rank - 1] = 1;
+  std::vector<int64_t> output_strides(rank);
+  input_strides[rank - 1] = output_strides[rank - 1] = 1;
   if (rank > 1) {
     for (size_t i = rank - 1; i > 0; --i) {
       input_strides[i - 1] = input_dims[i] * input_strides[i];
-      indices_strides[i - 1] = indices_dims[i] * indices_strides[i];
+      output_strides[i - 1] = indices_dims[i] * output_strides[i];
     }
   }
 
-  int64_t new_axis = axis < 0 ? axis + static_cast<int64_t>(rank) : axis;
-  std::vector<TIndex> indices_data(indices_size);
-  std::vector<T> output_data(indices_size);
+  indices_data.resize(indices_size);
+  output_data.resize(output_size);
   std::srand(static_cast<unsigned>(std::time(0)));
   for (size_t i = 0; i < indices_size; ++i) {
     // Negative index possible.
-    int64_t index = (static_cast<int64_t>(std::rand()) % (input_dims[new_axis] * 2)) - input_dims[new_axis];
-    indices_data[i] = static_cast<TIndex>(index);
-    int64_t offset = 0;
-    int64_t remain = static_cast<int64_t>(i);
-    for (size_t j = 0; j < rank; ++j) {
-      int64_t pos = static_cast<int64_t>(j) == new_axis ? (index < 0 ? index + input_dims[new_axis] : index)
-                                                        : (remain / indices_strides[j]);
-      offset += pos * input_strides[j];
-      remain = remain % indices_strides[j];
-    }
-    output_data[i] = input_data[offset];
+    indices_data[i] =
+        static_cast<TIndex>((static_cast<int64_t>(std::rand()) % (input_dims[axis] * 2)) - input_dims[axis]);
   }
+  for (size_t i = 0; i < output_size; ++i) {
+    int64_t input_offset = 0;
+    int64_t remain = static_cast<int64_t>(i);
+    int64_t indices_offset = is_strided_indices ? 0 : remain;
+    for (size_t j = 0; j < rank; ++j) {
+      int64_t q = remain / output_strides[j];
+      if (static_cast<int64_t>(j) != axis) input_offset += q * input_strides[j];
+      if (is_strided_indices) indices_offset += q * indices_strides[j];
+      remain = remain % output_strides[j];
+    }
+    int64_t index = static_cast<int64_t>(indices_data[indices_offset]);
+    input_offset += (index < 0 ? index + input_dims[axis] : index) * input_strides[axis];
+    output_data[i] = input_data[input_offset];
+  }
+}
 
+template <typename T, typename TIndex>
+void RunTest(std::initializer_list<int64_t> input_dims, std::initializer_list<int64_t> indices_dims,
+             bool has_axis = false, int64_t axis = 0LL) {
+  std::vector<T> input_data;
+  std::vector<TIndex> indices_data;
+  std::vector<T> output_data;
+  int64_t new_axis = axis < 0 ? axis + static_cast<int64_t>(input_dims.size()) : axis;
+  GetData(input_dims, indices_dims, {}, new_axis, input_data, indices_data, output_data);
   OpTester test("GatherElements", 11);
   if (has_axis) test.AddAttribute<int64_t>("axis", axis);
   test.AddInput<T>("data", input_dims, input_data);
@@ -70,6 +88,8 @@ void RunTestWrapper() {
   RunTest<T, int32_t>({2, 2}, {2, 2}, true, 1LL);
   RunTest<T, int64_t>({2, 2}, {2, 2}, true, -1LL);
   RunTest<T, int32_t>({2, 2, 2}, {1, 2, 1}, true, 1LL);
+  RunTest<T, int32_t>({2, 2, 1}, {1, 2, 1}, true, 1LL);
+  RunTest<T, int32_t>({1, 2, 2}, {1, 2, 1}, true, 1LL);
   RunTest<T, int64_t>({2, 2, 2}, {1, 2, 1}, true, 2LL);
   RunTest<T, int32_t>({3, 3}, {3, 2}, true, 1LL);
   RunTest<T, int64_t>({3, 3}, {3, 2});
@@ -84,7 +104,7 @@ void RunTestWrapper() {
   // ([2,2,2,3],[3,2,2,2],axis=0) coalesce to ([2,4,3],[3,4,2],axis=0)
   RunTest<T, int32_t>({2, 2, 2, 3}, {3, 2, 2, 2}, true, 0LL);
 
-  // ([2,2,3,3,2],[2,2,3,2,2],axis=0) coalesce to ([2,6,3,2],[2,6,3,2],axis=0)
+  // ([2,2,3,3,2],[2,2,3,2,2],axis=0) coalesce to ([2,6,3,2],[2,6,2,2],axis=0)
   RunTest<T, int64_t>({2, 2, 3, 3, 2}, {2, 2, 3, 2, 2});
 
   // ([2,2,1,3,1],[2,2,1,2,1],axis=0) coalesce to ([2,2,3],[2,2,2],axis=0)
@@ -190,6 +210,48 @@ void RunTestWrapper<std::string>() {
   test8.Run();
 }
 
+#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+template <typename T, typename TIndex>
+void RunKernelComputeTest(std::initializer_list<int64_t> input_dims, std::initializer_list<int64_t> indices_dims,
+                          std::initializer_list<int64_t> indices_strides = {}, bool has_axis = false,
+                          int64_t axis = 0LL) {
+  std::vector<T> input_data;
+  std::vector<TIndex> indices_data;
+  std::vector<T> output_data;
+  int64_t new_axis = axis < 0 ? axis + static_cast<int64_t>(input_dims.size()) : axis;
+  GetData(input_dims, indices_dims, indices_strides, new_axis, input_data, indices_data, output_data);
+#ifdef USE_CUDA
+  const char* provider = kCudaExecutionProvider;
+#else  // USE_ROCM
+  const char* provider = kRocmExecutionProvider;
+#endif
+  KernelComputeTester test("GatherElements", provider);
+  if (has_axis) test.AddAttribute<int64_t>("axis", axis);
+  test.AddInput<T>("data", input_dims, input_data);
+  test.AddInput<TIndex>("indices", indices_dims, indices_data, indices_strides);
+  test.AddOutput<T>("output", indices_dims, output_data);
+  test.Run();
+}
+
+template <typename T>
+void RunKernelComputeTestWrapper() {
+  // Contiguous indices.
+  RunKernelComputeTest<T, int32_t>({2, 3}, {1, 2});
+
+  // Strided indices.
+  RunKernelComputeTest<T, int64_t>({3, 3}, {3, 2}, {1, 2});
+  RunKernelComputeTest<T, int32_t>({3, 3}, {3, 2}, {2, 0}, true, 1LL);
+  RunKernelComputeTest<T, int64_t>({3}, {2}, {0}, true, 0LL);
+
+  // No coalesce.
+  RunKernelComputeTest<T, int64_t>({2, 3, 2}, {2, 3, 2}, {6, 0, 1}, true, -1LL);
+  RunKernelComputeTest<T, int32_t>({2, 3, 3, 3}, {2, 3, 3, 4}, {36, 0, 4, 1}, true, -1LL);
+
+  // Coalesce to ([6,3,3],[6,3,4],strides=[12,0,1],axis=2).
+  RunKernelComputeTest<T, int64_t>({2, 3, 3, 3}, {2, 3, 3, 4}, {36, 12, 0, 1}, true, 3LL);
+}
+#endif
+
 }  // namespace
 
 // Disable TensorRT due to missing int8 calibrator
@@ -252,6 +314,14 @@ TEST(GatherElementsOpTest, BigIndices) {
   test1.AddOutput<float>("output", {1, kNumIndices}, output);
   test1.Run();
 }
+
+#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+TEST(GatherElementsOpTest, Strided_float) { RunKernelComputeTestWrapper<float>(); }
+
+TEST(GatherElementsOpTest, Strided_double) { RunKernelComputeTestWrapper<double>(); }
+
+TEST(GatherElementsOpTest, Strided_MLFloat16) { RunKernelComputeTestWrapper<MLFloat16>(); }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
