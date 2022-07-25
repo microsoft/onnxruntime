@@ -302,7 +302,7 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
   // buffer memory and we don not want it uninitialized and generate different hashes
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset(packed_weights_data, 0, packed_weights_data_size);
-  packed_weights_[qkv_index] = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
+  packed_weights_[qkv_index] = BufferUniquePtr(packed_weights_data, BufferDeleter(std::move(alloc)));
   packed_weights_size_[qkv_index] = packb_size;
 
   for (size_t i = 0; i < loop_len; i++) {
@@ -470,7 +470,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   // D (input_hidden_size) is hidden dimension of input, where D could be larger than any of the hidden_sizes
   // (NH) when model is pruned. T = H1 + H2 + H3, where H1, H2, H3 are head sizes of Q, K, V respectively
   auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * (q_hidden_size + k_hidden_size + v_hidden_size) * element_size);
-  BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
+  BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(std::move(allocator)));
 
   auto Q = reinterpret_cast<T*>(gemm_data);
   auto K = Q + static_cast<size_t>(batch_size) * sequence_length * q_hidden_size;

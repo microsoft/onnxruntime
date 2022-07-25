@@ -4,7 +4,7 @@
 #pragma once
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "contrib_ops/cpu/transformers/beam_search_shared.h"
+#include "contrib_ops/cpu/transformers/generation_shared.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -300,8 +300,8 @@ class InferenceSession {
    */
   common::Status Initialize() ORT_MUST_USE_RESULT;
 
-  common::Status Run(const RunOptions& run_options, const std::vector<std::string>& feed_names,
-                     const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
+  common::Status Run(const RunOptions& run_options, gsl::span<const std::string> feed_names,
+                     gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
                      std::vector<OrtValue>* p_fetches,
                      const std::vector<OrtDevice>* p_fetches_device_info = nullptr) ORT_MUST_USE_RESULT;
 
@@ -315,7 +315,7 @@ class InferenceSession {
    *        This should not be changed during execution of this function.
    * @return OK if success.
    */
-  common::Status Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
+  common::Status Run(const NameMLValMap& feeds, gsl::span<const std::string> output_names,
                      std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
 
   /**
@@ -324,7 +324,7 @@ class InferenceSession {
    * @param run_options use this to tune the Run call to your needs.
    */
   common::Status Run(const RunOptions& run_options, const NameMLValMap& feeds,
-                     const std::vector<std::string>& output_names,
+                     gsl::span<const std::string> output_names,
                      std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
 
   /**
@@ -595,10 +595,10 @@ class InferenceSession {
   common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
                              const TensorShape& expected_shape) const ORT_MUST_USE_RESULT;
 
-  common::Status ValidateInputs(const std::vector<std::string>& feed_names,
-                                const std::vector<OrtValue>& feeds) const ORT_MUST_USE_RESULT;
+  common::Status ValidateInputs(gsl::span<const std::string> feed_names,
+                                gsl::span<const OrtValue> feeds) const ORT_MUST_USE_RESULT;
 
-  common::Status ValidateOutputs(const std::vector<std::string>& output_names,
+  common::Status ValidateOutputs(gsl::span<const std::string> output_names,
                                  const std::vector<OrtValue>* p_fetches) const ORT_MUST_USE_RESULT;
 
   common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) ORT_MUST_USE_RESULT;
@@ -617,13 +617,13 @@ class InferenceSession {
    */
 
   common::Status ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
-                                                   /*out*/ std::vector<AllocatorPtr>& arenas_to_shrink) const ORT_MUST_USE_RESULT;
+                                                   /*out*/ InlinedVector<AllocatorPtr>& arenas_to_shrink) const ORT_MUST_USE_RESULT;
 
   /*
    * Performs the shrinkage of arenas requested to be shrunk by the user
    * The `arenas_to_shrink` parameter is got from ValidateAndParseShrinkArenaString()
    */
-  void ShrinkMemoryArenas(const std::vector<AllocatorPtr>& arenas_to_shrink);
+  void ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink);
 
 #if !defined(ORT_MINIMAL_BUILD)
   virtual common::Status AddPredefinedTransformers(

@@ -17,11 +17,11 @@ from onnxruntime import get_available_providers
 
 if find_transformers_source() and find_transformers_source(["models", "t5"]):
     from benchmark_helper import Precision
-    from convert_beam_search import main as run
+    from convert_generation import main as run
     from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
 else:
     from onnxruntime.transformers.benchmark_helper import Precision
-    from onnxruntime.transformers.convert_beam_search import main as run
+    from onnxruntime.transformers.convert_generation import main as run
     from onnxruntime.transformers.models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
 
 
@@ -94,6 +94,10 @@ class TestBeamSearchGpt(unittest.TestCase):
     def test_no_repeat_ngram(self):
         for ngram_size in [1, 2]:
             self.run_beam_search(f"--no_repeat_ngram_size {ngram_size}")
+
+    @pytest.mark.slow
+    def test_greedy_search(self):
+        self.run_beam_search("--num_beams 1 --num_return_sequences 1")
 
     @pytest.mark.slow
     def test_external_data(self):
@@ -197,6 +201,10 @@ class TestBeamSearchT5(unittest.TestCase):
     def test_no_repeat_ngram(self):
         for ngram_size in [1, 2]:
             self.run_beam_search(f"--no_repeat_ngram_size {ngram_size}")
+
+    @pytest.mark.slow
+    def test_custom_attention_mask(self):
+        self.run_beam_search("--custom_attention_mask")
 
     @pytest.mark.slow
     def test_external_data(self):
