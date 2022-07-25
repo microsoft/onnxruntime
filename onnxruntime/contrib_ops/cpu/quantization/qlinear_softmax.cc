@@ -187,7 +187,7 @@ common::Status QlinearSoftmaxCPU<uint8_t>(size_t N,
             const uint32_t vt = shifted_lookuptable[vx];
             // simulate round function, and re-quant to uint8
             const uint32_t vq = ((vt * c_y_scale) + vrounding) / vsum + c_y_zp;
-            const uint8_t vy = vq > 255 ? UINT8_C(255) : (uint8_t)vq;
+            const uint8_t vy = vq > 255 ? static_cast<uint8_t>(255) : static_cast<uint8_t>(vq);
             *y_t++ = vy;
           } while (--elements_n != 0);
           x_t = x_t_cur;
@@ -244,7 +244,7 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
             const uint32_t vt = shifted_lookuptable[vx];
             // simulate round function, and re-quant to int8
             const uint32_t vq = ((vt * c_y_scale) + vrounding) / vsum + c_y_zp;
-            const int8_t vy = (int32_t)vq > 255 ? INT8_C(255) : (int32_t)vq;
+            const int8_t vy = static_cast<int32_t>(vq) > 255 ? static_cast<int8_t>(255) : static_cast<int8_t>(vq);
             *y_t++ = vy;
           } while (--elements_n != 0);
           x_t = x_t_cur;

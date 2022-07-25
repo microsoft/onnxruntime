@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+"""
+Softmax quantization test case
+"""
 # coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
@@ -6,35 +9,30 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import os
-import sys
 import unittest
 
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import (
-    TestDataFeeds,
-    check_model_correctness,
-    check_op_nodes,
-    check_op_type_count,
-    check_qtype_by_node_type,
-)
+from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 
 
 class TestOpSoftmax(unittest.TestCase):
-    def input_feeds(self, n, name2shape):
+    """_summary_
+        unittest (softmax): quantization of QDQ and Qop with u8 and s8
+    """
+    def input_feeds(self, n_repeat, name2shape):
         input_data_list = []
-        for i in range(n):
+        for _ in range(n_repeat):
             inputs = {}
             for name, shape in name2shape.items():
                 inputs.update(
                     {name: np.random.randint(-1, 2, shape).astype(np.float32)})
             input_data_list.extend([inputs])
-        dr = TestDataFeeds(input_data_list)
-        return dr
+        data_r = TestDataFeeds(input_data_list)
+        return data_r
 
     def construct_model_conv_softmax(
         self,
@@ -112,10 +110,8 @@ class TestOpSoftmax(unittest.TestCase):
         activation_type_str = "u8" if (activation_type
                                        == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_q8_path = "softmax_{}{}.onnx".format(activation_type_str,
-                                                   weight_type_str)
-        model_q8_qdq_path = "softmax_qdq_{}{}.onnx".format(
-            activation_type_str, weight_type_str)
+        model_q8_path = f"softmax_{activation_type_str}{weight_type_str}.onnx"
+        model_q8_qdq_path = f"softmax_qdq_{activation_type_str}{weight_type_str}.onnx"
 
         # Verify QOperator mode
         data_reader.rewind()
