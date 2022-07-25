@@ -24,7 +24,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-//Constructor 
+//Constructor
 GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string device_type_param,
                              const std::string version_param):
                 graph_viewer_(graph_viewer_param), device_type_(device_type_param){
@@ -36,8 +36,10 @@ GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string 
     data_ops_ = new DataOps(graph_viewer_, V_2021_4, device_type_);
   } else if (version_param == "V_2022_1") {
     data_ops_ = new DataOps(graph_viewer_, V_2022_1, device_type_);
+  } else if (version_param == "V_2022_2") {
+    data_ops_ = new DataOps(graph_viewer_, V_2022_2, device_type_);
   } else {
-    data_ops_ = new DataOps(graph_viewer_, V_2022_1, device_type_);
+    data_ops_ = new DataOps(graph_viewer_, V_2022_2, device_type_);
   }
 }
 
@@ -170,7 +172,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
           if(data_ops_->SpecialConditionForClusterSizeOne(ng_required_initializers, node))
             continue;
         }
-      }  
+      }
 
       std::vector<std::string> cluster_graph_inputs, cluster_inputs, const_inputs, cluster_outputs;
 
@@ -190,7 +192,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
             }
           }
         }
-      
+
         if (node->OpType() == "Conv" || node->OpType() == "Identity") {
           auto output_name = node->OutputDefs()[0]->Name();
           auto it = find(cluster_outputs.begin(), cluster_outputs.end(), output_name);
@@ -199,7 +201,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
             break;
           }
         }
-        
+
         std::map<std::string, int> slice_map;
         if (node->OpType() == "Slice") {
           auto input = node->InputDefs()[0];
@@ -235,7 +237,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
   }
 
   return result;
-} 
+}
 
 }
 }

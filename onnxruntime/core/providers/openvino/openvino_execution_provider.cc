@@ -126,6 +126,10 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer, const 
   openvino_ep::GetCapability obj(graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_1");
   result = obj.Execute();
+#elif defined (OPENVINO_2022_2)
+  openvino_ep::GetCapability obj(graph_viewer,
+                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_2");
+  result = obj.Execute();
 #endif
 
   return result;
@@ -144,7 +148,7 @@ common::Status OpenVINOExecutionProvider::Compile(
     openvino_ep::BackendManager::GetGlobalContext().use_api_2 = true;
 #else
     openvino_ep::BackendManager::GetGlobalContext().use_api_2 = false;
-#endif 
+#endif
 
     std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, graph_body_viewer, *GetLogger());
 
