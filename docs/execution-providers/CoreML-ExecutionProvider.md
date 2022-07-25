@@ -95,11 +95,13 @@ Following ops are supported by the CoreML Execution Provider,
 |ai.onnx:Clip||
 |ai.onnx:Concat||
 |ai.onnx:Conv|Only 1D/2D Conv is supported.<br/>Weights and bias should be constant.|
+|ai.onnx:DepthToSpace|Only DCR mode DepthToSpace is supported.|
 |ai.onnx:Gemm|Input B should be constant.|
 |ai.onnx:GlobalAveragePool|Only 2D Pool is supported.|
 |ai.onnx:GlobalMaxPool|Only 2D Pool is supported.|
 |ai.onnx:MatMul|Input B should be constant.|
 |ai.onnx:MaxPool|Only 2D Pool is supported.|
+|ai.onnx:PRelu|Input slope should be constant.<br/>Input slope should either have shape [C, 1, 1] or have 1 element.|
 |ai.onnx:Relu||
 |ai.onnx:Reshape||
 |ai.onnx:Resize||
