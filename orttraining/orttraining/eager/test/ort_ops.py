@@ -1,10 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# pylint: disable=missing-docstring
-# pylint: disable=too-many-public-methods
-# pylint: disable=eval-used
-# pylint: disable=no-member
+# pylint: disable=missing-docstring, too-many-public-methods, no-member
 
 import unittest
 
@@ -452,6 +449,12 @@ class OrtOpTests(unittest.TestCase):
     # The default value for tested_tensor is torch.rand (6)- size of 6 uniform distribution on the interval [0, 1).
     # for floor and erf, the ort produces a roundoff error for NaN input, but cpu keeps it a NaN.
     # Thus, we use nan_to_num to ensure actual numbers are passed in.
+
+    # As many of the following use eval and make it appear to pylint that there are many unused variables,
+    # we disable those warnings
+
+    # pylint: disable=eval-used, unused-argument, no-self-argument, reportSelfClsParameterName
+
     ops = [
         ["abs", torch.tensor([-1, -2, 3, -6, -7])],
         ["acos"],

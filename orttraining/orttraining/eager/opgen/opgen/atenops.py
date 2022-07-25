@@ -109,7 +109,8 @@ for binary_op, onnx_op in {
     "div": Div("self", "other"),
 }.items():
     # for Tensor, binary_op.out is used by both binary_op and binary_op_, so we only generate .out
-    # from testing and call stacks, it also apears scalar ops fall back to the binary_op.out, so this is all we need.
+    # from testing and call stacks, it also apears scalar ops fall back to the (Tensor) binary_op.out,
+    # so this is all we need.
     name = f"aten::{binary_op}.out"
     if name not in ops:
         ops[f"aten::{binary_op}.out"] = deepcopy(onnx_op)

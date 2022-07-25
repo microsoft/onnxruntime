@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# pylint: too-many-nested-blocks
+# pylint: disable=missing-docstring, too-many-public-methods, too-many-nested-blocks
 
 import json
 import sys
@@ -533,7 +533,7 @@ class ORTGen:
                     writer.writeline("if (*promoted_type != out.scalar_type()) {")
                     writer.push_indent()
                     writer.writeline(
-                        f"CastToTypeInPlace(invoker, {onnx_op.outputs}[0], ort_input_out, out.scalar_type());"
+                        f"CastToType_out(invoker, {onnx_op.outputs}[0], ort_input_out, out.scalar_type());"
                     )
                     writer.pop_indent()
                     writer.writeline("}")

@@ -367,7 +367,7 @@ c10::optional<at::ScalarType> PromoteScalarTypesWithCategory(
 
 OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at::ScalarType type) {
   std::vector<OrtValue> output(1);
-  NodeAttributes attrs(2);
+  NodeAttributes attrs(1);
   attrs["to"] = create_ort_attribute(
       "to", GetONNXTensorProtoDataType(type), at::ScalarType::Long);
 
@@ -375,16 +375,14 @@ OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at:
                                {std::move(input)},
                                output, &attrs);
 
-  if (!status.IsOK())
-    throw std::runtime_error(
-        "ORT return failure status:" + status.ErrorMessage());
+  CHECK_STATUS(status);
   return output[0];
 }
 
-void CastToTypeInPlace(onnxruntime::ORTInvoker& invoker, const OrtValue& input, OrtValue& output, at::ScalarType type) {
+void CastToType_out(onnxruntime::ORTInvoker& invoker, const OrtValue& input, OrtValue& output, at::ScalarType type) {
   std::vector<OrtValue> output_result(1);
   output_result[0] = output;
-  NodeAttributes attrs(2);
+  NodeAttributes attrs(1);
   attrs["to"] = create_ort_attribute(
       "to", GetONNXTensorProtoDataType(type), at::ScalarType::Long);
 
@@ -392,9 +390,7 @@ void CastToTypeInPlace(onnxruntime::ORTInvoker& invoker, const OrtValue& input, 
                                {std::move(input)},
                                output_result, &attrs);
 
-  if (!status.IsOK())
-    throw std::runtime_error(
-        "ORT return failure status:" + status.ErrorMessage());
+  CHECK_STATUS(status);
 }
 
 /*
@@ -678,9 +674,7 @@ at::Tensor& copy_(
                                  {std::move(ort_src)},
                                  ort_cast_output, &attrs);
 
-    if (!status.IsOK())
-      throw std::runtime_error(
-          "ORT return failure status:" + status.ErrorMessage());
+    CHECK_STATUS(status);
 
     copy(invoker, ort_cast_output[0], ort_self);
   } else {
@@ -725,9 +719,7 @@ at::Tensor& zero_(at::Tensor& self) {
                                {std::move(ort_in_self), std::move(flag_val)},
                                ort_out, nullptr, onnxruntime::kMSDomain, 1);
 
-  if (!status.IsOK())
-    throw std::runtime_error(
-        "ORT return failure status:" + status.ErrorMessage());
+  CHECK_STATUS(status);
 
   return self;
 }
@@ -832,9 +824,7 @@ at::Tensor& argmax_out(
                                {std::move(ort_input_self)},
                                ort_outputs_0_ArgMax, &attrs);
 
-  if (!status.IsOK())
-    throw std::runtime_error(
-        "ORT return failure status:" + status.ErrorMessage());
+  CHECK_STATUS(status);
 
   return out;
 }
@@ -877,9 +867,7 @@ bool equal(
                                     {std::move(ort_input_self), std::move(ort_input_other)},
                                     ort_outputs_0_Equal, nullptr);
 
-  if (!equalStatus.IsOK())
-    throw std::runtime_error(
-        "ORT Equal return failure status:" + equalStatus.ErrorMessage());
+  CHECK_STATUS(equalStatus);
 
   // now reduce the resulting tensor of bool values to its minimum value (any false)
   NodeAttributes attrs(1);
@@ -896,9 +884,7 @@ bool equal(
                                      {std::move(equalAsInt)},
                                      ort_outputs_0_ReduceMin, &attrs);
 
-  if (!reduceStatus.IsOK())
-    throw std::runtime_error(
-        "ORT ReduceMin return failure reduceStatus:" + reduceStatus.ErrorMessage());
+  CHECK_STATUS(reduceStatus);
 
   auto* ort_tensor = ort_outputs_0_ReduceMin[0].GetMutable<onnxruntime::Tensor>();
   // the first (and only) value of the tensor will be 0 for false else true
@@ -951,9 +937,7 @@ at::Tensor& fill__Scalar(
                                {std::move(ort_input_self)},
                                ort_outputs_0_Shape, nullptr);
 
-  if (!status.IsOK())
-    throw std::runtime_error(
-        "ORT return failure status:" + status.ErrorMessage());
+  CHECK_STATUS(status);
 
   std::vector<OrtValue> ort_outputs_1_ConstantOfShape(1);
   ort_outputs_1_ConstantOfShape[0] = ort_input_self;
@@ -966,9 +950,7 @@ at::Tensor& fill__Scalar(
                           {std::move(ort_outputs_0_Shape[0])},
                           ort_outputs_1_ConstantOfShape, &attrs);
 
-  if (!status.IsOK())
-    throw std::runtime_error(
-        "ORT return failure status:" + status.ErrorMessage());
+  CHECK_STATUS(status);
 
   return self;
 }
