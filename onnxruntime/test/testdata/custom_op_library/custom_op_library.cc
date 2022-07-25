@@ -47,8 +47,7 @@ struct OrtTensorDimensions : std::vector<int64_t> {
 
 struct KernelOne {
   KernelOne(const OrtApi& api)
-      : api_(api),
-        ort_(api_) {
+      : ort_(api) {
   }
 
   void Compute(OrtKernelContext* context) {
@@ -80,7 +79,6 @@ struct KernelOne {
   }
 
  private:
-  const OrtApi& api_;  // keep a copy of the struct, whose ref is used in the ort_
   Ort::CustomOpApi ort_;
 };
 
