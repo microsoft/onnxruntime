@@ -8,6 +8,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/model.h"
 #include "core/graph/model_load_utils.h"
+#include "core/graph/mem.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -656,13 +657,19 @@ Status Model::Load(int fd, const PathString& model_path, std::shared_ptr<Model>&
                    const ModelOptions& options) {
   ModelProto model_proto;
 
+  PrintMemoryUsage("Before Load model_proto");
   ORT_RETURN_IF_ERROR(Load(fd, model_proto));
 
+  PrintMemoryUsage("After Load model_proto");
   p_model = std::make_shared<Model>(std::move(model_proto), model_path, local_registries, logger, options);
+
+  PrintMemoryUsage("After creating Model object");
 
   Graph::ResolveOptions resolve_options;
   resolve_options.no_proto_sync_required = true;
   ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(resolve_options));
+
+  PrintMemoryUsage("After resolve main graph");
 
   return Status::OK();
 }

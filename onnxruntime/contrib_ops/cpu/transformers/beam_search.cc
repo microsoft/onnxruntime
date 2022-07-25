@@ -26,6 +26,7 @@
 #include "core/framework/TensorSeq.h"
 #include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
+#include "core/graph/mem.h"
 #include "gsl/gsl"
 #include "contrib_ops/cpu/transformers/beam_search.h"
 #include "contrib_ops/cpu/transformers/logits_processor.h"
@@ -76,6 +77,7 @@ void BeamSearch::Init(const OpKernelInfo& info) {
 Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                               const std::string& attribute_name,
                                               const SessionState& subgraph_session_state) {
+  PrintMemoryUsage("Enter SetupSubgraphExecutionInfo");
   const auto& node = Node();
   if (parameters_.model_type == IBeamSearchParameters::kModelTypeGpt) {
     if (attribute_name == "decoder") {
@@ -120,6 +122,7 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
     }
   }
 
+  PrintMemoryUsage("Leave SetupSubgraphExecutionInfo");
   return Status::OK();
 }
 
