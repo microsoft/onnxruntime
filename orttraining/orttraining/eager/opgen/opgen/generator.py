@@ -1,6 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+# pylint: too-many-nested-blocks
+
 import json
 import sys
 from typing import Dict, List, Optional, Union
@@ -336,7 +338,7 @@ class ORTGen:
                     if i == 0:
                         writer.push_indent()
                     cpp_param = cpp_func.get_parameter(op_input)
-                    supported_types = ",".join(sorted([type for type in onnx_op.input_types[idx]]))
+                    supported_types = ",".join(sorted(list(onnx_op.input_types[idx])))
                     writer.write(f"!IsSupportedType({cpp_param.identifier.value}, {{{supported_types}}})")
                     i += 1
             # if we have type promotion and need to set the out tensor and CAST op not explictily listed,
