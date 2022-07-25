@@ -91,6 +91,9 @@ def register():
 
     _reg(tril)
 
+    def col2im(g, self: torch._C.Value, image_shape, block_shape):
+        return g.op("com.microsoft::Col2Im", self, image_shape, block_shape)
+
 
 def unregister():
     """Unregister ONNX Runtime's built-in contrib ops."""
