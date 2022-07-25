@@ -10,6 +10,10 @@ namespace openvino_ep {
 using VarianceFunc = std::function<bool(const Node*, const InitializedTensorSet&)>;
 
 enum versionNum {
+  V_2020_4,
+  V_2021_1,
+  V_2021_2,
+  V_2021_3,
   V_2021_4,
   V_2022_1,
   V_2022_2
