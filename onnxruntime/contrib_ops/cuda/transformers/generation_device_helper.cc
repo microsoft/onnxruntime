@@ -514,10 +514,10 @@ Status GreedySearchProcessLogits(
   constexpr bool largest = true;
   constexpr bool sorted = false;
 
-  std::unique_ptr<Tensor> topk_scores;
-  std::unique_ptr<Tensor> topk_indices;
+  auto topk_scores = Tensor::CreateDefault();
+  auto topk_indices = Tensor::CreateDefault();
   ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
-                           topk_scores, topk_indices));
+                           *topk_scores, *topk_indices));
 
 #ifdef DEBUG_GENERATION
   dumper->Print("topk_scores", *(topk_scores.get()));

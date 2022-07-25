@@ -453,8 +453,8 @@ Status GreedySearchProcessLogits(
   constexpr bool largest = true;
   constexpr bool sorted = false;
 
-  std::unique_ptr<Tensor> topk_scores;
-  std::unique_ptr<Tensor> topk_indices;
+  Tensor topk_scores;
+  Tensor topk_indices;
   ORT_RETURN_IF_ERROR(
     TopK(&input,
          axis,
@@ -472,7 +472,7 @@ Status GreedySearchProcessLogits(
   dumper->Print("topk_indices", *(topk_indices.get()));
 #endif
 
-  gsl::span<const int64_t> next_token_indices = topk_indices->DataAsSpan<int64_t>();
+  gsl::span<const int64_t> next_token_indices = topk_indices.DataAsSpan<int64_t>();
   gsl::copy(next_token_indices, greedy_state->next_tokens_cpu);
 
 #ifdef DEBUG_GENERATION
