@@ -96,7 +96,7 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset(packed_weights_data, 0, packed_weights_data_size);
 
-  packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
+  packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(std::move(alloc)));
 
   for (size_t i = 0; i < loop_len; i++) {
     MlasGemmPackB(head_size, input_hidden_size, weights_data, hidden_size_x3, false /*AIsSigned*/, weights_is_signed_, packed_weights_data);
@@ -212,7 +212,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   // STEP.1: gemm_data(BS, 3NH) = Scale(input(BS, D) x weights(D, 3NH)) + bias(3NH)
   // D is hidden dimension of input, where input_hidden_size (D) could be larger than hidden_size (NH) when model is pruned.
   auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * 3 * hidden_size * element_size);
-  BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
+  BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(std::move(allocator)));
 
   auto Q = reinterpret_cast<T*>(gemm_data);
   auto K = Q + static_cast<int64_t>(batch_size) * sequence_length * hidden_size;

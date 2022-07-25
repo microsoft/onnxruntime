@@ -38,7 +38,7 @@ class Conv : public OpKernel {
   TensorShapeVector kernel_shape_;
   int64_t C_;
   int64_t M_;
-  std::unique_ptr<Tensor> packed_w_;
+  Tensor packed_w_;
   const Tensor* B_{nullptr};
   std::optional<std::pair<float, float>> clip_min_max_;
 
