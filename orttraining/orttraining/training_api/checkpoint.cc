@@ -544,10 +544,6 @@ Status OrtLoadInternal(const PathString& checkpoint_path,
         return true;
       });
 
-  if (tensor_proto_filenames.empty()) {
-    return Status::OK();
-  }
-
   // Load tensor protos to the tensorProto Vector
   for (const auto& tensor_file_path : tensor_proto_filenames) {
     std::vector<ONNX_NAMESPACE::TensorProto> tensor_protos{};

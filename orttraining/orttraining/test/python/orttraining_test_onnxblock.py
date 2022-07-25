@@ -8,7 +8,6 @@ import numpy as np
 import onnx
 import pytest
 import torch
-from torch import no_grad
 
 import onnxruntime
 import onnxruntime.training.onnxblock as onnxblock
@@ -134,9 +133,9 @@ def _to_numpy(tensor):
     return tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
 
 
-def _get_models(device, N, D_in, H, D_out, zero_flag=False):
+def _get_models(device, batch_size, input_size, hidden_size, output_size, zero_flag=False):
     """Returns the pt and onnx models for SimpleNet"""
-    pt_model = SimpleNet(D_in, H, D_out).to(device)
+    pt_model = SimpleNet(input_size, hidden_size, output_size).to(device)
 
     # setting all initial weights to zero
     if zero_flag:
@@ -144,7 +143,7 @@ def _get_models(device, N, D_in, H, D_out, zero_flag=False):
             for param in pt_model.parameters():
                 param.zero_()
 
-    x = torch.randn(N, D_in, device=device)
+    x = torch.randn(batch_size, input_size, device=device)
     onnx_model = _get_onnx_model(pt_model, (x,))
 
     return pt_model, onnx_model
@@ -578,13 +577,13 @@ def test_load_checkpoint():
         onnxblock.save_checkpoint((trainable_params, non_trainable_params), checkpoint_file_path)
 
         # Load checkpoint parameters to the new simple model
-        onnxblock.load_checkpoint(checkpoint_file_path, zero_onnx_model)
+        onnxblock.load_checkpoint_to_model(checkpoint_file_path, zero_onnx_model)
 
         # Then
         onnx_model_copy.graph.initializer.sort(key=lambda x: x.name)
         zero_onnx_model.graph.initializer.sort(key=lambda x: x.name)
 
-        for i in range(len(onnx_model_copy.graph.initializer)):
+        for i, _ in enumerate(onnx_model_copy.graph.initializer):
             onnx_np = onnx.numpy_helper.to_array(onnx_model_copy.graph.initializer[i])
             zero_np = onnx.numpy_helper.to_array(zero_onnx_model.graph.initializer[i])
             assert np.allclose(onnx_np, zero_np)

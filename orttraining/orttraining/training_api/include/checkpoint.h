@@ -83,7 +83,7 @@ Status LoadCheckpoint(const PathString& checkpoint_path,
                       CheckpointState& checkpoint_state);
 
 /**
- * @brief Load training states from ORT checkpoint and returns vector of tensorProto.
+ * @brief Load training states from ORT checkpoint and returns vector of tensor protos representing the model parameters.
  * @param param_tensor_protos parameters in TensorProto format.
  * @param checkpoint_path folder where checkpoint is stored.
  * @return Status

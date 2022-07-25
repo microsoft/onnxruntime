@@ -22,7 +22,7 @@ def save_checkpoint(parameters, path_to_checkpoint):
     _internal_save_checkpoint(trainable_params, non_trainable_params, path_to_checkpoint)
 
 
-def load_checkpoint(path_to_checkpoint, model):
+def load_checkpoint_to_model(path_to_checkpoint, model):
     """Loads the checkpoint to an onnx inference model."""
 
     # Load the parameters from the checkpoint
@@ -32,4 +32,6 @@ def load_checkpoint(path_to_checkpoint, model):
     for (i, initializer) in enumerate(model.graph.initializer):
         parameters_dict[initializer.name] = TensorProto()
         parameters_dict[initializer.name].ParseFromString(parameters[i])
+
+    for initializer in model.graph.initializer:
         initializer.CopyFrom(parameters_dict[initializer.name])
