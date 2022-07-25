@@ -30,7 +30,7 @@ struct Parameter {
   OrtValue& Gradient() { return gradient_; }
   const std::string& GradientName() const { return gradient_name_; }
 
-  // Reset and release the gradient buffer of this Parameter.
+  // Reset and release the gradient buffer of this Parameter greedily.
   Status ResetGrad();
 
  protected:
@@ -71,7 +71,7 @@ struct Module {
     return named_parameters_;
   }
 
-  // Reset and release the gradient buffer of all trainable params
+  // Reset and release the gradient buffer of all trainable params lazily.
   Status ResetGrad();
 
   // Train Step – does forward and backward computation. The outputs will be the forward’s outputs.

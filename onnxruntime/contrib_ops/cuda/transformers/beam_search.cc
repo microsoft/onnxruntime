@@ -4,8 +4,8 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "contrib_ops/cuda/transformers/beam_search.h"
-#include "beam_search_device_helper.h"
-#include "dump_cuda_tensor.h"
+#include "contrib_ops/cuda/transformers/generation_device_helper.h"
+#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -22,9 +22,9 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 2)    // 'min_length' needs to be on CPU
         .InputMemoryType(OrtMemTypeCPUInput, 3)    // 'num_beams' needs to be on CPU
         .InputMemoryType(OrtMemTypeCPUInput, 4)    // 'num_return_sequences' needs to be on CPU
-        .InputMemoryType(OrtMemTypeCPUInput, 5)    // 'temperature' needs to be on CPU
-        .InputMemoryType(OrtMemTypeCPUInput, 6)    // 'length_penalty' needs to be on CPU
-        .InputMemoryType(OrtMemTypeCPUInput, 7)    // 'repetition_penalty' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 5)    // 'length_penalty' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 6)    // 'repetition_penalty' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 9)    // 'attention_mask' needs to be on CPU
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)  // 'sequences' output on CPU
         .OutputMemoryType(OrtMemTypeCPUOutput, 1)  // 'sequences_scores' output on CPU
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
@@ -37,17 +37,23 @@ BeamSearch::BeamSearch(const OpKernelInfo& info)
     : onnxruntime::contrib::transformers::BeamSearch(info) {
   SetComputeStream(static_cast<void*>(info.GetExecutionProvider()->GetComputeStream()));
 
-  SetDeviceHelpers(BeamSearchCudaDeviceHelper::AddToFeeds,
-                   BeamSearchCudaDeviceHelper::TopK);
+  SetDeviceHelpers(GenerationCudaDeviceHelper::AddToFeeds,
+                   GenerationCudaDeviceHelper::TopK,
+                   GenerationCudaDeviceHelper::DeviceCopy<float>,
+                   GenerationCudaDeviceHelper::DeviceCopy<int32_t>,
+                   GenerationCudaDeviceHelper::ProcessLogits<float>,
+                   GenerationCudaDeviceHelper::ProcessLogits<MLFloat16>,
+                   GenerationCudaDeviceHelper::InitBeamState<float>,
+                   GenerationCudaDeviceHelper::InitBeamState<MLFloat16>);
 
-  SetDeviceHelpers(BeamSearchCudaDeviceHelper::ProcessLogits<float>,
-                   BeamSearchCudaDeviceHelper::InitBeamState<float>,
-                   BeamSearchCudaDeviceHelper::DeviceCopy<float>,
-                   BeamSearchCudaDeviceHelper::UpdateFeeds<float>);
+  SetDeviceHelpers_Gpt(GenerationCudaDeviceHelper::UpdateGptFeeds<float>,
+                       GenerationCudaDeviceHelper::UpdateGptFeeds<MLFloat16>);
 
-  SetDeviceHelpers(BeamSearchCudaDeviceHelper::ProcessLogits<MLFloat16>,
-                   BeamSearchCudaDeviceHelper::InitBeamState<MLFloat16>,
-                   BeamSearchCudaDeviceHelper::UpdateFeeds<MLFloat16>);
+  SetDeviceHelpers_EncoderDecoder(GenerationCudaDeviceHelper::UpdateDecoderFeeds<float>,
+                                  GenerationCudaDeviceHelper::UpdateDecoderFeeds<MLFloat16>,
+                                  GenerationCudaDeviceHelper::ExpandBuffer<int32_t>,
+                                  GenerationCudaDeviceHelper::ExpandBuffer<float>,
+                                  GenerationCudaDeviceHelper::ExpandBuffer<MLFloat16>);
 
   SetConsoleDumper(&g_cuda_dumper);
 }

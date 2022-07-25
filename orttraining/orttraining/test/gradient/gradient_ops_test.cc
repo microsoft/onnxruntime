@@ -2141,7 +2141,9 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2_CPU) {
   test.AddOutput<bool>("updated", {1}, {true});
   test.AddOutput<float>("new_sum", {3}, {5.f, 7.f, 9.f});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.emplace_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
 TEST(GradientUtilsTest, InPlaceAccumulatorV2Overwrite) {
@@ -2153,10 +2155,14 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2Overwrite) {
   test.AddOutput<bool>("updated", {1}, {true});
   test.AddOutput<float>("new_sum", {3}, {4.f, 5.f, 6.f});
 
+  // This test can run on all EPs back to back because
+  // the input buffer (accumulation buffer) is overwritten and
+  // not used to compute the output for that run.
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
+// TODO: Add rocm kernel defs
 TEST(GradientUtilsTest, InPlaceAccumulatorV2_GPU) {
   OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
 
@@ -2165,7 +2171,9 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2_GPU) {
   test.AddOutput<bool>("updated", {1}, {true});
   test.AddOutput<float>("new_sum", {3}, {5.f, 7.f, 9.f});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.emplace_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
 TEST(GradientUtilsTest, InPlaceAccumulatorV2_Float16) {
@@ -2174,7 +2182,7 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2_Float16) {
   std::vector<float> old_sum = {1.0f, 2.0f, 3.0f};
   std::vector<float> value = {4.0f, 5.0f, 6.0f};
   std::vector<float> new_sum = {4.0f, 5.0f, 6.0f};
- 
+
   std::vector<MLFloat16> value_half(3);
   ConvertFloatToMLFloat16(value.data(), value_half.data(), 3);
 
@@ -2185,9 +2193,13 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2_Float16) {
   test.AddOutput<float>("new_sum", {3}, new_sum);
 
   // Didn't implement mixed precision InPlaceAccumulatorV2 in CPU
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.emplace_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
+#endif
 
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(GradientUtilsTest, InPlaceAccumulatorFloat16) {
   OpTester test("InPlaceAccumulator", 1, onnxruntime::kMSDomain);
 

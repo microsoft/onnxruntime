@@ -20,7 +20,7 @@ class Block(ABC):
     def build(self, *args, **kwargs):
         """Customize and build this block.
 
-        This method is to be overriden by the user's implementation.
+        This method is to be overridden by the user's implementation.
         """
         ...
 

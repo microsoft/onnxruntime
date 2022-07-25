@@ -95,7 +95,8 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                                    const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
-                                   const OrtValueCachePtr& cache);
+                                   const OrtValueCachePtr& cache,
+                                   int32_t partial_graph_index);
 #endif
 
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.

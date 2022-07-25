@@ -1,128 +1,88 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "scatter_elements.h"
-#include "scatter_elements_impl.h"
+#include "core/providers/cuda/tensor/scatter_elements.h"
+
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/cuda/tensor/gather_elements.h"
+#include "core/providers/cuda/tensor/gather_elements_impl.h"
+#include "core/providers/cuda/tensor/scatter_elements_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Scatter,
-    kOnnxDomain,
-    9,
-    10,
-    kCudaExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .TypeConstraint("Tind", std::vector<MLDataType>{
-                                    DataTypeImpl::GetTensorType<int32_t>(),
-                                    DataTypeImpl::GetTensorType<int64_t>()}),
-    ScatterElements);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scatter, kOnnxDomain, 9, 10, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+                                      .TypeConstraint("Tind",
+                                                      std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                                              DataTypeImpl::GetTensorType<int64_t>()}),
+                                  ScatterElements);
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    ScatterElements,
-    kOnnxDomain,
-    11,
-    12,
-    kCudaExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .TypeConstraint("Tind", std::vector<MLDataType>{
-                                    DataTypeImpl::GetTensorType<int32_t>(),
-                                    DataTypeImpl::GetTensorType<int64_t>()}),
-    ScatterElements);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterElements, kOnnxDomain, 11, 12, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+                                      .TypeConstraint("Tind",
+                                                      std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                                              DataTypeImpl::GetTensorType<int64_t>()}),
+                                  ScatterElements);
 
-ONNX_OPERATOR_KERNEL_EX(
-    ScatterElements,
-    kOnnxDomain,
-    13,
-    kCudaExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .TypeConstraint("Tind", std::vector<MLDataType>{
-                                    DataTypeImpl::GetTensorType<int32_t>(),
-                                    DataTypeImpl::GetTensorType<int64_t>()}),
-    ScatterElements);
+ONNX_OPERATOR_KERNEL_EX(ScatterElements, kOnnxDomain, 13, kCudaExecutionProvider,
+                        (*KernelDefBuilder::Create())
+                            .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+                            .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                                            DataTypeImpl::GetTensorType<int64_t>()}),
+                        ScatterElements);
+
+#define CASE_SCATTER_ELEMENTS_IMPL(type)                                                                         \
+  case sizeof(type): {                                                                                           \
+    const type* indices_data = reinterpret_cast<const type*>(indices_data_raw);                                  \
+    ORT_RETURN_IF_ERROR(ScatterElementsImpl(stream, input_data, indices_data, updates_data, output_data, args)); \
+  } break
 
 template <typename T>
 struct ScatterElements::ComputeImpl {
-  Status operator()(cudaStream_t stream,
-                    const Tensor* data_tensor,
-                    const Tensor* updates_tensor,
-                    const Tensor* indices_tensor,
-                    Tensor* output_tensor,
-                    const int rank,
-                    const int64_t input_data_size,
-                    TArray<int64_t>& buffer_input_dims,
-                    TArray<int64_t>& buffer_input_strides,
-                    const int64_t indices_size,
-                    TArray<int64_t>& buffer_indices_dims,
-                    TArray<fast_divmod>& fdm_indices_strides,
-                    const int axis) const {
-    T* output_data = output_tensor->template MutableData<T>();
-    const T* input_data = data_tensor->template Data<T>();
-    const T* update_data = updates_tensor->template Data<T>();
+  Status operator()(cudaStream_t stream, const void* input_data_raw, const void* updates_data_raw,
+                    const void* indices_data_raw, void* output_data_raw, const size_t index_element_size,
+                    const GatherScatterElementsArgs& args) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
-    MLDataType Tin_type = indices_tensor->DataType();
-    if (utils::IsPrimitiveDataType<int32_t>(Tin_type)) {
-      const int32_t* indices_data = indices_tensor->template Data<int32_t>();
-      return ScatterElementsImpl(
-          stream,
-          rank,
-          reinterpret_cast<const CudaT*>(input_data),
-          input_data_size,
-          buffer_input_dims,
-          buffer_input_strides,
-          indices_data,
-          indices_size,
-          buffer_indices_dims,
-          fdm_indices_strides,
-          reinterpret_cast<const CudaT*>(update_data),
-          axis,
-          reinterpret_cast<CudaT*>(output_data));
-    } else if (utils::IsPrimitiveDataType<int64_t>(Tin_type)) {
-      const int64_t* indices_data = indices_tensor->template Data<int64_t>();
-      return ScatterElementsImpl(
-          stream,
-          rank,
-          reinterpret_cast<const CudaT*>(input_data),
-          input_data_size,
-          buffer_input_dims,
-          buffer_input_strides,
-          indices_data,
-          indices_size,
-          buffer_indices_dims,
-          fdm_indices_strides,
-          reinterpret_cast<const CudaT*>(update_data),
-          axis,
-          reinterpret_cast<CudaT*>(output_data));
+    const CudaT* input_data = reinterpret_cast<const CudaT*>(input_data_raw);
+    const CudaT* updates_data = reinterpret_cast<const CudaT*>(updates_data_raw);
+    CudaT* output_data = reinterpret_cast<CudaT*>(output_data_raw);
+    switch (index_element_size) {
+      CASE_SCATTER_ELEMENTS_IMPL(int32_t);
+      CASE_SCATTER_ELEMENTS_IMPL(int64_t);
+      // should not reach here as we validate if the all relevant types are supported in the Compute method
+      default:
+        ORT_THROW("Unsupported indices element size by the ScatterElements CUDA kernel");
     }
 
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for Tin is not supported yet in ScatterElements.");
+    return Status::OK();
   }
 };
 
+#undef CASE_SCATTER_ELEMENTS_IMPL
+
 Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
-  const auto* data_tensor = context->Input<Tensor>(0);
-  const auto& input_data_shape = data_tensor->Shape();
-  const int64_t input_data_size = input_data_shape.Size();
-  const int axis = static_cast<int>(HandleNegativeAxis(axis_, input_data_shape.NumDimensions()));
+  const auto* input_tensor = context->Input<Tensor>(0);
+  const auto& input_shape = input_tensor->Shape();
+  const int64_t input_size = input_shape.Size();
+  const int64_t input_rank = static_cast<int64_t>(input_shape.NumDimensions());
+  const int64_t axis = HandleNegativeAxis(axis_, input_rank);
 
   const auto* indices_tensor = context->Input<Tensor>(1);
   const auto* updates_tensor = context->Input<Tensor>(2);
 
-  if (data_tensor->DataType() != updates_tensor->DataType()) {
+  if (input_tensor->DataType() != updates_tensor->DataType()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "data type is different from updates type");
   }
 
-  const auto& indices_dims = indices_tensor->Shape().GetDims();
-  const int64_t indices_size = indices_tensor->Shape().Size();
-  const auto& updates_dims = updates_tensor->Shape().GetDims();
+  const auto& indices_shape = indices_tensor->Shape();
+
+  auto indices_dims = indices_shape.GetDims();
+  auto updates_dims = updates_tensor->Shape().GetDims();
   if (indices_dims.size() != updates_dims.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Indices and updates must have the same rank");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices and updates must have the same rank");
   }
 
   for (size_t i = 0; i < indices_dims.size(); ++i) {
@@ -132,45 +92,30 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-  // According to the spec the rank of ind/upd shall be the same as input(data)
-  // and we also want to make sure that the dimensions of the of the ind/upd do not
-  // exceed that of the input
-  const auto& input_dims = input_data_shape.GetDims();
-  if (input_dims.size() != indices_dims.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices must have the same rank as Input. Indices rank=",
-                           indices_dims.size(), ". Input rank=", input_dims.size());
+  // Validate input shapes and ranks (invoke the static method in the CPU GatherElements kernel that hosts the shared
+  // checks)
+  ORT_RETURN_IF_ERROR(onnxruntime::GatherElements::ValidateInputShapes(input_shape, indices_shape, axis));
+
+  auto* output_tensor = context->Output(0, input_shape);
+  if (input_size == 0) return Status::OK();
+
+  GatherScatterElementsArgs args;
+  args.input_size = input_size;
+  args.indices_size = indices_shape.Size();
+  TensorShapeVector input_shape_vec = input_shape.AsShapeVector();
+  TensorShapeVector indices_shape_vec = indices_shape.AsShapeVector();
+  CoalesceDimensions(input_shape_vec, indices_shape_vec, nullptr, axis, args);
+
+  // Use element size instead of concrete types so we can specialize less template functions to reduce binary size.
+  int dtype = GetElementType(input_tensor->DataType()->Size());
+  if (dtype == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+    ORT_THROW("Unsupported element size by the ScatterElements CUDA kernel");
   }
 
-  for (size_t i = 0; i < input_dims.size(); ++i) {
-    // For all axes except the axis of interest, make sure that the corresponding 'indices' shape
-    // value is within bounds of the corresponding 'data' shape.
-    if (static_cast<int64_t>(i) != axis_ && input_dims[i] < indices_dims[i]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices dim=", indices_dims[i], " at pos=", i,
-                             " is greater than input dim=", input_dims[i]);
-    }
-  }
-
-  int rank = (int)input_dims.size();
-  auto* output_tensor = context->Output(0, input_data_shape);
-
-  TArray<int64_t> buffer_input_dims(input_dims);
-  TensorPitches input_strides(input_dims);
-  TArray<int64_t> buffer_input_strides(input_strides);
-
-  TArray<int64_t> buffer_indices_dims(indices_dims);
-  TArray<fast_divmod> fdm_indices_strides(rank);
-  TensorPitches indices_strides(indices_dims);
-  for (auto i = 0; i < rank; i++) {
-    fdm_indices_strides[i] = fast_divmod(static_cast<int>(indices_strides[i]));
-  }
-
-  utils::MLTypeCallDispatcher<float, MLFloat16, int16_t, int8_t, int32_t,
-                              int64_t, uint8_t, uint16_t, uint32_t, uint64_t, double, bool>
-      t_disp(data_tensor->GetElementType());
-  return t_disp.InvokeRet<Status, ComputeImpl>(
-      Stream(), data_tensor, updates_tensor, indices_tensor, output_tensor, rank,
-      input_data_size, buffer_input_dims, buffer_input_strides, indices_size,
-      buffer_indices_dims, fdm_indices_strides, axis);
+  utils::MLTypeCallDispatcher<int8_t, MLFloat16, float, double> t_disp(dtype);
+  return t_disp.InvokeRet<Status, ComputeImpl>(Stream(), input_tensor->DataRaw(), updates_tensor->DataRaw(),
+                                               indices_tensor->DataRaw(), output_tensor->MutableDataRaw(),
+                                               indices_tensor->DataType()->Size(), args);
 }
 
 }  // namespace cuda

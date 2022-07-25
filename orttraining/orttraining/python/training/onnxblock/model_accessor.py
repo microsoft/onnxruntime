@@ -55,7 +55,7 @@ def onnx_model(model=None):
         raise RuntimeError("Base onnx model already exists. Cannot create multiple ModelAccessors.")
 
     # If the user did not provide a model, then assume that they want to build from scratch.
-    # It is the duty of the caller to fill the model however they deam fit.
+    # It is the duty of the caller to fill the model however they deem fit.
     if model is None:
         model = onnx.ModelProto()
 

@@ -16,7 +16,7 @@ namespace cuda {
 class INcclService;
 }
 namespace profile {
-  class NvtxRangeCreator;
+class NvtxRangeCreator;
 }
 
 struct ProviderInfo_CUDA {
@@ -46,7 +46,7 @@ struct ProviderInfo_CUDA {
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
-  virtual void NvtxRangeCreator__BeginImpl(profile::NvtxRangeCreator *p) = 0;
+  virtual void NvtxRangeCreator__BeginImpl(profile::NvtxRangeCreator* p) = 0;
   virtual void NvtxRangeCreator__EndImpl(profile::NvtxRangeCreator* p) = 0;
 #endif
 

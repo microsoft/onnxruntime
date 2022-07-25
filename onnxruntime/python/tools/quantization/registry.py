@@ -3,7 +3,7 @@ from .operators.argmax import QArgMax
 from .operators.attention import AttentionQuant
 from .operators.base_operator import QuantOperatorBase
 from .operators.binary_op import QLinearBinaryOp
-from .operators.concat import QDQConcat, QLinearConcat
+from .operators.concat import QLinearConcat
 from .operators.conv import ConvInteger, QDQConv, QLinearConv
 from .operators.direct_q8 import Direct8BitOp, QDQDirect8BitOp
 from .operators.embed_layernorm import EmbedLayerNormalizationQuant
@@ -70,7 +70,6 @@ QDQRegistry = {
     "Resize": QDQResize,
     "MaxPool": QDQMaxPool,
     "AveragePool": QDQDirect8BitOp,
-    "Concat": QDQConcat,
     "MatMul": QDQMatMul,
 }
 
@@ -82,7 +81,9 @@ def CreateDefaultOpQuantizer(onnx_quantizer, node):
 def CreateOpQuantizer(onnx_quantizer, node):
     registry = IntegerOpsRegistry if onnx_quantizer.mode == QuantizationMode.IntegerOps else QLinearOpsRegistry
     if node.op_type in registry.keys():
-        return registry[node.op_type](onnx_quantizer, node)
+        op_quantizer = registry[node.op_type](onnx_quantizer, node)
+        if op_quantizer.should_quantize():
+            return op_quantizer
     return QuantOperatorBase(onnx_quantizer, node)
 
 

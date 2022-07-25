@@ -76,6 +76,7 @@ option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable 
 option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
 option(onnxruntime_USE_VITISAI "Build with Vitis-AI" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
+option(onnxruntime_TENSORRT_PLACEHOLDER_BUILDER "Instantiate Placeholder TensorRT Builder" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_GCOV_COVERAGE "Compile with options necessary to run code coverage" OFF)
@@ -108,6 +109,8 @@ option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled 
 option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
 option(onnxruntime_USE_TVM "Build with TVM support" OFF)
 option(onnxruntime_TVM_CUDA_RUNTIME "Build TVM with CUDA support" OFF)
+option(onnxruntime_TVM_USE_LLVM "Build TVM with LLVM. Set customized path to llvm-config.exe here if need" OFF)
+option(onnxruntime_TVM_USE_HASH "Build ipp-crypto library for support has algorithm. It is defined for TVM only")
 option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)
 
 # Options related to reducing the binary size produced by the build
@@ -141,6 +144,7 @@ option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_MEMORY_PROFILE "Enable memory profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
+# For on-device training ort build, onnxruntime_ENABLE_TRAINING must be ON.
 option(onnxruntime_ENABLE_TRAINING_ON_DEVICE "Enable training on device." OFF)
 option(onnxruntime_ENABLE_TRAINING_OPS "Include training operators but no training session support." OFF)
 option(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP "Enable training kernels interop with torch." OFF)
@@ -188,8 +192,16 @@ option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 # ATen fallback support
 option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
+option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
+
 if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+  if (NOT onnxruntime_ENABLE_TRAINING)
+    message(FATAL_ERROR "To build for on-device training, the training build must be enabled (onnxruntime_ENABLE_TRAINING).")
+  endif()
 endif()
 
 if (APPLE)
@@ -435,6 +447,7 @@ if (onnxruntime_DISABLE_EXCEPTIONS)
   add_compile_definitions("ORT_NO_EXCEPTIONS")
   add_compile_definitions("MLAS_NO_EXCEPTION")
   add_compile_definitions("ONNX_NO_EXCEPTIONS")
+  add_compile_definitions("JSON_NOEXCEPTION")  # https://json.nlohmann.me/api/macros/json_noexception/
 
   if (MSVC)
     string(REGEX REPLACE "/EHsc" "/EHs-c-" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -1008,28 +1021,8 @@ if (onnxruntime_USE_CUDA)
 endif()
 
 if(onnxruntime_USE_SNPE)
-    if (NOT SNPE_ARCH_ABI)
-        if(MSVC)
-            string(TOLOWER ${CMAKE_GENERATOR_PLATFORM} GEN_PLATFORM)
-            message(STATUS "Building MSVC for architecture ${CMAKE_SYSTEM_PROCESSOR} with CMAKE_GENERATOR_PLATFORM as ${GEN_PLATFORM}")
-            if (${GEN_PLATFORM} STREQUAL "arm64")
-                set(SNPE_ARCH_ABI aarch64-windows-vc19)
-            else()
-                set(SNPE_ARCH_ABI x86_64-windows-vc19)
-            endif()
-        else()
-            if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-                set(SNPE_ARCH_ABI aarch64-android-clang6.0)
-            elseif (LINUX)
-                if (${GEN_PLATFORM} STREQUAL "x64")
-                    set(SNPE_ARCH_ABI x86_64-linux-clang)
-                else()
-                    set(SNPE_ARCH_ABI aarch64-linux-gcc4.9)
-                endif()
-            endif()
-        endif()
-        list(APPEND onnxruntime_LINK_DIRS ${SNPE_ROOT}/lib/${SNPE_ARCH_ABI})
-    endif()
+    include(find_snpe.cmake)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SNPE_NN_LIBS})
 endif()
 
 FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR}  ORT_BINARY_DIR)
@@ -1055,10 +1048,6 @@ if (WIN32)
         list(APPEND ORT_WARNING_FLAGS "/wd5054")
         # Enable warning: data member 'member' will be initialized after data member 'member2' / base class 'base_class'
         list(APPEND ORT_WARNING_FLAGS "/w15038")
-        if (onnxruntime_ENABLE_TRAINING)
-          # warning C4127: conditional expression is constant(in cmake\external\protobuf)
-          list(APPEND ORT_WARNING_FLAGS "/wd4127")
-        endif()
         # Treat warning as error if onnxruntime_DEV_MODE is ON
         # For cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
         if (onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
@@ -1313,6 +1302,14 @@ function(onnxruntime_configure_target target_name)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
   endif()
 
+  if (onnxruntime_BUILD_KERNEL_EXPLORER)
+    get_target_property(target_type ${target_name} TYPE)
+    if (target_type STREQUAL "MODULE_LIBRARY" OR target_type STREQUAL "SHARED_LIBRARY")
+      set_property(TARGET ${target_name}
+        APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/tools/kernel_explorer/version_script.lds ")
+    endif()
+  endif()
+
   # Keep BinSkim happy
   if(MSVC AND NOT onnxruntime_target_platform MATCHES "ARM")
     target_link_options(${target_name} PRIVATE "/CETCOMPAT")
@@ -1453,11 +1450,9 @@ if (onnxruntime_USE_NUPHAR_TVM)
     add_definitions(-DUSE_NUPHAR_TVM_WITH_LLVM)
   endif()
 
-  message(STATUS "TVM BEFORE USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
   message(STATUS "tvm_SOURCE_DIR=${tvm_SOURCE_DIR}")
   message(STATUS "tvm_BINARY_DIR=${tvm_BINARY_DIR}")
   add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR} EXCLUDE_FROM_ALL)
-  message(STATUS "TVM AFTER USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
 
   set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
   set_target_properties(tvm_topi PROPERTIES FOLDER ${tvm_SOURCE_DIR})
@@ -1507,9 +1502,24 @@ if (onnxruntime_USE_TVM)
   if (NOT TARGET tvm)
     message(STATUS "Include TVM(*).")
     include(tvm)
+    if (onnxruntime_TVM_USE_HASH)
+      message(STATUS "Include ipp-crypto(*).")
+      include(ipp-crypto)
+    endif()
   endif()
 
-  if (onnxruntime_USE_LLVM)
+  # ipp-crypto
+  if (onnxruntime_TVM_USE_HASH)
+    set(ARCH intel64 CACHE STRING "Only defined for TVM")
+    add_subdirectory(${ipp_crypto_SOURCE_DIR} ${ipp_crypto_BINARY_DIR} EXCLUDE_FROM_ALL)
+    set_target_properties(ippcp_s PROPERTIES FOLDER ${ipp_crypto_SOURCE_DIR})
+    set(IPP_CRYPTO_INCLUDES ${ipp_crypto_INCLUDE_DIRS})
+  endif()
+
+  # TVM
+  if (onnxruntime_TVM_USE_LLVM)
+    set(USE_LLVM "${onnxruntime_TVM_USE_LLVM}" CACHE STRING "Path to LLVM for correct TVM build")
+  elseif(onnxruntime_USE_LLVM)
     set(USE_LLVM ON CACHE BOOL "Only defined for TVM")
   endif()
 
@@ -1542,6 +1552,10 @@ if (onnxruntime_USE_TVM)
   endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ${FS_STDLIB})
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
+  if (onnxruntime_TVM_USE_HASH)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ippcp_s)
+    list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES ippcp_s)
+  endif()
 endif()
 
 # XNNPACK EP
@@ -1551,62 +1565,7 @@ if (onnxruntime_USE_XNNPACK)
                          "but onnxruntime_DISABLE_CONTRIB_OPS is ON")
   endif()
 
-  set(XNNPACK_DIR external/XNNPACK)
-  set(XNNPACK_INCLUDE_DIR ${XNNPACK_DIR}/include)
-  set(XNNPACK_USE_SYSTEM_LIBS ON CACHE INTERNAL "")
-  set(XNNPACK_BUILD_TESTS OFF CACHE INTERNAL "")
-  set(XNNPACK_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
-  set(FP16_BUILD_TESTS OFF CACHE INTERNAL "")
-  set(FP16_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
-  set(CLOG_SOURCE_DIR "${PYTORCH_CPUINFO_DIR}/deps/clog")
-  set(CPUINFO_SOURCE_DIR ${PYTORCH_CPUINFO_DIR})
-
-  add_subdirectory(external/FP16)
-  add_subdirectory(external/pthreadpool)
-  add_subdirectory(external/XNNPACK)
-
-  set_target_properties(fp16 PROPERTIES FOLDER "External/Xnnpack")
-  set_target_properties(pthreadpool PROPERTIES FOLDER "External/Xnnpack")
-  set_target_properties(XNNPACK PROPERTIES FOLDER "External/Xnnpack")
-
-  set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK XNNPACK pthreadpool)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK})
-
-  # the XNNPACK CMake setup doesn't include the WASM kernels so we have to manually set those up
-  if (onnxruntime_BUILD_WEBASSEMBLY)
-    if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-      target_compile_options(XNNPACK PRIVATE "-pthread")
-    endif()
-
-    message("Adding WebAssembly Source Files to XNNPACK")
-    set(wasm_src_patterns "${XNNPACK_DIR}/src/wasm-*.c"
-                          "${XNNPACK_DIR}/src/*-wasm-*.c"
-                          "${XNNPACK_DIR}/src/*-wasm.c")
-    set(wasm32_asm_src_patterns "${XNNPACK_DIR}/src/wasm_shr_*.S")
-
-    file(GLOB_RECURSE XNNPACK_WASM_MICROKERNEL_SRCS CONFIGURE_DEPENDS ${wasm_src_patterns})
-    file(GLOB_RECURSE XNNPACK_WASM32_ASM_MICROKERNEL_SRCS CONFIGURE_DEPENDS ${wasm32_asm_src_patterns})
-
-    message(DEBUG "XNNPACK_WASM_MICROKERNEL_SRCS:${XNNPACK_WASM_MICROKERNEL_SRCS}")
-    message(DEBUG "XNNPACK_WASM32_ASM_MICROKERNEL_SRCS:${XNNPACK_WASM32_ASM_MICROKERNEL_SRCS}")
-
-    target_sources(XNNPACK PRIVATE ${XNNPACK_WASM_MICROKERNEL_SRCS}
-                                    ${XNNPACK_WASM32_ASM_MICROKERNEL_SRCS})
-
-    if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-      target_compile_options(XNNPACK PRIVATE "-msimd128")
-
-      set(wasmsimd_src_patterns "${XNNPACK_DIR}/src/wasmsimd-*.c"
-                                "${XNNPACK_DIR}/src/*-wasmsimd-*.c"
-                                "${XNNPACK_DIR}/src/*-wasmsimd.c"
-                                "${XNNPACK_DIR}/src/*/wasmsimd.c")
-
-      file(GLOB_RECURSE XNNPACK_WASMSIMD_MICROKERNEL_SRCS CONFIGURE_DEPENDS ${wasmsimd_src_patterns})
-      message(DEBUG "XNNPACK_WASMSIMD_MICROKERNEL_SRCS:${XNNPACK_WASMSIMD_MICROKERNEL_SRCS}")
-
-      target_sources(XNNPACK PRIVATE ${XNNPACK_WASMSIMD_MICROKERNEL_SRCS})
-    endif()
-  endif()
+  include(xnnpack)
 endif()
 
 # onnxruntime-extensions
@@ -1696,10 +1655,13 @@ set(onnxruntime_DELAYLOAD_FLAGS "")
 include_directories(
   ${ONNXRUNTIME_INCLUDE_DIR}
   ${REPO_ROOT}/include/onnxruntime/core/session
-  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-    ${REPO_ROOT}/orttraining/orttraining/training_api/include/
-  endif()
 )
+
+if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+  include_directories(
+    ${REPO_ROOT}/orttraining/orttraining/training_api/include/
+  )
+endif()
 
 if (onnxruntime_USE_OPENVINO)
 
@@ -2056,6 +2018,12 @@ if (onnxruntime_ENABLE_TRAINING)
   set(onnxruntime_ENABLE_ATEN ON)
 endif()
 
+# Default version parts for Microsoft.AI.MachineLearning.dll, onnxruntime.dll, onnxruntime_providers_openvino.dll and onnxruntime_providers_shared.dll in non-ADO pipeline local builds
+set(VERSION_MAJOR_PART   0 CACHE STRING "First part of numeric file/product version.")
+set(VERSION_MINOR_PART   0 CACHE STRING "Second part of numeric file/product version.")
+set(VERSION_BUILD_PART       0 CACHE STRING "Third part of numeric file/product version.")
+set(VERSION_PRIVATE_PART     0 CACHE STRING "Fourth part of numeric file/product version.")
+set(VERSION_STRING       "Internal Build" CACHE STRING "String representation of file/product version.")
 
 set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
 if (onnxruntime_USE_NUPHAR_TVM)
@@ -2104,12 +2072,6 @@ if (WIN32 AND NOT GDK_PLATFORM)
   endif()
 endif()
 
-# Default version parts for Microsoft.AI.MachineLearning.dll and onnxruntime.dll in non-ADO pipeline local builds
-set(VERSION_MAJOR_PART   0 CACHE STRING "First part of numeric file/product version.")
-set(VERSION_MINOR_PART   0 CACHE STRING "Second part of numeric file/product version.")
-set(VERSION_BUILD_PART       0 CACHE STRING "Third part of numeric file/product version.")
-set(VERSION_PRIVATE_PART     0 CACHE STRING "Fourth part of numeric file/product version.")
-set(VERSION_STRING       "Internal Build" CACHE STRING "String representation of file/product version.")
 include(wil.cmake)
 
 if (onnxruntime_USE_WINML)
@@ -2184,6 +2146,11 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
 
   message(STATUS "WebAssembly Build is enabled")
   include(onnxruntime_webassembly.cmake)
+endif()
+
+if(onnxruntime_BUILD_KERNEL_EXPLORER)
+  message(STATUS "Kernel Explorer Build is enabled")
+  include(onnxruntime_kernel_explorer.cmake)
 endif()
 
 if (UNIX)

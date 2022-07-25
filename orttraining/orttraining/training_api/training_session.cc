@@ -37,7 +37,7 @@ Status TrainingSession::TrainStep(const RunOptions&,
 
 Status TrainingSession::EvalStep(const RunOptions&,
                                  const std::vector<OrtValue>& inputs,
-                                 std::vector<OrtValue>& fetches) {
+                                 std::vector<OrtValue>& fetches) const {
   return module_->EvalStep(inputs, fetches);
 }
 
@@ -49,7 +49,7 @@ Status TrainingSession::OptimizerStep(const RunOptions&) {
   return optimizer_->Step();
 }
 
-Status TrainingSession::CreateCheckpointState(CheckpointState& chkpt_state, bool save_optimizer_state) {
+Status TrainingSession::CreateCheckpointState(CheckpointState& chkpt_state, bool save_optimizer_state) const {
   ORT_RETURN_IF_ERROR(module_->GetStateDict(chkpt_state.module_checkpoint_state));
   if (save_optimizer_state) {
     ORT_RETURN_IF_ERROR(optimizer_->GetStateDict(chkpt_state.optimizer_checkpoint_state));

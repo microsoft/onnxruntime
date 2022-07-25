@@ -214,6 +214,9 @@ static Status GetInputDataType(
           initializers, *node_unit, name, scale, zero_point, ArgType::kInput));
       break;
     }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      type = Type::TENSOR_INT32;
+      break;
       // case ONNX_NAMESPACE::TensorProto_DataType_INT8:
       // We also do not consider ONNX_NAMESPACE::TensorProto_DataType_INT8 case here, since that can only
       // be input 2 of Qlinear[Conv/MatMul], which has to be an initializer tensor and will be added
@@ -521,11 +524,11 @@ Status ModelBuilder::AddOperations() {
 
 Status ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_indices,
                                   const std::vector<std::string>& output_names,
-                                  const std::vector<OperandType>& types) {
+                                  const std::vector<OperandType>& output_types) {
   std::vector<uint32_t> output_indices;
-  for (size_t i = 0; i < types.size(); i++) {
+  for (size_t i = 0; i < output_types.size(); i++) {
     uint32_t index = 0;
-    ORT_RETURN_IF_ERROR(AddNewOperand(output_names[i], types[i], index));
+    ORT_RETURN_IF_ERROR(AddNewOperand(output_names[i], output_types[i], index));
     output_indices.push_back(index);
   }
 
@@ -715,6 +718,10 @@ DataLayout ModelBuilder::GetPreferredLayout() const {
 
 const InitializedTensorSet& ModelBuilder::GetInitializerTensors() const {
   return graph_viewer_.GetAllInitializedTensors();
+}
+
+const ONNX_NAMESPACE::TensorProto* ModelBuilder::GetConstantInitializer(const std::string& name) const {
+  return graph_viewer_.GetConstantInitializer(name, true);
 }
 
 }  // namespace nnapi
