@@ -139,7 +139,7 @@ class SymbolicShapeInference:
             "Gather": self._infer_Gather,
             "GatherElements": self._infer_GatherElements,
             "GatherND": self._infer_GatherND,
-            "Gelu": self._pass_on_shape_and_type,
+            "Identity": self._pass_on_shape_and_type,
             "If": self._infer_If,
             "Loop": self._infer_Loop,
             "MatMul": self._infer_MatMul,
@@ -1535,7 +1535,7 @@ class SymbolicShapeInference:
             handle_negative_axis(ax, self._get_shape_rank(node, i + num_scan_states))
             for i, ax in enumerate(scan_input_axes)
         ]
-        # We may have cases where the subgraph has optionial inputs that appear in both subgraph's input and initializer,
+        # We may have cases where the subgraph has optional inputs that appear in both subgraph's input and initializer,
         # but not in the node's input. In such cases, the input model might be invalid, but let's skip those optional inputs.
         assert len(subgraph.input) >= len(node.input)
         subgraph_inputs = subgraph.input[: len(node.input)]

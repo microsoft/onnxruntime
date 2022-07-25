@@ -172,6 +172,7 @@ class ATen;
 class Group;
 class PassThrough;
 class YieldOp;
+class AdamWOptimizerBase;
 }  // namespace contrib
 
 class UnsqueezeBase;

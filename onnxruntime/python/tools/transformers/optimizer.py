@@ -12,7 +12,7 @@
 # For Bert model file like name.onnx, optimized model for GPU or CPU from OnnxRuntime will output as
 # name_ort_gpu.onnx or name_ort_cpu.onnx in the same directory.
 #
-# This script is retained for experiment purpose. Useful senarios like the following:
+# This script is retained for experiment purpose. Useful scenarios like the following:
 #  (1) Change model from fp32 to fp16 for mixed precision inference in GPU with Tensor Core.
 #  (2) Change input data type from int64 to int32.
 #  (3) Some model cannot be handled by OnnxRuntime, and you can modify this script to get optimized model.
@@ -142,7 +142,8 @@ def optimize_by_fusion(
 
     if model.producer_name and producer != model.producer_name:
         logger.warning(
-            f"Model producer not matched: Expect {producer}, Got {model.producer_name} {model.producer_version}. Please specify correct --model_type parameter."
+            f'Model producer not matched: Expected "{producer}", Got "{model.producer_name}".'
+            "Please specify correct --model_type parameter."
         )
 
     if optimization_options is None:
@@ -168,7 +169,7 @@ def optimize_model(
     num_heads: int = 0,
     hidden_size: int = 0,
     optimization_options: Optional[FusionOptions] = None,
-    opt_level: int = None,
+    opt_level: Optional[int] = None,
     use_gpu: bool = False,
     only_onnxruntime: bool = False,
 ):
@@ -213,7 +214,7 @@ def optimize_model(
     if model_type != "bert" and (num_heads == 0 or hidden_size == 0):
         logger.warning("Please specify parameters of num_heads and hidden_size when model_type is not 'bert'")
 
-    (optimizer_class, producer, default_opt_level) = MODEL_TYPES[model_type]
+    (optimizer_class, _producer, default_opt_level) = MODEL_TYPES[model_type]
 
     if opt_level is None:
         opt_level = default_opt_level
@@ -226,7 +227,8 @@ def optimize_model(
             if only_onnxruntime
             else [
                 "MatMulScaleFusion",
-                "MatMulAddFusion" "SimplifiedLayerNormFusion",
+                "MatMulAddFusion",
+                "SimplifiedLayerNormFusion",
                 "GemmActivationFusion",
                 "BiasSoftmaxFusion",
             ]
@@ -238,7 +240,7 @@ def optimize_model(
             disabled_optimizers=disabled_optimizers,
         )
     elif opt_level == 1:
-        # basic optimizations (like constant folding and cast elimation) are not specified to exection provider.
+        # basic optimizations (like constant folding and cast elimination) are not specified to execution provider.
         # CPU provider is used here so that there is no extra node for GPU memory copy.
         temp_model_path = optimize_by_onnxruntime(input, use_gpu=False, opt_level=1)
 
@@ -255,7 +257,7 @@ def optimize_model(
     # Remove the temporary model.
     if temp_model_path:
         os.remove(temp_model_path)
-        logger.debug("Remove tempoary model: {}".format(temp_model_path))
+        logger.debug("Remove temporary model: {}".format(temp_model_path))
 
     return optimizer
 

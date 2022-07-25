@@ -8,9 +8,10 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph.h"
 #include "core/providers/common.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_helpers.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
-#include "helper.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -1431,6 +1432,16 @@ int GemmOpSupportChecker::GetMinSupportedOpSet(const NodeUnit& node_unit) const 
 
 bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& params) const {
+  // check batch matmul first, then fall back to checking single gemm/matmul
+  {
+    const bool is_supported_batch_matmul =
+        op_builder_helpers::IsSupportedBatchMatMul(node_unit, params.android_feature_level);
+    LOGS_DEFAULT(VERBOSE) << "Supported batch matmul: [" << is_supported_batch_matmul << "]";
+    if (is_supported_batch_matmul) {
+      return true;
+    }
+  }
+
   const auto& op_type = node_unit.OpType();
   const auto& inputs = node_unit.Inputs();
   const bool is_qlinear_matmul = op_type == "QLinearMatMul";
@@ -2138,10 +2149,22 @@ bool GatherOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
     return false;
   }
 
+  // Here in GatherOpSupportChecker::IsOpSupportedImpl, we removed the restriction that 2nd input "indices" must be an initializer
+  // to accommodate the support for some models such as mobileBERT. It doesn't need to be an initializer for int32 as NNAPI Gather
+  // uses int32 for indices so the type matches.
+  // However, we still require indices of other types to be an initializer as we convert the data to int32 during model building.
+  // TODO: We could potentially support non-initializer inputs for the other types if we inserted a cast.
   const auto& indices_name = inputs[1].node_arg.Name();
-  if (!Contains(initializers, indices_name)) {
-    LOGS_DEFAULT(VERBOSE) << "Indices of Gather must be known";
+
+  int32_t indices_type;
+  if (!GetType(node_unit.Inputs()[1].node_arg, indices_type))
     return false;
+
+  if (indices_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    if (!Contains(initializers, indices_name)) {
+      LOGS_DEFAULT(VERBOSE) << "Indices of Gather must be known.";
+      return false;
+    }
   }
 
   return true;

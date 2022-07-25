@@ -49,14 +49,16 @@ class GradientBuilderBase {
                       const std::unordered_set<std::string>& gradient_inputs,
                       const std::unordered_set<std::string>& gradient_outputs,
                       const logging::Logger& logger,
-                      std::unordered_set<std::string>& stashed_tensors)
+                      std::unordered_set<std::string>& stashed_tensors,
+                      std::unordered_map<std::string, std::vector<int64_t>>& python_op_input_requires_grads)
       : gradient_graph_config_(gradient_graph_config),
         graph_(graph),
         node_(node),
         gradient_inputs_(gradient_inputs),
         gradient_outputs_(gradient_outputs),
         logger_(logger),
-        stashed_tensors_(stashed_tensors) {
+        stashed_tensors_(stashed_tensors),
+        python_op_input_require_grad_info_(python_op_input_requires_grads) {
     unique_node_prefix_ = CreateUniqueNodePrefix();
   }
 
@@ -141,7 +143,7 @@ class GradientBuilderBase {
   }
 
   // gradient of i-th input of forward op - useful when gradient type does not match input type
-  ArgDef GI(const size_t i, const TypeProto *type) const {
+  ArgDef GI(const size_t i, const TypeProto* type) const {
     ORT_ENFORCE(i < node_->InputDefs().size());
     return ArgDef(GradientName(node_->InputDefs()[i]->Name()), type);
   }
@@ -316,7 +318,7 @@ class GradientBuilderBase {
       bool use_approximation,
       const ArgDef& dY, const ArgDef& X, const ArgDef& B,                  // inputs
       const ArgDef& dX, const ArgDef& dB,                                  // outputs
-      const ArgDef& b_axes, const ArgDef& b_shape, const ArgDef& x_shape,  //intermediate args
+      const ArgDef& b_axes, const ArgDef& b_shape, const ArgDef& x_shape,  // intermediate args
       const std::string& node_name) const;
 
   const std::string& NodeName() const { return node_->Name(); }
@@ -324,6 +326,9 @@ class GradientBuilderBase {
   std::string GetGradientDefinitionKey() const { return GetGradientDefinitionKeyByNode(*node_); }
 
   AttributeProto AttributeDefinitionToAttributeProto(const GradientNodeAttributeDefinition& attr_def) const;
+
+  void SetPythonOpRequireGradInfo(const std::string& node_name,
+                                  std::vector<int64_t> input_requires_grad_info) const;
 
  private:
   friend class GradientGraphBuilder;
@@ -355,6 +360,8 @@ class GradientBuilderBase {
   const logging::Logger& logger_;
 
   std::unordered_set<std::string>& stashed_tensors_;
+
+  std::unordered_map<std::string, std::vector<int64_t>>& python_op_input_require_grad_info_;
 };
 
 class EmptyGradientBuilder : public GradientBuilderBase {

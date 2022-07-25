@@ -4,6 +4,10 @@
         13275719513674142848
     ],
     [
+        "AdamWOptimizer com.microsoft CPUExecutionProvider",
+        8132205541603584160
+    ],
+    [
         "AveragePoolGrad ai.onnx CPUExecutionProvider",
         5748823370585834408
     ],
@@ -266,5 +270,9 @@
     [
         "ZeroGradient com.microsoft CPUExecutionProvider",
         3284255990062374928
+    ],
+    [
+        "InPlaceAccumulatorV2 com.microsoft CPUExecutionProvider",
+        12968279839987729832
     ]
 ]

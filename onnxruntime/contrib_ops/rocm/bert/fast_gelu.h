@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include "core/common/common.h"
 #include "core/providers/rocm/rocm_kernel.h"
+#include "contrib_ops/rocm/bert/fast_gelu_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -18,7 +20,7 @@ class FastGelu final : public RocmKernel {
   Status ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
-  bool use_half2_;
+  bool tuning_;
 };
 
 }  // namespace rocm
