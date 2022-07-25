@@ -301,7 +301,7 @@ This option is very fast and allows the package to be built in minutes, but is c
 2. Get a pre-compiled protoc:
 
    Get this from https://github.com/protocolbuffers/protobuf/releases/download/v3.18.1/protoc-3.18.1-linux-x86_64.zip and unzip after downloading.
-   The version must match the one onnxruntime is using in `cmake/external/protobuf`. Currently we are using 3.18.1 (`protobuf @ 0dab03b`).
+   The version must match the one onnxruntime is using in `cmake/external/protobuf`. Currently we are using 3.18.1.
    
 3. (Optional) Setup sysroot to enable python extension. *Skip if not using Python.*
 
