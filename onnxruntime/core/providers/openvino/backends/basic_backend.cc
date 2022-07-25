@@ -29,58 +29,6 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   std::string model_blob_name;
   std::string ov_compiled_blobs_dir = "";
 
-#if (defined OPENVINO_2021_2) || (defined OPENVINO_2021_3)
-  //Flow for OpenVINO versions supported till OV 2021.3
-  bool import_blob_status = false;
-  PopulateCompiledDirectory(hw_target, ov_compiled_blobs_dir, model_blob_name, vpu_status);
-
-  if(!openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph) {
-    ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
-    SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
-    //Validate Constant subgraphs
-    if (ValidateSubgraph(const_outputs_map_))
-      return;
-  }
-
-  if (vpu_status == true || openvino_ep::backend_utils::UseCompiledNetwork()) {
-    const std::string model_blob_path = ov_compiled_blobs_dir + "/" + model_blob_name;
-    const std::string compiled_blob_path = onnxruntime::GetEnvironmentVar("OV_BLOB_PATH");
-    if(vpu_status == true) {
-      LOGS_DEFAULT(INFO) << log_tag << "Importing the pre-compiled blob for this model which already exists in the directory 'ov_compiled_blobs'";
-      exe_network_ = global_context_.ie_core.ImportModel(model_blob_path, hw_target, subgraph_context_.subgraph_name);
-    } else {
-      LOGS_DEFAULT(INFO) << log_tag << "Importing the pre-compiled blob from the path set by the user";
-      if (compiled_blob_path.empty())
-        throw std::runtime_error("The compiled blob path is not set");
-      exe_network_ = global_context_.ie_core.ImportModel(compiled_blob_path, hw_target, subgraph_context_.subgraph_name);
-    }
-    import_blob_status = true;
-    LOGS_DEFAULT(INFO) << log_tag << "Succesfully Created an executable network from a previously exported network";
-  }
-
-  if ((global_context_.use_compiled_network == true && import_blob_status == false) || vpu_status == false) {
-    if(!openvino_ep::backend_utils::UseCompiledNetwork()) {
-      ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
-      SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
-
-      if (ValidateSubgraph(const_outputs_map_))
-      return;
-
-      OVConfig config;
-      PopulateConfigValue(config);
-
-      exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, config, subgraph_context_.subgraph_name);
-      LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
-
-      if(global_context_.use_compiled_network && hw_target == "MYRIAD") {
-        LOGS_DEFAULT(INFO) << log_tag << "Dumping the compiled blob for this model into the directory 'ov_compiled_blobs'";
-        std::ofstream compiled_blob_dump{ov_compiled_blobs_dir + "/" + model_blob_name};
-        exe_network_.Get().Export(compiled_blob_dump);
-      }
-    }
-  }
-#else
-
   if(hw_target == "MYRIAD")
     vpu_status = true;
   if (!ImportBlob(hw_target, vpu_status)) {
@@ -128,7 +76,6 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
   }
 
-#endif
   //The infer_requests_ pool will be intialized with a default value of 8 infer_request's
   //The nireq value can also be configured to any num_of_threads during runtime
   size_t nireq = global_context_.num_of_threads;

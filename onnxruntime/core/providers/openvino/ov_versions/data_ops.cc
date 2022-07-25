@@ -314,7 +314,7 @@ void DataOps::populate_op_mode_supported() {
 
   //populate unsupportedmode_t
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                for (size_t i = 0; i < node->InputDefs().size(); i++) {
                                  if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
@@ -340,7 +340,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Abs", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4, V_2022_1, V_2022_2},
+    UnsupportedOpMode obj = {{V_2021_4, V_2022_1, V_2022_2},
                              [this](const Node* node, const InitializedTensorSet&) {
                                //tensor type does not support select last index
                                auto& attributes = node->GetAttributes();
@@ -356,7 +356,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"ArgMin", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                //auto pad null value is not supported
                                const auto& attributes = node->GetAttributes();
@@ -372,7 +372,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"AveragePool", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                //Only float 16, float and double data types are supported
                                const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
@@ -400,15 +400,6 @@ void DataOps::populate_op_mode_supported() {
                                return false;
                              }};
     op_list_.insert({"Clip", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3},
-                             [this](const Node* node, const InitializedTensorSet& initializers) {
-                               if (GetInputCount(node, initializers) > 1)
-                                 return true;
-                               return false;
-                             }};
-    op_list_.insert({"Conv", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2021_4},
@@ -466,7 +457,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Conv", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                auto& attributes = node->GetAttributes();
                                if (attributes.count("auto_pad") == 0 || attributes.at("auto_pad").s() == "") {
@@ -475,15 +466,6 @@ void DataOps::populate_op_mode_supported() {
                                return false;
                              }};
     op_list_.insert({"Conv", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3},
-                             [this](const Node* node, const InitializedTensorSet& initializers) {
-                               if (GetInputCount(node, initializers) > 1)
-                                 return true;
-                               return false;
-                             }};
-    op_list_.insert({"ConvTranspose", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2021_4},
@@ -564,7 +546,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"ConvTranspose", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                auto& attributes = node->GetAttributes();
                                if (attributes.count("auto_pad") == 0 || attributes.at("auto_pad").s() == "") {
@@ -575,7 +557,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"ConvTranspose", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
                                // all ConvInteger zero points need to be constants
                                if (node->InputDefs().size() == 3) {
@@ -587,23 +569,6 @@ void DataOps::populate_op_mode_supported() {
                                return false;
                              }};
     op_list_.insert({"ConvInteger", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               if (device_id_.find("GPU") != std::string::npos) {
-                                 const auto& input = node->InputDefs()[0];
-                                 auto graph_inputs = graph_viewer_.GetInputs();
-                                 auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
-                                 if (it != graph_inputs.end()) {
-                                   const auto& indices_arg = node->InputDefs()[1];
-                                   if (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64)
-                                     return true;
-                                 }
-                               }
-                               return false;
-                             }};
-    op_list_.insert({"Gather", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2021_4},
@@ -628,7 +593,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Gather", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                const auto& indices_arg = node->InputDefs()[0];
                                const auto& output_arg = node->OutputDefs()[0];
@@ -662,7 +627,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"GatherElements", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                const auto& input = node->InputDefs()[0];
                                const auto& output = node->OutputDefs()[0];
@@ -677,7 +642,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Identity", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
                                //Loop has to be initializer
                                const auto& cond = node->InputDefs()[1];
@@ -698,7 +663,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"LSTM", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                //MaxPool "indices" output is not currently supported.
                                //if (node->OutputDefs().size() > 1)
@@ -737,29 +702,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"MaxPool", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               //MaxPool "indices" output is not currently supported.
-                               if (node->OutputDefs().size() > 1)
-                                 return true;
-                               const auto& attributes = node->GetAttributes();
-                               // default value of ceil_mode (0) is supported.
-                               auto ceil_attr = attributes.find("ceil_mode");
-                               if (ceil_attr != attributes.end() && ceil_attr->second().i() != 0)
-                                 return true;
-                               auto auto_attr = attributes.find("auto_pad");
-                               //auto pad null value is not supported
-                               if (auto_attr->second().s() == "")
-                                 return true;
-                               // dilations attrs are not supported in nGraph
-                               if (attributes.find("dilations") != attributes.end())
-                                 return true;
-                               return (!this->dimension_unsupported(node));
-                             }};
-    op_list_.insert({"MaxPool", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
                                if (device_id_.find("MYRIAD") == std::string::npos) {
                                  if (GetInputCount(node, initializers) == 1)
@@ -773,7 +716,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Sum", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                //All matmuls except float have computation missmatch
                                const bool A_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
@@ -783,7 +726,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"MatMul", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
                                // all MatMulInteger zero points need to be constants
                                if (node->InputDefs().size() == 3) {
@@ -797,22 +740,6 @@ void DataOps::populate_op_mode_supported() {
                                return false;
                              }};
     op_list_.insert({"MatMulInteger", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_2},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               //Only FP32 data type is allowed
-                               auto& attributes = node->GetAttributes();
-                               auto fmod = attributes.count("fmod") > 0 ? attributes.at("fmod").i() : 0;
-                               if (fmod != 1) return true;
-                               //Only FP32 data type is allowed
-                               for (const auto& input : node->InputDefs()) {
-                                 if (input->Type()->find("float") == std::string::npos)
-                                   return true;
-                               }
-                               return false;
-                             }};
-    op_list_.insert({"Mod", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2},
@@ -844,7 +771,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Neg", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                auto graph_outputs = graph_viewer_.GetOutputs();
                                const auto& output = node->OutputDefs()[0];
@@ -856,7 +783,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"NonMaxSuppression", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_2, V_2021_3, V_2021_4, V_2022_1, V_2022_2},
+    UnsupportedOpMode obj = {{V_2021_4, V_2022_1, V_2022_2},
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos) {
                                  auto x_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
@@ -875,7 +802,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Pow", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
                                auto slope = node->InputDefs()[1];
                                //PRelu slope has to be an initializer or needs to come from a constant node
@@ -911,7 +838,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"PRelu", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
                                bool non_const_zero_point = false;
                                // check if any of the zero points is NOT in the initializers list
@@ -981,7 +908,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"ReduceLogSumExp", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                const auto& attributes = node->GetAttributes();
                                auto axis_attr = attributes.find("axis");
@@ -1065,7 +992,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Shrink", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4, V_2022_1, V_2022_2},
+    UnsupportedOpMode obj = {{V_2021_4, V_2022_1, V_2022_2},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
                                //start, end, axes need to be a initializer
                                bool cond_for_slice = false;
@@ -1091,7 +1018,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Slice", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                //Shape can't have empty axes attribute
                                const auto& attributes = node->GetAttributes();
@@ -1115,7 +1042,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Transpose", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                return (!this->dimension_unsupported(node));
                              }};
@@ -1136,7 +1063,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Unsqueeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4, V_2022_1, V_2022_2},
+    UnsupportedOpMode obj = {{V_2021_4, V_2022_1, V_2022_2},
                              [this](const Node* node, const InitializedTensorSet&) {
                                //check for attributes
                                auto& upsample_attr = node->GetAttributes();
@@ -1169,16 +1096,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Upsample", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_2},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               //float data type is not supported
-                               const bool data_is_float = node->InputDefs()[1]->Type()->find("float") != std::string::npos;
-                               return data_is_float;
-                             }};
-    op_list_.insert({"Where", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                return (!this->dimension_unsupported(node));
                              }};

@@ -28,11 +28,7 @@ namespace openvino_ep {
 GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string device_type_param,
                              const std::string version_param):
                 graph_viewer_(graph_viewer_param), device_type_(device_type_param){
-  if (version_param == "V_2021_2") {
-    data_ops_ = new DataOps(graph_viewer_, V_2021_2, device_type_);
-  } else if (version_param == "V_2021_3") {
-    data_ops_ = new DataOps(graph_viewer_, V_2021_3, device_type_);
-  } else if (version_param == "V_2021_4") {
+  if (version_param == "V_2021_4") {
     data_ops_ = new DataOps(graph_viewer_, V_2021_4, device_type_);
   } else if (version_param == "V_2022_1") {
     data_ops_ = new DataOps(graph_viewer_, V_2022_1, device_type_);
@@ -51,16 +47,6 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
   if (graph_viewer_.IsSubgraph()) {
     return result;
   }
-
-#if defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3)
-  // Need access to model_path_
-  for (const auto& tensor : graph_viewer_.GetAllInitializedTensors()) {
-    if (tensor.second->has_data_location() && tensor.second->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-      LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] Initializers with external data location are not currently supported";
-      return result;
-    }
-  }
-#endif
 
   // This is a list of initializers that nGraph considers as constants. Example weights, reshape shape etc.
   std::unordered_set<std::string> ng_required_initializers;
