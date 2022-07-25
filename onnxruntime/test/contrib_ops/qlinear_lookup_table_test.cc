@@ -119,10 +119,10 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearSoftmax_UInt8) {
   OpTester test("QLinearSoftmax", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("axis", -1);
   float X_scale = 0.166099221f;
-  // unused
+  //
   uint8_t X_zero_point = 128;
   float Y_scale = 1.0f / 256.0f;
-  uint8_t Y_zero_point = 8;
+  uint8_t Y_zero_point = 0;
   //
 
   std::vector<int64_t> dims = {2, 20};
@@ -151,10 +151,10 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearSoftmax_Int8) {
   OpTester test("QLinearSoftmax", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("axis", -1);
   float X_scale = 0.166099221f;
-  // unused
+  //
   int8_t X_zero_point = 0;
-  float Y_scale = 1.0f / 256.0f;
-  int8_t Y_zero_point = 8;
+  float Y_scale = 1.0f / 128.0f;
+  int8_t Y_zero_point = 0;
   //
 
   std::vector<int64_t> dims = {2, 20};
