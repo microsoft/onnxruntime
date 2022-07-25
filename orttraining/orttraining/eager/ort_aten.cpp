@@ -381,6 +381,22 @@ OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at:
   return output[0];
 }
 
+void CastToTypeInPlace(onnxruntime::ORTInvoker& invoker, const OrtValue& input, OrtValue& output, at::ScalarType type) {
+  std::vector<OrtValue> output_result(1);
+  output_result[0] = output;
+  NodeAttributes attrs(2);
+  attrs["to"] = create_ort_attribute(
+      "to", GetONNXTensorProtoDataType(type), at::ScalarType::Long);
+
+  auto status = invoker.Invoke("Cast",
+                               {std::move(input)},
+                               output_result, &attrs);
+
+  if (!status.IsOK())
+    throw std::runtime_error(
+        "ORT return failure status:" + status.ErrorMessage());
+}
+
 /*
  * Utility method to calculate the resulting shape of tensor after a reduction operation.
  *

@@ -38,6 +38,18 @@ class OrtOpTests(unittest.TestCase):
         assert ort_result.dtype == torch.float32
         assert torch.allclose(cpu_result, ort_result.cpu())
 
+        # verify scalar addition promotion
+        cpu_result = cpu_ones_int64 + 1.1
+        ort_result = ort_ones_int64 + 1.1
+        assert ort_result.dtype == torch.float32
+        assert torch.allclose(cpu_result, ort_result.cpu())
+
+        ## verify setting out to type int while inputs are float cause an error as casting float to int is not allowed.
+        cpu_out_tensor = torch.tensor([], dtype=torch.int)
+        ort_out_tensor = cpu_out_tensor.to(device)
+        with self.assertRaises(RuntimeError):
+            ort_result = torch.add(ort_ones_int64, ort_ones_float32, out=ort_out_tensor)
+
     # TODO: Add BFloat16 test coverage
     def test_add_(self):
         device = self.get_device()
@@ -646,48 +658,44 @@ class OrtOpTests(unittest.TestCase):
             assert torch.allclose(cpu_result, ort_result.cpu())
             assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
 
-    # @parameterized.expand(binary_ops, name_func=rename_func)
-    # def test_op_binary_scalar(self, binary_op, op_sign, alpha_supported):
-    #     print(binary_op)
-    #     device = self.get_device()
-    #     cpu_input = torch.ones(3, 3)
-    #     ort_input = cpu_input.to(device)
-    #     cpu_other = 3.1
-    #     ort_other = 3.1
+    @parameterized.expand(binary_ops, name_func=rename_func)
+    def test_op_binary_scalar(self, binary_op, op_sign, alpha_supported):
+        device = self.get_device()
+        cpu_input = torch.ones(3, 3)
+        ort_input = cpu_input.to(device)
+        cpu_other = 3.1
+        ort_other = 3.1
 
-    #     # verify op_sign works
-    #     cpu_result = eval(compile("cpu_input " + op_sign + " cpu_other", "<string>", "eval"))
-    #     ort_result = eval(compile("ort_input " + op_sign + " ort_other", "<string>", "eval"))
-    #     print(cpu_result)
-    #     # print(ort_result)
-    #     assert torch.allclose(cpu_result, ort_result.cpu())
+        # verify op_sign works
+        cpu_result = eval(compile("cpu_input " + op_sign + " cpu_other", "<string>", "eval"))
+        ort_result = eval(compile("ort_input " + op_sign + " ort_other", "<string>", "eval"))
+        assert torch.allclose(cpu_result, ort_result.cpu())
 
-    #     # verify torch op with out param works
-    #     cpu_out_tensor = torch.tensor([])
-    #     ort_out_tensor = cpu_out_tensor.to(device)
-    #     cpu_result = eval(
-    #         compile("torch." + binary_op + "(cpu_input, cpu_other, out=cpu_out_tensor)", "<string>", "eval")
-    #     )
-    #     ort_result = eval(
-    #         compile("torch." + binary_op + "(ort_input, ort_other, out=ort_out_tensor)", "<string>", "eval")
-    #     )
-    #     assert torch.allclose(cpu_result, ort_result.cpu())
-    #     assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
+        # verify torch op with out param works
+        cpu_out_tensor = torch.tensor([])
+        ort_out_tensor = cpu_out_tensor.to(device)
+        cpu_result = eval(
+            compile("torch." + binary_op + "(cpu_input, cpu_other, out=cpu_out_tensor)", "<string>", "eval")
+        )
+        ort_result = eval(
+            compile("torch." + binary_op + "(ort_input, ort_other, out=ort_out_tensor)", "<string>", "eval")
+        )
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
 
-    #     if alpha_supported:
-    #         print(binary_op)
-    #         cpu_result = eval(
-    #             compile(
-    #                 "torch." + binary_op + "(cpu_input, cpu_other, alpha=2.5, out=cpu_out_tensor)", "<string>", "eval"
-    #             )
-    #         )
-    #         ort_result = eval(
-    #             compile(
-    #                 "torch." + binary_op + "(ort_input, ort_other, alpha=2.5, out=ort_out_tensor)", "<string>", "eval"
-    #             )
-    #         )
-    #         assert torch.allclose(cpu_result, ort_result.cpu())
-    #         assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
+        if alpha_supported:
+            cpu_result = eval(
+                compile(
+                    "torch." + binary_op + "(cpu_input, cpu_other, alpha=2.5, out=cpu_out_tensor)", "<string>", "eval"
+                )
+            )
+            ort_result = eval(
+                compile(
+                    "torch." + binary_op + "(ort_input, ort_other, alpha=2.5, out=ort_out_tensor)", "<string>", "eval"
+                )
+            )
+            assert torch.allclose(cpu_result, ort_result.cpu())
+            assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
 
     ################################################################
     # Please add new non-parameterized tests above the parameterized section.
