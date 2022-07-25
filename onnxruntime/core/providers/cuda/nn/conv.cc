@@ -110,6 +110,12 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   if (context->InputCount() >= 4) {
     const Tensor* Z = context->Input<Tensor>(3);
     ORT_RETURN_IF_ERROR(s_.z_tensor.Set(Z->Shape().GetDims(), CudnnTensor::GetDataType<CudaT>()));
+
+    std::stringstream ss; ss.str("");
+    for (auto &i : Z->Shape().GetDims()) {
+      ss << i << " ";
+    }
+    printf("z dim [%s]", ss.str().c_str());
     s_.z_data = reinterpret_cast<const CudaT*>(Z->template Data<T>());
   } else {
     s_.z_data = nullptr;
@@ -222,11 +228,28 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 
     if (w_dims_changed)
       ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
+    // --------------- DEBUG
+    std::stringstream ss; ss.str("");
+    for (auto &i : w_dims) {
+      ss << i << " ";
+    }
+    printf("w dim [%s]", ss.str().c_str());
 
+    ss.str("");
+    for (auto &i : y_dims_cudnn) {
+      ss << i << " ";
+    }
+    printf("y dim [%s]", ss.str().c_str());
+    // --------------- \DEBUG
     // We must delay returning early until here so that the weight dims have been cached properly
     if (s_.Y->Shape().Size() == 0) {
       return Status::OK();
     }
+    // TODO: check z dim and y dim such that they satisfy
+    // Each dimension of the bias tensor A must match the corresponding dimension of the destination tensor C or
+    // must be equal to 1. In the latter case, the same value from the bias tensor for those dimensions will
+    // be used to blend into the C tensor
+    ORT_RETURN_IF_ERROR(s_.z_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
 
     ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
     ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
@@ -234,15 +257,18 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
                                          gsl::narrow_cast<int>(conv_attrs_.group),
                                          CUDNN_CROSS_CORRELATION, CudnnTensor::GetDataType<CudaT>()));
 
+    TensorShapeVector b_dims;
     if (context->InputCount() >= 3) {
       const Tensor* B = context->Input<Tensor>(2);
       const auto& b_shape = B->Shape();
       ORT_RETURN_IF_NOT(b_shape.NumDimensions() == 1, "bias should be 1D");
-      TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
+      // TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
+      b_dims = TensorShapeVector(2 + kernel_shape.size(), 1);
       b_dims[1] = b_shape[0];
       ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
       //s_.b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
     } else if (bias_expected) {
+      b_dims = TensorShapeVector(2 + kernel_shape.size(), 1);
       TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = w_dims[0];
       auto malloc_size = b_dims[1] * sizeof(CudaT);
@@ -255,6 +281,11 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       CUDA_CALL_THROW(cudaMemsetAsync(s_.b_zero, 0, malloc_size, Stream()));
     }
 
+      ss.str("");
+        for (auto &i : b_dims) {
+          ss << i << " ";
+        }
+        printf("b dim [%s]", ss.str().c_str());
     if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
       // set math type to tensor core before algorithm search
       ORT_IF_CONSTEXPR(std::is_same<T, MLFloat16>::value)
