@@ -1774,6 +1774,24 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
     return tensor_data;
   }();
 
+  /* Input data to graph is expected to be in Little endian */
+  size_t element_size=sizeof(int32_t);
+  size_t num_elements = tensor_data.size();
+  char *bytes = (char*)tensor_data.data();
+
+  for (size_t i = 0; i < num_elements; ++i) {
+      char* start_byte = bytes + i * element_size;
+      char* end_byte = start_byte + element_size - 1;
+      /* keep swapping */
+      for (size_t count = 0; count < element_size / 2; ++count) {
+          char temp = *start_byte;
+          *start_byte = *end_byte;
+          *end_byte = temp;
+          ++start_byte;
+          --end_byte;
+      }
+  }
+
   // Create OrtValue for replacement
   TensorShape data_shape{static_cast<int64_t>(tensor_data.size())};
   OrtValue ort_value;
@@ -1809,6 +1827,10 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
   ASSERT_TRUE(graph.GetInitializedTensor(initializer_name, external_data));
   ASSERT_TRUE(utils::HasExternalData(*external_data));
 
+  const auto& original_tensor2 = ort_value.Get<Tensor>();
+  const int32_t* madat2 = original_tensor2.Data<int32_t>();
+  const auto original_span2 = original_tensor2.DataAsSpan<int32_t>();
+
   // Replace things.
   ASSERT_STATUS_OK(graph.InjectExternalInitializedTensors(injection_initializers));
 
@@ -1819,10 +1841,31 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
   // No longer has external data
   ASSERT_FALSE(utils::HasExternalData(*with_data));
 
-  const auto& original_tensor = ort_value.Get<Tensor>();
+  /* Input data to graph is expected to be in Little endian */
+  TensorProto with_data1 = *with_data;
+  if (with_data1.has_raw_data())
+  {
+      size_t element_size=sizeof(int32_t);
+      size_t num_elements = (with_data1.mutable_raw_data()->size()) / element_size;
+      char *bytes = (char*)(with_data1.mutable_raw_data()->c_str());
 
+      for (size_t i = 0; i < num_elements; ++i) {
+          char* start_byte = bytes + i * element_size;
+          char* end_byte = start_byte + element_size - 1;
+          /* keep swapping */
+          for (size_t count = 0; count < element_size / 2; ++count) {
+              char temp = *start_byte;
+              *start_byte = *end_byte;
+              *end_byte = temp;
+              ++start_byte;
+              --end_byte;
+         }
+     }
+  }
+  const auto& original_tensor = ort_value.Get<Tensor>();
+  
   Tensor replaced_tensor(original_tensor.DataType(), data_shape, std::make_shared<CPUAllocator>());
-  ASSERT_STATUS_OK(utils::TensorProtoToTensor(Env::Default(), tensor_data_dir_path.ToPathString().c_str(), *with_data, replaced_tensor));
+  ASSERT_STATUS_OK(utils::TensorProtoToTensor(Env::Default(), tensor_data_dir_path.ToPathString().c_str(), with_data1, replaced_tensor));
 
   ASSERT_EQ(original_tensor.GetElementType(), replaced_tensor.GetElementType());
   const auto original_span = original_tensor.DataAsSpan<int32_t>();
