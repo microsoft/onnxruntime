@@ -734,9 +734,8 @@ def move_initializers(
     """Remove initializers of a graph, when they have number of elements larger than a threshold.
 
     Args:
-        graph (GraphProto): the graph
-        initializers (List[TensorProto]): removed initializers will be appended to it.
-        min_elements (int, optional): minimal number of elements for initializers to be considered. Defaults to 32.
+        graph (GraphProto): the graph.
+        min_elements (int, optional): minimal number of elements for initializers to be considered. Defaults to 1024.
 
     Returns:
         List[TensorProto]: initializers that are removed from the graph.
