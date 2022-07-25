@@ -122,7 +122,8 @@ __global__ void DirectSumKernel(
       auto target_row = dX_indices_sorted[idx];
       if (target_row < 0) target_row += gather_dimension_size;
       for (int64_t batch_idx = 0; batch_idx < num_batches; ++batch_idx) {
-        const auto gathered_element_idx_start = threadIdx.x + blockIdx.y * blockDim.x * NumElementsPerThread;
+        const auto gathered_element_idx_start =
+            threadIdx.x + (blockIdx.y + gridDim.y * blockIdx.z) * blockDim.x * NumElementsPerThread;
         const auto dX_row_offset =
             (batch_idx * gather_dimension_size + target_row) * num_gathered_per_index;
         const auto dY_row_offset =
@@ -162,6 +163,7 @@ __global__ void DirectSumKernel(
 template <typename T, typename TIndex>
 void DirectSumImpl(
     cudaStream_t stream,
+    const cudaDeviceProp& prop,
     const TIndex* dX_indices_sorted,
     const TIndex* dY_indices_sorted,
     const T* dY_data,
@@ -170,8 +172,17 @@ void DirectSumImpl(
     int64_t num_gathered_per_index,
     int64_t gather_dimension_size,
     int64_t num_batches) {
-  dim3 block(GPU_WARP_SIZE, 4);
-  dim3 grid(CeilDiv(num_gathered_indices, 4), CeilDiv(num_gathered_per_index, GridDim::maxElementsPerThread * GPU_WARP_SIZE));
+  dim3 block(GPU_WARP_SIZE_HOST, 4);
+  uint32_t grid_y =
+      static_cast<uint32_t>(CeilDiv(num_gathered_per_index, GridDim::maxElementsPerThread * GPU_WARP_SIZE_HOST));
+  uint32_t grid_z = 1;
+  const uint32_t max_grid_y = static_cast<uint32_t>(prop.maxGridSize[1]);
+  if (grid_y > max_grid_y) {
+    uint32_t sqrt = static_cast<uint32_t>(std::sqrt(static_cast<double>(grid_y)));
+    if (sqrt * sqrt < grid_y) sqrt += 1;
+    grid_y = grid_z = sqrt;
+  }
+  dim3 grid(CeilDiv(num_gathered_indices, 4), grid_y, grid_z);
 
   DirectSumKernel<T, TIndex, GridDim::maxElementsPerThread><<<grid, block, 0, stream>>>(
       dX_indices_sorted,
@@ -367,7 +378,7 @@ void PartialSumsImpl(
 
   {
     const auto num_gathered_per_index_warp_size_multiple =
-        CeilDiv(num_gathered_per_index, GPU_WARP_SIZE) * GPU_WARP_SIZE;
+        CeilDiv(num_gathered_per_index, GPU_WARP_SIZE_HOST) * GPU_WARP_SIZE_HOST;
     const auto threads_per_block =
         std::min<int64_t>(num_gathered_per_index_warp_size_multiple, GridDim::maxThreadsPerBlock);
 
@@ -412,6 +423,7 @@ void PartialSumsImpl(
 template <typename T, typename TIndex>
 void Impl(
     cudaStream_t stream,
+    const cudaDeviceProp& prop,
     const CudaScratchBufferAllocator& allocator,
     const T* dY_data,
     const TIndex* dX_indices,
@@ -474,7 +486,7 @@ void Impl(
   constexpr GatheredIndexIndex_t kMaxSegmentSizeThreshold = 32;
   if (host_max_segment_count <= kMaxSegmentSizeThreshold) {
     DirectSumImpl(
-        stream, dX_indices_sorted.get(), dY_indices_sorted.get(),
+        stream, prop, dX_indices_sorted.get(), dY_indices_sorted.get(),
         dY_data, dX_data,
         num_gathered_indices, num_gathered_per_index, gather_dimension_size, num_batches);
   } else {
@@ -512,8 +524,8 @@ void Impl_Simplified(
       dX_indices, num_gathered_indices,
       dX_indices_sorted, dY_indices_sorted);
 
-  dim3 block(GPU_WARP_SIZE, 4);
-  dim3 grid(CeilDiv(num_gathered_indices, 4), CeilDiv(num_gathered_per_index, GridDim::maxElementsPerThread * GPU_WARP_SIZE));
+  dim3 block(GPU_WARP_SIZE_HOST, 4);
+  dim3 grid(CeilDiv(num_gathered_indices, 4), CeilDiv(num_gathered_per_index, GridDim::maxElementsPerThread * GPU_WARP_SIZE_HOST));
 
   DirectSumKernel<T, TIndex, GridDim::maxElementsPerThread><<<grid, block, 0, stream>>>(
       dX_indices_sorted.get(),
@@ -531,6 +543,7 @@ void Impl_Simplified(
 template <typename T, typename TIndex>
 void GatherGradImpl(
     cudaStream_t stream,
+    const cudaDeviceProp& prop,
     const CudaScratchBufferAllocator& allocator,
     const T* dY_data,
     const TIndex* dX_indices,
@@ -541,6 +554,7 @@ void GatherGradImpl(
     T* dX_data) {
   gather_grad_internal::Impl(
       stream,
+      prop,
       allocator,
       dY_data, dX_indices,
       num_gathered_indices, gather_dimension_size, num_gathered_per_index, num_batches,
@@ -550,6 +564,7 @@ void GatherGradImpl(
 #define SPECIALIZED(T, TIndex)                         \
   template void GatherGradImpl<T, TIndex>(             \
       cudaStream_t stream,                             \
+      const cudaDeviceProp& prop,                      \
       const CudaScratchBufferAllocator& allocator,     \
       const T* dY_data,                                \
       const TIndex* dX_indices,                        \

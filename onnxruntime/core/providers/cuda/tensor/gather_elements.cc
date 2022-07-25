@@ -9,115 +9,94 @@
 namespace onnxruntime {
 namespace cuda {
 
+// Ideally both input and indices can support strided tensor, for training case, the indices is the input for both
+// GatherElements and GatherElementsGrad, indices supporting strided tensor is more useful for saving memory.
+// So we only mark indices as MayStridedInput for now. Will do this for input once needed.
+#ifdef ENABLE_TRAINING
+#define CREATE_GATHER_ELEMENTS_KERNEL_DEF (*KernelDefBuilder::Create()).MayStridedInput(1)
+#else
+#define CREATE_GATHER_ELEMENTS_KERNEL_DEF (*KernelDefBuilder::Create())
+#endif
+
 ONNX_OPERATOR_KERNEL_EX(GatherElements, kOnnxDomain, 13, kCudaExecutionProvider,
-                        (*KernelDefBuilder::Create())
-                            .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+                        CREATE_GATHER_ELEMENTS_KERNEL_DEF.TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
                             .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
                                                                             DataTypeImpl::GetTensorType<int64_t>()}),
                         GatherElements);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(GatherElements, kOnnxDomain, 11, 12, kCudaExecutionProvider,
-                                  (*KernelDefBuilder::Create())
+                                  CREATE_GATHER_ELEMENTS_KERNEL_DEF
                                       .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
                                       .TypeConstraint("Tind",
                                                       std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
                                                                               DataTypeImpl::GetTensorType<int64_t>()}),
                                   GatherElements);
 
-namespace {
-bool CanSkip(const TensorShapeVector& input_shape, const TensorShapeVector& indices_shape, size_t dim) {
-  return input_shape[dim] == 1 && indices_shape[dim] == 1;
-}
+#undef CREATE_GATHER_ELEMENTS_KERNEL_DEF
 
-bool CanMerge(const TensorShapeVector& input_shape, const TensorShapeVector& indices_shape, size_t src, size_t dst) {
-  return input_shape[src] == indices_shape[src] && input_shape[dst] == indices_shape[dst];
-}
-
-void Move(TensorShapeVector& input_shape, TensorShapeVector& indices_shape, size_t src, size_t dst) {
-  input_shape[dst] = input_shape[src];
-  indices_shape[dst] = indices_shape[src];
-}
-
-void Merge(TensorShapeVector& input_shape, TensorShapeVector& indices_shape, size_t src, size_t dst) {
-  input_shape[dst] *= input_shape[src];
-  indices_shape[dst] *= indices_shape[src];
-}
-}  // namespace
-
-void CoalesceDimensions(TensorShapeVector& input_shape, TensorShapeVector& indices_shape, int64_t axis,
-                        int64_t& new_axis, int64_t& new_rank, int64_t& input_stride_along_axis,
-                        TArray<int64_t>& masked_input_strides, TArray<fast_divmod>& indices_fdms) {
+void CoalesceDimensions(TensorShapeVector& input_shape, TensorShapeVector& indices_shape,
+                        TensorShapeVector* p_indices_strides, int64_t axis, GatherScatterElementsArgs& args) {
   size_t rank = input_shape.size();
-  // Reverse for better calculation.
-  std::reverse(input_shape.begin(), input_shape.end());
-  std::reverse(indices_shape.begin(), indices_shape.end());
   if (axis < 0 || axis >= static_cast<int64_t>(rank)) ORT_THROW("Invalid axis in CoalesceDimensions: ", axis);
-  size_t reverse_axis = rank - 1 - static_cast<size_t>(axis);
-  size_t curr = 0, next = 0;
-  while (curr < reverse_axis && CanSkip(input_shape, indices_shape, curr)) ++curr;
-  if (curr < reverse_axis) {
-    if (curr > 0) Move(input_shape, indices_shape, curr, 0);
-    next = curr + 1;
-    curr = 0;
-    while (next < reverse_axis) {
-      if (!CanSkip(input_shape, indices_shape, next)) {
-        if (CanMerge(input_shape, indices_shape, next, curr)) {
-          Merge(input_shape, indices_shape, next, curr);
-        } else {
-          ++curr;
-          if (curr != next) Move(input_shape, indices_shape, next, curr);
-        }
+  size_t new_axis = static_cast<size_t>(axis);
+  auto CanCoalesce = [&](size_t dst, size_t src) {
+    if (dst == static_cast<size_t>(new_axis) || src == static_cast<size_t>(new_axis)) return false;
+    if (input_shape[dst] == 1 && indices_shape[dst] == 1) return true;
+    if (input_shape[src] == 1 && indices_shape[src] == 1) return true;
+    return input_shape[dst] == indices_shape[dst] && input_shape[src] == indices_shape[src] &&
+           (!p_indices_strides || (*p_indices_strides)[dst] == indices_shape[src] * (*p_indices_strides)[src]);
+  };
+
+  size_t curr = 0;
+  for (size_t next = 1; next < rank; ++next) {
+    if (CanCoalesce(curr, next)) {
+      if (indices_shape[next] != 1 && p_indices_strides) {
+        (*p_indices_strides)[curr] = (*p_indices_strides)[next];
       }
-      ++next;
+      input_shape[curr] *= input_shape[next];
+      indices_shape[curr] *= indices_shape[next];
+    } else {
+      if (next == static_cast<size_t>(new_axis)) {
+        // Handle all dims outside of axis are 1-dim.
+        if (input_shape[curr] != 1 || indices_shape[curr] != 1) ++curr;
+        new_axis = static_cast<int64_t>(curr);
+      } else {
+        ++curr;
+      }
+      if (curr != next) {
+        input_shape[curr] = input_shape[next];
+        indices_shape[curr] = indices_shape[next];
+        if (p_indices_strides) (*p_indices_strides)[curr] = (*p_indices_strides)[next];
+      }
     }
   }
-
-  if (curr == reverse_axis) {
-    if (curr > 0) Move(input_shape, indices_shape, curr, 0);
-    curr = 0;
-  } else {
-    ++curr;
-    // next is now the reverse_axis
-    if (curr != next) Move(input_shape, indices_shape, next, curr);
-  }
-  size_t new_reverse_axis = curr;
-  next = reverse_axis + 1;
-  while (next < rank && CanSkip(input_shape, indices_shape, next)) ++next;
-  if (next < rank) {
-    ++curr;
-    if (curr != next) Move(input_shape, indices_shape, next, curr);
-    ++next;
-    while (next < rank) {
-      if (!CanSkip(input_shape, indices_shape, next)) {
-        if (CanMerge(input_shape, indices_shape, next, curr)) {
-          Merge(input_shape, indices_shape, next, curr);
-        } else {
-          ++curr;
-          if (curr != next) Move(input_shape, indices_shape, next, curr);
-        }
-      }
-      ++next;
-    }
+  // Handle all dims inside of axis are 1-dim.
+  if (curr > static_cast<size_t>(new_axis) && input_shape[curr] == 1 && indices_shape[curr] == 1) {
+    --curr;
   }
 
-  new_rank = curr + 1;
-  new_axis = static_cast<int64_t>(new_rank - 1 - new_reverse_axis);
+  size_t new_rank = curr + 1;
+  args.rank = static_cast<int64_t>(new_rank);
+  args.axis = static_cast<int64_t>(new_axis);
   input_shape.resize(new_rank);
-  std::reverse(input_shape.begin(), input_shape.end());
   indices_shape.resize(new_rank);
-  std::reverse(indices_shape.begin(), indices_shape.end());
+  if (p_indices_strides) {
+    p_indices_strides->resize(new_rank);
+  }
 
   // Set stride along axis to 0 so we don't need IF statement to check in kernel.
   TensorPitches masked_input_strides_vec(input_shape);
-  input_stride_along_axis = masked_input_strides_vec[new_axis];
-  masked_input_strides_vec[new_axis] = 0;
-  int32_t new_rank_32bit = static_cast<int32_t>(new_rank);
-  masked_input_strides.SetSize(new_rank_32bit);
-  indices_fdms.SetSize(new_rank_32bit);
-  TensorPitches indices_strides(indices_shape);
-  for (auto i = 0; i < new_rank_32bit; ++i) {
-    masked_input_strides[i] = masked_input_strides_vec[i];
-    indices_fdms[i] = fast_divmod(gsl::narrow_cast<int>(indices_strides[i]));
+  args.input_stride_along_axis = masked_input_strides_vec[args.axis];
+  args.input_dim_along_axis = input_shape[args.axis];
+  masked_input_strides_vec[args.axis] = 0;
+  args.masked_input_strides = TArray<int64_t>(ToConstSpan(masked_input_strides_vec));
+  args.indices_fdms.SetSize(static_cast<int32_t>(new_rank));
+  TensorPitches indices_shape_strides(indices_shape);
+  for (int32_t i = 0; i < static_cast<int32_t>(new_rank); ++i) {
+    args.indices_fdms[i] = fast_divmod(gsl::narrow_cast<int>(indices_shape_strides[i]));
+  }
+  if (p_indices_strides) {
+    args.indices_strides = TArray<int64_t>(ToConstSpan(*p_indices_strides));
   }
 }
 
@@ -139,20 +118,17 @@ ONNX_NAMESPACE::TensorProto_DataType GetElementType(size_t element_size) {
   }
 }
 
-#define CASE_GATHER_ELEMENTS_IMPL(type)                                                               \
-  case sizeof(type): {                                                                                \
-    const type* indices_data = reinterpret_cast<const type*>(indices_data_raw);                       \
-    GatherElementsImpl(stream, rank, axis, input_data, input_dim_along_axis, input_stride_along_axis, \
-                       masked_input_strides, indices_data, indices_size, indices_fdms, output_data);  \
+#define CASE_GATHER_ELEMENTS_IMPL(type)                                         \
+  case sizeof(type): {                                                          \
+    const type* indices_data = reinterpret_cast<const type*>(indices_data_raw); \
+    GatherElementsImpl(stream, input_data, indices_data, output_data, args);    \
   } break
 
 template <typename T>
 struct GatherElements::ComputeImpl {
   Status operator()(cudaStream_t stream, const void* input_data_raw, const void* indices_data_raw,
-                    void* output_data_raw, const int64_t rank, const int64_t axis, const int64_t input_dim_along_axis,
-                    const int64_t input_stride_along_axis, TArray<int64_t>& masked_input_strides,
-                    const int64_t indices_size, TArray<fast_divmod>& indices_fdms,
-                    const size_t index_element_size) const {
+                    void* output_data_raw, const size_t index_element_size,
+                    const GatherScatterElementsArgs& args) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
     const CudaT* input_data = reinterpret_cast<const CudaT*>(input_data_raw);
     CudaT* output_data = reinterpret_cast<CudaT*>(output_data_raw);
@@ -193,13 +169,19 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   // if there are no elements in 'indices' - nothing to process
   if (indices_size == 0) return Status::OK();
 
+  GatherScatterElementsArgs args;
+  args.indices_size = indices_size;
   TensorShapeVector input_shape_vec = input_shape.AsShapeVector();
   TensorShapeVector indices_shape_vec = indices_shape.AsShapeVector();
-  int64_t new_axis, new_rank, input_stride_along_axis;
-  TArray<int64_t> masked_input_strides;
-  TArray<fast_divmod> indices_fdms;
-  CoalesceDimensions(input_shape_vec, indices_shape_vec, axis, new_axis, new_rank, input_stride_along_axis,
-                     masked_input_strides, indices_fdms);
+  TensorShapeVector* p_indices_strides_vec = nullptr;
+  TensorShapeVector indices_strides_vec;
+#ifdef ENABLE_TRAINING
+  if (!indices_tensor->IsContiguous()) {
+    indices_strides_vec = ToShapeVector(indices_tensor->Strides());
+    p_indices_strides_vec = &indices_strides_vec;
+  }
+#endif
+  CoalesceDimensions(input_shape_vec, indices_shape_vec, p_indices_strides_vec, axis, args);
 
   // Use element size instead of concrete types so we can specialize less template functions to reduce binary size.
   int dtype = GetElementType(input_tensor->DataType()->Size());
@@ -209,9 +191,8 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
 
   utils::MLTypeCallDispatcher<int8_t, MLFloat16, float, double> t_disp(dtype);
   return t_disp.InvokeRet<Status, ComputeImpl>(Stream(), input_tensor->DataRaw(), indices_tensor->DataRaw(),
-                                               output_tensor->MutableDataRaw(), new_rank, new_axis,
-                                               input_shape_vec[new_axis], input_stride_along_axis, masked_input_strides,
-                                               indices_size, indices_fdms, indices_tensor->DataType()->Size());
+                                               output_tensor->MutableDataRaw(), indices_tensor->DataType()->Size(),
+                                               args);
 }
 
 }  // namespace cuda

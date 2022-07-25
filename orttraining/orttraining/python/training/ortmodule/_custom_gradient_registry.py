@@ -212,18 +212,6 @@ CustomGradientRegistry.register_custom_stop_gradient_edges([0], "org.pytorch.ate
 CustomGradientRegistry.register_custom_stop_gradient_edges([0], "org.pytorch.aten", "ATen", "multinomial", "")
 
 
-@register_gradient("org.pytorch.aten", "ATen", "binary_cross_entropy_with_logits", "")
-def binary_cross_entropy_with_logits_gradient():
-    return [
-        (
-            ("ATen", "org.pytorch.aten"),
-            ["GO(0)", "I(0)", "I(1)", "I(2)", "I(3)", "I(4)"],
-            ["GI(0)"],
-            {"operator": {"value": "binary_cross_entropy_with_logits_backward", "dtype": "string"}},
-        ),
-    ]
-
-
 @register_gradient("org.pytorch.aten", "ATen", "numpy_T", "")
 def numpy_T_gradient():
     return [

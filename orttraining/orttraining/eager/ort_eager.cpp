@@ -68,7 +68,7 @@ void addObjectMethodsForEager(py::module& m){
         THPDevice_New(at::Device(at::DeviceType::ORT, device_index)));
     },
     py::arg("device_index") = 0);
-  
+
   m.def("aten_ort_tensor_to_ort_value", [](at::Tensor data) {
     return ORTTensor_toORTValue(data);
   });
@@ -76,7 +76,7 @@ void addObjectMethodsForEager(py::module& m){
     return OrtValue_To_ATen_Tensor(ortvalue);
   });
 
-  m.def("set_device", [](size_t device_index, 
+  m.def("set_device", [](size_t device_index,
                                           const std::string& provider_type,
                                           const std::unordered_map<std::string, std::string>& arguments){
       auto status = GetORTBackendsManager().set_device(device_index, provider_type, arguments);
@@ -89,9 +89,6 @@ void addObjectMethodsForEager(py::module& m){
   m.def("get_ort_device_provider_info", [](size_t torch_device_index){
     return GetORTBackendsManager().GetOrtDeviceProviderInfo(torch_device_index);
   });
-
-  auto customop_module = m.def_submodule("custom_ops");
-  torch_ort::eager::GenerateCustomOpsBindings(customop_module);
 }
 
 }
