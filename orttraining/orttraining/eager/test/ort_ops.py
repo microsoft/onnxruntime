@@ -704,6 +704,34 @@ class OrtOpTests(unittest.TestCase):
     # Please add new non-parameterized tests above the parameterized section.
     ################################################################
 
+    def test_nllloss(self):
+        device = self.get_device()
+
+        cpu_labels = torch.tensor([0, 2, 1, 3])
+        ort_labels = cpu_labels.to(device)
+
+        cpu_logits = torch.Tensor(
+            np.array(
+                [
+                    [3.5, -3.45, 0.23, 1.25],
+                    [-2.14, 0.54, 2.67, -5.23],
+                    [-1.34, 5.01, -1.54, -1.17],
+                    [-2.98, -1.37, 1.54, 5.23],
+                ]
+            )
+        )
+        ort_logits = cpu_logits.to(device)
+
+        cpu_probs = torch.softmax(cpu_logits, dim=1)
+        ort_probs = torch.softmax(ort_logits, dim=1)
+        cpu_log_probs = torch.log_softmax(cpu_probs, dim=1)
+        ort_log_probs = torch.log_softmax(ort_probs, dim=1)
+
+        print(torch.nn.NLLLoss(reduction="none")(cpu_log_probs, cpu_labels))
+
+        ort_res = torch.nn.NLLLoss(reduction="none")(ort_log_probs, ort_labels)
+        print(ort_res.cpu())
+
 
 if __name__ == "__main__":
     # torch_ort.set_default_logger_severity(0)

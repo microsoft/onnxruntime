@@ -174,6 +174,8 @@ hand_implemented = {
     "aten::nonzero.out": SignatureOnly(),
     "aten::_log_softmax.out": SignatureOnly(),
     "aten::nll_loss_forward.output": MakeTorchFallback(),
+    "aten::nll_loss_forward": SignatureOnly(),
+    ##NegativeLogLikelihoodLoss(input="self", target="target", weight="weight", ignore_index="ignore_index", reduction="reduction"),
     "aten::nll_loss_backward.grad_input": MakeTorchFallback(),
     "aten::_log_softmax_backward_data.out": MakeTorchFallback(),
 }

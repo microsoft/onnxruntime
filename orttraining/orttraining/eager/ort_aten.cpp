@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <utility>
 #include <vector>
+#include <tuple>
 
 namespace torch_ort {
 namespace eager {
@@ -289,6 +290,10 @@ bool IsSupportedType(int64_t val, const std::vector<at::ScalarType>& valid_types
 }
 
 bool IsSupportedType(c10::optional<int64_t> val, const std::vector<at::ScalarType>& valid_types) {
+  return IsSupportedType(val.value(), valid_types);
+}
+
+bool IsSupportedType(const c10::optional<at::Tensor> val, const std::vector<at::ScalarType>& valid_types) {
   return IsSupportedType(val.value(), valid_types);
 }
 
@@ -1111,6 +1116,50 @@ at::Tensor& mm_out(
   CHECK_STATUS(status);
 
   return out;
+}
+
+
+// aten::nll_loss_forward(Tensor self, Tensor target, Tensor? weight, int reduction, int ignore_index) -> (Tensor output, Tensor total_weight)
+std::tuple<at::Tensor, at::Tensor> nll_loss_forward(
+  const at::Tensor& self,
+  const at::Tensor& target,
+  const c10::optional<at::Tensor>& weight,
+  int64_t reduction,
+  int64_t ignore_index) {
+  ORT_LOG_FN(self, target, weight, reduction, ignore_index);
+  std::cout << "nll_loss_forward" <<std::endl;
+  if (
+    !IsSupportedType(self, {at::kDouble,at::kFloat,at::kHalf}) ||
+    !IsSupportedType(target, {at::kInt,at::kLong}) ||
+    !IsSupportedType(weight, {at::kDouble,at::kFloat,at::kHalf})) {
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(nll_loss_forward)>::call(self, target, weight, reduction, ignore_index);
+  }
+  auto& invoker = GetORTInvoker(self.device());
+
+  auto ort_input_0_self = create_ort_value(invoker, self);
+  auto ort_input_0_target = create_ort_value(invoker, target);
+  auto ort_input_0_weight = create_ort_value(invoker, weight);
+
+  NodeAttributes attrs_0(2);
+  attrs_0["ignore_index"] = create_ort_attribute(
+    "ignore_index", ignore_index, at::ScalarType::Int);
+  attrs_0["reduction"] = create_ort_attribute(
+    "reduction", reduction);
+
+  std::vector<OrtValue> ort_outputs_0_NegativeLogLikelihoodLoss(1);
+
+  auto status = invoker.Invoke("NegativeLogLikelihoodLoss", {
+    std::move(ort_input_0_self),
+    std::move(ort_input_0_target),
+    std::move(ort_input_0_weight),
+  }, ort_outputs_0_NegativeLogLikelihoodLoss, &attrs_0);
+  CHECK_STATUS(status);
+
+  at::TensorOptions tensor_options = self.options();
+  return std::make_tuple(aten_tensor_from_ort(std::move(ort_outputs_0_NegativeLogLikelihoodLoss[0]),tensor_options),
+  aten_tensor_from_ort(std::move(ort_outputs_0_NegativeLogLikelihoodLoss[1]),tensor_options));
 }
 
 }  // namespace aten
