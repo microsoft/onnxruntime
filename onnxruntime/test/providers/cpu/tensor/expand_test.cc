@@ -1,9 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/util/math.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include "core/util/math.h"
+
+#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+#include "test/providers/kernel_compute_test_utils.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -182,6 +186,69 @@ TEST(ExpandOpTest, Expand_scalar_int32) {
                           9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9});
   test.Run();
 }
+
+#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+TEST(ExpandOpTest, Strided) {
+#ifdef USE_CUDA
+  const char* provider = kCudaExecutionProvider;
+#else  // USE_ROCM
+  const char* provider = kRocmExecutionProvider;
+#endif
+  // Generate contiguous output.
+  {
+    KernelComputeTester test("Expand", provider);
+    test.AddInput<float>("input_0", {3, 1}, {1.f, 2.f, 3.f});
+    test.AddInput<int64_t>("input_1", {2}, {1, 3}, {}, true);
+    test.AddOutput<float>("output", {3, 3}, {1.f, 1.f, 1.f, 2.f, 2.f, 2.f, 3.f, 3.f, 3.f});
+    test.Run();
+  }
+
+  // Strided 2D.
+  {
+    KernelComputeTester test("Expand", provider);
+    test.AddInput<float>("input_0", {3, 1}, {1.f, 2.f, 3.f});
+    test.AddInput<int64_t>("input_1", {2}, {1, 3}, {}, true);
+    test.AddOutput<float>("output", {3, 3}, {1.f, 2.f, 3.f}, {1, 0});
+    test.Run({0});
+  }
+
+  // Strided 3D.
+  {
+    KernelComputeTester test("Expand", provider);
+    test.AddInput<float>("input_0", {1, 3, 1}, {1.f, 2.f, 3.f});
+    test.AddInput<int64_t>("input_1", {3}, {2, 1, 3}, {}, true);
+    test.AddOutput<float>("output", {2, 3, 3}, {1.f, 2.f, 3.f}, {0, 1, 0});
+    test.Run({0});
+  }
+
+  // Strided 4D.
+  {
+    KernelComputeTester test("Expand", provider);
+    test.AddInput<float>("input_0", {1, 1, 3, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f});
+    test.AddInput<int64_t>("input_1", {4}, {2, 3, 1, 1}, {}, true);
+    test.AddOutput<float>("output", {2, 3, 3, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f}, {0, 0, 3, 1});
+    test.Run({0});
+  }
+
+  // Strided 2D -> 3D.
+  {
+    KernelComputeTester test("Expand", provider);
+    test.AddInput<float>("input_0", {1, 3}, {1.f, 2.f, 3.f});
+    test.AddInput<int64_t>("input_1", {3}, {2, 3, 1}, {}, true);
+    test.AddOutput<float>("output", {2, 3, 3}, {1.f, 2.f, 3.f}, {0, 0, 1});
+    test.Run({0});
+  }
+
+  // Strided 1Element -> 4D.
+  {
+    KernelComputeTester test("Expand", provider);
+    test.AddInput<float>("input_0", {1}, {1.f});
+    test.AddInput<int64_t>("input_1", {4}, {2, 3, 3, 3}, {}, true);
+    test.AddOutput<float>("output", {2, 3, 3, 3}, {1.f}, {0, 0, 0, 0});
+    test.Run({0});
+  }
+}
+#endif
 
 }  //namespace test
 }  //namespace onnxruntime

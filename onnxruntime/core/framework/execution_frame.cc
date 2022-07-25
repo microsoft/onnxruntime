@@ -569,32 +569,40 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
 
 Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse,
                                                               MLDataType element_type, const OrtMemoryInfo& location,
-                                                              const TensorShape& shape, bool create_fence) {
+                                                              const TensorShape& shape, bool create_fence,
+                                                              bool is_strided_tensor) {
   OrtValue& ort_value_reuse = GetMutableMLValue(ort_value_index_reuse);
 
   auto* reuse_tensor = ort_value_reuse.GetMutable<Tensor>();
-  auto buffer_num_elements = reuse_tensor->Shape().Size();
-  auto required_num_elements = shape.Size();
 
-  // check number of elements matches. shape may not be an exact match (e.g. Reshape op)
-  if (buffer_num_elements != required_num_elements) {
-    // could be an allocation planner bug (less likely) or the model incorrectly uses something like 'None'
-    // as a dim_param, or -1 in dim_value in multiple places making the planner think those shapes are equal.
-    auto message = onnxruntime::MakeString(
-        "Shape mismatch attempting to re-use buffer. ",
-        reuse_tensor->Shape(), " != ", shape,
-        ". Validate usage of dim_value (values should be > 0) and "
-        "dim_param (all values with the same string should equate to the same size) in shapes in the model.");
-
-    // be generous and use the buffer if it's large enough. log a warning though as it indicates a bad model
-    if (buffer_num_elements >= required_num_elements) {
-      // View Operator is reusing the buffer bigger than the required size.
-      // Disabling warning message for now. The op is in the process of being deprecated.
+  // Training starts to support strided tensor that the shape size may be larger (like Expand), smaller (like Split) or
+  // equal (like Transpose) to the shared tensor's shape size, so below check is no longer valid.
 #ifndef ENABLE_TRAINING
-      LOGS(session_state_.Logger(), WARNING) << message;
-#endif
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
+  ORT_ENFORCE(!is_strided_tensor);
+#endif  // ENABLE_TRAINING
+  if (!is_strided_tensor) {
+    auto buffer_num_elements = reuse_tensor->Shape().Size();
+    auto required_num_elements = shape.Size();
+
+    // check number of elements matches. shape may not be an exact match (e.g. Reshape op)
+    if (buffer_num_elements != required_num_elements) {
+      // could be an allocation planner bug (less likely) or the model incorrectly uses something like 'None'
+      // as a dim_param, or -1 in dim_value in multiple places making the planner think those shapes are equal.
+      auto message = onnxruntime::MakeString(
+          "Shape mismatch attempting to re-use buffer. ", reuse_tensor->Shape(), " != ", shape,
+          ". Validate usage of dim_value (values should be > 0) and "
+          "dim_param (all values with the same string should equate to the same size) in shapes in the model.");
+
+      // be generous and use the buffer if it's large enough. log a warning though as it indicates a bad model
+      if (buffer_num_elements >= required_num_elements) {
+        // View Operator is reusing the buffer bigger than the required size.
+        // Disabling warning message for now. The op is in the process of being deprecated.
+#ifndef ENABLE_TRAINING
+        LOGS(session_state_.Logger(), WARNING) << message;
+#endif  // ENABLE_TRAINING
+      } else {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
+      }
     }
   }
 
@@ -721,8 +729,13 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
 
         ORT_RETURN_IF_ERROR(AllocateReusedOrtValueIfNotAllocatedHelper(reuse_mlvalue_index, shape));
 
-        ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
-            ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
+        bool is_strided_tensor = false;
+#ifdef ENABLE_TRAINING
+        is_strided_tensor = per_alloc_plan.is_strided_tensor;
+#endif  // ENABLE_TRAINING
+        ORT_RETURN_IF_ERROR(
+            AllocateMLValueTensorPreAllocateBuffer(ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape,
+                                                   per_alloc_plan.create_fence_if_async, is_strided_tensor));
         break;
       }
       case AllocKind::kShare: {
