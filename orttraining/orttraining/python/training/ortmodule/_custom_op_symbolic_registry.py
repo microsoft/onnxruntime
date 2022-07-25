@@ -177,26 +177,6 @@ def adaptive_avg_pool2d(g, self, output_size):
     return g.op("org.pytorch.aten::ATen", self, output_size, operator_s="_adaptive_avg_pool2d")
 
 
-@register_symbolic("binary_cross_entropy_with_logits")
-def binary_cross_entropy_with_logits(g, self, target, weight, pos_weight, reduction):
-    # If weight is not None, we need to check if it requires grad and add gradient graph accordingly.
-    # But current custom_gradient_registry doesn't support such None checking,
-    # So doesn't support non-None weight for now.
-    if weight is None or sym_help._is_none(weight):
-        return g.op(
-            "org.pytorch.aten::ATen",
-            self,
-            target,
-            weight,
-            pos_weight,
-            reduction,
-            operator_s="binary_cross_entropy_with_logits",
-        )
-    from torch.onnx.symbolic_opset12 import binary_cross_entropy_with_logits as bce
-
-    return bce(g, self, target, weight, pos_weight, reduction)
-
-
 @register_symbolic("numpy_T")
 def numpy_T(g, self):
     # Numpy-style `a.T`: returns the tensor
