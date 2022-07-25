@@ -12,7 +12,7 @@ class BufferDeleter {
  public:
   BufferDeleter() : alloc_(nullptr) {}
   BufferDeleter(AllocatorPtr alloc)
-      : alloc_(alloc) {}
+      : alloc_(std::move(alloc)) {}
 
   void operator()(void* p) const {
     if (alloc_)

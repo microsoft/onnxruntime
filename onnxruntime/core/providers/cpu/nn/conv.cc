@@ -80,7 +80,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * col_buffer_size);
-    col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
+    col_buffer = BufferUniquePtr(col_data, BufferDeleter(std::move(alloc)));
   }
 
   T* col_buffer_data = static_cast<T*>(col_buffer.get());
@@ -234,7 +234,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
     auto* working_data = WorkingBufferSize > 0 ? alloc->Alloc(SafeInt<size_t>(sizeof(float)) * WorkingBufferSize)
                                                : nullptr;
-    BufferUniquePtr working_buffer(working_data, BufferDeleter(alloc));
+    BufferUniquePtr working_buffer(working_data, BufferDeleter(std::move(alloc)));
 
     MlasConv(&Parameters,
              Xdata,
@@ -254,7 +254,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     const int64_t col_buffer_size = kernel_dim * output_image_size;
 
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(float)) * col_buffer_size);
-    BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
+    BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
     auto* col_buffer_data = static_cast<float*>(col_buffer.get());
 
     for (int image_id = 0; image_id < N; ++image_id) {

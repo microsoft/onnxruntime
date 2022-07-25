@@ -22,8 +22,8 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
             AllocatorPtr allocator,
             void* /*stream*/,
             onnxruntime::concurrency::ThreadPool* threadpool,
-            std::unique_ptr<Tensor>& output_values,
-            std::unique_ptr<Tensor>& output_indices) {
+            Tensor& output_values,
+            Tensor& output_indices) {
   if (input->IsDataType<float>()) {
     return GetTopK<float>(input, axis, k, largest, sorted, allocator, threadpool, output_values, output_indices);
   }
@@ -343,20 +343,20 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   constexpr bool largest = true;
   constexpr bool sorted = true;  // results returned in sorted order.
 
-  std::unique_ptr<Tensor> topk_scores;
-  std::unique_ptr<Tensor> topk_indices;
+  Tensor topk_scores;
+  Tensor topk_indices;
   ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
                            topk_scores, topk_indices));
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("topk_scores", *(topk_scores.get()));
-  dumper->Print("topk_indices", *(topk_indices.get()));
+  dumper->Print("topk_scores", topk_scores);
+  dumper->Print("topk_indices", topk_indices);
 #endif
 
   // Convert indices in range [0, num_beams * vocab_size) to token ID of range [0, vocab_size) like the following:
   //   next_indices = (next_tokens / vocab_size).long()
   //   next_tokens = next_tokens % vocab_size
-  gsl::span<const int64_t> next_token_indices = topk_indices->DataAsSpan<int64_t>();
+  gsl::span<const int64_t> next_token_indices = topk_indices.DataAsSpan<int64_t>();
   offset = 0;
   for (int i = 0; i < batch_size; i++) {
     for (unsigned int j = 0; j < top_k; j++, offset++) {
@@ -365,7 +365,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     }
   }
 
-  gsl::span<const T> next_scores = topk_scores->DataAsSpan<T>();
+  gsl::span<const T> next_scores = topk_scores.DataAsSpan<T>();
   gsl::span<const int32_t> next_tokens(beam_state->next_tokens.data(), beam_state->next_tokens.size());
   gsl::span<const int32_t> next_indices(beam_state->next_indices.data(), beam_state->next_indices.size());
 
@@ -453,8 +453,8 @@ Status GreedySearchProcessLogits(
   constexpr bool largest = true;
   constexpr bool sorted = false;
 
-  std::unique_ptr<Tensor> topk_scores;
-  std::unique_ptr<Tensor> topk_indices;
+  Tensor topk_scores;
+  Tensor topk_indices;
   ORT_RETURN_IF_ERROR(
     TopK(&input,
          axis,
@@ -472,7 +472,7 @@ Status GreedySearchProcessLogits(
   dumper->Print("topk_indices", *(topk_indices.get()));
 #endif
 
-  gsl::span<const int64_t> next_token_indices = topk_indices->DataAsSpan<int64_t>();
+  gsl::span<const int64_t> next_token_indices = topk_indices.DataAsSpan<int64_t>();
   gsl::copy(next_token_indices, greedy_state->next_tokens_cpu);
 
 #ifdef DEBUG_GENERATION
