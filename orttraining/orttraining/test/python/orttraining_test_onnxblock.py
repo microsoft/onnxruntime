@@ -551,13 +551,13 @@ def test_save_checkpoint():
 def test_load_checkpoint():
     # Given
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
-    _, zero_onnx_model = _get_models(device, N, D_in, H, D_out, zero_flag=True)
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    _, zero_onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size, zero_flag=True)
     for i in range(len(zero_onnx_model.graph.initializer)):
         zero_np = onnx.numpy_helper.to_array(zero_onnx_model.graph.initializer[i])
         assert np.allclose(zero_np, np.zeros(zero_np.shape))
 
-    _, onnx_model = _get_models(device, N, D_in, H, D_out)
+    _, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     # Copy of onnx_model for comparison
     onnx_model_copy = copy.deepcopy(onnx_model)
