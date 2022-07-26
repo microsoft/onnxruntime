@@ -406,33 +406,35 @@ void GetScaleAndZeroPoint(const OpKernelInfo& info,
   } else if (x_dtype == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
     zero_point = ReadConstantValues<int8_t>(info, zp_idx)[0];
   } else {
-    ORT_THROW("invalid dtype of zero point, only support uint8|int8, got onnx dtype", x_dtype);
+    ORT_THROW("invalid dtype of zero point, expected uint8|int8, but got onnx dtype ", x_dtype);
   }
 }
 
 // A general function To parse QuantParam for different ops,
 // @param info:OpKernelInfo
-// @param x_dtype:int32_t, what types of those quant param, used to parse zero_point, scale is always float-type
-// @param howManyInputScaleAndZp:size_t, how many input tensors require quantized params. Typically,
+// @param x_dtype:int32_t|enum ONNX_NAMESPACE::TensorProto_DataType,defined in
+// "onnxruntime\core\providers\shared_library\provider_api.h", to represent the data types of zero_point.
+// And scale is always float-type
+// @param how_many_input_scale_and_zp:size_t, how many input tensors require quantized params. Typically,
 // Conv has three inputs, but bias don't ask for a scale and zero point.
-// these definitions are elaborated in onnx schema
+// These definitions are elaborated in onnx schema
 // @ret,OpQuantParam, defined in utils.h, to store all scale and zero point.
-// All ops have at lease one input quant-param(x-scale, x-zero-point)
+// All ops have at least one input quant-param(x-scale, x-zero-point)
 // and one output quant-param(y-scale, y-zero-point), such as softmax, pool(average-/max-,global-)
 // but we might want to adapt irregular ops like, concat/slice, which may have arbitrary inputs.
-// This function only works with 8 bytes quantization.
-OpQuantParam ParseQuantParamForOp(const OpKernelInfo& info, int32_t x_dtype, size_t howManyInputScaleAndZp) {
+// This function only works with 8 bits quantization.
+OpQuantParam ParseQuantParamForOp(const OpKernelInfo& info, int32_t x_dtype, size_t how_many_input_scale_and_zp) {
   OpQuantParam quant_param;
   int start_idx = 1;
   // take all data as uint8, so we can easily parse zero-point and store in out data structure.
   // we will re-cast it to the real datatype (u8 or s8) in the right place
   // Attention: we are assuming all zero-point being either int8 or uint8
-  // x, x_scale, zero_point
+
   std::pair<std::vector<float>, uint8_t> param;
   GetScaleAndZeroPoint(info, start_idx, param.first, start_idx + 1, param.second, x_dtype);
   start_idx += 2;
   quant_param.push_back(param);
-  for (size_t nThInput = 2; nThInput <= howManyInputScaleAndZp; ++nThInput) {
+  for (size_t nThInput = 2; nThInput <= how_many_input_scale_and_zp; ++nThInput) {
     start_idx++;
     // w, w_scale, zero_point
     GetScaleAndZeroPoint(info, start_idx, param.first, start_idx + 1, param.second, x_dtype);

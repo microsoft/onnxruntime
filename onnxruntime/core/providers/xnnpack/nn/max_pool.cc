@@ -17,28 +17,21 @@ const onnx::TensorProto* GetQuantizationZeroPoint(const InitializedTensorSet& in
 const onnx::TensorProto* GetQuantizationScale(const InitializedTensorSet& initializers,
                                               const NodeUnitIODef& io_def);
 namespace {
-static bool IsQuantizedMaxPool(QuantizedOpType quant_op_type) {
+bool IsQuantizedMaxPool(QuantizedOpType quant_op_type) {
   return (quant_op_type == QuantizedOpType::QLinearMaxPool) ||
          (quant_op_type == QuantizedOpType::QDQMaxPool);
 }
 
-static bool IsValidQuantMaxPool(const NodeUnit& node_unit, const GraphViewer& graph) {
-  bool supported = false;
-  do {
-    TensorQuantType x_input_type, output_type;
-    x_input_type = GetTensorQuantType(node_unit, 0, false, graph);
-    output_type = GetTensorQuantType(node_unit, 0, true, graph);
-    if (x_input_type != output_type ||
-        (x_input_type != TensorTypeUint8 &&
-         x_input_type != TensorTypeInt8)) {
-      break;
-    }
-
-    supported = true;
-  } while (false);
-  return supported;
+bool IsValidQuantMaxPool(const NodeUnit& node_unit, const GraphViewer& graph) {
+  TensorQuantType x_input_type = GetTensorQuantType(node_unit, 0, false, graph);
+  TensorQuantType output_type = GetTensorQuantType(node_unit, 0, true, graph);
+  if (x_input_type != output_type ||
+      (x_input_type != TensorTypeUint8 &&
+       x_input_type != TensorTypeInt8)) {
+    return false;
+  }
+  return true;
 }
-
 }  // namespace
 
 // MaxPool doesn't have any quantization params

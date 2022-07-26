@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace xnnpack {
 namespace {
-static Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
+Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
                                   int64_t C,
                                   const std::optional<std::pair<float, float>>& clip_min_max,
                                   struct xnn_operator*& p,
@@ -65,24 +65,13 @@ static Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
   return Status::OK();
 }
 
-static bool IsQuantAvgPoolSupported(const NodeUnit& node_unit, const GraphViewer& graph) {
-  bool supported = false;
-  do {
-    TensorQuantType x_input_type, output_type;
-
-    x_input_type = GetTensorQuantType(node_unit, 0, false, graph);
-    output_type = GetTensorQuantType(node_unit, 0, true, graph);
-    if (x_input_type != TensorTypeUint8 ||
-        output_type != TensorTypeUint8) {
-      break;
-    }
-    supported = true;
-  } while (false);
-
-  return supported;
+bool IsQuantAvgPoolSupported(const NodeUnit& node_unit, const GraphViewer& graph) {
+    TensorQuantType x_input_type = GetTensorQuantType(node_unit, 0, false, graph);
+    TensorQuantType output_type = GetTensorQuantType(node_unit, 0, true, graph);
+    return (x_input_type == TensorTypeUint8 && output_type == TensorTypeUint8);
 }
 
-static bool IsQuantizedAvgPool(QuantizedOpType quant_op_type) {
+bool IsQuantizedAvgPool(QuantizedOpType quant_op_type) {
   return (quant_op_type == QuantizedOpType::QlinearAvgPool) ||
          (quant_op_type == QuantizedOpType::QDQAvgPool);
 }
@@ -188,6 +177,7 @@ AveragePool::AveragePool(const OpKernelInfo& info)
   auto nchw_output_dims = pool_attrs_.SetOutputSize(input_shape, C, &pads);
   output_dims_ = {-1, nchw_output_dims[2], nchw_output_dims[3], nchw_output_dims[1]};
 
+  OpQuantParam quant_param;
   // TEMPORARY sanity check. If C, H and W are known, the output shape should have been able to be inferred, with the
   // exception of the batch size. Can be removed once we've run more models using xnnpack AveragePool.
   auto inferred_output_shape = utils::GetTensorShapeFromTensorShapeProto(*Node().OutputDefs()[0]->Shape());
@@ -200,7 +190,7 @@ AveragePool::AveragePool(const OpKernelInfo& info)
     avgpool_type_ = OpComputeType::op_compute_type_fp32;
   } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     // the order of input tensor, x,x_scale, x_zp, y_scale, y_zp
-    quant_param_ = ParseQuantParamForOp(info, input_dtype, 1);
+    quant_param = ParseQuantParamForOp(info, input_dtype, 1);
     avgpool_type_ = OpComputeType::op_compute_type_qu8;
   } else {
     auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*X_arg.TypeAsProto()));
@@ -208,7 +198,7 @@ AveragePool::AveragePool(const OpKernelInfo& info)
   }
   struct xnn_operator* p;
   auto ret = CreateXnnpackKernel(pool_attrs_, C, clip_min_max_, p,
-                                 quant_param_, avgpool_type_);
+                                 quant_param, avgpool_type_);
   ORT_ENFORCE(ret.IsOK(), ret.ErrorMessage());
   op0_.reset(p);
 }

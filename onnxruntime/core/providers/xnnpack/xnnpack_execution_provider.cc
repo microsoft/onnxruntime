@@ -123,7 +123,9 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
   }
 }
 
-void AddComputeCapabilityForNodeUnit(const NodeUnit& node_unit,
+// Add Compute Capability for the second call. All target nodes have the tag of Xnnpack execution provider
+// after the first call. So we are going to do QDQ fusion in the second call
+static void AddComputeCapabilityForNodeUnit(const NodeUnit& node_unit,
                                      const std::function<void(std::unique_ptr<IndexedSubGraph>)>& adder,
                                      std::unordered_map<const Node*, const NodeUnit*>& supported_map) {
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
@@ -144,9 +146,11 @@ void AddComputeCapabilityForNodeUnit(const NodeUnit& node_unit,
   adder(std::move(sub_graph));
 }
 
-void AddComputeCapabilitiesForNodesInNodeUnit(const NodeUnit& node_unit,
-                                              std::function<void(std::unique_ptr<IndexedSubGraph>)> adder,
-                                              std::unordered_map<const Node*, const NodeUnit*>& supported_map) {
+// The first call to add compute capability in GetCapability, we just tell this all nodes in nodeunit
+// is supported by Xnnapck EP as long as it's target node is supported.
+static void AddComputeCapabilityForEachNodeInNodeUnit(const NodeUnit& node_unit,
+                                                     std::function<void(std::unique_ptr<IndexedSubGraph>)> adder,
+                                                     std::unordered_map<const Node*, const NodeUnit*>& supported_map) {
   auto process_node = [&adder, &node_unit, &supported_map](const Node& node) {
     std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
     sub_graph->nodes.push_back(node.Index());
@@ -236,7 +240,7 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
 
       // first pass: add ComputeCapability for all individual nodes in NodeUnit
       if (node_unit.GetNode().GetExecutionProviderType().empty()) {
-        AddComputeCapabilitiesForNodesInNodeUnit(node_unit, add_capability, supported_node_unit_map);
+        AddComputeCapabilityForEachNodeInNodeUnit(node_unit, add_capability, supported_node_unit_map);
       } else {  // == Type()
         // second pass: add single ComputeCapability for all nodes in NodeUnit so any QDQ node groups get fused
         // Activation fusion happens later

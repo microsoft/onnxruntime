@@ -15,7 +15,7 @@ std::pair<const onnx::TensorProto*, const onnx::TensorProto*>
 GetQuantizationZeroPointAndScale(const GraphViewer& graphview,
                                  const NodeUnitIODef& io_def);
 namespace {
-static bool IsQuantSoftmaxSupported(const NodeUnit& node_unit, const GraphViewer& graph) {
+bool IsQuantSoftmaxSupported(const NodeUnit& node_unit, const GraphViewer& graph) {
   bool supported = false;
   do {
     TensorQuantType x_input_type, output_type;
@@ -25,7 +25,7 @@ static bool IsQuantSoftmaxSupported(const NodeUnit& node_unit, const GraphViewer
         output_type != TensorTypeUint8) {
       break;
     }
-    // to verify softmax output scale and zp is 1/256 and 0, otherwise xnnpack ep has to do extra requantization
+    // to ensure its output scale and zp are 1/256 and 0, otherwise xnnpack EP has to do extra requantization
     // idealy, QlinearSoftmax or QDQSoftmax will keep this output scale and zp, but we have to handle some
     // qdq models converted from other framework
     auto [scale_tensor, zero_tensor] = GetQuantizationZeroPointAndScale(graph, node_unit.Outputs()[0]);
@@ -45,7 +45,7 @@ static bool IsQuantSoftmaxSupported(const NodeUnit& node_unit, const GraphViewer
   return supported;
 }
 
-static bool IsQuantizedSoftmax(QuantizedOpType quant_op_type) {
+bool IsQuantizedSoftmax(QuantizedOpType quant_op_type) {
   return (quant_op_type == QuantizedOpType::QDQSoftmax);
 }
 }  // namespace
@@ -152,9 +152,6 @@ Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
   // we have checked it in GetCapability
   const auto& x_shape = input_defs[0]->Shape();
   size_t rank = x_shape->dim_size();
-  if (rank == 0) {
-    return;
-  }
   if (axis_ < 0) {
     axis_ = gsl::narrow<int>(HandleNegativeAxis(axis_, int64_t(rank)));
   }
@@ -170,15 +167,15 @@ Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
   struct xnn_operator* p = nullptr;
   if (op_type_ == OpComputeType::op_compute_type_qu8) {
     // the order of input tensor, x,x_scale, x_zp, y_scale, y_zp
-    quant_param_ = ParseQuantParamForOp(info, x_dtype, 1);
+    OpQuantParam quant_param = ParseQuantParamForOp(info, x_dtype, 1);
     xstatus = xnn_create_softmax_nc_qu8(
         channels,
         channels,
         channels,
-        quant_param_[0].first[0],  // x_scale
-        quant_param_[1].second,    // y_zp
-        quant_param_[1].first[0],  // y_scale
-        0,                         // flags,
+        quant_param[0].first[0],  // x_scale
+        quant_param[1].second,    // y_zp
+        quant_param[1].first[0],  // y_scale
+        0,                        // flags,
         &p);
   } else if (op_type_ == OpComputeType::op_compute_type_fp32) {
     xstatus = xnn_create_softmax_nc_f32(

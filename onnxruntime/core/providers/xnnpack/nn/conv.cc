@@ -156,7 +156,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
   return Status::OK();
 }
 
-static OpComputeType ParseQuantParamAndConType(const OpKernelInfo& info, OpQuantParam& quant_param, int32_t x_dtype) {
+OpComputeType ParseQuantParamAndConType(const OpKernelInfo& info, OpQuantParam& quant_param, int32_t x_dtype) {
   quant_param = ParseQuantParamForOp(info, x_dtype, 2);
   OpComputeType conv_type = OpComputeType::op_compute_type_invalid;
   if (x_dtype == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
@@ -177,38 +177,30 @@ static OpComputeType ParseQuantParamAndConType(const OpKernelInfo& info, OpQuant
 
 // if bias type is int32 and it has no quantparam, the dtype check will be failed GetTensorQuantType
 // however, it should be fine.
-static TensorQuantType TryGetConvBiasDtype(const NodeUnit& node_unit,
-                                           const GraphViewer& graph_viewer) {
+TensorQuantType TryGetConvBiasDtype(const NodeUnit& node_unit,
+                                    const GraphViewer& graph_viewer) {
   // we are not check the legality of io_index here
   const NodeUnitIODef& iodef = node_unit.Inputs()[2];
-  TensorQuantType datatype = TensorTypeInvalid;
   int32_t input_type = 0;
   if (!GetType(iodef.node_arg, input_type) || input_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-    return datatype;
+    return TensorTypeInvalid;
   }
   // check channels of bias
   std::vector<uint8_t> unpacked_tensor;
-  const onnx::TensorProto* bias_value = nullptr;
-  if (graph_viewer.GetInitializedTensor(iodef.node_arg.Name(), bias_value)) {
+  const onnx::TensorProto* bias_value = graph_viewer.GetConstantInitializer(iodef.node_arg.Name(), true);
+  if (bias_value) {
     if (utils::UnpackInitializerData(
             *bias_value, node_unit.ModelPath(), unpacked_tensor)
             .IsOK()) {
-      const auto& W_shape = node_unit.Inputs()[1].node_arg.Shape();
-      // conv weight must have dim_value;
-      size_t CO = W_shape->dim(0).dim_value();
-      if (unpacked_tensor.size() / sizeof(int32_t) == CO) {
-        return TensorTypeInt32;
-      } else {
-        return TensorTypeInt32_Per_Channel;
-      }
+      return TensorTypeInt32;
     }
   }
 
-  return datatype;
+  return TensorTypeInvalid;
 }
 
 // this function is refereed to Xnnpack_conv, u8s8 is not support
-static OpComputeType GetConvCompType(
+OpComputeType GetConvCompType(
     TensorQuantType input_datatype,
     TensorQuantType filter_datatype,
     TensorQuantType* bias_datatype,  // could be nullptr
@@ -265,7 +257,7 @@ static OpComputeType GetConvCompType(
  * | qu8      |  u8        | u8         |  no        |orig_zp + 128
  */
 //
-static bool IsValidQuantConv(const NodeUnit& node_unit, const GraphViewer& graph) {
+bool IsValidQuantConv(const NodeUnit& node_unit, const GraphViewer& graph) {
   bool supported = false;
   do {
     TensorQuantType x_input_type, w_input_type, bias_input_type, output_type;
@@ -287,7 +279,7 @@ static bool IsValidQuantConv(const NodeUnit& node_unit, const GraphViewer& graph
   return supported;
 }
 
-static bool IsQuantizedConv(QuantizedOpType quant_op_type) {
+bool IsQuantizedConv(QuantizedOpType quant_op_type) {
   return (quant_op_type == QuantizedOpType::QLinearConv) ||
          (quant_op_type == QuantizedOpType::QDQConv);
 }
