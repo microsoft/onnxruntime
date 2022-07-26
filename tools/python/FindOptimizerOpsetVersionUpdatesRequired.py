@@ -30,8 +30,11 @@ def parse_args():
 
 
 def get_call_args_from_file(filename, function_or_declaration):
-    """Search a file for all function calls or declarations that match the provided name.
-    Currently requires both the opening '(' and closing ')' to be on the same line."""
+    """
+    Search a file for all function calls or declarations that match the provided name.
+    Requires both the opening '(' and closing ')' to be on the same line.
+    Handles multiple calls being on the same line.
+    """
 
     results = []
     with open(filename) as f:
@@ -59,18 +62,53 @@ def get_call_args_from_file(filename, function_or_declaration):
     return results
 
 
+def get_multiline_call_args_from_file(filename, function_or_declaration):
+    """
+    Search a file for all function calls or declarations that match the provided name.
+    Allows the opening '(' and closing ')' to be split across multiple lines.
+    Supports a single call per line.
+    """
+
+    results = []
+    with open(filename) as f:
+        cur_line = None
+
+        for line in f.readlines():
+            if not cur_line:
+                # look for new match
+                start = line.find(function_or_declaration)
+                if start != -1:
+                    cur_line = line
+            else:
+                # append to existing line and look for closing ')'
+                start = len(cur_line)
+                cur_line += line.strip()
+
+            end = -1
+            if cur_line:
+                end = cur_line.find(")", start)
+
+            have_all_args = cur_line and end != -1
+
+            if have_all_args:
+                results.append(cur_line[cur_line.find(function_or_declaration) + 1 : end])
+                cur_line = None
+
+    return results
+
+
 def get_latest_op_versions(root_dir):
     """Find the entries for the latest opset for each operator."""
 
     op_to_opset = {}
     files = [
         os.path.join(root_dir, "onnxruntime/core/providers/cpu/cpu_execution_provider.cc"),
-        os.path.join(root_dir, "onnxruntime/contrib_ops/cpu_contrib_kernels.cc"),
+        os.path.join(root_dir, "onnxruntime/contrib_ops/cpu/cpu_contrib_kernels.cc"),
     ]
 
     for file in files:
         # e.g. class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 11, Clip);
-        calls = get_call_args_from_file(file, "ONNX_OPERATOR_KERNEL_CLASS_NAME")
+        calls = get_multiline_call_args_from_file(file, "ONNX_OPERATOR_KERNEL_CLASS_NAME")
         for call in calls:
             args = call.split(",")
             domain = args[1].strip()
@@ -79,7 +117,7 @@ def get_latest_op_versions(root_dir):
             op_to_opset[domain + "." + op] = opset
 
         # e.g. class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 11, float, ArgMax);
-        calls = get_call_args_from_file(file, "ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME")
+        calls = get_multiline_call_args_from_file(file, "ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME")
         for call in calls:
             args = call.split(",")
             domain = args[1].strip()
