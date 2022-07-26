@@ -80,7 +80,7 @@ class GenerateBase {
   }
 
   template <typename ParametersT>
-  Status CheckInputsImpl(const ParametersT parameters,
+  Status CheckInputsImpl(const ParametersT& parameters,
                          const Tensor* input_ids,
                          const Tensor* vocab_mask,
                          const Tensor* prefix_vocab_mask,
