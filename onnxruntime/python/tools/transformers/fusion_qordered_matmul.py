@@ -31,15 +31,11 @@ class FusionQOrderedMatMul(Fusion):
         # Add should have only 1 child - QuantizeLinear
         add_children = self.model.get_children(add_node, input_name_to_nodes)
 
-
         if len(add_children) != 1 or add_children[0].op_type != "QuantizeLinear":
             return
 
         downstream_quantize_node = add_children[0]
         
-        if downstream_quantize_node.op_type != "QuantizeLinear":
-            return
-
         y_scale = self.model.get_constant_value(downstream_quantize_node.input[1])
         if y_scale is None:
             return
