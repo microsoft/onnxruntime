@@ -1,6 +1,6 @@
 jobs:
 - job: 'build'
-  pool: 'Win-GPU-2019'
+  pool: 'Win-GPU-2022'
   strategy:
     maxParallel: 2
     matrix:
@@ -21,7 +21,7 @@ jobs:
     clean: all
   steps:
   - task: UsePythonVersion@0
-    inputs: 
+    inputs:
       versionSpec: '3.7'
       addToPath: true
       architecture: $(buildArch)
@@ -58,4 +58,3 @@ jobs:
   - template: templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
-
