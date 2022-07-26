@@ -389,7 +389,7 @@ Status Shaper::ConcatImpl(const std::vector<std::string>& input_names,
 Status Shaper::SplitImpl(const std::string& input_name, int32_t axis,
                          const std::vector<std::string>& output_names) {
   const auto& input_shape = shape_map_.at(input_name);
-  const auto count = output_names.size();
+  const auto count = static_cast<uint32_t>(output_names.size());
 
   ORT_RETURN_IF_NOT(input_shape[axis] % count == 0,
                     "count [", count, "] does not evenly divide dimension ", axis, " [", input_shape[axis], "]");

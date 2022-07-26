@@ -31,7 +31,6 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                   const std::vector<const KernelRegistry*>& kernel_registries,
                                   const KernelTypeStrResolver& kernel_type_str_resolver) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
-#if !defined(ORT_MINIMAL_BUILD)
   for (auto& node : graph.Nodes()) {
     for (auto registry : kernel_registries) {
       if (KernelRegistry::HasImplementationOf(*registry, node, Type(), kernel_type_str_resolver)) {
@@ -44,13 +43,6 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   }
 
   return result;
-#else
-  // We have saved hashes to lookup static kernels in an ORT format model so the default behavior is to return an
-  // empty vector to leave that in place. An EP that compiles nodes can override this in a minimal build.
-  ORT_UNUSED_PARAMETER(graph);
-  ORT_UNUSED_PARAMETER(kernel_registries);
-  return result;
-#endif
 }
 
 // Update allocator in the provider if already present; ignore if not.

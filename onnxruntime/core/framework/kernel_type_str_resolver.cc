@@ -51,33 +51,33 @@ Status KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& o
   kernel_type_str_map.reserve(type_constraint_names.size() +
                               op_schema.inputs().size() + op_schema.outputs().size());
 
-  auto process_formal_params = [&](ArgType arg_type,
-                                   gsl::span<const ONNX_NAMESPACE::OpSchema::FormalParameter> params) -> Status {
-    for (size_t i = 0; i < params.size(); ++i) {
-      const auto& param = params[i];
+  auto process_formal_params = [&](ArgType arg_type) -> Status {
+    const auto& formal_params = arg_type == ArgType::kInput ? op_schema.inputs() : op_schema.outputs();
+    for (size_t i = 0; i < formal_params.size(); ++i) {
+      const auto& formal_param = formal_params[i];
       auto curr_arg_type_and_idx = ArgTypeAndIndex{arg_type, i};
 
       // handle type constraint
-      if (const auto& type_str = param.GetTypeStr();
+      if (const auto& type_str = formal_param.GetTypeStr();
           Contains(type_constraint_names, type_str)) {
         kernel_type_str_map[type_str].push_back(curr_arg_type_and_idx);
       }
 
       // handle input/output name
-      auto& args_for_io_name = kernel_type_str_map[param.GetName()];
+      auto& args_for_io_name = kernel_type_str_map[formal_param.GetName()];
       if (!args_for_io_name.empty()) {
         // It's possible that an input and output have the same name (e.g, BatchNormalization-9 has both an input and
         // an output named 'mean').
         // If so, their formal parameters also need to have the same type string. Otherwise, it would be ambiguous to
         // use that name as a kernel type string.
-        auto formal_param_type_str = [&](const ArgTypeAndIndex& arg_type_and_idx) {
+        auto formal_param_type_str = [&op_schema](const ArgTypeAndIndex& arg_type_and_idx) {
           const auto [arg_type, idx] = arg_type_and_idx;
           const auto& formal_params = arg_type == ArgType::kInput ? op_schema.inputs() : op_schema.outputs();
           return formal_params[idx].GetTypeStr();
         };
 
         ORT_RETURN_IF_NOT(formal_param_type_str(curr_arg_type_and_idx) == formal_param_type_str(args_for_io_name.front()),
-                    "Kernel type string already exists for formal parameter name '", param.GetName(),
+                    "Kernel type string already exists for formal parameter name '", formal_param.GetName(),
                     "', but the existing argument with that formal parameter name has a different formal parameter "
                     "type string.");
       }
@@ -86,8 +86,8 @@ Status KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& o
     return Status::OK();
   };
 
-  ORT_RETURN_IF_ERROR(process_formal_params(ArgType::kInput, op_schema.inputs()));
-  ORT_RETURN_IF_ERROR(process_formal_params(ArgType::kOutput, op_schema.outputs()));
+  ORT_RETURN_IF_ERROR(process_formal_params(ArgType::kInput));
+  ORT_RETURN_IF_ERROR(process_formal_params(ArgType::kOutput));
 
   const bool registered = RegisterKernelTypeStrToArgsMap(std::move(op_id),
                                                          std::move(kernel_type_str_map));
