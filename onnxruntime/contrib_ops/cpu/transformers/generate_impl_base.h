@@ -79,6 +79,74 @@ class GenerateBase {
       return Status::OK();
   }
 
+  template <typename ParametersT>
+  Status CheckInputsImpl(const ParametersT parameters,
+                         const Tensor* input_ids,
+                         const Tensor* vocab_mask,
+                         const Tensor* prefix_vocab_mask,
+                         const Tensor* attention_mask) const {
+    const auto& dims = input_ids->Shape().GetDims();
+    if (dims.size() != 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'input_ids' is expected to have 2 dimensions, got ", dims.size());
+    }
+
+    if (vocab_mask != nullptr) {  // vocab_mask is optional
+      const auto& vocab_mask_dims = vocab_mask->Shape().GetDims();
+      if (vocab_mask_dims.size() != 1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'vocab_mask' is expected to have 1 dimension, got ", vocab_mask_dims.size());
+      }
+
+      // There is dependency on vocab_size parameter, which shall be set before calling this function.
+      if (static_cast<int>(vocab_mask_dims[0]) != parameters->vocab_size) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'vocab_mask' shape does not match with vocab_size, got ", vocab_mask_dims[0]);
+      }
+
+      // store vocab mask in parameters.
+      parameters->vocab_mask = vocab_mask->DataAsSpan<int32_t>();
+    }
+
+    if (prefix_vocab_mask != nullptr) {  // prefix_vocab_mask is optional
+      const auto& vocab_mask_dims = prefix_vocab_mask->Shape().GetDims();
+      if (vocab_mask_dims.size() != 2) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'prefix_vocab_mask' is expected to be 2 dimensions, got ", vocab_mask_dims.size());
+      }
+
+      // prefix_vocab_mask first dimension should be same as the first dimension of input_ids
+      if (static_cast<int>(vocab_mask_dims[0]) != static_cast<int>(dims[0])) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "input_ids and prefix_vocab_mask must have the same batch_size");
+      }
+
+      // There is dependency on vocab_size parameter, which shall be set before calling this function.
+      if (static_cast<int>(vocab_mask_dims[1]) != parameters->vocab_size) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'prefix_vocab_mask' shape[1] shall be vocab_size, got ", vocab_mask_dims[1]);
+      }
+
+      // store prefix vocab mask in parameters.
+      parameters->prefix_vocab_mask = prefix_vocab_mask->DataAsSpan<int32_t>();
+    }
+
+    if (attention_mask != nullptr) {
+      const auto& dims_attn = attention_mask->Shape().GetDims();
+      if (dims_attn.size() != 2) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'attention_mask' is expected to have 2 dimensions, got ", dims_attn.size());
+      }
+      if (dims_attn != dims) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'attention_mask' is expected to have same shape as input_ids");
+      }
+    }
+
+    return Status::OK();
+  }
+
+
  protected:
   bool IsCuda() const { return cuda_stream_ != nullptr; }
 
@@ -105,6 +173,7 @@ class GenerateBase {
   // Device specific functions
   GenerationDeviceHelper::TopkFunc topk_func_;
   GenerationDeviceHelper::DeviceCopyFunc<float> device_copy_func_;
+
 };
 
 }  // namespace transformers

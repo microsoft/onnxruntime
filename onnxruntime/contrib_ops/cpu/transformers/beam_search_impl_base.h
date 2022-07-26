@@ -177,68 +177,11 @@ Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
   // Input shapes:
   //   input_ids  : (batch_size, sequence_length)
   //   vocab_mask : (vocab_size) or nullptr
-
-  const Tensor* input_ids = context.Input<Tensor>(0);
-  const auto& dims = input_ids->Shape().GetDims();
-  if (dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'input_ids' is expected to have 2 dimensions, got ", dims.size());
-  }
-
-  const Tensor* vocab_mask = context.Input<Tensor>(7);
-  if (vocab_mask != nullptr) {  // vocab_mask is optional
-    const auto& vocab_mask_dims = vocab_mask->Shape().GetDims();
-    if (vocab_mask_dims.size() != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'vocab_mask' is expected to have 1 dimension, got ", vocab_mask_dims.size());
-    }
-
-    // There is dependency on vocab_size parameter, which shall be set before calling this function.
-    if (static_cast<int>(vocab_mask_dims[0]) != parameters_->vocab_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'vocab_mask' shape does not match with vocab_size, got ", vocab_mask_dims[0]);
-    }
-
-    // store vocab mask in parameters.
-    parameters_->vocab_mask = vocab_mask->DataAsSpan<int32_t>();
-  }
-
-  const Tensor* prefix_vocab_mask = context.Input<Tensor>(8);
-  if (prefix_vocab_mask != nullptr) {  // prefix_vocab_mask is optional
-    const auto& vocab_mask_dims = prefix_vocab_mask->Shape().GetDims();
-    if (vocab_mask_dims.size() != 2) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'prefix_vocab_mask' is expected to be 2 dimensions, got ", vocab_mask_dims.size());
-    }
-
-    // prefix_vocab_mask first dimension should be same as the first dimension of input_ids
-    if (static_cast<int>(vocab_mask_dims[0]) != static_cast<int>(dims[0])) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "input_ids and prefix_vocab_mask must have the same batch_size");
-    }
-
-    // There is dependency on vocab_size parameter, which shall be set before calling this function.
-    if (static_cast<int>(vocab_mask_dims[1]) != parameters_->vocab_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'prefix_vocab_mask' shape[1] shall be vocab_size, got ", vocab_mask_dims[1]);
-    }
-
-    // store prefix vocab mask in parameters.
-    parameters_->prefix_vocab_mask = prefix_vocab_mask->DataAsSpan<int32_t>();
-  }
-
-  const Tensor* attention_mask = context.Input<Tensor>(9);
-  if (attention_mask != nullptr) {
-    const auto& dims_attn = attention_mask->Shape().GetDims();
-    if (dims_attn.size() != 2) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'attention_mask' is expected to have 2 dimensions, got ", dims_attn.size());
-    }
-    if (dims_attn != dims) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'attention_mask' is expected to have same shape as input_ids");
-    }
-  }
+  ORT_RETURN_IF_ERROR(this->CheckInputsImpl(parameters_,
+                                            context.Input<Tensor>(0),     // input_ids
+                                            context.Input<Tensor>(7),     // vocab_mask
+                                            context.Input<Tensor>(8),     // prefix_vocab_mask
+                                            context.Input<Tensor>(10)));  //attention_mask
 
   return Status::OK();
 }
