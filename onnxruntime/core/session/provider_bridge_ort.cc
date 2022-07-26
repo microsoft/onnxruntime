@@ -747,7 +747,7 @@ struct ProviderHostImpl : ProviderHost {
                                    IOnnxRuntimeOpSchemaRegistryList({graph_viewer->GetSchemaRegistry()}), graph_viewer->DomainToVersionMap(),
 #else
                                    IOnnxRuntimeOpSchemaRegistryList(), graph_viewer->DomainToVersionMap(),
-#end
+#endif // ORT_MINIMAL_BUILD
                                    std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
   }
 
