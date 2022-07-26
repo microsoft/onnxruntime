@@ -1460,13 +1460,18 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
             return AddInitializedTensor(idx, value, &d, constant, sparse);
           },
           logger_, data_transfer_mgr_, *p_seq_exec_plan_, session_options,
-          [this](ITensorAllocator& planner) -> void {
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+          [this](ITensorAllocator& planner) -> void {
             GetMemoryProfiler()->GetMemoryInfo().RecordPatternInfo(planner.GetMemPatterns(), MemoryInfo::MapType::Initializer);
             GetMemoryProfiler()->CreateEvents("initializer_" + std::to_string(GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
                                               GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::Initializer, "", 0);
+          }
+#else
+          [this](ITensorAllocator& planner) -> void {
+            ORT_UNUSED_PARAMETER(planner);
+          }
 #endif
-          }));
+          ));
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Record Weight allocation info on device
   GetMemoryProfiler()->GetMemoryInfo().RecordInitializerAllocInfo(GetInitializedTensors());
