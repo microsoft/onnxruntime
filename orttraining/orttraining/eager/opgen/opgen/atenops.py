@@ -152,7 +152,6 @@ hand_implemented = {
     "aten::gelu": Gelu("self"),
     "aten::max": ReduceMax("self", keepdims=0),
     "aten::min": ReduceMin("self", keepdims=0),
-    "aten::_cat": Concat("tensors", "dim"),
     "aten::fill_.Scalar": SignatureOnly(),
     "aten::ne.Scalar_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
     "aten::ne.Tensor_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
@@ -186,6 +185,7 @@ aten_output_type["aten::nonzero"] = "at::ScalarType::Long"
 # This is done to make sure it is backward and future compatible
 if version.parse(torch.__version__) < version.parse(TORCH_API_CHANGE_VERSION):
     hand_implemented["aten::gelu_backward"] = GeluGrad("grad", "self")
+    hand_implemented["aten::_cat"] = Concat("tensors", "dim")
 else:
     hand_implemented["aten::gelu_backward"] = GeluGrad("grad_output", "self")
 
