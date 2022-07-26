@@ -122,7 +122,7 @@ GetQDQTestCaseFn BuildQDQAveragePoolTestCase(const std::vector<int64_t>& input_s
     pool_node.AddAttribute("pads", pads);
     std::vector<int64_t> kernel_shape(input_shape.size() - 2, 3);
     pool_node.AddAttribute("kernel_shape", kernel_shape);
-    if(count_include_pad > 0) {
+    if (count_include_pad > 0) {
       pool_node.AddAttribute("count_include_pad", count_include_pad);
     }
 

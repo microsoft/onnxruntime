@@ -273,8 +273,9 @@ const onnx::TensorProto* GetQuantizationScale(const InitializedTensorSet& initia
   return it->second;
 }
 
-std::pair<const onnx::TensorProto*, const onnx::TensorProto*> GetQuantizationZeroPointAndScale(const GraphViewer& graphview,
-                                                                                               const NodeUnitIODef& io_def) {
+std::pair<const onnx::TensorProto*, const onnx::TensorProto*>
+GetQuantizationZeroPointAndScale(const GraphViewer& graphview,
+                                 const NodeUnitIODef& io_def) {
   std::pair<const onnx::TensorProto*, const onnx::TensorProto*> ret{0, 0};
   if (!io_def.quant_param.has_value()) {
     return ret;
