@@ -8,4 +8,5 @@ wget
 pytorch-lightning==1.6.0
 deepspeed==0.3.15
 pygit2
+pgzip
 fairscale
