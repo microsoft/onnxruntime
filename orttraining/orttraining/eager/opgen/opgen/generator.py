@@ -1,6 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+# pylint: disable=missing-docstring, too-many-public-methods, too-many-nested-blocks
+
 import json
 import sys
 from typing import Dict, List, Optional, Union
@@ -264,53 +266,7 @@ class ORTGen:
             writer.write(first_param.identifier.value)
             writer.writeline(".size()>0);")
 
-        # generate the type check
-        need_type_check = False
-        if not self._custom_ops:
-            for onnx_op_index, onnx_op in enumerate(ctx.ops):
-                for op_input in onnx_op.inputs:
-                    if not isinstance(op_input, Outputs):
-                        need_type_check = True
-                        break
-        if need_type_check:
-            writer.write("if (")
-            i = 0
-            for onnx_op_index, onnx_op in enumerate(ctx.ops):
-                for idx, op_input in enumerate(onnx_op.inputs):
-                    if isinstance(op_input, Outputs):
-                        continue
-                    writer.writeline(" || " if i > 0 else "")
-                    if i == 0:
-                        writer.push_indent()
-                    cpp_param = cpp_func.get_parameter(op_input)
-                    supported_types = ",".join(sorted([type for type in onnx_op.input_types[idx]]))
-                    writer.write(f"!IsSupportedType({cpp_param.identifier.value}, {{{supported_types}}})")
-                    i += 1
-            writer.writeline(") {")
-            self._write_cpu_fall_back(writer, mapped_func)
-            writer.pop_indent()
-            writer.writeline("}")
-
-        if (
-            not isinstance(first_param.parameter_type.desugar(), ast.ConcreteType)
-            or "Tensor" not in first_param.parameter_type.desugar().identifier_tokens[0].value
-        ):
-            raise FunctionGenerationError(cpp_func, "First parameter must be an at::Tensor")
-
-        writer.write("auto& invoker = GetORTInvoker(")
-        writer.write(first_param.identifier.value)
-        if first_param.parameter_type.desugar().identifier_tokens[0].value == "TensorList":
-            writer.write("[0]")
-        writer.writeline(".device());")
-        writer.writeline()
-
-        # FIXME: warn if we have not consumed all torch parameters (either as
-        # an ORT input or ORT attribute).
-
-        # Perform kernel fission on the ATen op to yield a chain of ORT Invokes
-        # e.g. aten::add(x, y, α) -> onnx::Add(x, onnx::Mul(α, y))
-
-        # whether need type promotion
+        # check whether need type promotion, if we do we will use this later to confirm out cast is supported.
         need_type_promotion = False
         if mapped_func.mapped_op_name in self.type_promotion_ops:
             types_from_tensor = []
@@ -338,7 +294,7 @@ class ORTGen:
         return_info = cpp_func.torch_func.return_type if cpp_func.torch_func else None
 
         # if the torch func has a return ref tensor, out is the last param, and self param is the first input
-        # then we need to update and return out.
+        # then we need to update and return out. Record this need in set_out_tensor.
         # TODO: make this more general to handle cases where the first param is not self such as
         # - cat.out(Tensor[] tensors, int dim=0, *, Tensor(a!) out) -> Tensor(a!)
         # - complex.out(Tensor real, Tensor imag, *, Tensor(a!) out) -> Tensor(a!)
@@ -350,7 +306,6 @@ class ORTGen:
             and last_param.identifier.value == "out"
             and first_param.identifier.value == "self"
         ):
-
             # output_alias is how the return tensor is marked, normally (a! -> a)
             output_alias = self._get_alias_info(return_info)
 
@@ -359,12 +314,66 @@ class ORTGen:
                 # and the current param (torch_p/last_param) is marked with the output alias
                 if output_alias and output_alias.is_writable and self._get_alias_info(torch_p) == output_alias:
                     set_out_tensor = True
-                    writer.writeline("// resize the output and then create output ort value to be updated.")
-                    writer.writeline(
-                        "resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), self.sizes());"
-                    )
-                    writer.writeline("auto ort_input_out = create_ort_value(invoker, out);")
-                    writer.writeline()
+
+        # generate the type check
+        need_type_check = False
+        cast_op_found = False
+        if not self._custom_ops:
+            for onnx_op_index, onnx_op in enumerate(ctx.ops):
+                for op_input in onnx_op.inputs:
+                    if not isinstance(op_input, Outputs):
+                        need_type_check = True
+                        break
+        if need_type_check:
+            writer.write("if (")
+            i = 0
+            for onnx_op_index, onnx_op in enumerate(ctx.ops):
+                # track is the CAST op was explicitly used
+                if onnx_op.name == "Cast":
+                    cast_op_found = True
+                for idx, op_input in enumerate(onnx_op.inputs):
+                    if isinstance(op_input, Outputs):
+                        continue
+                    writer.writeline(" || " if i > 0 else "")
+                    if i == 0:
+                        writer.push_indent()
+                    cpp_param = cpp_func.get_parameter(op_input)
+                    supported_types = ",".join(sorted(list(onnx_op.input_types[idx])))
+                    writer.write(f"!IsSupportedType({cpp_param.identifier.value}, {{{supported_types}}})")
+                    i += 1
+            # if we have type promotion and need to set the out tensor and CAST op not explictily listed,
+            # then we confirm the promotion type is castable to the out type.
+            if need_type_promotion and set_out_tensor and not cast_op_found:
+                writer.writeline(" || ")
+                writer.write("!c10::canCast(*promoted_type, out.scalar_type())")
+            writer.writeline(") {")
+            self._write_cpu_fall_back(writer, mapped_func)
+            writer.pop_indent()
+            writer.writeline("}")
+
+        if (
+            not isinstance(first_param.parameter_type.desugar(), ast.ConcreteType)
+            or "Tensor" not in first_param.parameter_type.desugar().identifier_tokens[0].value
+        ):
+            raise FunctionGenerationError(cpp_func, "First parameter must be an at::Tensor")
+
+        writer.write("auto& invoker = GetORTInvoker(")
+        writer.write(first_param.identifier.value)
+        if first_param.parameter_type.desugar().identifier_tokens[0].value == "TensorList":
+            writer.write("[0]")
+        writer.writeline(".device());")
+        writer.writeline()
+
+        # FIXME: warn if we have not consumed all torch parameters (either as
+        # an ORT input or ORT attribute).
+
+        if set_out_tensor:
+            writer.writeline("// resize the output and then create output ort value to be updated.")
+            writer.writeline(
+                "resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), self.sizes());"
+            )
+            writer.writeline("auto ort_input_out = create_ort_value(invoker, out);")
+            writer.writeline()
 
         for onnx_op_index, onnx_op in enumerate(ctx.ops):
             # Torch -> ORT inputs
@@ -467,7 +476,16 @@ class ORTGen:
                 # if no in_place_params found and there is an out input to set
                 # and this is the last onnx op, we set the out to be written to
                 if len(in_place_params) == 0 and set_out_tensor and onnx_op_index == (len(ctx.ops) - 1):
-                    writer.writeline(f"{onnx_op.outputs}[0] = ort_input_out;")
+                    # if we have type promotion, need to set the out tensor and CAST op not explictily listed,
+                    # check if we need to do a cast
+                    if need_type_promotion and not cast_op_found:
+                        writer.writeline("if (*promoted_type == out.scalar_type()) {")
+                        writer.push_indent()
+                        writer.writeline(f"{onnx_op.outputs}[0] = ort_input_out;")
+                        writer.pop_indent()
+                        writer.writeline("}")
+                    else:
+                        writer.writeline(f"{onnx_op.outputs}[0] = ort_input_out;")
 
                 if len(in_place_params) != 0 and len(in_place_params) != (
                     len(return_info.elements) if isinstance(return_info, ast.TupleType) else 1
@@ -511,6 +529,15 @@ class ORTGen:
         elif len(in_place_params) == 0:
             # tensor options
             if set_out_tensor:
+                if need_type_promotion and not cast_op_found:
+                    writer.writeline("if (*promoted_type != out.scalar_type()) {")
+                    writer.push_indent()
+                    writer.writeline(
+                        f"CastToType_out(invoker, {onnx_op.outputs}[0], ort_input_out, out.scalar_type());"
+                    )
+                    writer.pop_indent()
+                    writer.writeline("}")
+
                 writer.writeline(f"return {last_param.identifier.value};")
                 return
 
