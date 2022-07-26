@@ -12,10 +12,6 @@
 
 namespace onnxruntime {
 namespace xnnpack {
-const onnx::TensorProto* GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
-                                                  const NodeUnitIODef& io_def);
-const onnx::TensorProto* GetQuantizationScale(const InitializedTensorSet& initializers,
-                                              const NodeUnitIODef& io_def);
 namespace {
 bool IsQuantizedMaxPool(QuantizedOpType quant_op_type) {
   return (quant_op_type == QuantizedOpType::QLinearMaxPool) ||

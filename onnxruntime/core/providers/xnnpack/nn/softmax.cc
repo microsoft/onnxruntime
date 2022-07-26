@@ -3,11 +3,12 @@
 
 #include "core/providers/xnnpack/nn/softmax.h"
 
+#include <utility>
+
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/math/softmax_shared.h"
 #include "core/optimizer/initializer.h"
 
-#include <utility>
 
 namespace onnxruntime {
 namespace xnnpack {
