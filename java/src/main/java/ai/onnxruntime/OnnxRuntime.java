@@ -108,8 +108,11 @@ final class OnnxRuntime {
     } else if (arch.startsWith("x86")) {
       // 32-bit x86 is not supported by the Java API
       detectedArch = "x86";
-    } else if (arch.startsWith("aarch64")) {
+    } else if (arch.startsWith("aarch64") && !detectedOS.equals("osx")) {
       detectedArch = "aarch64";
+    } else if(arch.startsWith("aarch64") && detectedOS.equals("osx")) {
+      // support for Apple M1 Chip
+      detectedArch = "arm64";
     } else if (arch.startsWith("ppc64")) {
       detectedArch = "ppc64";
     } else if (isAndroid()) {
