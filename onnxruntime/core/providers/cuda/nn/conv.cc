@@ -115,7 +115,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     for (auto &i : Z->Shape().GetDims()) {
       ss << i << " ";
     }
-    printf("z dim [%s]", ss.str().c_str());
+    printf("z dim [%s]\n", ss.str().c_str());
     s_.z_data = reinterpret_cast<const CudaT*>(Z->template Data<T>());
   } else {
     s_.z_data = nullptr;
@@ -233,13 +233,13 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     for (auto &i : w_dims) {
       ss << i << " ";
     }
-    printf("w dim [%s]", ss.str().c_str());
+    printf("w dim [%s]\n", ss.str().c_str());
 
     ss.str("");
     for (auto &i : y_dims_cudnn) {
       ss << i << " ";
     }
-    printf("y dim [%s]", ss.str().c_str());
+    printf("y dim [%s]\n", ss.str().c_str());
     // --------------- \DEBUG
     // We must delay returning early until here so that the weight dims have been cached properly
     if (s_.Y->Shape().Size() == 0) {
@@ -249,7 +249,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     // Each dimension of the bias tensor A must match the corresponding dimension of the destination tensor C or
     // must be equal to 1. In the latter case, the same value from the bias tensor for those dimensions will
     // be used to blend into the C tensor
-    ORT_RETURN_IF_ERROR(s_.z_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
+    // ORT_RETURN_IF_ERROR(s_.z_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
 
     ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
     ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
@@ -364,6 +364,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 
 template <typename T>
 Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
+  printf("Conv cuda\n");
   std::lock_guard<OrtMutex> lock(s_.mutex);
   ORT_RETURN_IF_ERROR(UpdateState(context));
   if (s_.Y->Shape().Size() == 0) {
