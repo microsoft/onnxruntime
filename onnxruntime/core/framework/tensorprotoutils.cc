@@ -586,15 +586,26 @@ Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                  void*& ext_data_buf, SafeInt<size_t>& ext_data_len, OrtCallback& ext_data_deleter) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
-  ORT_ENFORCE(model_path);
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
-  ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
+  if (model_path != nullptr) {
+    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
+  }
   const ORTCHAR_T* t_prot_dir_s = tensor_proto_dir.size() == 0 ? nullptr : tensor_proto_dir.c_str();
   std::basic_string<ORTCHAR_T> external_data_file_path;
   FileOffsetType file_offset;
-  SafeInt<size_t> raw_data_safe_len;
+  SafeInt<size_t> raw_data_safe_len = 0;
   ORT_RETURN_IF_ERROR(GetExternalDataInfo(tensor_proto, t_prot_dir_s, external_data_file_path, file_offset,
                                           raw_data_safe_len));
+
+  size_t file_length;
+  ORT_RETURN_IF_ERROR(env.GetFileLength(external_data_file_path.c_str(), file_length));
+
+  SafeInt<FileOffsetType> end_of_read(file_offset);
+  end_of_read += raw_data_safe_len;
+  ORT_RETURN_IF(file_offset < 0 || end_of_read > gsl::narrow<FileOffsetType>(file_length),
+                  "External initializer: ", tensor_proto.name(),
+                  " offset: ", file_offset, " size to read: ", static_cast<size_t>(raw_data_safe_len),
+                  " given file_length: ", file_length, " are out of bounds or can not be read in full.");
   ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path.c_str(), file_offset, raw_data_safe_len,
                                      ext_data_buf, ext_data_deleter));
   ext_data_len = raw_data_safe_len;
