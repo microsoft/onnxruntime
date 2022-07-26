@@ -589,7 +589,7 @@ static void FillTensorDataTyped(Ort::Value& tensor, size_t count, int32_t seed =
       const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(max_value));
       std::uniform_int_distribution<int> dist;
       for (size_t i = 0; i < count; ++i) {
-        data[i] = dist(engine, p);
+        data[i] = static_cast<T>(dist(engine, p));
       }
     } else {
       random_init = false;
