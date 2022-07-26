@@ -362,8 +362,9 @@ void MemoryProfiler::CreateEvents(const std::string& p_name,
 
 void MemoryProfiler::GenerateMemoryProfile() {
   // Write memory profile .json
-  std::ofstream memory_profile("memory_profile_" + std::to_string(GetMemoryInfo().GetLocalRank()) + ".json",
-                               std::ios::trunc);
+  std::stringstream ss;
+  ss << "memory_profile_" << GetMemoryInfo().GetLocalRank() << "_" << Env::Default().GetSelfPid() << ".json";
+  std::ofstream memory_profile(ss.str(), std::ios::trunc);
   memory_profile << "[" << std::endl;
   for (size_t i = 0; i < GetEvents().size(); i++) {
     memory_profile << "  " << GetEvents().at(i);
