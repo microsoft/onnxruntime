@@ -11,4 +11,3 @@ h5py
 wget
 setuptools>=41.4.0
 pygit2
-pgzip
