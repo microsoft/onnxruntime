@@ -217,6 +217,58 @@ TEST(QDQTransformerTests, ConvMaxPoolReshape_Int8) {
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
 }
 
+#if (defined(_M_AMD64) && !defined(_M_ARM64EC)) || defined(_M_IX86) || defined(__x86_64__) || defined(__i386__) || !defined(DISABLE_CONTRIB_OPS)
+
+TEST(QDQTransformerTests, DQ_S8_to_U8) {
+  const std::vector<int64_t>& input_shape = {19, 37};
+  const std::vector<int64_t>& weights_shape = {37, 23};
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+
+    // Use full range weight values to expose avx2 u8s8 overflow problems
+    auto* weight = builder.MakeInitializer<int8_t>(weights_shape, -128, 127);
+    auto* output_arg = builder.MakeOutput();
+
+    typedef std::numeric_limits<uint8_t> Input1Limits;
+    typedef std::numeric_limits<int8_t> Input2Limits;
+    typedef std::numeric_limits<uint8_t> OutputTypeLimits;
+
+    // add QDQ activation
+    auto* dq1_output = AddQDQNodePair<int8_t>(builder, input1_arg, .039f, (Input1Limits::max() + Input1Limits::min()) / 2 + 1);
+
+    // add DQ weight
+    auto* dq_w_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<int8_t>(weight, .003f, -10, dq_w_output);
+
+
+    builder.AddNode("MatMul", {dq1_output, dq_w_output}, {output_arg});
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
+      EXPECT_EQ(op_to_count["MatMul"], 0);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+  };
+
+  auto add_session_options = [&](SessionOptions& so) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsAvx2PrecisionMode, "1"));
+  };
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    12 /*opset_version*/,
+                    0.01 /*per_sample_tolerance*/,
+                    0.01 /*relative_per_sample_tolerance*/,
+                    nullptr, add_session_options);
+}
+#endif // Only for X64 with contrib ops enabled
+
 template <typename InputType, typename OutputType>
 void QDQTransformerAveragePoolTests() {
   auto test_case = [&](const std::vector<int64_t>& input_shape) {
