@@ -530,6 +530,33 @@ Status OrtLoadCustomPropertyInternal(const PathString& property_folder_path,
   return Status::OK();
 }
 
+Status OrtLoadInternal(const PathString& checkpoint_path,
+                       std::vector<ONNX_NAMESPACE::TensorProto>& param_tensor_protos) {
+  // Find tensor proto files.
+  std::vector<PathString> tensor_proto_filenames;
+  FilterFilesFromDirectory(
+      checkpoint_path,
+      [&tensor_proto_filenames](const PathChar* filename) -> bool {
+        PathString filename_str = filename;
+        if (StringEndsWith(filename_str, k_tensor_proto_file_name)) {
+          tensor_proto_filenames.push_back(filename_str);
+        }
+        return true;
+      });
+
+  // Load tensor protos to the tensorProto Vector
+  for (const auto& tensor_file_path : tensor_proto_filenames) {
+    std::vector<ONNX_NAMESPACE::TensorProto> tensor_protos{};
+    const auto tensor_file_full_path = ConcatPathComponent<PathChar>(checkpoint_path, tensor_file_path);
+    LoadTensorProtoFromFile(tensor_file_full_path, tensor_protos, "[params]");
+
+    for (const auto& tensor_proto : tensor_protos) {
+      param_tensor_protos.push_back(tensor_proto);
+    }
+  }
+  return Status::OK();
+}
+
 Status OrtLoadInternal(const PathString& checkpoint_path, CheckpointState& state) {
   ORT_ENFORCE(Env::Default().FolderExists(checkpoint_path), "Checkpoint folder not exit");
   ORT_RETURN_IF_ERROR(OrtLoadModuleStatesInternal(checkpoint_path, state.module_checkpoint_state));
@@ -552,6 +579,11 @@ Status SaveCheckpoint(CheckpointState& states, const PathString& checkpoint_path
 
 Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointState& checkpoint_states) {
   return OrtLoadInternal(checkpoint_path, checkpoint_states);
+}
+
+Status LoadCheckpoint(const PathString& checkpoint_path,
+                      std::vector<ONNX_NAMESPACE::TensorProto>& param_tensor_protos) {
+  return OrtLoadInternal(checkpoint_path, param_tensor_protos);
 }
 
 }  // namespace api
