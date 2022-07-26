@@ -203,8 +203,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, bool remove_cycles = true) const;
 
-  bool IsSubgraphOfControlFlowOp(const GraphViewer& graph) const;
-  bool IsWholeGraphSupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
+  bool IsSubGraphOfControlFlowOp(const GraphViewer& graph) const;
+  bool IsWholeSubGraphSupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
+  bool AllNodesAssignedToSpecificEP(const GraphViewer& graph, const std::string& provider_type) const;
 
   /** 
   Get a unique_lock object to control the concurrency behavior. 

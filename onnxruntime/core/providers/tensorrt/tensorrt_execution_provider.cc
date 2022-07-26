@@ -955,7 +955,7 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
   return cycle_detected;
 }
 
-bool TensorrtExecutionProvider::IsSubgraphOfControlFlowOp(const GraphViewer& graph) const {
+bool TensorrtExecutionProvider::IsSubGraphOfControlFlowOp(const GraphViewer& graph) const {
   if (graph.IsSubgraph()) {
     const auto parent_node_type = graph.ParentNode()->OpType();
     if (parent_node_type == "If" || parent_node_type == "Loop" || parent_node_type == "Scan") {
@@ -965,7 +965,7 @@ bool TensorrtExecutionProvider::IsSubgraphOfControlFlowOp(const GraphViewer& gra
   return false;
 }
 
-bool TensorrtExecutionProvider::IsWholeGraphSupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const {
+bool TensorrtExecutionProvider::IsWholeSubGraphSupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const {
   int number_of_trt_nodes = 0;
     for (const auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
@@ -974,6 +974,22 @@ bool TensorrtExecutionProvider::IsWholeGraphSupported(SubGraphCollection_t suppo
     }
 
   return number_of_trt_nodes == number_of_ort_nodes;
+}
+
+
+bool TensorrtExecutionProvider::AllNodesAssignedToSpecificEP(const GraphViewer& graph, const std::string& provider_type) const {
+  const int number_of_ort_nodes = graph.NumberOfNodes();
+  std::vector<size_t> nodes_vector(number_of_ort_nodes);
+  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+  for (const auto& index : nodes_vector) {
+    const auto& node = graph.GetNode(node_index[index]);
+    if (node->GetExecutionProviderType() != provider_type) {
+      return false;
+    }
+  }
+
+  return number_of_ort_nodes != 0;
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -991,7 +1007,31 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   const int number_of_ort_nodes = graph.NumberOfNodes();
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
-  SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{nodes_vector, false}};
+
+  std::vector<size_t> filtered_nodes_vector;
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+  for (const auto& index : nodes_vector) {
+    const auto& node = graph.GetNode(node_index[index]);
+    if (node->OpType() == "If" || node->OpType() == "Loop" || node->OpType() == "Scan") {
+      auto sub_graphs = node->GetSubgraphs();
+      if (sub_graphs.size() != 0) {
+        bool all_subgraphs_are_supported = true;
+        for (auto sub_graph : sub_graphs) {
+          if (!AllNodesAssignedToSpecificEP(*(sub_graph->CreateGraphViewer()), "TensorrtExecutionProvider")) {
+            all_subgraphs_are_supported = false;
+            break;
+          }
+        }
+        if (!all_subgraphs_are_supported) {
+        // If not all its subgraphs are supported, we need to exclude this control flow op
+          continue;
+        }
+      }
+    }
+    filtered_nodes_vector.push_back(index);
+  }
+
+  SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{filtered_nodes_vector, false}};
   bool early_termination = false;
   supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
   if (early_termination) {
@@ -1032,7 +1072,8 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
   // Handle the case where the subgraph is subgraph of control flow op.
   // The purpose is to make control flow op as well as its subgraphs run on TRT EP.
-  if (IsSubgraphOfControlFlowOp(graph) && IsWholeGraphSupported(supported_nodes_vector, number_of_ort_nodes)) {
+  // Here we need to check whether all the subgraphs are supported by TRT and don't fuse the subgraphs until control flow op level.
+  if (IsSubGraphOfControlFlowOp(graph) && IsWholeSubGraphSupported(supported_nodes_vector, number_of_ort_nodes)) {
     const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
     bool all_subgraphs_are_supported = true;
 
@@ -1051,7 +1092,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
           SubGraphCollection_t parser_subgraph_nodes_vector = {{subgraph_nodes_vector, false}};
           bool subgraph_early_termination = false;
           subgraph_supported_nodes_vector = GetSupportedList(parser_subgraph_nodes_vector, 0, max_partition_iterations_, *sub_graph_veiwer, &subgraph_early_termination);
-          all_subgraphs_are_supported = IsWholeGraphSupported(subgraph_supported_nodes_vector, number_of_ort_subgraph_nodes);
+          all_subgraphs_are_supported = IsWholeSubGraphSupported(subgraph_supported_nodes_vector, number_of_ort_subgraph_nodes);
           break;
         }
       }      
