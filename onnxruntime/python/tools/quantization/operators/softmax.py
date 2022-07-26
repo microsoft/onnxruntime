@@ -6,9 +6,6 @@ from .qdq_base_operator import QDQOperatorBase
 
 
 class QLinearSoftmax(QuantOperatorBase):
-    def __init__(self, onnx_quantizer, onnx_node):
-        super().__init__(onnx_quantizer, onnx_node)
-
     def quantize(self):
         node = self.node
         # set limitations for softmax output scale and zp, because the output of softmax is always 0-1
@@ -76,12 +73,10 @@ class QLinearSoftmax(QuantOperatorBase):
         # add all newly created nodes
         nodes.append(qnode)
         self.quantizer.new_nodes += nodes
+        return None
 
 
 class QDQSoftmax(QDQOperatorBase):
-    def __init__(self, onnx_quantizer, onnx_node):
-        super().__init__(onnx_quantizer, onnx_node)
-
     def quantize(self):
         super().quantize()
         if self.quantizer.input_qType == onnx.onnx_pb.TensorProto.UINT8:
