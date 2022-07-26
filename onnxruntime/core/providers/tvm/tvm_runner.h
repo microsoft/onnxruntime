@@ -23,7 +23,7 @@ public:
             const InputsInfoMap& inputs_info,
             const std::vector<DLTensor>& output_tensor);
 
-  common::Status operator()(FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context);
+  common::Status operator()(FunctionState state, const OrtApi* api, OrtKernelContext* context);
 
 private:
   std::shared_ptr<RunnerImpl> runner_;

@@ -215,7 +215,7 @@ common::Status InternalTestingExecutionProvider::Compile(const std::vector<Fused
     compute_info.release_state_func = [](FunctionState /*state*/) {
     };
 
-    compute_info.compute_func = [&node](FunctionState /*state*/, const OrtCustomOpApi* c_api,
+    compute_info.compute_func = [&node](FunctionState /*state*/, const OrtApi* c_api,
                                         OrtKernelContext* context) -> Status {
       Ort::CustomOpApi api{*c_api};  // use C++ API for convenience
 

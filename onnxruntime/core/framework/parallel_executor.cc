@@ -27,8 +27,8 @@ ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool
   }
 }
 
-Status ParallelExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
-                                 const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+Status ParallelExecutor::Execute(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
+                                 gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                  std::vector<OrtValue>& fetches,
                                  const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                  const logging::Logger& logger) {

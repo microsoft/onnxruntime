@@ -583,7 +583,7 @@ Status QLinearAveragePool::ComputeImpl(OpKernelContext* context) const {
   BufferUniquePtr x_data_fp32_guard;
   if (kernel_shape.size() <= 3) {
     x_data_fp32 = (float*)allocator->Alloc(SafeInt<size_t>(x_shape.Size()) * sizeof(float));
-    x_data_fp32_guard = BufferUniquePtr(x_data_fp32, BufferDeleter(allocator));
+    x_data_fp32_guard = BufferUniquePtr(x_data_fp32, BufferDeleter(std::move(allocator)));
     dequantize_array(x_shape.Size(), X_data, x_scale, x_zero_point, x_data_fp32, tp);
   }
 

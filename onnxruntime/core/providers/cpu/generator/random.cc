@@ -247,7 +247,7 @@ static Status MultinomialCompute(OpKernelContext* ctx,
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
   auto cdf_data = static_cast<double*>(alloc->Alloc(SafeInt<size_t>(sizeof(double)) * num_classes));
-  BufferUniquePtr cdf_buffer(cdf_data, BufferDeleter(alloc));
+  BufferUniquePtr cdf_buffer(cdf_data, BufferDeleter(std::move(alloc)));
   Eigen::array<int64_t, 1> cdf_dims = {{num_classes}};
   auto cdf = EigenVector<double>(cdf_data, cdf_dims);
   // END create temporary tensor

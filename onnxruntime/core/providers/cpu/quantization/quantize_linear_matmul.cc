@@ -107,7 +107,7 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
   auto gemm_output_data = alloc->Alloc(SafeInt<size_t>(gemm_shape.M) *
                                        gemm_shape.N * sizeof(int32_t) * num_gemms);
-  BufferUniquePtr gemm_output_buffer(gemm_output_data, BufferDeleter(alloc));
+  BufferUniquePtr gemm_output_buffer(gemm_output_data, BufferDeleter(std::move(alloc)));
   auto* gemm_output = static_cast<int32_t*>(gemm_output_buffer.get());
 
   std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_params(num_gemms);
