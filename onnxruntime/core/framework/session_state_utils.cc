@@ -88,9 +88,8 @@ static inline common::Status ExtDataTensorProtoToTensor(const Env& env,
   std::vector<int64_t> tensor_shape_vec = utils::GetTensorShapeFromTensorProto(tensor_proto);
   TensorShape tensor_shape{tensor_shape_vec};
 
-  auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, ext_data_buf, OrtMemoryInfo(CPU,
+  tensor = Tensor(type, tensor_shape, ext_data_buf, OrtMemoryInfo(CPU,
                                            OrtAllocatorType::OrtDeviceAllocator));
-  tensor = std::move(*p_tensor);
 
   return common::Status::OK();
 }
