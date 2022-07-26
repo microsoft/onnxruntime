@@ -17,7 +17,7 @@ from .operators.pad import QPad
 from .operators.pooling import QLinearPool
 from .operators.qdq_base_operator import QDQOperatorBase
 from .operators.resize import QDQResize, QResize
-from .operators.split import QSplit
+from .operators.split import QSplit, QDQSplit
 from .quant_utils import QuantizationMode
 
 CommonOpsRegistry = {
@@ -72,6 +72,7 @@ QDQRegistry = {
     "AveragePool": QDQDirect8BitOp,
     "Concat": QDQConcat,
     "MatMul": QDQMatMul,
+    "Split": QDQSplit,
 }
 
 

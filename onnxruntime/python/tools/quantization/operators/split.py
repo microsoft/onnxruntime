@@ -1,9 +1,11 @@
+import itertools
+
 import onnx
 from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg
 from .base_operator import QuantOperatorBase
-
+from .qdq_base_operator import QDQOperatorBase
 
 class QSplit(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
@@ -49,3 +51,18 @@ class QSplit(QuantOperatorBase):
 
         nodes.append(quantized_node)
         self.quantizer.new_nodes += nodes
+
+class QDQSplit(QDQOperatorBase):
+    def __init__(self, onnx_quantizer, onnx_node):
+        super().__init__(onnx_quantizer, onnx_node)
+
+    def quantize(self):
+        node = self.node
+        assert node.op_type == "Split"
+        super().quantize()
+        # if self.disable_qdq_for_node_output:
+        #     tensors_to_quantize = node.input[0]
+        # else:
+        #     tensors_to_quantize = itertools.chain(node.input[0], node.output)
+        # for tensor_name in tensors_to_quantize:
+        #     self.quantizer.quantize_tensor(tensor_name)
