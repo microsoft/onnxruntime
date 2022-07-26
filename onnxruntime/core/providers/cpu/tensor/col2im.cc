@@ -23,6 +23,7 @@ REGISTER_KERNEL_TYPED(float)
 
 template <typename T>
 Status Col2Im<T>::Compute(OpKernelContext* context) const {
+  (void) context;
   return Status::OK();
 }
 

@@ -7,7 +7,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
 #include "core/framework/tensor.h"
-#include "concatbase.h"
+#include "core/providers/cpu/tensor/concatbase.h"
 
 namespace onnxruntime {
 

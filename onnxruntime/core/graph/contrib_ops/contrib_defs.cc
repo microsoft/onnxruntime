@@ -912,7 +912,7 @@ void col2imShapeInference(InferenceContext& ctx) {
     return;
   }
 
-  // TODO: Assume image_shape has correct spatial dimensions for next validations
+  // Assuming image_shape has correct spatial dimensions and reused for next validation steps
   //       An alternative is get the the number of spatial dimensions as an input
   if (ctx.getInputType(1)->tensor_type().shape().dim_size() != 1) {
     fail_shape_inference("image_shape tensor must have rank 1.");
@@ -969,7 +969,7 @@ void col2imShapeInference(InferenceContext& ctx) {
     fail_shape_inference("block_shape tensor must have ", n_input_dims, " spatial dimensions.");
   }
 
-  int block_shape_size = 0;
+  int64_t block_shape_size = 0;
   if (static_cast<int>(block_shape.size()) > 0) {
     block_shape_size = 1;
     for (const auto& dim : block_shape) {
@@ -983,12 +983,12 @@ void col2imShapeInference(InferenceContext& ctx) {
   // Dimensions N and C are always present
   Dim N, C;
   if (ctx.getInputType(0)->tensor_type().shape().dim(0).has_dim_value()) {
-    N = input_shape.dim(0); // Otherwise, N is unknown.
+    N = input_shape.dim(0);  // Otherwise, N is unknown.
   }
   *final_image_shape->add_dim() = N;
 
   if (block_shape_size > 0) {
-    C = input_shape.dim(1) / block_shape_size; // Otherwise, C is unknown.
+    C = input_shape.dim(1) / block_shape_size;  // Otherwise, C is unknown.
   }
   *final_image_shape->add_dim() = C;
 
@@ -996,7 +996,7 @@ void col2imShapeInference(InferenceContext& ctx) {
   for (size_t i = 0; i < n_input_dims; ++i) {
     Dim image_dim_i;
     if (image_shape.size() > 0) {
-      image_dim_i.set_dim_value(image_shape[i]); // Otherwise, spatial dimensions are unknown
+      image_dim_i.set_dim_value(image_shape[i]);  // Otherwise, spatial dimensions are unknown
     }
     *final_image_shape->add_dim() = image_dim_i;
   }
@@ -1026,8 +1026,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Col2Im, 1,
                                 OPTIONAL_VALUE)
                             .Attr(
                                 "pads",
-                                "1-dimensional tensor with padding value for the beginning and ending along each spatial axis, "
-                                "it can take any value greater than or equal to 0. "
+                                "1-dimensional tensor with padding value for the beginning and ending along each"
+                                " spatial axis, it can take any value greater than or equal to 0. "
                                 "The value represent the number of pixels added to the beginning "
                                 "and end part of the corresponding axis. `pads` format should be as follow "
                                 "[x1_begin, x2_begin...x1_end, x2_end,...], where xi_begin is the number of pixels "
@@ -1087,8 +1087,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Col2Im, 1,
                                 "T",
                                 OpSchema::all_tensor_types_with_bfloat(),
                                 "Constrain input and output types to all numeric tensor types.")
-                           .TypeAndShapeInferenceFunction([](InferenceContext& ctx) { col2imShapeInference(ctx); })
-                    );
+                           .TypeAndShapeInferenceFunction([](InferenceContext& ctx) { col2imShapeInference(ctx); }));
 
 constexpr const char* GridSample_ver1_doc = R"DOC(
       Given an `input` and a flow-field `grid`, computes the `output` using `input` values and pixel locations from `grid`.
