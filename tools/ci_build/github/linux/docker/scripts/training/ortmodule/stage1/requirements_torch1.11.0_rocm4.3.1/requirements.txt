@@ -10,4 +10,4 @@ tensorboard>=2.2.0,<2.5.0
 h5py
 wget
 setuptools>=41.4.0
-
+pygit2
