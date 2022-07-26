@@ -13,6 +13,8 @@ import {averagePool, globalAveragePool, globalMaxPool, maxPool, parseAveragePool
 import {reshape} from './ops/reshape';
 import {shape} from './ops/shape';
 import {parseSliceAttributes, slice, sliceV10} from './ops/slice';
+import {parseSqueezeAttributes, squeeze, squeezeV13} from './ops/squeeze';
+import {parseTransposeAttributes, transpose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
 import {parseUnsqueezeAttributes, unsqueeze, unsqueezeV13} from './ops/unsqueeze';
 
@@ -75,14 +77,12 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // // When the attribute is missing, we need the count of number of outputs
   // // so that we can determine the 'split' attribute from the runtime input to the Operator
   // ['Split', '', '2-12', split, parseSplitAttributes],
-  ['Sqrt', '', '6+', unaryOps.sqrt],
-  // ['Squeeze', '', '1-12', squeeze, parseSqueezeAttributes],
-  // ['Squeeze', '', '13+', squeezeV13],
-  ['Sub', '', '7+', binaryOps.sub],
+  ['Sqrt', '', '6+', unaryOps.sqrt], ['Squeeze', '', '1-12', squeeze, parseSqueezeAttributes],
+  ['Squeeze', '', '13+', squeezeV13], ['Sub', '', '7+', binaryOps.sub],
   // ['Sum', '', '6+', sum],
   ['Tan', '', '7+', unaryOps.tan], ['Tanh', '', '6+', unaryOps.tanh],
   // ['Tile', '', '6+', tile],
-  // ['Transpose', '', '1+', transpose, parseTransposeAttributes],
+  ['Transpose', '', '1+', transpose, parseTransposeAttributes],
   // ['Upsample', '', '7-8', upsample, parseUpsampleAttributesV7],
   // ['Upsample', '', '9', upsample, parseUpsampleAttributesV9],
   ['Unsqueeze', '', '1-12', unsqueeze, parseUnsqueezeAttributes], ['Unsqueeze', '', '13+', unsqueezeV13],

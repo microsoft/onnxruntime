@@ -487,16 +487,16 @@
       "test_tan_example",
       "test_tan",
       "test_tanh_example",
-      "test_tanh"
+      "test_tanh",
       // "test_tile",
       // "test_tile_precomputed",
-      // "test_transpose_all_permutations_0",
-      // "test_transpose_all_permutations_1",
-      // "test_transpose_all_permutations_2",
-      // "test_transpose_all_permutations_3",
-      // "test_transpose_all_permutations_4",
-      // "test_transpose_all_permutations_5",
-      // "test_transpose_default",
+      "test_transpose_all_permutations_0",
+      "test_transpose_all_permutations_1",
+      "test_transpose_all_permutations_2",
+      "test_transpose_all_permutations_3",
+      "test_transpose_all_permutations_4",
+      "test_transpose_all_permutations_5",
+      "test_transpose_default"
       // "test_unsqueeze",
       // "test_xor_bcast3v1d",
       // "test_xor_bcast3v2d",
@@ -547,8 +547,8 @@
       //"split.jsonc",
       "sqrt.jsonc",
       "sub.jsonc",
-      "tan.jsonc"
-      //"transpose.jsonc",
+      "tan.jsonc",
+      "transpose.jsonc"
       //"xor.jsonc"
     ]
   },
