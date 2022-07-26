@@ -70,7 +70,7 @@ This support is added/removed by appending the following flags to the build comm
 | `--enable_wasm_threads` | build with multi-thread support |
 | `--enable_wasm_simd`    | build with SIMD support         |
 
-A complete build for ONNX runtime WebAssembly artifacts will contain 4 ".wasm" files, covering all ON/OFF configuration of these flags.
+A complete build for ONNX runtime WebAssembly artifacts will contain 4 ".wasm" files (ON/OFF configurations of the flags in the table above) with a few ".js" files.
 The build command below should be run for each of the configurations.
 
 in `<ORT_ROOT>/`, run one of the following commands to build WebAssembly:
@@ -127,9 +127,9 @@ Q: I have a C++ project for web scenario, which runs a ML model using ONNX Runti
 
 > One important note is that ONNX Runtime has dependencies on lots of 3rd party libraries such as protobuf, onnx, and others. You may need copy necessary header files to your project. You also take care of cases of library version conflicts or emsdk version conflicts between ONNX Runtime and your project.
 
-# Build onnxruntime-web (NPM package)
+## Build onnxruntime-web (NPM package)
 
-## Prerequisites
+### Prerequisites
 
 - [Install](https://nodejs.org/) Node.js (16.0+)
 
@@ -137,15 +137,15 @@ Q: I have a C++ project for web scenario, which runs a ML model using ONNX Runti
 
 - Chrome or Edge browser for running tests.
 
-## Build Instructions
+### Build Instructions
 
-### Install NPM packages
+#### Install NPM packages
 
    1. in `<ORT_ROOT>/js/`, run `npm ci`.
    2. in `<ORT_ROOT>/js/common/`, run `npm ci`.
    3. in `<ORT_ROOT>/js/web/`, run `npm ci`.
 
-### Prepare ONNX Runtime WebAssembly artifacts
+#### Prepare ONNX Runtime WebAssembly artifacts
 
    You can either use the prebuilt artifacts or build it by yourself.
 
