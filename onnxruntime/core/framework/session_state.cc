@@ -1451,6 +1451,16 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   const auto& initializer_allocation_order = p_seq_exec_plan_->initializer_allocation_order;
 
   // move initializers from TensorProto instances in Graph to OrtValue instances in SessionState
+  session_state_utils::MemoryProfileFunction memory_propfile_func = nullptr;
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  memory_propfile_func = [this](ITensorAllocator& planner) {
+    GetMemoryProfiler()->GetMemoryInfo().RecordPatternInfo(planner.GetMemPatterns(), MemoryInfo::MapType::Initializer);
+    GetMemoryProfiler()->CreateEvents("initializer_" + std::to_string(GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
+                                      GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::Initializer, "", 0);
+  };
+
+#endif
+
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInitializedTensors(
           Env::Default(), graph_location, *graph_viewer_,
@@ -1459,19 +1469,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
           [this](int idx, const OrtValue& value, const OrtCallback& d, bool constant, bool sparse) -> Status {
             return AddInitializedTensor(idx, value, &d, constant, sparse);
           },
-          logger_, data_transfer_mgr_, *p_seq_exec_plan_, session_options,
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-          [this](ITensorAllocator& planner) -> void {
-            GetMemoryProfiler()->GetMemoryInfo().RecordPatternInfo(planner.GetMemPatterns(), MemoryInfo::MapType::Initializer);
-            GetMemoryProfiler()->CreateEvents("initializer_" + std::to_string(GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
-                                              GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::Initializer, "", 0);
-          }
-#else
-          [this](ITensorAllocator& planner) -> void {
-            ORT_UNUSED_PARAMETER(planner);
-          }
-#endif
-          ));
+          logger_, data_transfer_mgr_, *p_seq_exec_plan_, session_options, memory_propfile_func));
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Record Weight allocation info on device
   GetMemoryProfiler()->GetMemoryInfo().RecordInitializerAllocInfo(GetInitializedTensors());
