@@ -1038,7 +1038,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         delete static_cast<MIGraphXFuncState*>(state);
     };
 
-    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+    compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
       MIGraphXFuncState* mgx_state = reinterpret_cast<MIGraphXFuncState*>(state);
       std::unordered_map<std::string, std::size_t>& map_input_name_index = mgx_state->input_name_indexes;
