@@ -354,6 +354,9 @@ class ConstQuantizerPtrType(ConcreteType):
 class StreamType(ConcreteType):
     pass
 
+class SymIntType(ConcreteType):
+    pass
+
 
 # region Decls
 
