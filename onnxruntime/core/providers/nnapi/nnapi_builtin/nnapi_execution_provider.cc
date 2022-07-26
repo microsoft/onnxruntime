@@ -297,7 +297,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
       ORT_UNUSED_PARAMETER(state);
     };
 
-    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+    compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
       nnapi::Model* model = reinterpret_cast<nnapi::Model*>(state);
       const size_t num_inputs = ort.KernelContext_GetInputCount(context);

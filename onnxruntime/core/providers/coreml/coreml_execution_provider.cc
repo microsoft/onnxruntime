@@ -139,7 +139,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       ORT_UNUSED_PARAMETER(state);
     };
 
-    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+    compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
       coreml::Model* model = reinterpret_cast<coreml::Model*>(state);
       const size_t num_inputs = ort.KernelContext_GetInputCount(context);
@@ -243,7 +243,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [](ComputeContext* /*context*/, FunctionState* /*state*/) { return 0; };
     compute_info.release_state_func = [](FunctionState /*state*/) {};
-    compute_info.compute_func = [](FunctionState /* state */, const OrtCustomOpApi* /* api */,
+    compute_info.compute_func = [](FunctionState /* state */, const OrtApi* /* api */,
                                    OrtKernelContext* /* context */) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Compute is not supported in this build.");
     };
