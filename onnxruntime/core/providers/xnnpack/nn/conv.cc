@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "conv.h"
+#include "core/common/inlined_containers_fwd.h"
+
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
@@ -161,7 +163,7 @@ static OpComputeType ParseQuantParamAndConType(const OpKernelInfo& info, OpQuant
   if (x_dtype == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
     // The rules of per-channel quantization is that:
     // X-tensor share the same scalar-scale and zp under per-tensor quantization
-    // But we have separate quantization params for each conv output-channel,
+    // But we have separate conv weight quantization params for each conv output-channel,
     // and there is total output-channels of scales
     if (quant_param[1].first.size() > 1) {
       conv_type = OpComputeType::op_compute_type_qs8_per_channel;
@@ -471,21 +473,21 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     // Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
     auto orig_shape = tensor.Shape();
 
-    std::vector<size_t> perm{0, 2, 3, 1};
-    std::vector<int64_t> new_dims{orig_shape[0],
-                                  orig_shape[2],
-                                  orig_shape[3],
-                                  orig_shape[1]};
+    InlinedVector<size_t> perm{0, 2, 3, 1};
+    TensorShapeVector new_dims{orig_shape[0],
+                               orig_shape[2],
+                               orig_shape[3],
+                               orig_shape[1]};
 
-    packed_w_ = Tensor::Create(tensor.DataType(), TensorShape(new_dims), alloc);
+    packed_w_ = Tensor(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
 
-    SingleAxisTranspose(perm, tensor, *packed_w_, /*from*/ 1, /*to*/ 3);
+    SingleAxisTranspose(perm, tensor, packed_w_, /*from*/ 1, /*to*/ 3);
 
     is_packed = true;
 
     // we can create the kernel now
     struct xnn_operator* p = nullptr;
-    auto ret = CreateXnnpackKernel(conv_attrs_, C_, M_, kernel_shape_, clip_min_max_, *packed_w_,
+    auto ret = CreateXnnpackKernel(conv_attrs_, C_, M_, kernel_shape_, clip_min_max_, packed_w_,
                                    B_, p,
 #ifdef XNN_CACHE_ENABLE
                                    &xnn_caches_,
