@@ -1030,27 +1030,36 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
 
-  // Handle the case where the graph is sugraph of control flow op
+  // Handle the case where the subgraph is subgraph of control flow op.
+  // The purpose is to make control flow op as well as its subgraphs run on TRT EP.
   if (IsSubgraphOfControlFlowOp(graph) && IsWholeGraphSupported(supported_nodes_vector, number_of_ort_nodes)) {
     const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
     bool all_subgraphs_are_supported = true;
 
-    // "If" control flow op has two subgraph bodies, "then" body and "else" body seperately.
+    // "If" control flow op has two subgraph bodies, "then" body and "else" body respectively.
     // Check another subgraph of its parent node to see whether that subgraph is also fully supported by TRT.
     if (graph.ParentNode()->OpType() == "If") {
       all_subgraphs_are_supported = false;
       SubGraphCollection_t subgraph_supported_nodes_vector;
       auto sub_graphs = graph.ParentNode()->GetSubgraphs();
       for (auto sub_graph : sub_graphs) {
-        if (&graph.GetGraph() != sub_graph.get()) {
-          subgraph_supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
-          all_subgraphs_are_supported = IsWholeGraphSupported(subgraph_supported_nodes_vector, number_of_ort_nodes);
+        if (sub_graph.get() != &graph.GetGraph()) {
+          auto sub_graph_veiwer = sub_graph->CreateGraphViewer();
+          const int number_of_ort_subgraph_nodes = sub_graph_veiwer->NumberOfNodes();
+          std::vector<size_t> subgraph_nodes_vector(number_of_ort_subgraph_nodes);
+          std::iota(std::begin(subgraph_nodes_vector), std::end(subgraph_nodes_vector), 0);
+          SubGraphCollection_t parser_subgraph_nodes_vector = {{subgraph_nodes_vector, false}};
+          bool subgraph_early_termination = false;
+          subgraph_supported_nodes_vector = GetSupportedList(parser_subgraph_nodes_vector, 0, max_partition_iterations_, *sub_graph_veiwer, &subgraph_early_termination);
+          all_subgraphs_are_supported = IsWholeGraphSupported(subgraph_supported_nodes_vector, number_of_ort_subgraph_nodes);
           break;
         }
       }      
     } 
 
     if (all_subgraphs_are_supported) {
+      // We want the subgraph nodes to be assigned to TRT EP but don't want them to be fused until later at the control flow op level.
+      // Simply request the subgraph nodes with a single ComputeCapability for each with no MetaDef (i.e. what the default implementation for IExecutionProvider::GetCapability does). 
       for (const auto& group : supported_nodes_vector) {
         if (!group.first.empty()) {
           for (const auto& index : group.first) {
