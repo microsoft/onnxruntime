@@ -115,7 +115,9 @@ class LogitsProcessorList : public ILogitsProcessorList {
     }
 
     if (parameters.no_repeat_ngram_size > 0) {
-      no_repeat_ngram_processor_ = std::make_unique<NoRepeatNGramLogitsProcessor<float>>(parameters.no_repeat_ngram_size);
+      no_repeat_ngram_processor_ = std::make_unique<
+                                     NoRepeatNGramLogitsProcessor<float>
+                                   >(parameters.no_repeat_ngram_size);
       processor_list_.push_back(no_repeat_ngram_processor_.get());
     }
 
@@ -125,8 +127,10 @@ class LogitsProcessorList : public ILogitsProcessorList {
     }
 
     if (!parameters.prefix_vocab_mask.empty()) {
-      prefix_vocab_mask_processor_ = std::make_unique<PrefixVocabMaskLogitsProcessor<float>>(parameters.prefix_vocab_mask,
-                                                                                             parameters.batch_size);
+      prefix_vocab_mask_processor_ = std::make_unique<
+                                       PrefixVocabMaskLogitsProcessor<float>
+                                     >(parameters.prefix_vocab_mask,
+                                       parameters.batch_size);
       processor_list_.push_back(prefix_vocab_mask_processor_.get());
     }
 

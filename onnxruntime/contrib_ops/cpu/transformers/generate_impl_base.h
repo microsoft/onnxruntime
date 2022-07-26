@@ -111,8 +111,10 @@ class GenerateBase {
     if (prefix_vocab_mask != nullptr) {  // prefix_vocab_mask is optional
       const auto& vocab_mask_dims = prefix_vocab_mask->Shape().GetDims();
       if (vocab_mask_dims.size() != 2) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'prefix_vocab_mask' is expected to be 2 dimensions, got ", vocab_mask_dims.size());
+        return ORT_MAKE_STATUS(ONNXRUNTIME,
+                               INVALID_ARGUMENT,
+                               "Input 'prefix_vocab_mask' is expected to be 2 dimensions, got ",
+                               vocab_mask_dims.size());
       }
 
       // prefix_vocab_mask first dimension should be same as the first dimension of input_ids
@@ -173,7 +175,6 @@ class GenerateBase {
   // Device specific functions
   GenerationDeviceHelper::TopkFunc topk_func_;
   GenerationDeviceHelper::DeviceCopyFunc<float> device_copy_func_;
-
 };
 
 }  // namespace transformers
