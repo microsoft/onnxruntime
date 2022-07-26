@@ -449,7 +449,9 @@ class PlannerImpl {
 #endif
 
   // Find if there exists some input tensor that we can use in-place for output_arg_num-th input in the node.
-  bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, OrtValueIndex* reusable_input) {
+  bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, OrtValueIndex* reusable_input,
+                         bool* is_strided_tensor) {
+    *is_strided_tensor = false;
 #ifdef ENABLE_TRAINING
     // Inputs of Yields are essentially the outputs for FW partial subgraph
     // Thses tensors will be pass back to pytorch, thus cannot share the buffer with other tensors
@@ -550,6 +552,7 @@ class PlannerImpl {
         }
         if (can_strided) {
           *reusable_input = Index(input_args[pair.first]->Name());
+          *is_strided_tensor = true;
           return true;
         }
       }
@@ -1480,6 +1483,7 @@ class PlannerImpl {
         // Declare OrtValue index of the reused buffer.
         // The the OrtValue indexed by current may reuse the memory in the OrtValue indexed by reused.
         OrtValueIndex reused;
+        bool is_strided_tensor = false;
         if (has_external_outputs) {
           ORT_ENFORCE(!IsNonTensor(*node_output), "Only tensors are supported for external outputs for now.");
           AllocPlan(current).alloc_kind = AllocKind::kAllocatedExternally;
@@ -1526,7 +1530,7 @@ class PlannerImpl {
             }
           }
         } else if (!context_->IsParallelExecutionEnabled() &&
-                   FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
+                   FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused, &is_strided_tensor)) {
           // Re-using inputs is applicable for tensors, sequence tensors,
           // and optional types if the kernel has marked certain inputs as
           // possible candidates for re-use
@@ -1537,6 +1541,11 @@ class PlannerImpl {
           //}
           //std::cout << std::endl;
           Reuse(reused, current, AllocKind::kReuse);
+#ifdef ENABLE_TRAINING
+          if (is_strided_tensor) AllocPlan(current).is_strided_tensor = true;
+#else
+          ORT_ENFORCE(!is_strided_tensor, "Strided tensor is not supported in non-training build for now.");
+#endif  // ENABLE_TRAINING
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           InplaceReuse(reused, current);
 #endif

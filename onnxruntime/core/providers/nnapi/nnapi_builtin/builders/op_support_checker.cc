@@ -8,9 +8,10 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph.h"
 #include "core/providers/common.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_helpers.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
-#include "helper.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -1431,6 +1432,16 @@ int GemmOpSupportChecker::GetMinSupportedOpSet(const NodeUnit& node_unit) const 
 
 bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& params) const {
+  // check batch matmul first, then fall back to checking single gemm/matmul
+  {
+    const bool is_supported_batch_matmul =
+        op_builder_helpers::IsSupportedBatchMatMul(node_unit, params.android_feature_level);
+    LOGS_DEFAULT(VERBOSE) << "Supported batch matmul: [" << is_supported_batch_matmul << "]";
+    if (is_supported_batch_matmul) {
+      return true;
+    }
+  }
+
   const auto& op_type = node_unit.OpType();
   const auto& inputs = node_unit.Inputs();
   const bool is_qlinear_matmul = op_type == "QLinearMatMul";

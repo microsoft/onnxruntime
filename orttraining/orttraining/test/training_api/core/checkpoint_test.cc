@@ -172,7 +172,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
   /// Phase 1 - Test Preparison
   /// Prepare the data and dest folder for saving checkpoint.
   /// Also cooked the data for test result comparison.
-  auto model_uri = MODEL_FOLDER "training_api/gradient_graph.onnx";
+  auto model_uri = MODEL_FOLDER "training_api/training_model.onnx";
   auto optim_uri = MODEL_FOLDER "training_api/adamw.onnx";
 
   // Generate randomized weight values using synthetic data generator.

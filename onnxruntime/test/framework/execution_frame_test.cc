@@ -439,7 +439,8 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
     const void* orig_buffer = results[0].Get<Tensor>().DataRaw();
 
     RunOptions ro;
-    ASSERT_STATUS_OK(session.Run(ro, {}, {}, {"values"}, &results, nullptr));
+    ASSERT_STATUS_OK(session.Run(ro, EmptySpan<const std::string>(),
+                                 EmptySpan<const OrtValue>(), AsSpan({std::string("values")}), &results, nullptr));
 
     EXPECT_EQ(results[0].Get<Tensor>().DataRaw(), orig_buffer);
     EXPECT_THAT(results[0].Get<Tensor>().DataAsSpan<float>(), ::testing::ContainerEq(gsl::make_span(expected)));
@@ -453,7 +454,8 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
 
     std::vector<OrtValue> results;
     RunOptions ro;
-    ASSERT_STATUS_OK(session.Run(ro, {}, {}, {"values"}, &results, nullptr));
+    ASSERT_STATUS_OK(session.Run(ro, EmptySpan<std::string>(),
+      EmptySpan<OrtValue>(), AsSpan({std::string("values")}), &results, nullptr));
 
     // output buffer should not be the same as the initializer in SessionState
     const auto& initializers = session.GetSessionState().GetInitializedTensors();
@@ -464,7 +466,6 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
-
   const std::vector<int64_t> dense_shape{3, 3};
   std::vector<float> dense_data = {
       0, 0, 1.764052391052246f,
@@ -491,7 +492,7 @@ TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
     auto ml_type = DataTypeImpl::GetType<SparseTensor>();
     results[0].Init(p_tensor.release(), ml_type, ml_type->GetDeleteFunc());
     RunOptions ro;
-    ASSERT_STATUS_OK(session.Run(ro, {}, {}, {"values"}, &results, nullptr));
+    ASSERT_STATUS_OK(session.Run(ro, EmptySpan<std::string>(), EmptySpan<OrtValue>(), AsSpan<std::string>({"values"}), &results, nullptr));
 
     ASSERT_TRUE(results[0].IsAllocated());
     ASSERT_TRUE(results[0].IsSparseTensor());
@@ -504,7 +505,7 @@ TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
     EXPECT_THAT(coo_view.Indices().DataAsSpan<int64_t>(), ::testing::ContainerEq(gsl::make_span(expected_linear_indices)));
   }
 }
-#endif // !defined(DISABLE_SPARSE_TENSORS)
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 }  // namespace test
 }  // namespace onnxruntime

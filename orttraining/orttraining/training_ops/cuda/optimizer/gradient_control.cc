@@ -123,17 +123,17 @@ Status InPlaceAccumulatorV2<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) co
     const T_GRAD* source = right_addee_buffer.template Data<T_GRAD>();
     T* target = left_addee_buffer.template MutableData<T>();
     if (std::is_same<T, T_GRAD>::value) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, right_addee_buffer.SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, right_addee_buffer.SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(ctx)));
     } else {
       Impl_Cast<CudaT_GRAD, CudaT>(
-          Stream(),
+          Stream(ctx),
           reinterpret_cast<const CudaT_GRAD*>(source),
           reinterpret_cast<CudaT*>(target),
           right_addee_buffer.Shape().Size());
     }
   } else {
     InPlaceAccumulatorImpl(
-        Stream(),
+        Stream(ctx),
         reinterpret_cast<const CudaT*>(left_addee_buffer.template Data<T>()),
         reinterpret_cast<const CudaT_GRAD*>(right_addee_buffer.template Data<T_GRAD>()),
         reinterpret_cast<CudaT*>(left_addee_buffer.template MutableData<T>()),
@@ -146,7 +146,7 @@ Status InPlaceAccumulatorV2<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) co
 
   Tensor* accumulation_output = ctx->Output(1, left_addee_buffer.Shape());
   if (nullptr != accumulation_output) {
-    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T>(Stream(), left_addee_buffer, *accumulation_output));
+    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T>(Stream(ctx), left_addee_buffer, *accumulation_output));
   }
 
   return Status::OK();

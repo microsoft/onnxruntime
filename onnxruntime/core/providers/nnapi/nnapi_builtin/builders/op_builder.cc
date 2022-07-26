@@ -13,6 +13,7 @@
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_helpers.h"
 #include "helper.h"
 #include "model_builder.h"
 #include "op_support_checker.h"
@@ -29,37 +30,9 @@ struct OpBuilderRegistrations {
   std::unordered_map<std::string, const IOpBuilder*> op_builder_map;
 };
 
-#define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)             \
-  do {                                                                             \
-    uint32_t _index = 0;                                                           \
-    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromScalar(scalar_value, _index)); \
-    input_indices.push_back(_index);                                               \
-  } while (0)
-
-Status AddTransposeOperator(ModelBuilder& model_builder,
-                            const std::string& input,
-                            const std::string& perm_name,
-                            std::vector<int32_t> perm,
-                            const std::string& output) {
-  auto& shaper(model_builder.GetShaper());
-  const auto& operand_indices(model_builder.GetOperandIndices());
-  const auto& operand_types(model_builder.GetOperandTypes());
-
-  std::vector<uint32_t> input_indices;
-  input_indices.push_back(operand_indices.at(input));  // input
-
-  Shape perm_dimen = {SafeInt<uint32_t>(perm.size())};
-  OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), perm_operand_type));
-  uint32_t perm_idx = operand_indices.at(perm_name);
-
-  input_indices.push_back(perm_idx);  // permutation
-  ORT_RETURN_IF_ERROR(shaper.Transpose(input, perm, output));
-  OperandType output_operand_type = operand_types.at(input);
-  output_operand_type.SetDimensions(shaper[output]);
-  return model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output},
-                                    {output_operand_type});
-}
+#define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)          \
+  ORT_RETURN_IF_ERROR(onnxruntime::nnapi::op_builder_helpers::AddScalarOperand( \
+      model_builder, input_indices, scalar_value))
 
 static Status AddBinaryOperator(int32_t op_type,
                                 ModelBuilder& model_builder,
@@ -776,7 +749,7 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
   std::string perm_name = model_builder.GetUniqueName(node_unit.Name() + input + "perm");
 
-  ORT_RETURN_IF_ERROR(AddTransposeOperator(model_builder, input, perm_name, perm, output));
+  ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiTranspose(model_builder, input, perm_name, perm, output));
 
   return Status::OK();
 }
@@ -854,7 +827,7 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
     }
 
     // Now the dest node is Gemm/Matmul, we want to make sure it is supported
-    if (!BaseOpBuilder::IsOpSupported(model_builder, node_unit)) {
+    if (!BaseOpBuilder::IsOpSupported(model_builder, dest_node_unit)) {
       return false;
     }
 
@@ -905,16 +878,9 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
     model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type);
   } else {
     // We still need to perform a reshape here
-    // Add input
-    std::vector<uint32_t> input_indices;
-    input_indices.push_back(operand_indices.at(input));
-    // Add new shape
-    Shape shape_dimen = {static_cast<uint32_t>(shape.size())};
     std::string shape_name = model_builder.GetUniqueName(node_unit.Name() + input + "newshape");
-    OperandType shape_operand_type(Type::TENSOR_INT32, shape_dimen);
-    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type));
-    input_indices.push_back(operand_indices.at(shape_name));
-    ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_RESHAPE, input_indices, {output}, {output_operand_type}));
+    ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiReshape(model_builder, input, shape_name, shape, output,
+                                                            &shaper[output]));
   }
 
   return Status::OK();
@@ -1722,6 +1688,11 @@ bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
 }
 
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  if (op_builder_helpers::IsSupportedBatchMatMul(node_unit, model_builder.GetNNAPIFeatureLevel())) {
+    // no initializers to skip for batch matmul
+    return;
+  }
+
   const auto& inputs = node_unit.Inputs();
   if (IsQuantizedOp(node_unit)) {
     if (node_unit.OpType() == "QLinearMatMul" || node_unit.OpType() == "MatMul") {                 // QLinearMatMul/QDQMatMul
@@ -1758,6 +1729,10 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 }
 
 Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  if (op_builder_helpers::IsSupportedBatchMatMul(node_unit, model_builder.GetNNAPIFeatureLevel())) {
+    return op_builder_helpers::BuildBatchMatMul(model_builder, node_unit);
+  }
+
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());

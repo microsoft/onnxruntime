@@ -254,7 +254,7 @@ static bool HaveCpuExecutionProvidersOnly(const ExecutionProviders& execution_pr
 
 static const OrtMemoryInfo& FindMemoryInfoForValue(const OrtValueNameIdxMap& map,
                                                    const SequentialExecutionPlan& plan,
-                                                   const std::string& name) {
+                                                   std::string_view name) {
   int idx = -1;
   auto status = map.GetIdx(name, idx);
   ORT_THROW_IF_ERROR(status);
@@ -264,7 +264,7 @@ static const OrtMemoryInfo& FindMemoryInfoForValue(const OrtValueNameIdxMap& map
 }
 
 const OrtMemoryInfo& FindMemoryInfoForValue(const SessionState& session_state,
-                                            const std::string& name) {
+                                            std::string_view name) {
   const auto* exec_plan_ptr = session_state.GetExecutionPlan();
   ORT_ENFORCE(exec_plan_ptr);
 
@@ -307,7 +307,7 @@ static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session
 }
 
 static common::Status CalculateStaticCopyInfoForFeeds(const SessionState& session_state,
-                                                      const std::vector<std::string>& feed_names,
+                                                      gsl::span<const std::string> feed_names,
                                                       std::vector<MLValueCopyInfo>& copy_info) {
   for (size_t idx = 0, end = feed_names.size(); idx < end; ++idx) {
     ORT_RETURN_IF_ERROR(CalculateStaticCopyInfoForFeed(session_state, feed_names[idx], copy_info[idx]));
@@ -319,7 +319,7 @@ static common::Status CalculateStaticCopyInfoForFeeds(const SessionState& sessio
 // get the source device info for the node producing each output that we will return in the fetches.
 // target device info is not known until runtime.
 static common::Status CalculateStaticCopyInfoForFetches(const SessionState& session_state,
-                                                        const std::vector<std::string>& fetch_names,
+                                                        gsl::span<const std::string> fetch_names,
                                                         std::vector<MLValueCopyInfo>& copy_info) {
   for (size_t idx = 0, end = fetch_names.size(); idx < end; ++idx) {
     const std::string& output_name = fetch_names[idx];
@@ -365,7 +365,7 @@ common::Status InitializeFeedFetchCopyInfo(const SessionState& session_state,
 }
 
 // update the allocation_provider in the copy info based on the actual feeds
-static bool FinalizeCopyInfoForFeeds(const std::vector<OrtDevice>& feed_locations,
+static bool FinalizeCopyInfoForFeeds(gsl::span<const OrtDevice> feed_locations,
                                      std::vector<MLValueCopyInfo>& copy_info) {
   ORT_ENFORCE(feed_locations.size() == copy_info.size());
   bool copy_needed = false;
@@ -381,7 +381,7 @@ static bool FinalizeCopyInfoForFeeds(const std::vector<OrtDevice>& feed_location
   return copy_needed;
 }
 
-static bool FinalizeCopyInfoForFetches(const std::vector<const OrtMemoryInfo*>& fetch_alloc_info,
+static bool FinalizeCopyInfoForFetches(gsl::span<const OrtMemoryInfo* const>& fetch_alloc_info,
                                        std::vector<MLValueCopyInfo>& copy_info) {
   ORT_ENFORCE(fetch_alloc_info.size() == copy_info.size());
   bool copy_needed = false;
@@ -405,8 +405,8 @@ static bool FinalizeCopyInfoForFetches(const std::vector<const OrtMemoryInfo*>& 
 // Finalize the copy info using the OrtDevice and OrtMemoryInfo for the feeds and fetches
 // This can be used by control flow nodes prior to the execution of the overall graph.
 void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
-                               const std::vector<OrtDevice>& feed_locations,
-                               const std::vector<const OrtMemoryInfo*>& fetch_alloc_info) {
+                               gsl::span<const OrtDevice> feed_locations,
+                               gsl::span<const OrtMemoryInfo* const> fetch_alloc_info) {
   if (feeds_fetches_manager.GetDeviceCopyChecks().status == DeviceCopyCheck::NoCopy)
     return;
 
@@ -421,7 +421,7 @@ void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
 
 // Finalize the copy info using the OrtValue instances for the feeds and fetches
 static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
-                                      const std::vector<OrtValue>& feeds,
+                                      gsl::span<const OrtValue> feeds,
                                       std::vector<OrtValue>& fetches) {
   if (feeds_fetches_manager.GetDeviceCopyChecks().status == DeviceCopyCheck::NoCopy)
     return;
@@ -468,9 +468,9 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
 }
 
 static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
-                                              const std::vector<OrtValue>& orig_feeds,
+                                              gsl::span<const OrtValue> orig_feeds,
                                               std::vector<OrtValue>& new_feeds,
-                                              const std::vector<MLValueCopyInfo>& copy_info) {
+                                              gsl::span<const MLValueCopyInfo> copy_info) {
   size_t num_feeds = orig_feeds.size();
   ORT_ENFORCE(copy_info.size() == num_feeds);
 
@@ -565,7 +565,7 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
 
 static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const FeedsFetchesManager& feeds_fetches_manager,
-                                       const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                                       gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                        const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                        ExecutionMode /*execution_mode*/, const bool& terminate_flag,
                                        const logging::Logger& logger, const bool only_execute_path_to_fetches = false,
@@ -601,7 +601,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                 single_thread_mode);
     ORT_RETURN_IF_ERROR(ret);
   } else {
-    const std::vector<OrtValue>* p_feeds = &feeds;
+    auto feeds_to_use = feeds;
     std::vector<OrtValue>* p_fetches = &fetches;
     std::vector<OrtValue> device_feeds;
     std::vector<OrtValue> device_fetches;
@@ -609,7 +609,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
     if (device_copy_checks.input_copy_needed == DeviceCopyCheck::Copy) {
       const auto& feed_copy_info = feeds_fetches_manager.GetFeedsDeviceCopyInfo();
       ORT_RETURN_IF_ERROR(CopyInputsAcrossDevices(session_state, feeds, device_feeds, feed_copy_info));
-      p_feeds = &device_feeds;
+      feeds_to_use = device_feeds;
     }
 
     auto num_outputs = fetches.size();
@@ -634,13 +634,13 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
     // no device copies are needed so simple execute
     std::vector<Stream*> fetches_streams;
     auto ret = ExecuteThePlan(session_state,
-                                     feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
-                                     feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
-                                     logger,
-                                     device_stream_collection,
-                                     terminate_flag,
-                                     only_execute_path_to_fetches,
-                                     single_thread_mode);
+                              feeds_fetches_info.feeds_mlvalue_idxs, feeds_to_use,
+                              feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
+                              logger,
+                              device_stream_collection,
+                              terminate_flag,
+                              only_execute_path_to_fetches,
+                              single_thread_mode);
     ORT_RETURN_IF_ERROR(ret);
     auto& value_to_stream_map = execution_plan->value_to_stream_map;
     auto& device_streams = device_stream_collection.GetStreams();
@@ -665,7 +665,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
 
 common::Status ExecuteGraph(const SessionState& session_state,
                             FeedsFetchesManager& feeds_fetches_manager,
-                            const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                            gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag,
                             const logging::Logger& logger, bool only_execute_path_to_fetches,
                             Stream* parent_stream) {
@@ -682,7 +682,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
 
 #ifdef ENABLE_TRAINING
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
-                                   const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                                   gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
                                    const OrtValueCachePtr& cache, const bool& terminate_flag,
                                    // TODO: handle the partial_graph_index
@@ -719,7 +719,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
                                      state,
                                      cache);
   } else {
-    const std::vector<OrtValue>* p_feeds = &feeds;
+    auto p_feeds = feeds;
     std::vector<OrtValue>* p_fetches = &fetches;
     std::vector<OrtValue> device_feeds;
     std::vector<OrtValue> device_fetches;
@@ -727,7 +727,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
     if (device_copy_checks.input_copy_needed == DeviceCopyCheck::Copy) {
       const auto& feed_copy_info = feeds_fetches_manager.GetFeedsDeviceCopyInfo();
       ORT_RETURN_IF_ERROR(CopyInputsAcrossDevices(session_state, feeds, device_feeds, feed_copy_info));
-      p_feeds = &device_feeds;
+      p_feeds = device_feeds;
     }
 
     auto num_outputs = fetches.size();
@@ -750,8 +750,8 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
     }
 
     ORT_RETURN_IF_ERROR(PartialExecuteThePlan(session_state,
-                                     feeds_fetches_info.feeds_mlvalue_idxs, feeds,
-                                     feeds_fetches_info.fetches_mlvalue_idxs, fetches, {},
+                                     feeds_fetches_info.feeds_mlvalue_idxs, p_feeds,
+                                     feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, {},
                                      logger,
                                      device_stream_collection,
                                      terminate_flag,
@@ -784,7 +784,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
 #endif
 
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
-                               const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                               gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
                                Stream* parent_stream) {

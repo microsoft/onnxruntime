@@ -472,15 +472,15 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
   return Status::OK();
 }
 
-onnxruntime::Status ExecuteThePlan(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
-                                      const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
-                                      std::vector<OrtValue>& fetches,
-                                      const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                      const logging::Logger& logger,
-                                      const DeviceStreamCollection& device_streams,
-                                      const bool& terminate_flag,
-                                      const bool only_execute_path_to_fetches,
-                                      bool single_thread_mode) {
+onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
+                                   gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
+                                   std::vector<OrtValue>& fetches,
+                                   const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                   const logging::Logger& logger,
+                                   const DeviceStreamCollection& device_streams,
+                                   const bool& terminate_flag,
+                                   const bool only_execute_path_to_fetches,
+                                   bool single_thread_mode) {
   auto* execution_plan = session_state.GetExecutionPlan();
   LOGS(logger, INFO) << "Number of streams: " << execution_plan->execution_plan.size();
   int32_t valid_streams = 0;
@@ -586,8 +586,8 @@ onnxruntime::Status BindToDeviceStream(Stream* parent_stream,
 }
 
 #ifdef ENABLE_TRAINING
-onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
-                                          const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
+                                          gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                           std::vector<OrtValue>& fetches,
                                           const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                           const logging::Logger& logger,

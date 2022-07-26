@@ -83,7 +83,7 @@ class AttentionCPUBase : public AttentionBase {
     // Compute the attentionScore * Value. It does: out_tmp(B, N, S, H) = attention_probs(B, N, S, S*) x V(B, N, S*, H)
     auto out_tmp_data =
         allocator->Alloc(SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * v_head_size * sizeof(T));
-    BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(allocator));
+    BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(std::move(allocator)));
 
     ComputeVxAttentionScore(output->template MutableData<T>(), static_cast<T*>(out_tmp_data), static_cast<T*>(attention_probs), V,
                             batch_size, sequence_length, past_sequence_length, v_head_size, v_hidden_size,
