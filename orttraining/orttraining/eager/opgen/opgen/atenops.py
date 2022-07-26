@@ -112,9 +112,10 @@ for binary_op, onnx_op in {
     # from testing and call stacks, it also apears scalar ops fall back to the (Tensor) binary_op.out,
     # so this is all we need.
     name = f"aten::{binary_op}.out"
-    if name not in ops:
-        ops[f"aten::{binary_op}.out"] = deepcopy(onnx_op)
-        type_promotion_ops.append(f"aten::{binary_op}.out")
+    if name in ops:
+        raise RuntimeError("Duplicate binary op found in op dictionary.")
+    ops[f"aten::{binary_op}.out"] = deepcopy(onnx_op)
+    type_promotion_ops.append(f"aten::{binary_op}.out")
 
 # Notes on Onnx op mapping
 #
