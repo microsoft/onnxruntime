@@ -586,6 +586,7 @@ struct ProviderHost {
   virtual ConstPointerContainer<std::vector<NodeArg*>> Node__InputDefs(const Node* p) noexcept = 0;
   virtual ConstPointerContainer<std::vector<NodeArg*>> Node__OutputDefs(const Node* p) noexcept = 0;
   virtual NodeIndex Node__Index(const Node* p) noexcept = 0;
+  virtual std::vector<gsl::not_null<const Graph*>> Node__GetSubgraphs(const Node* p) const noexcept = 0;
 
   virtual void Node__ToProto(const Node* p, ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) = 0;
 
@@ -660,7 +661,9 @@ struct ProviderHost {
   virtual const NodeArg* GraphViewer__GetNodeArg(const GraphViewer* p, const std::string& name) = 0;
 
   virtual bool GraphViewer__IsSubgraph(const GraphViewer* p) = 0;
+  virtual const Graph& GraphViewer__GetGraph(const GraphViewer* p) const = 0;
   virtual bool GraphViewer__IsConstantInitializer(const GraphViewer* p, const std::string& name, bool check_outer_scope) = 0;
+  virtual const Node* GraphViewer__ParentNode(const GraphViewer* p) = 0;
   virtual int GraphViewer__NumberOfNodes(const GraphViewer* p) noexcept = 0;
   virtual int GraphViewer__MaxNodeIndex(const GraphViewer* p) noexcept = 0;
 

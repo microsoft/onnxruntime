@@ -203,6 +203,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, bool remove_cycles = true) const;
 
+  bool TensorrtExecutionProvider::IsSubgraphOfControlFlowOp(const GraphViewer& graph) const;
+  bool TensorrtExecutionProvider::IsWholeGraphSupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
+
   /** 
   Get a unique_lock object to control the concurrency behavior. 
   Every api call not in the thread-safe operations(https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading)

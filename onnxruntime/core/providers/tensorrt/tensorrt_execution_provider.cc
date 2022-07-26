@@ -955,6 +955,27 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
   return cycle_detected;
 }
 
+bool TensorrtExecutionProvider::IsSubgraphOfControlFlowOp(const GraphViewer& graph) const {
+  if (graph.IsSubgraph()) {
+    const auto parent_node_type = graph.ParentNode()->OpType();
+    if (parent_node_type == "If" || parent_node_type == "Loop" || parent_node_type == "Scan") {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool TensorrtExecutionProvider::IsWholeGraphSupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const {
+  int number_of_trt_nodes = 0;
+    for (const auto& group : supported_nodes_vector) {
+    if (!group.first.empty()) {
+      number_of_trt_nodes += static_cast<int>(group.first.size());
+      }
+    }
+
+  return number_of_trt_nodes == number_of_ort_nodes;
+}
+
 std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
@@ -1007,6 +1028,42 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
+
+
+  // Handle the case where the graph is sugraph of control flow op
+  if (IsSubgraphOfControlFlowOp(graph) && IsWholeGraphSupported(supported_nodes_vector, number_of_ort_nodes)) {
+    const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+    bool all_subgraphs_are_supported = true;
+
+    // "If" control flow op has two subgraph bodies, "then" body and "else" body seperately.
+    // Check another subgraph of its parent node to see whether that subgraph is also fully supported by TRT.
+    if (graph.ParentNode()->OpType() == "If") {
+      all_subgraphs_are_supported = false;
+      SubGraphCollection_t subgraph_supported_nodes_vector;
+      auto sub_graphs = graph.ParentNode()->GetSubgraphs();
+      for (auto sub_graph : sub_graphs) {
+        if (&graph.GetGraph() != sub_graph.get()) {
+          subgraph_supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
+          all_subgraphs_are_supported = IsWholeGraphSupported(subgraph_supported_nodes_vector, number_of_ort_nodes);
+          break;
+        }
+      }      
+    } 
+
+    if (all_subgraphs_are_supported) {
+      for (const auto& group : supported_nodes_vector) {
+        if (!group.first.empty()) {
+          for (const auto& index : group.first) {
+            std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::IndexedSubGraph::Create();
+            sub_graph->Nodes().push_back(node_index[index]);
+            result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+          }
+        }
+      }
+      return result;
+    }    
+  } 
+    
   int number_of_trt_nodes = 0;
   for (const auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
@@ -1024,7 +1081,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   } else {
     LOGS_DEFAULT(INFO) << "[TensorRT EP] Graph is partitioned and number of subgraphs running on TensorRT execution provider is " << number_of_subgraphs;
   }
-
+  
   return result;
 }
 
