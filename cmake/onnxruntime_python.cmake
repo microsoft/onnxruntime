@@ -375,6 +375,17 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_utils_data_srcs CONFIGURE_DEPENDS
   "${ORTTRAINING_SOURCE_DIR}/python/training/utils/data/*"
   )
+  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+    file(GLOB onnxruntime_python_onnxblock_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/onnxblock/*"
+    )
+    file(GLOB onnxruntime_python_onnxblock_loss_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/onnxblock/loss/*"
+    )
+    file(GLOB onnxruntime_python_onnxblock_optim_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/onnxblock/optim/*"
+    )
+  endif()
 else()
   file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/training/*.py"
@@ -706,6 +717,23 @@ if (onnxruntime_ENABLE_TRAINING)
         ${onnxruntime_python_utils_data_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
   )
+  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/loss
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/optim
+      COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_onnxblock_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/
+      COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_onnxblock_loss_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/loss/
+      COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_onnxblock_optim_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/optim/
+    )
+  endif()
 endif()
 
 if (onnxruntime_USE_DNNL)

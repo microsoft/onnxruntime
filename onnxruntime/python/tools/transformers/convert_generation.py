@@ -6,22 +6,25 @@
 This converts GPT2 or T5 model to onnx with beam search operator.
 
 Example 1: convert gpt2 model with beam search:
-    python convert_beam_search.py -m gpt2 --output gpt2_beam_search.onnx
+    python convert_generation.py -m gpt2 --output gpt2_beam_search.onnx
 
 Example 2: convert T5 model with beam search in two steps:
     cd ./models/t5
     python convert_to_onnx.py -m t5-small
     cd ../..
-    python convert_beam_search.py -m t5-small --model_type t5                                   \
+    python convert_generation.py -m t5-small --model_type t5                                   \
         --decoder_onnx ./models/t5/onnx_models/t5-small_decoder.onnx                            \
         --encoder_decoder_init_onnx ./models/t5/onnx_models/t5-small_encoder_decoder_init.onnx  \
         --output ./models/t5/onnx_models/t5_small_beam_search.onnx
 
 Example 3: convert T5 model with beam search. All in one step:
-    python convert_beam_search.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx
+    python convert_generation.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx
 
 Example 4: convert MT5 model with external data file like mt5-base-beamsearch.onnx.data in below example.
-    python convert_beam_search.py -m google/mt5-base --model_type mt5 --output mt5-base-beamsearch.onnx -e
+    python convert_generation.py -m google/mt5-base --model_type mt5 --output mt5-base-beamsearch.onnx -e
+
+Example 5: convert gpt2 model with greedy search:
+    python convert_generation.py -m gpt2 --output gpt2_greedy_search.onnx --num_beams 1 --num_return_sequences 1
 """
 
 import argparse
@@ -29,6 +32,7 @@ import logging
 import os
 import sys
 import time
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -61,6 +65,14 @@ from models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS  # n
 from onnx_model import OnnxModel
 
 logger = logging.getLogger("")
+
+
+class GenerationType(Enum):
+    BEAMSEARCH = "beam_search"
+    GREEDYSEARCH = "greedy_search"
+
+    def __str__(self):
+        return self.value
 
 
 def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
@@ -212,6 +224,14 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Enable prefix_vocab_mask. This mask can be used to filter bad words in the first generated token only",
     )
     model_group.set_defaults(prefix_vocab_mask=False)
+
+    model_group.add_argument(
+        "--custom_attention_mask",
+        required=False,
+        action="store_true",
+        help="Enable custom_attention_mask. This mask can be used to replace default encoder attention mask",
+    )
+    model_group.set_defaults(custom_attention_mask=False)
 
     beam_parameters_group = parser.add_argument_group(
         "Beam search parameters not stored in the output model, for testing parity and performance"
@@ -620,7 +640,7 @@ def remove_shared_initializers(
     shared_prefix: str = "shared_",
     min_elements: int = 1024,
 ):
-    """Remove intializers with same value from two graphs.
+    """Remove initializers with same value from two graphs.
 
     Args:
         graph1 (GraphProto): the first graph to process
@@ -636,11 +656,11 @@ def remove_shared_initializers(
     shared_initializers_names = []
 
     for initializer1 in graph1.initializer:
-        if not (initializer1.dims and sum(initializer1.dims) > min_elements):
+        if not (initializer1.dims and sum(initializer1.dims) >= min_elements):
             continue
 
         for initializer2 in graph2.initializer:
-            if not (initializer2.dims and sum(initializer2.dims) > min_elements):
+            if not (initializer2.dims and sum(initializer2.dims) >= min_elements):
                 continue
 
             if OnnxModel.has_same_value(initializer1, initializer2):
@@ -727,13 +747,58 @@ def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto
     return initializers
 
 
-def convert_model(args: argparse.Namespace):
+def move_initializers(
+    graph: GraphProto,
+    min_elements: int = 1024,
+) -> List[TensorProto]:
+    """Remove initializers of a graph, when they have number of elements larger than a threshold.
+
+    Args:
+        graph (GraphProto): the graph.
+        min_elements (int, optional): minimal number of elements for initializers to be considered. Defaults to 1024.
+
+    Returns:
+        List[TensorProto]: initializers that are removed from the graph.
+    """
+    moved_initializers = []
+    for tensor in graph.initializer:
+        if not (tensor.dims and sum(tensor.dims) >= min_elements):
+            continue
+        moved_initializers.append(tensor)
+
+    for initializer in moved_initializers:
+        graph.initializer.remove(initializer)
+
+    # Add type info, otherwise ORT will raise error: "input arg (*) does not have type information set by parent node."
+    for initializer in moved_initializers:
+        shape = onnx.numpy_helper.to_array(initializer).shape
+        value_info = onnx.helper.make_tensor_value_info(initializer.name, initializer.data_type, shape)
+        graph.value_info.append(value_info)
+
+    return moved_initializers
+
+
+def convert_generation_model(args: argparse.Namespace, generation_type: GenerationType = GenerationType.BEAMSEARCH):
     """Convert model according to command line arguments.
 
     Args:
         args (argparse.Namespace): arguments parsed from command line
     """
     is_gpt2: bool = args.model_type == "gpt2"
+    is_greedysearch: bool = generation_type == GenerationType.GREEDYSEARCH
+
+    if is_greedysearch:
+        if not is_gpt2:
+            raise NotImplementedError("Currently only gpt2 with greedy search is supported")
+        if args.vocab_mask:
+            raise NotImplementedError("vocab_mask currently is not supported in greedy search")
+        if args.prefix_vocab_mask:
+            raise NotImplementedError("prefix_vocab_mask currently is not supported in greedy search")
+        if args.output_sequences_scores:
+            raise NotImplementedError("output_sequences_scores currently is not supported in greedy search")
+        if args.output_token_scores:
+            raise NotImplementedError("output_token_scores currently is not supported in greedy search")
+
     if is_gpt2:
         if args.decoder_onnx and os.path.exists(args.decoder_onnx):
             logger.info(f"skip convert_to_onnx since path existed: {args.decoder_onnx}")
@@ -783,24 +848,38 @@ def convert_model(args: argparse.Namespace):
     else:
         verify_t5_decoder_subgraph(decoder_model.graph, args.precision)
 
-    inputs = [
-        "input_ids",
-        "max_length",
-        "min_length",
-        "num_beams",
-        "num_return_sequences",
-        "length_penalty",
-        "repetition_penalty",
-    ]
+    inputs = (
+        [
+            "input_ids",
+            "max_length",
+            "min_length",
+            "num_beams",
+            "num_return_sequences",
+            "length_penalty",
+            "repetition_penalty",
+        ]
+        if not is_greedysearch
+        else [
+            "input_ids",
+            "max_length",
+            "min_length",
+            "repetition_penalty",
+        ]
+    )
 
     if args.vocab_mask:
         inputs.append("vocab_mask")
-    else:
+    elif not is_greedysearch:
         inputs.append("")
 
     if args.prefix_vocab_mask:
         inputs.append("prefix_vocab_mask")
-    else:
+    elif not is_greedysearch:
+        inputs.append("")
+
+    if args.custom_attention_mask:
+        inputs.append("attention_mask")
+    elif not is_greedysearch:
         inputs.append("")
 
     outputs = ["sequences"]
@@ -811,14 +890,25 @@ def convert_model(args: argparse.Namespace):
         assert args.output_sequences_scores, "--output_token_scores requires --output_sequences_scores"
         outputs.append("scores")
 
-    node = onnx.helper.make_node(
-        "BeamSearch",
-        inputs=inputs,
-        outputs=outputs,
-        name=f"BeamSearch_{args.model_type}",
+    node = (
+        onnx.helper.make_node(
+            "BeamSearch",
+            inputs=inputs,
+            outputs=outputs,
+            name=f"BeamSearch_{args.model_type}",
+        )
+        if not is_greedysearch
+        else onnx.helper.make_node(
+            "GreedySearch",
+            inputs=inputs,
+            outputs=outputs,
+            name=f"GreedySearch_{args.model_type}",
+        )
     )
+
     node.domain = "com.microsoft"
-    node.attribute.extend(
+
+    attr_to_extend = (
         [
             onnx.helper.make_attribute("eos_token_id", eos_token_id),
             onnx.helper.make_attribute("pad_token_id", pad_token_id),
@@ -826,7 +916,14 @@ def convert_model(args: argparse.Namespace):
             onnx.helper.make_attribute("early_stopping", 1 if args.early_stopping else 0),
             onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
         ]
+        if not is_greedysearch
+        else [
+            onnx.helper.make_attribute("eos_token_id", eos_token_id),
+            onnx.helper.make_attribute("pad_token_id", pad_token_id),
+            onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
+        ]
     )
+    node.attribute.extend(attr_to_extend)
 
     initializers = []
     if args.model_type in ["t5", "mt5"]:
@@ -838,8 +935,19 @@ def convert_model(args: argparse.Namespace):
         verify_t5_encoder_decoder_init_subgraph(encoder_model.graph, args.precision)
 
         if not args.disable_shared_initializers:
+            # Unique shared initializers from the decoder and decoder_init could reduce memory usage in inference.
             initializers = get_shared_initializers(encoder_model, decoder_model)
-            logger.info(f"{len(initializers)} shared initializers in subgraphs are moved to the main graph")
+            logger.info(
+                f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in subgraphs are moved to the main graph"
+            )
+
+            # TODO(tianleiwu): investigate the following which causes error in inference
+            # Move initializer from subgraph to main graph could reduce memory usage in inference.
+            # moved_initializers = move_initializers(encoder_model.graph)
+            # logger.info(
+            #     f"{len(moved_initializers)} initializers ({[i.name for i in moved_initializers]}) from the encoder are moved to the main graph"
+            # )
+            # initializers.extend(moved_initializers)
 
         node.attribute.extend(
             [
@@ -852,6 +960,10 @@ def convert_model(args: argparse.Namespace):
             ]
         )
     else:
+        # Move initializer from subgraph to main graph could reduce memory usage in inference.
+        initializers = move_initializers(decoder_model.graph)
+        logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")
+
         node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
 
     # graph inputs
@@ -863,15 +975,24 @@ def convert_model(args: argparse.Namespace):
     length_penalty = onnx.helper.make_tensor_value_info("length_penalty", TensorProto.FLOAT, [1])
     repetition_penalty = onnx.helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
 
-    graph_inputs = [
-        input_ids,
-        max_length,
-        min_length,
-        num_beams,
-        num_return_sequences,
-        length_penalty,
-        repetition_penalty,
-    ]
+    graph_inputs = (
+        [
+            input_ids,
+            max_length,
+            min_length,
+            num_beams,
+            num_return_sequences,
+            length_penalty,
+            repetition_penalty,
+        ]
+        if not is_greedysearch
+        else [
+            input_ids,
+            max_length,
+            min_length,
+            repetition_penalty,
+        ]
+    )
 
     if args.vocab_mask:
         vocab_mask = onnx.helper.make_tensor_value_info("vocab_mask", TensorProto.INT32, [vocab_size])
@@ -883,11 +1004,25 @@ def convert_model(args: argparse.Namespace):
         )
         graph_inputs.append(prefix_vocab_mask)
 
+    if args.custom_attention_mask:
+        attention_mask = onnx.helper.make_tensor_value_info(
+            "attention_mask", TensorProto.INT32, ["batch_size", "sequence_length"]
+        )
+        graph_inputs.append(attention_mask)
+
     # graph outputs
-    sequences = onnx.helper.make_tensor_value_info(
-        "sequences",
-        TensorProto.INT32,
-        ["batch_size", "num_return_sequences", "max_length"],
+    sequences = (
+        onnx.helper.make_tensor_value_info(
+            "sequences",
+            TensorProto.INT32,
+            ["batch_size", "num_return_sequences", "max_length"],
+        )
+        if not is_greedysearch
+        else onnx.helper.make_tensor_value_info(
+            "sequences",
+            TensorProto.INT32,
+            ["batch_size", "max_length"],
+        )
     )
 
     sequences_scores = onnx.helper.make_tensor_value_info(
@@ -909,7 +1044,11 @@ def convert_model(args: argparse.Namespace):
         graph_outputs.append(scores)
 
     new_graph = onnx.helper.make_graph(
-        [node], f"{args.model_type} beam search", graph_inputs, graph_outputs, initializers
+        [node],
+        f"{args.model_type} beam search" if not is_greedysearch else f"{args.model_type} greedy search",
+        graph_inputs,
+        graph_outputs,
+        initializers,
     )
 
     # Create the model
@@ -1003,7 +1142,7 @@ def test_torch_performance(
     return get_latency_result(torch_latency, batch_size)
 
 
-def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = None):
+def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = None, is_greedy: bool = False):
     """Test GPT-2 model
 
     Args:
@@ -1089,68 +1228,113 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
 
     ort_session = create_ort_session(args.output, args.use_gpu)
 
-    inputs = {
-        "input_ids": input_ids.cpu().numpy().astype(np.int32),
-        "max_length": np.array([args.max_length], dtype=np.int32),
-        "min_length": np.array([args.min_length], dtype=np.int32),
-        "num_beams": np.array([args.num_beams], dtype=np.int32),
-        "num_return_sequences": np.array([args.num_return_sequences], dtype=np.int32),
-        "length_penalty": np.array([args.length_penalty], dtype=np.float32),
-        "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
-    }
+    if is_greedy:
+        inputs = {
+            "input_ids": input_ids.cpu().numpy().astype(np.int32),
+            "max_length": np.array([args.max_length], dtype=np.int32),
+            "min_length": np.array([args.min_length], dtype=np.int32),
+            "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
+        }
 
-    if args.vocab_mask:
-        vocab_mask = np.ones((vocab_size), dtype=np.int32)
-        if args.vocab_mask:
-            for bad_word_id in bad_words_ids:
-                vocab_mask[bad_word_id] = 0
-        inputs["vocab_mask"] = vocab_mask
+        logger.debug("ORT inputs", inputs)
+        result = ort_session.run(None, inputs)
 
-    batch_size = input_ids.shape[0]
-    if args.prefix_vocab_mask:
-        logger.info("Use prefix vocab mask with all ones in ORT, but no corresponding setting for Torch model.")
-        prefix_vocab_mask = np.ones((batch_size, vocab_size), dtype=np.int32)
-        inputs["prefix_vocab_mask"] = prefix_vocab_mask
+        if args.save_test_data:
+            test_data_dir = Path(args.output).parent.as_posix()
+            logger.debug("test_data_dir", test_data_dir)
+            from bert_test_data import output_test_data
 
-    logger.debug("ORT inputs", inputs)
-    result = ort_session.run(None, inputs)
+            all_inputs = [inputs]
+            for i, inputs in enumerate(all_inputs):
+                dir = os.path.join(test_data_dir, "test_data_set_" + str(i))
+                output_test_data(dir, inputs)
 
-    if args.save_test_data:
-        test_data_dir = Path(args.output).parent.as_posix()
-        logger.debug("test_data_dir", test_data_dir)
-        from bert_test_data import output_test_data
+        # Test performance
+        latency = []
+        for _ in range(args.total_runs):
+            start = time.time()
+            _ = ort_session.run(None, inputs)
+            latency.append(time.time() - start)
 
-        all_inputs = [inputs]
-        for i, inputs in enumerate(all_inputs):
-            dir = os.path.join(test_data_dir, "test_data_set_" + str(i))
-            output_test_data(dir, inputs)
+        from benchmark_helper import get_latency_result
 
-    # Test performance
-    latency = []
-    for _ in range(args.total_runs):
-        start = time.time()
-        _ = ort_session.run(None, inputs)
-        latency.append(time.time() - start)
+        batch_size = input_ids.shape[0]
+        output = get_latency_result(latency, batch_size)
 
-    from benchmark_helper import get_latency_result
+        print("ORT outputs:")
+        sequences = result[0]
+        print("sequences", sequences)
 
-    output = get_latency_result(latency, batch_size)
-
-    print("ORT outputs:")
-    sequences = result[0]
-    print("sequences", sequences)
-    if args.output_sequences_scores:
-        print("sequences_scores", result[1])
-    if args.output_token_scores:
-        print("scores", result[2])
-
-    (batch_size, num_sequences, max_length) = sequences.shape
-    ort_decoded_sequences = []
-    for i in range(batch_size):
-        for j in range(num_sequences):
-            decoded_sequence = tokenizer.decode(sequences[i][j], skip_special_tokens=True)
+        (batch_size, max_length) = sequences.shape
+        ort_decoded_sequences = []
+        for i in range(batch_size):
+            decoded_sequence = tokenizer.decode(sequences[i], skip_special_tokens=True)
             ort_decoded_sequences.append(decoded_sequence)
-            print(f"batch {i} sequence {j}: {decoded_sequence}")
+            print(f"batch {i} sequence: {decoded_sequence}")
+
+    else:
+        inputs = {
+            "input_ids": input_ids.cpu().numpy().astype(np.int32),
+            "max_length": np.array([args.max_length], dtype=np.int32),
+            "min_length": np.array([args.min_length], dtype=np.int32),
+            "num_beams": np.array([args.num_beams], dtype=np.int32),
+            "num_return_sequences": np.array([args.num_return_sequences], dtype=np.int32),
+            "length_penalty": np.array([args.length_penalty], dtype=np.float32),
+            "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
+        }
+
+        if args.vocab_mask:
+            vocab_mask = np.ones((vocab_size), dtype=np.int32)
+            if args.vocab_mask:
+                for bad_word_id in bad_words_ids:
+                    vocab_mask[bad_word_id] = 0
+            inputs["vocab_mask"] = vocab_mask
+
+        batch_size = input_ids.shape[0]
+        if args.prefix_vocab_mask:
+            logger.info("Use prefix vocab mask with all ones in ORT, but no corresponding setting for Torch model.")
+            prefix_vocab_mask = np.ones((batch_size, vocab_size), dtype=np.int32)
+            inputs["prefix_vocab_mask"] = prefix_vocab_mask
+
+        logger.debug("ORT inputs", inputs)
+        result = ort_session.run(None, inputs)
+
+        if args.save_test_data:
+            test_data_dir = Path(args.output).parent.as_posix()
+            logger.debug("test_data_dir", test_data_dir)
+            from bert_test_data import output_test_data
+
+            all_inputs = [inputs]
+            for i, inputs in enumerate(all_inputs):
+                dir = os.path.join(test_data_dir, "test_data_set_" + str(i))
+                output_test_data(dir, inputs)
+
+        # Test performance
+        latency = []
+        for _ in range(args.total_runs):
+            start = time.time()
+            _ = ort_session.run(None, inputs)
+            latency.append(time.time() - start)
+
+        from benchmark_helper import get_latency_result
+
+        output = get_latency_result(latency, batch_size)
+
+        print("ORT outputs:")
+        sequences = result[0]
+        print("sequences", sequences)
+        if args.output_sequences_scores:
+            print("sequences_scores", result[1])
+        if args.output_token_scores:
+            print("scores", result[2])
+
+        (batch_size, num_sequences, max_length) = sequences.shape
+        ort_decoded_sequences = []
+        for i in range(batch_size):
+            for j in range(num_sequences):
+                decoded_sequence = tokenizer.decode(sequences[i][j], skip_special_tokens=True)
+                ort_decoded_sequences.append(decoded_sequence)
+                print(f"batch {i} sequence {j}: {decoded_sequence}")
 
     if beam_outputs:
         torch_sequences = beam_outputs.sequences.reshape(batch_size, args.num_return_sequences, -1)
@@ -1301,6 +1485,17 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
     if args.vocab_mask:
         inputs["vocab_mask"] = vocab_mask
 
+    if args.custom_attention_mask:
+        attention_mask = np.ones(input_ids.shape, dtype=np.int32)
+        for i in range(input_ids.shape[0]):
+            abs_pos = 0
+            for j in range(input_ids.shape[1]):
+                if input_ids[i][j] == pad_token_id and abs_pos == 0:
+                    attention_mask[i][j] = 0
+                else:
+                    abs_pos += 1
+        inputs["attention_mask"] = attention_mask
+
     if args.save_test_data:
         test_data_dir = Path(args.output).parent.as_posix()
         logger.debug("test_data_dir", test_data_dir)
@@ -1401,14 +1596,22 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
             args.decoder_onnx and not args.encoder_decoder_init_onnx
         ):
             raise ValueError("--decoder_onnx shall use together with --encoder_decoder_init_onnx")
+    else:
+        if args.custom_attention_mask:
+            raise NotImplementedError("custom_attention_mask is only supported in t5 with beam search")
 
-    convert_model(args)
+    is_greedy = args.num_beams == 1 and args.num_return_sequences == 1
+
+    if args.model_type == "gpt2" and is_greedy:
+        convert_generation_model(args, GenerationType.GREEDYSEARCH)
+    else:
+        convert_generation_model(args)
 
     logger.info("start testing model...")
     if args.model_type in ["t5", "mt5"]:
         result = test_t5_model(args, sentences=sentences)
     else:
-        result = test_gpt_model(args, sentences=sentences)
+        result = test_gpt_model(args, sentences=sentences, is_greedy=is_greedy)
 
     if result:
         if args.use_external_data_format:

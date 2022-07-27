@@ -1,7 +1,7 @@
 # Known Limits
 # 1. Anchors are not supported in GHA
 # https://github.community/t/support-for-yaml-anchors/16128/90
-# 2. today most cloud-based CI services are still lacking hardware acceleration support from the host VM, 
+# 2. today most cloud-based CI services are still lacking hardware acceleration support from the host VM,
 # which is the no.1 blocker for running tests on modern Android Emulators (especially on recent API levels) on CI.
 
 jobs:
@@ -75,7 +75,7 @@ jobs:
       overWrite: true
 
   - task: CopyFiles@2
-    displayName: Copy test data 
+    displayName: Copy test data
     inputs:
       contents: 'build/**/testdata/**'
       targetFolder: $(Build.ArtifactStagingDirectory)
@@ -84,7 +84,9 @@ jobs:
   - task: CopyFiles@2
     displayName: Copy test executables
     inputs:
-      contents: 'build/Debug/*'
+      contents: |
+        build/Debug/*
+        build/Debug/java/androidtest/android/**
       targetFolder: $(Build.ArtifactStagingDirectory)
       overWrite: true
 
@@ -114,6 +116,9 @@ jobs:
         artifact: 'CPUBuildOutput'
         path: $(Build.SourcesDirectory)
 
+    - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
+      displayName: Setup gradle wrapper to use gradle 6.8.3
+
     - script: |
         python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
@@ -121,6 +126,15 @@ jobs:
         --start --emulator-extra-args="-partition-size 4096" \
         --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
       displayName: Start Android emulator
+
+    # Start switching to jdk 11 after the Android Emulator is started
+    # since Android SDK manager requires java 8
+    - task: JavaToolInstaller@0
+      displayName: Use jdk 11
+      inputs:
+        versionSpec: '11'
+        jdkArchitectureOption: 'x64'
+        jdkSourceOption: 'PreInstalled'
 
     - script: |
         python3 tools/ci_build/build.py \
@@ -130,6 +144,7 @@ jobs:
         --android_ndk_path $ANDROID_NDK_HOME \
         --android_abi=x86_64 \
         --android_api=30 \
+        --build_java \
         --test
       displayName: CPU EP, Test on Android Emulator
 
@@ -219,7 +234,9 @@ jobs:
   - task: CopyFiles@2
     displayName: Copy Test Executables
     inputs:
-      contents: 'build_nnapi/Debug/*'
+      contents: |
+        build_nnapi/Debug/*
+        build_nnapi/Debug/java/androidtest/android/**
       targetFolder: $(Build.ArtifactStagingDirectory)
       overWrite: true
 
@@ -227,7 +244,7 @@ jobs:
     inputs:
       pathToPublish: $(Build.ArtifactStagingDirectory)
       artifactName: NNAPIBuildOutput
-      
+
   - template: templates/clean-agent-build-directory-step.yml
 
 - job: Test_NNAPI_EP
@@ -255,6 +272,9 @@ jobs:
       inputs:
         versionSpec: $(pythonVersion)
 
+    - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
+      displayName: Setup gradle wrapper to use gradle 6.8.3
+
     - script: |
         python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
@@ -262,7 +282,16 @@ jobs:
         --start --emulator-extra-args="-partition-size 4096" \
         --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
       displayName: Start Android emulator
-      
+
+    # Start switching to jdk 11 after the Android Emulator is started
+    # since Android SDK manager requires java 8
+    - task: JavaToolInstaller@0
+      displayName: Use jdk 11
+      inputs:
+        versionSpec: '11'
+        jdkArchitectureOption: 'x64'
+        jdkSourceOption: 'PreInstalled'
+
     - script: |
         python3 tools/ci_build/build.py \
         --android \
@@ -271,6 +300,7 @@ jobs:
         --android_ndk_path $ANDROID_NDK_HOME \
         --android_abi=x86_64 \
         --android_api=29 \
+        --build_java \
         --use_nnapi \
         --test
       displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
@@ -287,18 +317,6 @@ jobs:
           $(Build.SourcesDirectory)/protobuf_install
       displayName: Build Host Protoc
 
-    - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-      displayName: Setup gradle wrapper to use gradle 6.8.3
-
-    # Start switching to jdk 11 after the Android Emulator is started
-    # since Android SDK manager requires java 8
-    - task: JavaToolInstaller@0
-      displayName: Use jdk 11
-      inputs:
-        versionSpec: '11'
-        jdkArchitectureOption: 'x64'
-        jdkSourceOption: 'PreInstalled'
-
     - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
       # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
       displayName: Build Minimal ORT with NNAPI and run tests
@@ -310,7 +328,7 @@ jobs:
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
       displayName: Stop Android emulator
       condition: always()
-      
+
     - template: templates/clean-agent-build-directory-step.yml
 
 # The below jobs only run on master build
@@ -346,7 +364,7 @@ jobs:
           $(Build.BinariesDirectory)/protobuf \
           $(Build.SourcesDirectory)/protobuf_install
       displayName: Build Host Protoc
- 
+
     - script: |
         python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
@@ -380,7 +398,7 @@ jobs:
         --build_java \
         --code_coverage
       displayName: NNAPI EP, Build, Test, CodeCoverage on Android Emulator
-      
+
     - script: |
         python3 -m pip install gcovr && \
         python3 tools/ci_build/coverage.py \
@@ -408,9 +426,9 @@ jobs:
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
       displayName: Stop Android emulator
       condition: always()
-      
+
     - template: templates/clean-agent-build-directory-step.yml
-      
+
 - job: Update_Dashboard
   workspace:
     clean: all
@@ -419,7 +437,7 @@ jobs:
     value: true
   pool: 'Linux-CPU-2019'
   condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
-  dependsOn: 
+  dependsOn:
   - Test_CPU_EP
   - NNAPI_EP_MASTER
   steps:
@@ -437,5 +455,5 @@ jobs:
         scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
         arguments: '"$(Build.BinariesDirectory)/coverage_rpt.txt" "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" arm android nnapi'
         workingDirectory: '$(Build.BinariesDirectory)'
-      
+
     - template: templates/clean-agent-build-directory-step.yml

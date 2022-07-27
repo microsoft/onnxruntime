@@ -30,7 +30,7 @@
 *
 * This value is used by some API functions to behave as this version of the header expects.
 */
-#define ORT_API_VERSION 12
+#define ORT_API_VERSION 13
 
 #ifdef __cplusplus
 extern "C" {
@@ -536,6 +536,9 @@ typedef struct OrtOpenVINOProviderOptions {
 
 struct OrtApi;
 typedef struct OrtApi OrtApi;
+
+struct OrtTrainingApi;
+typedef struct OrtTrainingApi OrtTrainingApi;
 
 /** \brief The helper interface to get the right version of OrtApi
 *
@@ -3486,6 +3489,16 @@ struct OrtApi {
   * \since Version 1.12.
   */
   ORT_CLASS_RELEASE(KernelInfo);
+
+  /* \brief: Get the training C Api
+  *
+  * \since Version 1.13
+  */
+  const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+
+#ifdef __cplusplus
+  OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
+#endif
 };
 
 /*
@@ -3494,7 +3507,6 @@ struct OrtApi {
  *   2 Create an OrtCustomOp structure for each op and add them to the domain
  *   3 Call OrtAddCustomOpDomain to add the custom domain of ops to the session options
 */
-#define OrtCustomOpApi OrtApi
 
 // Specifies some characteristics of inputs/outputs of custom ops:
 // Specify if the inputs/outputs are one of:

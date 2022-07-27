@@ -26,7 +26,6 @@
 #include <algorithm>
 #include <cmath>
 
-using namespace std;
 namespace onnxruntime {
 
 template <typename T>
@@ -123,7 +122,7 @@ static void HeapifyIthPosition(int64_t* heap, size_t i, size_t k, const HeapCmp&
 template <class Comparator>
 static void SelectTopK(const Comparator& comparer,
                        int64_t row_offset, int64_t num_blocks, int64_t block_slice, int64_t inter_block_offset,
-                       const unsigned k, bool sort_top_k, vector<int64_t>& data_holder) {
+                       const unsigned k, bool sort_top_k, std::vector<int64_t>& data_holder) {
   for (int64_t l = 0; l < num_blocks; ++l) {
     data_holder[l] = (row_offset + (l * block_slice + inter_block_offset));
   }
@@ -375,8 +374,8 @@ template <typename T>
 Status GetTopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
                AllocatorPtr allocator,
                onnxruntime::concurrency::ThreadPool* threadpool,
-               std::unique_ptr<Tensor>& output_values,
-               std::unique_ptr<Tensor>& output_indices) {
+               Tensor& output_values,
+               Tensor& output_indices) {
   const TensorShape& input_shape = input->Shape();
   
   // Will return axis_ as is if positive or fixes it in case it is negative
@@ -394,8 +393,8 @@ Status GetTopK(const Tensor* input, const int axis, const unsigned k, bool large
   TensorShape output_shape = input_shape;
   output_shape[axis_parsed] = k;
 
-  output_values = Tensor::Create(input->DataType(), output_shape, allocator);
-  output_indices = Tensor::Create(DataTypeImpl::GetType<int64_t>(), output_shape, allocator);
+  output_values = Tensor(input->DataType(), output_shape, allocator);
+  output_indices = Tensor(DataTypeImpl::GetType<int64_t>(), output_shape, allocator);
 
   // no-op - no output buffers to fill - return silently
   if (k == 0) {
@@ -403,10 +402,10 @@ Status GetTopK(const Tensor* input, const int axis, const unsigned k, bool large
   }
 
   if (largest) {
-    FindTopKElements<GreaterValueCmp<T>>(input, input_shape, output_values.get(), output_indices.get(), output_shape, k, sorted,
+    FindTopKElements<GreaterValueCmp<T>>(input, input_shape, &output_values, &output_indices, output_shape, k, sorted,
                                          gsl::narrow_cast<unsigned>(axis_parsed), threadpool);
   } else {
-    FindTopKElements<LesserValueCmp<T>>(input, input_shape, output_values.get(), output_indices.get(), output_shape, k, sorted,
+    FindTopKElements<LesserValueCmp<T>>(input, input_shape, &output_values, &output_indices, output_shape, k, sorted,
                                         gsl::narrow_cast<unsigned>(axis_parsed), threadpool);
   }
 
@@ -417,8 +416,8 @@ Status GetTopK(const Tensor* input, const int axis, const unsigned k, bool large
 template Status GetTopK<float>(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
                                AllocatorPtr allocator,
                                onnxruntime::concurrency::ThreadPool* threadpool,
-                               std::unique_ptr<Tensor>& output_values,
-                               std::unique_ptr<Tensor>& output_indices);
+                               Tensor& output_values,
+                               Tensor& output_indices);
 
 // Opset ver - 1 to 9
 

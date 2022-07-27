@@ -180,6 +180,7 @@ def parse_arguments():
     parser.add_argument(
         "--enable_training_torch_interop", action="store_true", help="Enable training kernels interop with torch."
     )
+    parser.add_argument("--enable_training_on_device", action="store_true", help="Enable on device training in ORT.")
     parser.add_argument("--disable_nccl", action="store_true", help="Disable Nccl.")
     parser.add_argument("--mpi_home", help="Path to MPI installation dir")
     parser.add_argument("--nccl_home", help="Path to NCCL installation dir")
@@ -890,6 +891,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING_OPS=" + ("ON" if args.enable_training_ops else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING_TORCH_INTEROP=" + ("ON" if args.enable_training_torch_interop else "OFF"),
+        "-Donnxruntime_ENABLE_TRAINING_ON_DEVICE=" + ("ON" if args.enable_training_on_device else "OFF"),
         # Enable advanced computations such as AVX for some traininig related ops.
         "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + ("ON" if args.enable_training else "OFF"),
         "-Donnxruntime_USE_NCCL=" + ("ON" if args.enable_training and not args.disable_nccl else "OFF"),
@@ -1512,9 +1514,9 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 )
 
             if args.use_nnapi:
-                adb_shell("cd {0} && {0}/onnx_test_runner -e nnapi {0}/test".format(device_dir))
+                run_adb_shell("{0}/onnx_test_runner -e nnapi {0}/test".format(device_dir))
             else:
-                adb_shell("cd {0} && {0}/onnx_test_runner {0}/test".format(device_dir))
+                run_adb_shell("{0}/onnx_test_runner {0}/test".format(device_dir))
             # run shared_lib_test if necessary
             if args.build_shared_lib:
                 adb_push("libonnxruntime.so", device_dir, cwd=cwd)
@@ -2020,6 +2022,7 @@ def build_python_wheel(
     default_training_package_device=False,
     use_ninja=False,
     build_eager_mode=False,
+    enable_training_on_device=False,
 ):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -2037,6 +2040,8 @@ def build_python_wheel(
             args.append("--wheel_name_suffix={}".format(wheel_name_suffix))
         if enable_training:
             args.append("--enable_training")
+        if enable_training_on_device:
+            args.append("--enable_training_on_device")
         if build_eager_mode:
             args.append("--disable_auditwheel_repair")
 
@@ -2730,6 +2735,7 @@ def main():
                 default_training_package_device=default_training_package_device,
                 use_ninja=(args.cmake_generator == "Ninja"),
                 build_eager_mode=args.build_eager_mode,
+                enable_training_on_device=args.enable_training_on_device,
             )
         if args.build_nuget:
             build_nuget_package(

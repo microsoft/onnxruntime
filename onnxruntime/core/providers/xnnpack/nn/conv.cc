@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "conv.h"
+#include "core/common/inlined_containers_fwd.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
@@ -230,22 +231,22 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     // Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
     auto orig_shape = tensor.Shape();
 
-    std::vector<size_t> perm{0, 2, 3, 1};
-    std::vector<int64_t> new_dims{orig_shape[0],
-                                  orig_shape[2],
-                                  orig_shape[3],
-                                  orig_shape[1]};
+    InlinedVector<size_t> perm{0, 2, 3, 1};
+    TensorShapeVector new_dims{orig_shape[0],
+                               orig_shape[2],
+                               orig_shape[3],
+                               orig_shape[1]};
 
-    packed_w_ = Tensor::Create(tensor.DataType(), TensorShape(new_dims), alloc);
+    packed_w_ = Tensor(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
 
-    SingleAxisTranspose(perm, tensor, *packed_w_, /*from*/ 1, /*to*/ 3);
+    SingleAxisTranspose(perm, tensor, packed_w_, /*from*/ 1, /*to*/ 3);
 
     is_packed = true;
 
     // we can create the kernel now
     struct xnn_operator* p = nullptr;
     ORT_RETURN_IF_ERROR(CreateXnnpackKernel(conv_attrs_, C_, M_, kernel_shape_, clip_min_max_, IsDepthwise(),
-                                            *packed_w_, B_ ? B_->Data<float>() : nullptr, p));
+                                            packed_w_, B_ ? B_->Data<float>() : nullptr, p));
 
     op0_.reset(p);
   }

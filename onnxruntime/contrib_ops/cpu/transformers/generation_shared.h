@@ -3,12 +3,13 @@
 
 #pragma once
 
+#include <utility>
 #include "gsl/gsl"
 #include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
 
 #ifndef NDEBUG
-//#define DEBUG_BEAM_SEARCH 1  // uncomment it for debugging beam search
+//#define DEBUG_GENERATION 1  // uncomment it for debugging beam search
 #endif
 
 namespace onnxruntime {
@@ -41,6 +42,18 @@ struct IBeamSearchCpuState {
   gsl::span<int32_t> topk_tokens;      // shape (batch_size, 2*num_beams), tokens of topk candidates.
   gsl::span<int32_t> topk_indices;     // shape (batch_size, 2*num_beams), beam indices of topk candidates.
   gsl::span<float> final_beam_scores;  // shape (batch_size, num_beams)
+};
+
+template <typename T>
+struct IGreedySearchState {
+  gsl::span<int64_t> next_tokens_cpu;   // shape (batch_size)
+  gsl::span<int32_t> sequences_space;   // shape (2, batch_size, max_length)
+  gsl::span<int32_t> sequence_lengths;  // shape (batch_size)
+  gsl::span<int32_t> next_positions;    // shape (batch_size, num_beams). Next position value for position_ids.
+  gsl::span<bool> eos_meet;             // shape (batch_size)
+
+  gsl::span<T> next_token_scores;       // shape (batch_size, vocab_size)
+  gsl::span<int32_t> next_tokens;       // shape (batch_size)
 };
 
 class ISequences {

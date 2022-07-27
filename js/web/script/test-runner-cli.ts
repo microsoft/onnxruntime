@@ -27,10 +27,13 @@ npmlog.verbose('TestRunnerCli.Init.Config', inspect(args));
 
 const TEST_ROOT = path.join(__dirname, '..', 'test');
 const TEST_DATA_MODEL_NODE_ROOT = path.join(TEST_ROOT, 'data', 'node');
-const TEST_DATA_MODEL_ONNX_ROOT = path.join(__dirname, '..', 'deps/data/data/test/onnx/v7');
 const TEST_DATA_OP_ROOT = path.join(TEST_ROOT, 'data', 'ops');
 
 const TEST_DATA_BASE = args.env === 'node' ? TEST_ROOT : '/base/test/';
+
+npmlog.verbose('TestRunnerCli.Init', 'Ensure test data folder...');
+fs.ensureSymlinkSync(path.join(__dirname, '../../test/data/node'), TEST_DATA_MODEL_NODE_ROOT, 'dir');
+npmlog.verbose('TestRunnerCli.Init', 'Ensure test data folder... DONE');
 
 let testlist: Test.TestList;
 const shouldLoadSuiteTestData = (args.mode === 'suite0' || args.mode === 'suite1');
@@ -197,7 +200,7 @@ function validateTestList() {
 
 function loadNodeTests(backend: string, version: number): Test.ModelTestGroup {
   return suiteFromFolder(
-      `node-opset_v${version}-${backend}`, path.join(TEST_DATA_MODEL_NODE_ROOT, `v${version}`), backend,
+      `node-opset_v${version}-${backend}`, path.join(TEST_DATA_MODEL_NODE_ROOT, `opset${version}`), backend,
       testlist[backend].node);
 }
 
@@ -317,7 +320,7 @@ function tryLocateModelTestFolder(searchPattern: string): string {
 
   // 2 - check the globby result of searchPattern
   // 3 - check the globby result of ONNX root combined with searchPattern
-  const globbyPattern = [searchPattern, path.join(TEST_DATA_MODEL_ONNX_ROOT, '**', searchPattern).replace(/\\/g, '/')];
+  const globbyPattern = [searchPattern, path.join(TEST_DATA_MODEL_NODE_ROOT, '**', searchPattern).replace(/\\/g, '/')];
   // 4 - check the globby result of NODE root combined with opset versions and searchPattern
   globbyPattern.push(...DEFAULT_OPSET_VERSIONS.map(
       v => path.join(TEST_DATA_MODEL_NODE_ROOT, `v${v}`, '**', searchPattern).replace(/\\/g, '/')));
