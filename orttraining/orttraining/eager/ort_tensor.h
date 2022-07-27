@@ -3,14 +3,7 @@
 
 #pragma once
 
-#ifdef _WIN32
-#pragma warning( push )
-#pragma warning( disable: 4805 )
-#endif
 #include <c10/core/TensorImpl.h>
-#ifdef _WIN32
-#pragma warning ( pop )
-#endif
 #include <core/framework/ort_value.h>
 #include <iostream>
 
