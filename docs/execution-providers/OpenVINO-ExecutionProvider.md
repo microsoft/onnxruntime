@@ -575,4 +575,4 @@ In order to showcase what you can do with the OpenVINO™ Execution Provider for
 ## Accelerate inference for PyTorch models with OpenVINO Execution Provider (Preview)
 
 ONNX Runtime for PyTorch is now extended to support PyTorch model inference using ONNX Runtime.
-It is available via the torch-ort-infer python package. This preview package enables OpenVINO™ Execution Provider for ONNX Runtime by default for accelerating inference on various Intel® CPUs, Intel® integrated GPUs, and Intel® Movidius™ Vision Processing Units - referred to as VPU. For more details, see [torch-ort-inference](https://github.com/pytorch/ort#accelerate-inference-for-pytorch-models-with-onnx-runtime-preview).
+It is available via the torch-ort-infer python package. This preview package enables OpenVINO™ Execution Provider for ONNX Runtime by default for accelerating inference on various Intel® CPUs, Intel® integrated GPUs, and Intel® Movidius™ Vision Processing Units - referred to as VPU. For more details, see [torch-ort-infer](https://github.com/pytorch/ort#accelerate-inference-for-pytorch-models-with-onnx-runtime-preview).
