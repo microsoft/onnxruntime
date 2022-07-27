@@ -1,6 +1,8 @@
 ---
 title: ORT 1.8 Mobile Package Operators
 redirect_from: /docs/reference/mobile/prebuilt-package/mobile_package_op_type_support_1.8
+has_toc: false
+
 ---
 
 # ONNX Runtime 1.8: Mobile Package Operator and Type Support
