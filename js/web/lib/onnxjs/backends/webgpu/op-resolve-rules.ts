@@ -10,6 +10,7 @@ import {gather, parseGatherAttributes} from './ops/gather';
 import {gemm, parseGemmAttributesV11, parseGemmAttributesV7} from './ops/gemm';
 import {matMul, parseMatMulAttributes} from './ops/matmul';
 import {averagePool, globalAveragePool, globalMaxPool, maxPool, parseAveragePoolAttributes, parseGlobalAveragePoolAttributes, parseMaxPoolAttributes} from './ops/pool';
+import {sum} from './ops/reduce-tensors';
 import {reshape} from './ops/reshape';
 import {shape} from './ops/shape';
 import {parseSliceAttributes, slice, sliceV10} from './ops/slice';
@@ -78,8 +79,7 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // // so that we can determine the 'split' attribute from the runtime input to the Operator
   // ['Split', '', '2-12', split, parseSplitAttributes],
   ['Sqrt', '', '6+', unaryOps.sqrt], ['Squeeze', '', '1-12', squeeze, parseSqueezeAttributes],
-  ['Squeeze', '', '13+', squeezeV13], ['Sub', '', '7+', binaryOps.sub],
-  // ['Sum', '', '6+', sum],
+  ['Squeeze', '', '13+', squeezeV13], ['Sub', '', '7+', binaryOps.sub], ['Sum', '', '6+', sum],
   ['Tan', '', '7+', unaryOps.tan], ['Tanh', '', '6+', unaryOps.tanh],
   // ['Tile', '', '6+', tile],
   ['Transpose', '', '1+', transpose, parseTransposeAttributes],
