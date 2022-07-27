@@ -34,14 +34,6 @@ jobs:
         $(Build.SourcesDirectory)/protobuf_install
     displayName: Build Host Protoc
 
-  - script: |
-      export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-      export ANDROID_HOME=/usr/local/lib/android/sdk
-      export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
-      export ANDROID_NDK_ROOT=/usr/local/lib/android/sdk/ndk-bundle
-      env | grep ANDROID
-    displayName: Set Android ENVs
-
   # Start switching to jdk 11 after the Android Emulator is started
   # since Android SDK manager requires java 8
   - task: JavaToolInstaller@0
@@ -184,13 +176,6 @@ jobs:
         $(Build.SourcesDirectory)/protobuf_install
     displayName: Build Host Protoc
 
-  - script: |
-      export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-      export ANDROID_HOME=/usr/local/lib/android/sdk
-      export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
-      export ANDROID_NDK_ROOT=/usr/local/lib/android/sdk/ndk-bundle
-      env | grep ANDROID
-    displayName: set Android ENVs
 
   # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
   - task: JavaToolInstaller@0
