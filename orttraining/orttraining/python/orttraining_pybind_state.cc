@@ -841,23 +841,19 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                                                                         non_trainable_tensor_protos, checkpoint_path));
         });
   m.def("load_checkpoint",
-        [](const std::string& checkpoint_path) {
+        [](const std::string& checkpoint_path, py::bytes& serialized_model) {
           std::vector<TensorProto> tensor_protos;
-          ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpoint(checkpoint_path, tensor_protos));
-          std::vector<py::bytes> tensor_protos_pybytes(tensor_protos.size());
+          ONNX_NAMESPACE::ModelProto model_proto;
+          std::string model_proto_str;
 
-          const auto parse_tensor_proto_to_pybytes =
-              [](std::vector<py::bytes>& tensor_protos_pybytes, const std::vector<TensorProto>& tensor_protos) {
-                for (size_t i = 0; i < tensor_protos.size(); ++i) {
-                  std::string tensor_proto_str;
-                  tensor_protos[i].SerializeToString(&tensor_proto_str);
-                  tensor_protos_pybytes[i] = tensor_proto_str;
-                }
-              };
+          std::istringstream buffer(serialized_model);
+          Status status = Model::Load(buffer, &model_proto);
+          status = onnxruntime::training::api::LoadCheckpoint(checkpoint_path, model_proto);
 
-          parse_tensor_proto_to_pybytes(tensor_protos_pybytes, tensor_protos);
+          model_proto.SerializeToString(&model_proto_str);
+          serialized_model = model_proto_str;
 
-          return tensor_protos_pybytes;
+          return serialized_model;
         });
 #endif
 }

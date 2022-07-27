@@ -575,9 +575,8 @@ def test_load_checkpoint():
     with tempfile.TemporaryDirectory() as checkpoint_dir_name:
         checkpoint_file_path = os.path.join(checkpoint_dir_name, "checkpoint")
         onnxblock.save_checkpoint((trainable_params, non_trainable_params), checkpoint_file_path)
-
         # Load checkpoint parameters to the new simple model
-        onnxblock.load_checkpoint_to_model(checkpoint_file_path, zero_onnx_model)
+        zero_onnx_model = onnxblock.load_checkpoint_to_model(checkpoint_file_path, zero_onnx_model)
 
         # Then
         onnx_model_copy.graph.initializer.sort(key=lambda x: x.name)
