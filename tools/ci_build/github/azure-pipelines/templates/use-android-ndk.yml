@@ -1,9 +1,9 @@
-# Installs specified version of Android NDK and sets environment variables ANDROID_NDK_HOME and ANDROID_NDK_ROOT to
-# refer to it.
+# Installs the Android NDK and sets environment variables ANDROID_NDK_HOME and ANDROID_NDK_ROOT to refer to it.
 
   parameters:
   - name: AndroidNdkVersion
     type: string
+    default: "25.0.8775105"  # LTS version
 
   steps:
   - bash: |
@@ -27,4 +27,4 @@
       set_var "ANDROID_NDK_HOME" "${NDK_PATH}"
       set_var "ANDROID_NDK_ROOT" "${NDK_PATH}"
 
-    displayName: Get Android NDK ${{ parameters.AndroidNdkVersion }}
+    displayName: Use Android NDK ${{ parameters.AndroidNdkVersion }}
