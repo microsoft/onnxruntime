@@ -1,8 +1,8 @@
 ---
-title: OpenVINO™
+title: OpenVINO™ (Intel)
 description: Instructions to execute OpenVINO™ Execution Provider for ONNX Runtime.
 parent: Execution Providers
-nav_order: 10
+nav_order: 9
 redirect_from: /docs/reference/execution-providers/OpenVINO-ExecutionProvider
 ---
 

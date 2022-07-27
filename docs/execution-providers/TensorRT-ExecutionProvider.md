@@ -1,5 +1,5 @@
 ---
-title: TensorRT
+title: TensorRT (NVIDIA)
 description: Instructions to execute ONNX Runtime on NVIDIA GPUs with the TensorRT execution provider
 parent: Execution Providers
 nav_order: 12

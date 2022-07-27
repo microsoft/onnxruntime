@@ -1,5 +1,5 @@
 ---
-title: NNAPI
+title: NNAPI (Andorid)
 description: Instructions to execute ONNX Runtime with the NNAPI execution provider
 parent: Execution Providers
 nav_order: 7

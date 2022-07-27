@@ -1,5 +1,5 @@
 ---
-title: Use custom operators
+title: Custom operators
 parent: Operators
 grand_parent: Reference
 nav_order: 3
