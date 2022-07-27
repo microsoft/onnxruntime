@@ -30,9 +30,10 @@ using CheckerFn = std::function<bool(const NodeUnit& node,
 
 // function to check if we can fuse a node with a previously selected one.
 // returns node to fuse with, or nullptr.
-using FuseCheckerFn = std::function<const NodeUnit*(const NodeUnit& node_unit,
-                                                    const GraphViewer& graph,
-                                                    const std::unordered_map<const Node*, const NodeUnit*>& supported_node_unit_map)>;
+using FuseCheckerFn = std::function<const NodeUnit*(
+    const NodeUnit& node_unit,
+    const GraphViewer& graph,
+    const std::unordered_map<const Node*, const NodeUnit*>& supported_node_unit_map)>;
 
 const NodeUnit* ClipReluChecker(const NodeUnit& node_unit,
                                 const GraphViewer& graph,

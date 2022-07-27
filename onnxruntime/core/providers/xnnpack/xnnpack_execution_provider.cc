@@ -148,7 +148,7 @@ static void AddComputeCapabilityForNodeUnit(const NodeUnit& node_unit,
 }
 
 // The first call to add compute capability in GetCapability, we just tell this all nodes in nodeunit
-// is supported by Xnnapck EP as long as it's target node is supported.
+// are supported by Xnnapck EP as long as it's target node is supported.
 // One node in one sub_graph separately
 static void AddComputeCapabilityForEachNodeInNodeUnit(
     const NodeUnit& node_unit,
