@@ -1798,8 +1798,8 @@ TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {
   model_file_stream.seekg(0, std::ios::end);
   size_t size = model_file_stream.tellg();
   model_file_stream.seekg(0, std::ios::beg);
-  std::vector<byte> file_contents(size, 0);
-  model_file_stream.read(reinterpret_cast<char*>(&file_contents[0]), size);
+  std::vector<char> file_contents(size, 0);
+  model_file_stream.read(&file_contents[0], size);
   model_file_stream.close();
 
   Ort::Session session2(*ort_env, file_contents.data(), size, session_options, prepacked_weights_container);
