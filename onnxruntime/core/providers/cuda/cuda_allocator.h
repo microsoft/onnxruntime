@@ -39,13 +39,6 @@ class CUDAExternalAllocator : public CUDAAllocator {
     empty_cache_ = reinterpret_cast<ExternalEmptyCache>(empty_cache);
   }
 
-  CUDAExternalAllocator(OrtDevice::DeviceId device_id, const char* name, ExternalAlloc alloc, ExternalFree free, ExternalEmptyCache empty_cache)
-      : CUDAAllocator(device_id, name) {
-    alloc_ = alloc;
-    free_ = free;
-    empty_cache_ = empty_cache;
-  }
-
   void* Alloc(size_t size) override;
   void Free(void* p) override;
   void* Reserve(size_t size) override;

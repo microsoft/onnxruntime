@@ -24,30 +24,16 @@
 #include "flags.h"
 
 namespace onnxruntime {
+
+namespace python {
+Environment& GetTrainingORTEnv();
+}
+
 namespace lazytensor {
 
 namespace py = pybind11;
 namespace aten = torch::jit::aten;
 namespace prim = torch::jit::prim;
-
-// static variable used to create inference session and training session.
-const static std::string env_name = std::string("LTC");
-static std::unique_ptr<onnxruntime::Environment> ltc_env;
-
-onnxruntime::Environment& GetLtcEnv() {
-  if (!ltc_env) {
-    ORT_THROW_IF_ERROR(
-        onnxruntime::Environment::Create(
-            std::make_unique<onnxruntime::logging::LoggingManager>(
-                std::make_unique<onnxruntime::logging::CLogSink>(),
-                onnxruntime::logging::Severity::kWARNING,
-                false,
-                onnxruntime::logging::LoggingManager::InstanceType::Temporal,
-                &env_name),
-            ltc_env));
-  }
-  return *ltc_env;
-}
 
 bool Accelerator::Supported(const torch::jit::Node* node) {
   if (!node) {
@@ -278,7 +264,7 @@ static std::unique_ptr<onnxruntime::InferenceSession> CreateSession() {
   NvtxRange range(__func__);
 #endif
   // Enviroment shared by all sessions.
-  static onnxruntime::Environment& pybind_default_env = GetLtcEnv();
+  static onnxruntime::Environment& pybind_default_env = onnxruntime::python::GetTrainingORTEnv();
   // All sessions use the same config.
   static onnxruntime::SessionOptions sess_opts;
   return std::make_unique<onnxruntime::InferenceSession>(sess_opts, pybind_default_env);
