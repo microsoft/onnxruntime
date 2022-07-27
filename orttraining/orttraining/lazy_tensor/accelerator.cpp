@@ -1,12 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "accelerator.h"
+#include "orttraining/lazy_tensor/accelerator.h"
 // C++
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <vector>
 // Pytorch.
 #include <torch/csrc/jit/passes/onnx.h>
 #include <torch/csrc/jit/passes/shape_analysis.h>
@@ -18,10 +20,10 @@
 #include "core/session/environment.h"
 #include "python/onnxruntime_pybind_state_common.h"
 // Lazy tensor specific.
-#include "bridge.h"
-#include "cuda_tool.h"
-#include "debug.h"
-#include "flags.h"
+#include "orttraining/lazy_tensor/bridge.h"
+#include "orttraining/lazy_tensor/cuda_tool.h"
+#include "orttraining/lazy_tensor/debug.h"
+#include "orttraining/lazy_tensor/flags.h"
 
 namespace onnxruntime {
 
@@ -41,7 +43,7 @@ bool Accelerator::Supported(const torch::jit::Node* node) {
   }
 
   switch (node->kind()) {
-    // TODO: add as many ops as possible.
+    // TODO(wechi): add as many ops as possible.
     case aten::embedding:
     case aten::tanh:
     case aten::slice:
@@ -113,7 +115,6 @@ void Accelerator::OrtRun(torch::jit::Stack& stack) {
 
   if (DumpInputsOutputs()) {
     std::cout << "[ORT,Input] " << ToString(inputs) << std::endl;
-    ;
   }
 
   // Run the compiled function!
@@ -193,7 +194,7 @@ void Accelerator::Run(torch::jit::Stack& stack) {
 
 static void CheckArgs(
     const at::ArrayRef<c10::IValue>& inputs) {
-  // TODO: remove this check.
+  // TODO(wechi): remove this check.
 #ifdef USE_CUDA
   NvtxRange range(__func__);
 #endif
@@ -207,9 +208,9 @@ static void CheckArgs(
 // ONNX exporter can use them. Input types
 // are required when executing ONNX model
 // in ORT.
-// TODO: Allow ORT to accept models without
+// TODO(wechi): Allow ORT to accept models without
 // input types. Then, we can remove this function.
-static void PropagateArgTypes(
+static void SetArgTypes(
     const at::ArrayRef<c10::IValue>& inputs,
     std::shared_ptr<torch::jit::Graph> graph) {
   TORCH_CHECK(graph->inputs().size() == inputs.size(),
@@ -248,10 +249,11 @@ static std::string ExportToOnnx(
   // Retrieve Python exporter function.
   pybind11::function export_to_onnx =
       pybind11::reinterpret_borrow<pybind11::function>(
-          pybind11::module::import("onnxruntime.training.experimental.exporter").attr("_export_jit_graph_to_onnx_model_proto"));
+          pybind11::module::import("onnxruntime.training.experimental.exporter")
+              .attr("_export_jit_graph_to_onnx_model_proto"));
   // Fill types up. The sub-graphp from LazyTensor doesn't
   // contain input shapes.
-  PropagateArgTypes(args, new_subgraph);
+  SetArgTypes(args, new_subgraph);
   // Execute Python function.
   auto result = export_to_onnx(new_subgraph, ::torch::onnx::OperatorExportTypes::ONNX);
   return result.cast<std::string>();
@@ -270,7 +272,7 @@ static std::unique_ptr<onnxruntime::InferenceSession> CreateSession() {
   return std::make_unique<onnxruntime::InferenceSession>(sess_opts, pybind_default_env);
 }
 
-static OrtDevice CheckAndGetTensorDevice(at::ArrayRef<c10::IValue>& values) {
+static OrtDevice CheckAndGetTensorDevice(const at::ArrayRef<c10::IValue>& values) {
   // This memory info must be shared by all tensors;
   // for example, all tensors on CPU or all on a specific GPU.
   // When all values are not tensors, we assume CPU device.
