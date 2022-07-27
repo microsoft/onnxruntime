@@ -4,6 +4,9 @@
 # 2. today most cloud-based CI services are still lacking hardware acceleration support from the host VM,
 # which is the no.1 blocker for running tests on modern Android Emulators (especially on recent API levels) on CI.
 
+variables:
+  AndroidNdkVersion: "25.0.8775105"  # LTS version
+
 jobs:
 - job: Build_CPU_EP
   pool: Linux-CPU-2019
@@ -23,6 +26,10 @@ jobs:
   - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
     displayName: Install coreutils and ninja
 
+  - template: "templates/get-android-ndk.yml"
+    parameters:
+      AndroidNdkVersion: $(AndroidNdkVersion)
+
   - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
     displayName: Setup gradle wrapper to use gradle 6.8.3
 
@@ -35,12 +42,8 @@ jobs:
     displayName: Build Host Protoc
 
   - script: |
-      export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-      export ANDROID_HOME=/usr/local/lib/android/sdk
-      export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
-      export ANDROID_NDK_ROOT=/usr/local/lib/android/sdk/ndk-bundle
       env | grep ANDROID
-    displayName: Set Android ENVs
+    displayName: View Android ENVs
 
   # Start switching to jdk 11 after the Android Emulator is started
   # since Android SDK manager requires java 8
@@ -116,6 +119,15 @@ jobs:
         artifact: 'CPUBuildOutput'
         path: $(Build.SourcesDirectory)
 
+    - task: UsePythonVersion@0
+      displayName: Use Python $(pythonVersion)
+      inputs:
+        versionSpec: $(pythonVersion)
+
+    - template: "templates/get-android-ndk.yml"
+      parameters:
+        AndroidNdkVersion: $(AndroidNdkVersion)
+
     - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
       displayName: Setup gradle wrapper to use gradle 6.8.3
 
@@ -173,6 +185,10 @@ jobs:
   - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
     displayName: Install coreutils and ninja
 
+  - template: "templates/get-android-ndk.yml"
+    parameters:
+      AndroidNdkVersion: $(AndroidNdkVersion)
+
   - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
     displayName: Setup gradle wrapper to use gradle 6.8.3
 
@@ -185,12 +201,8 @@ jobs:
     displayName: Build Host Protoc
 
   - script: |
-      export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-      export ANDROID_HOME=/usr/local/lib/android/sdk
-      export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
-      export ANDROID_NDK_ROOT=/usr/local/lib/android/sdk/ndk-bundle
       env | grep ANDROID
-    displayName: set Android ENVs
+    displayName: View Android ENVs
 
   # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
   - task: JavaToolInstaller@0
@@ -272,6 +284,10 @@ jobs:
       inputs:
         versionSpec: $(pythonVersion)
 
+    - template: "templates/get-android-ndk.yml"
+      parameters:
+        AndroidNdkVersion: $(AndroidNdkVersion)
+
     - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
       displayName: Setup gradle wrapper to use gradle 6.8.3
 
@@ -349,6 +365,10 @@ jobs:
       displayName: Use Python $(pythonVersion)
       inputs:
         versionSpec: $(pythonVersion)
+
+    - template: "templates/get-android-ndk.yml"
+      parameters:
+        AndroidNdkVersion: $(AndroidNdkVersion)
 
     - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
       displayName: Setup gradle wrapper to use gradle 6.8.3
