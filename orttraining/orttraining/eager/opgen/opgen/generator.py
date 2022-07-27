@@ -1,13 +1,14 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# pylint: disable=missing-docstring, too-many-public-methods, too-many-nested-blocks
+# pylint: disable=missing-docstring, too-many-public-methods
 
 import json
 import sys
 from typing import Dict, List, Optional, Union
 
-from opgen import ast, lexer, parser, writer
+from opgen import ast, lexer, parser
+from opgen import writer as opgenwriter
 
 
 class Outputs:
@@ -136,7 +137,7 @@ class ORTGen:
         for k, v in ops.items():
             self.register(k, v)
 
-    def run(self, cpp_parser: parser.CPPParser, writer: writer.SourceWriter):
+    def run(self, cpp_parser: parser.CPPParser, writer: opgenwriter.SourceWriter):
         self._write_file_prelude(writer)
 
         generated_funcs = []
@@ -185,7 +186,7 @@ class ORTGen:
                 + ", ".join([f"'{o}'" for o in self._mapped_ops.keys()])
             )
 
-    def _write_file_prelude(self, writer: writer.SourceWriter):
+    def _write_file_prelude(self, writer: opgenwriter.SourceWriter):
         writer.writeline("// AUTO-GENERATED CODE! - DO NOT EDIT!")
         writer.writeline(f'// $ python {" ".join(sys.argv)}')
         writer.writeline()
@@ -206,10 +207,10 @@ class ORTGen:
         writer.writeline("using namespace at;")
         writer.writeline("using NodeAttributes = onnxruntime::NodeAttributes;")
 
-    def _write_file_postlude(self, writer: writer.SourceWriter):
+    def _write_file_postlude(self, writer: opgenwriter.SourceWriter):
         writer.pop_namespaces()
 
-    def _write_function_signature(self, writer: writer.SourceWriter, cpp_func: ast.FunctionDecl):
+    def _write_function_signature(self, writer: opgenwriter.SourceWriter, cpp_func: ast.FunctionDecl):
         cpp_func.return_type.write(writer)
         writer.write(f" {cpp_func.identifier.value}(")
         writer.push_indent()
@@ -221,7 +222,7 @@ class ORTGen:
         writer.pop_indent()
         writer.write(")")
 
-    def _write_cpu_fall_back(self, writer: writer.SourceWriter, mapped_func: MappedOpFunction):
+    def _write_cpu_fall_back(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
         onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
         # return at::native::call_fallback_fn<
         #  &at::native::cpu_fallback,
@@ -238,7 +239,7 @@ class ORTGen:
         writer.writeline(");")
         writer.pop_indent()
 
-    def _write_function_body(self, writer: writer.SourceWriter, mapped_func: MappedOpFunction):
+    def _write_function_body(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
         onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
 
         assert len(cpp_func.parameters) > 0
@@ -267,27 +268,7 @@ class ORTGen:
             writer.writeline(".size()>0);")
 
         # check whether need type promotion, if we do we will use this later to confirm out cast is supported.
-        need_type_promotion = False
-        if mapped_func.mapped_op_name in self.type_promotion_ops:
-            types_from_tensor = []
-            types_from_scalar = []
-            for onnx_op_index, onnx_op in enumerate(ctx.ops):
-                for op_input in onnx_op.inputs:
-                    if isinstance(op_input, Outputs):
-                        continue
-                    cpp_param = cpp_func.get_parameter(op_input)
-                    if cpp_param:
-                        if cpp_param.parameter_type.desugar().identifier_tokens[0].value == "Tensor":
-                            types_from_tensor.append(f"{op_input}.scalar_type()")
-                        elif cpp_param.parameter_type.desugar().identifier_tokens[0].value == "Scalar":
-                            types_from_scalar.append(f"{op_input}.type()")
-            if len(types_from_tensor) > 0 or len(types_from_scalar) > 0:
-                need_type_promotion = True
-                writer.writeline(
-                    "auto promoted_type = PromoteScalarTypesWithCategory({%s}, {%s});"
-                    % (",".join(types_from_tensor), ",".join(types_from_scalar))
-                )
-                writer.writeline()
+        need_type_promotion = self._write_type_promotion(writer, mapped_func, cpp_func, ctx)
 
         # Gather return info on the torch func, such as Tensor(a! -> a)
         # which implies the return value is writeable tensor (Tensor&)
@@ -316,40 +297,7 @@ class ORTGen:
                     set_out_tensor = True
 
         # generate the type check
-        need_type_check = False
-        cast_op_found = False
-        if not self._custom_ops:
-            for onnx_op_index, onnx_op in enumerate(ctx.ops):
-                for op_input in onnx_op.inputs:
-                    if not isinstance(op_input, Outputs):
-                        need_type_check = True
-                        break
-        if need_type_check:
-            writer.write("if (")
-            i = 0
-            for onnx_op_index, onnx_op in enumerate(ctx.ops):
-                # track is the CAST op was explicitly used
-                if onnx_op.name == "Cast":
-                    cast_op_found = True
-                for idx, op_input in enumerate(onnx_op.inputs):
-                    if isinstance(op_input, Outputs):
-                        continue
-                    writer.writeline(" || " if i > 0 else "")
-                    if i == 0:
-                        writer.push_indent()
-                    cpp_param = cpp_func.get_parameter(op_input)
-                    supported_types = ",".join(sorted(list(onnx_op.input_types[idx])))
-                    writer.write(f"!IsSupportedType({cpp_param.identifier.value}, {{{supported_types}}})")
-                    i += 1
-            # if we have type promotion and need to set the out tensor and CAST op not explictily listed,
-            # then we confirm the promotion type is castable to the out type.
-            if need_type_promotion and set_out_tensor and not cast_op_found:
-                writer.writeline(" || ")
-                writer.write("!c10::canCast(*promoted_type, out.scalar_type())")
-            writer.writeline(") {")
-            self._write_cpu_fall_back(writer, mapped_func)
-            writer.pop_indent()
-            writer.writeline("}")
+        cast_op_found = self._write_type_check(writer, mapped_func, cpp_func, ctx, need_type_promotion, set_out_tensor)
 
         if (
             not isinstance(first_param.parameter_type.desugar(), ast.ConcreteType)
@@ -585,7 +533,68 @@ class ORTGen:
                 writer.write(in_place_params[key])
             writer.writeline(");")
 
-    def _write_function_registrations(self, writer: writer.SourceWriter, generated_funcs: List[MappedOpFunction]):
+    def _write_type_check(self, writer, mapped_func, cpp_func, ctx, need_type_promotion, set_out_tensor):
+        cast_op_found = False
+        need_type_check = False
+        if not self._custom_ops:
+            for onnx_op in ctx.ops:
+                for op_input in onnx_op.inputs:
+                    if not isinstance(op_input, Outputs):
+                        need_type_check = True
+                        break
+        if need_type_check:
+            writer.write("if (")
+            i = 0
+            for onnx_op in ctx.ops:
+                # track is the CAST op was explicitly used
+                if onnx_op.name == "Cast":
+                    cast_op_found = True
+                for idx, op_input in enumerate(onnx_op.inputs):
+                    if isinstance(op_input, Outputs):
+                        continue
+                    writer.writeline(" || " if i > 0 else "")
+                    if i == 0:
+                        writer.push_indent()
+                    cpp_param = cpp_func.get_parameter(op_input)
+                    supported_types = ",".join(sorted(list(onnx_op.input_types[idx])))
+                    writer.write(f"!IsSupportedType({cpp_param.identifier.value}, {{{supported_types}}})")
+                    i += 1
+            # if we have type promotion and need to set the out tensor and CAST op not explictily listed,
+            # then we confirm the promotion type is castable to the out type.
+            if need_type_promotion and set_out_tensor and not cast_op_found:
+                writer.writeline(" || ")
+                writer.write("!c10::canCast(*promoted_type, out.scalar_type())")
+            writer.writeline(") {")
+            self._write_cpu_fall_back(writer, mapped_func)
+            writer.pop_indent()
+            writer.writeline("}")
+        return cast_op_found
+
+    def _write_type_promotion(self, writer, mapped_func, cpp_func, ctx):
+        need_type_promotion = False
+        if mapped_func.mapped_op_name in self.type_promotion_ops:
+            types_from_tensor = []
+            types_from_scalar = []
+            for onnx_op in ctx.ops:
+                for op_input in onnx_op.inputs:
+                    if isinstance(op_input, Outputs):
+                        continue
+                    cpp_param = cpp_func.get_parameter(op_input)
+                    if cpp_param:
+                        if cpp_param.parameter_type.desugar().identifier_tokens[0].value == "Tensor":
+                            types_from_tensor.append(f"{op_input}.scalar_type()")
+                        elif cpp_param.parameter_type.desugar().identifier_tokens[0].value == "Scalar":
+                            types_from_scalar.append(f"{op_input}.type()")
+            if len(types_from_tensor) > 0 or len(types_from_scalar) > 0:
+                need_type_promotion = True
+                writer.writeline(
+                    "auto promoted_type = PromoteScalarTypesWithCategory({%s}, {%s});"
+                    % (",".join(types_from_tensor), ",".join(types_from_scalar))
+                )
+                writer.writeline()
+        return need_type_promotion
+
+    def _write_function_registrations(self, writer: opgenwriter.SourceWriter, generated_funcs: List[MappedOpFunction]):
         writer.writeline()
         writer.writeline("TORCH_LIBRARY_IMPL(aten, ORT, m) {")
         writer.push_indent()
@@ -608,7 +617,9 @@ class ORTGen:
         writer.writeline("}")
         writer.writeline()
 
-    def _write_custom_ops_registrations(self, writer: writer.SourceWriter, generated_funcs: List[MappedOpFunction]):
+    def _write_custom_ops_registrations(
+        self, writer: opgenwriter.SourceWriter, generated_funcs: List[MappedOpFunction]
+    ):
         writer.writeline()
         writer.writeline("TORCH_LIBRARY(ort, m) {")
         writer.push_indent()
