@@ -3,7 +3,10 @@
 
 #pragma once
 
+#pragma warning( push )
+#pragma warning( disable: 4805 )
 #include <c10/core/TensorImpl.h>
+#pragma warning ( pop )
 #include <core/framework/ort_value.h>
 #include <iostream>
 
