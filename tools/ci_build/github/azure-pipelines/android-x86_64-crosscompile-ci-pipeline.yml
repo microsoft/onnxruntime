@@ -112,8 +112,8 @@ jobs:
       displayName: Setup gradle wrapper to use gradle 6.8.3
 
     - script: |
-      set -ex
-      ${ANDROID_HOME}/tools/bin/sdkmanager --install "ndk;21.0.6113669"
+        set -ex
+        ${ANDROID_HOME}/tools/bin/sdkmanager --install "ndk;21.0.6113669"
       displayName: install ndk 21.0
 
     - script: |
