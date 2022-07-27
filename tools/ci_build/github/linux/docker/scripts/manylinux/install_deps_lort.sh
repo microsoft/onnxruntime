@@ -88,10 +88,9 @@ export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 
 cd /usr/local
 echo "Cloning Pytorch"
-git clone --recursive https://github.com/wschin/pytorch.git
+git clone --recursive https://github.com/pytorch/pytorch.git
 cd pytorch
 echo "Installing Pytorch requirements"
-git checkout lort
 /opt/python/cp39-cp39/bin/python3.9 -m pip install -r requirements.txt
 /opt/python/cp39-cp39/bin/python3.9 -m pip install flatbuffers cerberus h5py onnx
 echo "Building and installing Pytorch"
