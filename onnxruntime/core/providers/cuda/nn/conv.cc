@@ -235,13 +235,21 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
                                          CUDNN_CROSS_CORRELATION, CudnnTensor::GetDataType<CudaT>()));
 
     if (context->InputCount() >= 3) {
+      //const Tensor* B = context->Input<Tensor>(2);
+      //const auto& b_shape = B->Shape();
+      //ORT_RETURN_IF_NOT(b_shape.NumDimensions() == 1, "bias should be 1D");
+      //TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
+      //b_dims[1] = b_shape[0];
+      //ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
       const Tensor* B = context->Input<Tensor>(2);
       const auto& b_shape = B->Shape();
-      ORT_RETURN_IF_NOT(b_shape.NumDimensions() == 1, "bias should be 1D");
-      TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
-      b_dims[1] = b_shape[0];
-      ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
-      //s_.b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
+      if (b_shape.NumDimensions() == 1) {
+        TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
+        b_dims[1] = b_shape[0];
+        ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
+      } else {
+        ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_shape.GetDims(), CudnnTensor::GetDataType<CudaT>()));
+      }
     } else if (bias_expected) {
       TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = w_dims[0];

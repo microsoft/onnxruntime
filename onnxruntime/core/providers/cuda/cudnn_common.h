@@ -24,10 +24,13 @@ class CudnnTensor final {
   template <typename T>
   static cudnnDataType_t GetDataType();
 
+  void Print() const;
+
  private:
   Status CreateTensorIfNeeded();
 
   cudnnTensorDescriptor_t tensor_;
+  std::vector<int64_t> raw_dims_;
 };
 
 class CudnnDataTensor final {

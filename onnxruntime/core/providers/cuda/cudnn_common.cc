@@ -28,6 +28,7 @@ Status CudnnTensor::CreateTensorIfNeeded() {
 }
 
 Status CudnnTensor::Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dataType) {
+  raw_dims_.clear();
   ORT_RETURN_IF_ERROR(CreateTensorIfNeeded());
 
   int rank = gsl::narrow_cast<int>(input_dims.size());
@@ -37,9 +38,17 @@ Status CudnnTensor::Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dat
   for (int i = 0; i < rank; i++) {
     dims[i] = gsl::narrow_cast<int>(input_dims[i]);
     strides[i] = gsl::narrow_cast<int>(pitches[i]);
+    raw_dims_.push_back(input_dims[i]);
   }
   CUDNN_RETURN_IF_ERROR(cudnnSetTensorNdDescriptor(tensor_, dataType, static_cast<int>(rank), dims.data(), strides.data()));
   return Status::OK();
+}
+
+void CudnnTensor::Print() const {
+  for (auto dim : raw_dims_) {
+    std::cout << dim << ",";
+  }
+  std::cout << std::endl;
 }
 
 Status CudnnTensor::Set(const CudnnTensor& x_desc, cudnnBatchNormMode_t mode) {

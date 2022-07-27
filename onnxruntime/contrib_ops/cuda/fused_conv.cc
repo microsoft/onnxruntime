@@ -47,6 +47,30 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
     const auto alpha = onnxruntime::cuda::Consts<CudaT>::One;
     const auto beta = onnxruntime::cuda::Consts<CudaT>::Zero;
     IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace();
+
+    if (has_b) {
+      std::cout << "b_shape:" << std::endl;
+      Base::s_.b_tensor.Print();
+    }
+
+    if (has_z) {
+      std::cout << "z_shape:" << std::endl;
+      Base::s_.z_tensor.Print();
+    }
+
+    std::cout << "y_shape:" << std::endl;
+    Base::s_.y_tensor.Print();
+
+    if (Base::s_.post_slicing_required) {
+      std::cout << "y_sliced_shape:" << std::endl;
+      for (auto dim : Base::s_.y_dims.GetDims()) {
+        std::cout << dim << ",";
+      }
+    }
+
+    std::cout << std::endl;
+
+
     auto cudnn_status = cudnnConvolutionBiasActivationForward(Base::CudnnHandle(),
                                                               &alpha,
                                                               Base::s_.x_tensor,
@@ -65,7 +89,9 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
                                                               activation_desc_,
                                                               Base::s_.y_tensor,
                                                               Base::s_.y_data);
-    if (CUDNN_STATUS_SUCCESS != cudnn_status) {
+    if (CUDNN_STATUS_SUCCESS == cudnn_status) {
+      has_b = has_z = false;
+    } else {
       CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(Base::CudnnHandle(),
                                                     &alpha,
                                                     Base::s_.x_tensor,
@@ -80,20 +106,40 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
                                                     Base::s_.y_tensor,
                                                     Base::s_.y_data));
       if (has_b) {
-        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(Base::CudnnHandle(), &alpha, Base::s_.b_tensor, Base::s_.b_data,
-                                             &alpha, Base::s_.y_tensor, Base::s_.y_data));
+        //Base::s_.b_tensor
+        has_b = cudnnStatus_t::CUDNN_STATUS_SUCCESS != cudnnAddTensor(Base::CudnnHandle(), &alpha, Base::s_.b_tensor, Base::s_.b_data,
+                                                                      &alpha, Base::s_.y_tensor, Base::s_.y_data);
       }
       if (has_z) {
-        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(Base::CudnnHandle(), &alpha, Base::s_.z_tensor, Base::s_.z_data,
-                                             &alpha, Base::s_.y_tensor, Base::s_.y_data));
+        has_z = cudnnStatus_t::CUDNN_STATUS_SUCCESS != cudnnAddTensor(Base::CudnnHandle(), &alpha, Base::s_.z_tensor, Base::s_.z_data,
+                                                                      &alpha, Base::s_.y_tensor, Base::s_.y_data);
       }
       CUDNN_RETURN_IF_ERROR(cudnnActivationForward(Base::CudnnHandle(), activation_desc_, &alpha, Base::s_.y_tensor,
                                                    Base::s_.y_data, &beta, Base::s_.y_tensor, Base::s_.y_data));
     }
     if (Base::s_.post_slicing_required) {
+
       ORT_RETURN_IF_ERROR(onnxruntime::cuda::SliceOutUnwantedOutputSection(
           this->Stream(), Base::s_.y_data, Base::s_.y_dims_with_adjusted_pads, Base::s_.Y->MutableDataRaw(),
           Base::s_.y_dims.GetDims(), Base::s_.slice_starts, Base::s_.slice_ends, Base::s_.slice_axes, Base::s_.element_size));
+
+      if (has_b || has_z) { // if b or z has to be added after slice
+
+        onnxruntime::cuda::CudnnTensor sliced_y_tensor;
+        ORT_RETURN_IF_ERROR(sliced_y_tensor.Set(Base::s_.y_dims.GetDims(), onnxruntime::cuda::CudnnTensor::GetDataType<CudaT>()));
+
+        if (has_b) {
+          has_b = cudnnStatus_t::CUDNN_STATUS_SUCCESS != cudnnAddTensor(Base::CudnnHandle(), &alpha, Base::s_.b_tensor, Base::s_.b_data,
+                                                                        &alpha, sliced_y_tensor, Base::s_.Y->MutableDataRaw());
+        }
+        if (has_z) {
+          has_z = cudnnStatus_t::CUDNN_STATUS_SUCCESS != cudnnAddTensor(Base::CudnnHandle(), &alpha, Base::s_.z_tensor, Base::s_.z_data,
+                                                                        &alpha, sliced_y_tensor, Base::s_.Y->MutableDataRaw());
+        }
+      }
+    }
+    if (has_b || has_z) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to add bias to cudnn convolution");
     }
     return Status::OK();
   }
