@@ -104,6 +104,7 @@ class INodePartitioner {
 class SequentialPlanner {
  public:
   // This API allows user to provide a custom planner context.
+  // TODO - remove duplicated ExecutionProvider argument
   static Status CreatePlan(
       const Node* parent_node, const onnxruntime::GraphViewer& graph,
       gsl::span<const NodeArg* const> outer_scope_node_args,
