@@ -1,6 +1,6 @@
 ---
 title: ORT 1.11 Mobile Package Operators
-has_toc: false
+nav_exclude: true
 ---
 
 # ONNX Runtime 1.11 Mobile Pre-Built Package Operator and Type Support

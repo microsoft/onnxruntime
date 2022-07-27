@@ -1,7 +1,6 @@
 ---
 title: ORT 1.10 Mobile Package Operators
-has_toc: false
-
+nav_exclude: true
 ---
 
 
