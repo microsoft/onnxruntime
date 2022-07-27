@@ -2,8 +2,6 @@
 # Licensed under the MIT License.
 # checkpoint_utils.py
 
-import pickle
-
 from onnx import ModelProto
 
 from onnxruntime.capi._pybind_state import load_checkpoint as _internal_load_checkpoint
