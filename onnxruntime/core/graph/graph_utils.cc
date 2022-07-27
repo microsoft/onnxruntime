@@ -219,10 +219,6 @@ bool MatchesOpSetDomain(const Node& node, std::string_view domain) {
   return node_domain == domain;
 }
 
-bool IsSupportedSinceVersion(const Node& node, ONNX_NAMESPACE::OperatorSetVersion since_version) {
-  return node.SinceVersion() >= since_version;
-}
-
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        std::string_view op_type,
                                        std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
@@ -233,16 +229,6 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
           !node.Op()->Deprecated() &&
 #endif
           MatchesOpSinceVersion(node, versions) && MatchesOpSetDomain(node, domain));
-}
-
-bool IsSupportedOpTypeSinceVersionAndDomain(const Node& node, std::string_view op_type,
-                                            ONNX_NAMESPACE::OperatorSetVersion since_version, std::string_view domain) {
-  return (node.OpType() == op_type &&
-  // we don't have op schemas in the minimal build so there's no way to check the deprecated flag
-#if !defined(ORT_MINIMAL_BUILD)
-          !node.Op()->Deprecated() &&
-#endif
-          IsSupportedSinceVersion(node, since_version) && MatchesOpSetDomain(node, domain));
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

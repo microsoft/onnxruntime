@@ -25,10 +25,6 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
                                        std::string_view domain = kOnnxDomain);
 
-bool IsSupportedOpTypeSinceVersionAndDomain(const Node& node, std::string_view op_type,
-                                            ONNX_NAMESPACE::OperatorSetVersion since_version,
-                                            std::string_view domain = kOnnxDomain);
-
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 /** Returns the attribute of a Node with a given name. */

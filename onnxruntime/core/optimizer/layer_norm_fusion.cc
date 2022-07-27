@@ -99,7 +99,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     Node& reduce_mean_node = *p_reduce_mean;
     ORT_RETURN_IF_ERROR(Recurse(reduce_mean_node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOpTypeSinceVersionAndDomain(reduce_mean_node, "ReduceMean", 1) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {1, 11, 13}) ||
         !graph_utils::IsSupportedProvider(reduce_mean_node, GetCompatibleExecutionProviders()) ||
         (reduce_mean_node.GetOutputEdgesCount() != 1 && reduce_mean_node.GetOutputEdgesCount() != 2) ||
         graph.NodeProducesGraphOutput(reduce_mean_node) ||
@@ -132,7 +132,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
 
     Node& sub_node = *graph.GetNode(p_sub_node->Index());
-    if (!graph_utils::IsSupportedOpTypeSinceVersionAndDomain(sub_node, "Sub", 7) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(sub_node, "Sub", {7, 13, 14}) ||
         sub_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, sub_node, subCnt == 1 ? 2u : 1u) ||
         !IsSupportedDataType(sub_node)) {
@@ -175,7 +175,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if (p_reduce_mean_input_node) {
       Node& reduce_mean_input_node = *graph.GetNode(p_reduce_mean_input_node->Index());
       // If input to the 1st ReduceMean is a Cast, and the Cast has same consumer count as subCnt + 1
-      if (graph_utils::IsSupportedOpTypeSinceVersionAndDomain(reduce_mean_input_node, "Cast", 9) &&
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_input_node, "Cast", {9, 13}) &&
           reduce_mean_input_node.GetExecutionProviderType() == reduce_mean_node.GetExecutionProviderType() &&
           optimizer_utils::CheckOutputEdges(graph, reduce_mean_input_node, static_cast<size_t>(subCnt) + 1)) {
         nodes_to_remove.insert(nodes_to_remove.begin(), reduce_mean_input_node);
@@ -191,7 +191,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // Find the sub_dup node if exist
     if (p_sub_node_dup != nullptr) {
       Node& sub_node_dup = *graph.GetNode(p_sub_node_dup->Index());
-      if (!graph_utils::IsSupportedOpTypeSinceVersionAndDomain(sub_node_dup, "Sub", 7) ||
+      if (!graph_utils::IsSupportedOptypeVersionAndDomain(sub_node_dup, "Sub", {7, 13, 14}) ||
           sub_node_dup.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
           !optimizer_utils::CheckOutputEdges(graph, sub_node, 1) ||
           !IsSupportedDataType(sub_node_dup)) {
@@ -208,7 +208,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
     Node& div_node = *graph.GetNode(p_div->Index());
-    if (!graph_utils::IsSupportedOpTypeSinceVersionAndDomain(div_node, "Div", 7) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(div_node, "Div", {7, 13, 14}) ||
         div_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, div_node, 1) ||
         !IsSupportedDataType(div_node)) {
@@ -223,7 +223,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
     Node& sqrt_node = *graph.GetNode(p_sqrt->Index());
 
-    if (!graph_utils::IsSupportedOpTypeSinceVersionAndDomain(sqrt_node, "Sqrt", 6) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(sqrt_node, "Sqrt", {6, 13}) ||
         sqrt_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, sqrt_node, 1) ||
         !IsSupportedDataType(sqrt_node) ||
@@ -234,7 +234,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     // Traceback the sqrt node to find add --> sqrt
     Node& add2_node = *graph.GetNode(sqrt_node.InputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOpTypeSinceVersionAndDomain(add2_node, "Add", 7) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(add2_node, "Add", {7, 13, 14}) ||
         add2_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, add2_node, 1) ||
         !IsSupportedDataType(add2_node)) {
@@ -249,7 +249,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
     Node& reduce_mean2_node = *graph.GetNode(p_reduce_mean2->Index());
-    if (!graph_utils::IsSupportedOpTypeSinceVersionAndDomain(reduce_mean2_node, "ReduceMean", 1) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean2_node, "ReduceMean", {1, 11, 13}) ||
         reduce_mean2_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, reduce_mean2_node, 1) ||
         !IsSupportedDataType(reduce_mean2_node) ||
@@ -260,7 +260,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     // Traceback the reduceMean node to find pow --> reduceMean
     Node& pow_node = *graph.GetNode(reduce_mean2_node.InputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOpTypeSinceVersionAndDomain(pow_node, "Pow", 7) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12, 13}) ||
         pow_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, pow_node, 1) ||
         !IsSupportedDataType(pow_node)) {
@@ -272,7 +272,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     const Node* p_cast_node = graph_utils::FirstParentByType(pow_node, "Cast");
     if (p_cast_node != nullptr) {
       Node& cast_node = *graph.GetNode(p_cast_node->Index());
-      if (!graph_utils::IsSupportedOpTypeSinceVersionAndDomain(cast_node, "Cast", 9) ||
+      if (!graph_utils::IsSupportedOptypeVersionAndDomain(cast_node, "Cast", {9, 13}) ||
           cast_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
           !optimizer_utils::CheckOutputEdges(graph, cast_node, 1)) {
         continue;
@@ -294,7 +294,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // can be removed. This is one possible place a Cast Op can exist, that is between Div and Mul nodes.
     // div --> mul or div --> cast --> mul
     Node* next_node = graph.GetNode(div_node.OutputNodesBegin()->Index());
-    if (graph_utils::IsSupportedOpTypeSinceVersionAndDomain(*next_node, "Cast", 9) &&
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13}) &&
         optimizer_utils::CheckOutputEdges(graph, *next_node, 1)) {
       nodes_to_remove.push_back(*next_node);
       next_node = graph.GetNode(next_node->OutputNodesBegin()->Index());
@@ -302,7 +302,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // Apex O2 pattern specific match ends...
 
     Node& mul_node = *next_node;
-    if (!graph_utils::IsSupportedOpTypeSinceVersionAndDomain(mul_node, "Mul", 7) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7, 13, 14}) ||
         mul_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, mul_node, 1) ||
         !IsSupportedDataType(mul_node)) {
@@ -313,7 +313,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // mul --> add
     // Need not check output edges of last node since they will be moved to fused node.
     Node& last_add_node = *graph.GetNode(mul_node.OutputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOpTypeSinceVersionAndDomain(last_add_node, "Add", 7) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(last_add_node, "Add", {7, 13, 14}) ||
         last_add_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         !IsSupportedDataType(last_add_node)) {
       continue;
@@ -460,7 +460,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     Node& pow_node = *p_pow;
     ORT_RETURN_IF_ERROR(Recurse(pow_node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOpTypeSinceVersionAndDomain(pow_node, "Pow", 7) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12, 13}) ||
         !graph_utils::IsSupportedProvider(pow_node, GetCompatibleExecutionProviders()) ||
         !optimizer_utils::CheckOutputEdges(graph, pow_node, 1) ||
         graph.NodeProducesGraphOutput(pow_node) ||
@@ -476,7 +476,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
     Node& reduce_mean_node = *graph.GetNode(p_reduce_mean->Index());
-    if (!graph_utils::IsSupportedOpTypeSinceVersionAndDomain(reduce_mean_node, "ReduceMean", 1) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {1, 11, 13}) ||
         reduce_mean_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, reduce_mean_node, 1) ||
         !IsSupportedDataType(reduce_mean_node) ||
@@ -490,7 +490,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
     Node& add_node = *graph.GetNode(p_add->Index());
-    if (!graph_utils::IsSupportedOpTypeSinceVersionAndDomain(add_node, "Add", 7) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(add_node, "Add", {7, 13, 14}) ||
         add_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, add_node, 1) ||
         !IsSupportedDataType(add_node)) {
@@ -504,7 +504,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     }
     Node& sqrt_node = *graph.GetNode(p_sqrt->Index());
 
-    if (!graph_utils::IsSupportedOpTypeSinceVersionAndDomain(sqrt_node, "Sqrt", 6) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(sqrt_node, "Sqrt", {6, 13}) ||
         sqrt_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, sqrt_node, 1) ||
         !IsSupportedDataType(sqrt_node) ||
@@ -518,7 +518,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
     Node& div_node = *graph.GetNode(p_div->Index());
-    if (!graph_utils::IsSupportedOpTypeSinceVersionAndDomain(div_node, "Div", 7) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(div_node, "Div", {7, 13, 14}) ||
         div_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, div_node, 1) ||
         !IsSupportedDataType(div_node)) {
@@ -538,7 +538,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     if (p_pow_input_node) {
       Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
       // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div)
-      if (graph_utils::IsSupportedOpTypeSinceVersionAndDomain(pow_input_node, "Cast", 9) &&
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(pow_input_node, "Cast", {9, 13}) &&
           pow_input_node.GetExecutionProviderType() == pow_node.GetExecutionProviderType() &&
           optimizer_utils::CheckOutputEdges(graph, pow_input_node, 2)) {
         nodes_to_remove.insert(nodes_to_remove.begin(), pow_input_node);
@@ -548,14 +548,14 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
 
     // div --> mul or div --> cast --> mul
     Node* next_node = graph.GetNode(div_node.OutputNodesBegin()->Index());
-    if (graph_utils::IsSupportedOpTypeSinceVersionAndDomain(*next_node, "Cast", 9) &&
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13}) &&
         optimizer_utils::CheckOutputEdges(graph, *next_node, 1)) {
       nodes_to_remove.push_back(*next_node);
       next_node = graph.GetNode(next_node->OutputNodesBegin()->Index());
     }
 
     Node& mul_node = *next_node;
-    if (!graph_utils::IsSupportedOpTypeSinceVersionAndDomain(mul_node, "Mul", 7) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7, 13, 14}) ||
         mul_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
         !IsSupportedDataType(mul_node)) {
       continue;
