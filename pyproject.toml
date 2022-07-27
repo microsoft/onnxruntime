@@ -25,6 +25,7 @@ disable = [
     "no-member",
     "too-few-public-methods",
     "missing-docstring",
+    "fixme",
 ]
 
 [tool.pyright]

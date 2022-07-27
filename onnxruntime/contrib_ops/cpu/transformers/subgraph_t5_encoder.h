@@ -27,8 +27,8 @@ class T5EncoderSubgraph : public Subgraph {
       int pad_token_id,
       int start_token_id,
       std::vector<OrtValue>& feeds,
-      const BeamSearchDeviceHelper::CreateEncoderInputsFunc& create_encoder_inputs_func,
-      const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
+      const GenerationDeviceHelper::CreateEncoderInputsFunc& create_encoder_inputs_func,
+      const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
       IAllocatorUniquePtr<char>& buffer,
       OrtValue& expanded_decoder_input_ids);
 

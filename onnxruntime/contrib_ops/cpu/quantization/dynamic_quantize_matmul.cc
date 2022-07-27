@@ -215,7 +215,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
   uint8_t* a_data_quant = static_cast<uint8_t*>(allocator->Alloc(SafeInt<size_t>(num_of_elements) * sizeof(uint8_t)));
-  BufferUniquePtr a_buffer_quant_holder(a_data_quant, BufferDeleter(allocator));
+  BufferUniquePtr a_buffer_quant_holder(a_data_quant, BufferDeleter(std::move(allocator)));
 
   ParQuantizeLinear(a_data, a_data_quant, num_of_elements, a_scale, a_zero_point, ctx->GetOperatorThreadPool());
 
