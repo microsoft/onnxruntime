@@ -273,11 +273,6 @@ class PlannerTest : public ::testing::Test {
     SequentialPlannerTestContext test_context(&shape_map_);
     plan_.emplace();
 
-    //mocks
-    ExecutionProviders providers;
-    CPUExecutionProviderInfo epi;
-    auto execution_provider = std::make_unique<CPUExecutionProvider>(epi);
-    EXPECT_TRUE(providers.Add(kCpuExecutionProvider, std::move(execution_provider)).IsOK());
     class MockStreamHandleRegsitry : public IStreamCommandHandleRegistry {
      public:
       // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
@@ -298,7 +293,7 @@ class PlannerTest : public ::testing::Test {
     onnxruntime::GraphViewer graph_viewer{graph_};
     status = SequentialPlanner::CreatePlan(nullptr, graph_viewer, outer_scope_node_args, execution_providers_,
                                            kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), test_context,
-                                           providers, MockStreamHandleRegsitry(),/* {{kCpuExecutionProvider, 1}}, {},*/
+                                           execution_providers_, MockStreamHandleRegsitry(),/* {{kCpuExecutionProvider, 1}}, {},*/
                                            "", DefaultLoggingManager().DefaultLogger(), plan_);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
