@@ -18,6 +18,9 @@
 
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/attention_fusion.h"
+#ifdef MLAS_TARGET_AMD64_IX86
+#include "core/optimizer/avx2_weight_s8_to_u8.h"
+#endif
 #include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
@@ -258,6 +261,16 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       if (enable_gelu_approximation) {
         transformers.emplace_back(std::make_unique<GeluApproximation>(cpu_cuda_rocm_eps));
       }
+
+#ifdef MLAS_TARGET_AMD64_IX86
+      const bool avx2_precision_mode =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsAvx2PrecisionMode, "0") == "1"
+          && MlasPlatformU8S8Overflow();
+
+      if (avx2_precision_mode) {
+        transformers.emplace_back(std::make_unique<Avx2WeightS8ToU8Transformer>(cpu_ep));
+      }
+#endif
 
 #endif
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their

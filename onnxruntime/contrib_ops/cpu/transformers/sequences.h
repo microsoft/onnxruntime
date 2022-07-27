@@ -4,7 +4,7 @@
 #pragma once
 
 #include "gsl/gsl"
-#include "contrib_ops/cpu/transformers/beam_search_shared.h"
+#include "contrib_ops/cpu/transformers/generation_shared.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -24,7 +24,7 @@ class Sequences : public ISequences {
   // Returns current sequence length.
   int GetSequenceLength() const override;
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   // Print the sequences to StdOut in debug mode
   void PrintSequences(const IConsoleDumper* dumper) const;
 #endif
@@ -33,6 +33,9 @@ class Sequences : public ISequences {
   void AppendNextTokenToSequences(
       gsl::span<int32_t>& beam_indices,
       gsl::span<int32_t>& beam_next_tokens);
+
+  void AppendNextTokenToSequences(
+      gsl::span<int32_t>& next_tokens);
 
  private:
   // Two buffers of shape (batch_size, num_beams, max_seq_length) to store sequences.

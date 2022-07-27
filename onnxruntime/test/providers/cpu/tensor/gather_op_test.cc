@@ -101,7 +101,7 @@ TEST(GatherOpTest, Gather_invalid_index_cpu) {
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
   test.Run(so, OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds, idx=1000 must be within the inclusive range [-3,2]",
            // On Cuda it is impossible to dereference indices memory on CPU so the check can not run
-           {kCudaExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider, kNupharExecutionProvider, kTensorrtExecutionProvider});
+           {kCudaExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider, kNupharExecutionProvider, kTensorrtExecutionProvider, kNnapiExecutionProvider});
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
@@ -224,54 +224,41 @@ TEST(GatherOpTest, Gather_axis1_indices2d) {
 }
 
 TEST(GatherOpTest, Gather_axis0_indicesInt32) {
-  // To test for NNAPI EP, we need the indices to be initializers
   // NNAPI EP only supports float input data for now,
   // the following two test cases cover int32_t indices with float input other than int64_t type for Nnapi
-  auto run_test = [](bool indices_is_initializer) {
-    OpTester test("Gather");
-    test.AddAttribute<int64_t>("axis", 0LL);
-    test.AddInput<float>("data", {2, 3, 4},
-                         {0.0f, 0.1f, 0.2f, 0.3f,
-                          1.0f, 1.1f, 1.2f, 1.3f,
-                          2.0f, 2.1f, 2.2f, 2.3f,
-                          10.0f, 10.1f, 10.2f, 10.3f,
-                          11.0f, 11.1f, 11.2f, 11.3f,
-                          12.0f, 12.1f, 12.2f, 12.3f});
-    test.AddInput<int32_t>("indices", {1}, {1}, indices_is_initializer);
-    test.AddOutput<float>("output", {1, 3, 4},
-                          {10.0f, 10.1f, 10.2f, 10.3f,
-                           11.0f, 11.1f, 11.2f, 11.3f,
-                           12.0f, 12.1f, 12.2f, 12.3f});
+  OpTester test("Gather");
+  test.AddAttribute<int64_t>("axis", 0LL);
+  test.AddInput<float>("data", {2, 3, 4},
+                       {0.0f, 0.1f, 0.2f, 0.3f,
+                        1.0f, 1.1f, 1.2f, 1.3f,
+                        2.0f, 2.1f, 2.2f, 2.3f,
+                        10.0f, 10.1f, 10.2f, 10.3f,
+                        11.0f, 11.1f, 11.2f, 11.3f,
+                        12.0f, 12.1f, 12.2f, 12.3f});
+  test.AddInput<int32_t>("indices", {1}, {1});
+  test.AddOutput<float>("output", {1, 3, 4},
+                        {10.0f, 10.1f, 10.2f, 10.3f,
+                         11.0f, 11.1f, 11.2f, 11.3f,
+                         12.0f, 12.1f, 12.2f, 12.3f});
 
-    test.Run();
-  };
-
-  run_test(false);
-  run_test(true);
+  test.Run();
 }
 
 TEST(GatherOpTest, Gather_axis0_indices2dInt32) {
-  // To test for NNAPI EP, we need the indices to be initializers
-  auto run_test = [](bool indices_is_initializer) {
-    OpTester test("Gather");
-    test.AddAttribute<int64_t>("axis", 0LL);
-    test.AddInput<float>("data", {3, 3},
-                         {0.0f, 0.1f, 0.2f,
-                          1.0f, 1.1f, 1.2f,
-                          2.0f, 2.1f, 2.2f});
-    test.AddInput<int32_t>("indices", {2, 2},
-                           {1, 0,
-                            2, 1},
-                           indices_is_initializer);
-    test.AddOutput<float>("output", {2, 2, 3},
-                          {1.0f, 1.1f, 1.2f, 0.0f, 0.1f, 0.2f,
-                           2.0f, 2.1f, 2.2f, 1.0f, 1.1f, 1.2f});
+  OpTester test("Gather");
+  test.AddAttribute<int64_t>("axis", 0LL);
+  test.AddInput<float>("data", {3, 3},
+                       {0.0f, 0.1f, 0.2f,
+                        1.0f, 1.1f, 1.2f,
+                        2.0f, 2.1f, 2.2f});
+  test.AddInput<int32_t>("indices", {2, 2},
+                         {1, 0,
+                          2, 1});
+  test.AddOutput<float>("output", {2, 2, 3},
+                        {1.0f, 1.1f, 1.2f, 0.0f, 0.1f, 0.2f,
+                         2.0f, 2.1f, 2.2f, 1.0f, 1.1f, 1.2f});
 
-    test.Run();
-  };
-
-  run_test(false);
-  run_test(true);
+  test.Run();
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_int32) {

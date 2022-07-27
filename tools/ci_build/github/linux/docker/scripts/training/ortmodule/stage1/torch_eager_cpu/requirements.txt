@@ -7,3 +7,4 @@ h5py
 sklearn
 numpy
 pandas
+parameterized

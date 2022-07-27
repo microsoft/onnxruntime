@@ -7,4 +7,8 @@
 
 namespace py = pybind11;
 
+namespace onnxruntime {
+
 void InitVectorAdd(py::module m);
+
+}

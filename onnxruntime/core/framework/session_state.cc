@@ -195,7 +195,7 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
   return Status::OK();
 }
 
-const SequentialExecutionPlan* SessionState::GetExecutionPlan() const { 
+const SequentialExecutionPlan* SessionState::GetExecutionPlan() const {
   if (!p_seq_exec_plan_.has_value()) {
     return nullptr;
   }
@@ -1185,13 +1185,14 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
   if (is_verbose_mode) {
     LOGS(logger, VERBOSE) << "Node placements";
     if (node_placements.size() == 1) {
-      LOGS(logger, VERBOSE) << "All nodes have been placed on [" << node_placements.begin()->first << "].";
+      const auto& [provider, node_strs] = *node_placements.begin();
+      LOGS(logger, VERBOSE) << " All nodes placed on [" << provider << "]. Number of nodes: " << node_strs.size();
     } else {
       for (const auto& [provider, node_strs] : node_placements) {
-        std::ostringstream all_nodes_str;
-        std::copy(node_strs.begin(), node_strs.end(), std::ostream_iterator<std::string>(all_nodes_str, ", "));
-        LOGS(logger, VERBOSE) << " Provider: [" << provider << "]"
-                              << ": [" << all_nodes_str.str() << "]";
+        LOGS(logger, VERBOSE) << " Node(s) placed on [" << provider << "]. Number of nodes: " << node_strs.size();
+        for (const auto& node_str : node_strs) {
+          LOGS(logger, VERBOSE) << "  " << node_str;
+        }
       }
     }
   }

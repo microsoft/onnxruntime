@@ -1997,7 +1997,9 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
         continue;
       }
 
-      if (!HandleQuantizeDequantizeScale(ctx.graph, *perm, *dq_node, ctx.opset)) {
+      // we're moving the Transpose to before the DQ, so we need to use the inverse permutations to update the axis
+      // attribute correctly when doing per-axis dequantization
+      if (!HandleQuantizeDequantizeScale(ctx.graph, InvertPerm(*perm), *dq_node, ctx.opset)) {
         continue;
       }
 
