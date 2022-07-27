@@ -35,6 +35,15 @@ jobs:
     displayName: Build Host Protoc
 
   - script: |
+      function get_full_ndk_version {
+          majorVersion=$1
+          ndkVersion=$(${SDKMANAGER} --list | grep "ndk;${majorVersion}.*" | awk '{gsub("ndk;", ""); print $1}' | sort -V | tail -n1)
+          echo "$ndkVersion"
+      }
+      ANDROID_HOME=$HOME/Library/Android/sdk
+      SDKMANAGER=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
+      ndkDefault=$(get_full_ndk_version "23")
+      ln -s $ANDROID_HOME/ndk/$ndkDefault $ANDROID_HOME/ndk-bundle
       export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
       export ANDROID_HOME=/usr/local/lib/android/sdk
       export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
@@ -293,6 +302,15 @@ jobs:
         jdkSourceOption: 'PreInstalled'
 
     - script: |
+        function get_full_ndk_version {
+            majorVersion=$1
+            ndkVersion=$(${SDKMANAGER} --list | grep "ndk;${majorVersion}.*" | awk '{gsub("ndk;", ""); print $1}' | sort -V | tail -n1)
+            echo "$ndkVersion"
+        }
+        ANDROID_HOME=$HOME/Library/Android/sdk
+        SDKMANAGER=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
+        ndkDefault=$(get_full_ndk_version "23")
+        ln -s $ANDROID_HOME/ndk/$ndkDefault $ANDROID_HOME/ndk-bundle
         python3 tools/ci_build/build.py \
         --android \
         --build_dir build_nnapi \
