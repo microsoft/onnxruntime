@@ -230,12 +230,9 @@ TEST(QDQTransformerTests, DQ_S8_to_U8) {
     auto* weight = builder.MakeInitializer<int8_t>(weights_shape, -128, 127);
     auto* output_arg = builder.MakeOutput();
 
-    typedef std::numeric_limits<uint8_t> Input1Limits;
-    typedef std::numeric_limits<int8_t> Input2Limits;
-    typedef std::numeric_limits<uint8_t> OutputTypeLimits;
-
     // add QDQ activation
-    auto* dq1_output = AddQDQNodePair<int8_t>(builder, input1_arg, .039f, (Input1Limits::max() + Input1Limits::min()) / 2 + 1);
+    typedef std::numeric_limits<uint8_t> Input1Limits;
+    auto* dq1_output = AddQDQNodePair<int8_t>(builder, input1_arg, .039f, (int8_t)((Input1Limits::max() + Input1Limits::min()) / 2 + 1));
 
     // add DQ weight
     auto* dq_w_output = builder.MakeIntermediate();

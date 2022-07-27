@@ -58,7 +58,7 @@ inline bool Int8TensorProto2Uint8(
     p++;
   }
   if (force || should_convert) {
-    dst.set_raw_data(temp.data<int8_t>(), temp.size());
+    dst.set_raw_data(temp.data<int8_t>(), size_t(temp.size()));
     return true;
   }
   return false;
