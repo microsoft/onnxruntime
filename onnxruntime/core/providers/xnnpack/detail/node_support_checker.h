@@ -12,11 +12,10 @@ class Node;
 class NodeUnit;
 
 namespace xnnpack {
-using PNodePNodeUnitMap = std::unordered_map<const Node*, const NodeUnit*>;
 class NodeSupportChecker {
  public:
   NodeSupportChecker(const GraphViewer& graph,
-                     const PNodePNodeUnitMap& supported_node_unit_map)
+                     const std::unordered_map<const Node*, const NodeUnit*>& supported_node_unit_map)
       : graph_{graph},
         supported_node_unit_map_{supported_node_unit_map} {
   }
@@ -29,7 +28,7 @@ class NodeSupportChecker {
 
   // previously selected nodes as of each time IsNodeSupport{WithFusion} is called.
   // updated in the background by the EP when it decides it will take a node_unit.
-  const PNodePNodeUnitMap& supported_node_unit_map_;
+  const std::unordered_map<const Node*, const NodeUnit*>& supported_node_unit_map_;
 };
 
 }  // namespace xnnpack

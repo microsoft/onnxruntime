@@ -45,7 +45,7 @@ bool MaxPool::IsMaxPoolOnnxNodeSupported(const NodeUnit& node_unit,
     auto input_defs = node.InputDefs();
     const auto& x_arg = *input_defs[0];
 
-    // we only support float and u8 currently
+    // we only support float and u8/s8 currently
     const auto* x_type = x_arg.TypeAsProto();
     // input of maxpool could be fp16/fp32/fp64,i8/u8 according to ONNX
     if (x_type == nullptr ||
@@ -253,7 +253,6 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(MaxPool, kMSInternalNHWCDomain, 11, 11, kXnnpa
                                                             DataTypeImpl::GetTensorType<uint8_t>(),
                                                             DataTypeImpl::GetTensorType<int8_t>()}),
                                   MaxPool);
-// qlinearmaxpool is not essential
 ONNX_OPERATOR_KERNEL_EX(MaxPool, kMSInternalNHWCDomain, 12, kXnnpackExecutionProvider,
                         KernelDefBuilder()
                             .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),

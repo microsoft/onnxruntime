@@ -387,7 +387,7 @@ gsl::span<const T> ReadConstantValues(const OpKernelInfo& info, int idx) {
     if constexpr (std::is_same<T, float>::value) {
       ORT_THROW("Could not read constant values from idx ", idx);
     } else {
-      // It's legal for zero-point to be null
+      // It's legal for zero-point to be null, we just give its default value 0
       static const T default_zp[] = {0};
       return gsl::make_span(default_zp, static_cast<typename gsl::span<T>::index_type>(1));
     }
@@ -412,8 +412,8 @@ void GetScaleAndZeroPoint(const OpKernelInfo& info,
 
 // A general function To parse QuantParam for different ops,
 // @param info:OpKernelInfo
-// @param x_dtype:int32_t|enum ONNX_NAMESPACE::TensorProto_DataType,defined in
-// "onnxruntime\core\providers\shared_library\provider_api.h", to represent the data types of zero_point.
+// @param x_dtype:int32_t|enum ONNX_NAMESPACE::TensorProto_DataType, defined in
+// "external/onnx/onnx/onnx-ml.pb.h", to represent the data types of zero_point.
 // And scale is always float-type
 // @param how_many_input_scale_and_zp:size_t, how many input tensors require quantized params. Typically,
 // Conv has three inputs, but bias don't ask for a scale and zero point.

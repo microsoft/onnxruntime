@@ -123,8 +123,9 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
   }
 }
 
-// Add Compute Capability for the second call. All target nodes have the tag of Xnnpack execution provider
+// Add Compute Capability for the second call. All target nodes have the tag of "XnnpackExecutionProvider"
 // after the first call. So we are going to do QDQ fusion in the second call
+// All nodes was collected in one sub_graph
 static void AddComputeCapabilityForNodeUnit(const NodeUnit& node_unit,
                                      const std::function<void(std::unique_ptr<IndexedSubGraph>)>& adder,
                                      std::unordered_map<const Node*, const NodeUnit*>& supported_map) {
@@ -148,9 +149,11 @@ static void AddComputeCapabilityForNodeUnit(const NodeUnit& node_unit,
 
 // The first call to add compute capability in GetCapability, we just tell this all nodes in nodeunit
 // is supported by Xnnapck EP as long as it's target node is supported.
-static void AddComputeCapabilityForEachNodeInNodeUnit(const NodeUnit& node_unit,
-                                                     std::function<void(std::unique_ptr<IndexedSubGraph>)> adder,
-                                                     std::unordered_map<const Node*, const NodeUnit*>& supported_map) {
+// One node in one sub_graph separately
+static void AddComputeCapabilityForEachNodeInNodeUnit(
+    const NodeUnit& node_unit,
+    std::function<void(std::unique_ptr<IndexedSubGraph>)> adder,
+    std::unordered_map<const Node*, const NodeUnit*>& supported_map) {
   auto process_node = [&adder, &node_unit, &supported_map](const Node& node) {
     std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
     sub_graph->nodes.push_back(node.Index());

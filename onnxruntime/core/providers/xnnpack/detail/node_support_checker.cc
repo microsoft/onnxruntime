@@ -32,11 +32,11 @@ using CheckerFn = std::function<bool(const NodeUnit& node,
 // returns node to fuse with, or nullptr.
 using FuseCheckerFn = std::function<const NodeUnit*(const NodeUnit& node_unit,
                                                     const GraphViewer& graph,
-                                                    const PNodePNodeUnitMap& supported_node_unit_map)>;
+                                                    const std::unordered_map<const Node*, const NodeUnit*>& supported_node_unit_map)>;
 
 const NodeUnit* ClipReluChecker(const NodeUnit& node_unit,
                                 const GraphViewer& graph,
-                                const PNodePNodeUnitMap& supported_node_unit_map) {
+                                const std::unordered_map<const Node*, const NodeUnit*>& supported_node_unit_map) {
   const NodeUnit* fuse_with{nullptr};
   static const std::unordered_set<std::string> node_to_be_fuse = {"Conv", "MaxPool", "AveragePool"};
   const Node& node = node_unit.GetNode();
