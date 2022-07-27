@@ -131,7 +131,7 @@ common::Status QlinearSoftmaxCPU(size_t N,
                                  const T* x_data,
                                  T* y_data,
                                  const uint32_t* lookup_table,
-                                 uint32_t ys,
+                                 uint32_t y_scale,
                                  T yzp,
                                  onnxruntime::concurrency::ThreadPool* thread_pool);
 
@@ -141,7 +141,7 @@ common::Status QlinearSoftmaxCPU<uint8_t>(size_t N,
                                           const uint8_t* x_data,
                                           uint8_t* y_data,
                                           const uint32_t* lookup_table,
-                                          uint32_t ys,
+                                          uint32_t y_scale,
                                           uint8_t yzp,
                                           onnxruntime::concurrency::ThreadPool* thread_pool) {
   using onnxruntime::TensorOpCost;
@@ -151,8 +151,8 @@ common::Status QlinearSoftmaxCPU<uint8_t>(size_t N,
       TensorOpCost{static_cast<double>(D * 3),
                    static_cast<double>(D),
                    static_cast<double>(D * 3)},
-      [x_data, y_data, D, ys, yzp, &lookup_table](std::ptrdiff_t first, std::ptrdiff_t last) {
-        const auto c_y_scale = ys;
+      [x_data, y_data, D, y_scale, yzp, &lookup_table](std::ptrdiff_t first, std::ptrdiff_t last) {
+        const auto c_y_scale = y_scale;
         const auto c_y_zp = yzp;
         const uint8_t* x_t = x_data + first * D;
         uint8_t* y_t = y_data + first * D;
@@ -203,7 +203,7 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
                                          const int8_t* x_data,
                                          int8_t* y_data,
                                          const uint32_t* lookup_table,
-                                         uint32_t ys,
+                                         uint32_t y_scale,
                                          int8_t yzp,
                                          onnxruntime::concurrency::ThreadPool* thread_pool) {
   using onnxruntime::TensorOpCost;
@@ -213,8 +213,8 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
       TensorOpCost{static_cast<double>(D * 3),
                    static_cast<double>(D),
                    static_cast<double>(D * 3)},
-      [x_data, y_data, D, ys, yzp, &lookup_table](std::ptrdiff_t first, std::ptrdiff_t last) {
-        const auto c_y_scale = ys;
+      [x_data, y_data, D, y_scale, yzp, &lookup_table](std::ptrdiff_t first, std::ptrdiff_t last) {
+        const auto c_y_scale = y_scale;
         const auto c_y_zp = yzp;
 
         const int8_t* x_t = x_data + first * D;
