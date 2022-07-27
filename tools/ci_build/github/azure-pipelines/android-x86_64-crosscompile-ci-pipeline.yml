@@ -112,6 +112,11 @@ jobs:
       displayName: Setup gradle wrapper to use gradle 6.8.3
 
     - script: |
+      set -ex
+      ${ANDROID_HOME}/tools/bin/sdkmanager --install "ndk;21.0.6113669"
+      displayName: install ndk 21.0
+
+    - script: |
         python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
         --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
@@ -129,7 +134,6 @@ jobs:
         jdkSourceOption: 'PreInstalled'
 
     - script: |
-        sudo ${ANDROID_HOME}/tools/bin/sdkmanager --install "ndk;21.0.6113669"
         python3 tools/ci_build/build.py \
         --android \
         --build_dir build \
@@ -262,6 +266,11 @@ jobs:
       displayName: Setup gradle wrapper to use gradle 6.8.3
 
     - script: |
+        set -ex
+        ${ANDROID_HOME}/tools/bin/sdkmanager --install "ndk;21.0.6113669"
+      displayName: install ndk 21.0
+
+    - script: |
         python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
         --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
@@ -279,7 +288,6 @@ jobs:
         jdkSourceOption: 'PreInstalled'
 
     - script: |
-        sudo ${ANDROID_HOME}/tools/bin/sdkmanager --install "ndk;21.0.6113669"
         python3 tools/ci_build/build.py \
         --android \
         --build_dir build_nnapi \
@@ -352,6 +360,9 @@ jobs:
           $(Build.SourcesDirectory)/protobuf_install
       displayName: Build Host Protoc
 
+    - script: ${ANDROID_HOME}/tools/bin/sdkmanager --install "ndk;21.0.6113669"
+      displayName: install ndk 21.0
+
     - script: |
         python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
@@ -369,7 +380,6 @@ jobs:
         jdkSourceOption: 'PreInstalled'
 
     - script: |
-        sudo ${ANDROID_HOME}/tools/bin/sdkmanager --install "ndk;21.0.6113669"
         python3 tools/ci_build/build.py \
         --android \
         --build_dir build_nnapi \
