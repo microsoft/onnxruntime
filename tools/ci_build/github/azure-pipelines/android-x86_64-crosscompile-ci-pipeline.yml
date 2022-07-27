@@ -304,14 +304,15 @@ jobs:
     - script: |
         function get_full_ndk_version {
             majorVersion=$1
-            ndkVersion=$(${SDKMANAGER} --list | grep "ndk;${majorVersion}.*" | awk '{gsub("ndk;", ""); print $1}' | sort -V | tail -n1)
-            echo "$ndkVersion"
+            ndkFullVersion=$($SDKMANAGER --list | grep "ndk;${majorVersion}.*" | awk '{gsub("ndk;", ""); print $1}' | sort -V | tail -n1)
+            echo "$ndkFullVersion"
         }
-        ANDROID_HOME=$HOME/Library/Android/sdk
-        SDKMANAGER=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
-        ndkDefault=$(get_full_ndk_version "23")
-        ln -s $ANDROID_HOME/ndk/$ndkDefault $ANDROID_HOME/ndk-bundle
-        python3 tools/ci_build/build.py \
+        ANDROID_ROOT=/usr/local/lib/android
+        ANDROID_SDK_ROOT=${ANDROID_ROOT}/sdk
+        ANDROID_NDK_ROOT=${ANDROID_SDK_ROOT}/ndk-bundle
+        SDKMANAGER=${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager
+        ndkDefaultFullVersion=$(get_full_ndk_version "23")
+        ln -sf $ANDROID_SDK_ROOT/ndk/$ndkDefaultFullVersion $ANDROID_NDK_ROOT
         --android \
         --build_dir build_nnapi \
         --android_sdk_path $ANDROID_HOME \
