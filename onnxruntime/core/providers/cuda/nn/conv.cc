@@ -110,7 +110,6 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   if (context->InputCount() >= 4) {
     const Tensor* Z = context->Input<Tensor>(3);
     ORT_RETURN_IF_ERROR(s_.z_tensor.Set(Z->Shape().GetDims(), CudnnTensor::GetDataType<CudaT>()));
-
     s_.z_data = reinterpret_cast<const CudaT*>(Z->template Data<T>());
   } else {
     s_.z_data = nullptr;
