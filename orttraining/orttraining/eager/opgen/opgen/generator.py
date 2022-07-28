@@ -253,6 +253,20 @@ class ORTGen:
         writer.writeline("auto ort_input_out = create_ort_value(invoker, out);")
         writer.writeline()
 
+    def _write_function_body_onnx_op_input_type_promotion(self, writer, cpp_param, onnx_op_index, op_input):
+        type_func_str = (
+            "type()"
+            if cpp_param.parameter_type.desugar().identifier_tokens[0].value == "Scalar"
+            else "scalar_type()"
+        )
+        writer.write(f"if ({op_input}.{type_func_str} != *promoted_type)")
+        writer.writeline("{")
+        writer.push_indent()
+        writer.writeline(
+            f"ort_input_{onnx_op_index}_{op_input} = CastToType(invoker, ort_input_{onnx_op_index}_{op_input}, *promoted_type);"
+        )
+        writer.pop_indent()
+        writer.writeline("}")
 
     def _write_function_body(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
         full_onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
@@ -341,19 +355,7 @@ class ORTGen:
                 writer.write(f"auto ort_input_{onnx_op_index}_{op_input} = ")
                 writer.writeline(f"create_ort_value(invoker, {op_input});")
                 if need_type_promotion:
-                    type_func_str = (
-                        "type()"
-                        if cpp_param.parameter_type.desugar().identifier_tokens[0].value == "Scalar"
-                        else "scalar_type()"
-                    )
-                    writer.write(f"if ({op_input}.{type_func_str} != *promoted_type)")
-                    writer.writeline("{")
-                    writer.push_indent()
-                    writer.writeline(
-                        f"ort_input_{onnx_op_index}_{op_input} = CastToType(invoker, ort_input_{onnx_op_index}_{op_input}, *promoted_type);"
-                    )
-                    writer.pop_indent()
-                    writer.writeline("}")
+                    self._write_function_body_onnx_op_input_type_promotion(writer, cpp_param, onnx_op_index, op_input)
 
             # Torch kwargs -> ORT attributes
             attrs = {k: v for k, v in onnx_op.attributes.items() if v and v.value is not None}
