@@ -153,7 +153,6 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 }
 
 Status Conv<float>::Compute(OpKernelContext* context) const {
-  printf("Conv cpu\n");
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const Tensor* X = context->Input<Tensor>(0);
   const Tensor* W = context->Input<Tensor>(1);
