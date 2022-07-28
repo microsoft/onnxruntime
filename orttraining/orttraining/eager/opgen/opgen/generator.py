@@ -184,9 +184,7 @@ class ORTGen:
                 + ", ".join([f"'{o}'" for o in self._mapped_ops.keys()])
             )
 
-    def _write_file_prelude(
-        self, writer: opgenwriter.SourceWriter
-    ):  # TODO(liwaller) list of includes from somewhere else.
+    def _write_file_prelude(self, writer: opgenwriter.SourceWriter):
         writer.writeline("// AUTO-GENERATED CODE! - DO NOT EDIT!")
         writer.writeline(f'// $ python {" ".join(sys.argv)}')
         writer.writeline()
@@ -608,7 +606,7 @@ class ORTGen:
             writer, onnx_op, onnx_op_index, cpp_func, attrs_arg_ptr
         )
 
-        return in_place_params, return_outputs, attrs_arg_ptr
+        return in_place_params, return_outputs
 
     # TODO: Pick the right "out" Torch parameter; do not assume the first one
     # TODO: Handle multiple results
@@ -639,7 +637,7 @@ class ORTGen:
             self._write_function_body_resize_output(writer)
 
         for onnx_op_index, onnx_op in enumerate(ctx.ops):
-            in_place_params, return_outputs, attrs_arg_ptr = self._write_function_body_onnx_op(
+            in_place_params, return_outputs = self._write_function_body_onnx_op(
                 writer,
                 onnx_op,
                 onnx_op_index,
