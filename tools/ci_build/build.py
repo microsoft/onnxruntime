@@ -1036,6 +1036,7 @@ def generate_build_tree(
             "-Donnxruntime_USE_CUSTOM_DIRECTML=ON",
             "-Ddml_INCLUDE_DIR=" + os.path.join(args.dml_path, "include"),
             "-Ddml_LIB_DIR=" + os.path.join(args.dml_path, "lib"),
+            "-Ddml_BIN_DIR=" + os.path.join(args.dml_path, "bin"),
         ]
 
     if args.dml_external_project:
