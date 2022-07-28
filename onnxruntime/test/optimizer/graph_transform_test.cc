@@ -3556,7 +3556,7 @@ struct BiasSoftmaxFusionTester {
     ASSERT_EQ(op_to_count["Softmax"], 0);
     ASSERT_EQ(op_to_count["com.microsoft.BiasSoftmax"], 1);
 
-    int actual_axis, actual_broadcast_type;
+    int actual_axis = 1, actual_broadcast_type = 1;
     ASSERT_TRUE(GetAxis("BiasSoftmax", "axis", &actual_axis));
     ASSERT_EQ(actual_axis, expected_axis);
 
