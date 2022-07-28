@@ -761,8 +761,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasSoftmax, 1,
                                 .SetDoc(
                                     "Y = softmax(scores + bias)) with simple broadcast on bias. "
                                     "Intended to specialize softmax(scores + additive_mask) commonly found in transformer models.")
-                                .Attr("softmax_axis", "apply softmax to elements for dimensions softmax_axis or higher", AttributeProto::INT, static_cast<int64_t>(1))
-                                .Attr("broadcast_axis", "broadcast bias across input for dimensions broadcast_axis to softmax_axis-1", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Attr("axis", "apply softmax to elements for dimensions axis or higher", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Attr("is_inner_broadcast", "true if broadcast bias across input for dimensions broadcast_axis to axis-1, "
+                                      "otherwise broadcast bias across input for dimensions 0 to broadcast_axis - 1",
+                                      AttributeProto::INT)
                                 .Input(0, "data", "The input data as Tensor.", "T")
                                 .Input(1, "bias", "The bias (or mask) as Tensor.", "T")
                                 .Output(0, "output", "The output.", "T")
