@@ -412,6 +412,21 @@ class ORTGen:
             writer.writeline("tensor_options);")
         writer.pop_indent()
 
+    def _write_function_body_return_multiple(self, writer, cpp_func, in_place_params):
+        if not (
+            isinstance(cpp_func.return_type, ast.TemplateType)
+            and cpp_func.return_type.identifier_tokens[-1].value == "std::tuple"
+        ):
+            raise Exception(f"")
+        tensorRef = "Tensor&," * len(in_place_params)
+        tensorRef = tensorRef[: len(tensorRef) - 1]
+        writer.write(f"return std::tuple<{tensorRef}>(")
+        for index, key in enumerate(sorted(in_place_params)):
+            if index > 0:
+                writer.write(", ")
+            writer.write(in_place_params[key])
+        writer.writeline(");")
+
     def _write_function_body(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
         full_onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
 
@@ -534,19 +549,7 @@ class ORTGen:
         elif len(in_place_params) == 1:
             writer.writeline(f"return {in_place_params[0]};")
         else:
-            if not (
-                isinstance(cpp_func.return_type, ast.TemplateType)
-                and cpp_func.return_type.identifier_tokens[-1].value == "std::tuple"
-            ):
-                raise Exception(f"")
-            tensorRef = "Tensor&," * len(in_place_params)
-            tensorRef = tensorRef[: len(tensorRef) - 1]
-            writer.write(f"return std::tuple<{tensorRef}>(")
-            for index, key in enumerate(sorted(in_place_params)):
-                if index > 0:
-                    writer.write(", ")
-                writer.write(in_place_params[key])
-            writer.writeline(");")
+            self._write_function_body_return_multiple(writer, cpp_func, in_place_params)
 
     def _write_type_check(self, writer, mapped_func, cpp_func, ctx, need_type_promotion, set_out_tensor):
         cast_op_found = False
