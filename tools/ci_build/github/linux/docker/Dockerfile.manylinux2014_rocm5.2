@@ -191,6 +191,8 @@ RUN rm -fr /usr/local/bin/protoc \
            /usr/local/include/google \
            /usr/local/lib/pkgconfig/protobuf*
 
+RUN userdel jenkins
+
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
