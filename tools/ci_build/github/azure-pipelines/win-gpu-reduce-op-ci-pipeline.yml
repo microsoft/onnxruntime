@@ -25,6 +25,9 @@ jobs:
       choco uninstall cmake -y
       choco install cmake --version 3.22.0 -ym
       get-command cmake.exe
+      dir "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4\extras\visual_studio_integration\MSBuildExtensions"
+      Copy-Item -Path "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4\extras\visual_studio_integration\MSBuildExtensions\*" -Destination "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VC\v170\BuildCustomizations" -Recurse
+
     displayName: 'Check cmake'
   - task: UsePythonVersion@0
     inputs:
