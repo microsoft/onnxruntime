@@ -1,4 +1,3 @@
-import itertools
 from pathlib import Path
 
 import onnx
@@ -369,3 +368,93 @@ class ONNXModel:
         assert end == len(self.graph().node), "Graph is not a DAG"
         self.graph().ClearField("node")
         self.graph().node.extend(sorted_nodes)
+
+    def clean_initializers(self):
+        return ONNXModel.clean_initializers_helper(self.graph(), self.model)
+
+    @staticmethod
+    def clean_initializers_helper(graph, model):
+        """
+        Clean unused initializers including which is caused by quantizing the model.
+            return cleaned graph, and list of tensor names from this graph and all its subgraphes
+            that can not be found in this graph and its subgraphes
+        """
+        requesting_tensor_names = {}
+        requesting_tensor_names.update(
+            {input_name: 1 for node in graph.node for input_name in node.input if input_name}
+        )
+        requesting_tensor_names.update({g_out.name: 1 for g_out in graph.output if g_out.name})
+
+        new_nodes = []
+        for node in graph.node:
+            node_2_add = node
+            graph_attrs = [
+                attr
+                for attr in node.attribute
+                if attr.type == onnx.AttributeProto.GRAPH or attr.type == onnx.AttributeProto.GRAPHS
+            ]
+            if len(graph_attrs) > 0:
+                kwargs = {}
+                for attr in node.attribute:
+                    kv = {}
+                    if attr.type == onnx.AttributeProto.GRAPH:
+                        (
+                            cleaned_sub_graph,
+                            sub_requesting_tensor_names,
+                        ) = ONNXModel.clean_initializers_helper(attr.g, model)
+                        kv = {attr.name: cleaned_sub_graph}
+                        requesting_tensor_names.update({gn: 1 for gn in sub_requesting_tensor_names})
+                    elif attr.type == onnx.AttributeProto.GRAPHS:
+                        cleaned_graphes = []
+                        for subgraph in attr.graphs:
+                            (
+                                cleaned_sub_graph,
+                                sub_requesting_tensor_names,
+                            ) = ONNXModel.clean_initializers_helper(subgraph, model)
+                            cleaned_graphes.extend([cleaned_sub_graph])
+                            requesting_tensor_names.update({gn: 1 for gn in sub_requesting_tensor_names})
+                        kv = {attr.name: cleaned_graphes}
+                    else:
+                        kv = attribute_to_kwarg(attr)
+                    kwargs.update(kv)
+                node_2_add = onnx.helper.make_node(node.op_type, node.input, node.output, name=node.name, **kwargs)
+            new_nodes.extend([node_2_add])
+
+        graph.ClearField("node")
+        graph.node.extend(new_nodes)
+
+        generated_names = {}
+        generated_names.update({output_name: 1 for node in graph.node for output_name in node.output if output_name})
+        for gn in generated_names:
+            requesting_tensor_names.pop(gn, None)
+
+        name_to_input = {}
+        for input in graph.input:
+            name_to_input[input.name] = input
+
+        unused_ini_tensors = []
+        for ini_tensor in graph.initializer:
+            if ini_tensor.name in requesting_tensor_names:
+                requesting_tensor_names.pop(ini_tensor.name, None)
+            else:
+                # mark it to remove, remove here directly will cause mis-behavier
+                unused_ini_tensors.append(ini_tensor)
+
+        for ini_tensor in unused_ini_tensors:
+            graph.initializer.remove(ini_tensor)
+            if ini_tensor.name in name_to_input:
+                try:
+                    graph.input.remove(name_to_input[ini_tensor.name])
+                except StopIteration:
+                    if model.ir_version < 4:
+                        print(
+                            "Warning: invalid weight name {} found in the graph (not a graph input)".format(
+                                ini_tensor.name
+                            )
+                        )
+
+        for input in graph.input:
+            if input.name in requesting_tensor_names:
+                requesting_tensor_names.pop(input.name, None)
+
+        return graph, requesting_tensor_names
