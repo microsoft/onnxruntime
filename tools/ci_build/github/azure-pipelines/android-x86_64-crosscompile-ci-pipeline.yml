@@ -23,6 +23,8 @@ jobs:
   - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
     displayName: Install coreutils and ninja
 
+  - template: "templates/use-android-ndk.yml"
+
   - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
     displayName: Setup gradle wrapper to use gradle 6.8.3
 
@@ -35,12 +37,8 @@ jobs:
     displayName: Build Host Protoc
 
   - script: |
-      export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-      export ANDROID_HOME=/usr/local/lib/android/sdk
-      export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
-      export ANDROID_NDK_ROOT=/usr/local/lib/android/sdk/ndk-bundle
       env | grep ANDROID
-    displayName: Set Android ENVs
+    displayName: View Android ENVs
 
   # Start switching to jdk 11 after the Android Emulator is started
   # since Android SDK manager requires java 8
@@ -116,6 +114,13 @@ jobs:
         artifact: 'CPUBuildOutput'
         path: $(Build.SourcesDirectory)
 
+    - task: UsePythonVersion@0
+      displayName: Use Python $(pythonVersion)
+      inputs:
+        versionSpec: $(pythonVersion)
+
+    - template: "templates/use-android-ndk.yml"
+
     - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
       displayName: Setup gradle wrapper to use gradle 6.8.3
 
@@ -173,6 +178,8 @@ jobs:
   - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
     displayName: Install coreutils and ninja
 
+  - template: "templates/use-android-ndk.yml"
+
   - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
     displayName: Setup gradle wrapper to use gradle 6.8.3
 
@@ -185,12 +192,8 @@ jobs:
     displayName: Build Host Protoc
 
   - script: |
-      export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-      export ANDROID_HOME=/usr/local/lib/android/sdk
-      export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
-      export ANDROID_NDK_ROOT=/usr/local/lib/android/sdk/ndk-bundle
       env | grep ANDROID
-    displayName: set Android ENVs
+    displayName: View Android ENVs
 
   # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
   - task: JavaToolInstaller@0
@@ -272,6 +275,8 @@ jobs:
       inputs:
         versionSpec: $(pythonVersion)
 
+    - template: "templates/use-android-ndk.yml"
+
     - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
       displayName: Setup gradle wrapper to use gradle 6.8.3
 
@@ -349,6 +354,8 @@ jobs:
       displayName: Use Python $(pythonVersion)
       inputs:
         versionSpec: $(pythonVersion)
+
+    - template: "templates/use-android-ndk.yml"
 
     - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
       displayName: Setup gradle wrapper to use gradle 6.8.3
