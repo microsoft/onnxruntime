@@ -37,39 +37,17 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
   Status ComputeInternal(OpKernelContext* context) const override {
     CUDNN_RETURN_IF_ERROR(status_);
     std::lock_guard<OrtMutex> lock(Base::s_.mutex);
-    ORT_RETURN_IF_ERROR(Base::UpdateState(context, true));
+    ORT_RETURN_IF_ERROR(Base::UpdateState(context));
     if (Base::s_.Y->Shape().Size() == 0) {
       return Status::OK();
     }
     bool has_z = nullptr != Base::s_.z_data;
     bool has_b = nullptr != Base::s_.b_data;
+    ORT_ENFORCE(has_b, "bias is missing from FuseConv");
     typedef typename onnxruntime::cuda::ToCudaType<T>::MappedType CudaT;
     const auto alpha = onnxruntime::cuda::Consts<CudaT>::One;
     const auto beta = onnxruntime::cuda::Consts<CudaT>::Zero;
     IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace();
-
-    if (has_b) {
-      std::cout << "b_shape:" << std::endl;
-      Base::s_.b_tensor.Print();
-    }
-
-    if (has_z) {
-      std::cout << "z_shape:" << std::endl;
-      Base::s_.z_tensor.Print();
-    }
-
-    std::cout << "y_shape:" << std::endl;
-    Base::s_.y_tensor.Print();
-
-    if (Base::s_.post_slicing_required) {
-      std::cout << "y_sliced_shape:" << std::endl;
-      for (auto dim : Base::s_.y_dims.GetDims()) {
-        std::cout << dim << ",";
-      }
-    }
-
-    std::cout << std::endl;
-
 
     auto cudnn_status = cudnnConvolutionBiasActivationForward(Base::CudnnHandle(),
                                                               &alpha,
@@ -85,7 +63,7 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
                                                               has_z ? Base::s_.z_tensor : Base::s_.y_tensor,
                                                               has_z ? Base::s_.z_data : Base::s_.y_data,
                                                               Base::s_.b_tensor,
-                                                              has_b ? Base::s_.b_data : Base::s_.b_zero,
+                                                              Base::s_.b_data,
                                                               activation_desc_,
                                                               Base::s_.y_tensor,
                                                               Base::s_.y_data);
@@ -118,12 +96,11 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
                                                    Base::s_.y_data, &beta, Base::s_.y_tensor, Base::s_.y_data));
     }
     if (Base::s_.post_slicing_required) {
-
       ORT_RETURN_IF_ERROR(onnxruntime::cuda::SliceOutUnwantedOutputSection(
           this->Stream(), Base::s_.y_data, Base::s_.y_dims_with_adjusted_pads, Base::s_.Y->MutableDataRaw(),
           Base::s_.y_dims.GetDims(), Base::s_.slice_starts, Base::s_.slice_ends, Base::s_.slice_axes, Base::s_.element_size));
 
-      if (has_b || has_z) { // if b or z has to be added after slice
+      if (has_b || has_z) {  // if b or z has to be added after slice
 
         onnxruntime::cuda::CudnnTensor sliced_y_tensor;
         ORT_RETURN_IF_ERROR(sliced_y_tensor.Set(Base::s_.y_dims.GetDims(), onnxruntime::cuda::CudnnTensor::GetDataType<CudaT>()));
