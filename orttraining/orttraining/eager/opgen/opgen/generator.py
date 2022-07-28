@@ -461,6 +461,14 @@ class ORTGen:
         ):
             raise FunctionGenerationError(cpp_func, "First parameter must be an at::Tensor")
 
+    def _write_function_body_invoker(self, writer, first_param):
+        # Fetch the ORT invoker from an at::Tensor.device()
+        writer.write("auto& invoker = GetORTInvoker(")
+        writer.write(first_param.identifier.value)
+        if first_param.parameter_type.desugar().identifier_tokens[0].value == "TensorList":
+            writer.write("[0]")
+        writer.writeline(".device());")
+        writer.writeline()
 
     def _write_function_body(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
         full_onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
@@ -487,14 +495,7 @@ class ORTGen:
         set_out_tensor = self._need_set_out_tensor(first_param, last_param, return_info)
         cast_op_found = self._write_type_check(writer, mapped_func, cpp_func, ctx, need_type_promotion, set_out_tensor)
 
-        # Fetch the ORT invoker from an at::Tensor.device()
-        writer.write("auto& invoker = GetORTInvoker(")
-        writer.write(first_param.identifier.value)
-        if first_param.parameter_type.desugar().identifier_tokens[0].value == "TensorList":
-            writer.write("[0]")
-        writer.writeline(".device());")
-        writer.writeline()
-
+        self._write_function_body_invoker(writer, first_param)
         # FIXME: warn if we have not consumed all torch parameters (either as an ORT input or ORT attribute).
 
         if set_out_tensor:
