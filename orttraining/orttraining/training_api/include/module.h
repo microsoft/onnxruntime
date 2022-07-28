@@ -100,7 +100,7 @@ struct Module {
   std::vector<std::string> eval_output_names_;
   std::vector<OrtValue> weights_;
   std::vector<OrtValue> gradients_;
-  bool accumulate_gradient_ = true;
+  bool accumulate_gradient_ = false;
   const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters_;
 };
 
