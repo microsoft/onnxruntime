@@ -322,6 +322,29 @@ class ORTGen:
                             in_place_params[0] = cpp_param.identifier.value
                             break
 
+    def _write_function_body_set_out(self, writer, in_place_params, set_out_tensor, onnx_op_index, ctx, need_type_promotion, cast_op_found, onnx_op, return_info, cpp_func):
+        # if no in_place_params found and there is an out input to set
+        # and this is the last onnx op, we set the out to be written to
+        if len(in_place_params) == 0 and set_out_tensor and onnx_op_index == (len(ctx.ops) - 1):
+            # if we have type promotion, need to set the out tensor and CAST op not explictily listed,
+            # check if we need to do a cast
+            if need_type_promotion and not cast_op_found:
+                writer.writeline("if (*promoted_type == out.scalar_type()) {")
+                writer.push_indent()
+                writer.writeline(f"{onnx_op.outputs}[0] = ort_input_out;")
+                writer.pop_indent()
+                writer.writeline("}")
+            else:
+                writer.writeline(f"{onnx_op.outputs}[0] = ort_input_out;")
+
+        if len(in_place_params) != 0 and len(in_place_params) != (
+            len(return_info.elements) if isinstance(return_info, ast.TupleType) else 1
+        ):
+            raise Exception(
+                f"Cannot mix and match inplace with non-inplace parameters - function: {cpp_func.identifier.value} "
+                + f"in_place_params={in_place_params}, return_elements={return_info.elements}"
+            )
+
     def _write_function_body(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
         full_onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
 
@@ -428,28 +451,7 @@ class ORTGen:
 
             if return_info:
                 self._write_function_body_return_info_outputs(writer, in_place_params, cpp_func, return_info, onnx_op, onnx_op_index)
-
-                # if no in_place_params found and there is an out input to set
-                # and this is the last onnx op, we set the out to be written to
-                if len(in_place_params) == 0 and set_out_tensor and onnx_op_index == (len(ctx.ops) - 1):
-                    # if we have type promotion, need to set the out tensor and CAST op not explictily listed,
-                    # check if we need to do a cast
-                    if need_type_promotion and not cast_op_found:
-                        writer.writeline("if (*promoted_type == out.scalar_type()) {")
-                        writer.push_indent()
-                        writer.writeline(f"{onnx_op.outputs}[0] = ort_input_out;")
-                        writer.pop_indent()
-                        writer.writeline("}")
-                    else:
-                        writer.writeline(f"{onnx_op.outputs}[0] = ort_input_out;")
-
-                if len(in_place_params) != 0 and len(in_place_params) != (
-                    len(return_info.elements) if isinstance(return_info, ast.TupleType) else 1
-                ):
-                    raise Exception(
-                        f"Cannot mix and match inplace with non-inplace parameters - function: {cpp_func.identifier.value} "
-                        + f"in_place_params={in_place_params}, return_elements={return_info.elements}"
-                    )
+                self._write_function_body_set_out(writer, in_place_params, set_out_tensor, onnx_op_index, ctx, need_type_promotion, cast_op_found, onnx_op, return_info, cpp_func)
 
             # Perform the invocation
             writer.writeline()
