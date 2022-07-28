@@ -455,6 +455,12 @@ class ORTGen:
             writer.write("assert(")
             writer.write(first_param.identifier.value)
             writer.writeline(".size()>0);")
+        if (
+            not isinstance(first_param.parameter_type.desugar(), ast.ConcreteType)
+            or "Tensor" not in first_param.parameter_type.desugar().identifier_tokens[0].value
+        ):
+            raise FunctionGenerationError(cpp_func, "First parameter must be an at::Tensor")
+
 
     def _write_function_body(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
         full_onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
@@ -475,24 +481,11 @@ class ORTGen:
         first_param = cpp_func.parameters[0].member # FIXME: Find first at::Tensor param instead of first param only?
         self._write_function_body_first_param_assert(writer, first_param)
 
-        # check whether need type promotion, if we do we will use this later to confirm out cast is supported.
         need_type_promotion = self._write_type_promotion(writer, mapped_func, cpp_func, ctx)
-
-        # Gather return info on the torch func, such as Tensor(a! -> a)
-        # which implies the return value is writeable tensor (Tensor&)
         return_info = cpp_func.torch_func.return_type if cpp_func.torch_func else None
-
         last_param = cpp_func.parameters[-1].member
         set_out_tensor = self._need_set_out_tensor(first_param, last_param, return_info)
-
-        # generate the type check
         cast_op_found = self._write_type_check(writer, mapped_func, cpp_func, ctx, need_type_promotion, set_out_tensor)
-
-        if (
-            not isinstance(first_param.parameter_type.desugar(), ast.ConcreteType)
-            or "Tensor" not in first_param.parameter_type.desugar().identifier_tokens[0].value
-        ):
-            raise FunctionGenerationError(cpp_func, "First parameter must be an at::Tensor")
 
         # Fetch the ORT invoker from an at::Tensor.device()
         writer.write("auto& invoker = GetORTInvoker(")
