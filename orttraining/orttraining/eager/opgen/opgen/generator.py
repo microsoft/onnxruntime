@@ -298,29 +298,30 @@ class ORTGen:
 
             # See if this input is aliased as an in-place tensor
             cpp_param = cpp_func.get_parameter(op_input)
-            if cpp_param:
-                for torch_p in cpp_param.torch_param:
-                    if isinstance(return_info, ast.TupleType):
-                        for output_index, output_param in enumerate(return_info.elements):
-                            assert isinstance(output_param.member, ast.TupleMemberType), "output_param.member must be of TupleMemberType"
-                            if self._is_inplace(output_param.member.element_type, torch_p):
-                                writer.writeline(f"{onnx_op.outputs}[{output_index}] = ort_input_{onnx_op_index}_{onnx_op.inputs[input_index]};")
-                                in_place_params[output_index] = cpp_param.identifier.value
-                                break
-                    elif isinstance(return_info, ast.ArrayType):
-                        if self._is_inplace(return_info, torch_p):
-                            writer.writeline(f"for (int i = 0; i < {onnx_op.outputs.count}; i++) {{")
-                            writer.push_indent()
-                            writer.writeline(f"{onnx_op.outputs}[i] = ort_input_{onnx_op_index}_{onnx_op.inputs[input_index]}[i];")
-                            writer.pop_indent()
-                            writer.writeline("}")
-                            in_place_params[0] = cpp_param.identifier.value
+            if not cpp_param:
+                continue
+
+            for torch_p in cpp_param.torch_param:
+                if isinstance(return_info, ast.TupleType):
+                    for output_index, output_param in enumerate(return_info.elements):
+                        assert isinstance(output_param.member, ast.TupleMemberType), "output_param.member must be of TupleMemberType"
+                        if self._is_inplace(output_param.member.element_type, torch_p):
+                            writer.writeline(f"{onnx_op.outputs}[{output_index}] = ort_input_{onnx_op_index}_{onnx_op.inputs[input_index]};")
+                            in_place_params[output_index] = cpp_param.identifier.value
                             break
-                    else:
-                        if self._is_inplace(return_info, torch_p):
-                            writer.writeline(f"{onnx_op.outputs}[0] = ort_input_{onnx_op_index}_{onnx_op.inputs[input_index]};")
-                            in_place_params[0] = cpp_param.identifier.value
-                            break
+                elif isinstance(return_info, ast.ArrayType):
+                    if self._is_inplace(return_info, torch_p):
+                        writer.writeline(f"for (int i = 0; i < {onnx_op.outputs.count}; i++) {{")
+                        writer.push_indent()
+                        writer.writeline(f"{onnx_op.outputs}[i] = ort_input_{onnx_op_index}_{onnx_op.inputs[input_index]}[i];")
+                        writer.pop_indent()
+                        writer.writeline("}")
+                        in_place_params[0] = cpp_param.identifier.value
+                        break
+                elif self._is_inplace(return_info, torch_p):
+                    writer.writeline(f"{onnx_op.outputs}[0] = ort_input_{onnx_op_index}_{onnx_op.inputs[input_index]};")
+                    in_place_params[0] = cpp_param.identifier.value
+                    break
 
     def _write_function_body_onnx_op_invocation(self, writer, onnx_op, onnx_op_index, cpp_func, attrs_arg_ptr):
         # Perform the invocation
