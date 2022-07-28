@@ -157,8 +157,6 @@ class ORTGen:
                 writer.push_namespace(ns)
 
             writer.writeline()
-            if mapped_func.cpp_func.torch_func:
-                writer.writeline(f"// {mapped_func.cpp_func.torch_func.torch_schema}")
 
             self._write_function_signature(writer, mapped_func.cpp_func)
             if mapped_func.signature_only:
@@ -186,7 +184,7 @@ class ORTGen:
                 + ", ".join([f"'{o}'" for o in self._mapped_ops.keys()])
             )
 
-    def _write_file_prelude(self, writer: opgenwriter.SourceWriter):
+    def _write_file_prelude(self, writer: opgenwriter.SourceWriter): # TODO(liwaller) list of includes from somewhere else.
         writer.writeline("// AUTO-GENERATED CODE! - DO NOT EDIT!")
         writer.writeline(f'// $ python {" ".join(sys.argv)}')
         writer.writeline()
@@ -211,6 +209,8 @@ class ORTGen:
         writer.pop_namespaces()
 
     def _write_function_signature(self, writer: opgenwriter.SourceWriter, cpp_func: ast.FunctionDecl):
+        if cpp_func.torch_func:
+            writer.writeline(f"// {cpp_func.torch_func.torch_schema}")
         cpp_func.return_type.write(writer)
         writer.write(f" {cpp_func.identifier.value}(")
         writer.push_indent()
@@ -239,23 +239,29 @@ class ORTGen:
         writer.writeline(");")
         writer.pop_indent()
 
+    def _write_function_body_debug_header(self, writer, func_parameters):
+        # Debug Logging
+        log_params = ", ".join([p.member.identifier.value for p in func_parameters if p.member.identifier])
+        writer.writeline(f"ORT_LOG_FN({log_params});")
+        writer.writeline()
+
+
     def _write_function_body(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
-        onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
+        full_onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
+
+        # full_onnx_op may have nested operations
+        # Eval the outer ONNX op to produce a topologically ordered list of ops
+        ctx = ONNXOpEvalContext()
+        full_onnx_op.eval(ctx)
+        ctx.prepare_outputs()
 
         assert len(cpp_func.parameters) > 0
 
-        # Debug Logging
-        log_params = ", ".join([p.member.identifier.value for p in cpp_func.parameters if p.member.identifier])
-        writer.writeline(f"ORT_LOG_FN({log_params});")
-        writer.writeline()
+        _write_function_body_debug_header(writer, cpp_func.parameters)
 
         if mapped_func.make_torch_fallback:
             return self._write_cpu_fall_back(writer, mapped_func)
 
-        # Eval the outer ONNX op to produce a topologically ordered list of ops
-        ctx = ONNXOpEvalContext()
-        onnx_op.eval(ctx)
-        ctx.prepare_outputs()
 
         # Fetch the ORT invoker from an at::Tensor.device()
         # FIXME: find the first at::Tensor param anywhere in the signature
@@ -481,7 +487,7 @@ class ORTGen:
                     writer.writeline("if (*promoted_type != out.scalar_type()) {")
                     writer.push_indent()
                     writer.writeline(
-                        f"CastToType_out(invoker, {onnx_op.outputs}[0], ort_input_out, out.scalar_type());"
+                        f"CastToType_out(invoker, {full_onnx_op.outputs}[0], ort_input_out, out.scalar_type());"
                     )
                     writer.pop_indent()
                     writer.writeline("}")
