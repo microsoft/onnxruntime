@@ -504,6 +504,31 @@ class ORTGen:
         else:
             self._write_function_body_return_multiple(writer, cpp_func, in_place_params)
 
+    def _write_function_body_onnx_op(self, writer, onnx_op, onnx_op_index, need_type_promotion, cpp_func, return_info, set_out_tensor, ctx, cast_op_found):
+            self._write_function_body_onnx_op_inputs(writer, onnx_op, onnx_op_index, need_type_promotion, cpp_func)
+
+            # Torch kwargs -> ORT attributes
+            attrs = {k: v for k, v in onnx_op.attributes.items() if v and v.value is not None}
+            attrs_arg_ptr = "nullptr"
+            if len(attrs) > 0:
+                attrs_arg = f"attrs_{onnx_op_index}"
+                attrs_arg_ptr = f"&{attrs_arg}"
+                self._write_function_body_onnx_op_node_attributes(writer, onnx_op, attrs, attrs_arg)
+
+            self._write_function_body_onnx_op_output_vector(writer, onnx_op)
+
+            in_place_params = {}
+
+            if return_info:
+                self._write_function_body_return_info_outputs(writer, in_place_params, cpp_func, return_info, onnx_op, onnx_op_index)
+                self._write_function_body_set_out(writer, in_place_params, set_out_tensor, onnx_op_index, ctx, need_type_promotion, cast_op_found, onnx_op, return_info, cpp_func)
+
+            # We'll potentially return back to Torch from this op
+            return_outputs = self._write_function_body_onnx_op_invocation(writer, onnx_op, onnx_op_index, cpp_func, attrs_arg_ptr)
+
+            return in_place_params, return_outputs, attrs_arg_ptr
+
+
     def _write_function_body(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
         full_onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
         assert len(cpp_func.parameters) > 0
@@ -530,26 +555,7 @@ class ORTGen:
             self._write_function_body_resize_output(writer)
 
         for onnx_op_index, onnx_op in enumerate(ctx.ops):
-            self._write_function_body_onnx_op_inputs(writer, onnx_op, onnx_op_index, need_type_promotion, cpp_func)
-
-            # Torch kwargs -> ORT attributes
-            attrs = {k: v for k, v in onnx_op.attributes.items() if v and v.value is not None}
-            attrs_arg_ptr = "nullptr"
-            if len(attrs) > 0:
-                attrs_arg = f"attrs_{onnx_op_index}"
-                attrs_arg_ptr = f"&{attrs_arg}"
-                self._write_function_body_onnx_op_node_attributes(writer, onnx_op, attrs, attrs_arg)
-
-            self._write_function_body_onnx_op_output_vector(writer, onnx_op)
-
-            in_place_params = {}
-
-            if return_info:
-                self._write_function_body_return_info_outputs(writer, in_place_params, cpp_func, return_info, onnx_op, onnx_op_index)
-                self._write_function_body_set_out(writer, in_place_params, set_out_tensor, onnx_op_index, ctx, need_type_promotion, cast_op_found, onnx_op, return_info, cpp_func)
-
-            # We'll potentially return back to Torch from this op
-            return_outputs = self._write_function_body_onnx_op_invocation(writer, onnx_op, onnx_op_index, cpp_func, attrs_arg_ptr)
+            in_place_params, return_outputs, attrs_arg_ptr = self._write_function_body_onnx_op(writer, onnx_op, onnx_op_index, need_type_promotion, cpp_func, return_info, set_out_tensor, ctx, cast_op_found)
 
         # TODO: Pick the right "out" Torch parameter; do not assume the first one
         # TODO: Handle multiple results
