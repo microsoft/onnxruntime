@@ -30,8 +30,8 @@ class Logger;
 }
 
 namespace session_state_utils {
-using SaveTensorFunction = std::function<Status(int idx, const OrtValue& value, const OrtCallback& d,
-                                                bool constant, bool sparse)>;
+using SaveTensorFunction = std::function<Status(const std::string& name, int idx, const OrtValue& value,
+                                                const OrtCallback& d, bool constant, bool sparse)>;
 common::Status SaveInitializedTensors(
     const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
     const GraphViewer& graph, const AllocatorPtr& default_cpu_memory_info,
