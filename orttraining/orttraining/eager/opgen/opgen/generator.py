@@ -483,6 +483,17 @@ class ORTGen:
         writer.write(f"std::vector<OrtValue> {onnx_op.outputs}")
         writer.writeline(f"({onnx_op.outputs.count});")
 
+    def _write_function_body_onnx_op_inputs(self, writer, onnx_op, onnx_op_index, need_type_promotion, cpp_func):
+        # Torch -> ORT inputs
+        for op_input in onnx_op.inputs:
+            if isinstance(op_input, Outputs):
+                continue
+            cpp_param = cpp_func.get_parameter(op_input)
+            writer.write(f"auto ort_input_{onnx_op_index}_{op_input} = ")
+            writer.writeline(f"create_ort_value(invoker, {op_input});")
+            if need_type_promotion:
+                self._write_function_body_onnx_op_input_type_promotion(writer, cpp_param, onnx_op_index, op_input)
+
     def _write_function_body(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
         full_onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
         assert len(cpp_func.parameters) > 0
@@ -509,15 +520,7 @@ class ORTGen:
             self._write_function_body_resize_output(writer)
 
         for onnx_op_index, onnx_op in enumerate(ctx.ops):
-            # Torch -> ORT inputs
-            for op_input in onnx_op.inputs:
-                if isinstance(op_input, Outputs):
-                    continue
-                cpp_param = cpp_func.get_parameter(op_input)
-                writer.write(f"auto ort_input_{onnx_op_index}_{op_input} = ")
-                writer.writeline(f"create_ort_value(invoker, {op_input});")
-                if need_type_promotion:
-                    self._write_function_body_onnx_op_input_type_promotion(writer, cpp_param, onnx_op_index, op_input)
+            self._write_function_body_onnx_op_inputs(writer, onnx_op, onnx_op_index, need_type_promotion, cpp_func)
 
             # Torch kwargs -> ORT attributes
             attrs = {k: v for k, v in onnx_op.attributes.items() if v and v.value is not None}
