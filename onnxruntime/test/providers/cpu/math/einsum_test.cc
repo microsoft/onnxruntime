@@ -353,7 +353,7 @@ TEST(Einsum, ExplicitEinsumAsDiagonalOpWithTranspose) {
 }
 
 // ROCm doesn't support double
-#ifdef USE_CUDA
+#ifndef USE_ROCM
 TEST(Einsum, ExplicitEinsumAsDiagonalOpWithTranspose_double) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "iji->ji");

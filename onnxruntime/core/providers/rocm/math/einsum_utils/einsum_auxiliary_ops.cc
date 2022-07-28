@@ -24,8 +24,6 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_rocm_assets) {
   ORT_ENFORCE(output.SizeInBytes() == input.SizeInBytes(),
               "Einsum op: The candidate output does not match the actual output's shape");
   // There are no string tensors in Einsum's case - so safely use memcpy
-  // TODO: Currently, triggers copy on stream 0, investigate if we can still do that
-  // *if* the kernel is launched in a different stream
   HIP_RETURN_IF_ERROR(hipMemcpyAsync(output.MutableDataRaw(), input.DataRaw(), input.SizeInBytes(),
                                        hipMemcpyDeviceToDevice,
                                        static_cast<hipStream_t>(static_cast<EinsumCudaAssets*>(einsum_rocm_assets)->rocm_ep_->GetComputeStream())));
