@@ -111,11 +111,6 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     const Tensor* Z = context->Input<Tensor>(3);
     ORT_RETURN_IF_ERROR(s_.z_tensor.Set(Z->Shape().GetDims(), CudnnTensor::GetDataType<CudaT>()));
 
-    std::stringstream ss; ss.str("");
-    for (auto &i : Z->Shape().GetDims()) {
-      ss << i << " ";
-    }
-    printf("z dim [%s]\n", ss.str().c_str());
     s_.z_data = reinterpret_cast<const CudaT*>(Z->template Data<T>());
   } else {
     s_.z_data = nullptr;
@@ -228,29 +223,27 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 
     if (w_dims_changed)
       ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
-    // --------------- DEBUG
-    std::stringstream ss; ss.str("");
-    for (auto &i : w_dims) {
-      ss << i << " ";
-    }
-    printf("w dim [%s]\n", ss.str().c_str());
-
-    ss.str("");
-    for (auto &i : y_dims_cudnn) {
-      ss << i << " ";
-    }
-    printf("y dim [%s]\n", ss.str().c_str());
-    // --------------- \DEBUG
     // We must delay returning early until here so that the weight dims have been cached properly
     if (s_.Y->Shape().Size() == 0) {
       return Status::OK();
     }
-    // TODO: check z dim and y dim such that they satisfy
-    // Each dimension of the bias tensor A must match the corresponding dimension of the destination tensor C or
+    // NB1: Each dimension of the bias tensor A must match the corresponding dimension of the destination tensor C or
     // must be equal to 1. In the latter case, the same value from the bias tensor for those dimensions will
     // be used to blend into the C tensor
-    // ORT_RETURN_IF_ERROR(s_.z_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
 
+    // NB2: if y dimension is changed, need to also change z (if available)
+    if (context->InputCount() >= 4) {
+      const Tensor* Z = context->Input<Tensor>(3);
+      auto z_dims = Z->Shape().GetDims();
+      TensorShapeVector z_dims_extended(z_dims.begin(), z_dims.end());
+      if (z_dims_extended.size() == y_dims_cudnn.size() - 1) {
+        z_dims_extended.push_back(y_dims_cudnn.back());
+      }
+      if (z_dims_extended.size() != y_dims_cudnn.size()) {
+        return {common::ONNXRUNTIME, 0, "z dimension does not match y dimension"};
+      }
+      ORT_RETURN_IF_ERROR(s_.z_tensor.Set(z_dims_extended, CudnnTensor::GetDataType<CudaT>()));
+    }
     ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
     ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
     ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
@@ -281,11 +274,6 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       CUDA_CALL_THROW(cudaMemsetAsync(s_.b_zero, 0, malloc_size, Stream()));
     }
 
-      ss.str("");
-        for (auto &i : b_dims) {
-          ss << i << " ";
-        }
-        printf("b dim [%s]", ss.str().c_str());
     if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
       // set math type to tensor core before algorithm search
       ORT_IF_CONSTEXPR(std::is_same<T, MLFloat16>::value)
@@ -364,7 +352,6 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 
 template <typename T>
 Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
-  printf("Conv cuda\n");
   std::lock_guard<OrtMutex> lock(s_.mutex);
   ORT_RETURN_IF_ERROR(UpdateState(context));
   if (s_.Y->Shape().Size() == 0) {
