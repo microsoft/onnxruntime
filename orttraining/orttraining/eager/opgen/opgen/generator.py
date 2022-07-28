@@ -322,6 +322,31 @@ class ORTGen:
                             in_place_params[0] = cpp_param.identifier.value
                             break
 
+    def _write_function_body_onnx_op_invocation(self, writer, onnx_op, onnx_op_index, cpp_func, attrs_arg_ptr):
+        # Perform the invocation
+        writer.writeline()
+        if onnx_op_index == 0:
+            writer.write("auto ")
+        writer.writeline(f'status = invoker.Invoke("{onnx_op.name}", {{')
+        writer.push_indent()
+        for op_input in onnx_op.inputs:
+            if isinstance(op_input, Outputs):
+                if op_input.count != 1:
+                    raise FunctionGenerationError(cpp_func, "multiple outputs not supported")
+                op_input = f"{op_input}[0]"
+            else:
+                op_input = f"ort_input_{onnx_op_index}_{op_input}"
+            writer.writeline(f"std::move({op_input}),")
+        writer.pop_indent()
+        writer.write(f"}}, {onnx_op.outputs}, {attrs_arg_ptr}")
+        if onnx_op.domain:
+            writer.write(f", {onnx_op.domain}")
+        writer.writeline(");")
+        writer.writeline("CHECK_STATUS(status);")
+        writer.writeline()
+
+        return onnx_op.outputs
+
     def _write_function_body_set_out(self, writer, in_place_params, set_out_tensor, onnx_op_index, ctx, need_type_promotion, cast_op_found, onnx_op, return_info, cpp_func):
         # if no in_place_params found and there is an out input to set
         # and this is the last onnx op, we set the out to be written to
@@ -453,30 +478,8 @@ class ORTGen:
                 self._write_function_body_return_info_outputs(writer, in_place_params, cpp_func, return_info, onnx_op, onnx_op_index)
                 self._write_function_body_set_out(writer, in_place_params, set_out_tensor, onnx_op_index, ctx, need_type_promotion, cast_op_found, onnx_op, return_info, cpp_func)
 
-            # Perform the invocation
-            writer.writeline()
-            if onnx_op_index == 0:
-                writer.write("auto ")
-            writer.writeline(f'status = invoker.Invoke("{onnx_op.name}", {{')
-            writer.push_indent()
-            for op_input in onnx_op.inputs:
-                if isinstance(op_input, Outputs):
-                    if op_input.count != 1:
-                        raise FunctionGenerationError(cpp_func, "multiple outputs not supported")
-                    op_input = f"{op_input}[0]"
-                else:
-                    op_input = f"ort_input_{onnx_op_index}_{op_input}"
-                writer.writeline(f"std::move({op_input}),")
-            writer.pop_indent()
-            writer.write(f"}}, {onnx_op.outputs}, {attrs_arg_ptr}")
-            if onnx_op.domain:
-                writer.write(f", {onnx_op.domain}")
-            writer.writeline(");")
-            writer.writeline("CHECK_STATUS(status);")
-            writer.writeline()
-
             # We'll potentially return back to Torch from this op
-            return_outputs = onnx_op.outputs
+            return_outputs = self._write_function_body_onnx_op_invocation(writer, onnx_op, onnx_op_index, cpp_func, attrs_arg_ptr)
 
         # TODO: Pick the right "out" Torch parameter; do not assume the first one
         # TODO: Handle multiple results
