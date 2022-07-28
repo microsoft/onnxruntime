@@ -257,7 +257,7 @@ class ORTGen:
 
         assert len(cpp_func.parameters) > 0
 
-        _write_function_body_debug_header(writer, cpp_func.parameters)
+        self._write_function_body_debug_header(writer, cpp_func.parameters)
 
         if mapped_func.make_torch_fallback:
             return self._write_cpu_fall_back(writer, mapped_func)
