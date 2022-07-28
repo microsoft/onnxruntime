@@ -184,7 +184,9 @@ class ORTGen:
                 + ", ".join([f"'{o}'" for o in self._mapped_ops.keys()])
             )
 
-    def _write_file_prelude(self, writer: opgenwriter.SourceWriter): # TODO(liwaller) list of includes from somewhere else.
+    def _write_file_prelude(
+        self, writer: opgenwriter.SourceWriter
+    ):  # TODO(liwaller) list of includes from somewhere else.
         writer.writeline("// AUTO-GENERATED CODE! - DO NOT EDIT!")
         writer.writeline(f'// $ python {" ".join(sys.argv)}')
         writer.writeline()
@@ -255,9 +257,7 @@ class ORTGen:
 
     def _write_function_body_onnx_op_input_type_promotion(self, writer, cpp_param, onnx_op_index, op_input):
         type_func_str = (
-            "type()"
-            if cpp_param.parameter_type.desugar().identifier_tokens[0].value == "Scalar"
-            else "scalar_type()"
+            "type()" if cpp_param.parameter_type.desugar().identifier_tokens[0].value == "Scalar" else "scalar_type()"
         )
         writer.write(f"if ({op_input}.{type_func_str} != *promoted_type)")
         writer.writeline("{")
@@ -291,7 +291,9 @@ class ORTGen:
             writer.writeline(");")
             writer.pop_indent()
 
-    def _write_function_body_return_info_outputs(self, writer, in_place_params, cpp_func, return_info, onnx_op, onnx_op_index):
+    def _write_function_body_return_info_outputs(
+        self, writer, in_place_params, cpp_func, return_info, onnx_op, onnx_op_index
+    ):
         for input_index, op_input in enumerate(onnx_op.inputs):
             if isinstance(op_input, Outputs):
                 continue
@@ -304,16 +306,22 @@ class ORTGen:
             for torch_p in cpp_param.torch_param:
                 if isinstance(return_info, ast.TupleType):
                     for output_index, output_param in enumerate(return_info.elements):
-                        assert isinstance(output_param.member, ast.TupleMemberType), "output_param.member must be of TupleMemberType"
+                        assert isinstance(
+                            output_param.member, ast.TupleMemberType
+                        ), "output_param.member must be of TupleMemberType"
                         if self._is_inplace(output_param.member.element_type, torch_p):
-                            writer.writeline(f"{onnx_op.outputs}[{output_index}] = ort_input_{onnx_op_index}_{onnx_op.inputs[input_index]};")
+                            writer.writeline(
+                                f"{onnx_op.outputs}[{output_index}] = ort_input_{onnx_op_index}_{onnx_op.inputs[input_index]};"
+                            )
                             in_place_params[output_index] = cpp_param.identifier.value
                             break
                 elif isinstance(return_info, ast.ArrayType):
                     if self._is_inplace(return_info, torch_p):
                         writer.writeline(f"for (int i = 0; i < {onnx_op.outputs.count}; i++) {{")
                         writer.push_indent()
-                        writer.writeline(f"{onnx_op.outputs}[i] = ort_input_{onnx_op_index}_{onnx_op.inputs[input_index]}[i];")
+                        writer.writeline(
+                            f"{onnx_op.outputs}[i] = ort_input_{onnx_op_index}_{onnx_op.inputs[input_index]}[i];"
+                        )
                         writer.pop_indent()
                         writer.writeline("}")
                         in_place_params[0] = cpp_param.identifier.value
@@ -348,7 +356,19 @@ class ORTGen:
 
         return onnx_op.outputs
 
-    def _write_function_body_set_out(self, writer, in_place_params, set_out_tensor, onnx_op_index, ctx, need_type_promotion, cast_op_found, onnx_op, return_info, cpp_func):
+    def _write_function_body_set_out(
+        self,
+        writer,
+        in_place_params,
+        set_out_tensor,
+        onnx_op_index,
+        ctx,
+        need_type_promotion,
+        cast_op_found,
+        onnx_op,
+        return_info,
+        cpp_func,
+    ):
         # if no in_place_params found and there is an out input to set
         # and this is the last onnx op, we set the out to be written to
         if len(in_place_params) == 0 and set_out_tensor and onnx_op_index == (len(ctx.ops) - 1):
@@ -371,15 +391,25 @@ class ORTGen:
                 + f"in_place_params={in_place_params}, return_elements={return_info.elements}"
             )
 
-    def _write_function_body_return_no_inplace(self, writer, set_out_tensor, need_type_promotion, cast_op_found, onnx_op_outputs, last_param, first_param, mapped_func, cpp_func, return_outputs):
+    def _write_function_body_return_no_inplace(
+        self,
+        writer,
+        set_out_tensor,
+        need_type_promotion,
+        cast_op_found,
+        onnx_op_outputs,
+        last_param,
+        first_param,
+        mapped_func,
+        cpp_func,
+        return_outputs,
+    ):
         # tensor options
         if set_out_tensor:
             if need_type_promotion and not cast_op_found:
                 writer.writeline("if (*promoted_type != out.scalar_type()) {")
                 writer.push_indent()
-                writer.writeline(
-                    f"CastToType_out(invoker, {onnx_op_outputs}[0], ort_input_out, out.scalar_type());"
-                )
+                writer.writeline(f"CastToType_out(invoker, {onnx_op_outputs}[0], ort_input_out, out.scalar_type());")
                 writer.pop_indent()
                 writer.writeline("}")
 
@@ -435,7 +465,8 @@ class ORTGen:
         # - cat.out(Tensor[] tensors, int dim=0, *, Tensor(a!) out) -> Tensor(a!)
         # - complex.out(Tensor real, Tensor imag, *, Tensor(a!) out) -> Tensor(a!)
 
-        if (return_info
+        if (
+            return_info
             and last_param
             and last_param.identifier.value == "out"
             and first_param.identifier.value == "self"
@@ -495,39 +526,89 @@ class ORTGen:
             if need_type_promotion:
                 self._write_function_body_onnx_op_input_type_promotion(writer, cpp_param, onnx_op_index, op_input)
 
-    def _write_function_body_return(self, writer, cpp_func, in_place_params, set_out_tensor, need_type_promotion, cast_op_found, onnx_op_outputs, last_param, first_param, mapped_func, return_outputs):
+    def _write_function_body_return(
+        self,
+        writer,
+        cpp_func,
+        in_place_params,
+        set_out_tensor,
+        need_type_promotion,
+        cast_op_found,
+        onnx_op_outputs,
+        last_param,
+        first_param,
+        mapped_func,
+        return_outputs,
+    ):
         if cpp_func.return_type.desugar().identifier_tokens[0].value == "void":
             pass
         elif len(in_place_params) == 0:
-            self._write_function_body_return_no_inplace(writer, set_out_tensor, need_type_promotion, cast_op_found, onnx_op_outputs, last_param, first_param, mapped_func, cpp_func, return_outputs)
+            self._write_function_body_return_no_inplace(
+                writer,
+                set_out_tensor,
+                need_type_promotion,
+                cast_op_found,
+                onnx_op_outputs,
+                last_param,
+                first_param,
+                mapped_func,
+                cpp_func,
+                return_outputs,
+            )
         elif len(in_place_params) == 1:
             writer.writeline(f"return {in_place_params[0]};")
         else:
             self._write_function_body_return_multiple(writer, cpp_func, in_place_params)
 
-    def _write_function_body_onnx_op(self, writer, onnx_op, onnx_op_index, need_type_promotion, cpp_func, return_info, set_out_tensor, ctx, cast_op_found):
-            self._write_function_body_onnx_op_inputs(writer, onnx_op, onnx_op_index, need_type_promotion, cpp_func)
+    def _write_function_body_onnx_op(
+        self,
+        writer,
+        onnx_op,
+        onnx_op_index,
+        need_type_promotion,
+        cpp_func,
+        return_info,
+        set_out_tensor,
+        ctx,
+        cast_op_found,
+    ):
+        self._write_function_body_onnx_op_inputs(writer, onnx_op, onnx_op_index, need_type_promotion, cpp_func)
 
-            # Torch kwargs -> ORT attributes
-            attrs = {k: v for k, v in onnx_op.attributes.items() if v and v.value is not None}
-            attrs_arg_ptr = "nullptr"
-            if len(attrs) > 0:
-                attrs_arg = f"attrs_{onnx_op_index}"
-                attrs_arg_ptr = f"&{attrs_arg}"
-                self._write_function_body_onnx_op_node_attributes(writer, onnx_op, attrs, attrs_arg)
+        # Torch kwargs -> ORT attributes
+        attrs = {k: v for k, v in onnx_op.attributes.items() if v and v.value is not None}
+        attrs_arg_ptr = "nullptr"
+        if len(attrs) > 0:
+            attrs_arg = f"attrs_{onnx_op_index}"
+            attrs_arg_ptr = f"&{attrs_arg}"
+            self._write_function_body_onnx_op_node_attributes(writer, onnx_op, attrs, attrs_arg)
 
-            self._write_function_body_onnx_op_output_vector(writer, onnx_op)
+        self._write_function_body_onnx_op_output_vector(writer, onnx_op)
 
-            in_place_params = {}
+        in_place_params = {}
 
-            if return_info:
-                self._write_function_body_return_info_outputs(writer, in_place_params, cpp_func, return_info, onnx_op, onnx_op_index)
-                self._write_function_body_set_out(writer, in_place_params, set_out_tensor, onnx_op_index, ctx, need_type_promotion, cast_op_found, onnx_op, return_info, cpp_func)
+        if return_info:
+            self._write_function_body_return_info_outputs(
+                writer, in_place_params, cpp_func, return_info, onnx_op, onnx_op_index
+            )
+            self._write_function_body_set_out(
+                writer,
+                in_place_params,
+                set_out_tensor,
+                onnx_op_index,
+                ctx,
+                need_type_promotion,
+                cast_op_found,
+                onnx_op,
+                return_info,
+                cpp_func,
+            )
 
-            # We'll potentially return back to Torch from this op
-            return_outputs = self._write_function_body_onnx_op_invocation(writer, onnx_op, onnx_op_index, cpp_func, attrs_arg_ptr)
+        # We'll potentially return back to Torch from this op
+        return_outputs = self._write_function_body_onnx_op_invocation(
+            writer, onnx_op, onnx_op_index, cpp_func, attrs_arg_ptr
+        )
 
-            return in_place_params, return_outputs, attrs_arg_ptr
+        return in_place_params, return_outputs, attrs_arg_ptr
 
     # TODO: Pick the right "out" Torch parameter; do not assume the first one
     # TODO: Handle multiple results
@@ -542,7 +623,7 @@ class ORTGen:
         if mapped_func.make_torch_fallback:
             return self._write_cpu_fall_back(writer, mapped_func)
 
-        first_param = cpp_func.parameters[0].member # FIXME: Find first at::Tensor param instead of first param only?
+        first_param = cpp_func.parameters[0].member  # FIXME: Find first at::Tensor param instead of first param only?
         self._write_function_body_first_param_assert(writer, first_param)
 
         ctx = self._get_onnx_ops_eval_context(full_onnx_op)
@@ -558,9 +639,31 @@ class ORTGen:
             self._write_function_body_resize_output(writer)
 
         for onnx_op_index, onnx_op in enumerate(ctx.ops):
-            in_place_params, return_outputs, attrs_arg_ptr = self._write_function_body_onnx_op(writer, onnx_op, onnx_op_index, need_type_promotion, cpp_func, return_info, set_out_tensor, ctx, cast_op_found)
+            in_place_params, return_outputs, attrs_arg_ptr = self._write_function_body_onnx_op(
+                writer,
+                onnx_op,
+                onnx_op_index,
+                need_type_promotion,
+                cpp_func,
+                return_info,
+                set_out_tensor,
+                ctx,
+                cast_op_found,
+            )
 
-        self._write_function_body_return(writer, cpp_func, in_place_params, set_out_tensor, need_type_promotion, cast_op_found, full_onnx_op.outputs, last_param, first_param, mapped_func, return_outputs)
+        self._write_function_body_return(
+            writer,
+            cpp_func,
+            in_place_params,
+            set_out_tensor,
+            need_type_promotion,
+            cast_op_found,
+            full_onnx_op.outputs,
+            last_param,
+            first_param,
+            mapped_func,
+            return_outputs,
+        )
 
     def _write_type_check(self, writer, mapped_func, cpp_func, ctx, need_type_promotion, set_out_tensor):
         cast_op_found = False
