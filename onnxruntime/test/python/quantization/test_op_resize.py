@@ -66,7 +66,7 @@ class TestOpResize(TestCaseTempDir):
         initializers = [conv_weight_initializer]
 
         output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, resize_output_shape)
-        resize_inputs = ["conv_output"]  # resize_roi_name, resize_scales_name, resize_sizes_name]
+        resize_inputs = ["conv_output"] 
         resize_node = helper.make_node("Resize", resize_inputs, ["output"], name="resize_node", **resize_attrs)
 
         if resize_roi is not None:

@@ -342,7 +342,7 @@ class ONNXQuantizer:
             )
 
         for node in self.model.nodes():
-            # quantize subgraphes if have
+            # quantize subgraphs if have
             if self.enable_subgraph_quantization:
                 node = self.quantize_node_with_sub_graph(node)
 
@@ -560,8 +560,7 @@ class ONNXQuantizer:
             keepdims=0,
         )
         nodes_list.append(reduce_min_node)
-
-        # TODO: This is ok or interferes with fusion or something?
+        
         zero_min_name = input_name + "_Min"
         zero_min_node = onnx.helper.make_node(
             "Min",
@@ -570,7 +569,6 @@ class ONNXQuantizer:
             zero_min_name
         )
         nodes_list.append(zero_min_node)
-        # ^^^^^^^^^^^^^^
 
         reduce_max_name = input_name + "_ReduceMax"
         reduce_max_node = onnx.helper.make_node(
@@ -581,6 +579,15 @@ class ONNXQuantizer:
             keepdims=0,
         )
         nodes_list.append(reduce_max_node)
+
+        zero_max_name = input_name + "_Max"
+        zero_max_node = onnx.helper.make_node(
+            "Max",
+            [reduce_max_name + ":0", self.fixed_zero_name],
+            [zero_max_name+":0"],
+            zero_max_name
+        )
+        nodes_list.append(zero_max_node)
 
         # Compute Scale
         #   Subtract rmax and rmin
@@ -603,31 +610,33 @@ class ONNXQuantizer:
         nodes_list.append(scale_div_node)
 
         # Compute zero point
-        #   Subtract zero and rmin
-        zp_sub_name = input_name + "_zero_point_Sub"
-        zp_sub_node = onnx.helper.make_node(
-            "Sub",
-            [self.fixed_zero_name, zero_min_node.output[0]],
-            [zp_sub_name + ":0"],
-            zp_sub_name,
-        )
-        nodes_list.append(zp_sub_node)
-        #   Divide by scale
+        # Divide rmin by scale
         zp_div_name = input_name + "_zero_point_Div"
         zp_div_node = onnx.helper.make_node(
             "Div",
-            [zp_sub_node.output[0], input_scale_name],
+            [zero_min_node.output[0], input_scale_name],
             [zp_div_name + ":0"],
             zp_div_name,
         )
         nodes_list.append(zp_div_node)
-        #   Compute floor
-        zp_floor_name = input_name + "_zero_point_Floor"
-        zp_floor_node = onnx.helper.make_node("Floor", zp_div_node.output, [zp_floor_name + ":0"], zp_floor_name)
-        nodes_list.append(zp_floor_node)
-        #   Cast to integer
+        # Compute zero point
+        #   Subtract zero and rmin/scale
+        zp_sub_name = input_name + "_zero_point_Sub"
+        zp_sub_node = onnx.helper.make_node(
+            "Sub",
+            [self.fixed_qmin_name, zp_div_node.output[0]],
+            [zp_sub_name + ":0"],
+            zp_sub_name,
+        )
+        nodes_list.append(zp_sub_node)
+        
+        # Compute round
+        zp_round_name = input_name + "_zero_point_Round"
+        zp_round_node = onnx.helper.make_node("Round", zp_sub_node.output, [zp_round_name + ":0"], zp_round_name)
+        nodes_list.append(zp_round_node)
+        # Cast to integer
         zp_cast_name = input_name + "_zero_point_Cast"
-        zp_cast_node = onnx.helper.make_node("Cast", zp_floor_node.output, [input_zp_name], zp_cast_name, to=qType) # TODO recast zp as int32 to avoid underflow...
+        zp_cast_node = onnx.helper.make_node("Cast", zp_round_node.output, [input_zp_name], zp_cast_name, to=qType) # TODO recast zp as int32 to avoid underflow...
         nodes_list.append(zp_cast_node)
 
         return input_scale_name, input_zp_name, [], []
@@ -767,7 +776,6 @@ class ONNXQuantizer:
         else:
             raise ValueError("Expected {} to be in quantized value map for static quantization".format(input_name))
         
-        # TODO: sort this out correctly, what is scale to use for bias and why
         inputscale_initializer = find_by_name(input_scale_name, self.model.initializer())
         # input_scale = 1.0
         # if inputscale_initializer  is not None:
@@ -775,7 +783,7 @@ class ONNXQuantizer:
         
         input_scale = self.tensor_proto_to_array(inputscale_initializer)
 
-        # calcuate scale for bias
+        # calculate scale for bias
         bias_scale = input_scale * weight_scale * beta
 
         # quantize bias

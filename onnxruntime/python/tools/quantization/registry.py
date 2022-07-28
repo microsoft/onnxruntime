@@ -106,7 +106,6 @@ def CreateQDQQuantizer(onnx_quantizer, node):
         if node.op_type in QDQDynamicRegistry.keys():
             return QDQDynamicRegistry[node.op_type](onnx_quantizer, node)
         else:
-            # TODO: Is it better to handle this elsewhere??????
             logging.warning(
                 "WARNING: {} not supported for Dynamic QDQ quantization.".format(
                     node.op_type

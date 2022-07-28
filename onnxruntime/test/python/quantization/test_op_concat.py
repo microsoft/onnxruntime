@@ -166,7 +166,7 @@ class TestONNXModel(TestCaseTempDir):
             ]
         }
         check_qtype_by_node_type(self, model_q8_qop_path, qnode_io_qtypes)
-        # data_reader.rewind()
+        data_reader.rewind()
         check_model_correctness(self, model_fp32_path, model_q8_qop_path, data_reader.get_next())
 
         # Verify QDQ mode

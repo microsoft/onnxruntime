@@ -137,7 +137,7 @@ class TestOpAveragePool(TestCaseTempDir):
         )
         qnode_io_qtypes.update(
             {"QLinearAveragePool": [["i", 4, activation_proto_qtype]]}
-        )  # shape info note workig on custome ops
+        )  # shape info note workig on custom ops
         check_qtype_by_node_type(self, model_q8_path, qnode_io_qtypes)
         data_reader.rewind()
         check_model_correctness(self, model_fp32_path, model_q8_path, data_reader.get_next())

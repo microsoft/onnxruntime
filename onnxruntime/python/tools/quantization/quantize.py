@@ -258,7 +258,7 @@ def quantize_dynamic(
             mode,
             False,  # static
             weight_type,
-            QuantType.QUInt8,  # dynamic activation only supports uint8
+            QuantType.QUInt8,  # dynamic qop activation only supports uint8
             None,
             nodes_to_quantize,
             nodes_to_exclude,
@@ -266,12 +266,9 @@ def quantize_dynamic(
             extra_options,
         )
 
-    ### NEW QDQ Quantizer added to dynamic_quantize
     else:
         if not op_types_to_quantize or len(op_types_to_quantize) == 0:
             op_types_to_quantize = list(QDQDynamicRegistry.keys())
-        # if "OpTypesToExcludeOutputQuantizatioin" not in extra_options: # TODO Is this a good default?
-        #     extra_options['OpTypesToExcludeOutputQuantizatioin'] = op_types_to_quantize # ['Conv', 'Matmul', 'MatMul', 'Gemm', 'Attention']
         if "OpTypesToExcludeOutputQuantizatioin" not in extra_options: # TODO Is this a good default?
             extra_options['OpTypesToExcludeOutputQuantizatioin'] = ['Conv', 'Matmul', 'MatMul', 'Gemm', 'Attention','LSTM']
         quantizer = QDQQuantizer(
@@ -281,15 +278,13 @@ def quantize_dynamic(
             mode,
             False,  # static-only?
             weight_type,
-            activation_type, # TODO: DOES THIS WORK
+            activation_type, 
             None,
             nodes_to_quantize,
             nodes_to_exclude,
             op_types_to_quantize,
             extra_options,
         )
-        
-    ### ###
 
     quantizer.quantize_model()
     quantizer.model.save_model_to_file(model_output, use_external_data_format)

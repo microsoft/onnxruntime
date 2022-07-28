@@ -160,7 +160,7 @@ class QDQQuantizer(ONNXQuantizer):
         for node in self.model.nodes():
             if self.should_quantize_node(node):
                 op_quantizer = CreateQDQQuantizer(self, node)
-                if op_quantizer == None: continue # TODO: is this an appropriate way to handle the unsupported Dyn QDQ Op case?
+                if op_quantizer == None: continue # Skip quantize if no quantizer returned
                 op_quantizer.quantize()
 
                 if self.dedicated_qdq_pair:
@@ -372,9 +372,8 @@ class QDQQuantizer(ONNXQuantizer):
             scale_div_name,
         )
         nodes_list.append(scale_div_node)
-
-        # TODO: Test changes I think are right
-        #   Divide rmin by scale
+        
+        # Divide rmin by scale
         zp_div_name = input_name + "_zero_point_Div"
         zp_div_node = onnx.helper.make_node(
             "Div",
@@ -393,41 +392,14 @@ class QDQQuantizer(ONNXQuantizer):
             zp_sub_name,
         )
         nodes_list.append(zp_sub_node)
-
-        # TODO: this is how it was BEFORE the change
-        # # Compute zero point
-        # #   Subtract zero and rmin
-        # zp_sub_name = input_name + "_zero_point_Sub"
-        # zp_sub_node = onnx.helper.make_node(
-        #     "Sub",
-        #     [self.fixed_qmin_name, zero_min_node.output[0]],
-        #     [zp_sub_name + ":0"],
-        #     zp_sub_name,
-        # )
-        # nodes_list.append(zp_sub_node)
-        # #   Divide by scale
-        # zp_div_name = input_name + "_zero_point_Div"
-        # zp_div_node = onnx.helper.make_node(
-        #     "Div",
-        #     [zp_sub_node.output[0], input_scale_name],
-        #     [zp_div_name + ":0"],
-        #     zp_div_name,
-        # )
-        # nodes_list.append(zp_div_node)
-
-        # #   Compute floor
-        # zp_floor_name = input_name + "_zero_point_Floor"
-        # zp_floor_node = onnx.helper.make_node("Floor", zp_div_node.output, [zp_floor_name + ":0"], zp_floor_name)
-        # nodes_list.append(zp_floor_node)
         
-        # TODO: Floor part of test
-        #   Compute floor
-        zp_floor_name = input_name + "_zero_point_Floor"
-        zp_floor_node = onnx.helper.make_node("Floor", zp_sub_node.output, [zp_floor_name + ":0"], zp_floor_name)
-        nodes_list.append(zp_floor_node)
-        #   Cast to integer
+        # Compute round
+        zp_round_name = input_name + "_zero_point_Round"
+        zp_round_node = onnx.helper.make_node("Round", zp_sub_node.output, [zp_round_name + ":0"], zp_round_name)
+        nodes_list.append(zp_round_node)
+        # Cast to integer
         zp_cast_name = input_name + "_zero_point_Cast"
-        zp_cast_node = onnx.helper.make_node("Cast", zp_floor_node.output, [input_zp_name], zp_cast_name, to=qType) # TODO recast zp as int32 to avoid underflow...
+        zp_cast_node = onnx.helper.make_node("Cast", zp_round_node.output, [input_zp_name], zp_cast_name, to=qType) # TODO recast zp as int32 to avoid underflow...
         nodes_list.append(zp_cast_node)
 
         return input_scale_name, input_zp_name, [], []
@@ -493,7 +465,6 @@ class QDQQuantizer(ONNXQuantizer):
                             scale_shape,
                             zp_shape,
                         ) = self.create_dynamic_subgraph(tensor_name + "_QuantizeLinearInput", nodes, qType, symmetric=self.is_activation_symmetric)
-                        # ) = self._get_dynamic_input_quantization_params(tensor_name + "_QuantizeLinearInput", nodes, qType)
                     else:
                         (
                             scale_name,
@@ -501,7 +472,6 @@ class QDQQuantizer(ONNXQuantizer):
                             scale_shape,
                             zp_shape,
                         ) = self.create_dynamic_subgraph(tensor_name, nodes, qType, symmetric=self.is_activation_symmetric)
-                        # ) = self._get_dynamic_input_quantization_params(tensor_name, nodes, qType)
                 if (
                     self.dedicated_qdq_pair
                     and tensor_name in self.tensor_to_its_receiving_nodes
@@ -550,7 +520,6 @@ class QDQQuantizer(ONNXQuantizer):
                     if self.model.is_graph_output(tensor_name):
                         q_input = tensor_name + "_QuantizeLinearInput"
                         dq_output = tensor_name
-                        # TODO: this replace output thing is broken
                         self.model.replace_output_of_all_nodes(tensor_name, q_input)
                     else:
                         self.model.replace_input_of_all_nodes(tensor_name, dq_output)
@@ -595,7 +564,6 @@ class QDQQuantizer(ONNXQuantizer):
             if inputscale_initializer  is None:
                 # self.model.remove_initializer(find_by_name(bias_name, self.model.initializer()))
                 continue
-            # ^ My workaround to avoid dynamic quantization of bias
             self.quantize_bias_static(bias_name, input_name, weight_name, beta)
             self.model.remove_initializer(find_by_name(bias_name, self.model.initializer()))
             quant_value = self.quantized_value_map[bias_name]

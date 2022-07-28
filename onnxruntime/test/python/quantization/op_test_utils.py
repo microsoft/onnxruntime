@@ -98,10 +98,6 @@ def check_model_correctness(testcase, model_path_origin, model_path_to_check, in
     target_results = target_sess.run([], inputs)
     testcase.assertEqual(len(origin_results), len(target_results), "result count are different")
     # np.set_printoptions(threshold=sys.maxsize)
-    # print('TARGET')
-    # print(target_results)
-    # print('ORIGIN')
-    # print(origin_results)
     
     for idx, ref_output in enumerate(origin_results):
         output = target_results[idx]

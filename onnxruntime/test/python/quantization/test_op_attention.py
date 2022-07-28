@@ -68,7 +68,6 @@ class TestOpAttention(TestCaseTempDir):
         matmul_node = make_matmul_node(attention_output_name, [10, 10], "matmul.weight", output_name)
 
         # make graph
-        # attention_tensor = helper.make_tensor_value_info(attention_output_name, TensorProto.FLOAT, [1, 10, 30])
         input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, [1, -1, 10])
         output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, [1, -1, 10])
         graph_name = "attention_test"

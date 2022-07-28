@@ -127,13 +127,13 @@ class TestQDQExtraOptions(TestCaseTempDir):
         self.assertTrue(qdq_added_to_node_output_flag)
 
     def test_qdq_extra_options_2(self):
-        #         (input)
+        #        (input)
         #           |
         #          Add
         #       /   |   \
         #  MatMul MatMul MatMul
         #     |     |      |
-        # (output)(output)(output)
+        #(output)(output)(output)
 
         initializers = []
 
@@ -316,7 +316,6 @@ class TestQDQFormatConv(TestQDQFormat):
             reduce_range=per_channel,
             activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
-            # extra_options={'OpTypesToExcludeOutputQuantizatioin': []}
         )
         data_reader.rewind()
         qdq_nodes = {
@@ -463,7 +462,6 @@ class TestQDQFormatConvClip(TestQDQFormat):
             activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             op_types_to_quantize=['Conv', 'Reshape'],
-            # extra_options={'OpTypesToExcludeOutputQuantizatioin': []}
         )
         # topo sort check
         if is_quant_type_int8:

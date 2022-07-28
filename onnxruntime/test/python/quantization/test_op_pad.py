@@ -260,7 +260,6 @@ class TestOpQuatizerPad(TestCaseTempDir):
                 ]
             }
             qnode_io_qtypes.update({"DequantizeLinear": [["i", 2, activation_proto_qtype]]})
-            # qnode_io_qtypes.update({"ConvInteger": [["i", 2, activation_proto_qtype]]}) # TODO: gone?
             check_qtype_by_node_type(self, model_i8_qdq_path, qnode_io_qtypes)
             data_reader.rewind()
             check_model_correctness(

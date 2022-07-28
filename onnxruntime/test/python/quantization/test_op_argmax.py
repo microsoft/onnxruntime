@@ -29,6 +29,7 @@ class TestOpArgMax(TestCaseTempDir):
         for i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
+                # TODO: Use nonrandom linear input
                 rand_arr = np.random.normal(0.0, .1, shape).astype(np.float32)
                 inputs.update({name: rand_arr})
             input_data_list.extend([inputs])
@@ -211,9 +212,8 @@ class TestOpArgMax(TestCaseTempDir):
         qdqnode_counts = {"QuantizeLinear": 1, "DequantizeLinear": 2, "ArgMax": 1}
         check_op_type_count(self, model_uint8_qdq_dyn_path, **qdqnode_counts)
         data_reader.rewind()
-        check_model_correctness(self, model_fp32_path, model_uint8_qdq_dyn_path, data_reader.get_next()) # TODO: This doesn't work w/ UInt8
+        check_model_correctness(self, model_fp32_path, model_uint8_qdq_dyn_path, data_reader.get_next())
 
-        # Verify QDQ Dynamic UInt8 vs. Int8 # TODO: This works fine for UInt8, not sure why
         data_reader.rewind()
         quantize_dynamic(
             model_fp32_path,

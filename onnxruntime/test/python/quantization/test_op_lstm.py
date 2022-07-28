@@ -87,7 +87,7 @@ class TestOpLSTM(TestCaseTempDir):
         model_uint8_qdq_path = "lstm_uint8.qdq.onnx"
         model_uint8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_qdq_path).as_posix()
 
-        inputarr = np.random.rand(1, 3, 2).astype(np.float32) #inputarr = [[[0.24056701, 0.49413764],[0.620923  , 0.8289809 ],[0.15604347, 0.01950543]]]
+        inputarr = np.random.rand(1, 3, 2).astype(np.float32)
         
         # Test LSTM QOperator Dynamic
         quantize_dynamic(
@@ -127,7 +127,7 @@ class TestOpLSTM(TestCaseTempDir):
             {"input": inputarr},
         )
 
-        # Test LSTM QDQ Dynamic QUInt8 TODO: It has problems with certain inputs...
+        # Test LSTM QDQ Dynamic QUInt8 
         quantize_dynamic(
             model_fp32_path,
             model_uint8_qdq_path,
