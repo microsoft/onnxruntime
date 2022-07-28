@@ -12,7 +12,7 @@ parameters:
 
   
 jobs:
-- job: wheels_${{ replace(parameters.PythonVersion,'.','_') }}_${{ replace(parameters.RocmVersion,'.','_') }}
+- job: wheels_python_${{ replace(parameters.PythonVersion,'.','_') }}_rocm_${{ replace(parameters.RocmVersion,'.','_') }}
   workspace:
     clean: all
   timeoutInMinutes: 180
