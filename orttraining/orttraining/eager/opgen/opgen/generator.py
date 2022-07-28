@@ -370,6 +370,48 @@ class ORTGen:
                 + f"in_place_params={in_place_params}, return_elements={return_info.elements}"
             )
 
+    def _write_function_body_return_no_inplace(self, writer, set_out_tensor, need_type_promotion, cast_op_found, onnx_op_outputs, last_param, first_param, mapped_func, cpp_func, return_outputs):
+        # tensor options
+        if set_out_tensor:
+            if need_type_promotion and not cast_op_found:
+                writer.writeline("if (*promoted_type != out.scalar_type()) {")
+                writer.push_indent()
+                writer.writeline(
+                    f"CastToType_out(invoker, {onnx_op_outputs}[0], ort_input_out, out.scalar_type());"
+                )
+                writer.pop_indent()
+                writer.writeline("}")
+
+            writer.writeline(f"return {last_param.identifier.value};")
+            return
+
+        # TODO: revisit the hardcoded use of TensorList.
+        writer.write(f"at::TensorOptions tensor_options = {first_param.identifier.value}")
+        if first_param.parameter_type.desugar().identifier_tokens[0].value == "TensorList":
+            writer.write("[0]")
+        writer.write(".options()")
+        if need_type_promotion:
+            writer.write(".dtype(*promoted_type)")
+
+        # do we need to set type on the returned value
+        if mapped_func.mapped_op_name in self.aten_output_type:
+            writer.write(f".dtype({self.aten_output_type[mapped_func.mapped_op_name]})")
+
+        writer.writeline(";")
+
+        writer.writeline("return aten_tensor_from_ort(")
+        writer.push_indent()
+        if (
+            isinstance(cpp_func.return_type, ast.TemplateType)
+            and cpp_func.return_type.identifier_tokens[-1].value == "std::vector"
+        ):
+            writer.writeline(f"{return_outputs},")
+            writer.writeline("tensor_options);")
+        else:
+            writer.writeline(f"std::move({return_outputs}[0]),")
+            writer.writeline("tensor_options);")
+        writer.pop_indent()
+
     def _write_function_body(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
         full_onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
 
@@ -488,47 +530,7 @@ class ORTGen:
         if cpp_func.return_type.desugar().identifier_tokens[0].value == "void":
             pass
         elif len(in_place_params) == 0:
-            # tensor options
-            if set_out_tensor:
-                if need_type_promotion and not cast_op_found:
-                    writer.writeline("if (*promoted_type != out.scalar_type()) {")
-                    writer.push_indent()
-                    writer.writeline(
-                        f"CastToType_out(invoker, {full_onnx_op.outputs}[0], ort_input_out, out.scalar_type());"
-                    )
-                    writer.pop_indent()
-                    writer.writeline("}")
-
-                writer.writeline(f"return {last_param.identifier.value};")
-                return
-
-            # TODO: revisit the hardcoded use of TensorList.
-            writer.write(f"at::TensorOptions tensor_options = {first_param.identifier.value}")
-            if first_param.parameter_type.desugar().identifier_tokens[0].value == "TensorList":
-                writer.write("[0]")
-            writer.write(".options()")
-            if need_type_promotion:
-                writer.write(".dtype(*promoted_type)")
-
-            # do we need to set type on the returned value
-            if mapped_func.mapped_op_name in self.aten_output_type:
-                writer.write(f".dtype({self.aten_output_type[mapped_func.mapped_op_name]})")
-
-            writer.writeline(";")
-
-            writer.writeline("return aten_tensor_from_ort(")
-            writer.push_indent()
-            if (
-                isinstance(cpp_func.return_type, ast.TemplateType)
-                and cpp_func.return_type.identifier_tokens[-1].value == "std::vector"
-            ):
-                writer.writeline(f"{return_outputs},")
-                writer.writeline("tensor_options);")
-            else:
-                writer.writeline(f"std::move({return_outputs}[0]),")
-                writer.writeline("tensor_options);")
-            writer.pop_indent()
-            return
+            self._write_function_body_return_no_inplace(writer, set_out_tensor, need_type_promotion, cast_op_found, full_onnx_op.outputs, last_param, first_param, mapped_func, cpp_func, return_outputs)
         elif len(in_place_params) == 1:
             writer.writeline(f"return {in_place_params[0]};")
         else:
