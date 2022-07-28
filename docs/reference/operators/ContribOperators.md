@@ -2,7 +2,7 @@
 title: Contrib Operators
 parent: Operators
 grand_parent: Reference
-nav_order: 2
+nav_order: 3
 ---
 
 The contrib operator schemas are documented in the ONNX Runtime repository.
