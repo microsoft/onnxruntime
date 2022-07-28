@@ -23,7 +23,7 @@ jobs:
   - powershell: |
       get-command cmake.exe
       choco uninstall cmake -y
-      choco install cmake --version 3.22 -ym
+      choco install cmake --version 3.22.0 -ym
       get-command cmake.exe
     displayName: 'Check cmake'
   - task: UsePythonVersion@0
