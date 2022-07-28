@@ -640,7 +640,7 @@ def remove_shared_initializers(
     shared_prefix: str = "shared_",
     min_elements: int = 1024,
 ):
-    """Remove intializers with same value from two graphs.
+    """Remove initializers with same value from two graphs.
 
     Args:
         graph1 (GraphProto): the first graph to process
@@ -656,11 +656,11 @@ def remove_shared_initializers(
     shared_initializers_names = []
 
     for initializer1 in graph1.initializer:
-        if not (initializer1.dims and sum(initializer1.dims) > min_elements):
+        if not (initializer1.dims and sum(initializer1.dims) >= min_elements):
             continue
 
         for initializer2 in graph2.initializer:
-            if not (initializer2.dims and sum(initializer2.dims) > min_elements):
+            if not (initializer2.dims and sum(initializer2.dims) >= min_elements):
                 continue
 
             if OnnxModel.has_same_value(initializer1, initializer2):
@@ -745,6 +745,37 @@ def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto
     decoder.remove_duplicated_initializer()
     initializers = remove_shared_initializers(encoder.model.graph, decoder.model.graph, "s_")
     return initializers
+
+
+def move_initializers(
+    graph: GraphProto,
+    min_elements: int = 1024,
+) -> List[TensorProto]:
+    """Remove initializers of a graph, when they have number of elements larger than a threshold.
+
+    Args:
+        graph (GraphProto): the graph.
+        min_elements (int, optional): minimal number of elements for initializers to be considered. Defaults to 1024.
+
+    Returns:
+        List[TensorProto]: initializers that are removed from the graph.
+    """
+    moved_initializers = []
+    for tensor in graph.initializer:
+        if not (tensor.dims and sum(tensor.dims) >= min_elements):
+            continue
+        moved_initializers.append(tensor)
+
+    for initializer in moved_initializers:
+        graph.initializer.remove(initializer)
+
+    # Add type info, otherwise ORT will raise error: "input arg (*) does not have type information set by parent node."
+    for initializer in moved_initializers:
+        shape = onnx.numpy_helper.to_array(initializer).shape
+        value_info = onnx.helper.make_tensor_value_info(initializer.name, initializer.data_type, shape)
+        graph.value_info.append(value_info)
+
+    return moved_initializers
 
 
 def convert_generation_model(args: argparse.Namespace, generation_type: GenerationType = GenerationType.BEAMSEARCH):
@@ -904,8 +935,19 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         verify_t5_encoder_decoder_init_subgraph(encoder_model.graph, args.precision)
 
         if not args.disable_shared_initializers:
+            # Unique shared initializers from the decoder and decoder_init could reduce memory usage in inference.
             initializers = get_shared_initializers(encoder_model, decoder_model)
-            logger.info(f"{len(initializers)} shared initializers in subgraphs are moved to the main graph")
+            logger.info(
+                f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in subgraphs are moved to the main graph"
+            )
+
+            # TODO(tianleiwu): investigate the following which causes error in inference
+            # Move initializer from subgraph to main graph could reduce memory usage in inference.
+            # moved_initializers = move_initializers(encoder_model.graph)
+            # logger.info(
+            #     f"{len(moved_initializers)} initializers ({[i.name for i in moved_initializers]}) from the encoder are moved to the main graph"
+            # )
+            # initializers.extend(moved_initializers)
 
         node.attribute.extend(
             [
@@ -918,6 +960,10 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             ]
         )
     else:
+        # Move initializer from subgraph to main graph could reduce memory usage in inference.
+        initializers = move_initializers(decoder_model.graph)
+        logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")
+
         node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
 
     # graph inputs
