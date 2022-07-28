@@ -94,7 +94,7 @@ class BiasSoftmaxTester {
       for (size_t i = rank - 2;; --i) {
         in_strides[i] = in_shape_[i + 1] * in_strides[i + 1];
         bias_strides[i] = i < offset || in_shape_[i] != bias_shape_[i - offset] ? 0 : bias_stride;
-        bias_stride *= bias_shape_[i - offset];
+        if (i >= offset) bias_stride *= bias_shape_[i - offset];
         if (i == 0) break;
       }
     }
