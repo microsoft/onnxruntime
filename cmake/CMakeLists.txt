@@ -144,6 +144,8 @@ option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_MEMORY_PROFILE "Enable memory profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
+# For on-device training ort build, onnxruntime_ENABLE_TRAINING must be ON.
+option(onnxruntime_ENABLE_TRAINING_ON_DEVICE "Enable training on device." OFF)
 option(onnxruntime_ENABLE_TRAINING_OPS "Include training operators but no training session support." OFF)
 option(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP "Enable training kernels interop with torch." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
@@ -194,6 +196,12 @@ option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and 
 
 if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+  if (NOT onnxruntime_ENABLE_TRAINING)
+    message(FATAL_ERROR "To build for on-device training, the training build must be enabled (onnxruntime_ENABLE_TRAINING).")
+  endif()
 endif()
 
 if (APPLE)
@@ -567,6 +575,10 @@ if (MSVC)
     if (onnxruntime_DEV_MODE)
       string(APPEND CMAKE_CXX_FLAGS " /wd26812")
       string(APPEND CMAKE_C_FLAGS " /wd26812")
+      # warning C4805: '|': unsafe mix of type 'uintptr_t' and type 'bool' in operation (from c10/core/TensorImpl.h)
+      if (onnxruntime_ENABLE_EAGER_MODE)
+        string(APPEND CMAKE_CXX_FLAGS " /wd4805")
+      endif()
     endif()
   endif()
   string(APPEND CMAKE_CXX_FLAGS " /experimental:external /external:W0 /external:templates- /external:I ${CMAKE_CURRENT_SOURCE_DIR} /external:I ${CMAKE_CURRENT_BINARY_DIR}")
@@ -1285,6 +1297,9 @@ function(onnxruntime_configure_target target_name)
   #  set_target_properties(${target_name} PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
   #endif()
   target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${abseil_cpp_SOURCE_DIR})
+  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+    target_include_directories(${target_name} PRIVATE ${ORTTRAINING_ROOT})
+  endif()
   if (onnxruntime_ENABLE_LTO)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
@@ -1646,6 +1661,12 @@ include_directories(
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
 
+if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+  include_directories(
+    ${REPO_ROOT}/orttraining/orttraining/training_api/include/
+  )
+endif()
+
 if (onnxruntime_USE_OPENVINO)
 
   add_definitions(-DUSE_OPENVINO=1)
@@ -1886,6 +1907,10 @@ if (onnxruntime_USE_DML)
   endif()
 
   include(dml)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+  add_compile_definitions(ENABLE_TRAINING_ON_DEVICE)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING_OPS)

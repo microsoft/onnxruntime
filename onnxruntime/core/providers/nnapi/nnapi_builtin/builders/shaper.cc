@@ -123,6 +123,11 @@ Status Shaper::Concat(const std::vector<std::string>& input_names,
   SHAPER_FUNC(Concat, input_names, axis, output_name);
 }
 
+Status Shaper::Split(const std::string& input_name, int32_t axis,
+                     const std::vector<std::string>& output_names) {
+  SHAPER_FUNC(Split, input_name, axis, output_names);
+}
+
 Status Shaper::Squeeze(const std::string& input_name,
                        const std::vector<int32_t>& axes,
                        const std::string& output_name) {
@@ -362,13 +367,6 @@ Status Shaper::ConcatImpl(const std::vector<std::string>& input_names,
   std::vector<Shape> dimens;
   for (const auto& input_name : input_names) {
     const Shape& dimen = shape_map_.at(input_name);
-    if (!dimens.empty()) {
-      for (size_t i = 0; i < dimens[0].size(); i++) {
-        if ((int32_t)i == axis)
-          continue;
-      }
-    }
-
     dimens.push_back(dimen);
   }
 
@@ -385,6 +383,24 @@ Status Shaper::ConcatImpl(const std::vector<std::string>& input_names,
   }
 
   shape_map_[output_name] = output_dimen;
+  return Status::OK();
+}
+
+Status Shaper::SplitImpl(const std::string& input_name, int32_t axis,
+                         const std::vector<std::string>& output_names) {
+  const auto& input_shape = shape_map_.at(input_name);
+  const auto count = output_names.size();
+
+  ORT_RETURN_IF_NOT(input_shape[axis] % count == 0,
+                    "count [", count, "] does not evenly divide dimension ", axis, " [", input_shape[axis], "]");
+
+  Shape output_shape = input_shape;
+  output_shape[axis] = input_shape[axis] / count;
+
+  for (const auto& output_name : output_names) {
+    shape_map_[output_name] = output_shape;
+  }
+
   return Status::OK();
 }
 

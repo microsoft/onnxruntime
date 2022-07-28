@@ -63,7 +63,7 @@ if [ $DEVICE_TYPE = "gpu" ]; then
         ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage2\/requirements.txt}
       else
         ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements_torch${TORCH_VERSION}_rocm${ROCM_VER}\/requirements.txt}
-        ${PYTHON_EXE} -m pip install fairscale
+        ${PYTHON_EXE} -m pip install fairscale==0.4.6
       fi
     fi
   fi

@@ -102,7 +102,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * col_buffer_size);
-    col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
+    col_buffer = BufferUniquePtr(col_data, BufferDeleter(std::move(alloc)));
   }
 
   auto* col_buffer_data = static_cast<uint8_t*>(col_buffer.get());

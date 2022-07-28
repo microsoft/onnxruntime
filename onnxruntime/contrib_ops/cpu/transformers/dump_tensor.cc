@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
 
 template <typename T>
 void DumpCpuTensor(const char* name, const T* tensor, int dim0, int dim1) {
