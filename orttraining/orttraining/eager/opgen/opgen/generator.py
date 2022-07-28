@@ -245,6 +245,14 @@ class ORTGen:
         writer.writeline(f"ORT_LOG_FN({log_params});")
         writer.writeline()
 
+    def _write_function_body_resize_output(self, writer):
+        writer.writeline("// resize the output and then create output ort value to be updated.")
+        writer.writeline(
+            "resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), self.sizes());"
+        )
+        writer.writeline("auto ort_input_out = create_ort_value(invoker, out);")
+        writer.writeline()
+
 
     def _write_function_body(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
         full_onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
@@ -322,12 +330,7 @@ class ORTGen:
         # an ORT input or ORT attribute).
 
         if set_out_tensor:
-            writer.writeline("// resize the output and then create output ort value to be updated.")
-            writer.writeline(
-                "resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), self.sizes());"
-            )
-            writer.writeline("auto ort_input_out = create_ort_value(invoker, out);")
-            writer.writeline()
+            self._write_function_body_resize_output(writer)
 
         for onnx_op_index, onnx_op in enumerate(ctx.ops):
             # Torch -> ORT inputs
