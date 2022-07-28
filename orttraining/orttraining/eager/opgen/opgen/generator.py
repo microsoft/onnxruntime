@@ -427,6 +427,35 @@ class ORTGen:
             writer.write(in_place_params[key])
         writer.writeline(");")
 
+    def _need_set_out_tensor(self, first_param, last_param, return_info):
+        # if the torch func has a return ref tensor, out is the last param, and self param is the first input
+        # then we need to update and return out. Record this need in set_out_tensor.
+        # TODO: make this more general to handle cases where the first param is not self such as
+        # - cat.out(Tensor[] tensors, int dim=0, *, Tensor(a!) out) -> Tensor(a!)
+        # - complex.out(Tensor real, Tensor imag, *, Tensor(a!) out) -> Tensor(a!)
+
+        if (return_info
+            and last_param
+            and last_param.identifier.value == "out"
+            and first_param.identifier.value == "self"
+        ):
+            # output_alias is how the return tensor is marked, normally (a! -> a)
+            output_alias = self._get_alias_info(return_info)
+
+            for torch_p in last_param.torch_param:
+                # Confirm we have an output alias and that it is writable (!)
+                # and the current param (torch_p/last_param) is marked with the output alias
+                if output_alias and output_alias.is_writable and self._get_alias_info(torch_p) == output_alias:
+                    return True
+        return False
+
+    def _write_function_body_first_param_assert(self, writer, first_param):
+        # Check if the first parameter is tensorlist and if yes it's size should be > 0
+        if first_param.parameter_type.desugar().identifier_tokens[0].value == "TensorList":
+            writer.write("assert(")
+            writer.write(first_param.identifier.value)
+            writer.writeline(".size()>0);")
+
     def _write_function_body(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
         full_onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
 
@@ -443,16 +472,8 @@ class ORTGen:
         if mapped_func.make_torch_fallback:
             return self._write_cpu_fall_back(writer, mapped_func)
 
-
-        # Fetch the ORT invoker from an at::Tensor.device()
-        # FIXME: find the first at::Tensor param anywhere in the signature
-        # instead of simply the first parameter?
-        first_param = cpp_func.parameters[0].member
-        # Check if the first parameter is tensorlist and if yes it's size should be > 0
-        if first_param.parameter_type.desugar().identifier_tokens[0].value == "TensorList":
-            writer.write("assert(")
-            writer.write(first_param.identifier.value)
-            writer.writeline(".size()>0);")
+        first_param = cpp_func.parameters[0].member # FIXME: Find first at::Tensor param instead of first param only?
+        self._write_function_body_first_param_assert(writer, first_param)
 
         # check whether need type promotion, if we do we will use this later to confirm out cast is supported.
         need_type_promotion = self._write_type_promotion(writer, mapped_func, cpp_func, ctx)
@@ -461,27 +482,8 @@ class ORTGen:
         # which implies the return value is writeable tensor (Tensor&)
         return_info = cpp_func.torch_func.return_type if cpp_func.torch_func else None
 
-        # if the torch func has a return ref tensor, out is the last param, and self param is the first input
-        # then we need to update and return out. Record this need in set_out_tensor.
-        # TODO: make this more general to handle cases where the first param is not self such as
-        # - cat.out(Tensor[] tensors, int dim=0, *, Tensor(a!) out) -> Tensor(a!)
-        # - complex.out(Tensor real, Tensor imag, *, Tensor(a!) out) -> Tensor(a!)
-        set_out_tensor = False
         last_param = cpp_func.parameters[-1].member
-        if (
-            return_info
-            and last_param
-            and last_param.identifier.value == "out"
-            and first_param.identifier.value == "self"
-        ):
-            # output_alias is how the return tensor is marked, normally (a! -> a)
-            output_alias = self._get_alias_info(return_info)
-
-            for torch_p in last_param.torch_param:
-                # Confirm we have an output alias and that it is writable (!)
-                # and the current param (torch_p/last_param) is marked with the output alias
-                if output_alias and output_alias.is_writable and self._get_alias_info(torch_p) == output_alias:
-                    set_out_tensor = True
+        set_out_tensor = self._need_set_out_tensor(first_param, last_param, return_info)
 
         # generate the type check
         cast_op_found = self._write_type_check(writer, mapped_func, cpp_func, ctx, need_type_promotion, set_out_tensor)
@@ -492,6 +494,7 @@ class ORTGen:
         ):
             raise FunctionGenerationError(cpp_func, "First parameter must be an at::Tensor")
 
+        # Fetch the ORT invoker from an at::Tensor.device()
         writer.write("auto& invoker = GetORTInvoker(")
         writer.write(first_param.identifier.value)
         if first_param.parameter_type.desugar().identifier_tokens[0].value == "TensorList":
