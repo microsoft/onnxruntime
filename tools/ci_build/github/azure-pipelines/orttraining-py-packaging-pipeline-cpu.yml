@@ -9,6 +9,14 @@ variables:
     ${{ else }}:
       value: ''
 
+resources:
+  repositories:
+  - repository: manylinux
+    type: Github
+    endpoint: Microsoft
+    name: pypa/manylinux
+    ref: 28723f3e3330e5de156d2179353d45b04339a528
+
 stages:
 - stage: Python_Packaging
 
@@ -18,9 +26,6 @@ stages:
       workspace:
         clean: all
       pool: Linux-CPU
-
-      variables:
-        DockerFile: 'Dockerfile.manylinux2014_cpu'
 
       strategy:
         matrix:
@@ -48,7 +53,7 @@ stages:
 
       - template: templates/get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/$(DockerFile)
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
             --build-arg PYTHON_VERSION=$(PythonVersion)

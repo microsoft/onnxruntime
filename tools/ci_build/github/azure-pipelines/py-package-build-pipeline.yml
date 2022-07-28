@@ -41,6 +41,14 @@ parameters:
 
 trigger: none
 
+resources:
+  repositories:
+  - repository: manylinux
+    type: Github
+    endpoint: Microsoft
+    name: pypa/manylinux
+    ref: 28723f3e3330e5de156d2179353d45b04339a528
+
 stages:
 - template: templates/py-packaging-selectable-stage.yml
   parameters:

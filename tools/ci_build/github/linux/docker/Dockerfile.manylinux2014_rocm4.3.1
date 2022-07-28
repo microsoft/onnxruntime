@@ -84,7 +84,7 @@ RUN export LIBXCRYPT_VERSION=4.4.26 && \
     export PERL_DOWNLOAD_URL=https://www.cpan.org/src/5.0 && \
     manylinux-entrypoint /build_scripts/install-libxcrypt.sh
 
-COPY build_scripts/install-protobuf.sh /build_scripts/
+COPY scripts/install-protobuf.sh /build_scripts/
 RUN export PROTOBUF_VERSION=3.17.3 && \
     export PROTOBUF_ROOT=protobuf-all-${PROTOBUF_VERSION} && \
     export PROTOBUF_HASH=77ad26d3f65222fd96ccc18b055632b0bfedf295cb748b712a98ba1ac0b704b2 && \
