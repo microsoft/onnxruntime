@@ -528,7 +528,10 @@ class ORTGen:
 
             return in_place_params, return_outputs, attrs_arg_ptr
 
-
+    # TODO: Pick the right "out" Torch parameter; do not assume the first one
+    # TODO: Handle multiple results
+    # TODO: Assert return type
+    # TODO: warn if we have not consumed all torch parameters (either as an ORT input or ORT attribute).
     def _write_function_body(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
         full_onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
         assert len(cpp_func.parameters) > 0
@@ -549,17 +552,12 @@ class ORTGen:
         cast_op_found = self._write_type_check(writer, mapped_func, cpp_func, ctx, need_type_promotion, set_out_tensor)
 
         self._write_function_body_invoker(writer, first_param)
-        # FIXME: warn if we have not consumed all torch parameters (either as an ORT input or ORT attribute).
 
         if set_out_tensor:
             self._write_function_body_resize_output(writer)
 
         for onnx_op_index, onnx_op in enumerate(ctx.ops):
             in_place_params, return_outputs, attrs_arg_ptr = self._write_function_body_onnx_op(writer, onnx_op, onnx_op_index, need_type_promotion, cpp_func, return_info, set_out_tensor, ctx, cast_op_found)
-
-        # TODO: Pick the right "out" Torch parameter; do not assume the first one
-        # TODO: Handle multiple results
-        # TODO: Assert return type
 
         self._write_function_body_return(writer, cpp_func, in_place_params, set_out_tensor, need_type_promotion, cast_op_found, full_onnx_op.outputs, last_param, first_param, mapped_func, return_outputs)
 
