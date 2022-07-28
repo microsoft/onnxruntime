@@ -30,14 +30,14 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
                              AllocatorPtr allocator, concurrency::ThreadPool* tp) const {
   rocblas_handle rocblas_handle = rocm_ep_->PerThreadRocblasHandle();
 
-  EinsumOp::EinsumCudaAssets einsum_rocm_assets(rocblas_handle, rocm_ep_);
+  EinsumOp::EinsumRocmAssets einsum_rocm_assets(rocblas_handle, rocm_ep_);
 
   // EinsumComputePreprocessor section -
   auto einsum_compute_preprocessor = EinsumComputePreprocessor::Create(*einsum_equation_preprocessor_, inputs, allocator,
                                                                        &einsum_rocm_assets);
 
-  einsum_compute_preprocessor->SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Diagonal,
-                                                EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose);
+  einsum_compute_preprocessor->SetDeviceHelpers(EinsumOp::DeviceHelpers::RocmDeviceHelpers::Diagonal,
+                                                EinsumOp::DeviceHelpers::RocmDeviceHelpers::Transpose);
   // Compute all required metadata to be used at Einsum compute time and return error status code if one was generated
   ORT_RETURN_IF_ERROR(einsum_compute_preprocessor->Run());
 
@@ -47,20 +47,20 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
                                                                                *einsum_compute_preprocessor,
                                                                                &einsum_rocm_assets);
 
-    einsum_compute_processor->SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<float>,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy);
+    einsum_compute_processor->SetDeviceHelpers(EinsumOp::DeviceHelpers::RocmDeviceHelpers::Transpose,
+                                               EinsumOp::DeviceHelpers::RocmDeviceHelpers::MatMul<float>,
+                                               EinsumOp::DeviceHelpers::RocmDeviceHelpers::ReduceSum<float>,
+                                               EinsumOp::DeviceHelpers::RocmDeviceHelpers::DataCopy);
     return einsum_compute_processor->Run();
   } else if (inputs[0]->IsDataType<MLFloat16>()) {
     auto einsum_compute_processor = EinsumTypedComputeProcessor<MLFloat16>::Create(context, allocator, tp,
                                                                                    *einsum_compute_preprocessor,
                                                                                    &einsum_rocm_assets);
 
-    einsum_compute_processor->SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<MLFloat16>,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<MLFloat16>,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy);
+    einsum_compute_processor->SetDeviceHelpers(EinsumOp::DeviceHelpers::RocmDeviceHelpers::Transpose,
+                                               EinsumOp::DeviceHelpers::RocmDeviceHelpers::MatMul<MLFloat16>,
+                                               EinsumOp::DeviceHelpers::RocmDeviceHelpers::ReduceSum<MLFloat16>,
+                                               EinsumOp::DeviceHelpers::RocmDeviceHelpers::DataCopy);
     return einsum_compute_processor->Run();
   }
 

@@ -17,7 +17,7 @@ namespace EinsumOp {
 
 namespace DeviceHelpers {
 
-namespace CudaDeviceHelpers {
+namespace RocmDeviceHelpers {
 
 // ROCM EP specific Data copy helper
 Status DataCopy(const Tensor& input, Tensor& output, void* einsum_rocm_assets) {
@@ -26,7 +26,7 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_rocm_assets) {
   // There are no string tensors in Einsum's case - so safely use memcpy
   HIP_RETURN_IF_ERROR(hipMemcpyAsync(output.MutableDataRaw(), input.DataRaw(), input.SizeInBytes(),
                                        hipMemcpyDeviceToDevice,
-                                       static_cast<hipStream_t>(static_cast<EinsumCudaAssets*>(einsum_rocm_assets)->rocm_ep_->GetComputeStream())));
+                                       static_cast<hipStream_t>(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetComputeStream())));
 
   return Status::OK();
 }
@@ -34,9 +34,9 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_rocm_assets) {
 // ROCM EP specific Transpose helper
 Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_rocm_assets) {
-  return rocm::Transpose::DoTranspose(static_cast<EinsumCudaAssets*>(einsum_rocm_assets)->rocm_ep_->GetDeviceProp(),
-                                      static_cast<hipStream_t>(static_cast<EinsumCudaAssets*>(einsum_rocm_assets)->rocm_ep_->GetComputeStream()),
-                                      static_cast<EinsumCudaAssets*>(einsum_rocm_assets)->rocblas_handle_,
+  return rocm::Transpose::DoTranspose(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetDeviceProp(),
+                                      static_cast<hipStream_t>(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetComputeStream()),
+                                      static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocblas_handle_,
                                       permutation, input, output, input_shape_override);
 }
 
@@ -51,7 +51,7 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
   HipT one = rocm::ToHipType<T>::FromFloat(1.0f);
   HipT zero = rocm::ToHipType<T>::FromFloat(0.0f);
 
-  ROCBLAS_RETURN_IF_ERROR(rocblasGemmStridedBatchedHelper(static_cast<EinsumCudaAssets*>(einsum_rocm_assets)->rocblas_handle_,
+  ROCBLAS_RETURN_IF_ERROR(rocblasGemmStridedBatchedHelper(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocblas_handle_,
                                                         rocblas_operation_none,
                                                         rocblas_operation_none,
                                                         static_cast<int>(N),
@@ -79,7 +79,7 @@ std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> 
                                   bool keep_dims, AllocatorPtr allocator,
                                   const TensorShape* input_shape_override,
                                   concurrency::ThreadPool* /*tp*/, void* einsum_rocm_assets) {
-  return rocm::ReductionOps::ReduceCompute<T>(*static_cast<EinsumCudaAssets*>(einsum_rocm_assets)->rocm_ep_, MIOPEN_REDUCE_TENSOR_ADD,
+  return rocm::ReductionOps::ReduceCompute<T>(*static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_, MIOPEN_REDUCE_TENSOR_ADD,
                                               allocator, input, reduce_axes,
                                               keep_dims, false, false, false,
                                               true, input_shape_override);
@@ -124,7 +124,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   }
 
   DiagonalImpl(
-      static_cast<hipStream_t>(static_cast<EinsumCudaAssets*>(einsum_rocm_assets)->rocm_ep_->GetComputeStream()),
+      static_cast<hipStream_t>(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetComputeStream()),
       input.DataRaw(),
       input.Shape().GetDims().size(),
       first_dim,
@@ -138,33 +138,33 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   return output;
 }
 
-}  // namespace CudaDeviceHelpers
+}  // namespace RocmDeviceHelpers
 
 }  // namespace DeviceHelpers
 
 // Explicit template instantiations of functions
 
 // float
-template Status DeviceHelpers::CudaDeviceHelpers::MatMul<float>(
+template Status DeviceHelpers::RocmDeviceHelpers::MatMul<float>(
     const float* input_1_data, const float* input_2_data, float* output_data,
     size_t left_stride, size_t right_stride, size_t output_stride,
     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
     void* einsum_rocm_assets);
 
-template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>(
+template std::unique_ptr<Tensor> DeviceHelpers::RocmDeviceHelpers::ReduceSum<float>(
     const Tensor& input, gsl::span<const int64_t> reduce_axes,
     bool keep_dims, AllocatorPtr allocator,
     const TensorShape* input_shape_override,
     concurrency::ThreadPool* tp, void* einsum_rocm_assets);
 
 // MLFloat16
-template Status DeviceHelpers::CudaDeviceHelpers::MatMul<MLFloat16>(
+template Status DeviceHelpers::RocmDeviceHelpers::MatMul<MLFloat16>(
     const MLFloat16* input_1_data, const MLFloat16* input_2_data, MLFloat16* output_data,
     size_t left_stride, size_t right_stride, size_t output_stride,
     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
     void* einsum_rocm_assets);
 
-template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<MLFloat16>(
+template std::unique_ptr<Tensor> DeviceHelpers::RocmDeviceHelpers::ReduceSum<MLFloat16>(
     const Tensor& input, gsl::span<const int64_t> reduce_axes,
     bool keep_dims, AllocatorPtr allocator,
     const TensorShape* input_shape_override,

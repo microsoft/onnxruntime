@@ -19,8 +19,8 @@ namespace onnxruntime {
 namespace EinsumOp {
 
 // Holds ROCM assets required for ROCM ops that need to be executed as part of the Einsum flow
-struct EinsumCudaAssets {
-  explicit EinsumCudaAssets(rocblas_handle rocblas_handle,
+struct EinsumRocmAssets {
+  explicit EinsumRocmAssets(rocblas_handle rocblas_handle,
                             ROCMExecutionProvider* rocm_ep) {
     rocblas_handle_ = rocblas_handle;
     rocm_ep_ = rocm_ep;
@@ -33,7 +33,7 @@ struct EinsumCudaAssets {
 namespace DeviceHelpers {
 
 // These are ROCM EP specific device helper implementations
-namespace CudaDeviceHelpers {
+namespace RocmDeviceHelpers {
 
 Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_rocm_assets);
@@ -54,7 +54,7 @@ std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> 
 
 std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator, void* einsum_rocm_assets);
 
-}  // namespace CudaDeviceHelpers
+}  // namespace RocmDeviceHelpers
 
 }  // namespace DeviceHelpers
 
