@@ -268,6 +268,29 @@ class ORTGen:
         writer.pop_indent()
         writer.writeline("}")
 
+    def _write_function_body_onnx_op_node_attributes(self, writer, onnx_op, attrs, attrs_arg):
+        writer.writeline()
+        writer.writeline(f"NodeAttributes {attrs_arg}({len(attrs)});")
+
+        for attr_name, attr in attrs.items():
+            writer.write(f'{attrs_arg}["{attr_name}"] = ')
+            writer.writeline("create_ort_attribute(")
+            writer.push_indent()
+            writer.write(f'"{attr_name}", {attr.value}')
+            if attr.type.startswith("at::ScalarType::"):
+                writer.write(f", {attr.type}")
+            elif attr.type == AttrType.TENSOR:
+                writer.write(f", true")
+            elif attr.type != AttrType.STRING:
+                raise FunctionGenerationError(
+                    cpp_func,
+                    f'Unsure how how to map ONNX op "{onnx_op.name}" attribute '
+                    + f'"{attr_name}" of type "{attr.type}" to a call to '
+                    + "create_ort_attribute. Please teach generator.py.",
+                )
+            writer.writeline(");")
+            writer.pop_indent()
+
     def _write_function_body(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
         full_onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
 
@@ -359,32 +382,11 @@ class ORTGen:
 
             # Torch kwargs -> ORT attributes
             attrs = {k: v for k, v in onnx_op.attributes.items() if v and v.value is not None}
+            attrs_arg_ptr = "nullptr"
             if len(attrs) > 0:
                 attrs_arg = f"attrs_{onnx_op_index}"
-                writer.writeline()
-                writer.writeline(f"NodeAttributes {attrs_arg}({len(attrs)});")
-
-                for attr_name, attr in attrs.items():
-                    writer.write(f'{attrs_arg}["{attr_name}"] = ')
-                    writer.writeline("create_ort_attribute(")
-                    writer.push_indent()
-                    writer.write(f'"{attr_name}", {attr.value}')
-                    if attr.type.startswith("at::ScalarType::"):
-                        writer.write(f", {attr.type}")
-                    elif attr.type == AttrType.TENSOR:
-                        writer.write(f", true")
-                    elif attr.type != AttrType.STRING:
-                        raise FunctionGenerationError(
-                            cpp_func,
-                            f'Unsure how how to map ONNX op "{onnx_op.name}" attribute '
-                            + f'"{attr_name}" of type "{attr.type}" to a call to '
-                            + "create_ort_attribute. Please teach generator.py.",
-                        )
-                    writer.writeline(");")
-                    writer.pop_indent()
-                attrs_arg = f"&{attrs_arg}"
-            else:
-                attrs_arg = "nullptr"
+                attrs_arg_ptr = f"&{attrs_arg}"
+                self._write_function_body_onnx_op_node_attributes(writer, onnx_op, attrs, attrs_arg)
 
             # Outputs vector
             writer.writeline()
@@ -469,7 +471,7 @@ class ORTGen:
                     op_input = f"ort_input_{onnx_op_index}_{op_input}"
                 writer.writeline(f"std::move({op_input}),")
             writer.pop_indent()
-            writer.write(f"}}, {onnx_op.outputs}, {attrs_arg}")
+            writer.write(f"}}, {onnx_op.outputs}, {attrs_arg_ptr}")
             if onnx_op.domain:
                 writer.write(f", {onnx_op.domain}")
             writer.writeline(");")
