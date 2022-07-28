@@ -235,7 +235,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       const Tensor* Z = context->Input<Tensor>(3);
       auto z_dims = Z->Shape().GetDims();
       TensorShapeVector z_dims_extended(z_dims.begin(), z_dims.end());
-      if (z_dims_extended.size() == y_dims_cudnn.size() - 1) {
+      if (z_dims_extended.size() == y_dims_cudnn.size() - 1 && y_dims_cudnn.back() == 1) {
         z_dims_extended.push_back(y_dims_cudnn.back());
       }
       if (z_dims_extended.size() != y_dims_cudnn.size()) {
