@@ -250,18 +250,15 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
                                          gsl::narrow_cast<int>(conv_attrs_.group),
                                          CUDNN_CROSS_CORRELATION, CudnnTensor::GetDataType<CudaT>()));
 
-    TensorShapeVector b_dims;
     if (context->InputCount() >= 3) {
       const Tensor* B = context->Input<Tensor>(2);
       const auto& b_shape = B->Shape();
       ORT_RETURN_IF_NOT(b_shape.NumDimensions() == 1, "bias should be 1D");
-      // TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
-      b_dims = TensorShapeVector(2 + kernel_shape.size(), 1);
+      TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = b_shape[0];
       ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
       //s_.b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
     } else if (bias_expected) {
-      b_dims = TensorShapeVector(2 + kernel_shape.size(), 1);
       TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = w_dims[0];
       auto malloc_size = b_dims[1] * sizeof(CudaT);

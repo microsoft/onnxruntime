@@ -34,11 +34,6 @@ Status CudnnTensor::Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dat
   TensorPitches pitches(input_dims);
   InlinedVector<int, kTensorShapeSmallBufferElementsSize> dims(rank);
   InlinedVector<int, kTensorShapeSmallBufferElementsSize> strides(rank);
-  std::stringstream ss; ss.str("");
-  for (auto &i : input_dims) {
-    ss << i << " ";
-  }
-  printf("CudnnTensor dim %s data type %d\n", ss.str().c_str(), dataType);
   for (int i = 0; i < rank; i++) {
     dims[i] = gsl::narrow_cast<int>(input_dims[i]);
     strides[i] = gsl::narrow_cast<int>(pitches[i]);
