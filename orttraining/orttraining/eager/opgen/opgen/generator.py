@@ -470,6 +470,12 @@ class ORTGen:
         writer.writeline(".device());")
         writer.writeline()
 
+    def _write_function_body_onnx_op_output_vector(self, writer, onnx_op):
+        # Outputs vector
+        writer.writeline()
+        writer.write(f"std::vector<OrtValue> {onnx_op.outputs}")
+        writer.writeline(f"({onnx_op.outputs.count});")
+
     def _write_function_body(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
         full_onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
 
@@ -520,10 +526,7 @@ class ORTGen:
                 attrs_arg_ptr = f"&{attrs_arg}"
                 self._write_function_body_onnx_op_node_attributes(writer, onnx_op, attrs, attrs_arg)
 
-            # Outputs vector
-            writer.writeline()
-            writer.write(f"std::vector<OrtValue> {onnx_op.outputs}")
-            writer.writeline(f"({onnx_op.outputs.count});")
+            self._write_function_body_onnx_op_output_vector(writer, onnx_op)
 
             in_place_params = {}
 
