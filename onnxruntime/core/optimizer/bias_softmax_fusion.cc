@@ -180,7 +180,7 @@ bool TrySelectInputAndBiasWithAlignment(Node& add_node, Node& softmax_node, Node
     }
   }
 
-  // When it reaches here, is_inner_broadcast is false.
+  is_inner_broadcast = false;
   return true;
 }
 
