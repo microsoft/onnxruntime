@@ -449,6 +449,13 @@ class ORTGen:
                     return True
         return False
 
+    def _get_onnx_ops_eval_context(self, op):
+        # may have nested operations - eval the outer ONNX op to produce a topologically ordered list of ops
+        ctx = ONNXOpEvalContext()
+        op.eval(ctx)
+        ctx.prepare_outputs()
+        return ctx
+
     def _write_function_body_first_param_assert(self, writer, first_param):
         # Check if the first parameter is tensorlist and if yes it's size should be > 0
         if first_param.parameter_type.desugar().identifier_tokens[0].value == "TensorList":
@@ -478,13 +485,6 @@ class ORTGen:
 
     def _write_function_body(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
         full_onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
-
-        # full_onnx_op may have nested operations
-        # Eval the outer ONNX op to produce a topologically ordered list of ops
-        ctx = ONNXOpEvalContext()
-        full_onnx_op.eval(ctx)
-        ctx.prepare_outputs()
-
         assert len(cpp_func.parameters) > 0
 
         self._write_function_body_debug_header(writer, cpp_func.parameters)
@@ -495,6 +495,7 @@ class ORTGen:
         first_param = cpp_func.parameters[0].member # FIXME: Find first at::Tensor param instead of first param only?
         self._write_function_body_first_param_assert(writer, first_param)
 
+        ctx = self._get_onnx_ops_eval_context(full_onnx_op)
         need_type_promotion = self._write_type_promotion(writer, mapped_func, cpp_func, ctx)
         return_info = cpp_func.torch_func.return_type if cpp_func.torch_func else None
         last_param = cpp_func.parameters[-1].member
