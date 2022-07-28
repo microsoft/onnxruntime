@@ -3561,8 +3561,7 @@ struct BiasSoftmaxFusionTester {
     ASSERT_EQ(actual_axis, expected_axis);
 
     ASSERT_TRUE(GetAxis("BiasSoftmax", "is_inner_broadcast", &actual_broadcast_type));
-    bool actual_is_inner_broadcast = actual_broadcast_type != 0;
-    ASSERT_EQ(actual_is_inner_broadcast, expected_is_inner_broadcast);
+    ASSERT_EQ(actual_broadcast_type, expected_is_inner_broadcast ? 1 : 0);
   }
 
   void TestNoFusionOccurs() {
@@ -3657,7 +3656,7 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OuterBroadcast) {
         ASSERT_TRUE(attrs.find("axis") != attrs.end());
         ASSERT_TRUE(attrs.find("is_inner_broadcast") != attrs.end());
         ASSERT_EQ(6, static_cast<int>(attrs.at("axis").i()));
-        ASSERT_TRUE(attrs.at("is_inner_broadcast").i() == 0LL);
+        ASSERT_EQ(static_cast<int>(attrs.at("is_inner_broadcast").i()), 0);
       }
     }
   };
