@@ -289,7 +289,7 @@ jobs:
         mv manylinux onnxruntime
         ls 
 
-  - template: with-container-registry-steps.yml
+  - template: templates/with-container-registry-steps.yml
     parameters:
       Steps:
       - script: |
