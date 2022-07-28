@@ -495,8 +495,7 @@ class ORTGen:
         writer.writeline(".device());")
         writer.writeline()
 
-        # FIXME: warn if we have not consumed all torch parameters (either as
-        # an ORT input or ORT attribute).
+        # FIXME: warn if we have not consumed all torch parameters (either as an ORT input or ORT attribute).
 
         if set_out_tensor:
             self._write_function_body_resize_output(writer)
