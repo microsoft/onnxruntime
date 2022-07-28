@@ -106,8 +106,6 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         !IsSupportedDataType(reduce_mean_node)) {
       continue;
     }
-
-    std::cout << "hit LayerNormFusion optimizer...." << reduce_mean_node.Name() << std::endl;
     nodes_to_remove.push_back(reduce_mean_node);
 
     // Loop through the children of current "ReduceMean" node. See if they match ["Sub"] or ["Sub", "Sub"]
@@ -414,7 +412,6 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // move output definitions and output edges from mul_node (last in list) to layer_norm_node.
     // remove all the other nodes.
     graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node);
-    std::cout << "done LayerNormFusion optimizer...." << reduce_mean_node.Name() << std::endl;
 #ifdef ENABLE_TRAINING
     // add two extra output defs, so we have 3 output defs that match what gradient builder expected
     layer_norm_node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_mean"), nullptr));
