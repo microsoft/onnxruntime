@@ -559,6 +559,7 @@ Status OrtLoadInternal(const PathString& checkpoint_path,
   // Load imported initializers into the Model
   for (auto& init : *(model_proto.mutable_graph()->mutable_initializer())) {
     if (!init.has_name()) ORT_THROW("Initializer name is missing.");
+    if (!param_tensor_protos.count(init.name())) ORT_THROW("Invalid initializer name.");
     auto it = param_tensor_protos.find(init.name());
     init = it->second;
   }
@@ -590,8 +591,8 @@ Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointState& checkp
   return OrtLoadInternal(checkpoint_path, checkpoint_states);
 }
 
-Status LoadCheckpoint(const PathString& checkpoint_path,
-                      ONNX_NAMESPACE::ModelProto& model_proto) {
+Status LoadCheckpointToModel(const PathString& checkpoint_path,
+                             ONNX_NAMESPACE::ModelProto& model_proto) {
   return OrtLoadInternal(checkpoint_path, model_proto);
 }
 

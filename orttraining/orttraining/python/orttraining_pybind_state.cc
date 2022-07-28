@@ -848,7 +848,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
           std::istringstream buffer(serialized_model);
           Status status = Model::Load(buffer, &model_proto);
-          status = onnxruntime::training::api::LoadCheckpoint(checkpoint_path, model_proto);
+          status = onnxruntime::training::api::LoadCheckpointToModel(checkpoint_path, model_proto);
 
           model_proto.SerializeToString(&model_proto_str);
           serialized_model = model_proto_str;

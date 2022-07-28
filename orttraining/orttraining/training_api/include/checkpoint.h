@@ -88,8 +88,8 @@ Status LoadCheckpoint(const PathString& checkpoint_path,
  * @param model_proto Model Proto.
  * @return Status
  */
-Status LoadCheckpoint(const PathString& checkpoint_path,
-                      ONNX_NAMESPACE::ModelProto& model_proto);
+Status LoadCheckpointToModel(const PathString& checkpoint_path,
+                             ONNX_NAMESPACE::ModelProto& model_proto);
 
 }  // namespace api
 }  // namespace training
