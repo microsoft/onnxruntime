@@ -16,7 +16,7 @@ jobs:
   workspace:
     clean: all
   timeoutInMinutes: 180
-  pool: Linux-CPU-2019
+  pool: Ubuntu-2004-rocm-aiinfra
   variables:
     PythonVersion: ${{ parameters.PythonVersion }}
 
