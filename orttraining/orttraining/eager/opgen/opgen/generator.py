@@ -494,6 +494,16 @@ class ORTGen:
             if need_type_promotion:
                 self._write_function_body_onnx_op_input_type_promotion(writer, cpp_param, onnx_op_index, op_input)
 
+    def _write_function_body_return(self, writer, cpp_func, in_place_params, set_out_tensor, need_type_promotion, cast_op_found, onnx_op_outputs, last_param, first_param, mapped_func, return_outputs):
+        if cpp_func.return_type.desugar().identifier_tokens[0].value == "void":
+            pass
+        elif len(in_place_params) == 0:
+            self._write_function_body_return_no_inplace(writer, set_out_tensor, need_type_promotion, cast_op_found, onnx_op_outputs, last_param, first_param, mapped_func, cpp_func, return_outputs)
+        elif len(in_place_params) == 1:
+            writer.writeline(f"return {in_place_params[0]};")
+        else:
+            self._write_function_body_return_multiple(writer, cpp_func, in_place_params)
+
     def _write_function_body(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
         full_onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
         assert len(cpp_func.parameters) > 0
@@ -545,14 +555,7 @@ class ORTGen:
         # TODO: Handle multiple results
         # TODO: Assert return type
 
-        if cpp_func.return_type.desugar().identifier_tokens[0].value == "void":
-            pass
-        elif len(in_place_params) == 0:
-            self._write_function_body_return_no_inplace(writer, set_out_tensor, need_type_promotion, cast_op_found, full_onnx_op.outputs, last_param, first_param, mapped_func, cpp_func, return_outputs)
-        elif len(in_place_params) == 1:
-            writer.writeline(f"return {in_place_params[0]};")
-        else:
-            self._write_function_body_return_multiple(writer, cpp_func, in_place_params)
+        self._write_function_body_return(writer, cpp_func, in_place_params, set_out_tensor, need_type_promotion, cast_op_found, full_onnx_op.outputs, last_param, first_param, mapped_func, return_outputs)
 
     def _write_type_check(self, writer, mapped_func, cpp_func, ctx, need_type_promotion, set_out_tensor):
         cast_op_found = False
