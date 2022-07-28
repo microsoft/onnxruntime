@@ -141,11 +141,9 @@ jobs:
       python3 -m pip install azure-storage-blob==2.1.0
       files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
       echo ${files[0]} && \
-      python3 tools/ci_build/upload_python_package_to_azure_storage_with_python.py \
+      python3 tools/ci_build/upload_python_package_to_azure_storage.py \
           --python_wheel_path ${files[0]} \
-          --account_name onnxruntimepackages \
-          --account_key $(orttrainingpackagestorageaccountkey) \
-          --container_name '$web'
+          --final_storage
     condition: and(succeeded(), eq(variables['DRY_RUN'], '0'))
     displayName: 'Upload Rocm wheel to release repository'
 
