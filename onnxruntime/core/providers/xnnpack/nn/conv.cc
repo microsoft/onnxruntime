@@ -185,18 +185,8 @@ TensorQuantType TryGetConvBiasDtype(const NodeUnit& node_unit,
   if (!GetType(iodef.node_arg, input_type) || input_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     return TensorTypeInvalid;
   }
-  // check channels of bias
-  std::vector<uint8_t> unpacked_tensor;
-  const onnx::TensorProto* bias_value = graph_viewer.GetConstantInitializer(iodef.node_arg.Name(), true);
-  if (bias_value) {
-    if (utils::UnpackInitializerData(
-            *bias_value, node_unit.ModelPath(), unpacked_tensor)
-            .IsOK()) {
-      return TensorTypeInt32;
-    }
-  }
-
-  return TensorTypeInvalid;
+  // bias must be a ConstantInitializer
+  return graph_viewer.GetConstantInitializer(iodef.node_arg.Name(), true) ? TensorTypeInt32 : TensorTypeInvalid;
 }
 
 // this function is refereed to Xnnpack_conv, u8s8 is not support
