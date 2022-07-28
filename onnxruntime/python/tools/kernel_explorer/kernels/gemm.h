@@ -5,6 +5,8 @@
 
 #include <pybind11/pybind11.h>
 
+#include <string_view>
+
 #include "python/tools/kernel_explorer/device_array.h"
 #include "python/tools/kernel_explorer/operator.h"
 
@@ -44,6 +46,9 @@ class GemmBase : public Operator {
         beta_(beta),
         c_(reinterpret_cast<T*>(c.ptr())),
         ldc_(ldc) {}
+
+  virtual std::vector<std::string> ListImpls() const = 0;
+  virtual bool SelectImpl(std::string name) { return true; }
 
  protected:
   BlasOp opa_;

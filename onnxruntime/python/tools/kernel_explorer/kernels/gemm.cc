@@ -3,6 +3,7 @@
 
 #include "python/tools/kernel_explorer/kernels/gemm.h"
 #include "python/tools/kernel_explorer/kernels/gemm_rocblas.h"
+#include "python/tools/kernel_explorer/kernels/gemm_ck.h"
 
 #include <type_traits>
 #include <pybind11/pybind11.h>
@@ -20,6 +21,7 @@ void InitGemm(py::module mod) {
       .export_values();
 
   InitRocBlasGemm(mod);
+  InitComposableKernelGemm(mod);
 }
 
 }  // namespace onnxruntime

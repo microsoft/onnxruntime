@@ -3,8 +3,8 @@
 
 #include "python/tools/kernel_explorer/kernels/gemm_rocblas.h"
 
-#include <type_traits>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
@@ -51,6 +51,10 @@ class RocBlasGemm : public GemmBase<T> {
                           this->c_, this->ldc_));
   }
 
+  std::vector<std::string> ListImpls() const override {
+    return {"Rocblas"};
+  }
+
  private:
   rocblas_handle rocblas_handle_;
   rocblas_operation opa_;
@@ -63,14 +67,18 @@ void InitRocBlasGemm(py::module mod) {
       .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double, DeviceArray&, int64_t, DeviceArray&, int64_t, double, DeviceArray&, int64_t>())
       .def("SetRepeats", &RocBlasGemm<float>::SetRepeats)
       .def("Profile", &RocBlasGemm<float>::Profile)
-      .def("Run", &RocBlasGemm<float>::Run);
+      .def("Run", &RocBlasGemm<float>::Run)
+      .def("ListImpls", &RocBlasGemm<float>::ListImpls)
+      .def("SelectImpl", &RocBlasGemm<float>::SelectImpl);
 
   // half
   py::class_<RocBlasGemm<half>>(mod, "RocblasGemm_half")
       .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double, DeviceArray&, int64_t, DeviceArray&, int64_t, double, DeviceArray&, int64_t>())
       .def("SetRepeats", &RocBlasGemm<half>::SetRepeats)
       .def("Profile", &RocBlasGemm<half>::Profile)
-      .def("Run", &RocBlasGemm<half>::Run);
+      .def("Run", &RocBlasGemm<half>::Run)
+      .def("ListImpls", &RocBlasGemm<half>::ListImpls)
+      .def("SelectImpl", &RocBlasGemm<half>::SelectImpl);
 }
 
 }  // namespace onnxruntime

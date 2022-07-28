@@ -10,20 +10,11 @@ import numpy as np
 import pytest
 
 
-def dtype_to_bytes(dtype):
-    type_map = {
-        "float16": 2,
-        "float32": 4,
-    }
-    return type_map[dtype]
-
-
-def dtype_to_funcs(dtype):
-    type_map = {
-        "float16": list(filter(lambda x: "RocblasGemm_half" in x, dir(ke))),
-        "float32": list(filter(lambda x: "RocblasGemm_float" in x, dir(ke))),
-    }
-    return type_map[dtype]
+def dtype_to_suffix(dtype):
+    return {
+        "float32": "float",
+        "float16": "half",
+    }[dtype]
 
 
 def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=False):
@@ -33,13 +24,12 @@ def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=Fa
     np.random.seed(0)
     a = (np.random.rand(*a_shape) * 2 - 1).astype(dtype)
     b = (np.random.rand(*b_shape) * 2 - 1).astype(dtype)
+    ref_c = (a.T if transa else a) @ (b.T if transb else b)
 
     my_c = np.zeros((m, n), dtype=dtype)
     dev_a = ke.DeviceArray(a)
     dev_b = ke.DeviceArray(b)
     dev_c = ke.DeviceArray(my_c)
-
-    f = getattr(ke, func)
 
     opa = ke.blas_op.T if transa else ke.blas_op.N
     opb = ke.blas_op.T if transb else ke.blas_op.N
@@ -47,33 +37,68 @@ def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=Fa
     ldb = b_shape[1]
     alpha = 1.0
     beta = 0.0
-    my_gemm = f(opa, opb, m, n, k, alpha, dev_a, lda, dev_b, ldb, beta, dev_c, n)
-    my_gemm.Run()
-    dev_c.UpdateHostNumpyArray()
+    my_gemm = func(opa, opb, m, n, k, alpha, dev_a, lda, dev_b, ldb, beta, dev_c, n)
 
-    rtol = 1e-3 if dtype == "float16" else 1e-5
-    atol = 1e-3 if dtype == "float16" else 1e-5
+    failures = {}
+    for impl in my_gemm.ListImpls():
+        if not my_gemm.SelectImpl(impl):
+            continue
 
-    print(a, b)
-    ref_c = (a.T if transa else a) @ (b.T if transb else b)
-    np.testing.assert_allclose(ref_c, my_c, rtol=rtol, atol=atol)
+        my_gemm.Run()
+        dev_c.UpdateHostNumpyArray()
+
+        rtol = 1e-3 if dtype == "float16" else 1e-5
+        atol = 1e-3 if dtype == "float16" else 1e-5
+
+        try:
+            np.testing.assert_allclose(ref_c, my_c, rtol=rtol, atol=atol)
+        except Exception as err:
+            failures[impl] = str(err)
+
+    if failures:
+        raise Exception(failures)
 
 
-dtypes = ["float32", "float16"]
-transabs = product([True, False], repeat=2)
-basic_sizes = product([1, 3, 4, 16, 127, 128, 129, 133, 1024], repeat=3)
+def get_basic_cases():
+    dtypes = ["float32", "float16"]
+    transabs = product([True, False], repeat=2)
+    basic_sizes = product([1, 3, 4, 16, 127, 128, 129, 133, 1024], repeat=3)
+    return list(product(dtypes, basic_sizes, transabs))
+
+
+def get_bert_cases():
+    dtypes = ["float32", "float16"]
+    transabs = [(False, False)]
+    bert_sizes = [
+        # m, n, k
+        (384, 64, 384),
+        (384, 768, 768),
+        (384, 3072, 768),
+        (384, 1024, 1024),
+        (384, 4096, 1024),
+        (384, 768, 3072),
+        (384, 1024, 4096),
+    ]
+    return list(product(dtypes, bert_sizes, transabs))
 
 
 @pytest.mark.parametrize(
     "dtype, size, transab",
-    product(dtypes, basic_sizes, transabs),
+    get_basic_cases() + get_bert_cases(),
 )
-def test_gemm_all_cases(dtype, size, transab):
-    for f in dtype_to_funcs(dtype):
-        _test_gemm(f, dtype, *size, *transab)
+def test_rocblas_gemm_all_cases(dtype, size, transab):
+    _test_gemm(getattr(ke, "RocblasGemm_" + dtype_to_suffix(dtype)), dtype, *size, *transab)
 
 
-def profile_gemm_func(func, dtype, m, n, k):
+@pytest.mark.parametrize(
+    "dtype, size, transab",
+    get_bert_cases(),
+)
+def test_ck_gemm_bert_cases(dtype, size, transab):
+    _test_gemm(getattr(ke, "CKGemm_" + dtype_to_suffix(dtype)), dtype, *size, *transab)
+
+
+def profile_gemm_func(f, dtype, m, n, k):
     a_shape = (m, k)
     b_shape = (k, n)
 
@@ -86,7 +111,6 @@ def profile_gemm_func(func, dtype, m, n, k):
     dev_b = ke.DeviceArray(b)
     dev_c = ke.DeviceArray(my_c)
 
-    f = getattr(ke, func)
     opa = ke.blas_op.N
     opb = ke.blas_op.N
     lda = a_shape[1]
@@ -94,31 +118,21 @@ def profile_gemm_func(func, dtype, m, n, k):
     alpha = 1.0
     beta = 0.0
     my_gemm = f(opa, opb, m, n, k, alpha, dev_a, lda, dev_b, ldb, beta, dev_c, n)
-    time_ms = my_gemm.Profile()
-
-    time_us = time_ms * 1000
-    tflops = (m * k * n * 2) / (time_ms * 1e-3) / 1e12
-
-    print(f"RocBLAS GEMM {dtype} m={m:<4} k={k:<4} n={n:<4}, {time_us:>8.4f} us, {tflops:>5.2f} tflops")
+    for impl in my_gemm.ListImpls():
+        if not my_gemm.SelectImpl(impl):
+            print(f"{impl:<50} {dtype} m={m:<4} k={k:<4} n={n:<4}, not supported")
+            continue
+        time_ms = my_gemm.Profile()
+        time_us = time_ms * 1000
+        tflops = (m * k * n * 2) / (time_ms * 1e-3) / 1e12
+        print(f"{impl:<50} {dtype} m={m:<4} k={k:<4} n={n:<4}, {time_us:>8.4f} us, {tflops:>5.2f} tflops")
 
 
 def profile():
-    dtypes = ["float32", "float16"]
-    bert_sizes = [
-        # m, k, n
-        (384, 384, 64),
-        (384, 768, 768),
-        (384, 768, 3072),
-        (384, 1024, 1024),
-        (384, 1024, 4096),
-        (384, 3072, 768),
-        (384, 4096, 1024),
-    ]
-    for dtype in dtypes:
-        for f in dtype_to_funcs(dtype):
-            for m, k, n in bert_sizes:
-                profile_gemm_func(f, dtype, m, k, n)
-            print()
+    for dtype, (m, n, k), _ in get_bert_cases():
+        suffix = dtype_to_suffix(dtype)
+        profile_gemm_func(getattr(ke, "RocblasGemm_" + suffix), dtype, m, n, k)
+        profile_gemm_func(getattr(ke, "CKGemm_" + suffix), dtype, m, n, k)
         print()
 
 
