@@ -358,7 +358,7 @@ stages:
 - stage: MASTER_BUILD_STAGE
   # The below jobs only run on master build.
   # because coverage report is hard to support in cross compiling.
-  displayname: NNAPI MASTER BUILD&TEST
+  displayName: NNAPI MASTER BUILD&TEST
   dependsOn: []
   jobs:
   - job: NNAPI_EP_MASTER
