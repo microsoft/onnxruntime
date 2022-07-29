@@ -105,6 +105,7 @@ stages:
         artifactName: CPUBuildOutput
 
     - template: templates/clean-agent-build-directory-step.yml
+
   - job: Build_NNAPI_EP
     pool: Linux-CPU-2019
     timeoutInMinutes: 30
@@ -132,9 +133,11 @@ stages:
           $(Build.BinariesDirectory)/protobuf \
           $(Build.SourcesDirectory)/protobuf_install
       displayName: Build Host Protoc
+
     - script: |
         env | grep ANDROID
       displayName: View Android ENVs
+
     # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
     - task: JavaToolInstaller@0
       displayName: Use jdk 11
@@ -159,6 +162,7 @@ stages:
           --build_java \
           --skip_tests
       displayName: NNAPI EP, Build
+
     - task: CopyFiles@2
       displayName: Copy apks
       inputs:
@@ -290,7 +294,7 @@ stages:
           ${{ if ne(parameters.specificArtifact, true) }}:
             source: 'current'
           artifact: 'NNAPIBuildOutput'
-          path: $(Build.SourcesDirectory)\
+          path: $(Build.SourcesDirectory)
 
       - task: UsePythonVersion@0
         displayName: Use Python $(pythonVersion)
@@ -343,6 +347,7 @@ stages:
             $(Build.BinariesDirectory)/protobuf \
             $(Build.SourcesDirectory)/protobuf_install
         displayName: Build Host Protoc
+
       - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
         # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
         displayName: Build Minimal ORT with NNAPI and run tests
