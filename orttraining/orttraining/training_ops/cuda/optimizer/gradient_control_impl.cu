@@ -10,6 +10,13 @@
 namespace onnxruntime {
 namespace cuda {
 
+namespace {
+
+// This number is tuned among many data scales (listed in unit tests) that can fit one GPU card.
+constexpr size_t large_data_scale_threshold = 4096 * 768;
+
+}  // namespace
+
 template <typename T, typename T_GRAD, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _InPlaceAccumulator(
     const T* gradient_buffer,
@@ -64,9 +71,6 @@ void InPlaceAccumulatorImpl(
   const int num_threads_per_block = GridDim::maxThreadsPerBlock;
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
 
-  // This number is tuned among many data scales that can fit one GPU card.
-  // The data scales are also listed in unit tests.
-  const size_t large_data_scale_threshold = 4096 * 768;
   if (count < large_data_scale_threshold) {
     const int num_elements_per_thread = 1;
     const int blocksPerGrid = static_cast<int>(CeilDiv(count, num_threads_per_block * num_elements_per_thread));
