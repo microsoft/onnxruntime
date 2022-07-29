@@ -27,7 +27,7 @@ To build a custom ONNX Runtime package, the [build from source](./index.md) inst
 
 To reduce the compiled binary size of ONNX Runtime, the operator kernels included in the build can be reduced to just those required by your model/s.
 
-The operators that are included are specified at build time, in a [configuration file](../reference/reduced-operator-config-file.md) that can be generated from a model or set of models.
+The operators that are included are specified at build time, in a [configuration file](../reference/operators/reduced-operator-config-file.md) that can be generated from a model or set of models.
 
 ### Build option to reduce build to required operator kernels
 
@@ -157,7 +157,7 @@ Find them [here](https://github.com/microsoft/onnxruntime/tags).
 
 ## Custom build packages
 
-In this section, `ops.config` is a [configuration file](../reference/reduced-operator-config-file.md) that specifies the opsets, op kernels, and types to include. See the configuration file used by the pre-built mobile packages at [tools/ci_build/github/android/mobile_package.required_operators.config](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/android/mobile_package.required_operators.config).
+In this section, `ops.config` is a [configuration file](../reference/operators/reduced-operator-config-file.md) that specifies the opsets, op kernels, and types to include. See the configuration file used by the pre-built mobile packages at [tools/ci_build/github/android/mobile_package.required_operators.config](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/android/mobile_package.required_operators.config).
 
 ### Web
 
