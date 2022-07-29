@@ -17,6 +17,14 @@ __global__ void _InPlaceAccumulator(
     T* accumulated_gradient,
     CUDA_LONG N) {
   CUDA_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+
+  // We see slightly perf degradation splitting read/write for this case.
+  // So we handle it differently here.
+  if (NumElementsPerThread == 1) {
+    accumulated_gradient[start] = gradient_buffer[start] + T(gradient[start]);
+    return;
+  }
+
   T lvalue[NumElementsPerThread];
   T rvalue[NumElementsPerThread];
 
@@ -52,22 +60,31 @@ void InPlaceAccumulatorImpl(
   if (count == 0)
     return;
 
-#ifdef USE_ROCM
-  const int num_elements_per_thread = 2;
-  const int num_threads_per_block = 512;
-#else
-  const int num_elements_per_thread = GridDim::maxElementsPerThread;
   const int num_threads_per_block = GridDim::maxThreadsPerBlock;
-#endif
-
-  int blocksPerGrid = static_cast<int>(CeilDiv(count, num_threads_per_block * num_elements_per_thread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
 
-  _InPlaceAccumulator<T, T_GRAD, num_threads_per_block, num_elements_per_thread><<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
-      gradient_buffer,
-      gradient,
-      accumulated_gradient,
-      N);
+  // This number is tuned among many data scales that can fit one GPU card.
+  // The data scales are also listed in unit tests.
+  const size_t large_data_scale_threshold = 4096 * 768;
+  if (count < large_data_scale_threshold) {
+    const int num_elements_per_thread = 1;
+    const int blocksPerGrid = static_cast<int>(CeilDiv(count, num_threads_per_block * num_elements_per_thread));
+    _InPlaceAccumulator<T, T_GRAD, num_threads_per_block, num_elements_per_thread>
+        <<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
+            gradient_buffer,
+            gradient,
+            accumulated_gradient,
+            N);
+  } else {
+    const int num_elements_per_thread = GridDim::maxElementsPerThread;
+    const int blocksPerGrid = static_cast<int>(CeilDiv(count, num_threads_per_block * num_elements_per_thread));
+    _InPlaceAccumulator<T, T_GRAD, num_threads_per_block, num_elements_per_thread>
+        <<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
+            gradient_buffer,
+            gradient,
+            accumulated_gradient,
+            N);
+  }
 }
 
 #define SPECIALIZED_IMPL_INPLACEACCUMULATOR(T, T_GRAD)                                                        \

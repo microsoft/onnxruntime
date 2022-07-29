@@ -77,7 +77,8 @@ bool ParseArguments(int argc, char* argv[], TestRunnerParameters& params) {
         cxxopts::value<std::string>()->default_value(""))
       ("model_name", "The name of the model.",
         cxxopts::value<std::string>()->default_value("model_test"))
-      ("synthetic_input_type", "Input type can be 'dummy' for test model, 'S', 'U', 'R' which represent some internal models.",
+      ("synthetic_input_type", "Input type can be 'dummy' for test model, 'S', 'U', 'R' which represent some internal"
+      " models.",
         cxxopts::value<std::string>()->default_value("attention"))
 
       ("train_data_dir", "Input ONNX example files (can be a glob or comma separated).",
@@ -244,7 +245,7 @@ int RunTraining(const TestRunnerParameters& params) {
     ORT_RETURN_ON_ERROR(g_ort_training_api->TrainingSessionGetEvalModeOutputCount(session, &eval_mode_output_count));
   }
 
-  int64_t sample_batch_count_per_epoch = 512;
+  int64_t sample_batch_count_per_epoch = params.train_batch_size;
   if (sample_batch_count_per_epoch < params.train_batch_size ||
       sample_batch_count_per_epoch % params.train_batch_size != 0) {
     throw std::runtime_error("sample_count cannot be divisible by batch_size");

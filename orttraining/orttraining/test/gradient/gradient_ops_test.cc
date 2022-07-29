@@ -2133,17 +2133,44 @@ TEST(GradientUtilsTest, InPlaceAccumulatorFloat32) {
   test.Run();
 }
 
-TEST(GradientUtilsTest, InPlaceAccumulatorV2_CPU) {
+void TestInPlaceAccumulatorV2(
+    const std::vector<int64_t>& tensor_dim,
+    const std::unordered_set<std::string>& excluded_providers,
+    std::vector<std::unique_ptr<IExecutionProvider>>& providers,
+    bool* need_override) {
+  // create rand inputs
+  RandomValueGenerator random{};
+  std::vector<float> buffer_data = random.Uniform<float>(tensor_dim, -10.0f, 10.0f);
+  std::vector<float> grad_data = random.Uniform<float>(tensor_dim, -10.0f, 10.0f);
+
+  size_t num_of_elem = tensor_dim[0];
+  for (size_t i = 1; i < tensor_dim.size(); ++i) {
+    num_of_elem *= tensor_dim[i];
+  }
+
+  bool override = (need_override != nullptr) && *need_override;
+  std::vector<float> updated_buffer_data(num_of_elem);
+  for (size_t i = 0; i < num_of_elem; ++i) {
+    updated_buffer_data[i] = *(buffer_data.data() + i) + override ? 0 : *(grad_data.data() + i);
+  }
+
   OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
-
-  test.AddInput<float>("old_sum", {3}, {1.f, 2.f, 3.f});
-  test.AddInput<float>("value", {3}, {4.f, 5.f, 6.f});
+  test.AddInput<float>("old_sum", tensor_dim, buffer_data);
+  test.AddInput<float>("value", tensor_dim, grad_data);
+  if (need_override != nullptr) {
+    test.AddInput<bool>("overwrite", {1}, {*need_override});
+  }
   test.AddOutput<bool>("updated", {1}, {true});
-  test.AddOutput<float>("new_sum", {3}, {5.f, 7.f, 9.f});
+  test.AddOutput<float>("new_sum", tensor_dim, updated_buffer_data);
 
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers, nullptr, &providers);
+}
+
+TEST(GradientUtilsTest, InPlaceAccumulatorV2_CPU) {
+  std::vector<int64_t> test_dim{3};
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.emplace_back(DefaultCpuExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  TestInPlaceAccumulatorV2(test_dim, {}, providers, nullptr);
 }
 
 TEST(GradientUtilsTest, InPlaceAccumulatorV2Overwrite) {
@@ -2164,16 +2191,30 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2Overwrite) {
 #if defined(USE_CUDA)
 // TODO: Add rocm kernel defs
 TEST(GradientUtilsTest, InPlaceAccumulatorV2_GPU) {
-  OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
+  std::vector<std::vector<int64_t>> test_dims{
+      {768},   // 111 in cls， 135 in clu, 110 in ner, 115 in sltc
+      {32},    // 24 in clu,
+      {3072},  // 12 in clu, 12 in ner, 12 in sltc
+      {514, 768},
+      {768, 768},
+      {1024, 768},
+      {2048, 768},
+      {3072, 768},
+      {4096, 768},
+      {8192, 768},
+      {16384, 768},
+      {32768, 768},
+      {65536, 768},
+      {131072, 768},
+      {250002, 768},
+      {500004, 768},
+  };
 
-  test.AddInput<float>("old_sum", {3}, {1.f, 2.f, 3.f});
-  test.AddInput<float>("value", {3}, {4.f, 5.f, 6.f});
-  test.AddOutput<bool>("updated", {1}, {true});
-  test.AddOutput<float>("new_sum", {3}, {5.f, 7.f, 9.f});
-
-  std::vector<std::unique_ptr<IExecutionProvider>> providers;
-  providers.emplace_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  for (const auto& test_dim : test_dims) {
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.emplace_back(DefaultCudaExecutionProvider());
+    TestInPlaceAccumulatorV2(test_dim, {}, providers, nullptr);
+  }
 }
 
 TEST(GradientUtilsTest, InPlaceAccumulatorV2_Float16) {
