@@ -5,6 +5,10 @@
 
 #include <pybind11/stl.h>
 
+#include <utility>
+#include <vector>
+#include <memory>
+
 #include "ck/ck.hpp"
 #include "ck/tensor_operation/gpu/device/tensor_layout.hpp"
 #include "ck/tensor_operation/gpu/device/device_gemm.hpp"
@@ -126,7 +130,8 @@ class CKGemm : public GemmBase<T> {
 
   std::vector<std::string> ListImpls() const override {
     std::vector<std::string> results;
-    std::transform(impls_.cbegin(), impls_.cend(), std::back_inserter(results), [](const auto& it) { return it->GetTypeString(); });
+    std::transform(impls_.cbegin(), impls_.cend(), std::back_inserter(results),
+                   [](const auto& it) { return it->GetTypeString(); });
     return results;
   }
 
@@ -135,8 +140,8 @@ class CKGemm : public GemmBase<T> {
       if (impls_[i]->GetTypeString() == name) {
         selected_impl_ = i;
         auto is_suppotred = UpdateArgumentAndInvoker();
-        // Run it once before the profiling run, in case there are implicit workspace allocation or some other allocation
-        // during first time launch.
+        // Run it once before the profiling run, in case there are implicit workspace allocation or some other
+        // allocation during first time launch.
         if (is_suppotred) {
           Run();
         }
@@ -161,7 +166,8 @@ class CKGemm : public GemmBase<T> {
 void InitComposableKernelGemm(py::module mod) {
   // float
   py::class_<CKGemm<float>>(mod, "CKGemm_float")
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double, DeviceArray&, int64_t, DeviceArray&, int64_t, double, DeviceArray&, int64_t>())
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double,
+                    DeviceArray&, int64_t, DeviceArray&, int64_t, double, DeviceArray&, int64_t>())
       .def("SetRepeats", &CKGemm<float>::SetRepeats)
       .def("Profile", &CKGemm<float>::Profile)
       .def("Run", &CKGemm<float>::Run)
@@ -170,7 +176,8 @@ void InitComposableKernelGemm(py::module mod) {
 
   // half
   py::class_<CKGemm<half>>(mod, "CKGemm_half")
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double, DeviceArray&, int64_t, DeviceArray&, int64_t, double, DeviceArray&, int64_t>())
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double,
+                    DeviceArray&, int64_t, DeviceArray&, int64_t, double, DeviceArray&, int64_t>())
       .def("SetRepeats", &CKGemm<half>::SetRepeats)
       .def("Profile", &CKGemm<half>::Profile)
       .def("Run", &CKGemm<half>::Run)

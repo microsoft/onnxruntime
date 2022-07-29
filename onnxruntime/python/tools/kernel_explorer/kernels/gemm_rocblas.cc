@@ -64,7 +64,8 @@ class RocBlasGemm : public GemmBase<T> {
 void InitRocBlasGemm(py::module mod) {
   // float
   py::class_<RocBlasGemm<float>>(mod, "RocblasGemm_float")
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double, DeviceArray&, int64_t, DeviceArray&, int64_t, double, DeviceArray&, int64_t>())
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double,
+                    DeviceArray&, int64_t, DeviceArray&, int64_t, double, DeviceArray&, int64_t>())
       .def("SetRepeats", &RocBlasGemm<float>::SetRepeats)
       .def("Profile", &RocBlasGemm<float>::Profile)
       .def("Run", &RocBlasGemm<float>::Run)
@@ -73,7 +74,8 @@ void InitRocBlasGemm(py::module mod) {
 
   // half
   py::class_<RocBlasGemm<half>>(mod, "RocblasGemm_half")
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double, DeviceArray&, int64_t, DeviceArray&, int64_t, double, DeviceArray&, int64_t>())
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double,
+                    DeviceArray&, int64_t, DeviceArray&, int64_t, double, DeviceArray&, int64_t>())
       .def("SetRepeats", &RocBlasGemm<half>::SetRepeats)
       .def("Profile", &RocBlasGemm<half>::Profile)
       .def("Run", &RocBlasGemm<half>::Run)
