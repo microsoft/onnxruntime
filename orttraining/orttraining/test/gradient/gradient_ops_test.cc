@@ -2151,7 +2151,7 @@ void TestInPlaceAccumulatorV2(
   bool override = (need_override != nullptr) && *need_override;
   std::vector<float> updated_buffer_data(num_of_elem);
   for (size_t i = 0; i < num_of_elem; ++i) {
-    updated_buffer_data[i] = *(buffer_data.data() + i) + override ? 0 : *(grad_data.data() + i);
+    updated_buffer_data[i] = *(buffer_data.data() + i) + (override ? 0 : *(grad_data.data() + i));
   }
 
   OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
@@ -2192,9 +2192,9 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2Overwrite) {
 // TODO: Add rocm kernel defs
 TEST(GradientUtilsTest, InPlaceAccumulatorV2_GPU) {
   std::vector<std::vector<int64_t>> test_dims{
-      {768},   // 111 in cls， 135 in clu, 110 in ner, 115 in sltc
-      {32},    // 24 in clu,
-      {3072},  // 12 in clu, 12 in ner, 12 in sltc
+      {768},
+      {32},
+      {3072},
       {514, 768},
       {768, 768},
       {1024, 768},
