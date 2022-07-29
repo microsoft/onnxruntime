@@ -356,7 +356,10 @@ stages:
       - template: templates/clean-agent-build-directory-step.yml
 
 - stage: MASTER_BUILD_STAGE
-  # The below jobs only run on master build
+  # The below jobs only run on master build.
+  # because coverage report is hard to support in cross compiling.
+  displayname: NNAPI MASTER BUILD&TEST
+  dependsOn: []
   jobs:
   - job: NNAPI_EP_MASTER
     pool:
