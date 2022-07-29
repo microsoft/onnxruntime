@@ -3,128 +3,14 @@
 
 #if (defined(_M_AMD64) && !defined(_M_ARM64EC)) || defined(_M_IX86) || defined(__x86_64__) || defined(__i386__) || !defined(DISABLE_CONTRIB_OPS)
 
-#include "core/optimizer/avx2_weight_s8_to_u8.h"
+#include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
+#include "core/optimizer/qdq_transformer/s8_to_u8.h"
 
 #include <algorithm>
 
 #include "core/graph/graph_utils.h"
-#include "core/optimizer/initializer.h"
-#include "core/optimizer/utils.h"
 
 namespace onnxruntime {
-
-/**
- * @brief Convert the source int8_t TensorProto to a uint8_t one if the tensor
- *        contains values outside of [-64, 64]
- * @param src           The source tensor, must be type int8_t
- * @param dst           An empty tensor, will contain the converted tensor data
- * @param graph         Graph for generating tensor name or provide external
- *                      data path
- * @param force         Perform conversion even when tensor values within [-64, 64]
- * @return              Whether the conversion happened.
-*/
-static inline bool Int8TensorProto2Uint8(
-    const ONNX_NAMESPACE::TensorProto* src,
-    ONNX_NAMESPACE::TensorProto& dst,
-    Graph& graph, bool force = false) {
-  dst.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-
-  if (nullptr == src) {
-    uint8_t zero_val = 128;
-    dst.set_name(graph.GenerateNodeArgName("weight_zp_s8_2_u8"));
-    dst.set_raw_data(&zero_val, sizeof(uint8_t));
-    return true;
-  }
-
-  dst.set_name(src->name() + "_s8_2_u8");
-  dst.mutable_dims()->CopyFrom(src->dims());
-
-  // TODO(fuchen): too many copies!
-  //
-  // Here we do two memory copies: Proto -> Initializer -> Proto.
-  // Ideally we only do 1 copy, just iterate the source data, and write directly
-  // to the dst raw buffer.
-  // Unfortunately iterating the source data is complicated, the data maybe in
-  // external file, a raw buffer, or a repeated field depending on the data
-  // type.  UnpackTensor() already contains some of these logic and is closest
-  // to what we need. But it does not handle external data. Write our own code
-  // here means copy the logic of TensorProtoToTensor(), a violation of DRY
-  // principle. A better solution is to provide an efficient const iterator for
-  // TensorProto. This require coordination with onnx side.
-
-  Initializer temp(*src, graph.ModelPath());
-  int8_t* p = temp.data<int8_t>();
-  bool should_convert = false;
-  for (int i = 0; i < temp.size(); i++) {
-    if (*p < -64 || *p > 64) {
-      should_convert = true;
-    }
-    *p ^= 0x80;
-    p++;
-  }
-  if (force || should_convert) {
-    dst.set_raw_data(temp.data<int8_t>(), temp.size());
-    return true;
-  }
-  return false;
-}
-
-/**
- * @brief If the op_node has an uint8_t const weight tensor, convert it to int8_t
- * @param graph 
- * @param op_node 
- * @param weights_idx
- * @param weight_zp_idx
- * @return true when conversion happened.
-*/
-static bool ConvertS8WeightToU8(Graph& graph, Node& op_node,
-                                size_t weights_idx, size_t weight_zp_idx) {
-  auto& input_defs = op_node.MutableInputDefs();
-  if (input_defs.size() < weights_idx + 1) {
-    return false;
-  }
-
-  // Weight tensor must be const int8_t
-  const ONNX_NAMESPACE::TensorProto* weight_tensor_proto = nullptr;
-  const auto* w_def = input_defs[weights_idx];
-  if (!graph_utils::NodeArgIsConstant(graph, *w_def) ||
-      !graph.GetInitializedTensor(w_def->Name(), weight_tensor_proto) ||
-      weight_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8) {
-    return false;
-  }
-  ORT_ENFORCE(nullptr != weight_tensor_proto,
-              "Internal Error: weight tensor must be const int8 for Avx2WeightS8ToU8Transformer.");
-
-  // Weight zero point must be either const int8_t or null tensor
-  const ONNX_NAMESPACE::TensorProto* weight_zp_tensor_proto = nullptr;
-  const auto* zp_def = input_defs.size() <= weight_zp_idx ? nullptr : input_defs[weight_zp_idx];
-  if (nullptr != zp_def) {
-    if (!graph_utils::NodeArgIsConstant(graph, *zp_def) ||
-        !graph.GetInitializedTensor(zp_def->Name(), weight_zp_tensor_proto) ||
-        weight_zp_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8) {
-      return false;
-    }
-    ORT_ENFORCE(nullptr != weight_zp_tensor_proto,
-                "Internal Error: weight zero point must be const int8 for Avx2WeightS8ToU8Transformer.");
-  }
-
-  // Convert weight tensor to uint8
-  ONNX_NAMESPACE::TensorProto weights_proto_u8;
-  bool converted = Int8TensorProto2Uint8(weight_tensor_proto, weights_proto_u8, graph);
-  if (!converted) {
-    // The weights fits into S7, overflow is not a problem, no need to convert to U8
-    return false;
-  }
-  input_defs[weights_idx] = &graph_utils::AddInitializer(graph, weights_proto_u8);
-
-  // Convert weight zero point to uint8
-  ONNX_NAMESPACE::TensorProto weight_zp_proto_u8;
-  Int8TensorProto2Uint8(weight_zp_tensor_proto, weight_zp_proto_u8, graph, true);
-  input_defs[weight_zp_idx] = &graph_utils::AddInitializer(graph, weight_zp_proto_u8);
-
-  return true;
-}
-
 
 struct OperatorWeightInfo {
   std::vector<ONNX_NAMESPACE::OperatorSetVersion> versions;
@@ -141,6 +27,7 @@ static const std::unordered_map<std::string, struct OperatorWeightInfo> s8_overf
     {"MatMulInteger", {{10}, kOnnxDomain, 1, 3}},
     {"QLinearMatMul", {{10}, kOnnxDomain, 3, 5}},
     {"QLinearConv", {{10}, kOnnxDomain, 3, 5}},
+    {"DequantizeLinear", {{10,13}, kMSDomain, 0, 2}}, // already covered in QDQS8ToU8Transformer but does not hurt
     /* {"ConvInteger", {10}, kOnnxDomain, 1, 3},  // ConvInteger does not support int8_t weight at all */
 };
 
@@ -247,7 +134,7 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph) {
   input_defs[w_idx] = &graph_utils::AddInitializer(graph, weights_proto_u8);
 
   ONNX_NAMESPACE::TensorProto weight_zp_proto_u8;
-  Int8TensorProto2Uint8(weight_zp_tensor_proto, weight_zp_proto_u8, graph, true);
+  QDQ::Int8TensorProto2Uint8(weight_zp_tensor_proto, weight_zp_proto_u8, graph, true);
   input_defs[w_zp_idx] = &graph_utils::AddInitializer(graph, weight_zp_proto_u8);
 
   ONNX_NAMESPACE::TensorProto r_proto_u8;
@@ -258,7 +145,7 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph) {
   input_defs[r_idx] = &graph_utils::AddInitializer(graph, r_proto_u8);
 
   ONNX_NAMESPACE::TensorProto r_zp_proto_u8;
-  Int8TensorProto2Uint8(r_zp_tensor_proto, r_zp_proto_u8, graph, true);
+  QDQ::Int8TensorProto2Uint8(r_zp_tensor_proto, r_zp_proto_u8, graph, true);
   input_defs[r_zp_idx] = &graph_utils::AddInitializer(graph, r_zp_proto_u8);
 
   return true;
@@ -301,7 +188,7 @@ Status Avx2WeightS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int 
 #endif
         MatchesOpSinceVersion(op_node, it->second.versions) &&
         graph_utils::MatchesOpSetDomain(op_node, it->second.domain)) {
-      modified |= ConvertS8WeightToU8(graph, op_node,
+      modified |= QDQ::ConvertS8WeightToU8(graph, op_node,
                                       it->second.weights_idx,
                                       it->second.weight_zp_idx);
       continue;  // finished with this op, next
