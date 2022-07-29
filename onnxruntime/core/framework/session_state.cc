@@ -1454,9 +1454,11 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   session_state_utils::MemoryProfileFunction memory_propfile_func = nullptr;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   memory_propfile_func = [this](ITensorAllocator& planner) {
-    GetMemoryProfiler()->GetMemoryInfo().RecordPatternInfo(planner.GetMemPatterns(), MemoryInfo::MapType::Initializer);
-    GetMemoryProfiler()->CreateEvents("initializer_" + std::to_string(GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
-                                      GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::Initializer, "", 0);
+    GetMemoryProfiler()->GetMemoryInfo().RecordPatternInfo(
+        planner.GetMemPatterns(), MemoryInfo::MapType::Initializer);
+    GetMemoryProfiler()->CreateEvents(
+        "initializer_" + std::to_string(GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
+        GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::Initializer, "", 0);
   };
 
 #endif

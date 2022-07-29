@@ -440,16 +440,18 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
             }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
             // Record activation memory pattern
-            session_state.GetMemoryProfiler()->GetMemoryInfo().ClearMemoryInfoPerExecution();
+            auto mem_profier_ptr = session_state.GetMemoryProfiler();
+            mem_profier_ptr->GetMemoryInfo().ClearMemoryInfoPerExecution();
             if (mem_patterns_ && buffer != nullptr) {
-              session_state.GetMemoryProfiler()->GetMemoryInfo().RecordPatternInfo(*mem_patterns_, MemoryInfo::MapType::StaticActivation);
-              session_state.GetMemoryProfiler()->CreateEvents(
-                  "static activations_" + std::to_string(session_state.GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
-                  session_state.GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::StaticActivation, "", 0);
+              mem_profier_ptr->GetMemoryInfo().RecordPatternInfo(*mem_patterns_, MemoryInfo::MapType::StaticActivation);
+              mem_profier_ptr->CreateEvents(
+                  "static activations_" + std::to_string(mem_profier_ptr->GetMemoryInfo().GetIteration()),
+                  mem_profier_ptr->GetAndIncreasePid(), MemoryInfo::MapType::StaticActivation, "", 0);
             }
 #endif
             // log size of activation. Keep it commented out for now to avoid log flooding.
-            // VLOGS(session_state_.Logger(), 1) << "**** Allocated memory for activations, size: " <<mem_patterns_->patterns[i].PeakSize();
+            // VLOGS(session_state_.Logger(), 1) << "**** Allocated memory for activations, size: "
+            //                                   << mem_patterns_->patterns[i].PeakSize();
           }
         }
       }

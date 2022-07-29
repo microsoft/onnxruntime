@@ -12,6 +12,9 @@
 #include "core/framework/ort_value_name_idx_map.h"
 
 #include <iomanip>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace onnxruntime {
 using OrtValueIndex = int;
@@ -100,7 +103,8 @@ class MemoryInfo {
   //(1) Initializers: Which are planned and allocated before session run.
   //(2) StaticActivation: Which are planned statically and allocatedly accordingly
   //(3) DynamicActivation: Which are allocated during runtime.
-  // The reason with this separations is they start with different memory offsets, so diffcult to visualize them in the same session.
+  // The reason with this separations is they start with different memory offsets, so diffcult to visualize them in the
+  // same session.
   enum MapType {
     Initializer = 0,
     StaticActivation,
@@ -197,20 +201,26 @@ class MemoryInfo {
   std::map<MapType, std::set<size_t> > time_step_trace_;
 };
 
+// A monotonically increasing profiler id for differentiating different sessions.
+static std::atomic<uint32_t> global_mem_profiler_id;
+
 struct MemoryProfiler {
  public:
   MemoryProfiler() = default;
 
   void Init(const SequentialExecutionPlan* execution_plan,
             const OrtValueNameIdxMap& value_name_idx_map) {
+    profiler_id_ = global_mem_profiler_id.fetch_add(1);
     memory_info_for_profiler_.Init(execution_plan, value_name_idx_map);
   }
 
   // Create sessions in the profiler.
   // p_name: session name
   // pid: sessionid
-  // map_type: Initializer, static_activation, dynamic_activation. We have this separtion because they are using different memory offsets.
-  // group_name: The group_name that is recorded previously using function "AddRecordingTensorGroup". Used for generating customized sessions for a group of tensors
+  // map_type: Initializer, static_activation, dynamic_activation. We have this separtion because they are using
+  //    different memory offsets.
+  // group_name: The group_name that is recorded previously using function "AddRecordingTensorGroup". Used for
+  //    generating customized sessions for a group of tensors
   // Top_k: The steps with the top-k highest memory consumptions are plot. When top_k == 0, we plot all the steps
   // device_t: The type of the device where the tensors are.
   void CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type,
@@ -234,6 +244,7 @@ struct MemoryProfiler {
 
  private:
   size_t pid_{0};
+  uint32_t profiler_id_;
 
   // The following colors are defined and accepted by Chrome Tracing/Edge Tracing.
   const std::vector<std::string> color_names = {

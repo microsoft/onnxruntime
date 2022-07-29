@@ -8,8 +8,10 @@
 #include "core/framework/ort_value.h"
 
 #include <fstream>
+#include <map>
 #include <numeric>
 #include <queue>
+#include <set>
 
 namespace onnxruntime {
 
@@ -363,7 +365,7 @@ void MemoryProfiler::CreateEvents(const std::string& p_name,
 void MemoryProfiler::GenerateMemoryProfile() {
   // Write memory profile .json
   std::stringstream ss;
-  ss << "memory_profile_" << GetMemoryInfo().GetLocalRank() << "_" << Env::Default().GetSelfPid() << ".json";
+  ss << "memory_profile_" << GetMemoryInfo().GetLocalRank() << "_" << profiler_id_ << ".json";
   std::ofstream memory_profile(ss.str(), std::ios::trunc);
   memory_profile << "[" << std::endl;
   for (size_t i = 0; i < GetEvents().size(); i++) {
