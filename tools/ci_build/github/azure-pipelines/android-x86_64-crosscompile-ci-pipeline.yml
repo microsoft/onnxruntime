@@ -309,6 +309,7 @@ stages:
           --start --emulator-extra-args="-partition-size 4096" \
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
         displayName: Start Android emulator
+
       # Start switching to jdk 11 after the Android Emulator is started
       # since Android SDK manager requires java 8
       - task: JavaToolInstaller@0
@@ -330,6 +331,7 @@ stages:
           --use_nnapi \
           --test
         displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
+
       # used by Build Minimal ORT
       - script: brew install coreutils ninja
         displayName: Install coreutils and ninja
@@ -356,7 +358,7 @@ stages:
 
 - stage: MASTER_BUILD_STAGE
   # The below jobs only run on master build.
-  # because coverage report is hard to support in cross compiling.
+  # because coverage report is hard to support in cross machines.
   displayName: NNAPI MASTER BUILD&TEST
   dependsOn: []
   condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
@@ -373,6 +375,7 @@ stages:
           set -ex
           system_profiler SPSoftwareDataType SPHardwareDataType
         displayName: 'Mac Agent Info'
+
       - task: UsePythonVersion@0
         displayName: Use Python $(pythonVersion)
         inputs:
@@ -394,6 +397,7 @@ stages:
             $(Build.BinariesDirectory)/protobuf \
             $(Build.SourcesDirectory)/protobuf_install
         displayName: Build Host Protoc
+
       - script: |
           python3 tools/python/run_android_emulator.py \
           --android-sdk-root ${ANDROID_SDK_ROOT} \
@@ -401,6 +405,7 @@ stages:
           --start --emulator-extra-args="-partition-size 4096" \
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
         displayName: Start Android emulator
+
       # Start switching to jdk 11 after the Android Emulator is started
       # since Android SDK manager requires java 8
       - task: JavaToolInstaller@0
@@ -427,6 +432,7 @@ stages:
           --build_java \
           --code_coverage
         displayName: NNAPI EP, Build, Test, CodeCoverage on Android Emulator
+
       - script: |
           python3 -m pip install gcovr && \
           python3 tools/ci_build/coverage.py \
