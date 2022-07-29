@@ -17,77 +17,76 @@ namespace EinsumOp {
 
 namespace DeviceHelpers {
 
-namespace CudaDeviceHelpers {
+namespace RocmDeviceHelpers {
 
-// CUDA EP specific Data copy helper
-Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets) {
+// ROCM EP specific Data copy helper
+Status DataCopy(const Tensor& input, Tensor& output, void* einsum_rocm_assets) {
   ORT_ENFORCE(output.SizeInBytes() == input.SizeInBytes(),
               "Einsum op: The candidate output does not match the actual output's shape");
   // There are no string tensors in Einsum's case - so safely use memcpy
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.MutableDataRaw(), input.DataRaw(), input.SizeInBytes(),
-                                       cudaMemcpyDeviceToDevice,
-                                       static_cast<cudaStream_t>(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetComputeStream())));
+  HIP_RETURN_IF_ERROR(hipMemcpyAsync(output.MutableDataRaw(), input.DataRaw(), input.SizeInBytes(),
+                                       hipMemcpyDeviceToDevice,
+                                       static_cast<hipStream_t>(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetComputeStream())));
 
   return Status::OK();
 }
 
-// CUDA EP specific Transpose helper
+// ROCM EP specific Transpose helper
 Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
-                 Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets) {
-  return cuda::Transpose::DoTranspose(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp(),
-                                      static_cast<cudaStream_t>(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetComputeStream()),
-                                      static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cublas_handle_,
+                 Tensor& output, const TensorShape* input_shape_override, void* einsum_rocm_assets) {
+  return rocm::Transpose::DoTranspose(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetDeviceProp(),
+                                      static_cast<hipStream_t>(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetComputeStream()),
+                                      static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocblas_handle_,
                                       permutation, input, output, input_shape_override);
 }
 
-// CUDA EP specific MatMul helper
+// ROCM EP specific MatMul helper
 template <typename T>
 Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
               size_t left_stride, size_t right_stride, size_t output_stride,
               size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* /*tp*/,
-              void* einsum_cuda_assets) {
-  typedef typename cuda::ToCudaType<T>::MappedType CudaT;
+              void* einsum_rocm_assets) {
+  typedef typename rocm::ToHipType<T>::MappedType HipT;
 
-  CudaT one = cuda::ToCudaType<T>::FromFloat(1.0f);
-  CudaT zero = cuda::ToCudaType<T>::FromFloat(0.0f);
+  HipT one = rocm::ToHipType<T>::FromFloat(1.0f);
+  HipT zero = rocm::ToHipType<T>::FromFloat(0.0f);
 
-  CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cublas_handle_,
-                                                        CUBLAS_OP_N,
-                                                        CUBLAS_OP_N,
+  ROCBLAS_RETURN_IF_ERROR(rocblasGemmStridedBatchedHelper(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocblas_handle_,
+                                                        rocblas_operation_none,
+                                                        rocblas_operation_none,
                                                         static_cast<int>(N),
                                                         static_cast<int>(M),
                                                         static_cast<int>(K),
                                                         &one,
-                                                        reinterpret_cast<const CudaT*>(input_2_data),
+                                                        reinterpret_cast<const HipT*>(input_2_data),
                                                         static_cast<int>(N),
                                                         static_cast<int>(right_stride),
-                                                        reinterpret_cast<const CudaT*>(input_1_data),
+                                                        reinterpret_cast<const HipT*>(input_1_data),
                                                         static_cast<int>(K),
                                                         static_cast<int>(left_stride),
                                                         &zero,
-                                                        reinterpret_cast<CudaT*>(output_data),
+                                                        reinterpret_cast<HipT*>(output_data),
                                                         static_cast<int>(N),
                                                         static_cast<int>(output_stride),
-                                                        static_cast<int>(num_batches),
-                                                        static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp()));
+                                                        static_cast<int>(num_batches)));
 
   return Status::OK();
 }
 
-// CUDA EP specific ReduceSum helper
+// ROCM EP specific ReduceSum helper
 template <typename T>
 std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> reduce_axes,
                                   bool keep_dims, AllocatorPtr allocator,
                                   const TensorShape* input_shape_override,
-                                  concurrency::ThreadPool* /*tp*/, void* einsum_cuda_assets) {
-  return cuda::ReductionOps::ReduceCompute<T>(*static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_, CUDNN_REDUCE_TENSOR_ADD,
+                                  concurrency::ThreadPool* /*tp*/, void* einsum_rocm_assets) {
+  return rocm::ReductionOps::ReduceCompute<T>(*static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_, MIOPEN_REDUCE_TENSOR_ADD,
                                               allocator, input, reduce_axes,
                                               keep_dims, false, false, false,
                                               true, input_shape_override);
 }
 
-// CUDA EP specific Diagonal helper
-std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator, void* einsum_cuda_assets) {
+// ROCM EP specific Diagonal helper
+std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator, void* einsum_rocm_assets) {
   const auto& input_shape = input.Shape();
   const auto& input_dims = input_shape.GetDims();
   auto rank = static_cast<int64_t>(input_dims.size());
@@ -115,17 +114,17 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   auto output = Tensor::Create(input.DataType(), output_dims, allocator);
 
   TensorPitches input_strides(input.Shape().GetDims());
-  cuda::TArray<int64_t> gpu_input_strides(input_strides);
+  rocm::TArray<int64_t> gpu_input_strides(input_strides);
 
   auto output_rank = static_cast<int32_t>(output_dims.size());
-  cuda::TArray<cuda::fast_divmod> gpu_output_strides(output_rank);
+  rocm::TArray<rocm::fast_divmod> gpu_output_strides(output_rank);
   TensorPitches output_strides(output_dims);
   for (auto i = 0; i < output_rank; i++) {
-    gpu_output_strides[i] = cuda::fast_divmod(static_cast<int>(output_strides[i]));
+    gpu_output_strides[i] = rocm::fast_divmod(static_cast<int>(output_strides[i]));
   }
 
   DiagonalImpl(
-      static_cast<cudaStream_t>(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetComputeStream()),
+      static_cast<hipStream_t>(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetComputeStream()),
       input.DataRaw(),
       input.Shape().GetDims().size(),
       first_dim,
@@ -139,50 +138,37 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   return output;
 }
 
-}  // namespace CudaDeviceHelpers
+}  // namespace RocmDeviceHelpers
 
 }  // namespace DeviceHelpers
 
 // Explicit template instantiations of functions
 
 // float
-template Status DeviceHelpers::CudaDeviceHelpers::MatMul<float>(
+template Status DeviceHelpers::RocmDeviceHelpers::MatMul<float>(
     const float* input_1_data, const float* input_2_data, float* output_data,
     size_t left_stride, size_t right_stride, size_t output_stride,
     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* einsum_cuda_assets);
+    void* einsum_rocm_assets);
 
-template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>(
+template std::unique_ptr<Tensor> DeviceHelpers::RocmDeviceHelpers::ReduceSum<float>(
     const Tensor& input, gsl::span<const int64_t> reduce_axes,
     bool keep_dims, AllocatorPtr allocator,
     const TensorShape* input_shape_override,
-    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
-
-// double
-template Status DeviceHelpers::CudaDeviceHelpers::MatMul<double>(
-    const double* input_1_data, const double* input_2_data, double* output_data,
-    size_t left_stride, size_t right_stride, size_t output_stride,
-    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* einsum_cuda_assets);
-
-template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<double>(
-    const Tensor& input, gsl::span<const int64_t> reduce_axes,
-    bool keep_dims, AllocatorPtr allocator,
-    const TensorShape* input_shape_override,
-    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
+    concurrency::ThreadPool* tp, void* einsum_rocm_assets);
 
 // MLFloat16
-template Status DeviceHelpers::CudaDeviceHelpers::MatMul<MLFloat16>(
+template Status DeviceHelpers::RocmDeviceHelpers::MatMul<MLFloat16>(
     const MLFloat16* input_1_data, const MLFloat16* input_2_data, MLFloat16* output_data,
     size_t left_stride, size_t right_stride, size_t output_stride,
     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* einsum_cuda_assets);
+    void* einsum_rocm_assets);
 
-template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<MLFloat16>(
+template std::unique_ptr<Tensor> DeviceHelpers::RocmDeviceHelpers::ReduceSum<MLFloat16>(
     const Tensor& input, gsl::span<const int64_t> reduce_axes,
     bool keep_dims, AllocatorPtr allocator,
     const TensorShape* input_shape_override,
-    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
+    concurrency::ThreadPool* tp, void* einsum_rocm_assets);
 
 }  // namespace EinsumOp
 
