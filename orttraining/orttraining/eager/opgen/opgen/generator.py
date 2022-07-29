@@ -370,7 +370,7 @@ class ORTGen:
         is_last_onnx_op,
         need_type_promotion_without_cast,
         onnx_op,
-        return_info
+        return_info,
     ):
         # if no in_place_params found and there is an out input to set
         # and this is the last onnx op, we set the out to be written to
@@ -391,7 +391,13 @@ class ORTGen:
 
     # Generates a non-ref return (the value returned is not one of the function's parameters).
     def _write_function_body_return_no_inplace(
-        self, writer, need_type_promotion, first_param, mapped_func, cpp_func, return_outputs,
+        self,
+        writer,
+        need_type_promotion,
+        first_param,
+        mapped_func,
+        cpp_func,
+        return_outputs,
     ):
         # TODO: revisit the hardcoded use of TensorList.
         writer.write(f"at::TensorOptions tensor_options = {first_param.identifier.value}")
@@ -585,7 +591,7 @@ class ORTGen:
                 onnx_op_index == (len(ctx.ops) - 1),
                 need_type_promotion and not impl_uses_cast,
                 onnx_op,
-                return_info
+                return_info,
             )
 
         # We'll potentially return back to Torch from this op
