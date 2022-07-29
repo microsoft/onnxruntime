@@ -1,5 +1,5 @@
 ---
-title: ORT Ecosystem
+title: Ecosystem
 description: See examples of how ONNX Runtime working end to end within the Azure AI and ML landscape and ecosystem
 nav_order: 8
 redirect_from: /docs/tutorials/ecosystem
