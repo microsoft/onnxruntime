@@ -12,7 +12,7 @@
 #include "core/common/common.h"
 #include "core/util/math.h"
 //#include "core/providers/cpu/activation/activations.h"
-#include "core/providers/cpu/element_wise_ranged_transform.h"
+//#include "core/providers/cpu/element_wise_ranged_transform.h"
 
 namespace onnxruntime {
 class GraphViewer;
