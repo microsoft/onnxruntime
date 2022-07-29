@@ -36,15 +36,10 @@ namespace onnxruntime {
 */
 class Tensor final {
  public:
-  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) {
-    return std::make_unique<Tensor>(p_type, shape, std::move(allocator));
-  }
 
-  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, void* p_data,
-                                        const OrtMemoryInfo& alloc, ptrdiff_t offset = 0,
-                                        gsl::span<const int64_t> strides = {}) {
-    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset, strides);
-  }
+  // NB! Removing Create() methods returning unique_ptr<Tensor>. Still available in other EPs that are dynamically linked.
+  // Strive not to allocate Tensor with new/delete as it is a shallow class and using it by value is just fine.
+  // Use InitOrtValue() methods to allocate for OrtValue.
 
   Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
 

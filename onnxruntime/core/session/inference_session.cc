@@ -1636,8 +1636,8 @@ static common::Status CheckTypes(MLDataType actual, MLDataType expected, const s
   return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
 }
 
-common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& feed_names,
-                                                const std::vector<OrtValue>& feeds) const {
+common::Status InferenceSession::ValidateInputs(gsl::span<const std::string> feed_names,
+                                                gsl::span<const OrtValue> feeds) const {
   if (feed_names.size() != feeds.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Size mismatch: feed_names has ", feed_names.size(),
                            "elements, but feeds has ", feeds.size(), " elements.");
@@ -1735,7 +1735,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
   return Status::OK();
 }
 
-common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>& output_names,
+common::Status InferenceSession::ValidateOutputs(gsl::span<const std::string> output_names,
                                                  const std::vector<OrtValue>* p_fetches) const {
   if (p_fetches == nullptr) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Output vector pointer is NULL");
@@ -1863,8 +1863,8 @@ struct ThreadPoolSpinningSwitch {
 }  // namespace
 
 Status InferenceSession::Run(const RunOptions& run_options,
-                             const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
-                             const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
+                             gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
+                             gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
@@ -1895,10 +1895,10 @@ Status InferenceSession::Run(const RunOptions& run_options,
                                  << " CUDA Graph for this model with tag: " << run_options.run_tag;
     ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph());
   } else {
-    std::vector<IExecutionProvider*> exec_providers_to_stop;
+    InlinedVector<IExecutionProvider*> exec_providers_to_stop;
     exec_providers_to_stop.reserve(execution_providers_.NumProviders());
 
-    std::vector<AllocatorPtr> arenas_to_shrink;
+    InlinedVector<AllocatorPtr> arenas_to_shrink;
 
     ORT_TRY {
       if (!is_inited_) {
@@ -2037,17 +2037,17 @@ Status InferenceSession::Run(const RunOptions& run_options,
   return retval;
 }
 
-common::Status InferenceSession::Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
+common::Status InferenceSession::Run(const NameMLValMap& feeds, gsl::span<const std::string> output_names,
                                      std::vector<OrtValue>* p_fetches) {
   return Run(RunOptions(), feeds, output_names, p_fetches);
 }
 
 common::Status InferenceSession::Run(const RunOptions& run_options, const NameMLValMap& feeds_map,
-                                     const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches) {
-  std::vector<std::string> feed_names;
-  std::vector<OrtValue> feeds;
+                                     gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches) {
+  InlinedVector<std::string> feed_names;
+  InlinedVector<OrtValue> feeds;
 
-  auto num_feeds = feeds_map.size();
+  const auto num_feeds = feeds_map.size();
   feed_names.reserve(num_feeds);
   feeds.reserve(num_feeds);
 
@@ -2177,7 +2177,7 @@ AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const
 }
 
 common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
-                                                                   /*out*/ std::vector<AllocatorPtr>& arenas_to_shrink) const {
+                                                                   /*out*/ InlinedVector<AllocatorPtr>& arenas_to_shrink) const {
   arenas_to_shrink.reserve(5);  // Allocate some memory for the container (we are unlikely to see more than 5 memory arena shrink requests)
 
   std::istringstream ss_1(ort_device_list);
@@ -2234,7 +2234,7 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
   return Status::OK();
 }
 
-void InferenceSession::ShrinkMemoryArenas(const std::vector<AllocatorPtr>& arenas_to_shrink) {
+void InferenceSession::ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink) {
   for (auto& alloc : arenas_to_shrink) {
     auto status = static_cast<BFCArena*>(alloc.get())->Shrink();
 

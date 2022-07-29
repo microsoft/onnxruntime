@@ -1394,7 +1394,7 @@ if (onnxruntime_USE_ROCM)
   # Generate GPU code for GFX9 Generation
   list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx906 --amdgpu-target=gfx908)
   if (ROCM_VERSION_DEV_INT GREATER_EQUAL 50000)
-    list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx90a)
+    list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx90a --amdgpu-target=gfx1030)
   endif()
 
   #onnxruntime_add_shared_library_module(onnxruntime_providers_rocm ${onnxruntime_providers_rocm_src})
@@ -1482,12 +1482,8 @@ if (onnxruntime_USE_TVM)
 
   target_include_directories(onnxruntime_providers_tvm PRIVATE
           ${TVM_INCLUDES}
-          ${IPP_CRYPTO_INCLUDES}
           ${PYTHON_INLCUDE_DIRS})
   onnxruntime_add_include_to_target(onnxruntime_providers_tvm onnxruntime_common onnx tvm)
-  if (onnxruntime_TVM_USE_HASH)
-    onnxruntime_add_include_to_target(onnxruntime_providers_tvm ippcp_s)
-  endif()
 
   add_dependencies(onnxruntime_providers_tvm ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
@@ -1498,9 +1494,9 @@ if (onnxruntime_USE_TVM)
       onnxruntime_framework
   )
   if (onnxruntime_TVM_USE_HASH)
-    target_link_libraries(onnxruntime_providers_tvm PRIVATE
-      ippcp_s
-    )
+    add_dependencies(onnxruntime_providers_tvm ippcp_s)
+    target_include_directories(onnxruntime_providers_tvm PRIVATE ${IPP_CRYPTO_INCLUDE_DIR})
+    target_link_libraries(onnxruntime_providers_tvm PRIVATE ippcp_s)
   endif()
 
   set_target_properties(onnxruntime_providers_tvm PROPERTIES FOLDER "ONNXRuntime")

@@ -362,7 +362,7 @@ void HostApplyLayerNorm(
     const V* beta) {
   const int maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
-  ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
+  ORT_ENFORCE(warp_size == GPU_WARP_SIZE_HOST);
 
   dim3 threads(warp_size, 4, 1);
 #ifdef __HIP_PLATFORM_HCC__

@@ -17,7 +17,7 @@ jobs:
 
   # generated from tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
   container:
-    image: onnxruntimecibuildenvironment.azurecr.io/rocm-ci-pipeline-env:rocm5.1.1
+    image: onnxruntimecibuildenvironment.azurecr.io/rocm-ci-pipeline-env:rocm5.2
     endpoint: onnxruntimecibuildenvironmentforamd
     options: --privileged -e HIP_VISIBLE_DEVICES --security-opt seccomp=unconfined --shm-size=1024m --device=/dev/kfd --device=/dev/dri  --group-add $(video) --group-add $(render)
 
@@ -52,7 +52,7 @@ jobs:
         --enable_training_torch_interop \
         --mpi_home /opt/ompi \
         --use_rocm \
-        --rocm_version=5.1.1 \
+        --rocm_version=5.2 \
         --rocm_home /opt/rocm \
         --nccl_home /opt/rocm \
         --update \
@@ -106,7 +106,7 @@ jobs:
           --skip_memory_metrics
         python ../../orttraining/tools/ci_test/compare_huggingface.py \
           ci-pipeline-actual.json \
-          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bert-large-rocm5.1.1.json
+          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bert-large-rocm5.2.json
     displayName: 'Run Python Hugging-Face BERT-L test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
@@ -135,7 +135,7 @@ jobs:
           --skip_memory_metrics
         python ../../orttraining/tools/ci_test/compare_huggingface.py \
           ci-pipeline-actual.json \
-          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.gpt2-rocm5.1.1.json
+          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.gpt2-rocm5.2.json
     displayName: 'Run Python Hugging-Face GPT2 test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
@@ -164,11 +164,11 @@ jobs:
 #        --skip_memory_metrics
 #      python ../../orttraining/tools/ci_test/compare_huggingface.py \
 #        ci-pipeline-actual.json \
-#        ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bart-large-rocm5.1.1.json
+#        ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bart-large-rocm5.2.json
 #    displayName: 'Run Python Hugging-Face BART-L test'
 #    condition: succeededOrFailed() # ensure all tests are run
 
-  # todo: investigate RoBERTa high run variability on ROCm 5.1.1
+  # todo: investigate RoBERTa high run variability on ROCm 5.2
   #- script: |-
   #    cd ./build/RelWithDebInfo
   #    export PYTHONPATH=$PWD
@@ -191,7 +191,7 @@ jobs:
   #      --skip_memory_metrics
   #    python ../../orttraining/tools/ci_test/compare_huggingface.py \
   #      ci-pipeline-actual.json \
-  #      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.roberta-large-rocm5.1.1.json
+  #      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.roberta-large-rocm5.2.json
   #  displayName: 'Run Python Hugging-Face RoBERTa-L test'
   #  condition: succeededOrFailed() # ensure all tests are run
 
@@ -218,7 +218,7 @@ jobs:
           --skip_memory_metrics
         python ../../orttraining/tools/ci_test/compare_huggingface.py \
           ci-pipeline-actual.json \
-          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.distilbert-base-rocm5.1.1.json
+          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.distilbert-base-rocm5.2.json
     displayName: 'Run Python Hugging-Face DistilBERT test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
@@ -341,21 +341,17 @@ jobs:
   # Entry point for all ORTModule tests
   # The onnxruntime folder is deleted in the build directory
   # to enforce use of the onnxruntime wheel
-  # Uninstall torch 1.10 from the docker image above and install torch 1.11 before running tests.
   #
-  # At this point, the best whl available with torch 1.11 (which supports autograd) is located in https://repo.radeon.com/rocm/manylinux/rocm-rel-5.1.3/ 
-  # which is a release for internal use. This release will be available via Torch's download page. We can either continue 
-  # to use the link below, or switch to the link from Torch's when it's published. Ideally, the AMD CI UTs above could also migrate to use
-  # the same whl below.   
+  # For every upgrade, we should enable it to test it once, and disable it.
+  #
+  # TODO - we may consider to cherry pick subset of the UTs to reduce the CI time.
+  # We can re-enable this part again when it's done.
 
   # - task: CmdLine@2
   #   inputs:
   #     script: |-
   #       cd ./build/RelWithDebInfo
   #       unset PYTHONPATH
-  #       pip uninstall -y torch torchvision
-  #       pip install torch==1.11.0 torchvision==0.12.0 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-5.1.3/
-  #       pip install wget pytorch_lightning==1.6.0
   #       rm -rf onnxruntime
   #       pip install ./dist/onnxruntime*.whl
   #       python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
