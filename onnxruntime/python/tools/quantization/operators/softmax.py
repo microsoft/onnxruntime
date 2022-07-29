@@ -22,8 +22,7 @@ class QLinearSoftmax(QuantOperatorBase):
             output_zp_name,
             _,
             _,
-        ) = self.quantizer._get_quantization_params(node.output[0], out_scale,
-                                                    out_zero_point)
+        ) = self.quantizer._get_quantization_params(node.output[0], out_scale, out_zero_point)
 
         # get quantized input tensor names, quantize input if needed
         (
@@ -45,8 +44,7 @@ class QLinearSoftmax(QuantOperatorBase):
             output_zp_name,
             QuantizedValueType.Input,
         )
-        self.quantizer.quantized_value_map[
-            node.output[0]] = quantized_output_value
+        self.quantizer.quantized_value_map[node.output[0]] = quantized_output_value
 
         # Create qlinear softmax node for given type
         kwargs = {}
@@ -85,5 +83,4 @@ class QDQSoftmax(QDQOperatorBase):
         else:
             out_scale = 1 / 256.0
             out_zero_point = -128
-        self.quantizer.set_quant_scale_zp(self.node.output[0],
-                                          (out_scale, out_zero_point))
+        self.quantizer.set_quant_scale_zp(self.node.output[0], (out_scale, out_zero_point))

@@ -22,13 +22,15 @@ namespace contrib {
 constexpr int OPSET13 = 13;
 
 namespace {
+
+// concept enabled in cpp20
 template <typename T>
+constexpr bool ValidType = std::is_same_v<T, int8_t> || std::is_same_v<T, uint8_t>;
+
+template <typename T, typename = typename std::enable_if_t<ValidType<T>> >
 void QlinearBuildLookupTableUint32(uint32_t* table,
                                    const float x_scale,
                                    size_t reduce_len) {
-  static_assert(std::is_same<T, int8_t>::value ||
-                    std::is_same<T, uint8_t>::value,
-                "unsupported quant type");
   const double qscale =
       fmin(static_cast<double>(UINT32_MAX) / static_cast<double>(reduce_len), static_cast<double>(0x7fffff));
   for (int32_t i = 0; i < 256; i++) {

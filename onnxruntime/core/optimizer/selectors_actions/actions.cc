@@ -3,6 +3,8 @@
 
 #include "core/optimizer/selectors_actions/actions.h"
 
+#include <string>
+
 #include "core/framework/op_kernel.h"
 #include "core/optimizer/selectors_actions/helpers.h"
 #include "core/optimizer/utils.h"
@@ -82,7 +84,7 @@ static Status CreateReplacementNode(Graph& graph,
   // special case for Softmax, opset 1-12 and 13+ have different semantic meaning of performing axis
   if (target.OpType() == "Softmax") {
     replacement_attributes.insert_or_assign(
-        "opset" ,utils::MakeAttribute(std::string("opset"), int64_t(target.SinceVersion())));
+        "opset", utils::MakeAttribute(std::string("opset"), int64_t(target.SinceVersion())));
   }
   // create node. we'll populate the input and output defs via moves
   auto& replacement = graph.AddNode(target.Name(),

@@ -590,12 +590,12 @@ QLinearSoftmax computes the normalized exponential values for the given input:
 Softmax(input, axis) = Exp(input) / ReduceSum(Exp(input), axis=axis, keepdims=1)
 The input does not need to explicitly be a 2D vector. The "axis" attribute
 indicates the dimension along which QLinearSoftmax will be performed for onnx v.13+.
-or the dimension coerced to NxD Matrix fo onnx v.12-
+or the dimension coerced to NxD Matrix fo onnx v.12-.
 The output tensor has the same shape.
 )DOC")
       .Attr("axis", "apply softmax to elements for dimensions axis,"
       "or all dims along with axis according to op-version", AttributeProto::INT, static_cast<int64_t>(-1))
-      .Attr("opset", "use to mark SinceVersion", AttributeProto::INT, static_cast<int64_t>(1))
+      .Attr("opset", "opset version of corresponding SoftMax.", AttributeProto::INT, static_cast<int64_t>(1))
       .Input(0, "X", "The input tensor", "T")
       .Input(1, "X_scale", "Scale of quantized input 'X'. It must be a scalar.", "tensor(float)")
       .Input(2, "x_zero_point",
