@@ -119,6 +119,7 @@ stages:
           project: 'onnxruntime'
           pipeline: 53
           runVersion: 'specific'
+          runId: 707190
           artifact: 'CPUBuildOutput'
           path: $(Build.SourcesDirectory)
 
