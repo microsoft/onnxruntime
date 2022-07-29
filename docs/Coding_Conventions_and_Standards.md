@@ -17,24 +17,36 @@ Google style from <https://google.github.io/styleguide/cppguide.html> with a few
     * [SF.6: Use using namespace directives for transition, for foundation libraries (such as std), or within a local scope (only)](https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Rs-using)
     * [SF.7: Don't write using namespace at global scope in a header file](https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Rs-using-directive)
 
-Other
+### Containers to use
+
+Onnxruntime aims to reduce latency and latency variance by minimizing the amount of dynamic memory allocations and avoid using locks.
+
+* `std::unique_ptr` is often used for delayed or optional construction of objects or members of classes. Use `std::optional` as appropriate to reduce the number of allocations.
+
+* The use of the following container `typedef`s to reduce memory allocations is required:
+  * Use `TensorShapeVector` typedef to build or modify shapes from `core/framework/tensor_shape.h`. It is based on a vector implementation that features small buffer optimization. Its small buffer size is the same to that of in TensorShape.
+  * Use `InlinedVector<T>` typedef instead of std::vector defined at `core/common/inlined_containers_fwd.h`. By default, it provides 64 bytes of inlined storage. You can customize inlined size with the second template non-type parameter N.
+  * Use `InlinedHashSet<T>` and `InlinedHashMap<T>` typedefs from `core/common/inlined_containers.h`. These are drop-in replacements for `std::unordered_set/map` that store their keys and values in one continuous buffer and reduce the number of allocations. They also do not allocate an `end` node when default constructed. Note, that these Hash containers do not provide pointer stability. `std::map` and `std::set` can often be replaced by hash containers as well.
+  * For the node based containers where pointer stability is required, use `NodeHashSet` and `NodeHashMap`. Although node based, they are more cache friendly.
+  * Use `core/common/inlined_containers_fwd.h` to forward declare any of the above container types.
+  * Consider using `std::string_view` for use in containers to reduce the number of allocations and avoid string duplication. Keep in mind that the lifespan of the objects being referred to must eclipse the lifespan of the corresponding `std::string_view`.
+  * We have selected to use `Abseil` library for the above typedefs. Abseil container documentation is [here](https://abseil.io/docs/cpp/guides/container#abseil-containers).
+  * Do not use `Abseil` library or `absl` namespace directly. We should be able to build Onnxruntime without Abseil.
+  * Use `onnxruntime/tools/natvis/abseil-cpp.natvis` for the above containers visualizations and debugging help in `VS Studio` and `VS Code`.
+* Prefer using `reserve()` and not `resize()` on vectors. `resize()` default constructs all the elements for the size which can be expensive/noticeable even if the type is trivial. Default values are rarely used in practice and it becomes a waste. Construction like `std::vector<int>(10, 0)` is the same as `resize()` and is potentially wasteful.
+* Use `reserve()` on hash containers and vectors.
+
+
+### Other
 
 * Qualify usages of `auto` with `const`, `*`, `&` and `&&` where applicable to more clearly express the intent
 * When adding a new class, disable copy/assignment/move until you have a proven need for these capabilities. If a need arises, enable copy/assignment/move selectively, and when doing so validate that the implementation of the class supports what is being enabled.
   * Use `ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE` initially
   * See the other `ORT_DISALLOW_*` macros in <https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/common.h>
 * Prefer passing `gsl::span<const T>` by value (or `std::span` when supported) as input arguments when passing const references to containers with contiguous storage (like `std::vector`). This allows to make the function container independent, represent arbitrary memory spans or pass sub-spans as an argument.
-* Use `AsSpan({1, 2, 3})` to convert `std::initializer_list<T>` to a span. You can also use `std::array`.
-* Prefer passing `std::string_view` by value instead of `const std::string&`.
 * Prefer returning `gsl::span<const T>` or `gsl::span<T>` by value instead of a const reference or reference to a contiguous member container.
-* The use of the following container `typedef`s to reduce memory allocations is preferred:
-  * Use `TensorShapeVector` typedef to build or modify shapes from `core/framework/tensor_shape.h`. It is based on a vector implementation that features small buffer optimization. Its small buffer size is the same to that of in TensorShape. Use `InlinedShapeVector<T>` for shape related operations, but of different type.
-  * Use `InlinedVector<T>` typedef instead of std::vector. By default, it provides 64 bytes of inlined storage. You can customize inlined size with the second template non-type parameter N.
-  * Use `InlinedHashSet<T>` and `InlinedHashMap<T>` typedefs from `core/framework/inlined_containers.h`. These are drop-in replacements for `std::unordered_set/map` that store their keys and values in one continuous buffer and reduce the number of allocations. They also do not allocate an `end` node. Note, that these Hash containers do not provide pointer stability.
-  * Consider using `std::string_view` to use in maps and sets to reduce the number of allocations and avoid string duplication. Keep in mind that the strings referred to must be alive.
-  * We have selected to use `Abseil` library for the above typedefs. Abseil container documentation is [here](https://abseil.io/docs/cpp/guides/container#abseil-containers).
-* Prefer using `reserve()` and not `resize()` on vectors. `resize()` default constructs all the elements for the size which can be expensive/noticeable even if the type is trivial. Default values are rarely used in practice and it becomes a waste. Construction like `std::vector<int>(10, 0)` is the same as `resize()` and is potentially wasteful.
-* Use `reserve()` on hash containers or pass the number of items in the constructor.
+* Use `AsSpan({1, 2, 3})` defined at `core/common/span_utils.h` to convert `std::initializer_list<T>` to a span. You can also use `std::array`.
+* Prefer passing `std::string_view` by value instead of `const std::string&`.
 * Don't use `else` after `return`. see: [https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return](https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return)
 * Don't overuse `std::shared_ptr`. Use `std::shared_ptr` only if it's not clear when and where the object will be de-allocated. See also: [https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr)
 * Avoid using the `long` type, which could be either 32 bits or 64 bits.
