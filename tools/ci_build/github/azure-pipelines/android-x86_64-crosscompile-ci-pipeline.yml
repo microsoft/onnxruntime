@@ -359,6 +359,7 @@ stages:
   # because coverage report is hard to support in cross compiling.
   displayName: NNAPI MASTER BUILD&TEST
   dependsOn: []
+  condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
   jobs:
   - job: NNAPI_EP_MASTER
     pool:
