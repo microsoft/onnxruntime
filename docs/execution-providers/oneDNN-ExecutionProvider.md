@@ -1,8 +1,8 @@
 ---
-title: Intel oneDNN
+title: oneDNN (Intel)
 description: Instructions to execute ONNX Runtime with the Intel oneDNN execution provider
 parent: Execution Providers
-nav_order: 9
+nav_order: 8
 redirect_from: /docs/reference/execution-providers/oneDNN-ExecutionProvider
 ---
 

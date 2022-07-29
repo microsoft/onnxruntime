@@ -1,7 +1,7 @@
 ---
 title: Execution Providers
 has_children: true
-nav_order: 10
+nav_order: 6
 redirect_from: /docs/reference/execution-provider
 ---
 

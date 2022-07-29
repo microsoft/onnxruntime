@@ -1,8 +1,8 @@
 ---
-title: TVM
+title: TVM (Apache)
 description: Instructions to execute ONNX Runtime with the Apache TVM execution provider
 parent: Execution Providers
-nav_order: 8
+nav_order: 13
 ---
 
 # TVM Execution Provider

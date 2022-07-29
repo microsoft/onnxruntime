@@ -38,7 +38,7 @@ Each '.onnx' file is loaded, optimized, and saved in ORT format as a file with t
 ### Outputs of the script
 
 1. One ORT format model for each ONNX model
-2. A [build configuration file](reduced-operator-config-file.md) ('required_operators.config') with the operators required by the optimized ONNX models.
+2. A [build configuration file](./operators/reduced-operator-config-file.md) ('required_operators.config') with the operators required by the optimized ONNX models.
 
    If [type reduction](#enable-type-reduction) is enabled (ONNX Runtime version 1.7 or later) the configuration file will also include the required types for each operator, and is called 'required_operators_and_types.config'.
 

@@ -2,7 +2,7 @@
 title: ARM Compute Library (ACL)
 description: Instructions to execute ONNX Runtime with the ACL Execution Provider
 parent: Execution Providers
-nav_order: 4
+nav_order: 1
 redirect_from: /docs/reference/execution-providers/ACL-ExecutionProvider
 ---
 
