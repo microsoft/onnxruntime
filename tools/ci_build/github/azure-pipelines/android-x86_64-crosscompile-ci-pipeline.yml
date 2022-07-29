@@ -3,6 +3,15 @@
 # https://github.community/t/support-for-yaml-anchors/16128/90
 # 2. today most cloud-based CI services are still lacking hardware acceleration support from the host VM,
 # which is the no.1 blocker for running tests on modern Android Emulators (especially on recent API levels) on CI.
+parameters:
+- name: specificArtifact
+  displayName: Use Specific Artifact
+  type: bool
+  default: false
+- name: runId
+  displayName: Specific Artifact's RunId
+  type: number
+  default: 0
 
 stages:
 - stage: BUILD_STAGE
@@ -115,11 +124,14 @@ stages:
 
       - task: DownloadPipelineArtifact@2
         inputs:
-          source: 'specific'
-          project: 'onnxruntime'
-          pipeline: 53
-          runVersion: 'specific'
-          runId: 707190
+          ${{ if eq(parameters.specificArtifact, true) }}:
+            source: 'specific'
+            project: 'onnxruntime'
+            pipeline: $(Build.DefinitionName)
+            runVersion: 'specific'
+            runId: ${{ parameters.runId }}
+          ${{ if ne(parameters.specificArtifact, true) }}:
+            source: 'current'
           artifact: 'CPUBuildOutput'
           path: $(Build.SourcesDirectory)
 
