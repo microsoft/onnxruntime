@@ -115,7 +115,10 @@ stages:
 
       - task: DownloadPipelineArtifact@2
         inputs:
-          source: 'current'
+          source: 'specific'
+          project: 'onnxruntime'
+          pipeline: 53
+          runVersion: 'specific'
           artifact: 'CPUBuildOutput'
           path: $(Build.SourcesDirectory)
 
