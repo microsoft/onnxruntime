@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cstdint>
 #include "core/framework/compute_capability.h"
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"

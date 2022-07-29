@@ -23,33 +23,25 @@ constexpr int OPSET13 = 13;
 
 namespace {
 
-// concept enabled in cpp20
-template <typename T>
-constexpr bool ValidType = std::is_same_v<T, int8_t> || std::is_same_v<T, uint8_t>;
-
-template <typename T, typename = typename std::enable_if_t<ValidType<T>>>
 void QlinearBuildLookupTableUint32(uint32_t* table,
                                    const float x_scale,
-                                   size_t reduce_len) {
+                                   size_t reduce_len, bool is_signed) {
   const double qscale =
       fmin(static_cast<double>(UINT32_MAX) / static_cast<double>(reduce_len), static_cast<double>(0x7fffff));
   for (int32_t i = 0; i < 256; i++) {
     double scaled_exp_xi = qscale * exp(static_cast<double>(i - 255) * static_cast<double>(x_scale));
     // we can't get the real max number of input tensor here, so we just assume 255.
     // in the process of computation, all numbers will have a shift to align 255
-    if constexpr (std::is_same<T, int8_t>::value) {
-      // 1 2 3 ......126 127 -128 -127 ..... -3 -2 -1
-      uint8_t index = static_cast<uint8_t>(i - 128);
-      table[index] = static_cast<uint32_t>(lrint(scaled_exp_xi));
-    } else {
-      table[i] = static_cast<uint32_t>(lrint(scaled_exp_xi));
-    }
+    //
+    // if is_signed index = [1 2 3 ......126 127 -128 -127 ..... -3 -2 -1]
+    // else [0 1 2 3 4 ..... 256]
+    uint8_t index = is_signed ? static_cast<uint8_t>(i - 128) : gsl::narrow_cast<uint8_t>(i);
+    table[index] = static_cast<uint32_t>(lrint(scaled_exp_xi));
   }
 }
-}  // namespace
 
-template <typename T>
-void QLinearSoftmax<T>::BuildLookupTableIfFixed(const OpKernelInfo& info, size_t reduce_len) {
+void BuildLookupTableIfFixed(const OpKernelInfo& info, std::vector<uint32_t>& fixed_lookup_table,
+                             size_t reduce_len, bool is_signed) {
   const Tensor* tensor_x_scale = nullptr;
 
   bool get_x_scale = info.TryGetConstantInput(1, &tensor_x_scale);
@@ -58,17 +50,20 @@ void QLinearSoftmax<T>::BuildLookupTableIfFixed(const OpKernelInfo& info, size_t
   bool is_fixed_parameters = get_x_scale;
 
   if (is_fixed_parameters) {
-    fixed_lookup_table_.resize(256);
+    fixed_lookup_table.resize(256);
     const float X_scale = *(tensor_x_scale->Data<float>());
-    QlinearBuildLookupTableUint32<T>(fixed_lookup_table_.data(), X_scale, reduce_len);
+    QlinearBuildLookupTableUint32(fixed_lookup_table.data(), X_scale, reduce_len, is_signed);
   }
 }
+}  // namespace
 
-template <typename T>
-QLinearSoftmax<T>::QLinearSoftmax(const OpKernelInfo& info)
+
+QLinearSoftmax::QLinearSoftmax(const OpKernelInfo& info)
     : OpKernel(info) {
   const auto& node = info.node();
   auto input_defs = node.InputDefs();
+  auto input_type = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
+  is_signed_ = (input_type == ONNX_NAMESPACE::TensorProto_DataType_INT8);
   const auto* x_shape = input_defs[0]->Shape();
   if (x_shape == nullptr || x_shape->dim_size() == 0) {
     return;
@@ -101,12 +96,11 @@ QLinearSoftmax<T>::QLinearSoftmax(const OpKernelInfo& info)
     reduce_size = input_shape.SizeFromDimension(axis_);
   }
   ORT_ENFORCE(reduce_size > 0, "invalid reduce_size for softmax");
-  BuildLookupTableIfFixed(info, reduce_size);
+  BuildLookupTableIfFixed(info, fixed_lookup_table_, reduce_size, is_signed_);
 }
 
 // compute method of Softmax
-template <typename T>
-Status QLinearSoftmax<T>::Compute(OpKernelContext* ctx) const {
+Status QLinearSoftmax::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<Tensor>(0);
   const auto& X_shape = X->Shape();
   auto* Y = ctx->Output(0, X_shape);
@@ -120,7 +114,9 @@ Status QLinearSoftmax<T>::Compute(OpKernelContext* ctx) const {
   if (opset_ < OPSET13) {
     D = X_shape.SizeFromDimension(axis_);
   }
-  const uint32_t* lookup_table = GetLookupTable(ctx, D);
+  uint32_t tmp_lookup_table[256];
+  gsl::span<uint32_t> lookup_table_span = gsl::make_span(tmp_lookup_table, 256);
+  gsl::span<const uint32_t> lookup_table = GetLookupTable(ctx, lookup_table_span, D);
 
   if (opset_ < OPSET13) {
     return ComputeImpl(ctx, *X, *Y, thread_pool, lookup_table);
@@ -128,6 +124,7 @@ Status QLinearSoftmax<T>::Compute(OpKernelContext* ctx) const {
     return ComputeImplOpset13(ctx, *X, *Y, thread_pool, lookup_table);
   }
 }
+
 template <typename T>
 common::Status QlinearSoftmaxCPU(size_t N,
                                  size_t D,
@@ -151,6 +148,7 @@ common::Status QlinearSoftmaxCPU<uint8_t>(size_t N,
   using onnxruntime::concurrency::ThreadPool;
   ThreadPool::TryParallelFor(
       thread_pool, N,
+      // Read 3*N (max,sum,div) write N (div), computation=Read
       TensorOpCost{static_cast<double>(D * 3),
                    static_cast<double>(D),
                    static_cast<double>(D * 3)},
@@ -213,6 +211,7 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
   using onnxruntime::concurrency::ThreadPool;
   ThreadPool::TryParallelFor(
       thread_pool, N,
+      // Read 3*N (max,sum,div) write N (div), computation=Read
       TensorOpCost{static_cast<double>(D * 3),
                    static_cast<double>(D),
                    static_cast<double>(D * 3)},
@@ -257,45 +256,51 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
   return Status::OK();
 }
 
-template <typename T>
-const uint32_t* QLinearSoftmax<T>::GetLookupTable(OpKernelContext* context, size_t reduce_len) const {
-  const uint32_t* lookup_table = fixed_lookup_table_.data();
+gsl::span<const uint32_t> QLinearSoftmax::GetLookupTable(OpKernelContext* context,
+                                                         gsl::span<uint32_t> lookup_table_span,
+                                                         size_t reduce_len) const {
+  gsl::span<const uint32_t> lookup_table = fixed_lookup_table_;
   if (fixed_lookup_table_.size() == 0) {
-    tmp_lookup_table_.resize(256);
-    lookup_table = tmp_lookup_table_.data();
+    lookup_table = lookup_table_span;
     const float X_scale = *(context->Input<Tensor>(1)->Data<float>());
-    QlinearBuildLookupTableUint32<T>(tmp_lookup_table_.data(), X_scale, reduce_len);
+    QlinearBuildLookupTableUint32(lookup_table_span.data(), X_scale, reduce_len, is_signed_);
   }
   return lookup_table;
 }
 
 // opset-12 and below
-template <typename T>
-Status QLinearSoftmax<T>::ComputeImpl(OpKernelContext* context, const Tensor& input, Tensor& output,
+Status QLinearSoftmax::ComputeImpl(OpKernelContext* context, const Tensor& input, Tensor& output,
                                       concurrency::ThreadPool* thread_pool,
-                                      const uint32_t* lookup_table) const {
+                                      gsl::span<const uint32_t> lookup_table) const {
   const auto* Y_scale_tensor = context->Input<Tensor>(3);
   const auto* Y_zp_tensor = context->Input<Tensor>(4);
-  const uint32_t Y_scale = gsl::narrow_cast<uint32_t>(1.0f / (*(Y_scale_tensor->Data<float>())));
-  const T Y_zp = Y_zp_tensor ? *(Y_zp_tensor->Data<T>()) : 0;
-
+  const auto Y_scale = gsl::narrow_cast<uint32_t>(1.0F / (*(Y_scale_tensor->Data<float>())));
   const auto& X_shape = input.Shape();
   const size_t N = X_shape.SizeToDimension(axis_);
   const size_t D = X_shape.SizeFromDimension(axis_);
-  return QlinearSoftmaxCPU<T>(N, D, input.template Data<T>(), output.template MutableData<T>(),
-                              lookup_table, Y_scale, Y_zp, thread_pool);
+  common::Status status;
+  if (is_signed_) {
+    using T=int8_t;
+    const T Y_zp = Y_zp_tensor ? *(Y_zp_tensor->Data<T>()) : 0;
+    status = QlinearSoftmaxCPU<T>(N, D, input.Data<T>(), output.MutableData<T>(),
+                                lookup_table.data(), Y_scale, Y_zp, thread_pool);
+  } else {
+    using T = uint8_t;
+    const T Y_zp = Y_zp_tensor ? *(Y_zp_tensor->Data<T>()) : 0;
+    status = QlinearSoftmaxCPU<T>(N, D, input.Data<T>(), output.MutableData<T>(),
+                                  lookup_table.data(), Y_scale, Y_zp, thread_pool);
+  }
+  return status;
 }
 
 // opset-13 and above
-template <typename T>
-Status QLinearSoftmax<T>::ComputeImplOpset13(OpKernelContext* context,
+Status QLinearSoftmax::ComputeImplOpset13(OpKernelContext* context,
                                              const Tensor& input, Tensor& output,
                                              concurrency::ThreadPool* thread_pool,
-                                             const uint32_t* lookup_table) const {
+                                             gsl::span<const uint32_t> lookup_table) const {
   const auto* Y_scale_tensor = context->Input<Tensor>(3);
   const auto* Y_zp_tensor = context->Input<Tensor>(4);
-  const uint32_t Y_scale = gsl::narrow_cast<uint32_t>(1.0f / (*(Y_scale_tensor->Data<float>())));
-  const T Y_zp = Y_zp_tensor ? *(Y_zp_tensor->Data<T>()) : 0;
+  const auto Y_scale = gsl::narrow_cast<uint32_t>(1.0F / (*(Y_scale_tensor->Data<float>())));
 
   const auto& X_shape = input.Shape();
   size_t rank = X_shape.NumDimensions();
@@ -318,9 +323,7 @@ Status QLinearSoftmax<T>::ComputeImplOpset13(OpKernelContext* context,
 
   if (is_transpose_required) {
     AllocatorPtr alloc;
-    auto status = context->GetTempSpaceAllocator(&alloc);
-    if (!status.IsOK())
-      return status;
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
     std::iota(std::begin(permutation), std::end(permutation), 0);
 
@@ -341,23 +344,34 @@ Status QLinearSoftmax<T>::ComputeImplOpset13(OpKernelContext* context,
     transposed_input = std::move(temp_input);
 
     // Allocate memory for the intermediate output
-    Tensor temp_output(output.DataType(), TensorShape(transposed_input_dims), alloc);
-    intermediate_output = std::move(temp_output);
+    intermediate_output = Tensor(output.DataType(), TensorShape(transposed_input_dims), alloc);
   }
 
   const size_t D = X_shape[axis_];
   const size_t N = X_shape.Size() / D;
+  common::Status status;
 
-  const T* x_data = is_transpose_required ? transposed_input.template Data<T>() : input.template Data<T>();
-  T* y_data = is_transpose_required ? intermediate_output.template MutableData<T>() : output.template MutableData<T>();
+  if (is_signed_) {
+    using T = int8_t;
+    const T Y_zp = Y_zp_tensor ? *(Y_zp_tensor->Data<T>()) : 0;
+    const T* x_data = is_transpose_required ? transposed_input.Data<T>() : input.Data<T>();
+    T* y_data = is_transpose_required ? intermediate_output.MutableData<T>() : output.MutableData<T>();
 
-  ORT_RETURN_IF_ERROR(QlinearSoftmaxCPU<T>(N, D, x_data, y_data, lookup_table, Y_scale, Y_zp, thread_pool));
+    status = (QlinearSoftmaxCPU<T>(N, D, x_data, y_data, lookup_table.data(), Y_scale, Y_zp, thread_pool));
+  } else {
+    using T = uint8_t;
+    const T Y_zp = Y_zp_tensor ? *(Y_zp_tensor->Data<T>()) : 0;
+    const T* x_data = is_transpose_required ? transposed_input.Data<T>() : input.Data<T>();
+    T* y_data = is_transpose_required ? intermediate_output.MutableData<T>() : output.MutableData<T>();
+
+    status = (QlinearSoftmaxCPU<T>(N, D, x_data, y_data, lookup_table.data(), Y_scale, Y_zp, thread_pool));
+  }
 
   if (is_transpose_required) {
     // Perform the transpose to get the axes back to the original ordering
-    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(permutation, intermediate_output, output));
+    status = (TransposeBase::DoTranspose(permutation, intermediate_output, output));
   }
-  return Status::OK();
+  return status;
 }
 
 #define REGISTER_QLINEAR_LOOKUPTABLE_TYPED_KERNEL(op_name, version, data_type, KERNEL_CLASS) \
@@ -365,7 +379,7 @@ Status QLinearSoftmax<T>::ComputeImplOpset13(OpKernelContext* context,
       op_name, version, data_type,                                                           \
       KernelDefBuilder()                                                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()),                    \
-      KERNEL_CLASS<data_type>);
+      KERNEL_CLASS);
 
 REGISTER_QLINEAR_LOOKUPTABLE_TYPED_KERNEL(QLinearSoftmax, 1, uint8_t, QLinearSoftmax);
 REGISTER_QLINEAR_LOOKUPTABLE_TYPED_KERNEL(QLinearSoftmax, 1, int8_t, QLinearSoftmax);
