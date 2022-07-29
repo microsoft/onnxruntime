@@ -9,3 +9,7 @@ sphinx_rtd_theme
 pyquickhelper
 pandas
 pydot
+flatbuffers
+protobuf
+sympy
+coloredlogs
