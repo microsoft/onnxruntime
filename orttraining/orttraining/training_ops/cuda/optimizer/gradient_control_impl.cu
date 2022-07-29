@@ -21,7 +21,8 @@ __global__ void _InPlaceAccumulator(
   // We see slightly perf degradation splitting read/write for this case.
   // So we handle it differently here.
   if (NumElementsPerThread == 1) {
-    accumulated_gradient[start] = gradient_buffer[start] + T(gradient[start]);
+    if (start < N)
+      accumulated_gradient[start] = gradient_buffer[start] + T(gradient[start]);
     return;
   }
 
