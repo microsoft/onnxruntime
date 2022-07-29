@@ -98,11 +98,11 @@ stages:
     - template: templates/clean-agent-build-directory-step.yml
 
 - stage: TEST_STAGE
+  dependsOn: BUILD_STAGE
   jobs:
   - job: Test_CPU_EP
     pool:
       vmImage: 'macOS-11'
-    dependsOn: Build_CPU_EP
     workspace:
       clean: all
     condition: succeeded()
