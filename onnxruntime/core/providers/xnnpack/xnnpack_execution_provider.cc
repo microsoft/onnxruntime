@@ -36,6 +36,9 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWC
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, 12, Gemm);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Gemm);
 
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, 12, MatMul);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, MatMul);
+
 std::unique_ptr<KernelRegistry> RegisterKernels() {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
 
@@ -47,7 +50,10 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO(kMSInternalNHWCDomain, 12, MaxPool),
 
       KERNEL_CREATE_INFO_VERSIONED(kOnnxDomain, 7, 12, Gemm),
-      KERNEL_CREATE_INFO(kOnnxDomain, 13, Gemm)
+      KERNEL_CREATE_INFO(kOnnxDomain, 13, Gemm),
+
+      KERNEL_CREATE_INFO_VERSIONED(kOnnxDomain, 7, 12, MatMul),
+      KERNEL_CREATE_INFO(kOnnxDomain, 13, MatMul)
   };
 
   for (auto& function_table_entry : function_table) {

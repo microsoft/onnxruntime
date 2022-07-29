@@ -17,6 +17,7 @@
 #include "core/providers/xnnpack/nn/conv.h"
 #include "core/providers/xnnpack/nn/max_pool.h"
 #include "core/providers/xnnpack/nn/gemm.h"
+#include "core/providers/xnnpack/nn/matmul.h"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -84,7 +85,8 @@ bool NodeSupportChecker::IsNodeSupported(const Node& node) {
   static std::unordered_map<std::string, CheckerFn> checkers{
       {"Conv", Conv::IsOnnxNodeSupported},
       {"MaxPool", MaxPool::IsOnnxNodeSupported},
-      {"Gemm", Gemm::IsOnnxNodeSupported}
+      {"Gemm", Gemm::IsOnnxNodeSupported},
+      {"MatMul", MatMul::IsOnnxNodeSupported}
   };
 
   bool supported = false;
