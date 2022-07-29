@@ -79,7 +79,6 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& conv_un
 std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& unit_node);
 
 bool GetType(const NodeArg& node_arg, int32_t& type);
-bool GetShape(const NodeArg& node_arg, TensorShapeVector& shape);
 
 TensorQuantType GetTensorQuantType(const onnxruntime::NodeUnit& node_unit, int32_t io_index,
                                    bool is_output, const onnxruntime::GraphViewer& graph_viewer);

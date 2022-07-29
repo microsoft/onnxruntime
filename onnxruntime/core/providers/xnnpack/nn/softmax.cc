@@ -151,17 +151,16 @@ Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
   }
 
   // we have checked it in GetCapability
-  const auto& x_shape = input_defs[0]->Shape();
+  const auto* x_shape = input_defs[0]->Shape();
   size_t rank = x_shape->dim_size();
   if (axis_ < 0) {
     axis_ = gsl::narrow<int>(HandleNegativeAxis(axis_, int64_t(rank)));
   }
 
-  uint32_t channels = gsl::narrow_cast<uint32_t>(x_shape->dim(axis_).dim_value());
+  auto input_shape = utils::GetTensorShapeFromTensorShapeProto(*x_shape);
+  int64_t channels = input_shape[axis_];
   if (opset_ < 13) {
-    for (int i = axis_ + 1; i < gsl::narrow_cast<int>(rank); i++) {
-      channels *= gsl::narrow_cast<uint32_t>(x_shape->dim(i).dim_value());
-    }
+    channels = input_shape.SizeFromDimension(axis_);
   }
 
   xnn_status xstatus = xnn_status_invalid_state;
