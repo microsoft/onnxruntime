@@ -19,67 +19,71 @@ class FusionQOrderedAttention(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "QOrderedAttention", "QOrderedSkipLayerNormalization")
 
-    def fuse(self, node, input_name_to_nodes: Dict, output_name_to_node: Dict):
-        gelu_children = self.model.get_children(node, input_name_to_nodes)
+    def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
+        start_node = normalize_node
 
-        # Should only have 1 child - QuantizeLinear
-        if len(gelu_children) != 1 or gelu_children[0].op_type != "QuantizeLinear":
-            return
+        # QOrderedSkipLayerNormalization has two inputs, and one of them is the root input for attention
 
-        downstream_quantize_node = gelu_children[0]
- 
-        y_scale = self.model.get_constant_value(downstream_quantize_node.input[1])
-        if y_scale is None:
-            return
-
-        y_zero_point = self.model.get_constant_value(downstream_quantize_node.input[2])
-        if y_zero_point is None or y_zero_point != 0:
-            return
-
-        # The first and second inputs to SkipLayerNormalization should flow through DequantizeLinear nodes
-        first_path_id, first_input_parent_nodes, _ = self.model.match_parent_paths(
-            node,
-            [
-                (["DequantizeLinear"], [0])
-            ],
-            output_name_to_node,
+        # QKV nodes
+        qkv_nodes = self.model.match_parent_path(
+            start_node,
+            ["QuantizeLinear", "Add", "MatMul", "DequantizeLinear", "QuantizeLinear", "Reshape", "Transpose", "MatMul"],
+            [None, 0, None, 0, 0, 0, 0, 0],
         )
 
-        if first_path_id < 0:
+        if qkv_nodes is None:
+            logger.debug("fuse_qordered_attention: failed to match qkv path")
             return
 
-        dequantize_node_0 = first_input_parent_nodes[0]
+        (_, _, _, dequantize_qkv, quantize_qkv, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
 
-        x_scale_0 = self.model.get_constant_value(dequantize_node_0.input[1])
-        if x_scale_0 is None:
+        other_inputs = []
+        for i, input in enumerate(start_node.input):
+            if input not in output_name_to_node:
+                continue
+
+            if input == qkv_nodes[0].output[0]:
+                continue
+
+            other_inputs.append(input)
+
+        if len(other_inputs) != 1:
             return
 
-        x_zero_point_0 = self.model.get_constant_value(dequantize_node_0.input[2])
-        if x_zero_point_0 is None or x_zero_point_0 != 0:
-            return
-            
-        subgraph_nodes = [node]  #Gelu
-        subgraph_nodes.extend([downstream_quantize_node, dequantize_node_0])  #Relevant Q, DQ nodes
+        root_input = other_inputs[0]
 
-        if not self.model.is_safe_to_fuse_nodes(
-            subgraph_nodes,
-            downstream_quantize_node.output,
-            input_name_to_nodes,
-            output_name_to_node,
-        ):
-            logger.debug(f"It is not safe to fuse QOrderedGelu node. Skip")
+        # V nodes
+        v_nodes = self.model.match_parent_path(matmul_qkv, 
+                                              ["DequantizeLinear", "QuantizeLinear", 
+                                               "Transpose", "Reshape", "Add", "MatMul"], 
+                                               [1, 0, 0, 0, 0, None])
+        if v_nodes is None:
+            logger.debug("fuse_qordered_attention: failed to match v path")
             return
 
-        self.nodes_to_remove.extend(subgraph_nodes)
+        matmul_v = v_nodes[-1]
 
-        ordered_gelu_node = helper.make_node(
-            "QOrderedGelu",
-            inputs=[dequantize_node_0.input[0], dequantize_node_0.input[1],
-                    downstream_quantize_node.input[1]],
-            outputs=[downstream_quantize_node.output[0]],
-            name=self.model.create_node_name("QOrderedGelu", name_prefix="QOrderedGelu"),
-        )
+        # QK nodes
+        qk_nodes = self.model.match_parent_path(matmul_qkv, 
+                                              ["DequantizeLinear", "QuantizeLinear", 
+                                               "Softmax", "Add", "Div", "MatMul"], 
+                                               [0, 0, 0, 0, None, 0])
+        if v_nodes is None:
+            logger.debug("fuse_qordered_attention: failed to match qk path")
+            return
 
-        # TODO 3: More attributes
-        self.nodes_to_add.append(ordered_gelu_node)
-        self.node_name_to_graph_name[ordered_gelu_node.name] = self.this_graph_name
+        matmul_qk = qk_nodes[-1]
+
+        # Q nodes
+        q_nodes = self.model.match_parent_path(matmul_qk, ["DequantizeLinear", "QuantizeLinear",
+                                                           "Transpose", "Reshape", "Add", "MatMul"], 
+                                                           [0, 0, 0, 0, 0, None])         
+
+        matmul_qk = q_nodes[-1]
+
+        # K nodes
+        k_nodes = self.model.match_parent_path(matmul_qk, ["DequantizeLinear", "QuantizeLinear",
+                                                           "Transpose", "Reshape", "Add", "MatMul"], 
+                                                           [1, 0, 0, 0, 0, None])
+
+        matmul_k = k_nodes[-1]
