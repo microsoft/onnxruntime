@@ -71,7 +71,7 @@ Here's an example screenshot of the app:
    >
    > The model is then converted into ORT format using the [onnx to ort converter](../../reference/ort-format-models.md).
    >
-   > As well as generating the model in ORT format, the conversion script also outputs an [operator config file](../../reference/reduced-operator-config-file.md)
+   > As well as generating the model in ORT format, the conversion script also outputs an [operator config file](../../reference/operators/reduced-operator-config-file.md)
 
 ## Create iOS application
 
