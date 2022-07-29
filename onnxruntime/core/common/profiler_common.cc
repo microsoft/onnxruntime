@@ -35,7 +35,7 @@ std::string demangle(const char* name) {
   free(demangled);
   return res;
 #else
-  // TODO: demangling on Windows
+  // TODO(anyone): demangling on Windows
   if (!name) {
     return "";
   } else {

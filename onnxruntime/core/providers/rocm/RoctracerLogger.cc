@@ -1,8 +1,8 @@
 #include "RoctracerLogger.h"
 
+#include <time.h>
 #include <cstring>
 #include <chrono>
-#include <time.h>
 
 #include "ThreadUtil.h"
 
@@ -12,7 +12,7 @@ static timestamp_t timespec_to_ns(const timespec& time) {
     return ((timestamp_t)time.tv_sec * 1000000000) + time.tv_nsec;
   }
 
-using namespace std::chrono;
+//using namespace std::chrono;
 
 constexpr size_t kBufSize(2 * 1024 * 1024);
 
@@ -59,8 +59,7 @@ void RoctracerLogger::clearLogs() {
   }
 }
 
-void RoctracerLogger::api_callback(uint32_t domain, uint32_t cid, const void* callback_data, void* arg)
-{
+void RoctracerLogger::api_callback(uint32_t domain, uint32_t cid, const void* callback_data, void* arg) {
   RoctracerLogger *dis = &singleton();
 
   if (domain == ACTIVITY_DOMAIN_HIP_API && dis->loggedIds_.contains(cid)) {
@@ -72,8 +71,7 @@ void RoctracerLogger::api_callback(uint32_t domain, uint32_t cid, const void* ca
 
     if (data->phase == ACTIVITY_API_PHASE_ENTER) {
       clock_gettime(CLOCK_MONOTONIC, &timestamp);  // record proper clock
-    }
-    else { // (data->phase == ACTIVITY_API_PHASE_EXIT)
+    } else {  // (data->phase == ACTIVITY_API_PHASE_EXIT)
       timespec endTime;
       timespec startTime { timestamp };
       clock_gettime(CLOCK_MONOTONIC, &endTime);  // record proper clock

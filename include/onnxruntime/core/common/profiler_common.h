@@ -65,5 +65,5 @@ class EpProfiler {
 std::string demangle(const char* name);
 std::string demangle(const std::string& name);
 
-}  //namespace profiling
-}  //namespace onnxruntime
+}  // namespace profiling
+}  // namespace onnxruntime
