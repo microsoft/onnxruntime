@@ -1,7 +1,7 @@
 diff -ur /home/chasun/manylinux/docker/build_scripts/build-cpython.sh ./build-cpython.sh
---- /home/chasun/manylinux/docker/build_scripts/build-cpython.sh	2022-07-19 21:38:11.984313178 +0000
-+++ ./build-cpython.sh	2022-07-19 21:02:53.177255734 +0000
-@@ -47,7 +47,7 @@
+--- /home/chasun/manylinux/docker/build_scripts/build-cpython.sh	2022-07-29 02:19:20.983860581 +0000
++++ ./build-cpython.sh	2022-07-29 02:19:30.831732784 +0000
+@@ -52,7 +52,7 @@
  	CFLAGS_NODIST="${MANYLINUX_CFLAGS} ${MANYLINUX_CPPFLAGS}" \
  	LDFLAGS_NODIST="${MANYLINUX_LDFLAGS}" \
  	--prefix=${PREFIX} --disable-shared --with-ensurepip=no > /dev/null
@@ -11,18 +11,9 @@ diff -ur /home/chasun/manylinux/docker/build_scripts/build-cpython.sh ./build-cp
  if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ]; then
  	rm -f /usr/include/ffi.h /usr/include/ffitarget.h
 diff -ur /home/chasun/manylinux/docker/build_scripts/build-git.sh ./build-git.sh
---- /home/chasun/manylinux/docker/build_scripts/build-git.sh	2022-07-19 21:38:11.984313178 +0000
-+++ ./build-git.sh	2022-07-19 21:02:53.177255734 +0000
-@@ -7,7 +7,7 @@
- # Get script directory
- MY_DIR=$(dirname "${BASH_SOURCE[0]}")
- 
--if [ "${POLICY}" == "musllinux_1_1" ]; then
-+if [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
- 	export NO_REGEX=NeedsStartEnd
- fi
- 
-@@ -23,7 +23,7 @@
+--- /home/chasun/manylinux/docker/build_scripts/build-git.sh	2022-07-29 02:19:20.983860581 +0000
++++ ./build-git.sh	2022-07-29 02:19:46.127533315 +0000
+@@ -27,7 +27,7 @@
  check_sha256sum ${GIT_ROOT}.tar.gz ${GIT_HASH}
  tar -xzf ${GIT_ROOT}.tar.gz
  pushd ${GIT_ROOT}
@@ -32,9 +23,9 @@ diff -ur /home/chasun/manylinux/docker/build_scripts/build-git.sh ./build-git.sh
  rm -rf ${GIT_ROOT} ${GIT_ROOT}.tar.gz
  
 diff -ur /home/chasun/manylinux/docker/build_scripts/build-openssl.sh ./build-openssl.sh
---- /home/chasun/manylinux/docker/build_scripts/build-openssl.sh	2022-07-19 21:38:11.984313178 +0000
-+++ ./build-openssl.sh	2022-07-19 21:02:53.177255734 +0000
-@@ -40,7 +40,7 @@
+--- /home/chasun/manylinux/docker/build_scripts/build-openssl.sh	2022-07-29 02:19:20.983860581 +0000
++++ ./build-openssl.sh	2022-07-29 02:19:46.127533315 +0000
+@@ -42,7 +42,7 @@
  tar -xzf ${OPENSSL_ROOT}.tar.gz
  pushd ${OPENSSL_ROOT}
  ./config no-shared --prefix=/usr/local/ssl --openssldir=/usr/local/ssl CPPFLAGS="${MANYLINUX_CPPFLAGS}" CFLAGS="${MANYLINUX_CFLAGS} -fPIC" CXXFLAGS="${MANYLINUX_CXXFLAGS} -fPIC" LDFLAGS="${MANYLINUX_LDFLAGS} -fPIC" > /dev/null
@@ -43,30 +34,9 @@ diff -ur /home/chasun/manylinux/docker/build_scripts/build-openssl.sh ./build-op
  make install_sw > /dev/null
  popd
  rm -rf ${OPENSSL_ROOT} ${OPENSSL_ROOT}.tar.gz
-diff -ur /home/chasun/manylinux/docker/build_scripts/build-swig.sh ./build-swig.sh
---- /home/chasun/manylinux/docker/build_scripts/build-swig.sh	2022-07-19 21:37:58.448393878 +0000
-+++ ./build-swig.sh	2022-07-19 21:02:53.177255734 +0000
-@@ -30,7 +30,7 @@
- export LDFLAGS="${MANYLINUX_LDFLAGS}"
- ./Tools/pcre-build.sh
- ./configure
--make
-+make -j$(nproc)
- make install DESTDIR=/manylinux-rootfs
- popd
- rm -rf ${SWIG_ROOT}*
 diff -ur /home/chasun/manylinux/docker/build_scripts/build_utils.sh ./build_utils.sh
---- /home/chasun/manylinux/docker/build_scripts/build_utils.sh	2022-07-19 21:38:11.984313178 +0000
-+++ ./build_utils.sh	2022-07-19 21:02:53.177255734 +0000
-@@ -11,7 +11,7 @@
- MANYLINUX_LDFLAGS="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now"
- 
- export BASE_POLICY=manylinux
--if [ "${POLICY:0:9}" == "musllinux" ]; then
-+if [ "${AUDITWHEEL_POLICY:0:9}" == "musllinux" ]; then
- 	export BASE_POLICY=musllinux
- fi
- 
+--- /home/chasun/manylinux/docker/build_scripts/build_utils.sh	2022-07-29 02:19:20.983860581 +0000
++++ ./build_utils.sh	2022-07-29 02:19:58.119376443 +0000
 @@ -33,6 +33,7 @@
      if [ -f ${file} ]; then
          echo "${file} exists, skipping fetch"
@@ -85,9 +55,9 @@ diff -ur /home/chasun/manylinux/docker/build_scripts/build_utils.sh ./build_util
  }
  
 diff -ur /home/chasun/manylinux/docker/build_scripts/install-build-packages.sh ./install-build-packages.sh
---- /home/chasun/manylinux/docker/build_scripts/install-build-packages.sh	2022-07-19 21:38:11.984313178 +0000
-+++ ./install-build-packages.sh	2022-07-19 21:02:53.181255710 +0000
-@@ -16,7 +16,7 @@
+--- /home/chasun/manylinux/docker/build_scripts/install-build-packages.sh	2022-07-29 02:19:20.983860581 +0000
++++ ./install-build-packages.sh	2022-07-29 02:19:58.119376443 +0000
+@@ -20,7 +20,7 @@
  	else
  		COMPILE_DEPS="${COMPILE_DEPS} libdb-devel"
  	fi
@@ -98,7 +68,7 @@ diff -ur /home/chasun/manylinux/docker/build_scripts/install-build-packages.sh .
  elif [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
 diff -ur /home/chasun/manylinux/docker/build_scripts/install-entrypoint.sh ./install-entrypoint.sh
 --- /home/chasun/manylinux/docker/build_scripts/install-entrypoint.sh	2022-07-19 21:37:58.452393854 +0000
-+++ ./install-entrypoint.sh	2022-07-19 21:02:53.181255710 +0000
++++ ./install-entrypoint.sh	2022-07-29 02:19:58.119376443 +0000
 @@ -11,18 +11,24 @@
  
  
@@ -136,11 +106,11 @@ diff -ur /home/chasun/manylinux/docker/build_scripts/install-entrypoint.sh ./ins
 +    yum versionlock cuda* libcudnn* libnccl*
  fi
 diff -ur /home/chasun/manylinux/docker/build_scripts/install-runtime-packages.sh ./install-runtime-packages.sh
---- /home/chasun/manylinux/docker/build_scripts/install-runtime-packages.sh	2022-07-19 21:38:11.988313153 +0000
-+++ ./install-runtime-packages.sh	2022-07-19 21:02:53.181255710 +0000
+--- /home/chasun/manylinux/docker/build_scripts/install-runtime-packages.sh	2022-07-29 02:19:20.983860581 +0000
++++ ./install-runtime-packages.sh	2022-07-29 02:19:58.119376443 +0000
 @@ -34,7 +34,7 @@
  # MANYLINUX_DEPS: Install development packages (except for libgcc which is provided by gcc install)
- if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
+ if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_28" ]; then
  	MANYLINUX_DEPS="glibc-devel libstdc++-devel glib2-devel libX11-devel libXext-devel libXrender-devel mesa-libGL-devel libICE-devel libSM-devel zlib-devel expat-devel"
 -elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
 +elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_27" ]; then
@@ -193,7 +163,7 @@ diff -ur /home/chasun/manylinux/docker/build_scripts/install-runtime-packages.sh
  	export DEBIAN_FRONTEND=noninteractive
 diff -ur /home/chasun/manylinux/docker/build_scripts/python-tag-abi-tag.py ./python-tag-abi-tag.py
 --- /home/chasun/manylinux/docker/build_scripts/python-tag-abi-tag.py	2022-07-19 21:37:58.452393854 +0000
-+++ ./python-tag-abi-tag.py	2022-07-19 21:02:53.181255710 +0000
++++ ./python-tag-abi-tag.py	2022-07-29 02:19:58.119376443 +0000
 @@ -4,7 +4,6 @@
  
  from wheel.vendored.packaging.tags import sys_tags
@@ -202,10 +172,9 @@ diff -ur /home/chasun/manylinux/docker/build_scripts/python-tag-abi-tag.py ./pyt
  # first tag is always the more specific tag
  tag = next(sys_tags())
  print("{0}-{1}".format(tag.interpreter, tag.abi))
-Only in .: requirements.txt
 diff -ur /home/chasun/manylinux/docker/build_scripts/update-system-packages.sh ./update-system-packages.sh
---- /home/chasun/manylinux/docker/build_scripts/update-system-packages.sh	2022-07-19 21:38:11.988313153 +0000
-+++ ./update-system-packages.sh	2022-07-19 21:02:53.181255710 +0000
+--- /home/chasun/manylinux/docker/build_scripts/update-system-packages.sh	2022-07-29 02:19:20.987860529 +0000
++++ ./update-system-packages.sh	2022-07-29 02:19:58.119376443 +0000
 @@ -20,7 +20,7 @@
  	fi
  	yum clean all
@@ -215,8 +184,8 @@ diff -ur /home/chasun/manylinux/docker/build_scripts/update-system-packages.sh .
  	export DEBIAN_FRONTEND=noninteractive
  	apt-get update -qq
  	apt-get upgrade -qq -y
-@@ -56,7 +56,7 @@
- 		if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ]; then
+@@ -60,7 +60,7 @@
+ 		if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_28" ]; then
  			mv -f ${LOCALE_ARCHIVE} ${LOCALE_ARCHIVE}.tmpl
  			build-locale-archive --install-langs="en_US.utf8"
 -		elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
