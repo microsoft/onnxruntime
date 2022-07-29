@@ -1,34 +1,30 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+
 #include "core/framework/memory_info.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ort_value.h"
 
 #include <fstream>
+#include <map>
 #include <numeric>
 #include <queue>
+#include <set>
 
 namespace onnxruntime {
 
-size_t MemoryInfo::iteration_ = 0;
-size_t MemoryInfo::num_node_size_ = 0;
-int MemoryInfo::local_rank_ = 0;
-std::map<OrtMemoryInfo, std::map<MemoryInfo::MapType, MemoryInfoMap> > MemoryInfo::tensors_memory_info_map_;
-std::map<OrtValueIndex, MemoryInfo::AllocInfoPerTensor> MemoryInfo::tensor_alloc_info_map_;
-std::map<MemoryInfo::MapType, std::set<size_t> > MemoryInfo::time_step_trace_;
-std::map<const std::string, std::map<const std::string, bool> > MemoryInfo::customized_recording_group_;
-
 // Record allocation information for each tensor, based on the execution plan
-void MemoryInfo::GenerateTensorMap(const SequentialExecutionPlan* execution_plan,
-                                   const OrtValueNameIdxMap& value_name_idx_map) {
-  if (!tensor_alloc_info_map_.empty()) {
-    return;
-  }
+void MemoryInfo::Init(const SequentialExecutionPlan* execution_plan,
+                      const OrtValueNameIdxMap& value_name_idx_map) {
   num_node_size_ = execution_plan->execution_plan.size();
   for (OrtValueIndex value_idx = 0; value_idx < OrtValueIndex(execution_plan->allocation_plan.size()); ++value_idx) {
     // Only store tensor information
     if (!(execution_plan->allocation_plan[value_idx].value_type) ||
         !(execution_plan->allocation_plan[value_idx].value_type->IsTensorType()))
       continue;
+
     AllocInfoPerTensor mem_info;
     mem_info.mlvalue_index = value_idx;
     ORT_THROW_IF_ERROR(value_name_idx_map.GetName(mem_info.mlvalue_index, mem_info.mlvalue_name));
@@ -36,6 +32,7 @@ void MemoryInfo::GenerateTensorMap(const SequentialExecutionPlan* execution_plan
     mem_info.reused_buffer = (execution_plan->allocation_plan[value_idx].alloc_kind != AllocKind::kReuse)
                                  ? value_idx
                                  : execution_plan->allocation_plan[value_idx].reused_buffer;
+
     // If the tensor is using memory outside of the scope, do not store it
     if (execution_plan->allocation_plan[mem_info.reused_buffer].alloc_kind == AllocKind::kPreExisting) continue;
     if (execution_plan->allocation_plan[mem_info.reused_buffer].alloc_kind == AllocKind::kAllocateOutput) continue;
@@ -167,7 +164,7 @@ void MemoryInfo::PrintMemoryInfoForLocation(const OrtDevice::DeviceType location
   }
 }
 
-std::string MemoryInfo::MemoryInfoProfile::CreateMetadataEvent(const std::string& process_name, size_t process_id) {
+std::string MemoryProfiler::CreateMetadataEvent(const std::string& process_name, size_t process_id) {
   std::stringstream evt;
   evt << "{";
   evt << "\"ph\":\"M\",";
@@ -185,9 +182,9 @@ std::string MemoryInfo::MemoryInfoProfile::CreateMetadataEvent(const std::string
   return evt.str();
 }
 
-std::string MemoryInfo::MemoryInfoProfile::CreateMemoryEvent(size_t pid, size_t tid, const std::string& name,
-                                                             size_t offset, size_t size,
-                                                             const std::string& color_name) {
+std::string MemoryProfiler::CreateMemoryEvent(size_t pid, size_t tid, const std::string& name,
+                                              size_t offset, size_t size,
+                                              const std::string& color_name) {
   std::stringstream evt;
   evt << "{";
   evt << "\"ph\":\"X\",";
@@ -206,8 +203,8 @@ std::string MemoryInfo::MemoryInfoProfile::CreateMemoryEvent(size_t pid, size_t 
   return evt.str();
 }
 
-std::string MemoryInfo::MemoryInfoProfile::CreateSummaryEvent(size_t pid, size_t tid, const AllocationSummary& summary,
-                                                              size_t size, size_t bytes_for_pattern) {
+std::string MemoryProfiler::CreateSummaryEvent(size_t pid, size_t tid, const MemoryInfo::AllocationSummary& summary,
+                                               size_t size, size_t bytes_for_pattern) {
   const size_t total_bytes = summary.total_size;
   const size_t used_bytes = summary.used_size;
   const size_t free_bytes = total_bytes - used_bytes;
@@ -251,36 +248,6 @@ static void UpdateSummary(MemoryInfo::AllocationSummary& summary, size_t alloc_o
   summary.live_tensors.push_back(idx);
 }
 
-// The following colors are defined and accepted by Chrome Tracing/Edge Tracing.
-const std::vector<std::string> MemoryInfo::MemoryInfoProfile::color_names = {
-    "good",
-    "bad",
-    "terrible",
-    "yellow",
-    "olive",
-    "generic_work",
-    "background_memory_dump",
-    "light_memory_dump",
-    "detailed_memory_dump",
-    "thread_state_uninterruptible",
-    "thread_state_iowait",
-    "thread_state_running",
-    "thread_state_runnable",
-    "thread_state_unknown",
-    "cq_build_running",
-    "cq_build_passed",
-    "cq_build_failed",
-    "cq_build_abandoned",
-    "cq_build_attempt_runnig",
-    "cq_build_attempt_passed",
-    "cq_build_attempt_failed",
-};
-
-size_t MemoryInfo::MemoryInfoProfile::pid_ = 0;
-std::vector<std::string> MemoryInfo::MemoryInfoProfile::events;
-std::unordered_map<size_t, std::unordered_map<size_t, MemoryInfo::AllocationSummary> >
-    MemoryInfo::MemoryInfoProfile::summary_;
-
 // Create sessions in the profiler.
 // p_name: session name
 // pid: sessionid
@@ -290,12 +257,12 @@ std::unordered_map<size_t, std::unordered_map<size_t, MemoryInfo::AllocationSumm
 //     Used for generating customized sessions for a group of tensors
 // Top_k: The steps with the top-k highest memory consumptions are plot. When top_k == 0, we plot all the steps
 // device_type: The type of the device where the tensors are.
-void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name,
-                                                 const size_t pid,
-                                                 const MemoryInfo::MapType& map_type,
-                                                 const std::string& group_name,
-                                                 const size_t top_k,
-                                                 const OrtDevice::DeviceType device_type) {
+void MemoryProfiler::CreateEvents(const std::string& p_name,
+                                  const size_t pid,
+                                  const MemoryInfo::MapType& map_type,
+                                  const std::string& group_name,
+                                  const size_t top_k,
+                                  const OrtDevice::DeviceType device_type) {
   // Metadata.
   std::string pid_name_internal = "device_" + std::to_string(device_type) + "_" + p_name + group_name;
   events.push_back(CreateMetadataEvent(pid_name_internal, pid));
@@ -303,7 +270,8 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name,
   std::hash<std::string> str_hash;
 
   // Create Event for each tensor
-  for (const auto& location_map : tensors_memory_info_map_) {
+  auto& time_step_trace = GetMemoryInfo().time_step_trace_;
+  for (const auto& location_map : GetMemoryInfo().tensors_memory_info_map_) {
     const OrtMemoryInfo& memory_info = location_map.first;
     const auto& maptype_to_map_mapping = location_map.second;
 
@@ -314,10 +282,10 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name,
 
     auto summary_key = str_hash(memory_info.ToString() + std::to_string(map_type));
     // Preprocessing
-    if (time_step_trace_[map_type].empty()) {
+    if (time_step_trace[map_type].empty()) {
       for (const auto& item : maptype_to_map_mapping.at(map_type)) {
-        time_step_trace_[map_type].insert(AllocPlan(item.first)->lifetime_interval.first);
-        time_step_trace_[map_type].insert(AllocPlan(item.first)->lifetime_interval.second);
+        time_step_trace[map_type].insert(GetMemoryInfo().AllocPlan(item.first)->lifetime_interval.first);
+        time_step_trace[map_type].insert(GetMemoryInfo().AllocPlan(item.first)->lifetime_interval.second);
       }
     }
 
@@ -326,14 +294,14 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name,
     if (summary_.find(summary_key) == summary_.end()) {
       for (const auto& item : map) {
         const OrtValueIndex idx = item.first;
-        const auto info = AllocPlan(idx);
+        const auto info = GetMemoryInfo().AllocPlan(idx);
         if (info->inplace_reuse) continue;
 
         size_t offset = IsStaticType(map_type) ? map.GetPlannedAddress(idx) : map.GetAllocAddress(idx);
         size_t size = IsStaticType(map_type) ? map.GetPlannedSize(idx) : map.GetAllocSize(idx);
-        size_t alloc_step = AllocPlan(idx)->lifetime_interval.first;
-        size_t dealloc_step = AllocPlan(idx)->lifetime_interval.second;
-        const auto& ts_map = time_step_trace_[map_type];
+        size_t alloc_step = GetMemoryInfo().AllocPlan(idx)->lifetime_interval.first;
+        size_t dealloc_step = GetMemoryInfo().AllocPlan(idx)->lifetime_interval.second;
+        const auto& ts_map = GetMemoryInfo().time_step_trace_[map_type];
         const auto& start_itr = ts_map.find(alloc_step);
         const auto& end_itr = ts_map.find(dealloc_step);
         ORT_ENFORCE(start_itr != ts_map.end(),
@@ -368,12 +336,12 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name,
       if (top_k != 0 && item.second.total_size < top_kth_total_size) continue;
       size_t alloc_size_for_pattern = 0;
       for (const auto& live_tensor : item.second.live_tensors) {
-        const auto info = AllocPlan(live_tensor);
+        const auto info = GetMemoryInfo().AllocPlan(live_tensor);
         if (info->inplace_reuse) continue;
         const std::string& name = info->mlvalue_name;
         // Filter out string without a certain name
         if (!group_name.empty()) {
-          if (!InRecordingTensorGroup(group_name, name)) continue;
+          if (!GetMemoryInfo().InRecordingTensorGroup(group_name, name)) continue;
         }
         const std::string cname = color_names[str_hash(name) % color_names.size()];
         // Sometimes a tensor can be both statically planned and dynamically allocated, so we need to use planned
@@ -394,13 +362,15 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name,
   }
 }
 
-void MemoryInfo::GenerateMemoryProfile() {
+void MemoryProfiler::GenerateMemoryProfile() {
   // Write memory profile .json
-  std::ofstream memory_profile("memory_profile_" + std::to_string(local_rank_) + ".json", std::ios::trunc);
+  std::stringstream ss;
+  ss << "memory_profile_" << GetMemoryInfo().GetLocalRank() << "_" << profiler_id_ << ".json";
+  std::ofstream memory_profile(ss.str(), std::ios::trunc);
   memory_profile << "[" << std::endl;
-  for (size_t i = 0; i < MemoryInfoProfile::GetEvents().size(); i++) {
-    memory_profile << "  " << MemoryInfoProfile::GetEvents().at(i);
-    if (i < MemoryInfoProfile::GetEvents().size() - 1) memory_profile << ",";
+  for (size_t i = 0; i < GetEvents().size(); i++) {
+    memory_profile << "  " << GetEvents().at(i);
+    if (i < GetEvents().size() - 1) memory_profile << ",";
     memory_profile << std::endl;
   }
   memory_profile << "]" << std::endl;
