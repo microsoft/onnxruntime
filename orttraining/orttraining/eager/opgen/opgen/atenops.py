@@ -93,19 +93,6 @@ unary_ops = [
     "selu",
 ]
 
-for binary_op, onnx_op in {
-    "add": Add("self", Mul("alpha", "other")),
-    "sub": Sub("self", Mul("alpha", "other")),
-    "mul": Mul("self", "other"),
-    "div": Div("self", "other"),
-}.items():
-    for dtype in ["Tensor", "Scalar"]:
-        for variant in ["", "_"]:
-            name = f"aten::{binary_op}{variant}.{dtype}"
-            if name not in ops:
-                ops[f"aten::{binary_op}{variant}.{dtype}"] = deepcopy(onnx_op)
-                type_promotion_ops.append(f"aten::{binary_op}{variant}.{dtype}")
-
 for unary_op in unary_ops_with_out:
     ops[f"aten::{unary_op}.out"] = onnx_ops[unary_op]("self")
 
@@ -114,6 +101,21 @@ for unary_op in unary_ops_with_inplace:
 
 for unary_op in unary_ops:
     ops[f"aten::{unary_op}"] = onnx_ops[unary_op]("self")
+
+for binary_op, onnx_op in {
+    "add": Add("self", Mul("alpha", "other")),
+    "sub": Sub("self", Mul("alpha", "other")),
+    "mul": Mul("self", "other"),
+    "div": Div("self", "other"),
+}.items():
+    # for Tensor, binary_op.out is used by both binary_op and binary_op_, so we only generate .out
+    # from testing and call stacks, it also apears scalar ops fall back to the (Tensor) binary_op.out,
+    # so this is all we need.
+    name = f"aten::{binary_op}.out"
+    if name in ops:
+        raise RuntimeError("Duplicate binary op found in op dictionary.")
+    ops[f"aten::{binary_op}.out"] = deepcopy(onnx_op)
+    type_promotion_ops.append(f"aten::{binary_op}.out")
 
 # Notes on Onnx op mapping
 #
@@ -136,7 +138,6 @@ hand_implemented = {
     # manually implement Slice using stride and offset.
     "aten::slice.Tensor": SignatureOnly(),
     "aten::addmm": Gemm("mat1", "mat2", "self", alpha="alpha", beta="beta"),
-    "aten::add_.Tensor": SignatureOnly(),
     "aten::t": Transpose("self"),
     # MatMul("self", "mat2"), fails since it resizes based on self but should be based on result shape of the mult
     "aten::mm.out": SignatureOnly(),
@@ -152,7 +153,6 @@ hand_implemented = {
     "aten::gelu": Gelu("self"),
     "aten::max": ReduceMax("self", keepdims=0),
     "aten::min": ReduceMin("self", keepdims=0),
-    "aten::_cat": Concat("tensors", "dim"),
     "aten::fill_.Scalar": SignatureOnly(),
     "aten::ne.Scalar_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
     "aten::ne.Tensor_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
@@ -186,6 +186,7 @@ aten_output_type["aten::nonzero"] = "at::ScalarType::Long"
 # This is done to make sure it is backward and future compatible
 if version.parse(torch.__version__) < version.parse(TORCH_API_CHANGE_VERSION):
     hand_implemented["aten::gelu_backward"] = GeluGrad("grad", "self")
+    hand_implemented["aten::_cat"] = Concat("tensors", "dim")
 else:
     hand_implemented["aten::gelu_backward"] = GeluGrad("grad_output", "self")
 

@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# pylint: disable=missing-docstring
+# pylint: disable=missing-docstring, too-many-public-methods, no-member
 
 import unittest
 
@@ -10,49 +10,6 @@ import onnxruntime_pybind11_state as torch_ort
 import torch
 from parameterized import parameterized
 
-# OPS - is a list of  list of [test_operator, the tested_tensor].
-# The default value for tested_tensor is torch.rand (6)- size of 6 uniform distribution on the interval [0, 1).
-# for floor and erf the ort- produce a roundoff error for floor(NaN), compare to cpu- stay NaN.  thus, nan_to_num change nan to zero.
-ops = [
-    ["abs", torch.tensor([-1, -2, 3, -6, -7])],
-    ["acos"],
-    ["acosh"],
-    ["asinh"],
-    ["atanh"],
-    ["asin"],
-    ["atan"],
-    ["ceil"],
-    ["cos"],
-    ["cosh"],
-    ["erf", torch.nan_to_num(torch.rand(5))],
-    ["exp"],
-    ["floor", torch.nan_to_num(torch.rand(5))],
-    ["log"],
-    ["reciprocal"],
-    ["neg"],
-    ["round"],
-    ["relu"],
-    ["sigmoid"],
-    ["sin"],
-    ["sinh"],
-    ["sqrt"],
-    ["tan"],
-    ["tanh"],
-]
-# the following unary ops not been tested:
-# ["isnan",       torch.tensor([1, float('nan'), 2])]]
-# ["selu",        torch.randn(10)]]
-# ["sign",        ]]
-# ["hardsigmoid", ],
-# ["isinf",       ],
-# ["det"          ]]
-
-math_sign_ops = ["eq", "ne", "lt", "gt"]
-
-# The function renames the test function: ops/math_sign_ops (e.g. abs)+ the test name(e.g. out), results in: test_abs_out
-def rename_func(testcase_func, param_num, param):
-    return f"test_{parameterized.to_safe_name(str(param.args[0]))}{testcase_func.__name__[7:]}"
-
 
 class OrtOpTests(unittest.TestCase):
     """test cases for supported eager ops"""
@@ -60,36 +17,35 @@ class OrtOpTests(unittest.TestCase):
     def get_device(self):
         return torch_ort.device()
 
-    def test_add(self):
-        device = self.get_device()
-        cpu_ones = torch.Tensor([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
-        ort_ones = cpu_ones.to(device)
-        cpu_twos = cpu_ones + cpu_ones
-        ort_twos = ort_ones + ort_ones
-        assert torch.allclose(cpu_twos, ort_twos.cpu())
-
-    def test_type_promotion_add(self):
-        device = self.get_device()
-        x = torch.ones(2, 5, dtype=torch.int64)
-        y = torch.ones(2, 5, dtype=torch.float32)
-        ort_x = x.to(device)
-        ort_y = y.to(device)
-        ort_z = ort_x + ort_y
-        assert ort_z.dtype == torch.float32
-        assert torch.allclose(ort_z.cpu(), (x + y))
-
-    def test_add_alpha(self):
-        device = self.get_device()
-        cpu_ones = torch.Tensor([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
-        ort_ones = cpu_ones.to(device)
-        assert torch.allclose(torch.add(cpu_ones, cpu_ones, alpha=2.5), torch.add(ort_ones, ort_ones, alpha=2.5).cpu())
-
-    # the onnx operator Mul does not support type bool. The following test verifies cpu fall back works.
-    def test_mul_bool(self):
+    def test_fallback_to_cpu(self):
         device = self.get_device()
         cpu_ones = torch.ones(3, 3, dtype=bool)
         ort_ones = cpu_ones.to(device)
+        # the onnx operator Mul does not support type bool so will fallback to cpu.
         assert torch.allclose(torch.mul(cpu_ones, cpu_ones), torch.mul(ort_ones, ort_ones).cpu())
+
+    def test_type_promotion_add(self):
+        device = self.get_device()
+        cpu_ones_int64 = torch.ones(2, 5, dtype=torch.int64)
+        cpu_ones_float32 = torch.ones(2, 5, dtype=torch.float32)
+        ort_ones_int64 = cpu_ones_int64.to(device)
+        ort_ones_float32 = cpu_ones_float32.to(device)
+        cpu_result = cpu_ones_int64 + cpu_ones_float32
+        ort_result = ort_ones_int64 + ort_ones_float32
+        assert ort_result.dtype == torch.float32
+        assert torch.allclose(cpu_result, ort_result.cpu())
+
+        # verify scalar addition promotion
+        cpu_result = cpu_ones_int64 + 1.1
+        ort_result = ort_ones_int64 + 1.1
+        assert ort_result.dtype == torch.float32
+        assert torch.allclose(cpu_result, ort_result.cpu())
+
+        ## verify setting out to type int while inputs are float cause an error as casting float to int is not allowed.
+        cpu_out_tensor = torch.tensor([], dtype=torch.int)
+        ort_out_tensor = cpu_out_tensor.to(device)
+        with self.assertRaises(RuntimeError):
+            ort_result = torch.add(ort_ones_int64, ort_ones_float32, out=ort_out_tensor)
 
     # TODO: Add BFloat16 test coverage
     def test_add_(self):
@@ -101,24 +57,6 @@ class OrtOpTests(unittest.TestCase):
         ort_twos = ort_ones
         ort_twos += ort_ones
         assert torch.allclose(cpu_twos, ort_twos.cpu())
-
-    def test_sin_(self):
-        device = self.get_device()
-        cpu_sin_pi_ = torch.Tensor([np.pi])
-        torch.sin_(cpu_sin_pi_)
-        ort_sin_pi_ = torch.Tensor([np.pi]).to(device)
-        torch.sin_(ort_sin_pi_)
-        cpu_sin_pi = torch.sin(torch.Tensor([np.pi]))
-        ort_sin_pi = torch.sin(torch.Tensor([np.pi]).to(device))
-        assert torch.allclose(cpu_sin_pi, ort_sin_pi.cpu())
-        assert torch.allclose(cpu_sin_pi_, ort_sin_pi_.cpu())
-        assert torch.allclose(ort_sin_pi.cpu(), ort_sin_pi_.cpu())
-
-    def test_sin(self):
-        device = self.get_device()
-        cpu_sin_pi = torch.sin(torch.Tensor([np.pi]))
-        ort_sin_pi = torch.sin(torch.Tensor([np.pi]).to(device))
-        assert torch.allclose(cpu_sin_pi, ort_sin_pi.cpu())
 
     def test_zero_like(self):
         device = self.get_device()
@@ -373,50 +311,6 @@ class OrtOpTests(unittest.TestCase):
         ort_result = torch.bitwise_and(ort_a, ort_b)
         assert torch.equal(cpu_result, ort_result.cpu())
 
-    # @parameterized.expand generate test methods for ops and using name_func we renaming the test to be test_{ops}
-    @parameterized.expand(ops, name_func=rename_func)
-    def test_op(self, test_name, tensor_test=torch.rand(6)):
-        # compile eval- creates a code object that evaluates the operator (for example torch.abs(tensor_test)) and returns its result.
-        cpu_result = eval(compile("torch." + test_name + "(tensor_test)", "<string>", "eval"))
-        ort_result = eval(compile("torch." + test_name + "(tensor_test.to(self.get_device()))", "<string>", "eval"))
-        assert torch.allclose(cpu_result, ort_result.cpu(), equal_nan=True)
-
-    @parameterized.expand(ops, name_func=rename_func)
-    def test_op_(self, test_name, tensor_test=torch.rand(6)):
-        device = self.get_device()
-
-        cpu_tensor = tensor_test
-        ort_tensor = cpu_tensor.to(device)
-
-        eval(compile("torch." + test_name + "_(cpu_tensor)", "<string>", "eval"))
-        eval(compile("torch." + test_name + "_(ort_tensor)", "<string>", "eval"))
-
-        assert torch.allclose(cpu_tensor, ort_tensor.cpu(), equal_nan=True)
-
-    @parameterized.expand(ops, name_func=rename_func)
-    def test_op_out(self, test_name, tensor_test=torch.rand(6)):
-        ##relu -don't have output
-        if test_name == "relu":
-            self.skipTest(f"no {test_name}_output")
-        ### troubleshoot later: the following tests are Failing.
-        if test_name == "asin" or test_name == "log" or test_name == "atanh":
-            self.skipTest(f" {test_name}_output Fails - skipping for now")
-        device = self.get_device()
-        cpu_tensor = tensor_test
-        ort_tensor = cpu_tensor.to(device)
-
-        cpu_out_tensor = torch.tensor([], dtype=tensor_test.dtype)
-        ort_out_tensor = cpu_out_tensor.to(device)
-
-        st_cpu = f"torch.{test_name}(cpu_tensor, out=cpu_out_tensor)"
-        st_ort = f"torch.{test_name}(ort_tensor, out=ort_out_tensor)"
-        cpu_result = eval(compile(st_cpu, "<string>", "eval"))
-        ort_result = eval(compile(st_ort, "<string>", "eval"))
-
-        assert torch.allclose(cpu_result, ort_result.cpu(), equal_nan=True)
-        assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu(), equal_nan=True)
-        assert torch.allclose(ort_result.cpu(), ort_out_tensor.cpu(), equal_nan=True)
-
     def test_resize(self):
         device = self.get_device()
 
@@ -474,6 +368,176 @@ class OrtOpTests(unittest.TestCase):
 
         self.assertEqual(cpu_tensor.size(), ort_tensor.size())
         self.assertTrue(torch.allclose(cpu_tensor, ort_tensor.cpu()))
+
+    def test_fill(self):
+        device = self.get_device()
+        for torch_type in [torch.int, torch.float]:
+            cpu_tensor = torch.zeros(2, 2, dtype=torch_type)
+            ort_tensor = cpu_tensor.to(device)
+            for value in [True, 1.1, -1, 0]:
+                cpu_tensor.fill_(value)
+                ort_tensor.fill_(value)
+                assert cpu_tensor.dtype == ort_tensor.dtype
+                assert torch.equal(cpu_tensor, ort_tensor.to("cpu"))
+
+    # tests both nonzero and nonzero.out
+    def test_nonzero(self):
+        device = self.get_device()
+
+        for cpu_tensor in [
+            torch.tensor([[[-1, 0, 1], [0, 1, 0]], [[0, 1, 0], [-1, 0, 1]]], dtype=torch.long),
+            torch.tensor([[[-1, 0, 1], [0, 1, 0]], [[0, 1, 0], [-1, 0, 1]]], dtype=torch.float),
+        ]:
+            ort_tensor = cpu_tensor.to(device)
+
+            cpu_out_tensor = torch.tensor([], dtype=torch.long)
+            ort_out_tensor = cpu_out_tensor.to(device)
+
+            # nonzero.out
+            cpu_result = torch.nonzero(cpu_tensor, out=cpu_out_tensor)
+            ort_result = torch.nonzero(ort_tensor, out=ort_out_tensor)
+            assert torch.equal(cpu_out_tensor, ort_out_tensor.to("cpu"))
+            assert torch.equal(cpu_result, ort_result.to("cpu"))
+
+            # nonzero
+            cpu_result = torch.nonzero(cpu_tensor)
+            ort_result = torch.nonzero(ort_tensor)
+            assert torch.equal(cpu_result, ort_result.to("cpu"))
+
+            # check result between nonzero.out and nonzero
+            assert torch.equal(ort_result.to("cpu"), ort_out_tensor.to("cpu"))
+
+    def test_mm(self):
+        device = self.get_device()
+
+        # out version test
+        cpu_mat1 = torch.rand(3, 2)
+        cpu_mat2 = torch.rand(2, 2)
+        ort_mat1 = cpu_mat1.to(device)
+        ort_mat2 = cpu_mat2.to(device)
+        cpu_out = torch.tensor([])
+        ort_out = cpu_out.to(device)
+        cpu_result = torch.mm(cpu_mat1, cpu_mat2, out=cpu_out)
+        ort_result = torch.mm(ort_mat1, ort_mat2, out=ort_out)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert torch.allclose(cpu_out, ort_out.cpu())
+        assert torch.allclose(cpu_result, ort_out.cpu())
+
+        # non-out version with alternate dimension matrices
+        cpu_mat1 = torch.rand(7, 5)
+        cpu_mat2 = torch.rand(5, 4)
+        ort_mat1 = cpu_mat1.to(device)
+        ort_mat2 = cpu_mat2.to(device)
+        cpu_result = torch.mm(cpu_mat1, cpu_mat2)
+        ort_result = torch.mm(ort_mat1, ort_mat2)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+
+        # check error cases
+        ort_mat1 = torch.rand(1, 1).to(device)
+        ort_bad_dim = torch.rand(2, 2).to(device)
+        ort_wrong_type = torch.ones(1, 1, dtype=torch.int).to(device)
+        ort_not_matrix = torch.ones(1).to(device)
+        with self.assertRaises(RuntimeError):
+            torch.mm(ort_mat1, ort_bad_dim)
+        with self.assertRaises(RuntimeError):
+            torch.mm(ort_mat1, ort_wrong_type)
+        with self.assertRaises(RuntimeError):
+            torch.mm(ort_mat1, ort_not_matrix)
+
+    ################################ parameterized test follow #######################################
+    # OPS - is a list of [test_operator, tested_tensor=torch.rand (6)].
+    # The default value for tested_tensor is torch.rand (6)- size of 6 uniform distribution on the interval [0, 1).
+    # for floor and erf, the ort produces a roundoff error for NaN input, but cpu keeps it a NaN.
+    # Thus, we use nan_to_num to ensure actual numbers are passed in.
+
+    # As many of the following use eval and make it appear to pylint that there are many unused variables,
+    # we disable those warnings
+
+    # pylint: disable=eval-used, unused-argument, unused-variable, no-self-argument,
+
+    ops = [
+        ["abs", torch.tensor([-1, -2, 3, -6, -7])],
+        ["acos"],
+        ["acosh"],
+        ["asinh"],
+        ["atanh"],
+        ["asin"],
+        ["atan"],
+        ["ceil"],
+        ["cos"],
+        ["cosh"],
+        ["erf", torch.nan_to_num(torch.rand(5))],
+        ["exp"],
+        ["floor", torch.nan_to_num(torch.rand(5))],
+        ["log"],
+        ["reciprocal"],
+        ["neg"],
+        ["round"],
+        ["relu"],
+        ["sigmoid"],
+        ["sin"],
+        ["sinh"],
+        ["sqrt"],
+        ["tan"],
+        ["tanh"],
+    ]
+    # the following unary ops not been tested:
+    # ["isnan",       torch.tensor([1, float('nan'), 2])]]
+    # ["selu",        torch.randn(10)]]
+    # ["sign",        ]]
+    # ["hardsigmoid", ],
+    # ["isinf",       ],
+    # ["det"          ]]
+
+    # The function renames the test function: ops/math_sign_ops (e.g. abs)+ the test name(e.g. out), results in: test_abs_out
+    def rename_func(testcase_func, param_num, param):
+        return f"test_{parameterized.to_safe_name(str(param.args[0]))}{testcase_func.__name__[7:]}"
+
+    # @parameterized.expand generate test methods for ops and using name_func we renaming the test to be test_{ops}
+    @parameterized.expand(ops, name_func=rename_func)
+    def test_op(self, test_name, tensor_test=torch.rand(6)):
+        # compile eval- creates a code object that evaluates the operator (for example torch.abs(tensor_test)) and returns its result.
+        cpu_result = eval(compile("torch." + test_name + "(tensor_test)", "<string>", "eval"))
+        ort_result = eval(compile("torch." + test_name + "(tensor_test.to(self.get_device()))", "<string>", "eval"))
+        assert torch.allclose(cpu_result, ort_result.cpu(), equal_nan=True)
+
+    @parameterized.expand(ops, name_func=rename_func)
+    def test_op_(self, test_name, tensor_test=torch.rand(6)):
+        device = self.get_device()
+
+        cpu_tensor = tensor_test
+        ort_tensor = cpu_tensor.to(device)
+
+        eval(compile("torch." + test_name + "_(cpu_tensor)", "<string>", "eval"))
+        eval(compile("torch." + test_name + "_(ort_tensor)", "<string>", "eval"))
+
+        assert torch.allclose(cpu_tensor, ort_tensor.cpu(), equal_nan=True)
+
+    @parameterized.expand(ops, name_func=rename_func)
+    def test_op_out(self, test_name, tensor_test=torch.rand(6)):
+        ##relu -don't have output
+        if test_name == "relu":
+            self.skipTest(f"no {test_name}_output")
+        ### troubleshoot later: the following tests are Failing.
+        if test_name in ("asin", "log", "atanh"):
+            self.skipTest(f" {test_name}_output Fails - skipping for now")
+        device = self.get_device()
+        cpu_tensor = tensor_test
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_out_tensor = torch.tensor([], dtype=tensor_test.dtype)
+        ort_out_tensor = cpu_out_tensor.to(device)
+
+        st_cpu = f"torch.{test_name}(cpu_tensor, out=cpu_out_tensor)"
+        st_ort = f"torch.{test_name}(ort_tensor, out=ort_out_tensor)"
+        cpu_result = eval(compile(st_cpu, "<string>", "eval"))
+        ort_result = eval(compile(st_ort, "<string>", "eval"))
+
+        assert torch.allclose(cpu_result, ort_result.cpu(), equal_nan=True)
+        assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu(), equal_nan=True)
+        assert torch.allclose(ort_result.cpu(), ort_out_tensor.cpu(), equal_nan=True)
+
+    math_sign_ops = ["eq", "ne", "lt", "gt"]
 
     @parameterized.expand(math_sign_ops, name_func=rename_func)
     def test_op_tensor(self, math_sign_ops):
@@ -551,81 +615,97 @@ class OrtOpTests(unittest.TestCase):
         assert torch.equal(cpu_float_float_lt_result, ort_float_float_lt_result.to("cpu"))
         assert torch.equal(cpu_float_float_gt_result, ort_float_float_gt_result.to("cpu"))
 
-    def test_fill(self):
+    binary_ops = [  # [op, op_sign, alpha_supported]
+        ["add", "+", True],
+        ["sub", "-", True],
+        ["mul", "*", False],
+        ["div", "/", False],
+    ]
+
+    @parameterized.expand(binary_ops, name_func=rename_func)
+    def test_op_binary_tensor(self, binary_op, op_sign, alpha_supported):
         device = self.get_device()
-        for torch_type in [torch.int, torch.float]:
-            cpu_tensor = torch.zeros(2, 2, dtype=torch_type)
-            ort_tensor = cpu_tensor.to(device)
-            for value in [True, 1.1, -1, 0]:
-                cpu_tensor.fill_(value)
-                ort_tensor.fill_(value)
-                assert cpu_tensor.dtype == ort_tensor.dtype
-                assert torch.equal(cpu_tensor, ort_tensor.to("cpu"))
+        cpu_input = torch.rand(3, 3)
+        ort_input = cpu_input.to(device)
+        cpu_other = torch.rand(3, 3)
+        ort_other = cpu_other.to(device)
 
-    # tests both nonzero and nonzero.out
-    def test_nonzero(self):
-        device = self.get_device()
-
-        for cpu_tensor in [
-            torch.tensor([[[-1, 0, 1], [0, 1, 0]], [[0, 1, 0], [-1, 0, 1]]], dtype=torch.long),
-            torch.tensor([[[-1, 0, 1], [0, 1, 0]], [[0, 1, 0], [-1, 0, 1]]], dtype=torch.float),
-        ]:
-            ort_tensor = cpu_tensor.to(device)
-
-            cpu_out_tensor = torch.tensor([], dtype=torch.long)
-            ort_out_tensor = cpu_out_tensor.to(device)
-
-            # nonzero.out
-            cpu_result = torch.nonzero(cpu_tensor, out=cpu_out_tensor)
-            ort_result = torch.nonzero(ort_tensor, out=ort_out_tensor)
-            assert torch.equal(cpu_out_tensor, ort_out_tensor.to("cpu"))
-            assert torch.equal(cpu_result, ort_result.to("cpu"))
-
-            # nonzero
-            cpu_result = torch.nonzero(cpu_tensor)
-            ort_result = torch.nonzero(ort_tensor)
-            assert torch.equal(cpu_result, ort_result.to("cpu"))
-
-            # check result between nonzero.out and nonzero
-            assert torch.equal(ort_result.to("cpu"), ort_out_tensor.to("cpu"))
-
-    def test_mm(self):
-        device = self.get_device()
-
-        # out version test
-        cpu_mat1 = torch.rand(3, 2)
-        cpu_mat2 = torch.rand(2, 2)
-        ort_mat1 = cpu_mat1.to(device)
-        ort_mat2 = cpu_mat2.to(device)
-        cpu_out = torch.tensor([])
-        ort_out = cpu_out.to(device)
-        cpu_result = torch.mm(cpu_mat1, cpu_mat2, out=cpu_out)
-        ort_result = torch.mm(ort_mat1, ort_mat2, out=ort_out)
-        assert torch.allclose(cpu_result, ort_result.cpu())
-        assert torch.allclose(cpu_out, ort_out.cpu())
-        assert torch.allclose(cpu_result, ort_out.cpu())
-
-        # non-out version with alternate dimension matrices
-        cpu_mat1 = torch.rand(7, 5)
-        cpu_mat2 = torch.rand(5, 4)
-        ort_mat1 = cpu_mat1.to(device)
-        ort_mat2 = cpu_mat2.to(device)
-        cpu_result = torch.mm(cpu_mat1, cpu_mat2)
-        ort_result = torch.mm(ort_mat1, ort_mat2)
+        # verify op_sign works
+        cpu_result = eval(compile("cpu_input " + op_sign + " cpu_other", "<string>", "eval"))
+        ort_result = eval(compile("ort_input " + op_sign + " ort_other", "<string>", "eval"))
         assert torch.allclose(cpu_result, ort_result.cpu())
 
-        # check error cases
-        ort_mat1 = torch.rand(1, 1).to(device)
-        ort_bad_dim = torch.rand(2, 2).to(device)
-        ort_wrong_type = torch.ones(1, 1, dtype=torch.int).to(device)
-        ort_not_matrix = torch.ones(1).to(device)
-        with self.assertRaises(RuntimeError):
-            torch.mm(ort_mat1, ort_bad_dim)
-        with self.assertRaises(RuntimeError):
-            torch.mm(ort_mat1, ort_wrong_type)
-        with self.assertRaises(RuntimeError):
-            torch.mm(ort_mat1, ort_not_matrix)
+        # verify torch op with out param works
+        cpu_out_tensor = torch.tensor([])
+        ort_out_tensor = cpu_out_tensor.to(device)
+        cpu_result = eval(
+            compile("torch." + binary_op + "(cpu_input, cpu_other, out=cpu_out_tensor)", "<string>", "eval")
+        )
+        ort_result = eval(
+            compile("torch." + binary_op + "(ort_input, ort_other, out=ort_out_tensor)", "<string>", "eval")
+        )
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
+
+        if alpha_supported:
+            cpu_result = eval(
+                compile(
+                    "torch." + binary_op + "(cpu_input, cpu_other, alpha=2.5, out=cpu_out_tensor)", "<string>", "eval"
+                )
+            )
+            ort_result = eval(
+                compile(
+                    "torch." + binary_op + "(ort_input, ort_other, alpha=2.5, out=ort_out_tensor)", "<string>", "eval"
+                )
+            )
+            assert torch.allclose(cpu_result, ort_result.cpu())
+            assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
+
+    @parameterized.expand(binary_ops, name_func=rename_func)
+    def test_op_binary_scalar(self, binary_op, op_sign, alpha_supported):
+        device = self.get_device()
+        cpu_input = torch.ones(3, 3)
+        ort_input = cpu_input.to(device)
+        cpu_other = 3.1
+        ort_other = 3.1
+
+        # verify op_sign works
+        cpu_result = eval(compile("cpu_input " + op_sign + " cpu_other", "<string>", "eval"))
+        ort_result = eval(compile("ort_input " + op_sign + " ort_other", "<string>", "eval"))
+        assert torch.allclose(cpu_result, ort_result.cpu())
+
+        # verify torch op with out param works
+        cpu_out_tensor = torch.tensor([])
+        ort_out_tensor = cpu_out_tensor.to(device)
+        cpu_result = eval(
+            compile("torch." + binary_op + "(cpu_input, cpu_other, out=cpu_out_tensor)", "<string>", "eval")
+        )
+        ort_result = eval(
+            compile("torch." + binary_op + "(ort_input, ort_other, out=ort_out_tensor)", "<string>", "eval")
+        )
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
+
+        if alpha_supported:
+            cpu_result = eval(
+                compile(
+                    "torch." + binary_op + "(cpu_input, cpu_other, alpha=2.5, out=cpu_out_tensor)", "<string>", "eval"
+                )
+            )
+            ort_result = eval(
+                compile(
+                    "torch." + binary_op + "(ort_input, ort_other, alpha=2.5, out=ort_out_tensor)", "<string>", "eval"
+                )
+            )
+            assert torch.allclose(cpu_result, ort_result.cpu())
+            assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
+
+    ################################################################
+    # Please add new non-parameterized tests above the parameterized section.
+    ################################################################
 
 
 if __name__ == "__main__":
+    # torch_ort.set_default_logger_severity(0)
+    # torch_ort.set_default_logger_verbosity(4)
     unittest.main()
