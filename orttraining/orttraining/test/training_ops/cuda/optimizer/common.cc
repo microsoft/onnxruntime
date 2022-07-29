@@ -105,6 +105,7 @@ void GetPerStepInput(
 }
 
 void AdamWTestLoop(
+    std::unique_ptr<IExecutionProvider> execution_provider,
     bool use_baseline_inputs_for_each_iteration, size_t total_step, float lr,
     float alpha, float beta, float epsilon, float weight_decay, int64_t adam_mode, int64_t correct_bias,
     std::unordered_map<std::string, std::vector<std::vector<float>>>& named_weights,
@@ -116,6 +117,9 @@ void AdamWTestLoop(
     std::pair<float, float> momentum_1_tolerance,
     std::pair<float, float> momentum_2_tolerance,
     bool* update_signal) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(std::move(execution_provider));
+
   std::vector<std::string> ordered_weight_names;
   for (auto it = weight_name_shape_mapping.begin(); it != weight_name_shape_mapping.end(); ++it) {
     const std::string& weight_name = it->first;
@@ -202,7 +206,7 @@ void AdamWTestLoop(
                         momentum_2_tolerance.second);
     }
 
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
     if (use_baseline_inputs_for_each_iteration) {
       GetPerStepInput(weight_name_shape_mapping, named_weights, named_momentums_1, named_momentums_2,

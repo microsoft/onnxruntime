@@ -30,7 +30,7 @@
 *
 * This value is used by some API functions to behave as this version of the header expects.
 */
-#define ORT_API_VERSION 12
+#define ORT_API_VERSION 13
 
 #ifdef __cplusplus
 extern "C" {
@@ -536,6 +536,9 @@ typedef struct OrtOpenVINOProviderOptions {
 
 struct OrtApi;
 typedef struct OrtApi OrtApi;
+
+struct OrtTrainingApi;
+typedef struct OrtTrainingApi OrtTrainingApi;
 
 /** \brief The helper interface to get the right version of OrtApi
 *
@@ -3346,13 +3349,13 @@ struct OrtApi {
                   _In_reads_(input_len) const OrtValue* const* initializers, size_t initializers_num);
 
   /** \brief: Create attribute of onnxruntime operator
-  * 
+  *
   * \param[in] name Name of the attribute
   * \param[in] data Data content of the attribute
   * \param[in] len Number of bytes stored in data
   * \param[in] type Data type
   * \param[out] op_attr Attribute that has been created, which must be released by OrtApi::ReleaseOpAttr
-  * 
+  *
   * \since Version 1.12.
   */
   ORT_API2_STATUS(CreateOpAttr,
@@ -3365,14 +3368,14 @@ struct OrtApi {
   /* \brief: Release op attribute
   *
   * \param[in] opAttr Attribute created by OrtApi::CreateOpAttr
-  * 
+  *
   * \since Version 1.12.
   */
   ORT_CLASS_RELEASE(OpAttr);
 
   /** \brief: Create onnxruntime native operator
-  * 
-  * \param[in] info Kernel info 
+  *
+  * \param[in] info Kernel info
   * \param[in] op_name Operator name
   * \param[in] domain Operator domain
   * \param[in] version Operator opset version
@@ -3384,7 +3387,7 @@ struct OrtApi {
   * \param[in] input_count Number of inputs
   * \param[in] output_count Number of outputs
   * \param[out] ort_op Operator that has been created
-  * 
+  *
   * \since Version 1.12.
   */
   ORT_API2_STATUS(CreateOp,
@@ -3403,14 +3406,14 @@ struct OrtApi {
 
   /** \brief: Invoke the operator created by OrtApi::CreateOp
   * The inputs must follow the order as specified in onnx specification
-  * 
+  *
   * \param[in] context Kernel context
   * \param[in] ort_op Operator that has been created
   * \param[in] input_values Array of inputs
   * \param[in] input_count Number of inputs
   * \param[in] output_values Array of outputs
   * \param[in] output_count Number of outputs
-  * 
+  *
   * \since Version 1.12.
   */
   ORT_API2_STATUS(InvokeOp,
@@ -3424,7 +3427,7 @@ struct OrtApi {
   /* \brief: Release an onnxruntime operator
   *
   * \param[in] Op Operator created by OrtApi::CreateOp
-  * 
+  *
   * \since Version 1.12.
   */
   ORT_CLASS_RELEASE(Op);
@@ -3480,12 +3483,22 @@ struct OrtApi {
                   _Outptr_ OrtKernelInfo** info_copy);
 
   /* \brief: Release kernel info
-  * 
+  *
   * \param[in] KernelInfo A copy of kernel info returned by CopyKernelInfo
-  * 
+  *
   * \since Version 1.12.
   */
   ORT_CLASS_RELEASE(KernelInfo);
+
+  /* \brief: Get the training C Api
+  *
+  * \since Version 1.13
+  */
+  const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+
+#ifdef __cplusplus
+  OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
+#endif
 };
 
 /*
@@ -3494,7 +3507,6 @@ struct OrtApi {
  *   2 Create an OrtCustomOp structure for each op and add them to the domain
  *   3 Call OrtAddCustomOpDomain to add the custom domain of ops to the session options
 */
-#define OrtCustomOpApi OrtApi
 
 // Specifies some characteristics of inputs/outputs of custom ops:
 // Specify if the inputs/outputs are one of:

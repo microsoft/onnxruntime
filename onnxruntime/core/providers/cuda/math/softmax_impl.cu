@@ -38,7 +38,7 @@ void dispatch_warpwise_softmax_forward(cudaStream_t stream, output_t* dst, const
     const int next_power_of_two = 1 << log2_elements;
 
     // This value must match the WARP_SIZE constexpr value computed inside softmax_warp_forward.
-    int warp_size = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
+    int warp_size = (next_power_of_two < GPU_WARP_SIZE_HOST) ? next_power_of_two : GPU_WARP_SIZE_HOST;
 
     // This value must match the WARP_BATCH constexpr value computed inside softmax_warp_forward.
     int batches_per_warp = (next_power_of_two <= 128) ? 2 : 1;

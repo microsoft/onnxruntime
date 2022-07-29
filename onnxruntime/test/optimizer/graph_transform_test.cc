@@ -714,6 +714,37 @@ TEST_F(GraphTransformationTests, FuseCudaConvAddRelu) {
   ASSERT_TRUE(op_to_count["Relu"] == 0);  // Relu removed from graph
 }
 
+// Currently the ConvAddRelu fusion is only backed by a float kernel for the
+// the CUDA EP.
+
+// When we see the corresponding pattern for the fp16 data type, the fusion
+// should not be triggered as there is no kernel to back the fused pattern.
+
+// TODO(hasesh): Limit the test to using the CUDA EP for now as the level of
+// data type support in other compatible EPs is still yet to be ascertained.
+
+// TODO(hasesh): If at all the fp16 type is supported for the fusion, adjust/remove
+// this test.
+TEST_F(GraphTransformationTests, FuseCudaConvAddRelu_UnsupportedType) {
+  auto model_uri = MODEL_FOLDER "fusion/conv_add_relu_fp16.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  for (auto& node : p_model->MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kCudaExecutionProvider);
+  }
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Add"], 1);
+  ASSERT_EQ(op_to_count["Relu"], 1);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Add"], 1);   // Add not removed from graph (fusion not triggered)
+  ASSERT_EQ(op_to_count["Relu"], 1);  // Relu not removed from graph (fusion not triggered)
+}
+
 // Conv->Add->Relu will be left intact since there is Identity depend on Add
 TEST_F(GraphTransformationTests, FuseCudaConvAddReluIdentity) {
   auto model_uri = MODEL_FOLDER "fusion/conv_add_relu_identity.onnx";

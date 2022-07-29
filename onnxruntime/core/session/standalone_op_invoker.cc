@@ -398,11 +398,12 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
   kernel_def_builder->SetName(op_name);
   kernel_def_builder->SetDomain(domain);
   kernel_def_builder->SinceVersion(version);
+  auto kernel_def = kernel_def_builder->Build();
 
   static std::unordered_map<int, OrtValue> kEmptyValueMap;
   static OrtValueNameIdxMap kEmptyNameMap;
 
-  OpKernelInfo tmp_kernel_info(*node_ptr.get(), *kernel_def_builder->Build(), *ep, kEmptyValueMap, kEmptyNameMap, kernel_info->GetDataTransferManager());
+  OpKernelInfo tmp_kernel_info(*node_ptr.get(), *kernel_def, *ep, kEmptyValueMap, kEmptyNameMap, kernel_info->GetDataTransferManager());
   std::unique_ptr<onnxruntime::OpKernel> op_kernel;
 
   static FuncManager kFuncMgr;
