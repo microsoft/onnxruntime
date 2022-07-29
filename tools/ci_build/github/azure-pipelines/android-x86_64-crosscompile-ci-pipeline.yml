@@ -110,6 +110,7 @@ stages:
       - script: |
           set -ex
           system_profiler SPSoftwareDataType SPHardwareDataType
+          echo hi
         displayName: 'Mac Agent Info'
 
       - task: DownloadPipelineArtifact@2
