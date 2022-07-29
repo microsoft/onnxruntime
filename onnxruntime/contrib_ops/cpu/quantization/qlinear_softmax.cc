@@ -8,13 +8,13 @@
 #include <utility>
 
 #include "core/common/common.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/tensor/transpose.h"
 
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 #include "gsl/gsl-lite.hpp"
-
 
 namespace onnxruntime {
 namespace contrib {
@@ -27,7 +27,7 @@ namespace {
 template <typename T>
 constexpr bool ValidType = std::is_same_v<T, int8_t> || std::is_same_v<T, uint8_t>;
 
-template <typename T, typename = typename std::enable_if_t<ValidType<T>> >
+template <typename T, typename = typename std::enable_if_t<ValidType<T>>>
 void QlinearBuildLookupTableUint32(uint32_t* table,
                                    const float x_scale,
                                    size_t reduce_len) {
@@ -49,7 +49,7 @@ void QlinearBuildLookupTableUint32(uint32_t* table,
 }  // namespace
 
 template <typename T>
-void QLinearSoftmax<T>::BuildLookupTableIfFixed(const OpKernelInfo& info, uint32_t reduce_len) {
+void QLinearSoftmax<T>::BuildLookupTableIfFixed(const OpKernelInfo& info, size_t reduce_len) {
   const Tensor* tensor_x_scale = nullptr;
 
   bool get_x_scale = info.TryGetConstantInput(1, &tensor_x_scale);
@@ -68,6 +68,13 @@ template <typename T>
 QLinearSoftmax<T>::QLinearSoftmax(const OpKernelInfo& info)
     : OpKernel(info) {
   const auto& node = info.node();
+  auto input_defs = node.InputDefs();
+  const auto* x_shape = input_defs[0]->Shape();
+  if (x_shape == nullptr || x_shape->dim_size() == 0) {
+    return;
+  }
+  int rank = x_shape->dim_size();
+
   int64_t opset = -1;
   Status status = info.GetAttr<int64_t>("opset", &opset);
   ORT_ENFORCE(status.IsOK(), "opset must be existed in attributes of QlinearSoftmax");
@@ -84,23 +91,17 @@ QLinearSoftmax<T>::QLinearSoftmax(const OpKernelInfo& info)
       axis_ = -1;  // opset-13, the default axis value is -1
     }
   }
-  auto input_defs = node.InputDefs();
-  const auto& x_shape = input_defs[0]->Shape();
-  int rank = x_shape->dim_size();
-  if (rank == 0) {
-    return;
-  }
+
   if (axis_ < 0) {
     axis_ = static_cast<int>(HandleNegativeAxis(axis_, int64_t(rank)));
   }
-  uint32_t reduce_size = gsl::narrow_cast<uint32_t>(x_shape->dim(axis_).dim_value());
+  auto input_shape = utils::GetTensorShapeFromTensorShapeProto(*x_shape);
+  int64_t reduce_size = input_shape[axis_];
   if (opset_ < OPSET13) {
-    for (int i = axis_ + 1; i < rank; i++) {
-      reduce_size *= gsl::narrow_cast<uint32_t>(x_shape->dim(i).dim_value());
-    }
+    reduce_size = input_shape.SizeFromDimension(axis_);
   }
   ORT_ENFORCE(reduce_size > 0, "invalid reduce_size for softmax");
-  this->BuildLookupTableIfFixed(info, reduce_size);
+  BuildLookupTableIfFixed(info, reduce_size);
 }
 
 // compute method of Softmax

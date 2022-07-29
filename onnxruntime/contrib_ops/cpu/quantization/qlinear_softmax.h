@@ -14,7 +14,7 @@ template <typename T>
 class QLinearSoftmax final : public OpKernel {
  public:
   QLinearSoftmax(const OpKernelInfo& info);
-  void BuildLookupTableIfFixed(const OpKernelInfo& info, uint32_t channels);
+  void BuildLookupTableIfFixed(const OpKernelInfo& info, size_t channels);
   Status Compute(OpKernelContext* context) const override;
 
  private:
