@@ -6,7 +6,7 @@
 parameters:
 - name: specificArtifact
   displayName: Use Specific Artifact
-  type: boolea
+  type: boolean
   default: false
 - name: runId
   displayName: Specific Artifact's RunId
