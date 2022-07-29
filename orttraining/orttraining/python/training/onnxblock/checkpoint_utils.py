@@ -4,7 +4,7 @@
 
 from onnx import ModelProto
 
-from onnxruntime.capi._pybind_state import load_checkpoint as _internal_load_checkpoint
+from onnxruntime.capi._pybind_state import load_checkpoint_to_model as _internal_load_checkpoint
 from onnxruntime.capi._pybind_state import save_checkpoint as _internal_save_checkpoint
 
 
@@ -25,6 +25,4 @@ def save_checkpoint(parameters, path_to_checkpoint):
 def load_checkpoint_to_model(path_to_checkpoint, model):
     """Loads the checkpoint to an onnx inference model."""
 
-    model_proto = ModelProto()
-    model_proto.ParseFromString(_internal_load_checkpoint(path_to_checkpoint, model.SerializeToString()))
-    return model_proto
+    model.ParseFromString(_internal_load_checkpoint(path_to_checkpoint, model.SerializeToString()))

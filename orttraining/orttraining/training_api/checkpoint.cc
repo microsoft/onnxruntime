@@ -551,7 +551,7 @@ Status OrtLoadInternal(const PathString& checkpoint_path,
     const auto tensor_file_full_path = ConcatPathComponent<PathChar>(checkpoint_path, tensor_file_path);
     LoadTensorProtoFromFile(tensor_file_full_path, tensor_protos, "[params]");
 
-    for (auto& tensor_proto : tensor_protos) {
+    for (const auto& tensor_proto : tensor_protos) {
       param_tensor_protos.insert(std::make_pair(tensor_proto.name(), tensor_proto));
     }
   }

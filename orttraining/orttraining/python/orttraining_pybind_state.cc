@@ -840,16 +840,16 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(trainable_tensor_protos,
                                                                         non_trainable_tensor_protos, checkpoint_path));
         });
-  m.def("load_checkpoint",
+  m.def("load_checkpoint_to_model",
         [](const std::string& checkpoint_path, py::bytes& serialized_model) {
           std::vector<TensorProto> tensor_protos;
           ONNX_NAMESPACE::ModelProto model_proto;
-          std::string model_proto_str;
 
           std::istringstream buffer(serialized_model);
           Status status = Model::Load(buffer, &model_proto);
           status = onnxruntime::training::api::LoadCheckpointToModel(checkpoint_path, model_proto);
 
+          std::string model_proto_str;
           model_proto.SerializeToString(&model_proto_str);
           serialized_model = model_proto_str;
 
