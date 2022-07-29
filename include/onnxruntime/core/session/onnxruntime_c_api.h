@@ -3433,6 +3433,7 @@ struct OrtApi {
   ORT_CLASS_RELEASE(Op);
 
   /** \brief: Append execution provider to the session options.
+   * \param[in] options
    * \param[in] provider_name - provider to add.
    * \param[in] provider_options_keys - keys to configure the provider options
    * \param[in] provider_options_values - values to configure the provider options
