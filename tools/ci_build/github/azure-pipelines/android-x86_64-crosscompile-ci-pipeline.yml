@@ -272,7 +272,6 @@ stages:
     timeoutInMinutes: 90
     workspace:
       clean: all
-    dependsOn: Build_NNAPI_EP
     condition: and(succeeded(), notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
     steps:
       - script: |
