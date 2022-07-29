@@ -6,6 +6,10 @@
 #include "dnnl_subgraph_primitive.h"
 #include "dnnl_util.h"
 
+#include <unordered_set>
+#include <vector>
+#include <string>
+
 namespace onnxruntime {
 namespace ort_dnnl {
 
@@ -77,8 +81,10 @@ void DnnlMatMulInteger::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& nod
   create a post op binary with possible unsqueezing in order to make sure onednn properly broadcast
   current limitation
   1. is no unsqueeze for matmul output as it is not exposed due to post op fusion
-  2. the third input has to be reordered to plain format (eg, no memory format propogation if the third input is internal to subgraph)
-  3. adding 1s to front (unsqueeze/expand) in logical dims would possibly fail if physcial layout is not plain format
+  2. the third input has to be reordered to plain format
+     (eg, no memory format propagation if the third input is internal to subgraph)
+  3. adding 1s to front (unsqueeze/expand) in logical dims would possibly fail if
+     physical layout is not plain format
   */
   if (has_postop_fusion) {
     int binary_count = 0;

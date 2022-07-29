@@ -5,6 +5,8 @@
 #include "dnnl_subgraph.h"
 #include "dnnl_subgraph_primitive.h"
 
+#include <string>
+
 namespace onnxruntime {
 namespace ort_dnnl {
 

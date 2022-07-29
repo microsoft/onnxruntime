@@ -12,6 +12,7 @@
 #include <sstream>
 #include <unordered_set>
 #include <utility>
+#include <memory>
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -694,7 +695,6 @@ void DnnlGraphTransformer::MatMulBinaryEltwise(DnnlSubgraph& subgraph) {
     std::vector<size_t> matmul_binary_eltwize_indices = {};
     auto dnnl_node = subgraph.GetDnnlNode(index);
     auto attr_node = dnnl_node;
-    bool attribute_flag = false;
 
     if (dnnl_node == nullptr || dnnl_node->OpType() != "MatMul") {
       continue;
@@ -706,7 +706,11 @@ void DnnlGraphTransformer::MatMulBinaryEltwise(DnnlSubgraph& subgraph) {
     auto fused_node_inputs = dnnl_node->Inputs();
     matmul_binary_eltwize_indices.push_back(dnnl_node->Index());
 
-    dnnl_node = FuseBinaryEltwisePostOps(subgraph, dnnl_node, matmul_binary_eltwize_indices, fused_node_inputs, attr_node);
+    dnnl_node = FuseBinaryEltwisePostOps(subgraph,
+                                         dnnl_node,
+                                         matmul_binary_eltwize_indices,
+                                         fused_node_inputs,
+                                         attr_node);
 
     if (!(matmul_binary_eltwize_indices.size() > 1)) {
       matmul_binary_eltwize_indices.clear();
@@ -806,7 +810,6 @@ void DnnlGraphTransformer::MatMulIntegerBinaryEltwise(DnnlSubgraph& subgraph) {
     std::vector<size_t> matmul_binary_eltwize_indices = {};
     auto dnnl_node = subgraph.GetDnnlNode(index);
     auto attr_node = dnnl_node;
-    bool attribute_flag = false;
 
     if (dnnl_node == nullptr || dnnl_node->OpType() != "MatMulInteger") {
       continue;
@@ -834,7 +837,11 @@ void DnnlGraphTransformer::MatMulIntegerBinaryEltwise(DnnlSubgraph& subgraph) {
     dnnl_node = next_dnnl_node;
     matmul_binary_eltwize_indices.push_back(dnnl_node->Index());
 
-    dnnl_node = FuseBinaryEltwisePostOps(subgraph, dnnl_node, matmul_binary_eltwize_indices, fused_node_inputs, attr_node);
+    dnnl_node = FuseBinaryEltwisePostOps(subgraph,
+                                         dnnl_node,
+                                         matmul_binary_eltwize_indices,
+                                         fused_node_inputs,
+                                         attr_node);
 
     if (!(matmul_binary_eltwize_indices.size() > 1)) {
       matmul_binary_eltwize_indices.clear();
@@ -868,7 +875,11 @@ void DnnlGraphTransformer::MatMulIntegerBinaryEltwise(DnnlSubgraph& subgraph) {
   }
 }
 
-DnnlNode* DnnlGraphTransformer::FuseBinaryEltwisePostOps(DnnlSubgraph& subgraph, DnnlNode* node, std::vector<size_t>& indices, std::vector<DnnlTensor*>& fused_node_inputs, DnnlNode*& attr_node) {
+DnnlNode* DnnlGraphTransformer::FuseBinaryEltwisePostOps(DnnlSubgraph& subgraph,
+                                                         DnnlNode* node,
+                                                         std::vector<size_t>& indices,
+                                                         std::vector<DnnlTensor*>& fused_node_inputs,
+                                                         DnnlNode*& attr_node) {
   std::unordered_set<std::string> binary_ops = {"Add", "Div", "Mul", "Sub"};
   std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp", "LeakyRelu", "Log", "Relu",
                                                      "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
@@ -898,6 +909,9 @@ DnnlNode* DnnlGraphTransformer::FuseBinaryEltwisePostOps(DnnlSubgraph& subgraph,
       if (dnnl_node->Output(0).Name() == next_dnnl_node->Inputs()[0]->Name()) {
         fused_node_inputs.push_back(next_dnnl_node->Inputs()[1]);
       } else {
+        // oneDNN can only fuse binary post op for the second input. Due to the fact
+        // that division and subraction are not associative we can not fuse them if the
+        // input for that node is the first input.
         if (next_dnnl_node->OpType() == "Div" || next_dnnl_node->OpType() == "Sub") {
           break;
         }

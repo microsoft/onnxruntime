@@ -14,10 +14,10 @@
 * The tests validate that if a fusion occures the expected output matches
 * the output of each graph if they had not be done separatly.
 *
-* Unfortantly there is no hook to actually check that the fussion occured
+* Unfortantly there is no hook to actually check that the fussion occurred
 * other than inspecting debug logs.
 *
-* The tests use patterns that we have seen in actual models durring testing.
+* The tests use patterns that we have seen in actual models during testing.
 *
 * A few tests are there simply to validate the limits of the MatMulInteger +
 * post op fusion. The max number of ops fusable are 32 post ops so we exced
@@ -1262,7 +1262,6 @@ class Dnnl_MatMulInteger_36_ops_PostOpTester : public OpTester {
     auto& m9_out = graph.GetOrCreateNodeArg("mul9_out", y->TypeAsProto());
     auto& a9_out = graph.GetOrCreateNodeArg("add9_out", y->TypeAsProto());
     auto& s9_out = graph.GetOrCreateNodeArg("sub9_out", y->TypeAsProto());
-    auto& d9_out = graph.GetOrCreateNodeArg("div9_out", y->TypeAsProto());
 
     graph.AddNode("matmul1", "MatMulInteger", "", {a, b, a_zp, b_zp}, {&matmul_out});
     auto& cast_node = graph.AddNode("cast1", "Cast", "", {&matmul_out}, {&cast_out});
