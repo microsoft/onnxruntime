@@ -72,6 +72,8 @@ jobs:
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuild
 
+  - template: use-android-ndk.yml
+
   - task: CmdLine@2
     displayName: Build Android AAR Packages
     inputs:

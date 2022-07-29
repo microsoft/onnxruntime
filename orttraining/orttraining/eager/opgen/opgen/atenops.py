@@ -112,9 +112,10 @@ for binary_op, onnx_op in {
     # from testing and call stacks, it also apears scalar ops fall back to the (Tensor) binary_op.out,
     # so this is all we need.
     name = f"aten::{binary_op}.out"
-    if name not in ops:
-        ops[f"aten::{binary_op}.out"] = deepcopy(onnx_op)
-        type_promotion_ops.append(f"aten::{binary_op}.out")
+    if name in ops:
+        raise RuntimeError("Duplicate binary op found in op dictionary.")
+    ops[f"aten::{binary_op}.out"] = deepcopy(onnx_op)
+    type_promotion_ops.append(f"aten::{binary_op}.out")
 
 # Notes on Onnx op mapping
 #
@@ -152,7 +153,6 @@ hand_implemented = {
     "aten::gelu": Gelu("self"),
     "aten::max": ReduceMax("self", keepdims=0),
     "aten::min": ReduceMin("self", keepdims=0),
-    "aten::_cat": Concat("tensors", "dim"),
     "aten::fill_.Scalar": SignatureOnly(),
     "aten::ne.Scalar_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
     "aten::ne.Tensor_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
@@ -186,6 +186,7 @@ aten_output_type["aten::nonzero"] = "at::ScalarType::Long"
 # This is done to make sure it is backward and future compatible
 if version.parse(torch.__version__) < version.parse(TORCH_API_CHANGE_VERSION):
     hand_implemented["aten::gelu_backward"] = GeluGrad("grad", "self")
+    hand_implemented["aten::_cat"] = Concat("tensors", "dim")
 else:
     hand_implemented["aten::gelu_backward"] = GeluGrad("grad_output", "self")
 
