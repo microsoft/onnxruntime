@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - master
+  workflow_dispatch:
 
 jobs:
   publish:
@@ -19,7 +20,7 @@ jobs:
         run: |
           cd docs/python
           pip install -r requirements.txt
-          pip install flatbuffers protobuf==3.19.1
+          pip install flatbuffers protobuf==3.20.1
           pip install -i https://test.pypi.org/simple/ ort-nightly
           pip list
       - name: Generate Python docs with Sphinx
