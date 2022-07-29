@@ -726,8 +726,7 @@ class ONNXQuantizer:
         return nodes + [qlinear_node]
 
     def set_quant_scale_zp(self, tensor_name, value):
-        assert isinstance(value, tuple) and len(
-            value) == 2, "value must be scale(float) and zeropoint"
+        assert isinstance(value, tuple) and len(value) == 2, "value must be scale(float) and zeropoint"
         assert tensor_name not in self.used_scale_zp_map, f"{tensor_name} has been setted before"
         self.used_scale_zp_map[tensor_name] = value
 
