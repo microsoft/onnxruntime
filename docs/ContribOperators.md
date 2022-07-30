@@ -2810,7 +2810,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   Softmax(input, axis) = Exp(input) / ReduceSum(Exp(input), axis=axis, keepdims=1)
   The input does not need to explicitly be a 2D vector. The "axis" attribute
   indicates the dimension along which QLinearSoftmax will be performed for onnx v.13+.
-  or the dimension coerced to NxD Matrix fo onnx v.12-
+  or the dimension coerced to NxD Matrix for onnx v.12-.
   The output tensor has the same shape.
 
 #### Version
@@ -2823,7 +2823,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>axis</tt> : int</dt>
 <dd>apply softmax to elements for dimensions axis,or all dims along with axis according to op-version</dd>
 <dt><tt>opset</tt> : int</dt>
-<dd>use to mark SinceVersion</dd>
+<dd>opset version of corresponding SoftMax.</dd>
 </dl>
 
 #### Inputs
