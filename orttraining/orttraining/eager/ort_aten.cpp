@@ -668,7 +668,7 @@ at::Tensor& copy_(
     if(self.device().type() != src.device().type()){
       auto src_invoker = GetORTInvoker(src.device());
       auto val = CastToType(src_invoker, ort_src, self.scalar_type());
-      copy_(self, aten_tensor_from_ort(std::move(val), src.options()));
+      copy_(self, aten_tensor_from_ort(std::move(val), src.options()), false);
     }else{
       std::vector<OrtValue> ort_cast_output(1);
       onnxruntime::NodeAttributes attrs(1);
