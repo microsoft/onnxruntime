@@ -64,7 +64,8 @@ pub struct Environment {
 
 impl Environment {
     /// Create a new environment builder using default values
-    /// (name: `default`, log level: [LoggingLevel::Warning](../enum.LoggingLevel.html#variant.Warning))
+    /// (name: `default`, log level: [`LoggingLevel::Warning`](../enum.LoggingLevel.html#variant.Warning))
+    #[must_use]
     pub fn builder() -> EnvBuilder {
         EnvBuilder {
             name: "default".into(),
@@ -73,6 +74,7 @@ impl Environment {
     }
 
     /// Return the name of the current environment
+    #[must_use]
     pub fn name(&self) -> String {
         self.env.lock().unwrap().name.to_string()
     }
@@ -228,6 +230,7 @@ impl EnvBuilder {
     /// creating multiple environments using multiple `EnvBuilder` will
     /// end up re-using the same environment internally; a new one will _not_
     /// be created. New parameters will be ignored.
+    #[must_use]
     pub fn with_log_level(mut self, log_level: LoggingLevel) -> EnvBuilder {
         self.log_level = log_level;
         self
@@ -348,8 +351,10 @@ mod tests {
         assert_eq!(main_env.name(), initial_name);
         assert_eq!(main_env.env_ptr() as usize, main_env_ptr);
 
-        let res: Vec<std::thread::Result<_>> =
-            children.into_iter().map(|child| child.join()).collect();
+        let res: Vec<std::thread::Result<_>> = children
+            .into_iter()
+            .map(std::thread::JoinHandle::join)
+            .collect();
         assert!(res.into_iter().all(|r| std::result::Result::is_ok(&r)));
     }
 }

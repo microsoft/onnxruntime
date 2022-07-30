@@ -69,7 +69,7 @@ where
                 // primitive data is already suitably laid out in memory; provide it to
                 // onnxruntime as is
                 let tensor_values_ptr: *mut std::ffi::c_void =
-                    array.as_mut_ptr() as *mut std::ffi::c_void;
+                    array.as_mut_ptr().cast::<std::ffi::c_void>();
                 assert_not_null_pointer(tensor_values_ptr, "TensorValues")?;
 
                 unsafe {

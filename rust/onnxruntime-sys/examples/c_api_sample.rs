@@ -5,7 +5,12 @@ use std::os::unix::ffi::OsStrExt;
 #[cfg(target_family = "windows")]
 use std::os::windows::ffi::OsStrExt;
 
-use onnxruntime_sys::*;
+use onnxruntime_sys::{
+    GraphOptimizationLevel, ONNXTensorElementDataType, OrtAllocator, OrtAllocatorType, OrtApi,
+    OrtEnv, OrtGetApiBase, OrtLoggingLevel, OrtMemType, OrtMemoryInfo, OrtRunOptions, OrtSession,
+    OrtSessionOptions, OrtStatus, OrtTensorTypeAndShapeInfo, OrtTypeInfo, OrtValue,
+    ORT_API_VERSION,
+};
 
 // https://github.com/microsoft/onnxruntime/blob/v1.4.0/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp
 
@@ -241,7 +246,7 @@ fn main() {
     let mut input_tensor_ptr: *mut OrtValue = std::ptr::null_mut();
     let input_tensor_ptr_ptr: *mut *mut OrtValue = &mut input_tensor_ptr;
     let input_tensor_values_ptr: *mut std::ffi::c_void =
-        input_tensor_values.as_mut_ptr() as *mut std::ffi::c_void;
+        input_tensor_values.as_mut_ptr().cast::<std::ffi::c_void>();
     assert_ne!(input_tensor_values_ptr, std::ptr::null_mut());
 
     let shape: *const i64 = input_node_dims.as_ptr();
@@ -289,12 +294,12 @@ fn main() {
     let input_node_names_ptr_ptr: *const *const i8 = input_node_names_ptr.as_ptr();
 
     let output_node_names_cstring: Vec<std::ffi::CString> = output_node_names
-        .into_iter()
+        .iter()
         .map(|n| std::ffi::CString::new(n.clone()).unwrap())
         .collect();
     let output_node_names_ptr: Vec<*const i8> = output_node_names_cstring
         .iter()
-        .map(|n| n.as_ptr() as *const i8)
+        .map(|n| n.as_ptr().cast::<i8>())
         .collect();
     let output_node_names_ptr_ptr: *const *const i8 = output_node_names_ptr.as_ptr();
 
@@ -328,14 +333,15 @@ fn main() {
     // Get pointer to output tensor float values
     let mut floatarr: *mut f32 = std::ptr::null_mut();
     let floatarr_ptr: *mut *mut f32 = &mut floatarr;
-    let floatarr_ptr_void: *mut *mut std::ffi::c_void = floatarr_ptr as *mut *mut std::ffi::c_void;
+    let floatarr_ptr_void: *mut *mut std::ffi::c_void =
+        floatarr_ptr.cast::<*mut std::ffi::c_void>();
     let status = unsafe {
         g_ort.as_ref().unwrap().GetTensorMutableData.unwrap()(output_tensor_ptr, floatarr_ptr_void)
     };
     CheckStatus(g_ort, status).unwrap();
     assert_ne!(floatarr, std::ptr::null_mut());
 
-    assert!((unsafe { *floatarr.offset(0) } - 0.000045).abs() < 1e-6);
+    assert!((unsafe { *floatarr.offset(0) } - 0.000_045).abs() < 1e-6);
 
     // score the model, and print scores for first 5 classes
     // NOTE: The C ONNX Runtime allocated the array, we shouldn't drop the vec

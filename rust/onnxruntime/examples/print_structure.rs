@@ -5,8 +5,7 @@ use std::error::Error;
 fn main() -> Result<(), Box<dyn Error>> {
     // provide path to .onnx model on disk
     let path = std::env::args()
-        .skip(1)
-        .next()
+        .nth(1)
         .expect("Must provide an .onnx file as the first arg");
 
     let environment = environment::Environment::builder()

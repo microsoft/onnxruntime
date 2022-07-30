@@ -41,10 +41,13 @@ fn run() -> Result<(), Error> {
         //          curl -LO "https://github.com/onnx/models/raw/main/vision/classification/squeezenet/model/squeezenet1.0-8.onnx"
         .with_model_from_file("squeezenet1.0-8.onnx")?;
 
-    let input0_shape: Vec<usize> = session.inputs[0].dimensions().map(|d| d.unwrap()).collect();
+    let input0_shape: Vec<usize> = session.inputs[0]
+        .dimensions()
+        .map(std::option::Option::unwrap)
+        .collect();
     let output0_shape: Vec<usize> = session.outputs[0]
         .dimensions()
-        .map(|d| d.unwrap())
+        .map(std::option::Option::unwrap)
         .collect();
 
     assert_eq!(input0_shape, [1, 3, 224, 224]);

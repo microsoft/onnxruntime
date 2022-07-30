@@ -334,7 +334,7 @@ pub enum GraphOptimizationLevel {
 
 impl From<GraphOptimizationLevel> for sys::GraphOptimizationLevel {
     fn from(val: GraphOptimizationLevel) -> Self {
-        use GraphOptimizationLevel::*;
+        use GraphOptimizationLevel::{All, Basic, DisableAll, Extended};
         match val {
             DisableAll => sys::GraphOptimizationLevel::ORT_DISABLE_ALL,
             Basic => sys::GraphOptimizationLevel::ORT_ENABLE_BASIC,
@@ -387,7 +387,9 @@ pub enum TensorElementDataType {
 
 impl From<TensorElementDataType> for sys::ONNXTensorElementDataType {
     fn from(val: TensorElementDataType) -> Self {
-        use TensorElementDataType::*;
+        use TensorElementDataType::{
+            Double, Float, Int16, Int32, Int64, Int8, String, Uint16, Uint32, Uint64, Uint8,
+        };
         match val {
             Float => sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
             Uint8 => sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8,
@@ -461,9 +463,9 @@ impl_type_trait!(u64, Uint64);
 
 /// Adapter for common Rust string types to Onnx strings.
 ///
-/// It should be easy to use both `String` and `&str` as [TensorElementDataType::String] data, but
+/// It should be easy to use both `String` and `&str` as [`TensorElementDataType::String`] data, but
 /// we can't define an automatic implementation for anything that implements `AsRef<str>` as it
-/// would conflict with the implementations of [TypeToTensorElementDataType] for primitive numeric
+/// would conflict with the implementations of [`TypeToTensorElementDataType`] for primitive numeric
 /// types (which might implement `AsRef<str>` at some point in the future).
 pub trait Utf8Data {
     /// Returns the utf8 contents.
@@ -505,7 +507,7 @@ pub enum AllocatorType {
 
 impl From<AllocatorType> for sys::OrtAllocatorType {
     fn from(val: AllocatorType) -> Self {
-        use AllocatorType::*;
+        use AllocatorType::{Arena, Device};
         match val {
             // Invalid => sys::OrtAllocatorType::Invalid,
             Device => sys::OrtAllocatorType::OrtDeviceAllocator,
@@ -530,7 +532,7 @@ pub enum MemType {
 
 impl From<MemType> for sys::OrtMemType {
     fn from(val: MemType) -> Self {
-        use MemType::*;
+        use MemType::Default;
         match val {
             // CPUInput => sys::OrtMemType::OrtMemTypeCPUInput,
             // CPUOutput => sys::OrtMemType::OrtMemTypeCPUOutput,

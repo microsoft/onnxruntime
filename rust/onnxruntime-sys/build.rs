@@ -155,7 +155,7 @@ where
 }
 
 fn extract_archive(filename: &Path, output: &Path) {
-    match filename.extension().map(|e| e.to_str()) {
+    match filename.extension().map(std::ffi::OsStr::to_str) {
         Some(Some("zip")) => extract_zip(filename, output),
         Some(Some("tgz")) => extract_tgz(filename, output),
         _ => unimplemented!(),
@@ -317,10 +317,11 @@ impl OnnxPrebuiltArchive for Triplet {
             // onnxruntime-linux-x64-1.11.1.tgz
             // onnxruntime-osx-x86_64-1.11.1.tgz
             // onnxruntime-osx-arm64-1.11.1.tgz
-            (Os::Windows, Architecture::X86, Accelerator::None)
-            | (Os::Windows, Architecture::X86_64, Accelerator::None)
-            | (Os::Windows, Architecture::Arm, Accelerator::None)
-            | (Os::Windows, Architecture::Arm64, Accelerator::None)
+            (
+                Os::Windows,
+                Architecture::X86 | Architecture::X86_64 | Architecture::Arm | Architecture::Arm64,
+                Accelerator::None,
+            )
             | (Os::MacOs, Architecture::Arm64, Accelerator::None)
             | (Os::Linux, Architecture::X86_64, Accelerator::None) => Cow::from(format!(
                 "{}-{}",
@@ -334,13 +335,14 @@ impl OnnxPrebuiltArchive for Triplet {
             )),
             // onnxruntime-win-x64-gpu-1.11.1.zip
             // onnxruntime-linux-x64-gpu-1.11.1.tgz
-            (Os::Linux, Architecture::X86_64, Accelerator::Gpu)
-            | (Os::Windows, Architecture::X86_64, Accelerator::Gpu) => Cow::from(format!(
-                "{}-{}-{}",
-                self.os.as_onnx_str(),
-                self.arch.as_onnx_str(),
-                self.accelerator.as_onnx_str(),
-            )),
+            (Os::Linux | Os::Windows, Architecture::X86_64, Accelerator::Gpu) => {
+                Cow::from(format!(
+                    "{}-{}-{}",
+                    self.os.as_onnx_str(),
+                    self.arch.as_onnx_str(),
+                    self.accelerator.as_onnx_str(),
+                ))
+            }
             _ => {
                 panic!(
                     "Unsupported prebuilt triplet: {:?}, {:?}, {:?}. Please use {}=system and {}=/path/to/onnxruntime",
@@ -411,10 +413,7 @@ fn prepare_libort_dir() -> PathBuf {
     let strategy = env::var(ORT_ENV_STRATEGY);
     println!(
         "strategy: {:?}",
-        strategy
-            .as_ref()
-            .map(String::as_str)
-            .unwrap_or_else(|_| "unknown")
+        strategy.as_ref().map_or_else(|_| "unknown", String::as_str)
     );
     match strategy.as_ref().map(String::as_str) {
         Ok("download") | Err(_) => prepare_libort_dir_prebuilt(),

@@ -97,14 +97,14 @@ where
         let status = unsafe { g_ort().IsTensor.unwrap()(self.tensor_ptr, &mut is_tensor) };
         status_to_result(status).map_err(OrtError::IsTensor)?;
         (is_tensor == 1)
-            .then(|| ())
+            .then_some(())
             .ok_or(OrtError::IsTensorCheck)?;
 
         // Get pointer to output tensor float values
         let mut output_array_ptr: *mut T = std::ptr::null_mut();
         let output_array_ptr_ptr: *mut *mut T = &mut output_array_ptr;
         let output_array_ptr_ptr_void: *mut *mut std::ffi::c_void =
-            output_array_ptr_ptr as *mut *mut std::ffi::c_void;
+            output_array_ptr_ptr.cast::<*mut std::ffi::c_void>();
         let status = unsafe {
             g_ort().GetTensorMutableData.unwrap()(self.tensor_ptr, output_array_ptr_ptr_void)
         };

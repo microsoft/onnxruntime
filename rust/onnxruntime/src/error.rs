@@ -193,13 +193,13 @@ impl From<*const sys::OrtStatus> for OrtStatusWrapper {
 
 pub(crate) fn assert_null_pointer<T>(ptr: *const T, name: &str) -> Result<()> {
     ptr.is_null()
-        .then(|| ())
+        .then_some(())
         .ok_or_else(|| OrtError::PointerShouldBeNull(name.to_owned()))
 }
 
 pub(crate) fn assert_not_null_pointer<T>(ptr: *const T, name: &str) -> Result<()> {
     (!ptr.is_null())
-        .then(|| ())
+        .then_some(())
         .ok_or_else(|| OrtError::PointerShouldBeNull(name.to_owned()))
 }
 
@@ -229,7 +229,7 @@ pub(crate) fn status_to_result(
     status_wrapper.into()
 }
 
-/// A wrapper around a function on OrtApi that maps the status code into [OrtApiError]
+/// A wrapper around a function on `OrtApi` that maps the status code into [`OrtApiError`]
 pub(crate) unsafe fn call_ort<F>(mut f: F) -> std::result::Result<(), OrtApiError>
 where
     F: FnMut(sys::OrtApi) -> *const sys::OrtStatus,

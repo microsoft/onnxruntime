@@ -107,7 +107,7 @@ impl<'a> SessionBuilder<'a> {
         // FIXME: Pre-built binaries use OpenMP, set env variable instead
 
         // We use a u16 in the builder to cover the 16-bits positive values of a i32.
-        let num_threads = num_threads as i32;
+        let num_threads = i32::from(num_threads);
         let status =
             unsafe { g_ort().SetIntraOpNumThreads.unwrap()(self.session_options_ptr, num_threads) };
         status_to_result(status).map_err(OrtError::SessionOptions)?;
@@ -250,7 +250,7 @@ impl<'a> SessionBuilder<'a> {
         let env_ptr: *const sys::OrtEnv = self.env.env_ptr();
 
         let status = unsafe {
-            let model_data = model_bytes.as_ptr() as *const std::ffi::c_void;
+            let model_data = model_bytes.as_ptr().cast::<std::ffi::c_void>();
             let model_data_length = model_bytes.len();
             g_ort().CreateSessionFromArray.unwrap()(
                 env_ptr,
@@ -407,7 +407,7 @@ impl<'a> Session<'a> {
             .collect();
         let output_names_ptr: Vec<*const i8> = output_names_cstring
             .iter()
-            .map(|n| n.as_ptr() as *const i8)
+            .map(|n| n.as_ptr().cast::<i8>())
             .collect();
 
         let mut output_tensor_extractors_ptrs: Vec<*mut sys::OrtValue> =
@@ -581,7 +581,7 @@ unsafe fn get_tensor_dimensions(
     let status = g_ort().GetDimensionsCount.unwrap()(tensor_info_ptr, &mut num_dims);
     status_to_result(status).map_err(OrtError::GetDimensionsCount)?;
     (num_dims != 0)
-        .then(|| ())
+        .then_some(())
         .ok_or(OrtError::InvalidDimensions)?;
 
     let mut node_dims: Vec<i64> = vec![0; num_dims as usize];
@@ -598,7 +598,11 @@ unsafe fn get_tensor_dimensions(
 /// Those functions are only to be used from inside the
 /// `SessionBuilder::with_model_from_file()` method.
 mod dangerous {
-    use super::*;
+    use super::{
+        assert_not_null_pointer, assert_null_pointer, char_p_to_string, g_ort,
+        get_tensor_dimensions, status_to_result, sys, Input, OrtApiError, OrtError, Output, Result,
+        TensorElementDataType,
+    };
 
     pub(super) fn extract_inputs_count(session_ptr: *mut sys::OrtSession) -> Result<usize> {
         let f = g_ort().SessionGetInputCount.unwrap();
@@ -618,7 +622,7 @@ mod dangerous {
         let status = unsafe { f(session_ptr, &mut num_nodes) };
         status_to_result(status).map_err(OrtError::InOutCount)?;
         assert_null_pointer(status, "SessionStatus")?;
-        (num_nodes != 0).then(|| ()).ok_or_else(|| {
+        (num_nodes != 0).then_some(()).ok_or_else(|| {
             OrtError::InOutCount(OrtApiError::Msg("No nodes in model".to_owned()))
         })?;
         Ok(num_nodes)
@@ -722,7 +726,7 @@ mod dangerous {
             unsafe { g_ort().GetTensorElementType.unwrap()(tensor_info_ptr, &mut type_sys) };
         status_to_result(status).map_err(OrtError::TensorElementType)?;
         (type_sys != sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED)
-            .then(|| ())
+            .then_some(())
             .ok_or(OrtError::UndefinedTensorElementType)?;
         // This transmute should be safe since its value is read from GetTensorElementType which we must trust.
         let io_type: TensorElementDataType = unsafe { std::mem::transmute(type_sys) };
