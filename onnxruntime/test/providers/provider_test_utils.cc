@@ -1028,6 +1028,10 @@ void OpTester::Run(
 
     if (execution_providers) {
       for (auto& entry : *execution_providers) {
+        // Be noted, entry in execution providers passed in OpTester will be std::moved in the first OpTester::Run(),
+        // To make the error more obvious to debug (instead of a segment fault), we do check explicitly here.
+        ASSERT_TRUE(entry) << "Execution provider entry invalid.";
+
         if (entry->Type() == kDmlExecutionProvider) {
           so.enable_mem_pattern = false;
           so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
