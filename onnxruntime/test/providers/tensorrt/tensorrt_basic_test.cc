@@ -391,7 +391,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
    *
    * Note: Cache won't be saved to file until destructor of inference session is called,
    * to be more specific, cache is saved at FunctionKernel's destructor (the release_state_func will be called).
-   * At this point, all the cache are saved becasue inference run scope ends.
+   * At this point, all the cache are saved because inference run scope ends.
    *
    */
   if (cache_type.compare("engine") == 0) {
@@ -519,7 +519,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
      *
      * Note: Cache won't be saved to file until destructor of inference session is called,
      * to be more specific, cache is saved at FunctionKernel's destructor (the release_state_func will be called).
-     * At this point, all the cache are saved becasue inference run scope ends.
+     * At this point, all the cache are saved because inference run scope ends.
      *
      */
     if (cache_type.compare("engine") == 0) {

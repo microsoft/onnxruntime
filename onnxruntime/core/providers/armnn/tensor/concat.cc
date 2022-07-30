@@ -106,7 +106,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
     layer->GetOutputSlot(0).Connect(OutputLayer->GetInputSlot(0));
     layer->GetOutputSlot(0).SetTensorInfo(armnn::TensorInfo(mergeDims, armnn::DataType::Float32));
 
-    // Optimise ArmNN network
+    // Optimize ArmNN network
     armnn::IOptimizedNetworkPtr optNet = armnn::Optimize(*myNetwork, {armnn::Compute::CpuAcc}, Concat::run->GetDeviceSpec());
 
     if (optNet == nullptr) {
