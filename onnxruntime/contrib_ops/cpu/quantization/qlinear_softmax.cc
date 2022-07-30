@@ -23,7 +23,7 @@ constexpr int OPSET13 = 13;
 
 namespace {
 
-void QlinearBuildLookupTableUint32(uint32_t* table,
+void QlinearBuildLookupTableUint32(gsl::span<uint32_t> table,
                                    const float x_scale,
                                    size_t reduce_len, bool is_signed) {
   const double qscale =
@@ -52,7 +52,7 @@ void BuildLookupTableIfFixed(const OpKernelInfo& info, std::vector<uint32_t>& fi
   if (is_fixed_parameters) {
     fixed_lookup_table.resize(256);
     const float X_scale = *(tensor_x_scale->Data<float>());
-    QlinearBuildLookupTableUint32(fixed_lookup_table.data(), X_scale, reduce_len, is_signed);
+    QlinearBuildLookupTableUint32(fixed_lookup_table, X_scale, reduce_len, is_signed);
   }
 }
 }  // namespace
@@ -263,7 +263,7 @@ gsl::span<const uint32_t> QLinearSoftmax::GetLookupTable(OpKernelContext* contex
   if (fixed_lookup_table_.size() == 0) {
     lookup_table = lookup_table_span;
     const float X_scale = *(context->Input<Tensor>(1)->Data<float>());
-    QlinearBuildLookupTableUint32(lookup_table_span.data(), X_scale, reduce_len, is_signed_);
+    QlinearBuildLookupTableUint32(lookup_table_span, X_scale, reduce_len, is_signed_);
   }
   return lookup_table;
 }
