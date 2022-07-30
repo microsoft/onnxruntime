@@ -28,7 +28,7 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(expected_dims);
   ASSERT_EQ(expected_shape, rtensor.Shape());
-  const std::vector<T> found(rtensor.template Data<T>(), rtensor.template Data<T>() + expected_values.size());
+  const std::vector<T> found(rtensor.Data<T>(), rtensor.Data<T>() + expected_values.size());
   ASSERT_EQ(expected_values, found);
 }
 
@@ -388,12 +388,12 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
 
 
   /* Validate engine cache counts and engine profile content after first inference run.
-   *  
+   *
    * Note: Cache won't be saved to file until destructor of inference session is called,
    * to be more specific, cache is saved at FunctionKernel's destructor (the release_state_func will be called).
    * At this point, all the cache are saved becasue inference run scope ends.
-   * 
-   */ 
+   *
+   */
   if (cache_type.compare("engine") == 0) {
     ASSERT_TRUE(IsCacheExistedByType("./", ".engine"));
 
@@ -516,11 +516,11 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
     }  // end of second/third inference run scope
 
     /* Validate engine cache counts and engine profile content after second/third inference run.
-     *  
+     *
      * Note: Cache won't be saved to file until destructor of inference session is called,
      * to be more specific, cache is saved at FunctionKernel's destructor (the release_state_func will be called).
      * At this point, all the cache are saved becasue inference run scope ends.
-     * 
+     *
      */
     if (cache_type.compare("engine") == 0) {
       ASSERT_TRUE(IsCacheExistedByType("./", ".engine"));
