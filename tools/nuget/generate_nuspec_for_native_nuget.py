@@ -208,7 +208,7 @@ def generate_dependencies(xml_text, package_name, version, dependency_id, depend
 
         xml_text.append("</dependencies>")
     else:
-        include_dml = package_name == "Microsoft.ML.OnnxRuntime.DirectML.Preview"
+        include_dml = package_name == "Microsoft.ML.OnnxRuntime.DirectML"
 
         xml_text.append("<dependencies>")
         # Support .Net Core

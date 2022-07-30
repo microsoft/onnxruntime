@@ -20,6 +20,7 @@
 #include "core/platform/path_lib.h"
 #include "orttraining/core/framework/protobuf_message_sequence.h"
 #include "core/util/protobuf_parsing_utils.h"
+#include "orttraining/core/framework/checkpoint_common.h"
 
 namespace onnxruntime {
 namespace training {
@@ -91,28 +92,6 @@ Status SaveRuntimeTensor(
 
   tensor_proto = std::move(saved_tensor_proto);
   return Status::OK();
-}
-
-// opens file descriptor and calls use_fn
-//   use_fn should have this signature: Status use_fn(int file_descriptor)
-template <typename TUseFileFn>
-Status WithOpenFile(const PathString& path, bool readonly, TUseFileFn use_fn) {
-  int fd;
-  if (readonly) {
-    ORT_RETURN_IF_ERROR(Env::Default().FileOpenRd(path, fd));
-  } else {
-    ORT_RETURN_IF_ERROR(Env::Default().FileOpenWr(path, fd));
-  }
-
-  Status use_fn_status{};
-  try {
-    use_fn_status = use_fn(fd);
-  } catch (std::exception& e) {
-    use_fn_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, e.what());
-  }
-
-  Status close_status = Env::Default().FileClose(fd);
-  return !use_fn_status.IsOK() ? use_fn_status : close_status;
 }
 
 std::vector<std::string> GetOrderedOrtValueNames(const NameMLValMap& name_to_value) {

@@ -388,4 +388,7 @@ ORT_API_STATUS_IMPL(CopyKernelInfo, _In_ const OrtKernelInfo* info, _Outptr_ Ort
 
 ORT_API(void, ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo* info_copy);
 
+_Check_return_ _Ret_maybenull_ const OrtTrainingApi* ORT_API_CALL GetTrainingApi(uint32_t version)
+    NO_EXCEPTION ORT_MUST_USE_RESULT;
+
 }  // namespace OrtApis

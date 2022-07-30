@@ -1,16 +1,18 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# Import external libraries.
-import onnxruntime
+from distutils.version import LooseVersion
+
 import pytest
 import torch
-from torch.nn.parameter import Parameter
-from distutils.version import LooseVersion
 
 # Import ORT modules.
 from _test_helpers import *
-from onnxruntime.training.ortmodule import ORTModule
+from torch.nn.parameter import Parameter
+
+# Import external libraries.
+import onnxruntime
+from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule
 
 torch.manual_seed(1)
 onnxruntime.set_seed(1)
@@ -112,7 +114,7 @@ def test_GeLU_custom_func_rets_not_as_module_output():
             # NOT as module outputs (which are consumed by subsquent computations).
             # This aims to trigger a GC for "out", saying, out is released,
             # the underlying std::shared<PyNode> still have other references.
-            # Otherwise, a segementfault will be triggered.
+            # Otherwise, a segment fault will be triggered.
             out = out * 9
             return out
 
@@ -408,12 +410,14 @@ def test_InplaceUpdateInputNotAsOutputNotRequireGrad():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    # Without mark_ditry, the inner computation graph is extracted into another subgraph, which is a duplicated computation with the PythonOp.
-    # So for the weights that are used twice BUT SHOULD only used once, the gradients are almost 2x than PyTorch's grad, this is the reason we
-    # ignore the gradient compare here.
+    # Without mark_ditry, the inner computation graph is extracted into another subgraph,
+    # which is a duplicated computation with the PythonOp.
+    # So for the weights that are used twice BUT SHOULD only used once, the gradients are almost 2x than PyTorch's grad,
+    # this is the reason we ignore the gradient compare here.
     run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
 
 
+@pytest.mark.skip(reason="disable due to exporter bug https://github.com/microsoft/onnx-converters-private/issues/37.")
 def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
     class InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction(torch.autograd.Function):
         @staticmethod
@@ -567,6 +571,7 @@ def test_InplaceUpdateInputNotAsOutputRequireGrad():
 ##########################################################################################
 
 
+@pytest.mark.skip(reason="disable due to exporter bug https://github.com/microsoft/onnx-converters-private/issues/37.")
 def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
     class InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction(torch.autograd.Function):
         @staticmethod
@@ -1040,7 +1045,7 @@ def test_NonDefaultStreamInplaceUpdate_InForwardFunction():
 
 def test_non_differentiable_autograd_function():
     class Bar(torch.autograd.Function):
-        # A non-differentiable autograd Function whose forard output
+        # A non-differentiable autograd Function whose forward output
         # doesn't have grad_fn attribute.
         @staticmethod
         def forward(ctx, x):
@@ -1071,6 +1076,9 @@ def test_non_differentiable_autograd_function():
         print("Ref:")
         print(y_ref)
 
+        from onnxruntime.training.ortmodule._custom_autograd_function import enable_custom_autograd_support
+
+        enable_custom_autograd_support()
         m = ORTModule(m)
 
         # Inferene mode.
