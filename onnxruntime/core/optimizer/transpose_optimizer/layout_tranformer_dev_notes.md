@@ -39,7 +39,7 @@ For details please refer to [PR 10371](https://github.com/microsoft/onnxruntime/
 Basic steps are as follows:
 1. Implement [GetPreferredLayout](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/include/onnxruntime/core/framework/execution_provider.h#L285) method for the EP which overrides the base class method.
 2. Remove any existing logic in the EP to convert layouts
-3. Add a validation method similar to IsOpInRequiredLayout to validate the ops are in required layout.
+3. Add a validation method similar to [IsOpInRequiredLayout](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_builder.cc#L502) to validate the ops are in required layout.
 4. Add tests. The testing framework already includes [InternalTestingExecutionProvider](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/test/providers/internal_testing/internal_testing_execution_provider.h#L11) which can be leveraged for such tests.
 
 ## Making Updates to Transformer and Testing
