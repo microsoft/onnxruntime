@@ -13,23 +13,23 @@ Foreach
   1. call GetCapability
   2. IF EP.DesiredFormat == NHWC
     2.1. Invoke Layout Transformer
-    2.2 If graph is modified -> call GetCapability (layout tranformer can add new nodes to the graph)
+    2.2 If graph is modified -> call GetCapability (layout transformer can add new nodes to the graph)
   3 Compile
 ```
 
 Layout Transformer does multiple top to bottom passes on the graph in order to produce the most efficient graph with as little transpose ops as possible.
 
-*IMPORTANT NOTE* After layout transformation is done, graph resolve cannot be called for the graph. This is because graph resolve validates the shape of the nodes by calling ONNX TypeAndShapeInferenceFunction, these type and shape inf functions can ONLY infer shapes for NCHW format values. Therefore, when passed a graph with NHWC nodes the infered shape validation fails and hence graph resolve throws. This is the very reason layout transformation is *NOT ENABLED* when Graph Partitioner Mode is kAssignOnly.
+*IMPORTANT NOTE* After layout transformation is done, graph resolve cannot be called for the graph. This is because graph resolve validates the shape of the nodes by calling ONNX TypeAndShapeInferenceFunction, these type and shape inf functions can ONLY infer shapes for NCHW format values. Therefore, when passed a graph with NHWC nodes the inferred shape validation fails and hence graph resolve throws. This is the very reason layout transformation is *NOT ENABLED* when Graph Partitioner Mode is kAssignOnly.
 
 ### Convert layout for applicable nodes
-[This is the first pass](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/optimizer_api_impl.cc#L815). Layout transformer simply inserts transpose nodes before and after every layout sensitive ops that are claimed by the EP. After this pass, the graph is correct but extremly inefficient.
+[This is the first pass](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/optimizer_api_impl.cc#L815). Layout transformer simply inserts transpose nodes before and after every layout sensitive ops that are claimed by the EP. After this pass, the graph is correct but extremely inefficient.
 
 ### Optimize the converted graph
-After the first pass is complete, layout transformer calls the transpose optimizer to remove all the cancelling as well as redundant transposes from the graph. The following passes happen as part of transpose optimization.
+After the first pass is complete, layout transformer calls the transpose optimizer to remove all the canceling as well as redundant transposes from the graph. The following passes happen as part of transpose optimization.
 
 1. Iterate over sorted nodes in reverse order to find which outputs have paths through supported ops to  transpose nodes. Transposes are pulled pushed towards these outputs. Graph is not altered in this pass. [Code](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc#L1875)
 
-2. Push transposes through applicable nodes and remove cancelling transposes. At the end of this pass the model will be efficient and will only contain the transpose ops which are necessary for correctness. [Code](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc#L1905)
+2. Push transposes through applicable nodes and remove canceling transposes. At the end of this pass the model will be efficient and will only contain the transpose ops which are necessary for correctness. [Code](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc#L1905)
 
 3. This is the final optimization pass. In this pass, any transpose node (not part of a QDQ group) if succeeds a DQ node, is moved above the DQ node. In QDQ models this helps to preserve the QDQ node group when a Transpose was pushed across a DQ into an existing QDQ node group. In all other scenarios this is beneficial as well because moving transpose above DQ node is more efficient as transpose node now handles less data. [Code](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc#L1956)
 
@@ -48,6 +48,6 @@ Apart from bug fixes, updates to layout sensitive op schema as well as addition 
 These are some places which may need changes:
 1. Updates to [op specific handlers](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/core/optimizer/transpose_optimizer/transpose_optimizer.cc#L1620) in transpose optimizer
 2. Updates to layout sensitive op list - [GetLayoutSensitiveOps](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc#L2020) and [GetORTLayoutSensitiveOps](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/optimizer_api_impl.cc#L804)
-3. Updates in [TransforLayoutForEP](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/optimizer_api_impl.cc#L815) method which relies on schema for deciding which inputs and outputs need to be wrapped with transpose nodes.
+3. Updates in [TransformLayoutForEP](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/optimizer_api_impl.cc#L815) method which relies on schema for deciding which inputs and outputs need to be wrapped with transpose nodes.
 
 Testing framework provides [InternalTestingExecutionProvider](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/test/providers/internal_testing/internal_testing_execution_provider.h#L11). This can be leveraged to test the changes being introduced.
