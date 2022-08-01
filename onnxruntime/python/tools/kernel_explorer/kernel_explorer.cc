@@ -3,16 +3,22 @@
 
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
-#include "device_array.h"
-#include "kernels/vector_add.h"
-#include "kernels/fast_gelu.h"
+#include "python/tools/kernel_explorer/device_array.h"
+#include "python/tools/kernel_explorer/kernels/vector_add.h"
+#include "python/tools/kernel_explorer/kernels/fast_gelu.h"
+#include "python/tools/kernel_explorer/kernels/gemm.h"
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(kernel_explorer, m) {
+namespace onnxruntime {
+
+PYBIND11_MODULE(_kernel_explorer, m) {
   py::class_<DeviceArray>(m, "DeviceArray")
-    .def(py::init<py::array>())
-    .def("UpdateHostNumpyArray", &DeviceArray::UpdateHostNumpyArray);
+      .def(py::init<py::array>())
+      .def("UpdateHostNumpyArray", &DeviceArray::UpdateHostNumpyArray);
   InitVectorAdd(m);
   InitFastGelu(m);
+  InitGemm(m);
 }
+
+}  // namespace onnxruntime

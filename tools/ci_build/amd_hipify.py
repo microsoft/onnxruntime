@@ -29,7 +29,11 @@ contrib_ops_excluded_files = [
     "bert/fast_gelu_impl.h",
     "bert/fast_gelu.cc",
     "bert/fast_gelu.h",
-    # 'bert/layer_norm.cuh',
+    "bert/layer_norm.cuh",
+    "bert/skip_layer_norm.cc",
+    "bert/skip_layer_norm.h",
+    "bert/skip_layer_norm_impl.cu",
+    "bert/skip_layer_norm_impl.h",
     "bert/longformer_attention.cc",
     "bert/longformer_attention.h",
     "bert/longformer_attention_softmax.cu",
@@ -39,6 +43,8 @@ contrib_ops_excluded_files = [
     "bert/longformer_global_impl.cu",
     "bert/longformer_global_impl.h",
     "bert/transformer_cuda_common.h",
+    "bert/transformer_common.h",
+    "bert/transformer_common.cc",
     "math/bias_softmax.cc",
     "math/bias_softmax.h",
     "math/bias_softmax_impl.cu",
@@ -67,10 +73,12 @@ contrib_ops_excluded_files = [
     "tensor/image_scaler_impl.h",
     "transformers/beam_search.cc",
     "transformers/beam_search.h",
-    "transformers/beam_search_device_helper.cc",
-    "transformers/beam_search_device_helper.h",
+    "transformers/generation_device_helper.cc",
+    "transformers/generation_device_helper.h",
     "transformers/beam_search_impl.cu",
     "transformers/beam_search_impl.h",
+    "transformers/greedy_search.cc",
+    "transformers/greedy_search.h",
     "transformers/dump_cuda_tensor.cc",
     "transformers/dump_cuda_tensor.h",
     "conv_transpose_with_dynamic_pads.cc",
@@ -98,10 +106,6 @@ provider_excluded_files = [
     "math/einsum.h",
     "math/gemm.cc",
     "math/matmul.cc",
-    "math/matmul_integer.cc",
-    "math/matmul_integer.cu",
-    "math/matmul_integer.cuh",
-    "math/matmul_integer.h",
     "math/softmax_impl.cu",
     "math/softmax_warpwise_impl.cuh",
     "math/softmax.cc",
@@ -122,7 +126,6 @@ provider_excluded_files = [
     "nn/pool.cc",
     "nn/pool.h",
     "reduction/reduction_ops.cc",
-    "reduction/reduction_ops.h",
     "rnn/cudnn_rnn_base.cc",
     "rnn/cudnn_rnn_base.h",
     "rnn/gru.cc",
@@ -135,7 +138,6 @@ provider_excluded_files = [
     "rnn/rnn_impl.h",
     "shared_inc/cuda_call.h",
     "shared_inc/fpgeneric.h",
-    "shared_inc/integer_gemm.h",
     "cuda_allocator.cc",
     "cuda_allocator.h",
     "cuda_call.cc",
@@ -233,6 +235,7 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace("hipblasDestroy", "rocblas_destroy_handle")
     s = s.replace("hipblasSetStream", "rocblas_set_stream")
     s = s.replace("HIPBLAS_OP_T", "rocblas_operation_transpose")
+    s = s.replace("HIPBLAS_OP_N", "rocblas_operation_none")
 
     s = s.replace("RegisterCudaContribKernels", "RegisterRocmContribKernels")
     s = s.replace("cudaEvent", "hipEvent")

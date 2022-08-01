@@ -92,17 +92,17 @@ Status Conv<T>::UpdateState(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
   const auto x_dims = x_shape.AsShapeVector();
-  s_.x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
+  s_.x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   s_.element_size = X->DataType()->Size();
   //set W
   const Tensor* W = context->Input<Tensor>(1);
   const TensorShape& w_shape = W->Shape();
   auto w_dims = w_shape.AsShapeVector();
-  s_.w_data = reinterpret_cast<const CudaT*>(W->template Data<T>());
+  s_.w_data = reinterpret_cast<const CudaT*>(W->Data<T>());
   //set B
   if (context->InputCount() >= 3) {
     const Tensor* B = context->Input<Tensor>(2);
-    s_.b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
+    s_.b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
   } else {
     s_.b_data = nullptr;
   }
@@ -181,7 +181,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context) const {
       s_.y_data = reinterpret_cast<CudaT*>(s_.memory_for_cudnn_conv_results.get());
     } else {
       // No post slicing needed. Fill the output tensor's buffer directly.
-      s_.y_data = reinterpret_cast<CudaT*>(s_.Y->template MutableData<T>());
+      s_.y_data = reinterpret_cast<CudaT*>(s_.Y->MutableData<T>());
     }
 
     const CUDAExecutionProvider* cuda_ep =
@@ -334,7 +334,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context) const {
       s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(s_.y_dims_with_adjusted_pads).Size() * s_.element_size);
       s_.y_data = reinterpret_cast<CudaT*>(s_.memory_for_cudnn_conv_results.get());
     } else {
-      s_.y_data = reinterpret_cast<CudaT*>(s_.Y->template MutableData<T>());
+      s_.y_data = reinterpret_cast<CudaT*>(s_.Y->MutableData<T>());
     }
   }
   return Status::OK();

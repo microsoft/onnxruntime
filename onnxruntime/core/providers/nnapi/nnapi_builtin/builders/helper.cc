@@ -1,21 +1,23 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
+
+#include <functional>
 #include <iostream>
+#include <numeric>
 #include <string>
 #include <vector>
 
-#include "helper.h"
-
-#include "core/common/safeint.h"
 #include "core/common/logging/logging.h"
+#include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/graph/graph.h"
 #include "core/graph/graph_viewer.h"
+#include "core/graph/graph.h"
 #include "core/providers/common.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
-#include "op_support_checker.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -375,6 +377,13 @@ std::string Shape2String(const std::vector<uint32_t>& shape) {
 
   os << "]";
   return os.str();
+}
+
+uint32_t ShapeSize(const Shape& shape, size_t begin_idx, size_t end_idx) {
+  ORT_ENFORCE(begin_idx <= end_idx && begin_idx <= shape.size(),
+              "Invalid indices: begin [", begin_idx, "], end [", end_idx, "], shape size [", shape.size(), "]");
+  return std::accumulate(shape.begin() + begin_idx, shape.begin() + end_idx,
+                         SafeInt<uint32_t>{1}, std::multiplies<SafeInt<uint32_t>>{});
 }
 
 bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
