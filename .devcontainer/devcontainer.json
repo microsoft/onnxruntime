@@ -33,7 +33,7 @@
 	// "forwardPorts": [],
 
 	// Uncomment the next line to run commands after the container is created - for example installing curl.
-	// "postCreateCommand": "apt-get update && apt-get install -y curl",
+	"postCreateCommand": "cd .. && bash onnxruntime/.devcontainer/clone-pytorch.sh",
 
 	// Uncomment when using a ptrace-based debugger like C++, Go, and Rust
 	"runArgs": [ "--cap-add=SYS_PTRACE", "--security-opt", "seccomp=unconfined" ],
