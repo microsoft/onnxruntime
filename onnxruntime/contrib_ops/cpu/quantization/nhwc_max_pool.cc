@@ -79,8 +79,8 @@ Status NhwcMaxPool<T8Bits>::Compute(OpKernelContext* context) const {
   BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
   std::vector<T8Bits> padding_data(static_cast<size_t>(C), std::numeric_limits<T8Bits>::lowest());
 
-  const auto* Xdata = X->template Data<T8Bits>();
-  auto* Ydata = Y->template MutableData<T8Bits>();
+  const auto* Xdata = X->Data<T8Bits>();
+  auto* Ydata = Y->MutableData<T8Bits>();
 
   for (int64_t image_id = 0; image_id < N; ++image_id) {
     for (int64_t output_start = 0; output_start < output_image_size;) {
