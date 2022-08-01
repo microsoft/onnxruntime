@@ -17,11 +17,11 @@ class QLinearSoftmax final : public OpKernel {
 
  private:
   gsl::span<const uint32_t> GetLookupTable(OpKernelContext* context, gsl::span<uint32_t> lookup_table_span, size_t reduce_len) const;
-  Status ComputeImpl(OpKernelContext* context, const Tensor& input, Tensor& output,
-                     concurrency::ThreadPool* thread_pool, gsl::span<const uint32_t> lookup_table) const;
+
+  Status ComputeInternal(OpKernelContext* context, const Tensor& input, Tensor& output, gsl::span<const uint32_t> lookup_table, int axis, concurrency::ThreadPool* thread_pool) const;
 
   Status ComputeImplOpset13(OpKernelContext* context, const Tensor& input, Tensor& output,
-                            concurrency::ThreadPool* thread_pool, gsl::span<const uint32_t> lookup_table) const;
+                            gsl::span<const uint32_t> lookup_table, concurrency::ThreadPool* thread_pool) const;
 
  private:
   std::vector<uint32_t> fixed_lookup_table_;
