@@ -75,6 +75,7 @@ void SyntheticSampleBatch::AddFloatInput(const std::vector<int64_t>& shape) {
   RandomFloats(values);
 
   auto& data = data_vector_.back().GetData();
+  data.reserve(values.size());
   for (size_t i = 0; i < values.size(); ++i) {
     data[i] = values[i];
   }
