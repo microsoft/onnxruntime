@@ -305,42 +305,37 @@ Status QLinearSoftmax::ComputeImplOpset13(OpKernelContext* context,
 
   bool is_transpose_required = (size_t(axis_) != (rank - 1));
   Tensor transposed_input;
-  std::vector<int64_t> transposed_input_dims;
   Tensor intermediate_output;  // output that the softmax implementation will write into while using transposed input
   std::vector<size_t> permutation(rank);
 
   if (is_transpose_required) {
     AllocatorPtr alloc;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-
     std::iota(std::begin(permutation), std::end(permutation), 0);
 
     // swap the innermost dim with the dim corresponding to axis
     permutation[axis_] = rank - 1;
     permutation[rank - 1] = axis_;
-
+    std::vector<int64_t> transposed_input_dims;
     transposed_input_dims.reserve(rank);
     for (auto e : permutation) {
       transposed_input_dims.push_back(X_shape[e]);
     }
 
     // Allocate a temporary tensor to hold transposed input
-    Tensor temp_input(input.DataType(), TensorShape(transposed_input_dims), alloc);
-
+    transposed_input = Tensor(input.DataType(), TensorShape(transposed_input_dims), alloc);
     // Perform the transpose
-    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(permutation, input, temp_input));
-    transposed_input = std::move(temp_input);
-
+    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(permutation, input, transposed_input));
     // Allocate memory for the intermediate output
     intermediate_output = Tensor(output.DataType(), TensorShape(transposed_input_dims), alloc);
   }
 
   common::Status status;
 
-  auto& input_tensor = is_transpose_required ? transposed_input : input;
+  const auto& input_tensor = is_transpose_required ? transposed_input : input;
   auto& output_tensor = is_transpose_required ? intermediate_output : output;
 
-  ORT_RETURN_IF_ERROR(ComputeInternal(context, input_tensor, output_tensor, lookup_table, rank - 1, thread_pool));
+  ORT_RETURN_IF_ERROR(ComputeInternal(context, input_tensor, output_tensor, lookup_table, int(rank - 1), thread_pool));
 
   if (is_transpose_required) {
     // Perform the transpose to get the axes back to the original ordering
