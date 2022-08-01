@@ -1745,7 +1745,7 @@ class PlannerImpl {
     plan_.node_release_list.resize(graph_viewer_.MaxNodeIndex() + 1);
     for (size_t i = 0; i < value_consumers.size(); ++i) {
       if (!value_consumers[i].empty()) {
-        plan_.release_actions.push_back(SequentialExecutionPlan::ReleaseAction{i, 0});  // TODO: narrowing conversion
+        plan_.release_actions.push_back(SequentialExecutionPlan::ReleaseAction{i, 0});
         auto release_action_idx = plan_.release_actions.size() - 1;
         // check whether we can static determine where to release.
         // TODO: here we use a temporary simple solution is only static release when all the consumers are on the same stream
