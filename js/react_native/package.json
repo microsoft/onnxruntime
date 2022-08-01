@@ -38,7 +38,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "source": "lib/index",
-  "version": "1.12.0",
+  "version": "1.12.1",
   "main": "dist/commonjs/index",
   "homepage": "https://github.com/Microsoft/onnxruntime/js/react_native#readme",
   "files": [
