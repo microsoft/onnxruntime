@@ -49,18 +49,18 @@ CheckpointProperty::CheckpointProperty(const ONNX_NAMESPACE::TensorProto& tensor
   }
 }
 
-ONNX_NAMESPACE::TensorProto CheckpointProperty::ToTensorProto() {
+ONNX_NAMESPACE::TensorProto CheckpointProperty::ToTensorProto() const {
   onnx::TensorProto t_proto;
   if (std::holds_alternative<float>(prop_value_)) {
-    float* fval = std::get_if<float>(&prop_value_);
+    const float* fval = std::get_if<float>(&prop_value_);
     ORT_ENFORCE(fval, "Fail to parse the property value using float type.");
     t_proto = ONNX_NAMESPACE::ToTensor<float>(*fval);
   } else if (std::holds_alternative<int64_t>(prop_value_)) {
-    int64_t* ival = std::get_if<int64_t>(&prop_value_);
+    const int64_t* ival = std::get_if<int64_t>(&prop_value_);
     ORT_ENFORCE(ival, "Fail to parse the property value using int64_t type.");
     t_proto = ONNX_NAMESPACE::ToTensor<int64_t>(*ival);
   } else if (std::holds_alternative<std::string>(prop_value_)) {
-    std::string* sval = std::get_if<std::string>(&prop_value_);
+    const std::string* sval = std::get_if<std::string>(&prop_value_);
     ORT_ENFORCE(sval, "Fail to parse the property value using std::string type.");
     t_proto = ONNX_NAMESPACE::ToTensor<std::string>(*sval);
   } else {
@@ -79,7 +79,7 @@ void PropertyBag::AddProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
     ORT_THROW("Failed to add property from tensorproto: float, int64_t and std::string data types supported only.");
   }
 
-  named_properties_.insert({tensor_proto.name(), std::make_shared<CheckpointProperty>(tensor_proto)});
+  named_properties_.insert({tensor_proto.name(), CheckpointProperty(tensor_proto)});
 }
 
 }  // namespace api

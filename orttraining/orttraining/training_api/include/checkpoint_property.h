@@ -25,7 +25,7 @@ struct CheckpointProperty {
       : prop_name_(prop_name), prop_value_(prop_value) {
   }
 
-  ONNX_NAMESPACE::TensorProto ToTensorProto();
+  ONNX_NAMESPACE::TensorProto ToTensorProto() const;
 
   std::string GetName() const {
     return prop_name_;
@@ -52,7 +52,7 @@ struct PropertyBag {
     ORT_ENFORCE(named_properties_.find(name) == named_properties_.end(),
                 "Duplicated property named ", name);
 
-    named_properties_.insert({name, std::make_shared<CheckpointProperty>(name, val)});
+    named_properties_.insert({name, CheckpointProperty(name, val)});
   }
 
   void AddProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto);
@@ -62,7 +62,7 @@ struct PropertyBag {
     auto it = named_properties_.find(name);
     ORT_ENFORCE(it != named_properties_.end(), "No property named ", name);
 
-    CheckPointPropertyDataType cloned_val = it->second->GetData();
+    CheckPointPropertyDataType cloned_val = it->second.GetData();
     T* tval = std::get_if<T>(&cloned_val);
     ORT_ENFORCE(tval, "Fail to parse the property value using specified type.");
     return *tval;
@@ -70,7 +70,7 @@ struct PropertyBag {
 
   void ToTensorProtos(std::vector<ONNX_NAMESPACE::TensorProto>& properties_tensor_protos) const {
     for (auto it = named_properties_.begin(); it != named_properties_.end(); ++it) {
-      properties_tensor_protos.emplace_back((it->second)->ToTensorProto());
+      properties_tensor_protos.emplace_back((it->second).ToTensorProto());
     }
   }
 
@@ -88,7 +88,7 @@ struct PropertyBag {
     return std::find(supported_data_types.begin(), supported_data_types.end(), data_type) != supported_data_types.end();
   }
 
-  std::unordered_map<std::string, std::shared_ptr<CheckpointProperty>> named_properties_;
+  std::unordered_map<std::string, CheckpointProperty> named_properties_;
 };
 
 }  // namespace api

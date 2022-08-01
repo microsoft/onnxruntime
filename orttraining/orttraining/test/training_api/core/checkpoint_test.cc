@@ -313,15 +313,15 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
 
   float f_data = 0.5f;
   std::string f_property_name("float_number");
-  property_bag.AddProperty<float>(f_property_name, f_data);
+  property_bag.AddProperty(f_property_name, f_data);
 
   int64_t i_data = 400;
   std::string i_property_name("dataset_epoch_index");
-  property_bag.AddProperty<int64_t>(i_property_name, i_data);
+  property_bag.AddProperty(i_property_name, i_data);
 
   std::string s_data("/data/path/train.bin");
   std::string s_property_name("train_data_path");
-  property_bag.AddProperty<std::string>(s_property_name, s_data);
+  property_bag.AddProperty(s_property_name, s_data);
 
   // Remove the tempoprary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
