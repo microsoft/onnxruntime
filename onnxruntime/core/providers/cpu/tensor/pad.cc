@@ -494,7 +494,7 @@ Status Pad::Compute(OpKernelContext* ctx) const {
                 "Pads tensor should be a 1D tensor of shape [2 * input_rank] "
                 "or a 2D tensor of shape [1, 2 * input_rank]");
 
-    const int64_t* pads_tensor_raw_data = pads_tensor.template Data<int64_t>();
+    const int64_t* pads_tensor_raw_data = pads_tensor.Data<int64_t>();
     size_t pads_size = static_cast<size_t>(pads_tensor.Shape().Size());
     ORT_ENFORCE(pads_size == 2 * data_rank,
                 "Pads tensor size should be equal to twice the input dimension count ");
