@@ -34,9 +34,13 @@ target_link_libraries(kernel_explorer
 target_compile_definitions(kernel_explorer
   PUBLIC ROCM_USE_FLOAT16
   PRIVATE $<TARGET_PROPERTY:onnxruntime_pybind11_state,COMPILE_DEFINITIONS>)
+
+# handle kernel_explorer sources as hip language
 target_compile_options(kernel_explorer PRIVATE "-xhip")
 # TODO: use predefined AMDGPU_TARGETS
 target_compile_options(kernel_explorer PRIVATE "--offload-arch=gfx906" "--offload-arch=gfx908" "--offload-arch=gfx90a")
+# https://github.com/ROCm-Developer-Tools/HIP/blob/4514f350849b1090954295f8f87a5f8d78bd781b/hip-lang-config.cmake.in
+target_link_libraries(kernel_explorer PRIVATE ${CLANGRT_BUILTINS})
 
 add_dependencies(kernel_explorer onnxruntime_pybind11_state)
 

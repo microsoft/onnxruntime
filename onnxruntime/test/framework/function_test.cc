@@ -5,6 +5,7 @@
 
 #include "onnx/defs/parser.h"
 
+#include "core/common/span_utils.h"
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
@@ -12,6 +13,7 @@
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+
 
 // Unit tests to check the implementation of functions, model-local functions,
 // function-inlining etc.
@@ -56,14 +58,14 @@ static void Check(const char* source,
 
   std::vector<OrtValue> fetches;
 
-  status = session_object.Run(run_options, feeds, {output_name}, &fetches);
+  status = session_object.Run(run_options, feeds, AsSpan({std::string(output_name)}), &fetches);
   ASSERT_TRUE(status.IsOK()) << "Session Run failed.";
 
   auto& tensor = fetches[0].Get<Tensor>();
   size_t size = static_cast<size_t>(tensor.Shape().Size());
   EXPECT_EQ(size, output_values.size());
 
-  auto* data = tensor.template Data<float>();
+  auto* data = tensor.Data<float>();
   float threshold = 0.001f;
 
   for (size_t i = 0; i < size; ++i) {
