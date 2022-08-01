@@ -2686,7 +2686,7 @@ def main():
             nuphar_run_python_tests(build_dir, configs)
 
         if args.enable_pybind and args.use_tvm:
-             tvm_run_python_tests(build_dir, configs)
+            tvm_run_python_tests(build_dir, configs)
 
         # run node.js binding tests
         if args.build_nodejs and not args.skip_nodejs_tests:

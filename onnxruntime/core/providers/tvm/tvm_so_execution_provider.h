@@ -44,7 +44,8 @@ class TvmSoExecutionProvider : public IExecutionProvider {
  private:
   void printOptions();
 #ifdef USE_TVM_HASH
-  bool checkHash(const std::string& onnx_path) const;
+  std::string GetONNXModelHash(const std::string& onnx_path) const;
+  bool checkHashFromFile(const std::string& onnx_hash) const;
 #endif
   std::shared_ptr<TvmModule> compileModel(const std::string& func_name,
                                           const GraphViewer& graph_viewer,

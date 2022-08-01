@@ -31,6 +31,10 @@ namespace tvm {
   void TVMRun(TvmModule& mod);
   void TVM_VM_Run(TvmModule& mod);
 
+#ifdef USE_TVM_HASH
+  std::string TVM_VM_GetHash(TvmModule& mod);
+#endif
+
 }  // namespace tvm
 }  // namespace onnxruntime
 

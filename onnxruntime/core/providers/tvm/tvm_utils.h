@@ -54,6 +54,7 @@ inline DLDevice GetDLDevice(const OrtDevice& device) {
   return context;
 }
 
+bool IsFileExists(const std::string& filename);
 std::string readFromFile(const std::string& file_path);
 
 }   // namespace tvm

@@ -110,9 +110,10 @@ common::Status TvmSoExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
 #ifdef USE_TVM_HASH
+    bool hash_match = false;
+    std::string onnx_model_hash = GetONNXModelHash(ToUTF8String(fused_node.ModelPath().ToPathString()));
     if (options_.check_hash) {
-      ORT_ENFORCE(checkHash(ToUTF8String(fused_node.ModelPath().ToPathString())),
-                  "Hash check shows that used tuning files were not obtained for the given onnx-model");
+      hash_match = checkHashFromFile(onnx_model_hash);
     }
 #endif
     const std::string func_name = fused_node.Name();
@@ -120,6 +121,15 @@ common::Status TvmSoExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     compilers_[func_name] = std::make_shared<TVMSoCompiler>();
     InputsInfoMap all_input_shapes;
     auto mod = compileModel(func_name, graph_body_viewer, all_input_shapes);
+#ifdef USE_TVM_HASH
+    if (options_.check_hash) {
+      if (!hash_match) {
+        ORT_ENFORCE(onnx_model_hash == TVM_VM_GetHash(*mod),
+          "Hash check shows that used tuning files were not obtained for the given onnx-model"
+        );
+      }
+    }
+#endif
 
     std::vector<DLTensor> output_tensors(graph_body_viewer.GetOutputs().size());
     prepareOutputTensors(output_tensors);
@@ -155,19 +165,21 @@ void TvmSoExecutionProvider::printOptions() {
 }
 
 #ifdef USE_TVM_HASH
-bool TvmSoExecutionProvider::checkHash(const std::string& onnx_path) const {
+std::string TvmSoExecutionProvider::GetONNXModelHash(const std::string& onnx_path) const {
   auto hasher = Hasher("sha256");
   std::string onnx_str = readFromFile(onnx_path);
-  std::string onnx_hash = hasher.hash(onnx_str.c_str(), onnx_str.size());
-  onnx_str.clear();
-  std::string hash;
-  if (options_.hash_file_path.empty()) {
-    // TODO(vvchernov): align hash file name with OctoML team
-    hash = readFromFile(options_.so_folder + "/hash.txt");
-  } else {
-    hash = readFromFile(options_.hash_file_path);
+  return hasher.hash(onnx_str.c_str(), onnx_str.size());
+}
+
+bool TvmSoExecutionProvider::checkHashFromFile(const std::string& onnx_hash) const {
+  std::string file_path = options_.hash_file_path;
+  if (file_path.empty()) {
+    file_path = options_.so_folder + "/hash.txt";
   }
-  return onnx_hash == hash;
+  if (!IsFileExists(file_path)) {
+    return false;
+  }
+  return onnx_hash == readFromFile(file_path);
 }
 #endif
 
