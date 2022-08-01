@@ -3,9 +3,10 @@
 
 #pragma once
 
-#include <pybind11/pybind11.h>
+#include <string>
+#include <vector>
 
-#include <string_view>
+#include <pybind11/pybind11.h>
 
 #include "python/tools/kernel_explorer/device_array.h"
 #include "python/tools/kernel_explorer/operator.h"

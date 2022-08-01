@@ -3,6 +3,9 @@
 
 #include "python/tools/kernel_explorer/kernels/gemm_rocblas.h"
 
+#include <string>
+#include <vector>
+
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
