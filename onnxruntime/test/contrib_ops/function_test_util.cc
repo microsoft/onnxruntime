@@ -71,8 +71,8 @@ std::vector<OrtValue> FunctionTestCase::Run(onnxruntime::Model& model, NameMLVal
 template <typename T>
 static void AssertEqualT(const Tensor& tensor1, const Tensor& tensor2) {
   auto size = tensor1.Shape().Size();
-  auto* data1 = tensor1.template Data<T>();
-  auto* data2 = tensor2.template Data<T>();
+  auto* data1 = tensor1.Data<T>();
+  auto* data2 = tensor2.Data<T>();
 
   T threshold = T(0.001f);
 

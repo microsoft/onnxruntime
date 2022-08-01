@@ -65,7 +65,7 @@ static void Check(const char* source,
   size_t size = static_cast<size_t>(tensor.Shape().Size());
   EXPECT_EQ(size, output_values.size());
 
-  auto* data = tensor.template Data<float>();
+  auto* data = tensor.Data<float>();
   float threshold = 0.001f;
 
   for (size_t i = 0; i < size; ++i) {
