@@ -50,6 +50,17 @@ struct OP_Gelu<half> : public CtxGelu {
   }
 };
 
+template <typename T>
+struct OP_QuickGelu : public CtxQuickGelu {
+  __device__ __inline__ T operator()(const T& a) const {
+    T v = a * static_cast<T>(alpha);
+    T one = static_cast<T>(1.f);
+    T zero = static_cast<T>(0.f);
+    T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
+    return a * sigmoid;
+  }
+};
+
 #define UNARY_ACTIVATION_IMPL(name)                                        \
   UNARY_ACTIVATION_IMPL_DECLARATION(name) {                                \
     UnaryElementWiseImpl(stream,                                           \

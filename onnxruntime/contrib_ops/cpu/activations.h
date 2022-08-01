@@ -46,11 +46,30 @@ struct ParametricSoftplus : public ElementWiseRangedTransform<T> {
              .select(xm * (T)beta + ((-xm * (T)beta).exp() + 1.0f).log(), ((xm * (T)beta).exp() + 1.0f).log());
   }
 };
+
+template <typename T>
+struct QuickGelu : public ElementWiseRangedTransform<T> {
+  ORT_GET_FLOAT_ATTR_AND_RETURN(alpha);
+
+  float Cost() const final { return 15.0f; }
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const final {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> x(this->input + first, len);
+    EigenVectorArrayMap<T> y(output_ptr, len);
+    T one = static_cast<T>(1.f);
+    T zero = static_cast<T>(0.f);
+    auto alpha_x = x * static_cast<T>(alpha);
+    auto sigmoid_alpha_x = (alpha_x >= zero).select(one / (one + (-alpha_x).exp()), one - one / (one + alpha_x.exp()));
+    y = x * sigmoid_alpha_x;
+  }
+};
 }  // namespace functors
 
 namespace contrib {
 DEFINE_ELE_KERNEL(ScaledTanh);
 DEFINE_ELE_KERNEL(ParametricSoftplus);
+DEFINE_ELE_KERNEL(QuickGelu);
 
 template <typename T>
 class Gelu : public OpKernel {

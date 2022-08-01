@@ -1546,6 +1546,8 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
 
 TEST(GradientCheckerTest, SigmoidGrad) { UnaryOpGradientTest("Sigmoid"); }
 
+TEST(GradientCheckerTest, QuickGeluGrad) { UnaryOpGradientTest("QuickGelu", kMSDomain, 1); }
+
 void GradientCheckerSoftmaxGradHelper(bool is_log_softmax, int version = 11) {
   TensorShape shape({2, 3, 4});
   float max_error;

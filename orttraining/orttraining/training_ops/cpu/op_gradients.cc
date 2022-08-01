@@ -225,5 +225,27 @@ Status TanhGrad<T>::Compute(OpKernelContext* context) const {
   dx = dy * (1 - y * y);
   return Status::OK();
 }
+
+ONNX_OPERATOR_KERNEL_EX(QuickGeluGrad, kMSDomain, 1, kCpuExecutionProvider,
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                        QuickGeluGrad<float>);
+
+template <typename T>
+Status QuickGeluGrad<T>::Compute(OpKernelContext* context) const {
+  auto& dY = *context->Input<Tensor>(0);
+  auto& X = *context->Input<Tensor>(1);
+  auto& dX = *context->Output(0, dY.Shape());
+  EigenVectorArrayMap<T> dx(dX.template MutableData<T>(), dX.Shape().Size());
+  ConstEigenVectorArrayMap<T> x(X.template Data<T>(), X.Shape().Size());
+  ConstEigenVectorArrayMap<T> dy(dY.template Data<T>(), dY.Shape().Size());
+  T one = static_cast<T>(1.f);
+  T zero = static_cast<T>(0.f);
+  auto alpha_x = x * static_cast<T>(alpha_);
+  auto sigmoid_alpha_x =
+      (alpha_x >= zero).select(one / (one + (-alpha_x).exp()), one - one / (one + alpha_x.exp()));
+  dx = dy * sigmoid_alpha_x * (one + alpha_x * (one - sigmoid_alpha_x));
+  return Status::OK();
+}
+
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -47,6 +47,36 @@ TEST_F(ActivationOpTest, Gelu) {
       "Gelu", input_values, [](float x) { return x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))); }, {},
       false, 1, kMSDomain);
 }
-}  // namespace test
 
+TEST_F(ActivationOpTest, QuickGelu) {
+  // Positive alpha.
+  {
+    float alpha = 1.702f;
+    TestActivationOp<float>(
+        "QuickGelu", input_values,
+        [alpha](float x) {
+          auto tmp = x * alpha;
+          auto y = 1.f / (1.f + std::exp(-std::abs(tmp)));  // safe sigmoid
+          y = tmp >= 0 ? y : 1 - y;
+          return x * y;
+        },
+        {{"alpha", alpha}}, false, 1, kMSDomain);
+  }
+
+  // Negative alpha.
+  {
+    float alpha = -1.702f;
+    TestActivationOp<float>(
+        "QuickGelu", input_values,
+        [alpha](float x) {
+          auto tmp = x * alpha;
+          auto y = 1.f / (1.f + std::exp(-std::abs(tmp)));  // safe sigmoid
+          y = tmp >= 0 ? y : 1 - y;
+          return x * y;
+        },
+        {{"alpha", alpha}}, false, 1, kMSDomain);
+  }
+}
+
+}  // namespace test
 }  // namespace onnxruntime
