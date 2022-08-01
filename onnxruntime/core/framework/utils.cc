@@ -487,6 +487,7 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
                                            &batched_data_transfers, &batched_sparse_data_transfers));
 #else
     ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], orig_feeds[idx], new_feeds[idx],
+                                           /*copy input from cpu to device doesn't need to sync from src stream*/ nullptr,
                                            &batched_data_transfers));
 #endif
   }
@@ -545,7 +546,7 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
     ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx], fetch_streams[idx],
                                            &batched_data_transfers, &batched_sparse_data_transfers));
 #else
-    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx],
+    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx], fetch_streams[idx],
                                            &batched_data_transfers));
 #endif
   }
