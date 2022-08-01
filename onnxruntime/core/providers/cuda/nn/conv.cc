@@ -109,7 +109,6 @@ Status Conv<T>::UpdateState(OpKernelContext* context) const {
   //set Z
   if (context->InputCount() >= 4) {
     const Tensor* Z = context->Input<Tensor>(3);
-    ORT_RETURN_IF_ERROR(s_.z_tensor.Set(Z->Shape().GetDims(), CudnnTensor::GetDataType<CudaT>()));
     s_.z_data = reinterpret_cast<const CudaT*>(Z->template Data<T>());
   } else {
     s_.z_data = nullptr;
@@ -243,6 +242,25 @@ Status Conv<T>::UpdateState(OpKernelContext* context) const {
         ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
       } else {
         ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_shape.GetDims(), CudnnTensor::GetDataType<CudaT>()));
+      }
+    }
+
+    if (context->InputCount() >= 4) {
+      const Tensor* Z = context->Input<Tensor>(3);
+      const auto& z_shape = Z->Shape();
+      const auto& z_rank = z_shape.GetDims().size();
+      const auto& y_rank = y_dims_cudnn.size();
+      ORT_ENFORCE(z_rank <= y_rank, "rank of Z must not be bigger than that of X");
+      if (z_rank == y_rank) {
+        ORT_RETURN_IF_ERROR(s_.z_tensor.Set(z_shape.GetDims(), CudnnTensor::GetDataType<CudaT>()));
+      } else {
+        TensorShapeVector z_extended_dims{
+            z_shape.GetDims().begin(),
+            z_shape.GetDims().end()
+        };
+        TensorShapeVector gaps(y_rank - z_rank, 1);
+        z_extended_dims.insert(z_extended_dims.end(), gaps.begin(), gaps.end());
+        ORT_RETURN_IF_ERROR(s_.z_tensor.Set(z_extended_dims, CudnnTensor::GetDataType<CudaT>()));
       }
     }
 

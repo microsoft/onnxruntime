@@ -49,6 +49,31 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
     const auto beta = onnxruntime::cuda::Consts<CudaT>::Zero;
     IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace();
 
+    //std::cout << "x_shape:" << std::endl;
+    //Base::s_.x_tensor.Print();
+
+    //if (has_b) {
+    //  std::cout << "b_shape:" << std::endl;
+    //  Base::s_.b_tensor.Print();
+    //}
+
+    //if (has_z) {
+    //  std::cout << "z_shape:" << std::endl;
+    //  Base::s_.z_tensor.Print();
+    //}
+
+    //std::cout << "y_shape:" << std::endl;
+    //Base::s_.y_tensor.Print();
+
+    //if (Base::s_.post_slicing_required) {
+    //  std::cout << "y_sliced_shape:" << std::endl;
+    //  for (auto dim : Base::s_.y_dims.GetDims()) {
+    //    std::cout << dim << ",";
+    //  }
+    //}
+
+    //std::cout << std::endl;
+
     auto cudnn_status = cudnnConvolutionBiasActivationForward(Base::CudnnHandle(),
                                                               &alpha,
                                                               Base::s_.x_tensor,
