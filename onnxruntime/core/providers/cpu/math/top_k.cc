@@ -149,13 +149,13 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
   // Cache some values that will be used in the implementation below
   const int64_t rows = input_shape.SizeToDimension(static_cast<size_t>(axis_parsed));
   const int64_t cols = input->Shape().Size() / rows;
-  const auto* input_data = input->template Data<typename Comparator::DataType>();
+  const auto* input_data = input->Data<typename Comparator::DataType>();
 
   // Use Eigen maps for convenient indexing into the 2d tensors like Values_map(i,j)
   const int64_t reduced_cols = output_shape.SizeFromDimension(static_cast<size_t>(axis_parsed));
 
-  auto* values_data = values->template MutableData<typename Comparator::DataType>();
-  auto* indices_data = indices->template MutableData<int64_t>();
+  auto* values_data = values->MutableData<typename Comparator::DataType>();
+  auto* indices_data = indices->MutableData<int64_t>();
   auto values_map = EigenMatrixMapRowMajor<typename Comparator::DataType>(values_data, rows, reduced_cols);
   auto indices_map = EigenMatrixMapRowMajor<int64_t>(indices_data, rows, reduced_cols);
 
@@ -377,7 +377,7 @@ Status GetTopK(const Tensor* input, const int axis, const unsigned k, bool large
                Tensor& output_values,
                Tensor& output_indices) {
   const TensorShape& input_shape = input->Shape();
-  
+
   // Will return axis_ as is if positive or fixes it in case it is negative
   const auto axis_parsed = HandleNegativeAxis(axis, static_cast<int64_t>(input_shape.NumDimensions()));
 
@@ -485,7 +485,7 @@ static Status ComputeImplOpset1011(OpKernelContext* p_op_kernel_context, int axi
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k tensor should be a 1D tensor of size 1");
   }
 
-  auto parsed_input_k = Y->template Data<int64_t>()[0];
+  auto parsed_input_k = Y->Data<int64_t>()[0];
   if (parsed_input_k < 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "value of k must not be negative");
   }

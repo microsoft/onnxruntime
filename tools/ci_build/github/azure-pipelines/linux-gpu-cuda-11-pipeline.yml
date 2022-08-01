@@ -1,4 +1,13 @@
 #This file is for CUDA 10.2 and 11.4 even the filename just says 11
+
+resources:
+  repositories:
+  - repository: manylinux # The name used to reference this repository in the checkout step
+    type: Github
+    endpoint: Microsoft
+    name: pypa/manylinux
+    ref: a8099af1b3e25f0489717ad9c4f9a2e25a8c5b36
+
 jobs:
 - job: Linux_Build_CUDA10_NV6
   timeoutInMinutes: 180

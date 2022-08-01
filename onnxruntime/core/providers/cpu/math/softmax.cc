@@ -116,7 +116,7 @@ Status Softmax<T>::ComputeImpl(const Tensor& input, Tensor& output, size_t axis,
   const size_t N = X_shape.SizeToDimension(axis);
   const size_t D = X_shape.SizeFromDimension(axis);
 
-  return SoftmaxCPU<T>(N, D, input.template Data<T>(), output.template MutableData<T>(), log_softmax_, thread_pool);
+  return SoftmaxCPU<T>(N, D, input.Data<T>(), output.MutableData<T>(), log_softmax_, thread_pool);
 }
 
 // opset-13 and above
@@ -175,8 +175,8 @@ Status Softmax<T>::ComputeImplOpset13(const Tensor& input, Tensor& output, size_
   const size_t D = is_transpose_required ? TensorShape(transposed_input_dims).SizeFromDimension(rank - 1) : X_shape.SizeFromDimension(rank - 1);
 
   ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(N, D,
-                                    is_transpose_required ? transposed_input.template Data<T>() : input.template Data<T>(),
-                                    is_transpose_required ? intermediate_output.template MutableData<T>() : output.template MutableData<T>(),
+                                    is_transpose_required ? transposed_input.Data<T>() : input.Data<T>(),
+                                    is_transpose_required ? intermediate_output.MutableData<T>() : output.MutableData<T>(),
                                     log_softmax_, thread_pool));
 
   if (is_transpose_required) {
