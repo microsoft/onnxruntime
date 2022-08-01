@@ -69,16 +69,24 @@ def get_basic_cases():
 def get_bert_cases():
     dtypes = ["float32", "float16"]
     transabs = [(False, False)]
-    bert_sizes = [
+    bert_base_sizes = [
         # m, n, k
-        (384, 64, 384),
         (384, 768, 768),
-        (384, 3072, 768),
+        (384, 768, 768 * 3),
+        (384, 768, 768 * 4),
+        (384, 768 * 4, 768),
         (384, 1024, 1024),
-        (384, 4096, 1024),
-        (384, 768, 3072),
-        (384, 1024, 4096),
+        (384, 1024, 1024 * 3),
+        (384, 1024, 1024 * 4),
+        (384, 1024 * 4, 1024),
     ]
+
+    # we then multiply m with the batch size
+    batch_sizes = [1, 64]
+    bert_sizes = []
+    for bsz in batch_sizes:
+        bert_sizes.extend([(m * bsz, n, k) for m, n, k in bert_base_sizes])
+
     return list(product(dtypes, bert_sizes, transabs))
 
 
