@@ -58,7 +58,6 @@ void BuildLookupTableIfFixed(const OpKernelInfo& info, std::vector<uint32_t>& fi
 }
 }  // namespace
 
-
 QLinearSoftmax::QLinearSoftmax(const OpKernelInfo& info)
     : OpKernel(info) {
   const auto& node = info.node();
@@ -66,9 +65,7 @@ QLinearSoftmax::QLinearSoftmax(const OpKernelInfo& info)
   auto input_type = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
   is_signed_ = (input_type == ONNX_NAMESPACE::TensorProto_DataType_INT8);
   const auto* x_shape = input_defs[0]->Shape();
-  if (x_shape == nullptr || x_shape->dim_size() == 0) {
-    return;
-  }
+  ORT_ENFORCE(x_shape != nullptr && x_shape->dim_size() > 0, "input_shape of QLinearSoftmax must be existed");
   int rank = x_shape->dim_size();
 
   int64_t opset = -1;
@@ -282,10 +279,10 @@ Status QLinearSoftmax::ComputeInternal(OpKernelContext* context, const Tensor& i
   const size_t D = X_shape.SizeFromDimension(axis);
   common::Status status;
   if (is_signed_) {
-    using T=int8_t;
+    using T = int8_t;
     const T Y_zp = Y_zp_tensor ? *(Y_zp_tensor->Data<T>()) : 0;
     status = QlinearSoftmaxCPU<T>(N, D, input.Data<T>(), output.MutableData<T>(),
-                                lookup_table.data(), Y_scale, Y_zp, thread_pool);
+                                  lookup_table.data(), Y_scale, Y_zp, thread_pool);
   } else {
     using T = uint8_t;
     const T Y_zp = Y_zp_tensor ? *(Y_zp_tensor->Data<T>()) : 0;
@@ -316,11 +313,9 @@ Status QLinearSoftmax::ComputeImplOpset13(OpKernelContext* context,
     // swap the innermost dim with the dim corresponding to axis
     permutation[axis_] = rank - 1;
     permutation[rank - 1] = axis_;
-    std::vector<int64_t> transposed_input_dims;
-    transposed_input_dims.reserve(rank);
-    for (auto e : permutation) {
-      transposed_input_dims.push_back(X_shape[e]);
-    }
+    std::vector<int64_t> transposed_input_dims(rank);
+    std::transform(permutation.cbegin(), permutation.cend(),
+                   transposed_input_dims.begin(), [&X_shape](size_t e) { return X_shape[e]; });
 
     // Allocate a temporary tensor to hold transposed input
     transposed_input = Tensor(input.DataType(), TensorShape(transposed_input_dims), alloc);
