@@ -12,6 +12,44 @@ Google style from <https://google.github.io/styleguide/cppguide.html> with a few
   * Allowed
   * Use a non-const reference for arguments that are modifiable but cannot be `nullptr` so the API clearly advertises the intent
   * Const correctness and usage of smart pointers (`shared_ptr` and `unique_ptr`) is expected. A non-const reference equates to "this is a non-null object that you can change but are not being given ownership of".
+* Prefer passing `gsl::span<const T>` by value (or `std::span` when supported) as input arguments when passing const references to containers with contiguous storage (like `std::vector`). This allows to make the function container independent, represent arbitrary memory spans or pass sub-spans as an argument. The below examples allow the client code to use either `std::vector`, `InlinedVector`, an instance of a `gsl::span` would be created automatically
+```
+/// Instead of
+void foo(const std::vector<int64_t>&);
+
+/// Use to pass any contiguous const container containing int64_t
+// Now you can seamless pass either `std::vector`, `InlinedVector`, `std::array` or `gsl::span` as an argument.
+void foo(gsl::span<const int64_t>);
+
+// Example with pointer to const data. Instead of
+void foo(const std::vector<const Node*>&);
+
+// Use
+void foo(gsl::span<const Node* const>);
+```
+* Prefer returning `gsl::span<const T>` by value instead of a const reference to a contiguous member container or memory span. This allows the client code to be container independent.
+For example,
+```
+// Instead of
+const std::vector<int64_t>& foo();
+
+// Return a span by value
+gsl::span<const int64_t> foo();
+```
+* However, `std::initializer_list<T>` is not automatically convertible to a `gsl::span<const T>`.  Use `AsSpan({1, 2, 3})` defined at `core/common/span_utils.h` to convert `std::initializer_list<T>` to a span. You can also use `std::array`. For example,
+```
+// Original code
+void foo(const std::vector<std::string>&);
+
+foo({"abc", "dbf"}); // Works
+
+// After refactoring to gsl::span it would no longer compile. Use AsSpan().
+void foo(gsl::span<const std::string>);
+
+foo(AsSpan<std::string>{"abc", "dbf"}); // Works
+```
+* Prefer passing `std::string_view` by value instead of `const std::string&`.
+
 * `using namespace` permitted with limited scope
   * Not allowing `using namespace` at all is overly restrictive. Follow the C++ Core Guidelines:
     * [SF.6: Use using namespace directives for transition, for foundation libraries (such as std), or within a local scope (only)](https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Rs-using)
@@ -20,8 +58,6 @@ Google style from <https://google.github.io/styleguide/cppguide.html> with a few
 ### Containers to use
 
 Onnxruntime aims to reduce latency and latency variance by minimizing the amount of dynamic memory allocations and avoid using locks.
-
-* `std::unique_ptr` is often used for delayed or optional construction of objects or members of classes. Use `std::optional` as appropriate to reduce the number of allocations.
 
 * The use of the following container `typedef`s to reduce memory allocations is required:
   * Use `TensorShapeVector` typedef to build or modify shapes from `core/framework/tensor_shape.h`. It is based on a vector implementation that features small buffer optimization. Its small buffer size is the same to that of in TensorShape.
@@ -34,7 +70,19 @@ Onnxruntime aims to reduce latency and latency variance by minimizing the amount
   * Do not use `Abseil` library or `absl` namespace directly. We should be able to build Onnxruntime without Abseil.
   * Use `onnxruntime/tools/natvis/abseil-cpp.natvis` for the above containers visualizations and debugging help in `VS Studio` and `VS Code`.
 * Prefer using `reserve()` and not `resize()` on vectors. `resize()` default constructs all the elements for the size which can be expensive/noticeable even if the type is trivial. Default values are rarely used in practice and it becomes a waste. Construction like `std::vector<int>(10, 0)` is the same as `resize()` and is potentially wasteful.
-* Use `reserve()` on hash containers and vectors.
+* Use `reserve()` on hash containers and vectors. For example,
+```
+#include "core/common/inlined_containers.h"
+
+void foo(gsl::span<const std::string> names) {
+  // For local processing, names are still valid
+  // use std::string_view to avoid duplicate memory allocations.
+  // same code would work with std::unordered_set if built without Abseil
+  InlinedHashSet<std::string_view> unique_names;
+  unique_names.reserve(names.size());
+  unique_names.insert(names.cbegin(), names.cend());
+}
+```
 
 
 ### Other
@@ -43,10 +91,7 @@ Onnxruntime aims to reduce latency and latency variance by minimizing the amount
 * When adding a new class, disable copy/assignment/move until you have a proven need for these capabilities. If a need arises, enable copy/assignment/move selectively, and when doing so validate that the implementation of the class supports what is being enabled.
   * Use `ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE` initially
   * See the other `ORT_DISALLOW_*` macros in <https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/common.h>
-* Prefer passing `gsl::span<const T>` by value (or `std::span` when supported) as input arguments when passing const references to containers with contiguous storage (like `std::vector`). This allows to make the function container independent, represent arbitrary memory spans or pass sub-spans as an argument.
-* Prefer returning `gsl::span<const T>` or `gsl::span<T>` by value instead of a const reference or reference to a contiguous member container.
-* Use `AsSpan({1, 2, 3})` defined at `core/common/span_utils.h` to convert `std::initializer_list<T>` to a span. You can also use `std::array`.
-* Prefer passing `std::string_view` by value instead of `const std::string&`.
+* `std::unique_ptr` is often used for delayed or optional construction of objects or members of classes. Use `std::optional` as appropriate to reduce the number of allocations.
 * Don't use `else` after `return`. see: [https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return](https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return)
 * Don't overuse `std::shared_ptr`. Use `std::shared_ptr` only if it's not clear when and where the object will be de-allocated. See also: [https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr)
 * Avoid using the `long` type, which could be either 32 bits or 64 bits.
