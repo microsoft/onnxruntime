@@ -15,12 +15,6 @@ endif()
 
 include(composable_kernel)
 
-# add_library(composable_kernel INTERFACE)
-# target_include_directories(composable_kernel INTERFACE
-#   ${composable_kernel_SOURCE_DIR}/include
-#   ${composable_kernel_SOURCE_DIR}/library/include)
-
-
 set(KERNEL_EXPLORER_ROOT ${ONNXRUNTIME_ROOT}/python/tools/kernel_explorer)
 set(BERT_DIR ${ONNXRUNTIME_ROOT}/contrib_ops/rocm/bert)
 

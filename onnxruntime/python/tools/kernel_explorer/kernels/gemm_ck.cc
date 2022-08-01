@@ -71,7 +71,7 @@ class CKGemm : public GemmBase<T> {
                                              this->m_, this->n_, this->k_,
                                              this->lda_, this->ldb_, this->ldc_,
                                              nop, nop, nop);
-      dispatch_ = typed_impl->MakeInvokerPointer();
+      invoker_ = typed_impl->MakeInvokerPointer();
     } else if (this->opa_ == BlasOp::T && this->opb_ == BlasOp::N) {
       using DeviceOp = DeviceGemm<Col, Row>;
       auto typed_impl = static_cast<DeviceOp*>(impls_[selected_impl_].get());
@@ -79,7 +79,7 @@ class CKGemm : public GemmBase<T> {
                                              this->m_, this->n_, this->k_,
                                              this->lda_, this->ldb_, this->ldc_,
                                              nop, nop, nop);
-      dispatch_ = typed_impl->MakeInvokerPointer();
+      invoker_ = typed_impl->MakeInvokerPointer();
     } else if (this->opa_ == BlasOp::N && this->opb_ == BlasOp::T) {
       using DeviceOp = DeviceGemm<Row, Col>;
       auto typed_impl = static_cast<DeviceOp*>(impls_[selected_impl_].get());
@@ -87,7 +87,7 @@ class CKGemm : public GemmBase<T> {
                                              this->m_, this->n_, this->k_,
                                              this->lda_, this->ldb_, this->ldc_,
                                              nop, nop, nop);
-      dispatch_ = typed_impl->MakeInvokerPointer();
+      invoker_ = typed_impl->MakeInvokerPointer();
     } else if (this->opa_ == BlasOp::T && this->opb_ == BlasOp::T) {
       using DeviceOp = DeviceGemm<Col, Col>;
       auto typed_impl = static_cast<DeviceOp*>(impls_[selected_impl_].get());
@@ -95,7 +95,7 @@ class CKGemm : public GemmBase<T> {
                                              this->m_, this->n_, this->k_,
                                              this->lda_, this->ldb_, this->ldc_,
                                              nop, nop, nop);
-      dispatch_ = typed_impl->MakeInvokerPointer();
+      invoker_ = typed_impl->MakeInvokerPointer();
     }
 
     return impls_[selected_impl_]->IsSupportedArgument(arg_.get());
@@ -135,7 +135,7 @@ class CKGemm : public GemmBase<T> {
     return results;
   }
 
-  bool SelectImpl(std::string name) override {
+  bool SelectImpl(const std::string& name) override {
     for (int i = 0; i < impls_.size(); i++) {
       if (impls_[i]->GetTypeString() == name) {
         selected_impl_ = i;
@@ -153,14 +153,14 @@ class CKGemm : public GemmBase<T> {
   }
 
   void Run() {
-    dispatch_->Run(arg_.get());
+    invoker_->Run(arg_.get());
   }
 
  private:
   std::vector<std::unique_ptr<ck::tensor_operation::device::BaseOperator>> impls_;
   size_t selected_impl_{};
   std::unique_ptr<ck::tensor_operation::device::BaseArgument> arg_;
-  std::unique_ptr<ck::tensor_operation::device::BaseInvoker> dispatch_;
+  std::unique_ptr<ck::tensor_operation::device::BaseInvoker> invoker_;
 };
 
 void InitComposableKernelGemm(py::module mod) {

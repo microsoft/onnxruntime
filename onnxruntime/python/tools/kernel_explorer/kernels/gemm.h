@@ -48,7 +48,7 @@ class GemmBase : public Operator {
         ldc_(ldc) {}
 
   virtual std::vector<std::string> ListImpls() const = 0;
-  virtual bool SelectImpl(std::string name) { return true; }
+  virtual bool SelectImpl(const std::string& name) = 0;
 
  protected:
   BlasOp opa_;

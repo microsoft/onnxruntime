@@ -9,7 +9,6 @@
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
 #include "python/tools/kernel_explorer/device_array.h"
-#include "python/tools/kernel_explorer/operator.h"
 #include "python/tools/kernel_explorer/kernels/gemm.h"
 
 namespace py = pybind11;
@@ -38,7 +37,7 @@ class RocBlasGemm : public GemmBase<T> {
   }
 
   void Run() {
-    // NOTE: rocblas assume the storage is column-majored, swapping A and B makes it have the same interface
+    // NOTE: rocblas assumes the storage is column-majored, swapping A and B makes it have the same interface
     // as those with row-majored convention. That is, if you treat the storage as row-majored but view the matrices as
     // transposed, then by using the property Transpose(A*B) = Tranpose(B)*Transpose(A), the correctness is obvious.
     ROCBLAS_CALL_THROW(
@@ -53,6 +52,10 @@ class RocBlasGemm : public GemmBase<T> {
 
   std::vector<std::string> ListImpls() const override {
     return {"Rocblas"};
+  }
+
+  bool SelectImpl(const std::string& name) override {
+    return true;
   }
 
  private:
