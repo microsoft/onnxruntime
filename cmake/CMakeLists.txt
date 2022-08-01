@@ -318,6 +318,16 @@ if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_MINIMAL_BUILD ON)
 endif()
 
+# work around Android NDK bug which doesn't include -O flag for Release configuration
+# https://github.com/android/ndk/issues/1740
+# TODO: remove this when the NDK version(s) we support get fixed
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  # NB: attempting to match the effects of this fix: https://android-review.googlesource.com/c/platform/ndk/+/2168845
+  string(APPEND CMAKE_C_FLAGS_RELEASE " -O3")
+  string(APPEND CMAKE_CXX_FLAGS_RELEASE " -O3")
+  string(APPEND CMAKE_ASM_FLAGS_RELEASE " -O3")
+endif()
+
 # Enable space optimization for gcc/clang
 # Cannot use "-ffunction-sections -fdata-sections" if we enable bitcode (iOS)
 if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
