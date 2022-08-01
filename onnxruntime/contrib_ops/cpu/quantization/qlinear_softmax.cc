@@ -78,23 +78,18 @@ QLinearSoftmax::QLinearSoftmax(const OpKernelInfo& info)
   if (status.IsOK()) {
     axis_ = gsl::narrow_cast<int>(axis);
   } else {
-    if (opset_ < OPSET13) {
-      axis_ = 1;  // opset-12 and below, the default axis value is 1
-    } else {
-      axis_ = -1;  // opset-13, the default axis value is -1
-    }
+    // opset-12 and below, the default axis value is 1
+    // opset-13, the default axis value is -1
+    axis_ = opset_ < OPSET13 ? 1 : -1;
   }
 
-  if (axis_ < 0) {
-    axis_ = static_cast<int>(HandleNegativeAxis(axis_, int64_t(rank)));
-  }
+  axis_ = static_cast<int>(HandleNegativeAxis(axis_, int64_t(rank)));
   auto input_shape = utils::GetTensorShapeFromTensorShapeProto(*x_shape);
-  int64_t reduce_size = input_shape[axis_];
-  if (opset_ < OPSET13) {
-    reduce_size = input_shape.SizeFromDimension(axis_);
+  int64_t reduce_size = opset_ < OPSET13 ? input_shape.SizeFromDimension(axis_) : input_shape[axis_];
+  // reduce_size could be negative if input-shape has a dynamic axis
+  if (reduce_size > 0) {
+    BuildLookupTableIfFixed(info, fixed_lookup_table_, reduce_size, is_signed_);
   }
-  ORT_ENFORCE(reduce_size > 0, "invalid reduce_size for softmax");
-  BuildLookupTableIfFixed(info, fixed_lookup_table_, reduce_size, is_signed_);
 }
 
 // compute method of Softmax
@@ -108,13 +103,9 @@ Status QLinearSoftmax::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
-  size_t D = X_shape[axis_];
-  if (opset_ < OPSET13) {
-    D = X_shape.SizeFromDimension(axis_);
-  }
+  const size_t D = opset_ < OPSET13 ? X_shape.SizeFromDimension(axis_): X_shape[axis_];
   uint32_t tmp_lookup_table[256];
-  gsl::span<uint32_t> lookup_table_span = gsl::make_span(tmp_lookup_table, 256);
-  gsl::span<const uint32_t> lookup_table = GetLookupTable(ctx, lookup_table_span, D);
+  gsl::span<const uint32_t> lookup_table = GetLookupTable(ctx, tmp_lookup_table, D);
 
   if (opset_ < OPSET13) {
     return ComputeInternal(ctx, *X, *Y, lookup_table, axis_, thread_pool);
