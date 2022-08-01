@@ -18,8 +18,8 @@ class SampleOp : public OpKernel {
     auto X = context->Input<Tensor>(0);
     auto& dims = X->Shape();
     auto Y = context->Output(0, dims);
-    auto X_Data = (X->template Data<T>());
-    auto Y_Data = (Y->template MutableData<T>());
+    auto X_Data = (X->Data<T>());
+    auto Y_Data = (Y->MutableData<T>());
 
     for (int64_t i = 0, sz = dims.Size(); i < sz; ++i) {
       *Y_Data++ = *X_Data++;

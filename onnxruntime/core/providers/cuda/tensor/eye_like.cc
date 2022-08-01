@@ -34,7 +34,7 @@ ONNX_OPERATOR_KERNEL_EX(
       Stream(),                                                                             \
       offset,                                                                               \
       dim1 + 1,                                                                             \
-      reinterpret_cast<typename ToCudaType<T>::MappedType*>(T2->template MutableData<T>()), \
+      reinterpret_cast<typename ToCudaType<T>::MappedType*>(T2->MutableData<T>()), \
       diag_count);                                                                          \
   break;
 

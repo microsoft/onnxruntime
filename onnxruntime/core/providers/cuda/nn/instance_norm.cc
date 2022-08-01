@@ -46,10 +46,10 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
   const TensorShape& x_shape = X->Shape();
   Tensor* Y = p_op_kernel_context->Output(0, x_shape);
 
-  auto* y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
-  const auto* x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
-  const auto* scale_data = reinterpret_cast<const CudaT*>(scale->template Data<T>());
-  const auto* bias_data = reinterpret_cast<const CudaT*>(bias->template Data<T>());
+  auto* y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
+  const auto* x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
+  const auto* scale_data = reinterpret_cast<const CudaT*>(scale->Data<T>());
+  const auto* bias_data = reinterpret_cast<const CudaT*>(bias->Data<T>());
 
   const auto& x_dims = x_shape.GetDims();
   const int64_t N = x_dims[0];
@@ -174,10 +174,10 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
   const TensorShape& x_shape = X->Shape();
   Tensor* Y = p_op_kernel_context->Output(0, x_shape);
 
-  auto* y_data = reinterpret_cast<CudaT*>(Y->template MutableData<MLFloat16>());
-  const auto* x_data = reinterpret_cast<const CudaT*>(X->template Data<MLFloat16>());
-  const auto* scale_data = reinterpret_cast<const CudaT*>(scale->template Data<MLFloat16>());
-  const auto* bias_data = reinterpret_cast<const CudaT*>(bias->template Data<MLFloat16>());
+  auto* y_data = reinterpret_cast<CudaT*>(Y->MutableData<MLFloat16>());
+  const auto* x_data = reinterpret_cast<const CudaT*>(X->Data<MLFloat16>());
+  const auto* scale_data = reinterpret_cast<const CudaT*>(scale->Data<MLFloat16>());
+  const auto* bias_data = reinterpret_cast<const CudaT*>(bias->Data<MLFloat16>());
 
   const auto& x_dims = x_shape.GetDims();
   const int64_t N = x_dims[0];
