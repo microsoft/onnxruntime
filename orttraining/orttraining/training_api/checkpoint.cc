@@ -319,8 +319,8 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
 
     // Storing group-wise properties.
     PropertyBag properties;
-    properties.AddProperty<float>(builtin_lr_property_name, group_optimizer_state_ptr->initial_lr);
-    properties.AddProperty<int64_t>(builtin_step_property_name, group_optimizer_state_ptr->step);
+    properties.AddProperty(builtin_lr_property_name, group_optimizer_state_ptr->initial_lr);
+    properties.AddProperty(builtin_step_property_name, group_optimizer_state_ptr->step);
     std::vector<ONNX_NAMESPACE::TensorProto> group_wise_properties_tensor_protos;
     properties.ToTensorProtos(group_wise_properties_tensor_protos);
 

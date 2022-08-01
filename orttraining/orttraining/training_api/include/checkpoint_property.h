@@ -4,63 +4,40 @@
 #pragma once
 
 #include <type_traits>
+#include <variant>
+
 #include "onnx/defs/tensor_proto_util.h"
 
 namespace onnxruntime {
 namespace training {
 namespace api {
 
-template <typename T>
-struct TypedCheckpointProperty;
+typedef std::variant<int64_t, float, std::string> CheckPointPropertyDataType;
 
 /**
- * @brief Base class for user defined checkpoint property.
+ * @brief Class for user defined checkpoint property.
  */
 struct CheckpointProperty {
  public:
   CheckpointProperty() {}
-
-  CheckpointProperty(const std::string& prop_name)
-      : prop_name_(prop_name) {
+  CheckpointProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+  CheckpointProperty(const std::string& prop_name, const CheckPointPropertyDataType& prop_value)
+      : prop_name_(prop_name), prop_value_(prop_value) {
   }
 
-  virtual ~CheckpointProperty() {}
-  virtual ONNX_NAMESPACE::TensorProto ToTensorProto() = 0;
+  ONNX_NAMESPACE::TensorProto ToTensorProto();
 
   std::string GetName() const {
     return prop_name_;
   }
 
-  template <typename T>
-  T GetData() {
-    auto ptr = dynamic_cast<TypedCheckpointProperty<T>*>(this);
-    ORT_ENFORCE(ptr);
-    return ptr->GetData();
+  CheckPointPropertyDataType GetData() const {
+    return prop_value_;
   }
 
  protected:
   std::string prop_name_;
-};
-
-/**
- * @brief User defined checkpoint property.
- */
-template <typename T>
-struct TypedCheckpointProperty : public CheckpointProperty {
- public:
-  TypedCheckpointProperty(const std::string& prop_name, const T& prop_value)
-      : CheckpointProperty(prop_name), prop_value_(prop_value) {
-  }
-  TypedCheckpointProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto);
-
-  ONNX_NAMESPACE::TensorProto ToTensorProto() override;
-
-  T GetData() const {
-    return prop_value_;
-  }
-
- private:
-  T prop_value_;
+  CheckPointPropertyDataType prop_value_;
 };
 
 /**
@@ -71,26 +48,24 @@ struct PropertyBag {
  public:
   PropertyBag() {}
 
-  template <typename T>
-  void AddProperty(std::string name, T val) {
-    static_assert(onnxruntime::training::api::PropertyBag::template IsSupportedDataType<T>(),
-      "Failed to add property: float, int64_t and std::string data types supported only.");
+  void AddProperty(std::string name, CheckPointPropertyDataType val) {
     ORT_ENFORCE(named_properties_.find(name) == named_properties_.end(),
                 "Duplicated property named ", name);
 
-    named_properties_.insert({name, std::make_shared<TypedCheckpointProperty<T>>(name, val)});
+    named_properties_.insert({name, std::make_shared<CheckpointProperty>(name, val)});
   }
 
   void AddProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
   template <typename T>
   T GetProperty(const std::string& name) const {
-    static_assert(onnxruntime::training::api::PropertyBag::template IsSupportedDataType<T>(),
-      "Failed to get property: float, int64_t and std::string data types supported only.");
-
     auto it = named_properties_.find(name);
     ORT_ENFORCE(it != named_properties_.end(), "No property named ", name);
-    return it->second->GetData<T>();
+
+    CheckPointPropertyDataType cloned_val = it->second->GetData();
+    T* tval = std::get_if<T>(&cloned_val);
+    ORT_ENFORCE(tval, "Fail to parse the property value using specified type.");
+    return *tval;
   }
 
   void ToTensorProtos(std::vector<ONNX_NAMESPACE::TensorProto>& properties_tensor_protos) const {
@@ -111,12 +86,6 @@ struct PropertyBag {
 
   bool IsSupportedDataType(int32_t data_type) const {
     return std::find(supported_data_types.begin(), supported_data_types.end(), data_type) != supported_data_types.end();
-  }
-
-  template <typename T>
-  static constexpr bool IsSupportedDataType() {
-    return (std::is_same<T, float>::value || std::is_same<T, int64_t>::value ||
-            std::is_same<T, std::string>::value);
   }
 
   std::unordered_map<std::string, std::shared_ptr<CheckpointProperty>> named_properties_;

@@ -12,7 +12,9 @@ namespace training {
 namespace api {
 
 template <typename T>
-TypedCheckpointProperty<T>::TypedCheckpointProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+void ParsePropertyFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                  std::string& name,
+                                  CheckPointPropertyDataType& value) {
   std::vector<int64_t> tensor_shape_vec = utils::GetTensorShapeFromTensorProto(tensor_proto);
   int64_t expected_num_elements = 1;
   for (auto& d : tensor_shape_vec) {
@@ -23,43 +25,51 @@ TypedCheckpointProperty<T>::TypedCheckpointProperty(const ONNX_NAMESPACE::Tensor
   std::vector<T> data_vector(1);
   T* p = data_vector.data();
   ORT_THROW_IF_ERROR(utils::UnpackTensor<T>(tensor_proto, model_path, p, expected_num_elements));
-  prop_name_ = tensor_proto.name();
-  prop_value_ = data_vector[0];
+  name = tensor_proto.name();
+  value = data_vector[0];
 }
 
-template <typename T>
-ONNX_NAMESPACE::TensorProto TypedCheckpointProperty<T>::ToTensorProto() {
-  auto t_proto = ONNX_NAMESPACE::ToTensor<T>(prop_value_);
-  t_proto.set_name(prop_name_);
-  return t_proto;
-}
-
-namespace {
-
-std::shared_ptr<CheckpointProperty> CreateCheckpointPropertyFromTensorProto(
-    const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+CheckpointProperty::CheckpointProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   auto data_type = tensor_proto.data_type();
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto::FLOAT: {
-      return std::static_pointer_cast<CheckpointProperty>(
-          std::make_shared<TypedCheckpointProperty<float>>(tensor_proto));
+      ParsePropertyFromTensorProto<float>(tensor_proto, prop_name_, prop_value_);
       break;
     }
     case ONNX_NAMESPACE::TensorProto::STRING: {
-      return std::static_pointer_cast<CheckpointProperty>(
-          std::make_shared<TypedCheckpointProperty<std::string>>(tensor_proto));
+      ParsePropertyFromTensorProto<std::string>(tensor_proto, prop_name_, prop_value_);
       break;
     }
     case ONNX_NAMESPACE::TensorProto::INT64: {
-      return std::static_pointer_cast<CheckpointProperty>(
-          std::make_shared<TypedCheckpointProperty<int64_t>>(tensor_proto));
+      ParsePropertyFromTensorProto<int64_t>(tensor_proto, prop_name_, prop_value_);
       break;
     }
     default:
       ORT_THROW("Unsupported input data type of ", data_type);
   }
 }
-}  // namespace
+
+ONNX_NAMESPACE::TensorProto CheckpointProperty::ToTensorProto() {
+  onnx::TensorProto t_proto;
+  if (std::holds_alternative<float>(prop_value_)) {
+    float* fval = std::get_if<float>(&prop_value_);
+    ORT_ENFORCE(fval, "Fail to parse the property value using float type.");
+    t_proto = ONNX_NAMESPACE::ToTensor<float>(*fval);
+  } else if (std::holds_alternative<int64_t>(prop_value_)) {
+    int64_t* ival = std::get_if<int64_t>(&prop_value_);
+    ORT_ENFORCE(ival, "Fail to parse the property value using int64_t type.");
+    t_proto = ONNX_NAMESPACE::ToTensor<int64_t>(*ival);
+  } else if (std::holds_alternative<std::string>(prop_value_)) {
+    std::string* sval = std::get_if<std::string>(&prop_value_);
+    ORT_ENFORCE(sval, "Fail to parse the property value using std::string type.");
+    t_proto = ONNX_NAMESPACE::ToTensor<std::string>(*sval);
+  } else {
+    ORT_THROW("Should not go there, unexpected data_type for prop value.");
+  }
+
+  t_proto.set_name(prop_name_);
+  return t_proto;
+}
 
 void PropertyBag::AddProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   ORT_ENFORCE(named_properties_.find(tensor_proto.name()) == named_properties_.end(),
@@ -69,7 +79,7 @@ void PropertyBag::AddProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
     ORT_THROW("Failed to add property from tensorproto: float, int64_t and std::string data types supported only.");
   }
 
-  named_properties_.insert({tensor_proto.name(), CreateCheckpointPropertyFromTensorProto(tensor_proto)});
+  named_properties_.insert({tensor_proto.name(), std::make_shared<CheckpointProperty>(tensor_proto)});
 }
 
 }  // namespace api
