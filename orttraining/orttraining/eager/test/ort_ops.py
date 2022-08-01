@@ -8,6 +8,7 @@ import unittest
 import numpy as np
 import onnxruntime_pybind11_state as torch_ort
 import torch
+import torch._ops
 from parameterized import parameterized
 
 
@@ -444,6 +445,94 @@ class OrtOpTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             torch.mm(ort_mat1, ort_not_matrix)
 
+    def test_nllloss(self):
+        device = self.get_device()
+        N, C, d1 = 2, 3, 2
+        # input = torch.Tensor([[[1.0, 2.0], [2.0, 2.0], [3.0, 2.0]], [[0.0, 1.0], [2.0, 2.0], [1.0, 2]]])
+        cpu_input = torch.Tensor(
+            [
+                [3.5, -3.45, 0.23, 1.25],
+                [-2.14, 0.54, 2.67, -5.23],
+                [-1.34, 2.01, -1.54, -1.17],
+                [-2.98, -1.37, 1.54, 5.23],
+            ]
+        )
+        ort_input = cpu_input.to(device)
+        cpu_target = torch.tensor([0, 2, 1, 3])
+        ort_target = cpu_target.to(device)
+        weight = torch.Tensor([])
+        cpu_loss = torch.Tensor(np.zeros((4)))
+        ort_loss = torch.Tensor([]).to(device)
+        cpu_out_2 = torch.Tensor([])
+        ort_out_2 = cpu_out_2.to(device)
+        cpu_weight = torch.Tensor([])
+        ort_weight = cpu_weight.to(device)
+        reduction = 0
+        reduction = np.int64(reduction)
+
+        cpu_res_a = torch.ops.aten.nll_loss_forward.output(
+            cpu_input, cpu_target, reduction=0, ignore_index=0, weight=None, output=cpu_loss, total_weight=cpu_out_2
+        )
+        print("@@@@@@@@@@@@", cpu_res_a)
+        ort_res_a = torch.ops.aten.nll_loss_forward.output(
+            ort_input,
+            ort_target,
+            weight=weight,
+            reduction=0,
+            ignore_index=-100,
+            output=ort_loss,
+            total_weight=ort_out_2,
+        )
+        print("@@@@@@@@@@@@", ort_res_a)
+        # cpu_labels = torch.tensor([0, 2, 1, 3])
+        # ort_labels = cpu_labels.to(device)
+
+        # cpu_weight = torch.tensor([0.9, 0.2, 0.81, 0.33], requires_grad=False)
+        # ort_weight = cpu_weight.to(device)
+        # cpu_logits = torch.Tensor(
+        #     [
+        #         [3.5, -3.45, 0.23, 1.25],
+        #         [-2.14, 0.54, 2.67, -5.23],
+        #         [-1.34, 5.01, -1.54, -1.17],
+        #         [-2.98, -1.37, 1.54, 5.23],
+        #     ]
+        # )
+        # ort_logits = cpu_logits.to(device)
+
+        # cpu_probs = torch.softmax(cpu_logits, dim=1)
+        # ort_probs = torch.softmax(ort_logits, dim=1)
+        # cpu_log_probs = torch.log_softmax(cpu_probs, dim=1)
+        # ort_log_probs = torch.log_softmax(ort_probs, dim=1)
+
+        # out_1 = cpu_logits
+        # out_2 = cpu_weight
+
+        # cpu_res_a = torch.ops.aten.nll_loss_forward(
+        #     cpu_log_probs, cpu_labels, reduction=0, ignore_index=1, weight=cpu_weight
+        # )
+        # print(cpu_res_a)
+        # ort_res_a = torch.ops.aten.nll_loss_forward(
+        #     ort_log_probs, ort_labels, reduction=0, ignore_index=1, weight=ort_weight
+        # )
+        # for reduction_param in {"none", "mean", "sum"}:
+        #     for ignore_index_param in range(0, 2):
+        #         ort_res_a = torch.nn.NLLLoss(reduction=reduction_param, ignore_index=ignore_index_param)(
+        #             cpu_log_probs, cpu_labels
+        #         )
+        #         cpu_res_a = torch.nn.NLLLoss(reduction=reduction_param, ignore_index=ignore_index_param)(
+        #             ort_log_probs.cpu(), ort_labels.cpu()
+        #         )
+        #         ort_res_b = torch.nn.NLLLoss(
+        #             reduction=reduction_param, ignore_index=ignore_index_param, weight=cpu_weight
+        #         )(cpu_log_probs, cpu_labels)
+        #         cpu_res_b = torch.nn.NLLLoss(
+        #             reduction=reduction_param, ignore_index=ignore_index_param, weight=ort_weight.cpu()
+        #         )(ort_log_probs.cpu(), ort_labels.cpu())
+        #         assert torch.allclose(cpu_res_a, ort_res_a.cpu())
+        #         assert torch.allclose(cpu_res_b, ort_res_b.cpu())
+        # print(cpu_res_a.requires_grad_())
+        # print(cpu_res_b)
+
     ################################ parameterized test follow #######################################
     # OPS - is a list of [test_operator, tested_tensor=torch.rand (6)].
     # The default value for tested_tensor is torch.rand (6)- size of 6 uniform distribution on the interval [0, 1).
@@ -703,48 +792,6 @@ class OrtOpTests(unittest.TestCase):
     ################################################################
     # Please add new non-parameterized tests above the parameterized section.
     ################################################################
-
-    def test_nllloss(self):
-        device = self.get_device()
-
-        cpu_labels = torch.tensor([0, 2, 1, 3])
-        ort_labels = cpu_labels.to(device)
-
-        cpu_weight = torch.tensor([0.9, 0.2, 0.81, 0.33], requires_grad=False)
-        ort_weight = cpu_weight.to(device)
-        cpu_logits = torch.Tensor(
-            [
-                [3.5, -3.45, 0.23, 1.25],
-                [-2.14, 0.54, 2.67, -5.23],
-                [-1.34, 5.01, -1.54, -1.17],
-                [-2.98, -1.37, 1.54, 5.23],
-            ]
-        )
-        ort_logits = cpu_logits.to(device)
-
-        cpu_probs = torch.softmax(cpu_logits, dim=1)
-        ort_probs = torch.softmax(ort_logits, dim=1)
-        cpu_log_probs = torch.log_softmax(cpu_probs, dim=1)
-        ort_log_probs = torch.log_softmax(ort_probs, dim=1)
-
-        for reduction_param in {"none", "mean", "sum"}:
-            for ignore_index_param in range(0, 2):
-                ort_res_a = torch.nn.NLLLoss(reduction=reduction_param, ignore_index=ignore_index_param)(
-                    cpu_log_probs, cpu_labels
-                )
-                cpu_res_a = torch.nn.NLLLoss(reduction=reduction_param, ignore_index=ignore_index_param)(
-                    ort_log_probs.cpu(), ort_labels.cpu()
-                )
-                ort_res_b = torch.nn.NLLLoss(
-                    reduction=reduction_param, ignore_index=ignore_index_param, weight=cpu_weight
-                )(cpu_log_probs, cpu_labels)
-                cpu_res_b = torch.nn.NLLLoss(
-                    reduction=reduction_param, ignore_index=ignore_index_param, weight=ort_weight.cpu()
-                )(ort_log_probs.cpu(), ort_labels.cpu())
-                assert torch.allclose(cpu_res_a, ort_res_a.cpu())
-                assert torch.allclose(cpu_res_b, ort_res_b.cpu())
-                # print(cpu_res_a.requires_grad_())
-                # print(cpu_res_b)
 
 
 if __name__ == "__main__":

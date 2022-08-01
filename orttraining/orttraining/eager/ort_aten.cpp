@@ -293,7 +293,9 @@ bool IsSupportedType(c10::optional<int64_t> val, const std::vector<at::ScalarTyp
 }
 
 bool IsSupportedType(const c10::optional<at::Tensor> val, const std::vector<at::ScalarType>& valid_types) {
-  return IsSupportedType(val.value(), valid_types);
+  if (val.has_value())
+    return IsSupportedType(val.value(), valid_types);
+  return true;
 }
 
 bool IsSupportedType(at::TensorList tensors, const std::vector<at::ScalarType>& valid_types) {
@@ -1147,27 +1149,29 @@ std::tuple<at::Tensor&, at::Tensor&> nll_loss_forward_output(
 
   NodeAttributes attrs_0(2);
   attrs_0["ignore_index"] = create_ort_attribute(
-    "ignore_index", ignore_index, at::ScalarType::Int);
+    "ignore_index", ignore_index, at::ScalarType::Long);
   attrs_0["reduction"] = create_ort_attribute(
-    "reduction", reduction);
-
+    "reduction", reduction); //NOTES: tried at::ScalarType::Long
 
   // resize the output and then create output ort value to be updated.
-  resize_output(invoker, dynamic_cast<ORTTensorImpl*>(output.unsafeGetTensorImpl()), self.sizes());// need to take the second size
-  resize_output(invoker, dynamic_cast<ORTTensorImpl*>(total_weight.unsafeGetTensorImpl()), weight.sizes());
+  resize_output(invoker, dynamic_cast<ORTTensorImpl*>(output.unsafeGetTensorImpl()), {1,self.sizes()[1]});// NOTES:  need to take the second size
+  if(weight)
+    resize_output(invoker, dynamic_cast<ORTTensorImpl*>(total_weight.unsafeGetTensorImpl()), (*weight).sizes());
+  else
+    resize_output(invoker, dynamic_cast<ORTTensorImpl*>(total_weight.unsafeGetTensorImpl()), self.sizes()[1]);
 
   auto ort_input_output = create_ort_value(invoker, output);
   auto ort_input_total_weight = create_ort_value(invoker, total_weight);
 
 
-  std::vector<OrtValue> ort_outputs_0_NegativeLogLikelihoodLoss(2);
+  std::vector<OrtValue> ort_outputs_0_NegativeLogLikelihoodLoss(1); ///NOTES- if (2)- gives me error- about the output size
 
   auto status = invoker.Invoke("NegativeLogLikelihoodLoss", {
     std::move(ort_input_0_self),
     std::move(ort_input_0_target),
     std::move(ort_input_0_weight),
   }, ort_outputs_0_NegativeLogLikelihoodLoss, &attrs_0);
-  CHECK_STATUS(status);
+  CHECK_STATUS(status); ///NOTES: with current code- generate Mismatched atrribute type for reduction.( I tried to change to LONG, INT,use string)
 
 
   NodeAttributes attrs_1(1);
@@ -1179,8 +1183,7 @@ std::tuple<at::Tensor&, at::Tensor&> nll_loss_forward_output(
   ort_outputs_1_Cast[1] = ort_input_total_weight;
 
   status = invoker.Invoke("Cast", {
-    std::move(ort_outputs_0_NegativeLogLikelihoodLoss[0]),std::move(ort_outputs_0_NegativeLogLikelihoodLoss[1])
-  }, ort_outputs_1_Cast, &attrs_1);
+    std::move(ort_outputs_0_NegativeLogLikelihoodLoss[0]),std::move(ort_outputs_0_NegativeLogLikelihoodLoss[1])}, ort_outputs_1_Cast, &attrs_1);
   CHECK_STATUS(status);
 
   //at::TensorOptions tensor_options = self.options();
