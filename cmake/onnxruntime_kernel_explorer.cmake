@@ -32,8 +32,11 @@ target_include_directories(kernel_explorer PUBLIC
 target_link_libraries(kernel_explorer
   PRIVATE
     $<TARGET_PROPERTY:onnxruntime_pybind11_state,LINK_LIBRARIES>
-    composable_kernel
-    composablekernels::device_operations
+    onnxruntime_composable_kernel_includes
+    # Currently we shall not use composablekernels::device_operations, the target includes all conv dependencies, which
+    # are extremely slow to compile. Instead, we only link all gemm related objects. See the following link on updating.
+    # https://github.com/ROCmSoftwarePlatform/composable_kernel/blob/85978e0201/library/src/tensor_operation_instance/gpu/CMakeLists.txt#L33-L54
+    device_gemm_instance
     ${HIP_LIB})
 target_compile_definitions(kernel_explorer
   PUBLIC ROCM_USE_FLOAT16

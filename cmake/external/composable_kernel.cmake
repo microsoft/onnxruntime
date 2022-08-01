@@ -13,7 +13,7 @@ FetchContent_Declare(composable_kernel
 
 FetchContent_MakeAvailable(composable_kernel)
 
-add_library(composable_kernel INTERFACE)
-target_include_directories(composable_kernel INTERFACE
+add_library(onnxruntime_composable_kernel_includes INTERFACE)
+target_include_directories(onnxruntime_composable_kernel_includes INTERFACE
   ${composable_kernel_SOURCE_DIR}/include
   ${composable_kernel_SOURCE_DIR}/library/include)
