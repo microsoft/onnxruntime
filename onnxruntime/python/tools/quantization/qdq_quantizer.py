@@ -419,3 +419,6 @@ class QDQQuantizer(ONNXQuantizer):
                     node_name,
                 )
             self.model.add_node(dequant_node)
+
+    def is_tensor_quantized(self, tensor_name):
+        return tensor_name in self.tensors_to_quantize or tensor_name in self.bias_to_quantize
