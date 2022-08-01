@@ -535,6 +535,7 @@ Status OrtLoadInternal(const PathString& checkpoint_path,
   // Find tensor proto files.
   std::unordered_map<std::string, ONNX_NAMESPACE::TensorProto> param_tensor_protos;
   std::vector<PathString> tensor_proto_filenames;
+
   FilterFilesFromDirectory(
       checkpoint_path,
       [&tensor_proto_filenames](const PathChar* filename) -> bool {
@@ -552,14 +553,14 @@ Status OrtLoadInternal(const PathString& checkpoint_path,
     LoadTensorProtoFromFile(tensor_file_full_path, tensor_protos, "[params]");
 
     for (const auto& tensor_proto : tensor_protos) {
-      param_tensor_protos.insert(std::make_pair(tensor_proto.name(), tensor_proto));
+      param_tensor_protos.insert(std::make_pair(tensor_proto.name(), std::move(tensor_proto)));
     }
   }
 
   // Load imported initializers into the Model
   for (auto& init : *(model_proto.mutable_graph()->mutable_initializer())) {
-    if (!init.has_name()) ORT_THROW("Initializer name is missing.");
-    if (!param_tensor_protos.count(init.name())) ORT_THROW("Invalid initializer name.");
+    if (!init.has_name()) ORT_THROW("An initializer should have a name.");
+    if (!param_tensor_protos.count(init.name())) ORT_THROW("The initializer name was not found in the checkpoint file loaded.");
     auto it = param_tensor_protos.find(init.name());
     init = it->second;
   }
