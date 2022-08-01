@@ -73,7 +73,7 @@ def get_multiline_call_args_from_file(filename, function_or_declaration):
     with open(filename) as f:
         cur_line = None
 
-        for line in f.readlines():
+        for line in f:
             if not cur_line:
                 # look for new match
                 start = line.find(function_or_declaration)
