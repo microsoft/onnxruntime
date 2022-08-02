@@ -248,6 +248,10 @@
         13556449850953958792
     ],
     [
+        "QuickGelu com.microsoft CPUExecutionProvider",
+        9538368330424053456
+    ],
+    [
         "Range com.microsoft CPUExecutionProvider",
         9333951582187402912
     ],

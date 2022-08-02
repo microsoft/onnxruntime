@@ -116,6 +116,10 @@
         15753758832962034552
     ],
     [
+        "QuickGeluGrad com.microsoft CPUExecutionProvider",
+        7823343866507365656
+    ],
+    [
         "ReduceAllL2 com.microsoft CPUExecutionProvider",
         10206006236140935288
     ],
