@@ -20,10 +20,10 @@
  *    ii. optimizer state:
  *        a instance of data class `OptimizerCheckpointState` managed along with Optimizer class,
  *    iii. user defined training properties, for example 'epoch', 'best_score':
- *        a instance of data class `PropertyBag` managed along with CheckpointProperty classes.
+ *        a instance of data class `PropertyBag`.
  *
  *    In terms of class dependencies, Checkpoint implementations are dependent on (and on top of)
- *        Parameter/Module/Optimizer/CheckpointProperty, NOT vice versa.
+ *        Parameter/Module/Optimizer, NOT vice versa.
  *
  * 2. A directory of files:
  *    checkpoint/

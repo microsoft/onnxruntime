@@ -12,33 +12,7 @@ namespace onnxruntime {
 namespace training {
 namespace api {
 
-typedef std::variant<int64_t, float, std::string> CheckPointPropertyDataType;
-
-/**
- * @brief Class for user defined checkpoint property.
- */
-struct CheckpointProperty {
- public:
-  CheckpointProperty() {}
-  CheckpointProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto);
-  CheckpointProperty(const std::string& prop_name, const CheckPointPropertyDataType& prop_value)
-      : prop_name_(prop_name), prop_value_(prop_value) {
-  }
-
-  ONNX_NAMESPACE::TensorProto ToTensorProto() const;
-
-  std::string GetName() const {
-    return prop_name_;
-  }
-
-  CheckPointPropertyDataType GetData() const {
-    return prop_value_;
-  }
-
- private:
-  std::string prop_name_;
-  CheckPointPropertyDataType prop_value_;
-};
+typedef std::variant<int64_t, float, std::string> PropertyDataType;
 
 /**
  * @brief Collection of user defined properties.
@@ -48,11 +22,11 @@ struct PropertyBag {
  public:
   PropertyBag() {}
 
-  void AddProperty(std::string name, CheckPointPropertyDataType val) {
+  void AddProperty(std::string name, PropertyDataType val) {
     ORT_ENFORCE(named_properties_.find(name) == named_properties_.end(),
                 "Duplicated property named ", name);
 
-    named_properties_.insert({name, CheckpointProperty(name, val)});
+    named_properties_.insert({name, val});
   }
 
   void AddProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto);
@@ -62,7 +36,7 @@ struct PropertyBag {
     auto it = named_properties_.find(name);
     ORT_ENFORCE(it != named_properties_.end(), "No property named ", name);
 
-    CheckPointPropertyDataType cloned_val = it->second.GetData();
+    PropertyDataType cloned_val = it->second;
     T* tval = std::get_if<T>(&cloned_val);
     ORT_ENFORCE(tval, "Fail to get the property value using specified type.");
     return *tval;
@@ -70,7 +44,17 @@ struct PropertyBag {
 
   void ToTensorProtos(std::vector<ONNX_NAMESPACE::TensorProto>& properties_tensor_protos) const {
     for (auto it = named_properties_.begin(); it != named_properties_.end(); ++it) {
-      properties_tensor_protos.emplace_back((it->second).ToTensorProto());
+      onnx::TensorProto t_proto;
+      if (const float* fval = std::get_if<float>(&it->second); fval != nullptr) {
+        t_proto = ONNX_NAMESPACE::ToTensor<float>(*fval);
+      } else if (const int64_t* ival = std::get_if<int64_t>(&it->second); ival != nullptr) {
+        t_proto = ONNX_NAMESPACE::ToTensor<int64_t>(*ival);
+      } else if (const std::string* sval = std::get_if<std::string>(&it->second); sval != nullptr) {
+        t_proto = ONNX_NAMESPACE::ToTensor<std::string>(*sval);
+      } else {
+        ORT_THROW("Should not go there, unexpected data_type for prop value.");
+      }
+      properties_tensor_protos.emplace_back(t_proto);
     }
   }
 
@@ -88,7 +72,7 @@ struct PropertyBag {
     return std::find(supported_data_types.begin(), supported_data_types.end(), data_type) != supported_data_types.end();
   }
 
-  std::unordered_map<std::string, CheckpointProperty> named_properties_;
+  std::unordered_map<std::string, PropertyDataType> named_properties_;
 };
 
 }  // namespace api
