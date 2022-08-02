@@ -46,30 +46,11 @@ struct ParametricSoftplus : public ElementWiseRangedTransform<T> {
              .select(xm * (T)beta + ((-xm * (T)beta).exp() + 1.0f).log(), ((xm * (T)beta).exp() + 1.0f).log());
   }
 };
-
-template <typename T>
-struct QuickGelu : public ElementWiseRangedTransform<T> {
-  ORT_GET_FLOAT_ATTR_AND_RETURN(alpha);
-
-  float Cost() const final { return 15.0f; }
-  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const final {
-    ptrdiff_t len = last - first;
-    T* output_ptr = this->output + first;
-    ConstEigenVectorArrayMap<T> x(this->input + first, len);
-    EigenVectorArrayMap<T> y(output_ptr, len);
-    T one = static_cast<T>(1.f);
-    T zero = static_cast<T>(0.f);
-    auto alpha_x = x * static_cast<T>(alpha);
-    auto sigmoid_alpha_x = (alpha_x >= zero).select(one / (one + (-alpha_x).exp()), one - one / (one + alpha_x.exp()));
-    y = x * sigmoid_alpha_x;
-  }
-};
 }  // namespace functors
 
 namespace contrib {
 DEFINE_ELE_KERNEL(ScaledTanh);
 DEFINE_ELE_KERNEL(ParametricSoftplus);
-DEFINE_ELE_KERNEL(QuickGelu);
 
 template <typename T>
 class Gelu : public OpKernel {
@@ -110,6 +91,47 @@ class Gelu : public OpKernel {
         0);
     return Status::OK();
   }
+};
+
+// Implement a new one instead of inheriting from ElementWiseRangedTransform so that we can call
+// MlasComputeLogistic instead of using Eigen for better perf.
+template <typename T>
+class QuickGelu : public OpKernel {
+ public:
+  QuickGelu(const OpKernelInfo& info) : OpKernel(info) { alpha_ = info.GetAttrOrDefault<float>("alpha", 1.702f); }
+
+  Status Compute(OpKernelContext* context) const override {
+    const Tensor* input = context->Input<Tensor>(0);
+    const T* input_data = input->template Data<T>();
+    Tensor* output = context->Output(0, input->Shape());
+    T* output_data = output->template MutableData<T>();
+    concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+    int64_t elem_count = input->Shape().Size();
+    constexpr int64_t length_per_task = 4096;  // this number comes from FastGelu.
+    int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
+    concurrency::ThreadPool::TryBatchParallelFor(
+        tp, static_cast<int32_t>(task_count),
+        [&](ptrdiff_t task_idx) {
+          const auto start = task_idx * length_per_task;
+          const T* p_input = input_data + start;
+          T* p_output = output_data + start;
+          int64_t count = std::min(length_per_task, elem_count - start);
+          for (int64_t i = 0; i < count; i++) {
+            p_output[i] = p_input[i] * alpha_;
+          }
+
+          MlasComputeLogistic(p_output, p_output, count);
+
+          for (int64_t i = 0; i < count; i++) {
+            p_output[i] = p_input[i] * p_output[i];
+          }
+        },
+        0);
+    return Status::OK();
+  }
+
+ private:
+  float alpha_;
 };
 
 }  // namespace contrib
