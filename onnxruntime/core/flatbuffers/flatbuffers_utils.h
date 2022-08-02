@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <cctype>
 #include <unordered_map>
 
 #include "core/common/path_string.h"
