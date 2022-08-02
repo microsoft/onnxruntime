@@ -80,15 +80,15 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * col_buffer_size);
-    col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
+    col_buffer = BufferUniquePtr(col_data, BufferDeleter(std::move(alloc)));
   }
 
   T* col_buffer_data = static_cast<T*>(col_buffer.get());
 
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
-  const T* Xdata = X->template Data<T>();
-  T* Ydata = Y->template MutableData<T>();
+  const T* Xdata = X->Data<T>();
+  T* Ydata = Y->MutableData<T>();
 
   for (int image_id = 0; image_id < N; ++image_id) {
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
@@ -132,7 +132,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
           output_image_size,
           kernel_dim,
           1,
-          W->template Data<T>() + group_id * W_offset,
+          W->Data<T>() + group_id * W_offset,
           col_buffer_data == nullptr ? Xdata + group_id * X_offset : col_buffer_data,
           0,
           Ydata + group_id * Y_offset,
@@ -141,7 +141,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 
     if (B != nullptr) {
       auto Ymatrix = EigenMatrixMap<T>(Ydata, output_image_size, M);
-      auto Bvec = ConstEigenVectorMap<T>(B->template Data<T>(), M);
+      auto Bvec = ConstEigenVectorMap<T>(B->Data<T>(), M);
       Ymatrix.rowwise() += Bvec.transpose();
     }
 
@@ -194,16 +194,16 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-  const auto* Xdata = X->template Data<float>();
-  const auto* Bdata = B != nullptr ? B->template Data<float>() : nullptr;
-  auto* Ydata = Y->template MutableData<float>();
+  const auto* Xdata = X->Data<float>();
+  const auto* Bdata = B != nullptr ? B->Data<float>() : nullptr;
+  auto* Ydata = Y->MutableData<float>();
   // Check for the optional Conv/Sum fusion.
   float Beta = 0.0f;
   if (Sum != nullptr) {
     const auto& sum_shape = Sum->Shape();
     ORT_RETURN_IF_NOT(Y->Shape() == sum_shape, "output and sum shape must match");
     // If the output was not allocated inplace with the sum tensor, then copy here.
-    const auto* sum_data = Sum->template Data<float>();
+    const auto* sum_data = Sum->Data<float>();
     if (Ydata != sum_data) {
       memcpy(Ydata, sum_data, sum_shape.Size() * sizeof(float));
     }
@@ -234,11 +234,11 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
     auto* working_data = WorkingBufferSize > 0 ? alloc->Alloc(SafeInt<size_t>(sizeof(float)) * WorkingBufferSize)
                                                : nullptr;
-    BufferUniquePtr working_buffer(working_data, BufferDeleter(alloc));
+    BufferUniquePtr working_buffer(working_data, BufferDeleter(std::move(alloc)));
 
     MlasConv(&Parameters,
              Xdata,
-             W->template Data<float>(),
+             W->Data<float>(),
              Bdata,
              static_cast<float*>(working_buffer.get()),
              Ydata,
@@ -254,7 +254,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     const int64_t col_buffer_size = kernel_dim * output_image_size;
 
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(float)) * col_buffer_size);
-    BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
+    BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
     auto* col_buffer_data = static_cast<float*>(col_buffer.get());
 
     for (int image_id = 0; image_id < N; ++image_id) {
@@ -278,7 +278,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             output_image_size,
             kernel_dim,
             1,
-            W->template Data<float>() + group_id * W_offset,
+            W->Data<float>() + group_id * W_offset,
             col_buffer_data,
             Beta,
             Ydata + group_id * Y_offset,

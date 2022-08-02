@@ -87,10 +87,10 @@ Status AdamWOptimizerBase::GenerateOutputs(OpKernelContext* ctx, size_t number_o
     updated_values->Reserve(number_of_values);
     for (size_t input_idx = 0; input_idx < number_of_values; ++input_idx) {
       const Tensor& source_tensor = values->Get(input_idx);
-      std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(),
-                                                             source_tensor.Shape(), alloc);
-      ORT_RETURN_IF_ERROR(CopyInputTensorToOutputTensor(source_tensor, *target_tensor));
-      updated_values->Add(std::move(*target_tensor));  // Add will check for type consistency
+      Tensor target_tensor(source_tensor.DataType(),
+                           source_tensor.Shape(), alloc);
+      ORT_RETURN_IF_ERROR(CopyInputTensorToOutputTensor(source_tensor, target_tensor));
+      updated_values->Add(std::move(target_tensor));  // Add will check for type consistency
     }
   }
 

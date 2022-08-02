@@ -21,6 +21,8 @@ uname -a
 echo "Version: $VERSION_NUMBER"
 if [[ $LIB_NAME == *.dylib ]] && [[ $ARCH == 'osx-x86_64' ]]; then
 	ARCH='osx-x64'
+elif [[ $LIB_NAME == *.dylib ]] && [[ $ARCH == 'osx-arm64' ]]; then
+	ARCH='osx-aarch64'
 fi
 NATIVE_FOLDER=ai/onnxruntime/native/$ARCH
 

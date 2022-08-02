@@ -316,7 +316,7 @@ common::Status RknpuExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     };
 
     compute_info.compute_func = [](FunctionState state,
-                                   const OrtCustomOpApi* api,
+                                   const OrtApi* api,
                                    OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
       RknpuFuncState* rk_state = reinterpret_cast<RknpuFuncState*>(state);

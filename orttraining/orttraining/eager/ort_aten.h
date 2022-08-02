@@ -127,6 +127,7 @@ c10::optional<at::ScalarType> PromoteScalarTypesWithCategory(
 ONNX_NAMESPACE::TensorProto_DataType GetONNXTensorProtoDataType(at::ScalarType dtype);
 
 OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at::ScalarType type);
+void CastToType_out(onnxruntime::ORTInvoker& invoker, const OrtValue& input, OrtValue& output, at::ScalarType type);
 
 void resize_output(
   onnxruntime::ORTInvoker& invoker,

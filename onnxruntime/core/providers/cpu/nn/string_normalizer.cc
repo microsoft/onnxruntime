@@ -216,7 +216,7 @@ Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
 
   TensorShape output_shape(output_dims);
   auto output_tensor = ctx->Output(0, output_shape);
-  auto const output_data = output_tensor->template MutableData<std::string>();
+  auto const output_data = output_tensor->MutableData<std::string>();
 
   size_t output_idx = 0;
   while (first != end) {
@@ -323,7 +323,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
   Status status;
   Locale locale(locale_name_);
   Utf8Converter converter(conv_error, wconv_error);
-  auto* const input_data = X->template Data<std::string>();
+  auto* const input_data = X->Data<std::string>();
   using StrRef = std::reference_wrapper<const std::string>;
   if (is_case_sensitive_) {
     if (!stopwords_.empty()) {
