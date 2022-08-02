@@ -28,7 +28,7 @@ Status Trilu::ComputeInternal(OpKernelContext* ctx) const {
   int64_t k_val = 0;
   if (k) {
     ORT_ENFORCE(IsScalarOr1ElementVector(k), "k should be a 1-D or 0-D tensor.");
-    k_val = *(k->template Data<int64_t>());
+    k_val = *(k->Data<int64_t>());
   }
   if (input_ptr == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& input = *input_ptr;

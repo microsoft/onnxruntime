@@ -35,7 +35,7 @@ ONNX_OPERATOR_KERNEL_EX(RandomUniformLike, kOnnxDomain, 1, kCudaExecutionProvide
     void operator()(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const float alpha, \
                     const float beta, PhiloxGenerator& generator, Tensor& Y) const {                     \
       typedef typename ToCudaType<T>::MappedType CudaT;                                                  \
-      CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());                             \
+      CudaT* Y_data = reinterpret_cast<CudaT*>(Y.MutableData<T>());                             \
       name##KernelImpl<CudaT>(prop, stream, N, alpha, beta, generator, Y_data);                          \
     }                                                                                                    \
   };

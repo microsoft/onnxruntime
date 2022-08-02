@@ -57,8 +57,8 @@ class IdentityOp final : public OpKernel {
           memcpy(target, source, shape.Size() * X_type->Size());
         } else {
           // handle std::string
-          const auto* src = X->template Data<std::string>();
-          auto* dst = Y->template MutableData<std::string>();
+          const auto* src = X->Data<std::string>();
+          auto* dst = Y->MutableData<std::string>();
           std::copy(src, src + shape.Size(), dst);
         }
       }

@@ -48,9 +48,9 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
   const Tensor* scale = ctx->Input<Tensor>(1);
   const Tensor* bias = ctx->Input<Tensor>(2);
 
-  auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
-  auto scale_data = reinterpret_cast<const CudaV*>(scale->template Data<V>());
-  auto bias_data = (simplified || (nullptr == bias)) ? nullptr : reinterpret_cast<const CudaV*>(bias->template Data<V>());
+  auto X_data = reinterpret_cast<const CudaT*>(X->Data<T>());
+  auto scale_data = reinterpret_cast<const CudaV*>(scale->Data<V>());
+  auto bias_data = (simplified || (nullptr == bias)) ? nullptr : reinterpret_cast<const CudaV*>(bias->Data<V>());
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
@@ -62,7 +62,7 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
 
   // Outputs
   Tensor* Y = ctx->Output(0, x_shape);
-  auto Y_data = reinterpret_cast<CudaV*>(Y->template MutableData<V>());
+  auto Y_data = reinterpret_cast<CudaV*>(Y->MutableData<V>());
 
   //Mean and variance
   std::vector<int64_t> mean_inv_std_var_dim;
@@ -79,14 +79,14 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
   if (!simplified) {
     Tensor* mean = ctx->Output(output_index++, TensorShape(mean_inv_std_var_dim));
     if (mean != nullptr) {
-      mean_data = reinterpret_cast<CudaU*>(mean->template MutableData<U>());
+      mean_data = reinterpret_cast<CudaU*>(mean->MutableData<U>());
     }
   }
 
   Tensor* var = ctx->Output(output_index, TensorShape(mean_inv_std_var_dim));
   CudaU* inv_var_data = nullptr;
   if (var != nullptr) {
-    inv_var_data = reinterpret_cast<CudaU*>(var->template MutableData<U>());
+    inv_var_data = reinterpret_cast<CudaU*>(var->MutableData<U>());
   }
 
   if (x_shape.Size() == 0) {

@@ -75,7 +75,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   BuildGlobalIndex(
       stream,
-      global_attention->template Data<int>(),
+      global_attention->Data<int>(),
       batch_size,
       sequence_length,
       global_index_buffer.get(),
@@ -116,7 +116,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto& device_prop = GetDeviceProp();
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
-      reinterpret_cast<const CudaT*>(bias->template Data<T>()), n,
+      reinterpret_cast<const CudaT*>(bias->Data<T>()), n,
       GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
       &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop),
       cublas, stream);
@@ -124,8 +124,8 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x B.
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-      reinterpret_cast<const CudaT*>(weights->template Data<T>()), n,
-      reinterpret_cast<const CudaT*>(input->template Data<T>()), k,
+      reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
+      reinterpret_cast<const CudaT*>(input->Data<T>()), k,
       &one, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop),
       cublas, stream);
 
@@ -155,15 +155,15 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
-        reinterpret_cast<const CudaT*>(global_bias->template Data<T>()), n,
-        GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
+        reinterpret_cast<const CudaT*>(global_bias->Data<T>()), n,
+        GetConstOnes<CudaT>(m, stream), 1,
         &zero, reinterpret_cast<CudaT*>(global_gemm_buffer.get()), n, device_prop),
-          cublas, stream);
+        cublas, stream);
 
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-        reinterpret_cast<const CudaT*>(global_weights->template Data<T>()), n,
-        reinterpret_cast<const CudaT*>(input->template Data<T>()), k,
+        reinterpret_cast<const CudaT*>(global_weights->Data<T>()), n,
+        reinterpret_cast<const CudaT*>(input->Data<T>()), k,
         &one, reinterpret_cast<CudaT*>(global_gemm_buffer.get()), n, device_prop),
         cublas, stream);
   }
@@ -182,14 +182,14 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           cublas,
           stream,
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
-          reinterpret_cast<const CudaT*>(mask->template Data<T>()),
+          reinterpret_cast<const CudaT*>(mask->Data<T>()),
           reinterpret_cast<const CudaT*>(global_gemm_buffer.get()),
-          global_attention->template Data<int>(),
+          global_attention->Data<int>(),
           global_index_buffer.get(),
           batch_global_num_buffer.get(),
           pinned_buffer.get(),
           workspace_buffer.get(),
-          output->template MutableData<T>(),
+          output->MutableData<T>(),
           batch_size,
           sequence_length,
           num_heads_,

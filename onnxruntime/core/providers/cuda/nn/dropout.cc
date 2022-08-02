@@ -14,7 +14,7 @@ namespace {
 template <typename T>
 struct GetRatioDataImpl {
   void operator()(const Tensor* ratio, float& ratio_data) const {
-    ratio_data = static_cast<float>(*(ratio->template Data<T>()));
+    ratio_data = static_cast<float>(*(ratio->Data<T>()));
     ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f, "ratio_data is outside range [0, 1)");
   }
 };
@@ -25,8 +25,8 @@ struct DropoutComputeImpl {
                   const float ratio_data, PhiloxGenerator& generator, const Tensor& X, Tensor& Y, void* mask_data,
                   bool use_bitmask) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
-    const CudaT* X_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
-    CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());
+    const CudaT* X_data = reinterpret_cast<const CudaT*>(X.Data<T>());
+    CudaT* Y_data = reinterpret_cast<CudaT*>(Y.MutableData<T>());
 
     DropoutKernelImpl<CudaT>(prop, stream, N, mask_element_count, ratio_data, generator, X_data, Y_data, mask_data,
                              use_bitmask);

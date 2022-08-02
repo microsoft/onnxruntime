@@ -82,10 +82,10 @@ Status LRN<T>::ComputeInternal(OpKernelContext* context) const {
       CUDNN_LRN_CROSS_CHANNEL_DIM1,
       &one,
       x_tensor,
-      reinterpret_cast<const CudaT*>(X->template Data<T>()),
+      reinterpret_cast<const CudaT*>(X->Data<T>()),
       &zero,
       x_tensor,
-      reinterpret_cast<CudaT*>(Y->template MutableData<T>())),
+      reinterpret_cast<CudaT*>(Y->MutableData<T>())),
       CudnnHandle(),
       Stream(context));
 

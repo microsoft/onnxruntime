@@ -90,11 +90,11 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
   float* Y_data = nullptr;
 
   if (is_transpose_required) {  // use intermediate buffers to compute the hardmax values
-    X_data = transposed_input.template Data<float>();
-    Y_data = intermediate_output.template MutableData<float>();
+    X_data = transposed_input.Data<float>();
+    Y_data = intermediate_output.MutableData<float>();
   } else {  // use the node input/output directly
-    X_data = X->template Data<float>();
-    Y_data = Y->template MutableData<float>();
+    X_data = X->Data<float>();
+    Y_data = Y->MutableData<float>();
   }
 
   math::RowwiseMax<float, CPUMathUtil>(N, D, X_data, rowmax_data, nullptr);
