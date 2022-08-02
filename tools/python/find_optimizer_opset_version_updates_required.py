@@ -88,10 +88,10 @@ def get_multiline_call_args_from_file(filename: str, function_or_declaration: st
             end = -1
             if function_and_args:
                 end = function_and_args.find(")", start)
-                
+
                 if end != -1:
                     start_args = function_and_args.find("(")
-                    results.append(function_and_args[start_args + 1:end])
+                    results.append(function_and_args[start_args + 1 : end])
                     function_and_args = None
 
     return results
