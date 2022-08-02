@@ -31,6 +31,7 @@
 #pragma GCC diagnostic pop
 #endif
 using onnxruntime::concurrency::ThreadPool;
+#include <iostream>
 
 namespace onnxruntime {
 namespace math {
@@ -370,7 +371,27 @@ void Im2col<T, StorageOrder::NCHW>::operator()(
     T* data_col,
     bool accumulate_output,
     T padding_value) {
-  int64_t kernel_size = std::accumulate(kernel_shape, kernel_shape + rank, 1LL, std::multiplies<int64_t>());
+
+  int64_t im_shape_size = std::accumulate(im_shape, im_shape + rank, 1LL, std::multiplies<int64_t>());
+  int64_t output_shape_size = std::accumulate(output_shape, output_shape + rank, 1LL, std::multiplies<int64_t>());
+  int64_t kernel_shape_size = std::accumulate(kernel_shape, kernel_shape + rank, 1LL, std::multiplies<int64_t>());
+
+  std::cout << "\n\nCalled void Im2col<T, StorageOrder::NCHW>::operator()(";
+  std::cout << ",\n\tconst T* data_im={"; for (auto i=0; i < im_shape_size; ++i) std::cout << data_im[i] << ", "; std::cout << "}";
+  std::cout << ",\n\tconst int64_t* im_shape={"; for (auto i=0; i < rank; ++i) std::cout << im_shape[i] << ", "; std::cout << "}";
+  std::cout << ",\n\tconst int64_t* output_shape={"; for (auto i=0; i < rank; ++i) std::cout << output_shape[i] << ", "; std::cout << "}";
+  std::cout << ",\n\tint64_t channels_col=" << channels_col;
+  std::cout << ",\n\tconst int64_t* kernel_shape={"; for (auto i=0; i < rank; ++i) std::cout << kernel_shape[i] << ", "; std::cout << "}";
+  std::cout << ",\n\tconst int64_t* stride={"; for (auto i=0; i < rank; ++i) std::cout << stride[i] << ", "; std::cout << "}";
+  std::cout << ",\n\tconst int64_t* dilation={"; for (auto i=0; i < rank; ++i) std::cout << dilation[i] << ", "; std::cout << "}";
+  std::cout << ",\n\tconst int64_t* pad={"; for (auto i=0; i < rank; ++i) std::cout << pad[i] << ", "; std::cout << "}";
+  std::cout << ",\n\tptrdiff_t rank=" << rank;
+  std::cout << ",\n\tT* data_col= preallocated pointer to write at {"; for (auto i=0; i < output_shape_size; ++i) std::cout << data_col[i] << ", "; std::cout << "}";
+  std::cout << ",\n\tbool accumulate_output=" << accumulate_output;
+  std::cout << ",\n\tT padding_value=" << padding_value << ")";
+
+  std::cout << "\n\n\tVariable im_shape_size: " << im_shape_size << "\n\tVariable output_shape_size: "<<output_shape_size << "\n\tVariable kernel_shape_size: " << kernel_shape_size << std::endl<< std::endl;
+
   std::vector<int64_t> d_offset(rank, 0);
   std::vector<int64_t> d_iter(rank, 0);
   for (int64_t c_col = 0; c_col < channels_col; ++c_col) {
@@ -386,7 +407,7 @@ void Im2col<T, StorageOrder::NCHW>::operator()(
       // Loop over spatial axes in forward order to compute the indices in the
       // image and column, and whether the index lies in the padding.
       int64_t index_col = c_col;
-      int64_t index_im = c_col / kernel_size;
+      int64_t index_im = c_col / kernel_shape_size;
       bool is_padding = false;
       for (ptrdiff_t d_i = 0; d_i < rank; ++d_i) {
         int64_t d = d_iter[d_i];
@@ -408,6 +429,8 @@ void Im2col<T, StorageOrder::NCHW>::operator()(
       }
     } while (NextPosition(rank, output_shape, d_iter.data()));
   }  // for (int c = 0; c < channels_col; ++c) {
+
+  std::cout << "Return void Im2col -> T* data_col={"; for (auto i=0; i < output_shape_size; ++i) std::cout << data_col[i] << ", "; std::cout << "}\n";
 }
 
 template struct Im2col<float, StorageOrder::NCHW>;
@@ -780,24 +803,48 @@ void Col2im<float, CPUMathUtil, StorageOrder::NHWC>(const float* data_col, int64
 }
 
 template <>
-void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, const int64_t* img_shape,
-                                                      const int64_t* output_shape, int64_t channels_col, int64_t img_size,
-                                                      const int64_t* kernel_shape, const int64_t* stride,
-                                                      const int64_t* dilation, const int64_t* pad, ptrdiff_t N,
-                                                      float* data_img, CPUMathUtil* context) {
+void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col,
+                                                      const int64_t* img_shape,
+                                                      const int64_t* output_shape,
+                                                      int64_t channels_col,
+                                                      int64_t img_size,
+                                                      const int64_t* kernel_shape,
+                                                      const int64_t* stride,
+                                                      const int64_t* dilation,
+                                                      const int64_t* pad,
+                                                      ptrdiff_t N,
+                                                      float* data_img,
+                                                      CPUMathUtil* context) {
+  std::cout << "\n\nCalled void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(";
+  std::cout << ",\n\tconst float* data_col={"; for (auto i=0; i < img_size; ++i) std::cout << data_col[i] << ", "; std::cout << "}";
+  std::cout << ",\n\tconst int64_t* img_shape={"; for (auto i=0; i < N; ++i) std::cout << img_shape[i] << ", "; std::cout << "}";
+  std::cout << ",\n\tconst int64_t* output_shape={"; for (auto i=0; i < N; ++i) std::cout << output_shape[i] << ", "; std::cout << "}";
+  std::cout << ",\n\tint64_t channels_col=" << channels_col;
+  std::cout << ",\n\tint64_t img_size=" << img_size;
+  std::cout << ",\n\tconst int64_t* kernel_shape={"; for (auto i=0; i < N; ++i) std::cout << kernel_shape[i] << ", "; std::cout << "}";
+  std::cout << ",\n\tconst int64_t* stride={"; for (auto i=0; i < N; ++i) std::cout << stride[i] << ", "; std::cout << "}";
+  std::cout << ",\n\tconst int64_t* dilation={"; for (auto i=0; i < N; ++i) std::cout << dilation[i] << ", "; std::cout << "}";
+  std::cout << ",\n\tconst int64_t* pad={"; for (auto i=0; i < 2*N; ++i) std::cout << pad[i] << ", "; std::cout << "}";
+  std::cout << ",\n\tptrdiff_t N=" << N;
+  std::cout << ",\n\tfloat* data_img= preallocated pointer to save at {"; for (auto i=0; i < img_size; ++i) std::cout << data_img[i] << ", "; std::cout << "}";
+  std::cout << ",\n\tCPUMathUtil* context=...)" << std::endl;
+
   Set<float, CPUMathUtil>(gsl::narrow<ptrdiff_t>(img_size), 0, data_img, context);
   Im2col<float, StorageOrder::NCHW>()(
-      data_col,
-      img_shape,
-      output_shape,
-      channels_col,
-      kernel_shape,
-      stride,
-      dilation,
-      pad,
-      N,
-      data_img,
-      true);
+      data_col,       // const T* data_im,
+      img_shape,      // const int64_t* im_shape,
+      output_shape,   // const int64_t* output_shape,
+      channels_col,   // int64_t channels_col,
+      kernel_shape,   // const int64_t* kernel_shape,
+      stride,         // const int64_t* stride,
+      dilation,       // const int64_t* dilation,
+      pad,            // const int64_t* pad,
+      N,              // ptrdiff_t rank,
+      data_img,       // T* data_col,
+      true            // bool accumulate_output,
+      );
+
+  std::cout << "Return void Col2imNd --> float* data_img= {"; for (auto i=0; i < img_size; ++i) std::cout << data_img[i] << ", "; std::cout << "}";
 }
 
 #define SPECIALIZED_COPYVECTOR(T)                                                          \

@@ -27,55 +27,60 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
   const auto* col_input = context->Input<Tensor>(0);
   const auto* image_shape = context->Input<Tensor>(1);
   const auto* kernel_shape = context->Input<Tensor>(2);
+  std::cout << "Status Col2Im<T>::Compute(OpKernelContext* context)" << std::endl;
 
-  TensorShape col_shape = col_input->Shape();
-  const auto num_image_channels = image_shape->Shape()[1];
-  const auto batch_size = col_shape[0];
+  const T* col_input_data = col_input->template Data<T>();
+  TensorShape col_input_shape = col_input->Shape();
+  int64_t col_input_C = col_input_shape[1];
+  const auto col_input_N = col_input_shape[0];
 
-  const int64_t image_size = image_shape->Shape().Size();
-
-  AllocatorPtr alloc;
-  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-  const int64_t col_buffer_size = col_input->Shape().Size();
-  auto col_data = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * col_buffer_size);
-
-  BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
-  T* col_buffer_data = static_cast<T*>(col_buffer.get());
+  int64_t image_shape_size = 1;
+  int64_t kernel_shape_size = 1;
+  for (auto i=0; i < image_shape->Shape().Size(); ++i) {
+    image_shape_size *=  image_shape->Data<int64_t>()[i];
+    kernel_shape_size *=  kernel_shape->Data<int64_t>()[i];
+    // col_input_C computed as => (C*n-ary-prod{kernel_shape}) / n-ary-prod{kernel_shape}
+    col_input_C /= kernel_shape->Data<int64_t>()[i];
+  }
 
   TensorShapeVector Y_dims;
-  Y_dims.insert(Y_dims.begin(), {batch_size, num_image_channels});
+  Y_dims.insert(Y_dims.begin(), {col_input_N, col_input_C});
+  for (auto i=0; i < image_shape->Shape()[0]; ++i) {
+    Y_dims.push_back(image_shape->Data<int64_t>()[i]);
+  }
   TensorShape Yshape(Y_dims);
   Tensor* Y = context->Output(0, Yshape);
   T* Ydata = Y->template MutableData<T>();
 
-  // template <typename T, class Provider, int order>
-  // void Col2imNd(
-  //     const T* data_col,
-  //     const int64_t* img_shape,
-  //     const int64_t* output_shape,
-  //     int64_t channels_col,
-  //     int64_t img_size,
-  //     const int64_t* kernel_shape,
-  //     const int64_t* stride,
-  //     const int64_t* dilation,
-  //     const int64_t* pad,
-  //     ptrdiff_t N,
-  //     T* data_img,
-  //     Provider* provider);
+  std::cout << "\n\tInput 0: col_input = ("; for (auto i=0; i < Yshape.Size(); ++i) std::cout <<  col_input_data[i] << ", "; std::cout << ") with shape "<< Yshape << std::endl;
+  std::cout << "\tInput 1: image_shape = ("; for (auto i=0; i < image_shape->Shape().Size(); ++i) std::cout << image_shape->Data<int64_t>()[i] << ", "; std::cout << ")" << std::endl;
+  std::cout << "\tInput 2: kernel_shape = ("; for (auto i=0; i < kernel_shape->Shape().Size(); ++i) std::cout << kernel_shape->Data<int64_t>()[i] << ", "; std::cout << ")" << std::endl;
+  std::cout << "\tAttribute strides = ("; for (size_t i=0; i < col2im_attrs_.strides.size(); ++i) std::cout <<  col2im_attrs_.strides[i] << ", "; std::cout << ")"<< std::endl;
+  std::cout << "\tAttribute dilations = ("; for (size_t i=0; i < col2im_attrs_.dilations.size(); ++i) std::cout <<  col2im_attrs_.dilations[i] << ", "; std::cout << ")"<< std::endl;
+  std::cout << "\tAttribute pads = ("; for (size_t i=0; i < col2im_attrs_.pads.size(); ++i) std::cout <<  col2im_attrs_.pads[i] << ", "; std::cout << ")"<< std::endl;
+
+  std::cout << "\tVariable col_input_C: " << col_input_C << std::endl;
+  std::cout << "\tVariable col_input_N = " << col_input_N << std::endl;
+  std::cout <<  "\tVariable image_shape_size: " << image_shape_size << std::endl;
+  std::cout <<  "\tVariable kernel_shape_size: " << kernel_shape_size << std::endl;
+
+  std::cout << "\n\tStatus Col2Im<T>::Compute() --> math::Col2imNd<>()" << std::endl;
 
   math::Col2imNd<T, CPUMathUtil, StorageOrder::NCHW>(
-    col_buffer_data,
-    image_shape->Shape().GetDims().data(),
-    col_shape.GetDims().data(),
-    num_image_channels,
-    image_size,
-    kernel_shape->Shape().GetDims().data(),
-    col2im_attrs_.strides.data(),
-    col2im_attrs_.dilations.data(),
-    col2im_attrs_.pads.data(),
-    static_cast<int>(kernel_shape->Shape().Size()),
-    Ydata,
-    &CPUMathUtil::Instance());
+    col_input_data,                                   // const T* data_col,
+    image_shape->Data<int64_t>(),                     // const int64_t* img_shape,
+    Yshape.Slice(2).GetDims().data(),                 // const int64_t* output_shape,
+    col_input_C,                                      // int64_t channels_col, --> output_num_channels * kernel_shape_size
+    image_shape_size,                                 // int64_t img_size,
+    kernel_shape->Data<int64_t>(),                    // const int64_t* kernel_shape,
+    col2im_attrs_.strides.data(),                     // const int64_t* stride,
+    col2im_attrs_.dilations.data(),                   // const int64_t* dilation,
+    col2im_attrs_.pads.data(),                        // const int64_t* pad,
+    kernel_shape->Shape().Size(),                     // ptrdiff_t N, --> number of spatial dims for image
+    Ydata,                                            // T* data_img,
+    &CPUMathUtil::Instance()                          // Provider* provider
+    );
+  std::cout << "\n\n Return Col2Im<T>::Compute() --> "; for (auto i=0; i < Yshape.Size(); ++i) std::cout <<  Ydata[i] << ", "; std::cout << ") with shape " << Yshape << std::endl << std::endl;
 
   return Status::OK();
 }
