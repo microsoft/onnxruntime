@@ -54,6 +54,8 @@ class CKGemm : public GemmBase<T> {
   template <typename Op>
   using CKGemmInstanceFactory = ck::tensor_operation::device::instance::DeviceOperationInstanceFactory<Op>;
 
+  // composable kernel's GetInstances() return a collection of <std::unique_ptr<DeviceGemm<...>>>. We need to manually
+  // cast them to std::unique_ptr<BaseOperator>> to avoid type problem.
   template <typename Op>
   static std::vector<std::unique_ptr<ck::tensor_operation::device::BaseOperator>> GetInstances() {
     auto ptrs = CKGemmInstanceFactory<Op>::GetInstances();
