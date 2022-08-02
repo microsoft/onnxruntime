@@ -37,7 +37,6 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const auto* X = context->Input<Tensor>(0);
   const auto* W = context->Input<Tensor>(1);
-  bool is_w_signed = W->IsDataType<int8_t>();
   uint8_t input_offset = 0;
   uint8_t filter_offset = 0;
   if (num_inputs >= 3) {
@@ -48,7 +47,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   if (num_inputs >= 4) {
     const auto* W_Zero_Point = context->Input<Tensor>(3);
     ORT_ENFORCE(IsScalarOr1ElementVector(W_Zero_Point), "Non per-tensor quantization is not supported now.");
-    filter_offset = *(W_Zero_Point->Data<uint8_t>());
+    filter_offset = *static_cast<const uint8_t*>(W_Zero_Point->DataRaw());
   }
 
   const int64_t N = X->Shape()[0];
@@ -111,7 +110,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   const auto* Xdata = X->template Data<uint8_t>();
-  const auto* Wdata = W->template Data<uint8_t>();
+  const auto* Wdata = static_cast<const uint8_t*>(W->DataRaw());
   auto* Ydata = Y->template MutableData<int32_t>();
 
   for (int image_id = 0; image_id < N; ++image_id) {
@@ -156,6 +155,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
       gemm_shape.M = static_cast<size_t>(M / conv_attrs_.group);
       gemm_shape.N = static_cast<size_t>(output_image_size);
       gemm_shape.K = static_cast<size_t>(kernel_dim);
+      gemm_shape.BIsSigned = W->IsDataType<int8_t>();
 
       MLAS_GEMM_QUANT_DATA_PARAMS gemm_params;
       gemm_params.A = Wdata + group_id * W_offset;
