@@ -1,19 +1,12 @@
 import torch
-
-from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription
-
-from orttraining_test_data_loader import create_ort_test_dataloader, BatchArgsOption, split_batch
 from orttraining_test_bert_postprocess import postprocess_model
+from orttraining_test_data_loader import BatchArgsOption, create_ort_test_dataloader, split_batch
 
-from onnxruntime.training import (
-    _utils,
-    amp,
-    optim,
-    orttrainer,
-    TrainStepInfo,
-    model_desc_validation as md_val,
-    orttrainer_options as orttrainer_options,
-)
+from onnxruntime.capi.ort_trainer import IODescription, ORTTrainer
+from onnxruntime.training import TrainStepInfo, _utils, amp
+from onnxruntime.training import model_desc_validation as md_val
+from onnxruntime.training import optim, orttrainer
+from onnxruntime.training import orttrainer_options as orttrainer_options
 from onnxruntime.training.optim import _LRScheduler
 
 
@@ -198,7 +191,7 @@ def run_test(
             allreduce_post_accumulation=allreduce_post_accumulation,
             get_lr_this_step=get_lr_this_step if use_internal_get_lr_this_step else None,
             loss_scaler=loss_scaler if use_internal_loss_scaler else None,
-            _opset_version=14,
+            _opset_version=15,
             _use_deterministic_compute=True,
         )
         print("running with old frontend API")

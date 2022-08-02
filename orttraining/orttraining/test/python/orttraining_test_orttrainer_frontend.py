@@ -1,35 +1,27 @@
-from functools import partial
 import inspect
 import math
-from distutils.version import StrictVersion
-from numpy.testing import assert_allclose
-import onnx
 import os
-import pytest
 import tempfile
+from distutils.version import StrictVersion
+from functools import partial
+
+import _test_commons
+import _test_helpers
+import onnx
+import pytest
 import torch
 import torch.nn.functional as F
+from numpy.testing import assert_allclose
 
-from onnxruntime import set_seed
-from onnxruntime.capi.ort_trainer import (
-    IODescription as Legacy_IODescription,
-    ModelDescription as Legacy_ModelDescription,
-    LossScaler as Legacy_LossScaler,
-    ORTTrainer as Legacy_ORTTrainer,
-)
-from onnxruntime.training import (
-    _utils,
-    amp,
-    checkpoint,
-    optim,
-    orttrainer,
-    TrainStepInfo,
-    model_desc_validation as md_val,
-    orttrainer_options as orttrainer_options,
-)
-import _test_commons, _test_helpers
-from onnxruntime import SessionOptions
-from onnxruntime.training import PropagateCastOpsStrategy
+from onnxruntime import SessionOptions, set_seed
+from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription
+from onnxruntime.capi.ort_trainer import LossScaler as Legacy_LossScaler
+from onnxruntime.capi.ort_trainer import ModelDescription as Legacy_ModelDescription
+from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
+from onnxruntime.training import PropagateCastOpsStrategy, TrainStepInfo, _utils, amp, checkpoint
+from onnxruntime.training import model_desc_validation as md_val
+from onnxruntime.training import optim, orttrainer
+from onnxruntime.training import orttrainer_options as orttrainer_options
 
 ###############################################################################
 # Testing starts here #########################################################
@@ -105,7 +97,7 @@ def testORTTrainerOptionsDefaultValues(test_input):
         "_internal_use": {
             "enable_internal_postprocess": True,
             "extra_postprocess": None,
-            "onnx_opset_version": 14,
+            "onnx_opset_version": 15,
             "enable_onnx_contrib_ops": True,
         },
         "provider_options": {},
@@ -708,7 +700,7 @@ def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values, device)
 
         assert trainer._onnx_model.graph.output[i].name == output_name
         for dim_idx, dim in enumerate(trainer._onnx_model.graph.output[i].type.tensor_type.shape.dim):
-            if opset != 14:
+            if opset is None or opset <= 12:
                 assert output_dim[dim_idx] == dim.dim_value
             assert output_type == _utils.dtype_onnx_to_torch(
                 trainer._onnx_model.graph.output[i].type.tensor_type.elem_type
@@ -824,7 +816,7 @@ def _recompute_data():
     if device_capability_major == 7:  # V100 for Dev machine
         expected_loss = {
             12: [10.5598, 10.4591, 10.3477, 10.2726, 10.1945],
-            14: [10.54088, 10.498755, 10.386827, 10.338747, 10.262459],
+            15: [10.54088, 10.498755, 10.386827, 10.338747, 10.262459],
         }
         return [
             (False, False, False, 0, expected_loss),  # no recompute
@@ -836,7 +828,7 @@ def _recompute_data():
     elif device_capability_major == 5:  # M60 for CI machines
         expected_loss = {
             12: [10.5445, 10.4389, 10.3480, 10.2627, 10.2113],
-            14: [10.5445, 10.4389, 10.3480, 10.2627, 10.2113],
+            15: [10.5445, 10.4389, 10.3480, 10.2627, 10.2113],
         }
         return [
             (False, False, False, 0, expected_loss),  # no recompute
@@ -1876,7 +1868,7 @@ def _adam_max_norm_clip_data():
                         7.233806,
                         7.011791,
                     ],
-                    14: [
+                    15: [
                         10.584141,
                         10.068119,
                         9.581743,
@@ -1913,7 +1905,7 @@ def _adam_max_norm_clip_data():
                         7.240352,
                         7.018665,
                     ],
-                    14: [
+                    15: [
                         10.584141,
                         10.068845,
                         9.583107,
@@ -1950,7 +1942,7 @@ def _adam_max_norm_clip_data():
                         7.289846,
                         7.073726,
                     ],
-                    14: [
+                    15: [
                         10.697515,
                         10.229034,
                         9.765422,
@@ -1987,7 +1979,7 @@ def _adam_max_norm_clip_data():
                         7.296772,
                         7.0809422,
                     ],
-                    14: [
+                    15: [
                         10.697515,
                         10.22967,
                         9.766556,
@@ -2027,7 +2019,7 @@ def _adam_max_norm_clip_data():
                         7.236041,
                         7.035602,
                     ],
-                    14: [
+                    15: [
                         10.618382,
                         10.08292,
                         9.603334,
@@ -2064,7 +2056,7 @@ def _adam_max_norm_clip_data():
                         7.242587,
                         7.042367,
                     ],
-                    14: [
+                    15: [
                         10.618382,
                         10.083632,
                         9.604639,
@@ -2101,7 +2093,7 @@ def _adam_max_norm_clip_data():
                         7.284141,
                         7.072688,
                     ],
-                    14: [
+                    15: [
                         10.68639,
                         10.102986,
                         9.647681,
@@ -2138,7 +2130,7 @@ def _adam_max_norm_clip_data():
                         7.290722,
                         7.079446,
                     ],
-                    14: [
+                    15: [
                         10.697515,
                         10.22967,
                         9.766556,
@@ -2215,7 +2207,7 @@ def _lamb_max_norm_clip_data():
                         9.909771,
                         9.874278,
                     ],
-                    14: [
+                    15: [
                         10.584141,
                         10.497192,
                         10.389251,
@@ -2252,7 +2244,7 @@ def _lamb_max_norm_clip_data():
                         9.617104,
                         9.563070,
                     ],
-                    14: [
+                    15: [
                         10.584141,
                         10.461154,
                         10.315399,
@@ -2289,7 +2281,7 @@ def _lamb_max_norm_clip_data():
                         9.930301,
                         9.893368,
                     ],
-                    14: [
+                    15: [
                         10.697515,
                         10.631279,
                         10.528757,
@@ -2326,7 +2318,7 @@ def _lamb_max_norm_clip_data():
                         9.642885,
                         9.586762,
                     ],
-                    14: [
+                    15: [
                         10.697515,
                         10.596729,
                         10.457815,
@@ -2366,7 +2358,7 @@ def _lamb_max_norm_clip_data():
                         9.897674,
                         9.84524,
                     ],
-                    14: [0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 4],
+                    15: [0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 4],
                 },
             ),
             (
@@ -2390,7 +2382,7 @@ def _lamb_max_norm_clip_data():
                         9.605957,
                         9.533117,
                     ],
-                    14: [1, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 4],
+                    15: [1, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 4],
                 },
             ),
             (
@@ -2414,7 +2406,7 @@ def _lamb_max_norm_clip_data():
                         9.928105,
                         9.896435,
                     ],
-                    14: [2, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 4],
+                    15: [2, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 4],
                 },
             ),
             (
@@ -2438,7 +2430,7 @@ def _lamb_max_norm_clip_data():
                         9.639567,
                         9.589856,
                     ],
-                    14: [3, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 4],
+                    15: [3, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 4],
                 },
             ),
         ]
