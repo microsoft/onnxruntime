@@ -102,122 +102,98 @@ inline double ClampMiopenBatchNormEpsilon(double epsilon) {
   return epsilon;
 }
 
-// Compatitable layer to address the non const arguments in miopenBatchNormalizationForwardTraining
 inline miopenStatus_t
-miCompatBatchNormalizationForwardTraining(miopenHandle_t handle,
-                                          miopenBatchNormMode_t bn_mode,
-                                          const void* alpha,
-                                          const void* beta,
-                                          const miopenTensorDescriptor_t xDesc,
-                                          const void* x,
-                                          const miopenTensorDescriptor_t yDesc,
-                                          void* y,
-                                          const miopenTensorDescriptor_t bnScaleBiasMeanVarDesc,
-                                          const void* bnScale,
-                                          const void* bnBias,
-                                          double expAvgFactor,
-                                          void* resultRunningMean,
-                                          void* resultRunningVariance,
-                                          double epsilon,
-                                          void* resultSaveMean,
-                                          void* resultSaveInvVariance)
-{
-    return miopenBatchNormalizationForwardTraining(handle,
-                                                   bn_mode,
-                                                   const_cast<void*>(alpha),
-                                                   const_cast<void*>(beta),
-                                                   xDesc,
-                                                   x,
-                                                   yDesc,
-                                                   y,
-                                                   bnScaleBiasMeanVarDesc,
-                                                   const_cast<void*>(bnScale),
-                                                   const_cast<void*>(bnBias),
-                                                   expAvgFactor,
-                                                   resultRunningMean,
-                                                   resultRunningVariance,
-                                                   epsilon,
-                                                   resultSaveMean,
-                                                   resultSaveInvVariance);
-}
-
-
-template <typename ScalingFactorType>
-miopenStatus_t
-miCompatBatchNormalizationForwardInference(miopenHandle_t handle,
-                                           miopenBatchNormMode_t bn_mode,
-                                           const ScalingFactorType* alpha,
-                                           const ScalingFactorType* beta,
-                                           const miopenTensorDescriptor_t xDesc,
-                                           const void* x,
-                                           const miopenTensorDescriptor_t yDesc,
-                                           void* y,
-                                           const miopenTensorDescriptor_t bnScaleBiasMeanVarDesc,
-                                           const void* bnScale,
-                                           const void* bnBias,
-                                           const void* estimatedMean,
-                                           const void* estimatedVariance,
-                                           double epsilon)
-{
-    float compat_alpha = *alpha;
-    float compat_beta = *beta;
-    // Current MIOpen assumes alpha and beta are fp32
-    return miopenBatchNormalizationForwardInference(handle,
-                                                    bn_mode,
-                                                    &compat_alpha,
-                                                    &compat_beta,
-                                                    xDesc,
-                                                    const_cast<void*>(x),
-                                                    yDesc,
-                                                    y,
-                                                    bnScaleBiasMeanVarDesc,
-                                                    const_cast<void*>(bnScale),
-                                                    const_cast<void*>(bnBias),
-                                                    const_cast<void*>(estimatedMean),
-                                                    const_cast<void*>(estimatedVariance),
-                                                    epsilon);
+BatchNormalizationForwardInferenceHelper(miopenHandle_t handle,
+                                         miopenBatchNormMode_t mode,
+                                         const void *alpha,
+                                         const void *beta,
+                                         const miopenTensorDescriptor_t xDesc,
+                                         const void *x,
+                                         const miopenTensorDescriptor_t yDesc,
+                                         void *y,
+                                         const miopenTensorDescriptor_t bnScaleBiasMeanVarDesc,
+                                         const void *bnScale,
+                                         const void *bnBias,
+                                         const void *estimatedMean,
+                                         const void *estimatedVariance,
+                                         double epsilon) {
+  return miopenBatchNormalizationForwardInference(handle,
+                                                  mode,
+                                                  const_cast<void*>(alpha),
+                                                  const_cast<void*>(beta),
+                                                  xDesc,
+                                                  x,
+                                                  yDesc,
+                                                  y,
+                                                  bnScaleBiasMeanVarDesc,
+                                                  const_cast<void*>(bnScale),
+                                                  const_cast<void*>(bnBias),
+                                                  const_cast<void*>(estimatedMean),
+                                                  const_cast<void*>(estimatedVariance),
+                                                  epsilon);
 }
 
 inline miopenStatus_t
-miCompatLRNCrossChannelForward(miopenHandle_t handle,
-                               miopenLRNDescriptor_t lrnDesc,
-                               miopenLRNMode_t lrnMode,
-                               const void* alpha,
-                               const miopenTensorDescriptor_t xDesc,
-                               const void* x,
-                               const void* beta,
-                               const miopenTensorDescriptor_t yDesc,
-                               void *y)
-{
-    if (lrnMode != miopenLRNCrossChannel) {
-        LOGS_DEFAULT(ERROR) << __func__ << " must be called with lrnMode == miopenLRNCrossChannel";
-        return miopenStatusBadParm;
-    }
-    return miopenLRNForward(handle,
-                            lrnDesc,
-                            alpha,
-                            xDesc,
-                            x,
-                            beta,
-                            yDesc,
-                            y,
-                            false, // Has not found cudnnLRNCrossChannelBackward anywhere yet
-                            nullptr);
+BatchNormalizationForwardTrainingHelper(miopenHandle_t handle,
+                                        miopenBatchNormMode_t mode,
+                                        const void *alpha,
+                                        const void *beta,
+                                        const miopenTensorDescriptor_t xDesc,
+                                        const void *x,
+                                        const miopenTensorDescriptor_t yDesc,
+                                        void *y,
+                                        const miopenTensorDescriptor_t bnScaleBiasMeanVarDesc,
+                                        const void *bnScale,
+                                        const void *bnBias,
+                                        double exponentialAverageFactor,
+                                        void *resultRunningMean,
+                                        void *resultRunningVariance,
+                                        double epsilon,
+                                        void *resultSaveMean,
+                                        void *resultSaveInvVariance) {
+  return miopenBatchNormalizationForwardTraining(handle,
+                                                 mode,
+                                                 const_cast<void*>(alpha),
+                                                 const_cast<void*>(beta),
+                                                 xDesc,
+                                                 x,
+                                                 yDesc,
+                                                 y,
+                                                 bnScaleBiasMeanVarDesc,
+                                                 const_cast<void*>(bnScale),
+                                                 const_cast<void*>(bnBias),
+                                                 exponentialAverageFactor,
+                                                 resultRunningMean,
+                                                 resultRunningVariance,
+                                                 epsilon,
+                                                 resultSaveMean,
+                                                 resultSaveInvVariance);
 }
 
 inline miopenStatus_t
-miCompatSetLRNDescriptor(const miopenLRNDescriptor_t lrnDesc,
-                         unsigned int lrnN,
-                         double lrnAlpha,
-                         double lrnBeta,
-                         double lrnK)
-{
-    return miopenSetLRNDescriptor(lrnDesc,
-                                  miopenLRNCrossChannel,
-                                  lrnN,
-                                  lrnAlpha,
-                                  lrnBeta,
-                                  lrnK);
+LRNCrossChannelForwardHelper(miopenHandle_t handle,
+                             miopenLRNDescriptor_t normDesc,
+                             miopenLRNMode_t lrnMode,
+                             const void *alpha,
+                             const miopenTensorDescriptor_t xDesc,
+                             const void *x,
+                             const void *beta,
+                             const miopenTensorDescriptor_t yDesc,
+                             void *y) {
+  if (lrnMode != miopenLRNCrossChannel) {
+    LOGS_DEFAULT(ERROR) << __func__ << " must be called with lrnMode == miopenLRNCrossChannel";
+    return miopenStatusBadParm;
+  }
+  return miopenLRNForward(handle, normDesc, alpha, xDesc, x, beta, yDesc, y, false, nullptr);
+}
+
+inline miopenStatus_t
+SetLRNDescriptorHelper(miopenLRNDescriptor_t normDesc,
+                       unsigned lrnN,
+                       double lrnAlpha,
+                       double lrnBeta,
+                       double lrnK) {
+  return miopenSetLRNDescriptor(normDesc, miopenLRNCrossChannel, lrnN, lrnAlpha, lrnBeta, lrnK);
 }
 
 }  // namespace rocm

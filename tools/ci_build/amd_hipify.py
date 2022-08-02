@@ -306,10 +306,6 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace("MIOPEN_BATCHNORM_SPATIAL", "miopenBNSpatial")
     s = s.replace("MIOPEN_BATCHNORM_PER_ACTIVATION", "miopenBNPerActivation")
     s = s.replace("MIOPEN_LRN_CROSS_CHANNEL", "miopenLRNCrossChannel")
-    s = s.replace("miopenBatchNormalizationForwardTraining", "miCompatBatchNormalizationForwardTraining")
-    s = s.replace("miopenBatchNormalizationForwardInference", "miCompatBatchNormalizationForwardInference")
-    s = s.replace("miopenLRNCrossChannelForward", "miCompatLRNCrossChannelForward")
-    s = s.replace("miopenSetLRNDescriptor", "miCompatSetLRNDescriptor")
 
     # CUSPARSE -> HIPSPARSE
     s = s.replace("CUSPARSE", "HIPSPARSE")
