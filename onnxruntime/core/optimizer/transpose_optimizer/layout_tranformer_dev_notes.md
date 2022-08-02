@@ -17,9 +17,9 @@ Foreach
   3 Compile
 ```
 
-GetCapability returns a bunch of IndexedSubGraphs that the given execution provider can run. During layout transformation, new nodes (Transpose, Gather etc) can be added within these subgraph. Therefore, calling GetCapability for the second time ensures that the EP can claim these new nodes as well and fuse the entire sub graphs. This is important for perf. Without this the execution will unnecessary switch to a fallback EP (in most cases CPU EP).
+GetCapability returns a collection of IndexedSubGraphs that the given execution provider can run. During layout transformation, new nodes (Transpose, Gather etc) can be added within these subgraphs. Therefore, calling GetCapability for the second time ensures that the EP can claim these new nodes as well as fuse sub graphs. This is important for perf. Without this the execution will unnecessarily switch to a fallback EP (in most cases CPU EP).
 
-*IMPORTANT NOTE* After layout transformation is done, graph resolve cannot be called for the graph. This is because graph resolve validates the shape of the nodes by calling ONNX TypeAndShapeInferenceFunction, these type and shape inf functions can ONLY infer shapes for NCHW format inputs. Therefore, when passed a graph with NHWC nodes the inferred shape validation fails and hence graph resolve throws. This is the very reason layout transformation is *NOT ENABLED* when Graph Partitioner Mode is kAssignOnly.
+*IMPORTANT NOTE* Layout transformation creates new nodes for layout sensitive ops with domain as "kMSInternalNHWCDomain" and copies the type information and the adjusted shape information from the original node to this new node. If the graph is serialized at this point, the type and shape inference information is lost and it cannot be inferred again on load because the node's domain and format are changed. This is why layout transformation is *NOT ENABLED* when Graph Partitioner Mode is kAssignOnly.
 
 Layout Transformer does multiple top to bottom passes on the graph in order to produce the most efficient graph with as little transpose ops as possible.
 
