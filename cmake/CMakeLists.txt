@@ -1761,6 +1761,10 @@ if (onnxruntime_USE_OPENVINO)
     add_definitions(-DDEVICE_NAME="${onnxruntime_USE_OPENVINO_DEVICE}")
   endif()
 
+  if($ENV{FIL_ENABLED})
+    add_definitions(-DOPENVINO_FIL_ENABLED=1)
+  endif()
+  
 endif()
 
 if (onnxruntime_USE_VITISAI)
