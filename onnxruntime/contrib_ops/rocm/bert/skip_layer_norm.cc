@@ -98,12 +98,12 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   if (!LaunchSkipLayerNormKernel<HipT>(
           Stream(),
-          reinterpret_cast<HipT*>(output->template MutableData<T>()),
-          reinterpret_cast<const HipT*>(input->template Data<T>()),
-          reinterpret_cast<const HipT*>(skip->template Data<T>()),
-          reinterpret_cast<const HipT*>(gamma->template Data<T>()),
-          (beta != nullptr) ? reinterpret_cast<const HipT*>(beta->template Data<T>()) : nullptr,
-          (bias != nullptr) ? reinterpret_cast<const HipT*>(bias->template Data<T>()) : nullptr,
+          reinterpret_cast<HipT*>(output->MutableData<T>()),
+          reinterpret_cast<const HipT*>(input->Data<T>()),
+          reinterpret_cast<const HipT*>(skip->Data<T>()),
+          reinterpret_cast<const HipT*>(gamma->Data<T>()),
+          (beta != nullptr) ? reinterpret_cast<const HipT*>(beta->Data<T>()) : nullptr,
+          (bias != nullptr) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr,
           epsilon_,
           hidden_size,
           static_cast<int>(element_count),
@@ -119,4 +119,3 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime
-
