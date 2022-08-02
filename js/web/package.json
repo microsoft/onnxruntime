@@ -9,7 +9,7 @@
   },
   "author": "fs-eire",
   "module": "./lib/index.js",
-  "version": "1.12.0",
+  "version": "1.12.1",
   "jsdelivr": "dist/ort.min.js",
   "dependencies": {
     "onnx-proto": "^4.0.4",
