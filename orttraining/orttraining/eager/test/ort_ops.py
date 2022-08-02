@@ -444,6 +444,16 @@ class OrtOpTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             torch.mm(ort_mat1, ort_not_matrix)
 
+    def test_squeeze(self):
+        device = self.get_device()
+        cpu_tensor = torch.zeros(2, 1, 2, 1, 2)
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_result = torch.squeeze(cpu_tensor)
+        ort_result = torch.squeeze(ort_tensor)
+        print(cpu_result)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+
     ################################ parameterized test follow #######################################
     # OPS - is a list of [test_operator, tested_tensor=torch.rand (6)].
     # The default value for tested_tensor is torch.rand (6)- size of 6 uniform distribution on the interval [0, 1).
