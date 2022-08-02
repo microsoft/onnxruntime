@@ -456,12 +456,12 @@ class Erf final : public OpKernel {
 
 template <typename T>
 auto MakeEigenArrayMap(Tensor& t) -> EigenVectorArrayMap<T> {
-  return EigenVectorArrayMap<T>(t.template MutableData<T>(), gsl::narrow<ptrdiff_t>(t.Shape().Size()));
+  return EigenVectorArrayMap<T>(t.MutableData<T>(), gsl::narrow<ptrdiff_t>(t.Shape().Size()));
 }
 
 template <typename T>
 auto MakeEigenArrayMap(const Tensor& t) -> ConstEigenVectorArrayMap<T> {
-  return ConstEigenVectorArrayMap<T>(t.template Data<T>(), gsl::narrow<ptrdiff_t>(t.Shape().Size()));
+  return ConstEigenVectorArrayMap<T>(t.Data<T>(), gsl::narrow<ptrdiff_t>(t.Shape().Size()));
 }
 
 struct BroadcastIterator {

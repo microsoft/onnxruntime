@@ -453,7 +453,7 @@ class OrtOpTests(unittest.TestCase):
     # As many of the following use eval and make it appear to pylint that there are many unused variables,
     # we disable those warnings
 
-    # pylint: disable=eval-used, unused-argument, no-self-argument, reportSelfClsParameterName
+    # pylint: disable=eval-used, unused-argument, unused-variable, no-self-argument,
 
     ops = [
         ["abs", torch.tensor([-1, -2, 3, -6, -7])],

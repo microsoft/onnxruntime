@@ -203,6 +203,14 @@ class SessionState {
   */
   profiling::Profiler& Profiler() const noexcept { return profiler_; }
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryProfiler* GetMemoryProfiler() const noexcept { return memory_profiler_; }
+
+  void SetMemoryProfiler(MemoryProfiler* memory_profiler) noexcept {
+    memory_profiler_ = memory_profiler;
+  }
+#endif
+
   /**
   Get cached memory pattern based on input shapes
   Must be called only when all values contain tensors
@@ -386,7 +394,7 @@ class SessionState {
 #ifdef ENABLE_TRAINING
   Status GeneratePatternGroupCache(
       gsl::span<const OrtValue> inputs,
-      gsl::span<const int > feed_mlvalue_idxs,
+      gsl::span<const int> feed_mlvalue_idxs,
       MemoryPatternGroup& output,
       InlinedHashMap<int, TensorShape>& inferred_shapes) const;
 #endif
@@ -479,6 +487,10 @@ class SessionState {
 
   const logging::Logger& logger_;
   profiling::Profiler& profiler_;
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryProfiler* memory_profiler_;
+#endif
 
   // switch for enable memory pattern optimization or not.
   bool enable_mem_pattern_;
