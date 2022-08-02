@@ -58,7 +58,7 @@ class RocBlasGemm : public GemmBase<T> {
   }
 
   bool SelectImpl(const std::string& name) override {
-    return true;
+    return name == "Rocblas";
   }
 
  private:
