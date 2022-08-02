@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/common/inlined_containers.h"
 #include "core/platform/path_lib.h"
 #include "core/platform/env.h"
 #include "onnx/defs/tensor_proto_util.h"
@@ -68,8 +69,8 @@ Status SaveCheckpoint(CheckpointState& state,
  * @param checkpoint_path folder where checkpoint is saved.
  * @return Status
  */
-Status SaveCheckpoint(const std::vector<ONNX_NAMESPACE::TensorProto>& trainable_tensor_protos,
-                      const std::vector<ONNX_NAMESPACE::TensorProto>& non_trainable_tensor_protos,
+Status SaveCheckpoint(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_tensor_protos,
+                      gsl::span<const ONNX_NAMESPACE::TensorProto> non_trainable_tensor_protos,
                       const PathString& checkpoint_path);
 
 /**
@@ -89,7 +90,7 @@ Status LoadCheckpoint(const PathString& checkpoint_path,
  * @return Status
  */
 Status LoadCheckpoint(const PathString& checkpoint_path,
-                      std::vector<ONNX_NAMESPACE::TensorProto>& param_tensor_protos);
+                      gsl::span<const ONNX_NAMESPACE::TensorProto> param_tensor_protos);
 
 }  // namespace api
 }  // namespace training

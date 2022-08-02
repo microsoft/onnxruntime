@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "onnx/defs/tensor_proto_util.h"
+#include "core/common/inlined_containers.h"
 #include "core/platform/path_lib.h"
 #include "core/platform/env.h"
 #include "core/framework/tensorprotoutils.h"
@@ -24,7 +25,7 @@ void ParsePropertyFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_prot
   }
   ORT_ENFORCE(expected_num_elements == 1, "Only scalar value support for checkpoint property.");
   Path model_path;
-  std::vector<T> data_vector(1);
+  InlinedVector<T> data_vector(1);
   T* p = data_vector.data();
   ORT_THROW_IF_ERROR(utils::UnpackTensor<T>(tensor_proto, model_path, p, expected_num_elements));
   name = tensor_proto.name();
