@@ -24,7 +24,7 @@ struct PropertyBag {
  public:
   PropertyBag() {}
 
-  void AddProperty(std::string name, PropertyDataType val) {
+  void AddProperty(const std::string& name, const PropertyDataType& val) {
     ORT_ENFORCE(named_properties_.find(name) == named_properties_.end(),
                 "Duplicated property named ", name);
 
@@ -55,6 +55,7 @@ struct PropertyBag {
       } else {
         ORT_THROW("Should not go there, unexpected data_type for prop value.");
       }
+      t_proto.set_name(it->first);
       properties_tensor_protos.emplace_back(t_proto);
     }
   }
