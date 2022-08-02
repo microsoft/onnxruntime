@@ -17,6 +17,19 @@ class OrtOpTests(unittest.TestCase):
     def get_device(self):
         return torch_ort.device()
 
+    def test_squeeze(self):
+        device = self.get_device()
+        cpu_tensor = torch.zeros(1, 1, 2, 1, 2)
+        print(f"cpu_tensor: {cpu_tensor}, cpu dim: {cpu_tensor.dim()}")
+        ort_tensor = cpu_tensor.to(device)
+        print(f"ort_tensor set")  # : {ort_tensor}, ort dim: {ort_tensor.dim()}")
+
+        cpu_result = cpu_tensor.squeeze()
+        ort_result = ort_tensor.squeeze()
+        print(f"cpu_result: {cpu_result}, cpu dim: {cpu_result.dim()}")
+        # print(f"ort_result: {ort_result}, ort dim: {ort_result.dim()}")
+        assert torch.allclose(cpu_tensor, ort_tensor.cpu())
+
     def test_fallback_to_cpu(self):
         device = self.get_device()
         cpu_ones = torch.ones(3, 3, dtype=bool)
@@ -706,6 +719,6 @@ class OrtOpTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    # torch_ort.set_default_logger_severity(0)
-    # torch_ort.set_default_logger_verbosity(4)
+    torch_ort.set_default_logger_severity(0)
+    torch_ort.set_default_logger_verbosity(4)
     unittest.main()

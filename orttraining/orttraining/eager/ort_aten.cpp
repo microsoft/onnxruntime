@@ -605,6 +605,11 @@ at::Tensor as_strided(
     at::IntArrayRef stride,
     c10::optional<int64_t> storage_offset) {
   ORT_LOG_FN(self, size, stride, storage_offset);
+  std::cout << "The size: ";
+  std::cout << size;
+  std::cout << " The stride: ";
+  std::cout << stride;
+  std::cout << "\n";
   auto& invoker = GetORTInvoker(self.device());
   auto ort_input = create_ort_value(invoker, self);
   auto* tensor = ort_input.GetMutable<onnxruntime::Tensor>();
@@ -1111,6 +1116,34 @@ at::Tensor& mm_out(
   CHECK_STATUS(status);
 
   return out;
+}
+
+// aten::squeeze(Tensor(a) self) -> Tensor(a)
+at::Tensor squeeze(
+  const at::Tensor& self){
+  ORT_LOG_FN(self);
+
+  if (
+    !IsSupportedType(self, {at::kBFloat16,at::kBool,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort})) {
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(squeeze)>::call(self);
+  }
+  auto& invoker = GetORTInvoker(self.device());
+
+  auto ort_input_0_self = create_ort_value(invoker, self);
+
+  std::vector<OrtValue> ort_outputs_0_Squeeze(1);
+
+  auto status = invoker.Invoke("Squeeze", {
+    std::move(ort_input_0_self),
+  }, ort_outputs_0_Squeeze, nullptr);
+  CHECK_STATUS(status);
+
+  at::TensorOptions tensor_options = self.options();
+  return aten_tensor_from_ort(
+    std::move(ort_outputs_0_Squeeze[0]),
+    tensor_options);
 }
 
 }  // namespace aten
