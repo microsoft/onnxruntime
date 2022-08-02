@@ -101,7 +101,8 @@ class GenerateBase {
       // There is dependency on vocab_size parameter, which shall be set before calling this function.
       if (static_cast<int>(vocab_mask_dims[0]) != parameters->vocab_size) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'vocab_mask' shape does not match with vocab_size, got ", vocab_mask_dims[0]);
+                               "Input 'vocab_mask'  dimension 0 does not match with vocab_size's, got ",
+                               vocab_mask_dims[0]);
       }
 
       // store vocab mask in parameters.
