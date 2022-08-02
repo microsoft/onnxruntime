@@ -275,18 +275,6 @@ class QuantizedValue:
         self.axis = axis
 
 
-class QuantizedValueRegistry:
-    """
-    A registry to keep record of all quantized value
-    """
-
-    def __init__(self):
-        self.quantized_value_map = {}
-
-    def register(self, tensor_name, quantized_value):
-        self.quantized_value_map[tensor_name] = quantized_value
-
-
 class BiasToQuantize:
     """
     Represents a bias to be quantized

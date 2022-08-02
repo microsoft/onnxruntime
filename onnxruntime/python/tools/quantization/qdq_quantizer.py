@@ -30,29 +30,12 @@ from .registry import CreateQDQQuantizer
 
 
 class QDQQuantTensorType(Enum):
-    Normal = 0
-    Share = 1
-
-    def __str__(self):
-        return self.name
-
-    @staticmethod
-    def from_string(type):
-        try:
-            return QDQQuantTensorType[type]
-        except KeyError:
-            raise ValueError()
-
-
-class QDQBiasInfo:
-    def __init__(self, input_name, weight_name, beta):
-        self.input_name = input_name
-        self.weight_name = weight_name
-        self.beta = beta
+    NORMAL = 0
+    SHARE_PARAM = 1
 
 
 class QDQTensorQuantInfo:
-    def __init__(self, tensor_type=QDQQuantTensorType.Normal, quant_para_provider=None, axis=None):
+    def __init__(self, tensor_type=QDQQuantTensorType.NORMAL, quant_para_provider=None, axis=None):
         self.tensor_type = tensor_type
         self.quant_para_provider = quant_para_provider
         self.axis = axis
@@ -148,17 +131,17 @@ class QDQQuantizer(ONNXQuantizer):
 
         return False
 
-    def quantize_tensor(self, tensor_name, quant_param_provder=None):
+    def quantize_tensor(self, tensor_name, quant_sharing_param=None):
         """
         Quantize tensors. If quant_param_tensor is not None, tensor with name tensor_name will be quantized with same
         quantization parameters as tensor quant_param_tensor
         :param tensor_name: name of the tensor to quantize
-        :param quant_param_provder: name of the tensor that provides quantization parameter
+        :param quant_sharing_param: name of the tensor that provides quantization parameter
         """
         if self._is_tensor_quantizable(tensor_name):
-            if quant_param_provder:
+            if quant_sharing_param:
                 self.tensors_to_quantize[tensor_name] = QDQTensorQuantInfo(
-                    tensor_type=QDQQuantTensorType.Share, quant_para_provider=quant_param_provder
+                    tensor_type=QDQQuantTensorType.SHARE_PARAM, quant_para_provider=quant_sharing_param
                 )
             elif tensor_name not in self.tensors_to_quantize:
                 self.tensors_to_quantize[tensor_name] = QDQTensorQuantInfo()
@@ -168,7 +151,7 @@ class QDQQuantizer(ONNXQuantizer):
         if weight:
             if weight.data_type == onnx_proto.TensorProto.FLOAT:
                 self.tensors_to_quantize[tensor_name] = QDQTensorQuantInfo(
-                    tensor_type=QDQQuantTensorType.Normal, axis=axis
+                    tensor_type=QDQQuantTensorType.NORMAL, axis=axis
                 )
         else:
             logging.warning(
@@ -201,8 +184,9 @@ class QDQQuantizer(ONNXQuantizer):
                             self.tensor_to_its_receiving_nodes[tensor_name] = []
                         self.tensor_to_its_receiving_nodes[tensor_name].append(node)
 
-        self.quantize_tensors()
-        self.quantize_bias_tensors()
+        self._quantize_normal_tensors()
+        self._quantize_sharing_param_tensors()
+        self._quantize_bias_tensors()
         self.remove_nodes()
         if not self.add_qdq_pair_to_weight:
             self.model.clean_initializers()
@@ -243,7 +227,7 @@ class QDQQuantizer(ONNXQuantizer):
         )
         self.model.add_nodes([qlinear_node, dequant_node])
 
-    def add_qdq_pair_for_weight(self, weight_proto, axis=None):
+    def _add_qdq_pair_for_weight(self, weight_proto, axis=None):
         weight_name = weight_proto.name
         if axis:
             if self.opset_version < 13:
@@ -282,7 +266,7 @@ class QDQQuantizer(ONNXQuantizer):
             )
             self.model.add_node(dequant_node)
 
-    def add_qdq_pair_for_activation(self, tensor_name, scale_name, zp_name):
+    def _add_qdq_pair_for_activation(self, tensor_name, scale_name, zp_name):
         if (
             self.dedicated_qdq_pair
             and tensor_name in self.tensor_to_its_receiving_nodes
@@ -345,16 +329,16 @@ class QDQQuantizer(ONNXQuantizer):
             )
             self.quantized_value_map[tensor_name] = quantized_value
 
-    def quantize_tensors(self):
+    def _quantize_normal_tensors(self):
         for tensor_name, tensor_info in self.tensors_to_quantize.copy().items():
             if tensor_name in self.quantized_value_map.keys():
                 continue
 
-            if tensor_info.tensor_type == QDQQuantTensorType.Normal:
+            if tensor_info.tensor_type == QDQQuantTensorType.NORMAL:
                 # Quantize the input
                 initializer = find_by_name(tensor_name, self.model.initializer())
                 if initializer:
-                    self.add_qdq_pair_for_weight(initializer, tensor_info.axis)
+                    self._add_qdq_pair_for_weight(initializer, tensor_info.axis)
                 else:
                     data_found, scale_name, zp_name, _, _ = self._get_quantization_params(tensor_name)
 
@@ -366,10 +350,11 @@ class QDQQuantizer(ONNXQuantizer):
                             )
                         )
 
-                    self.add_qdq_pair_for_activation(tensor_name, scale_name, zp_name)
+                    self._add_qdq_pair_for_activation(tensor_name, scale_name, zp_name)
 
                 del self.tensors_to_quantize[tensor_name]
 
+    def _quantize_sharing_param_tensors(self):
         while self.tensors_to_quantize:
             has_update = False
             for tensor_name, tensor_info in self.tensors_to_quantize.copy().items():
@@ -385,7 +370,7 @@ class QDQQuantizer(ONNXQuantizer):
                     else:
                         scale_name = quantized_value.scale_name
                         zp_name = quantized_value.zp_name
-                        self.add_qdq_pair_for_activation(
+                        self._add_qdq_pair_for_activation(
                             tensor_name, quantized_value.scale_name, quantized_value.zp_name
                         )
                     has_update = True
@@ -393,7 +378,7 @@ class QDQQuantizer(ONNXQuantizer):
             if not has_update:
                 raise ValueError("There is acyclic dependence in quantization parameter shared mode")
 
-    def quantize_bias_tensors(self):
+    def _quantize_bias_tensors(self):
         for bias_name, input_name, weight_name, beta in self.bias_to_quantize:
             if bias_name in self.quantized_value_map.keys():
                 continue
