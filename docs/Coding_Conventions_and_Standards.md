@@ -13,7 +13,7 @@ Google style from <https://google.github.io/styleguide/cppguide.html> with a few
   * Use a non-const reference for arguments that are modifiable but cannot be `nullptr` so the API clearly advertises the intent
   * Const correctness and usage of smart pointers (`shared_ptr` and `unique_ptr`) is expected. A non-const reference equates to "this is a non-null object that you can change but are not being given ownership of".
 * Prefer passing `gsl::span<const T>` by value (or `std::span` when supported) as input arguments when passing const references to containers with contiguous storage (like `std::vector`). This allows to make the function container independent, represent arbitrary memory spans or pass sub-spans as an argument. The below examples allow the client code to use either `std::vector`, `InlinedVector`, an instance of a `gsl::span` would be created automatically
-```
+```cpp
 /// Instead of
 void foo(const std::vector<int64_t>&);
 
@@ -27,9 +27,9 @@ void foo(const std::vector<const Node*>&);
 // Use
 void foo(gsl::span<const Node* const>);
 ```
-* Prefer returning `gsl::span<const T>` by value instead of a const reference to a contiguous member container or memory span. This allows the client code to be container independent.
+* Prefer returning `gsl::span<const T>` by value instead of a const reference to a contiguous member container or a `gsl::span` referring to a chunk of memory. This allows the client code to be container independent.
 For example,
-```
+```cpp
 // Instead of
 const std::vector<int64_t>& foo();
 
@@ -37,7 +37,7 @@ const std::vector<int64_t>& foo();
 gsl::span<const int64_t> foo();
 ```
 * However, `std::initializer_list<T>` is not automatically convertible to a `gsl::span<const T>`.  Use `AsSpan({1, 2, 3})` defined at `core/common/span_utils.h` to convert `std::initializer_list<T>` to a span. You can also use `std::array`. For example,
-```
+```cpp
 // Original code
 void foo(const std::vector<std::string>&);
 
@@ -48,7 +48,7 @@ void foo(gsl::span<const std::string>);
 
 foo(AsSpan<std::string>{"abc", "dbf"}); // Works
 ```
-* Prefer passing `std::string_view` by value instead of `const std::string&`.
+* Prefer passing `std::string_view` by value instead of `const std::string&`. Make sure that the lifespan of a `std::string` instance ecplises the lifespan of the corresponding `std::string_view` instance.
 
 * `using namespace` permitted with limited scope
   * Not allowing `using namespace` at all is overly restrictive. Follow the C++ Core Guidelines:
@@ -71,7 +71,7 @@ Onnxruntime aims to reduce latency and latency variance by minimizing the amount
   * Use `onnxruntime/tools/natvis/abseil-cpp.natvis` for the above containers visualizations and debugging help in `VS Studio` and `VS Code`.
 * Prefer using `reserve()` and not `resize()` on vectors. `resize()` default constructs all the elements for the size which can be expensive/noticeable even if the type is trivial. Default values are rarely used in practice and it becomes a waste. Construction like `std::vector<int>(10, 0)` is the same as `resize()` and is potentially wasteful.
 * Use `reserve()` on hash containers and vectors. For example,
-```
+```cpp
 #include "core/common/inlined_containers.h"
 
 void foo(gsl::span<const std::string> names) {
