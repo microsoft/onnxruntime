@@ -49,11 +49,13 @@ TEST_F(ActivationOpTest, Gelu) {
 }
 
 TEST_F(ActivationOpTest, QuickGelu) {
+  // QuickGelu is not a single activation, some corner values in input_values will not work.
+  std::vector<std::vector<float>> quick_gelu_input_values{{-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f}};
   // Positive alpha.
   {
     float alpha = 1.702f;
     TestActivationOp<float>(
-        "QuickGelu", input_values,
+        "QuickGelu", quick_gelu_input_values,
         [alpha](float x) {
           auto tmp = x * alpha;
           auto y = 1.f / (1.f + std::exp(-std::abs(tmp)));  // safe sigmoid
@@ -67,7 +69,7 @@ TEST_F(ActivationOpTest, QuickGelu) {
   {
     float alpha = -1.702f;
     TestActivationOp<float>(
-        "QuickGelu", input_values,
+        "QuickGelu", quick_gelu_input_values,
         [alpha](float x) {
           auto tmp = x * alpha;
           auto y = 1.f / (1.f + std::exp(-std::abs(tmp)));  // safe sigmoid
