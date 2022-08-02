@@ -205,10 +205,10 @@ class SessionScope {
       backward_range_.End();
     }
 #endif
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-    MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                                MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
-    MemoryInfo::MemoryInfoProfile::Clear();
+
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+  size_t program_counter = 0;
+  utils::NodeDumpContext dump_context{session_state.GetGraphExecutionCounter(), program_counter};
 #endif
     if (session_state_.Profiler().IsEnabled()) {
       session_state_.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
@@ -220,9 +220,10 @@ class SessionScope {
                          << i.second << " bytes for " << i.first << std::endl;
     }
 
-    for (auto i : frame_.GetDynamicMemorySizeInfo()) {
-      LOGS(logger, INFO) << "[Memory] ExecutionFrame dynamically allocates "
-                         << i.second << " bytes for " << i.first << std::endl;
+    for (const auto& node_exec_plan : exec_plan_vec) {
+      if (terminate_flag_) {
+      LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
     }
 #endif
   }

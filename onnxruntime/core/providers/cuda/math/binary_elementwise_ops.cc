@@ -159,13 +159,13 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
         Stream(context),                                                                                         \
         prepare.output_rank_or_simple_broadcast,                                                                 \
         &prepare.lhs_padded_strides,                                                                             \
-        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->Data<T>()),     \
         &prepare.rhs_padded_strides,                                                                             \
-        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.rhs_tensor->template Data<T>()),     \
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.rhs_tensor->Data<T>()),     \
         &prepare.fdm_output_strides,                                                                             \
         prepare.fdm_H,                                                                                           \
         prepare.fdm_C,                                                                                           \
-        reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()), \
+        reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->MutableData<T>()), \
         prepare.output_tensor->Shape().Size());                                                                  \
     return Status::OK();                                                                                         \
   }
@@ -361,13 +361,13 @@ Status DispatchOnFirstArg(cudaStream_t stream, const BinaryElementwisePreparatio
           stream,
           prepare.output_rank_or_simple_broadcast,
           &prepare.lhs_padded_strides,
-          reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
+          reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->Data<T>()),
           &prepare.rhs_padded_strides,
-          reinterpret_cast<const typename ToCudaType<int32_t>::MappedType*>(prepare.rhs_tensor->template Data<int32_t>()),
+          reinterpret_cast<const typename ToCudaType<int32_t>::MappedType*>(prepare.rhs_tensor->Data<int32_t>()),
           &prepare.fdm_output_strides,
           prepare.fdm_H,
           prepare.fdm_C,
-          reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
+          reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->MutableData<T>()),
           prepare.output_tensor->Shape().Size());
       break;
     case on::TensorProto_DataType_INT64:
@@ -375,13 +375,13 @@ Status DispatchOnFirstArg(cudaStream_t stream, const BinaryElementwisePreparatio
           stream,
           prepare.output_rank_or_simple_broadcast,
           &prepare.lhs_padded_strides,
-          reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
+          reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->Data<T>()),
           &prepare.rhs_padded_strides,
-          reinterpret_cast<const typename ToCudaType<int64_t>::MappedType*>(prepare.rhs_tensor->template Data<int64_t>()),
+          reinterpret_cast<const typename ToCudaType<int64_t>::MappedType*>(prepare.rhs_tensor->Data<int64_t>()),
           &prepare.fdm_output_strides,
           prepare.fdm_H,
           prepare.fdm_C,
-          reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
+          reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->MutableData<T>()),
           prepare.output_tensor->Shape().Size());
       break;
     case on::TensorProto_DataType_FLOAT:
@@ -389,13 +389,13 @@ Status DispatchOnFirstArg(cudaStream_t stream, const BinaryElementwisePreparatio
           stream,
           prepare.output_rank_or_simple_broadcast,
           &prepare.lhs_padded_strides,
-          reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
+          reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->Data<T>()),
           &prepare.rhs_padded_strides,
-          reinterpret_cast<const typename ToCudaType<float>::MappedType*>(prepare.rhs_tensor->template Data<float>()),
+          reinterpret_cast<const typename ToCudaType<float>::MappedType*>(prepare.rhs_tensor->Data<float>()),
           &prepare.fdm_output_strides,
           prepare.fdm_H,
           prepare.fdm_C,
-          reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
+          reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->MutableData<T>()),
           prepare.output_tensor->Shape().Size());
       break;
     case on::TensorProto_DataType_DOUBLE:
@@ -403,13 +403,13 @@ Status DispatchOnFirstArg(cudaStream_t stream, const BinaryElementwisePreparatio
           stream,
           prepare.output_rank_or_simple_broadcast,
           &prepare.lhs_padded_strides,
-          reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
+          reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->Data<T>()),
           &prepare.rhs_padded_strides,
-          reinterpret_cast<const typename ToCudaType<double>::MappedType*>(prepare.rhs_tensor->template Data<double>()),
+          reinterpret_cast<const typename ToCudaType<double>::MappedType*>(prepare.rhs_tensor->Data<double>()),
           &prepare.fdm_output_strides,
           prepare.fdm_H,
           prepare.fdm_C,
-          reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
+          reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->MutableData<T>()),
           prepare.output_tensor->Shape().Size());
       break;
     case on::TensorProto_DataType_FLOAT16:
@@ -417,13 +417,13 @@ Status DispatchOnFirstArg(cudaStream_t stream, const BinaryElementwisePreparatio
           stream,
           prepare.output_rank_or_simple_broadcast,
           &prepare.lhs_padded_strides,
-          reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
+          reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->Data<T>()),
           &prepare.rhs_padded_strides,
-          reinterpret_cast<const typename ToCudaType<MLFloat16>::MappedType*>(prepare.rhs_tensor->template Data<MLFloat16>()),
+          reinterpret_cast<const typename ToCudaType<MLFloat16>::MappedType*>(prepare.rhs_tensor->Data<MLFloat16>()),
           &prepare.fdm_output_strides,
           prepare.fdm_H,
           prepare.fdm_C,
-          reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
+          reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->MutableData<T>()),
           prepare.output_tensor->Shape().Size());
       break;
     default:
@@ -476,13 +476,13 @@ Status CompareFunction<T, CudaT>::CompareMethod(OpKernelContext* context, ImplCo
       Stream(context),
       prepare.output_rank_or_simple_broadcast,
       &prepare.lhs_padded_strides,
-      reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
+      reinterpret_cast<const CudaT*>(prepare.lhs_tensor->Data<T>()),
       &prepare.rhs_padded_strides,
-      reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
+      reinterpret_cast<const CudaT*>(prepare.rhs_tensor->Data<T>()),
       &prepare.fdm_output_strides,
       prepare.fdm_H,
       prepare.fdm_C,
-      reinterpret_cast<ToCudaType<bool>::MappedType*>(prepare.output_tensor->template MutableData<bool>()),
+      reinterpret_cast<ToCudaType<bool>::MappedType*>(prepare.output_tensor->MutableData<bool>()),
       prepare.output_tensor->Shape().Size());
 
   return Status::OK();

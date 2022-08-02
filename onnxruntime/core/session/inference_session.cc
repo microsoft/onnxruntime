@@ -475,7 +475,7 @@ InferenceSession::~InferenceSession() {
     TraceLoggingWriteStop(session_activity, "OrtInferenceSessionActivity");
 #endif
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  MemoryInfo::GenerateMemoryProfile();
+  GetMemoryProfiler().GenerateMemoryProfile();
 #endif
 }
 
@@ -1341,6 +1341,11 @@ common::Status InferenceSession::Initialize() {
         session_options_.use_deterministic_compute,
         session_options_.enable_mem_reuse,
         prepacked_weights_container_);
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+    // Don't want to pollute SessionState constructor since memory profile is enabled optionally.
+    session_state_->SetMemoryProfiler(&memory_profiler_);
+#endif
 
     // Collect the kernel registries from execution provider instances;
     // There are 2 kinds of kernel registries with priority from high to low as below,

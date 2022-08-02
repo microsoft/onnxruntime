@@ -102,8 +102,8 @@ class Crop final : public CropBase, public OpKernel {
     }
 
     Tensor* Y = context->Output(0, TensorShape({N, C, bottomLimit - topBorder, rightLimit - leftBorder}));
-    const T* Xdata = X->template Data<T>();
-    T* Ydata = Y->template MutableData<T>();
+    const T* Xdata = X->Data<T>();
+    T* Ydata = Y->MutableData<T>();
 
     int64_t dest_idx = 0;
     int64_t HW = H * W;

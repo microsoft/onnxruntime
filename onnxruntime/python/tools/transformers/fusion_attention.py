@@ -345,7 +345,7 @@ class FusionAttention(Fusion):
         )
         einsum_node = None
         if qkv_nodes is not None:
-            (_, matmul_qkv, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
+            (_, _, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
         else:
             # Match Albert
             qkv_nodes = self.model.match_parent_path(

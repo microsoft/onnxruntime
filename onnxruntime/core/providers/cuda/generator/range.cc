@@ -52,12 +52,12 @@ static Status ComputeRange(cudaStream_t stream, OpKernelContext* ctx) {
   }
 
   // Start, Limit and Delta are stored in CPU.
-  T start = *(start_tensor.template Data<T>());
-  T limit = *(limit_tensor.template Data<T>());
+  T start = *(start_tensor.Data<T>());
+  T limit = *(limit_tensor.Data<T>());
 
   T delta = T(1);
   if (delta_tensor_ptr != nullptr) {
-    delta = *(delta_tensor_ptr->template Data<T>());
+    delta = *(delta_tensor_ptr->Data<T>());
   }
 
   if (delta == T(0)) {
@@ -68,7 +68,7 @@ static Status ComputeRange(cudaStream_t stream, OpKernelContext* ctx) {
   if (count <= 0)
     count = 0;
   TensorShape shape = {static_cast<int64_t>(count)};
-  T* y = ctx->Output(0, shape)->template MutableData<T>();
+  T* y = ctx->Output(0, shape)->MutableData<T>();
 
   if (count > 0) {
     if (!RangeImpl(stream, start, delta, count, y)) {
