@@ -22,29 +22,6 @@ class Shaper {
     return shape_map_.at(key);
   }
 
-  common::Status Conv(const std::string& input_name,
-                      const std::string& weight_name,
-                      const std::vector<int32_t>& onnx_pads,
-                      const std::vector<int32_t>& onnx_strides,
-                      const std::vector<int32_t>& onnx_dilations,
-                      bool nchw,
-                      const std::string& output_name);
-
-  common::Status DepthwiseConv(const std::string& input_name,
-                               const std::string& weight_name,
-                               const std::vector<int32_t>& onnx_pads,
-                               const std::vector<int32_t>& onnx_strides,
-                               const std::vector<int32_t>& onnx_dilations,
-                               bool nchw,
-                               const std::string& output_name);
-
-  common::Status Pool(const std::string& input_name,
-                      const std::vector<int32_t>& onnx_pads,
-                      const std::vector<int32_t>& onnx_strides,
-                      const std::vector<int32_t>& kernel_shape,
-                      bool nchw,
-                      const std::string& output_name);
-
   common::Status Reshape(const std::string& input_name, const std::vector<int32_t>& shape, const std::string& output_name);
 
   common::Status Transpose(const std::string& input_name, const std::vector<int32_t>& perm, const std::string& output_name);
@@ -95,29 +72,6 @@ class Shaper {
   void Clear();
 
  private:
-  common::Status ConvImpl(const std::string& input_name,
-                          const std::string& weight_name,
-                          const std::vector<int32_t>& onnx_pads,
-                          const std::vector<int32_t>& onnx_strides,
-                          const std::vector<int32_t>& onnx_dilations,
-                          bool nchw,
-                          const std::string& output_name);
-
-  common::Status DepthwiseConvImpl(const std::string& input_name,
-                                   const std::string& weight_name,
-                                   const std::vector<int32_t>& onnx_pads,
-                                   const std::vector<int32_t>& onnx_strides,
-                                   const std::vector<int32_t>& onnx_dilations,
-                                   bool nchw,
-                                   const std::string& output_name);
-
-  common::Status PoolImpl(const std::string& input_name,
-                          const std::vector<int32_t>& onnx_pads,
-                          const std::vector<int32_t>& onnx_strides,
-                          const std::vector<int32_t>& kernel_shape,
-                          bool nchw,
-                          const std::string& output_name);
-
   common::Status ReshapeImpl(const std::string& input_name, const std::vector<int32_t>& shape, const std::string& output_name);
   common::Status TransposeImpl(const std::string& input_name, const std::vector<int32_t>& perm, const std::string& output_name);
   common::Status EltwiseImpl(const std::string& input1_name, const std::string& input2_name, const std::string& output_name);

@@ -10,37 +10,6 @@
 namespace onnxruntime {
 namespace nnapi {
 
-std::pair<uint32_t, uint32_t> ComputeConvOutputShape(const uint32_t input_size_y, const uint32_t input_size_x,
-                                                     const uint32_t weight_size_y, const uint32_t weight_size_x,
-                                                     const std::vector<int32_t>& onnx_pads,
-                                                     const std::vector<int32_t>& onnx_strides,
-                                                     const std::vector<int32_t>& onnx_dilations) {
-  int32_t padding_top = onnx_pads[0];
-  int32_t padding_bottom = onnx_pads[2];
-  int32_t padding_left = onnx_pads[1];
-  int32_t padding_right = onnx_pads[3];
-  int32_t stride_y = onnx_strides[0];
-  int32_t stride_x = onnx_strides[1];
-  int32_t dilation_y = onnx_dilations[0];
-  int32_t dilation_x = onnx_dilations[1];
-
-  int64_t output_size_y =
-      0 == input_size_y
-          ? 0
-          : onnxruntime::ComputeOutputShape(input_size_y,
-                                            stride_y, weight_size_y, dilation_y,
-                                            padding_top, padding_bottom);
-
-  int64_t output_size_x =
-      0 == input_size_x
-          ? 0
-          : onnxruntime::ComputeOutputShape(input_size_x,
-                                            stride_x, weight_size_x, dilation_x,
-                                            padding_left, padding_right);
-
-  return std::make_pair(static_cast<uint32_t>(output_size_y), static_cast<uint32_t>(output_size_x));
-}
-
 #define SHAPER_FUNC(FUNC, ...)                  \
   ORT_RETURN_IF_ERROR(FUNC##Impl(__VA_ARGS__)); \
   shape_ops_.push_back(                         \
@@ -48,47 +17,6 @@ std::pair<uint32_t, uint32_t> ComputeConvOutputShape(const uint32_t input_size_y
         return shaper.FUNC##Impl(__VA_ARGS__);  \
       });                                       \
   return Status::OK();
-
-Status Shaper::Conv(const std::string& input_name,
-                    const std::string& weight_name,
-                    const std::vector<int32_t>& onnx_pads,
-                    const std::vector<int32_t>& onnx_strides,
-                    const std::vector<int32_t>& onnx_dilations,
-                    bool nchw,
-                    const std::string& output_name) {
-  SHAPER_FUNC(Conv,
-              input_name, weight_name,
-              onnx_pads, onnx_strides, onnx_dilations,
-              nchw,
-              output_name);
-}
-
-Status Shaper::DepthwiseConv(const std::string& input_name,
-                             const std::string& weight_name,
-                             const std::vector<int32_t>& onnx_pads,
-                             const std::vector<int32_t>& onnx_strides,
-                             const std::vector<int32_t>& onnx_dilations,
-                             bool nchw,
-                             const std::string& output_name) {
-  SHAPER_FUNC(DepthwiseConv,
-              input_name, weight_name,
-              onnx_pads, onnx_strides, onnx_dilations,
-              nchw,
-              output_name);
-}
-
-Status Shaper::Pool(const std::string& input_name,
-                    const std::vector<int32_t>& onnx_pads,
-                    const std::vector<int32_t>& onnx_strides,
-                    const std::vector<int32_t>& kernel_shape,
-                    bool nchw,
-                    const std::string& output_name) {
-  SHAPER_FUNC(Pool,
-              input_name,
-              onnx_pads, onnx_strides, kernel_shape,
-              nchw,
-              output_name);
-}
 
 Status Shaper::Reshape(const std::string& input_name,
                        const std::vector<int32_t>& shape,
@@ -170,96 +98,6 @@ Status Shaper::Pad(const std::string& input_name,
 }
 
 #undef SHAPER_FUNC
-
-Status Shaper::ConvImpl(const std::string& input_name,
-                        const std::string& weight_name,
-                        const std::vector<int32_t>& onnx_pads,
-                        const std::vector<int32_t>& onnx_strides,
-                        const std::vector<int32_t>& onnx_dilations,
-                        bool nchw,
-                        const std::string& output_name) {
-  const Shape& input_dimen = shape_map_.at(input_name);
-  const Shape& weight_dimen = shape_map_.at(weight_name);  // num_output, height, width, num_input
-
-  const auto input_size_y = nchw ? input_dimen[2] : input_dimen[1];
-  const auto input_size_x = nchw ? input_dimen[3] : input_dimen[2];
-  const auto weight_size_y = weight_dimen[1];
-  const auto weight_size_x = weight_dimen[2];
-
-  uint32_t output_size_y, output_size_x;
-  std::tie(output_size_y, output_size_x) =
-      ComputeConvOutputShape(input_size_y, input_size_x,
-                             weight_size_y, weight_size_x,
-                             onnx_pads, onnx_strides, onnx_dilations);
-  Shape output_dimen;
-  if (nchw) {
-    output_dimen = {input_dimen[0], weight_dimen[0], output_size_y, output_size_x};
-  } else {  // nhwc
-    output_dimen = {input_dimen[0], output_size_y, output_size_x, weight_dimen[0]};
-  }
-
-  shape_map_[output_name] = output_dimen;
-  return Status::OK();
-}
-
-Status Shaper::DepthwiseConvImpl(const std::string& input_name,
-                                 const std::string& weight_name,
-                                 const std::vector<int32_t>& onnx_pads,
-                                 const std::vector<int32_t>& onnx_strides,
-                                 const std::vector<int32_t>& onnx_dilations,
-                                 bool nchw,
-                                 const std::string& output_name) {
-  const Shape& input_dimen = shape_map_.at(input_name);
-  const Shape& weight_dimen = shape_map_.at(weight_name);  // 1, height, width, num_output
-
-  const auto input_size_y = nchw ? input_dimen[2] : input_dimen[1];
-  const auto input_size_x = nchw ? input_dimen[3] : input_dimen[2];
-  const auto weight_size_y = weight_dimen[1];
-  const auto weight_size_x = weight_dimen[2];
-
-  uint32_t output_size_y, output_size_x;
-  std::tie(output_size_y, output_size_x) =
-      ComputeConvOutputShape(input_size_y, input_size_x,
-                             weight_size_y, weight_size_x,
-                             onnx_pads, onnx_strides, onnx_dilations);
-
-  Shape output_dimen;
-  if (nchw) {
-    output_dimen = {input_dimen[0], weight_dimen[3], output_size_y, output_size_x};
-  } else {  // nhwc
-    output_dimen = {input_dimen[0], output_size_y, output_size_x, weight_dimen[3]};
-  }
-  shape_map_[output_name] = output_dimen;
-  return Status::OK();
-}
-
-Status Shaper::PoolImpl(const std::string& input_name,
-                        const std::vector<int32_t>& onnx_pads,
-                        const std::vector<int32_t>& onnx_strides,
-                        const std::vector<int32_t>& kernel_shape,
-                        bool nchw,
-                        const std::string& output_name) {
-  const Shape& input_dimen = shape_map_.at(input_name);
-  const auto input_size_y = nchw ? input_dimen[2] : input_dimen[1];
-  const auto input_size_x = nchw ? input_dimen[3] : input_dimen[2];
-  const auto weight_size_y = kernel_shape[0];
-  const auto weight_size_x = kernel_shape[1];
-
-  uint32_t output_size_y, output_size_x;
-  std::tie(output_size_y, output_size_x) =
-      ComputeConvOutputShape(input_size_y, input_size_x,
-                             weight_size_y, weight_size_x,
-                             onnx_pads, onnx_strides, {1, 1} /* onnx_dilations */);
-  Shape output_dimen;
-  if (nchw) {
-    output_dimen = {input_dimen[0], input_dimen[1], output_size_y, output_size_x};
-  } else {  // nhwc
-    output_dimen = {input_dimen[0], output_size_y, output_size_x, input_dimen[3]};
-  }
-
-  shape_map_[output_name] = output_dimen;
-  return Status::OK();
-}
 
 Status Shaper::ReshapeImpl(const std::string& input_name,
                            const std::vector<int32_t>& shape,
@@ -521,7 +359,7 @@ Status Shaper::PadImpl(const std::string& input_name,
   const size_t rank = padded_shape.size();
   ORT_RETURN_IF_NOT(pads.size() == 2 * rank, "Expected 2*rank (", 2 * rank, ") pad values but got ", pads.size());
   for (size_t i = 0; i < rank; ++i) {
-    padded_shape[i] += pads[2*i] + pads[2*i + 1];
+    padded_shape[i] += pads[2 * i] + pads[2 * i + 1];
   }
   shape_map_[output_name] = padded_shape;
   return Status::OK();
