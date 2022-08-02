@@ -26,10 +26,12 @@ Layout Transformer does multiple top to bottom passes on the graph in order to p
 ### Convert layout for applicable nodes
 [This is the first pass](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/optimizer_api_impl.cc#L815). Layout transformer simply inserts NCHW -> NHWC transpose node before and NHWC -> NCHW transpose node after every layout sensitive op that is claimed by the EP. After this pass, the graph is correct but extremely inefficient.
 
+"layout sensitive op" refers to an op whose correctness depends on the inputs (activations as well as weights) and attributes being in a certain format. Layout Transformer deals with NCHW and NHWC data layout formats. There are other layout formats as well but they are not in scope for this transformer. These are the existing [ONNX Standard defined](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc#L2020) and [ORT defined](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/optimizer_api_impl.cc#L804) layout sensitive ops.
+
 ### Optimize the converted graph
 After the first pass is complete, layout transformer calls the transpose optimizer to remove all the canceling as well as redundant transposes from the graph. The following passes happen as part of transpose optimization.
 
-1. Iterate over sorted nodes in reverse order to find which outputs have paths through supported ops to  transpose nodes. Transposes are pulled pushed towards these outputs. Graph is not altered in this pass. [Code](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc#L1875)
+1. Iterate over sorted nodes in reverse order to find which outputs have paths through supported ops to  transpose nodes. Transposes will be pulled pushed towards these outputs. Graph is not altered in this pass. [Code](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc#L1875)
 
 2. Push transposes through applicable nodes and remove canceling transposes. At the end of this pass the model will be efficient and will only contain the transpose ops which are necessary for correctness. [Code](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc#L1905)
 
