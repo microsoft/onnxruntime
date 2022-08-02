@@ -59,10 +59,13 @@ def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=Fa
         raise Exception(failures)
 
 
-def get_basic_cases():
+def get_basic_cases(full=True):
     dtypes = ["float32", "float16"]
     transabs = product([True, False], repeat=2)
-    basic_sizes = product([1, 3, 4, 16, 127, 128, 129, 133, 1024], repeat=3)
+    if full:
+        basic_sizes = product([1, 3, 4, 16, 127, 128, 129, 133, 1024], repeat=3)
+    else:
+        basic_sizes = product([1, 4, 127, 133], [3, 16, 128], [3, 129, 1024])
     return list(product(dtypes, basic_sizes, transabs))
 
 
@@ -100,7 +103,9 @@ def test_rocblas_gemm_all_cases(dtype, size, transab):
 
 @pytest.mark.parametrize(
     "dtype, size, transab",
-    get_bert_cases(),
+    # ck has various impls to be tested, use the full basic cases will result too many cases to test.
+    # So we use a reduced combination here.
+    get_basic_cases(full=False) + get_bert_cases(),
 )
 def test_ck_gemm_bert_cases(dtype, size, transab):
     _test_gemm(getattr(ke, "CKGemm_" + dtype_to_suffix(dtype)), dtype, *size, *transab)
