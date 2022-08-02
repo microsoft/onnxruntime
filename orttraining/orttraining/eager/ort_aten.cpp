@@ -666,10 +666,10 @@ at::Tensor& copy_(
   if (self.scalar_type() != src.scalar_type()) {
     // invoke cast first
     if(self.device().type() != src.device().type()){
-      auto src_invoker = GetORTInvoker(src.device());
-      auto val = CastToType(src_invoker, ort_src, self.scalar_type());
-      copy_(self, aten_tensor_from_ort(std::move(val), src.options()), false);
+      auto val = at::native::to(src, self.scalar_type());
+      copy_(self, val, false);
     }else{
+      //Will we ever encounter a case when Scalar type is different but device type is the same?
       std::vector<OrtValue> ort_cast_output(1);
       onnxruntime::NodeAttributes attrs(1);
       attrs["to"] = create_ort_attribute(
