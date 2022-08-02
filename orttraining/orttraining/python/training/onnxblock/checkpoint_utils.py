@@ -2,8 +2,6 @@
 # Licensed under the MIT License.
 # checkpoint_utils.py
 
-from onnx import ModelProto
-
 from onnxruntime.capi._pybind_state import load_checkpoint_to_model as _internal_load_checkpoint_to_model
 from onnxruntime.capi._pybind_state import save_checkpoint as _internal_save_checkpoint
 
