@@ -100,8 +100,8 @@ bool SyntheticDataLoader::GetNextSampleBatch(std::vector<OrtValue*>& batches) {
   Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
   auto& sample = sample_batch_collections_[sample_batch_iter_index_];
   const auto* ort_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-  for (size_t i = 0; i < sample->NumOfInput(); ++i) {
-    SyntheticInput& input = sample->GetInputAtIndex(i);
+  for (size_t i = 0; i < sample.NumOfInput(); ++i) {
+    SyntheticInput& input = sample.GetInputAtIndex(i);
 
     std::visit([&batches, &input, &ort_api, &memory_info](auto&& arg) -> void {
       ONNXTensorElementDataType elem_data_type;

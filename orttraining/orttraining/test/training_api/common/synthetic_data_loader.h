@@ -78,8 +78,8 @@ struct SyntheticSampleBatch {
 struct SyntheticDataLoader {
   SyntheticDataLoader() {}
 
-  void AddSyntheticSampleBatch(std::unique_ptr<SyntheticSampleBatch> samples) {
-    sample_batch_collections_.emplace_back(std::move(samples));
+  void AddSyntheticSampleBatch(SyntheticSampleBatch& samples) {
+    sample_batch_collections_.emplace_back(samples);
   }
 
   bool GetNextSampleBatch(std::vector<OrtValue*>& batches);
@@ -97,7 +97,7 @@ struct SyntheticDataLoader {
   // did not explicitly copy the data in.
   // And also, the created OrtValue also won't clean the raw data pointer. The raw data should be removed when
   // the life time of this struct ends.
-  std::vector<std::unique_ptr<SyntheticSampleBatch>> sample_batch_collections_;
+  std::vector<SyntheticSampleBatch> sample_batch_collections_;
   size_t sample_batch_iter_index_{0};
 };
 
