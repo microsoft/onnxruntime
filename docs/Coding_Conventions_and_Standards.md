@@ -27,7 +27,7 @@ void foo(const std::vector<const Node*>&);
 // Use
 void foo(gsl::span<const Node* const>);
 ```
-* Prefer returning `gsl::span<const T>` by value instead of a const reference to a contiguous member container or a `gsl::span` referring to a chunk of memory. This allows the client code to be container independent.
+* Prefer returning `gsl::span<const T>` by value instead of a const reference to a contiguous member container. Prefer returning `gsl::span` instead of a pointer referring to a chunk of memory. The size is also included in the span.
 For example,
 ```cpp
 // Instead of
@@ -35,6 +35,13 @@ const std::vector<int64_t>& foo();
 
 // Return a span by value
 gsl::span<const int64_t> foo();
+
+// Instead of
+const int64_t* foo();
+
+// Return a span by value
+gsl::span<const int64_t> foo();
+
 ```
 * However, `std::initializer_list<T>` is not automatically convertible to a `gsl::span<const T>`.  Use `AsSpan({1, 2, 3})` defined at `core/common/span_utils.h` to convert `std::initializer_list<T>` to a span. You can also use `std::array`. For example,
 ```cpp
