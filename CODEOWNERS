@@ -3,7 +3,10 @@
 /onnxruntime/core/framework/kernel_def_hash_helpers.* @microsoft/onnxruntime-mobile
 
 # Contrib Ops
-onnxruntime/core/graph/contrib_ops/nhwc_schema_defs.cc @microsoft/onnxruntime-mlas
-onnxruntime/core/graph/contrib_ops/nchwc_schema_defs.cc @microsoft/onnxruntime-mlas
-onnxruntime/core/graph/contrib_ops/quantization_defs.* @microsoft/onnxruntime-mlas
-onnxruntime/core/mlas/** @microsoft/onnxruntime-mlas
+/onnxruntime/core/graph/contrib_ops/nhwc_schema_defs.cc @microsoft/onnxruntime-mlas
+/onnxruntime/core/graph/contrib_ops/nchwc_schema_defs.cc @microsoft/onnxruntime-mlas
+/onnxruntime/core/graph/contrib_ops/quantization_defs.* @microsoft/onnxruntime-mlas
+/onnxruntime/core/mlas/** @microsoft/onnxruntime-mlas
+
+# build pipelines
+/tools/ci_build/github/azure-pipelines @microsoft/onnxruntime-es

@@ -5,7 +5,9 @@
 import argparse
 import os
 import shlex
+import shutil
 import sys
+from pathlib import Path
 
 from logger import get_logger
 
@@ -41,6 +43,8 @@ def parse_args():
 
     parser.add_argument("--docker-path", default="docker", help="Path to docker.")
 
+    parser.add_argument("--manylinux-src", default="manylinux", help="Path to manylinux src folder")
+
     return parser.parse_args()
 
 
@@ -66,9 +70,21 @@ def main():
 
     log.info("Image: {}".format(full_image_name))
 
+    if "manylinux" in args.dockerfile:
+        manylinux_build_scripts_folder = Path(args.manylinux_src) / "docker" / "build_scripts"
+        dest = Path(args.context) / "build_scripts"
+        if dest.exists():
+            log.info("Deleting: {}".format(str(dest)))
+            shutil.rmtree(str(dest))
+
+        shutil.copytree(str(manylinux_build_scripts_folder), str(dest))
+        run("patch", "-p1", "-i", str((Path(args.context) / "manylinux.patch").resolve()), cwd=str(dest))
+
     if use_container_registry:
         run(
             args.docker_path,
+            "--log-level",
+            "error",
             "buildx",
             "build",
             "--push",
