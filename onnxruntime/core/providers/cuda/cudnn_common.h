@@ -229,5 +229,28 @@ SetLRNDescriptorHelper(cudnnLRNDescriptor_t normDesc,
   return cudnnSetLRNDescriptor(normDesc, lrnN, lrnAlpha, lrnBeta, lrnK);
 }
 
+inline cudnnStatus_t
+PoolingForwardHelper(cudnnHandle_t handle,
+                     const cudnnPoolingDescriptor_t poolingDesc,
+                     const void *alpha,
+                     const cudnnTensorDescriptor_t xDesc,
+                     const void *x,
+                     const void *beta,
+                     const cudnnTensorDescriptor_t yDesc,
+                     void *y) {
+  return cudnnPoolingForward(handle, poolingDesc, alpha, xDesc, x, beta, yDesc, y);
+}
+
+inline cudnnStatus_t
+SetPoolingNdDescriptorHelper(cudnnPoolingDescriptor_t poolingDesc,
+                             const cudnnPoolingMode_t mode,
+                             const cudnnNanPropagation_t maxpoolingNanOpt,
+                             int nbDims,
+                             const int windowDimA[],
+                             const int paddingA[],
+                             const int strideA[]) {
+  return cudnnSetPoolingNdDescriptor(poolingDesc, mode, maxpoolingNanOpt, nbDims, windowDimA, paddingA, strideA)
+}
+
 }  // namespace cuda
 }  // namespace onnxruntime
