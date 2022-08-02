@@ -235,6 +235,7 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace("hipblasDestroy", "rocblas_destroy_handle")
     s = s.replace("hipblasSetStream", "rocblas_set_stream")
     s = s.replace("HIPBLAS_OP_T", "rocblas_operation_transpose")
+    s = s.replace("HIPBLAS_OP_N", "rocblas_operation_none")
 
     s = s.replace("RegisterCudaContribKernels", "RegisterRocmContribKernels")
     s = s.replace("cudaEvent", "hipEvent")

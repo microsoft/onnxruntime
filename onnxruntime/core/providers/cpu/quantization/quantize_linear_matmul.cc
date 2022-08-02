@@ -85,9 +85,9 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   if (y->Shape().Size() == 0)
     return Status::OK();
 
-  const auto* b_scale_data = b_scale->template Data<float>();
-  auto a_scale_data = *(a_scale->template Data<float>());
-  auto y_scale_data = *(y_scale->template Data<float>());
+  const auto* b_scale_data = b_scale->Data<float>();
+  auto a_scale_data = *(a_scale->Data<float>());
+  auto y_scale_data = *(y_scale->Data<float>());
 
   const int64_t output_scale_size = b_scale->Shape().Size();
   std::vector<float> output_scales(output_scale_size);

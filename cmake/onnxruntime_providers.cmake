@@ -1482,12 +1482,8 @@ if (onnxruntime_USE_TVM)
 
   target_include_directories(onnxruntime_providers_tvm PRIVATE
           ${TVM_INCLUDES}
-          ${IPP_CRYPTO_INCLUDES}
           ${PYTHON_INLCUDE_DIRS})
   onnxruntime_add_include_to_target(onnxruntime_providers_tvm onnxruntime_common onnx tvm)
-  if (onnxruntime_TVM_USE_HASH)
-    onnxruntime_add_include_to_target(onnxruntime_providers_tvm ippcp_s)
-  endif()
 
   add_dependencies(onnxruntime_providers_tvm ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
@@ -1498,9 +1494,9 @@ if (onnxruntime_USE_TVM)
       onnxruntime_framework
   )
   if (onnxruntime_TVM_USE_HASH)
-    target_link_libraries(onnxruntime_providers_tvm PRIVATE
-      ippcp_s
-    )
+    add_dependencies(onnxruntime_providers_tvm ippcp_s)
+    target_include_directories(onnxruntime_providers_tvm PRIVATE ${IPP_CRYPTO_INCLUDE_DIR})
+    target_link_libraries(onnxruntime_providers_tvm PRIVATE ippcp_s)
   endif()
 
   set_target_properties(onnxruntime_providers_tvm PROPERTIES FOLDER "ONNXRuntime")

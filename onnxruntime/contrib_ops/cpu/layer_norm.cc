@@ -42,9 +42,9 @@ Status LayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   const Tensor* X = p_ctx->Input<Tensor>(0);
   const Tensor* scale = p_ctx->Input<Tensor>(1);
   const Tensor* bias = p_ctx->Input<Tensor>(2);
-  auto X_data = X->template Data<T>();
-  auto scale_data = scale->template Data<T>();
-  auto bias_data = (simplified || nullptr == bias) ? nullptr : bias->template Data<T>();
+  auto X_data = X->Data<T>();
+  auto scale_data = scale->Data<T>();
+  auto bias_data = (simplified || nullptr == bias) ? nullptr : bias->Data<T>();
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
@@ -52,7 +52,7 @@ Status LayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   auto norm_size = x_shape.SizeFromDimension(axis);
 
   Tensor* Y = p_ctx->Output(0, x_shape);
-  auto Y_data = Y->template MutableData<T>();
+  auto Y_data = Y->MutableData<T>();
 
   std::vector<int64_t> mean_inv_std_dev_dim;
   mean_inv_std_dev_dim.reserve(x_shape.NumDimensions());
@@ -75,7 +75,7 @@ Status LayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   if (!simplified) {
     Tensor* mean = p_ctx->Output(output_index++, TensorShape(mean_inv_std_dev_dim));
     if (mean != nullptr) {
-      mean_data = mean->template MutableData<T>();
+      mean_data = mean->MutableData<T>();
     } else {
       auto mean_data_buf = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * norm_count);
       mean_data_buf_ptr = BufferUniquePtr(mean_data_buf, BufferDeleter(alloc));
@@ -88,7 +88,7 @@ Status LayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
 
   Tensor* inv_std_dev = p_ctx->Output(output_index, TensorShape(mean_inv_std_dev_dim));
   if (inv_std_dev != nullptr) {
-    inv_std_dev_data = inv_std_dev->template MutableData<T>();
+    inv_std_dev_data = inv_std_dev->MutableData<T>();
   } else {
     auto inv_std_dev_data_buf = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * norm_count);
     inv_std_dev_data_buf_ptr = BufferUniquePtr(inv_std_dev_data_buf, BufferDeleter(alloc));

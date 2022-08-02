@@ -444,6 +444,12 @@ class InferenceSession {
     */
   const profiling::Profiler& GetProfiling() const;
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryProfiler& GetMemoryProfiler() {
+    return memory_profiler_;
+  }
+#endif
+
   /**
    * Search registered execution providers for an allocator that has characteristics
    * specified within mem_info
@@ -653,6 +659,10 @@ class InferenceSession {
 
   // Profiler for this session.
   profiling::Profiler session_profiler_;
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryProfiler memory_profiler_;
+#endif
 
   // Immutable state for each op in the model. Shared by all executors.
   // It has a dependency on execution_providers_.

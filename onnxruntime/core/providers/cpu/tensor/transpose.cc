@@ -292,8 +292,8 @@ static Status DoUntypedTranspose(const gsl::span<const size_t>& permutations, co
     constexpr bool string_enabled = utils::HasType<EnabledDataTypes, std::string>();
 
     if (string_enabled) {
-      const auto* input_data = input.template Data<std::string>();
-      auto* output_data = output.template MutableData<std::string>();
+      const auto* input_data = input.Data<std::string>();
+      auto* output_data = output.MutableData<std::string>();
       if (1 == prefix_blocksize) {
         DoTransposeSingleBlock(suffix_blocksize, input_data, output_data);
       } else if (1 == suffix_blocksize) {
