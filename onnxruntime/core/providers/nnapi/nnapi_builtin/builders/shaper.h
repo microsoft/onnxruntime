@@ -38,11 +38,6 @@ class Shaper {
 
   common::Status Squeeze(const std::string& input_name, const std::vector<int32_t>& axes, const std::string& output_name);
 
-  common::Status DepthToSpace(const std::string& input_name,
-                              const int32_t blocksize,
-                              bool nchw,
-                              const std::string& output_name);
-
   common::Status Gather(const std::string& input_name1,
                         const std::string& input_name2,
                         const int32_t axis,
@@ -80,10 +75,6 @@ class Shaper {
   common::Status ConcatImpl(const std::vector<std::string>& input_names, const int32_t axis, const std::string& output_name);
   common::Status SplitImpl(const std::string& input_name, int32_t axis, const std::vector<std::string>& output_names);
   common::Status SqueezeImpl(const std::string& input_names, const std::vector<int32_t>& axes, const std::string& output_name);
-  common::Status DepthToSpaceImpl(const std::string& input_names,
-                                  const int32_t blocksize,
-                                  bool nchw,
-                                  const std::string& output_name);
   common::Status GatherImpl(const std::string& input_name1,
                             const std::string& input_name2,
                             const int32_t axis,
