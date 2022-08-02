@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/common.h"
+#include "core/common/safeint.h"
 
 #include "shaper.h"
 #include "helper.h"
@@ -395,7 +396,7 @@ Status Shaper::SplitImpl(const std::string& input_name, int32_t axis,
                     "count [", count, "] does not evenly divide dimension ", axis, " [", input_shape[axis], "]");
 
   Shape output_shape = input_shape;
-  output_shape[axis] = input_shape[axis] / count;
+  output_shape[axis] = SafeInt<uint32_t>(input_shape[axis] / count);
 
   for (const auto& output_name : output_names) {
     shape_map_[output_name] = output_shape;
