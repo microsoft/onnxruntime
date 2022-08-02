@@ -492,8 +492,8 @@ class InferenceSession {
    */
   common::Status LoadOnnxModel(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto) ORT_MUST_USE_RESULT;
 
-  common::Status LoadOnnxModel(std::function<common::Status(std::shared_ptr<Model>&)> loader,
-                               const std::string& event_name) ORT_MUST_USE_RESULT;
+  common::Status LoadWithLoader(std::function<common::Status(std::shared_ptr<Model>&)> loader,
+                                const std::string& event_name) ORT_MUST_USE_RESULT;
 
   common::Status DoPostLoadProcessing(onnxruntime::Model& model) ORT_MUST_USE_RESULT;
 
@@ -583,7 +583,7 @@ class InferenceSession {
    */
   common::Status LoadOrtModel(const void* model_data, int model_data_len) ORT_MUST_USE_RESULT;
 
-  common::Status LoadOrtModel(std::function<Status()> load_ort_format_model_bytes) ORT_MUST_USE_RESULT;
+  common::Status LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) ORT_MUST_USE_RESULT;
 
   // Create a Logger for a single execution if possible. Otherwise use the default logger.
   // If a new logger is created, it will also be stored in new_run_logger,

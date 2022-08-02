@@ -622,8 +622,8 @@ common::Status InferenceSession::SaveToOrtFormat(const PathString& filepath) con
   return Status::OK();
 }
 
-common::Status InferenceSession::LoadOnnxModel(std::function<common::Status(std::shared_ptr<Model>&)> loader,
-                                               const std::string& event_name) {
+common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std::shared_ptr<Model>&)> loader,
+                                                const std::string& event_name) {
   Status status = Status::OK();
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
@@ -656,8 +656,9 @@ common::Status InferenceSession::LoadOnnxModel(std::function<common::Status(std:
     });
   }
   ORT_CATCH(...) {
-    LOGS(*session_logger_, ERROR) << "Unknown exception in Load()";
-    status = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
+    LOGS(*session_logger_, ERROR) << "Unknown exception";
+    status = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION,
+                    "Encountered unknown exception in LoadWithLoader()");
   }
 
   if (session_profiler_.IsEnabled()) {
@@ -683,7 +684,7 @@ common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
                                     ModelOptions(true, strict_shape_type_inference));
   };
 
-  common::Status st = LoadOnnxModel(loader, "model_loading_uri");
+  common::Status st = LoadWithLoader(loader, "model_loading_uri");
   if (!st.IsOK()) {
     std::ostringstream oss;
     oss << "Load model from " << ToUTF8String(model_uri) << " failed:" << st.ErrorMessage();
@@ -768,7 +769,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
                                     ModelOptions(true, strict_shape_type_inference));
   };
 
-  return LoadOnnxModel(loader, "model_loading_array");
+  return LoadWithLoader(loader, "model_loading_array");
 #else
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ONNX format model is not supported in this build.");
 #endif
@@ -798,7 +799,7 @@ common::Status InferenceSession::LoadOnnxModel(ModelProto model_proto) {
                                     ModelOptions(true, strict_shape_type_inference));
   };
 
-  return LoadOnnxModel(loader, "model_loading_proto");
+  return LoadWithLoader(loader, "model_loading_proto");
 }
 
 common::Status InferenceSession::LoadOnnxModel(std::unique_ptr<ModelProto> p_model_proto) {
@@ -833,7 +834,7 @@ common::Status InferenceSession::Load(std::istream& model_istream, bool allow_re
                                     *session_logger_, model_opts);
   };
 
-  return LoadOnnxModel(loader, "model_loading_istream");
+  return LoadWithLoader(loader, "model_loading_istream");
 }
 
 common::Status InferenceSession::Load() {
@@ -858,7 +859,7 @@ common::Status InferenceSession::Load() {
                        ModelOptions(true, strict_shape_type_inference));
   };
 
-  return LoadOnnxModel(loader, "model_loading_from_saved_proto");
+  return LoadWithLoader(loader, "model_loading_from_saved_proto");
 }
 
 common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
@@ -960,7 +961,7 @@ static Status LoadOrtModelBytes(const PathString& model_uri,
 }
 
 Status InferenceSession::LoadOrtModel(const PathString& model_uri) {
-  return LoadOrtModel(
+  return LoadOrtModelWithLoader(
       [&]() {
         model_location_ = model_uri;
         ORT_RETURN_IF_ERROR(
@@ -970,7 +971,7 @@ Status InferenceSession::LoadOrtModel(const PathString& model_uri) {
 }
 
 Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len) {
-  return LoadOrtModel([&]() {
+  return LoadOrtModelWithLoader([&]() {
     const auto use_ort_model_bytes_directly =
         GetSessionOptions().config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "0");
     if (use_ort_model_bytes_directly != "1") {
@@ -988,7 +989,7 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
   });
 }
 
-Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_model_bytes) {
+Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) {
   static_assert(FLATBUFFERS_LITTLEENDIAN, "ORT format only supports little-endian machines");
 
   std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
