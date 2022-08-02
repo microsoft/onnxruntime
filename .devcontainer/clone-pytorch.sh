@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# Change into /workspaces directory
+cd ..
+
 # Check if the PyTorch repository exists
 if [ ! -d "pytorch" ]
 then
