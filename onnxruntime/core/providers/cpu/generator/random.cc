@@ -238,10 +238,10 @@ static Status MultinomialCompute(OpKernelContext* ctx,
   // implementation copied from Tensorflow with some changes such as using the std::uniform_real_distribution
   // instead of the Philox RNG.
   Eigen::array<int64_t, 2> X_dims = {{batch_size, num_classes}};
-  ConstMatrix<float> logits = ConstMatrix<float>(X.template Data<float>(), X_dims);
+  ConstMatrix<float> logits = ConstMatrix<float>(X.Data<float>(), X_dims);
 
   Eigen::array<int64_t, 2> Y_dims = {{batch_size, num_samples}};
-  Matrix<OutputType> output = Matrix<OutputType>(Y.template MutableData<OutputType>(), Y_dims);
+  Matrix<OutputType> output = Matrix<OutputType>(Y.MutableData<OutputType>(), Y_dims);
 
   // BEGIN create temporary tensor
   AllocatorPtr alloc;
