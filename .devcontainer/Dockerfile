@@ -34,6 +34,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends aria2 aria2 && aria2c -q -d /tmp -o cmake-3.21.0-linux-x86_64.tar.gz https://github.com/Kitware/CMake/releases/download/v3.21.0/cmake-3.21.0-linux-x86_64.tar.gz && tar -zxf /tmp/cmake-3.21.0-linux-x86_64.tar.gz --strip=1 -C /usr \
     && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
+# Install python dependencies for OnnxRuntime
+# RUN pip install torch==1.12.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
+RUN pip install packaging "wheel>=0.35.1" parameterized
+
 # Dependencies required to build PyTorch
 RUN pip3 install astunparse pyyaml setuptools cffi typing_extensions future six requests dataclasses
 RUN pip3 install mkl mkl-devel
