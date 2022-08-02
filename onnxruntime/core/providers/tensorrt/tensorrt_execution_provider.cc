@@ -185,8 +185,6 @@ class Memcpy final : public OpKernel {
     ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
     Tensor* Y = ctx->Output(0, X->Shape());
     ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
-    auto& src_device = Info().GetInputLocation(0).device;
-    auto& dst_device = Info().GetOutputLocation(0).device;
     auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
     if (!gpu_data_transfer)
       return Status(common::ONNXRUNTIME, common::EP_FAIL, "gpu data transfer is missing in TRT EP.");
