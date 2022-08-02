@@ -7,6 +7,7 @@ import glob
 import logging
 import os
 import re
+import typing
 
 logging.basicConfig(format="[%(levelname)s] - %(message)s", level=logging.DEBUG)
 log = logging.getLogger()
@@ -29,7 +30,7 @@ def parse_args():
     return args
 
 
-def get_call_args_from_file(filename: str, function_or_declaration: str) -> [str]:
+def get_call_args_from_file(filename: str, function_or_declaration: str) -> typing.List[str]:
     """
     Search a file for all function calls or declarations that match the provided name.
     Requires both the opening '(' and closing ')' to be on the same line.
@@ -62,7 +63,7 @@ def get_call_args_from_file(filename: str, function_or_declaration: str) -> [str
     return results
 
 
-def get_multiline_call_args_from_file(filename: str, function_or_declaration: str) -> [str]:
+def get_multiline_call_args_from_file(filename: str, function_or_declaration: str) -> typing.List[str]:
     """
     Search a file for all function calls or declarations that match the provided name.
     Allows the opening '(' and closing ')' to be split across multiple lines.
@@ -71,29 +72,27 @@ def get_multiline_call_args_from_file(filename: str, function_or_declaration: st
 
     results = []
     with open(filename) as f:
-        current_args = None
+        function_and_args = None
 
         for line in f:
-            if not current_args:
+            if not function_and_args:
                 # look for new match
                 start = line.find(function_or_declaration)
                 if start != -1:
-                    # include the '(' in case that is the last character in the line
-                    current_args = line[start:].strip()
+                    function_and_args = line[start:].strip()
             else:
                 # append to existing line and look for closing ')'
-                start = len(current_args)
-                current_args += line.strip()
+                start = len(function_and_args)
+                function_and_args += line.strip()
 
             end = -1
-            if current_args:
-                end = current_args.find(")", start)
-
-            have_all_args = current_args and end != -1
-
-            if have_all_args:
-                results.append(current_args[1:end])
-                current_args = None
+            if function_and_args:
+                end = function_and_args.find(")", start)
+                
+                if end != -1:
+                    start_args = function_and_args.find("(")
+                    results.append(function_and_args[start_args + 1:end])
+                    function_and_args = None
 
     return results
 
