@@ -16,16 +16,16 @@ namespace {
 constexpr int ChunkSize = 2048 * 32;
 constexpr float Epsilon = 0.000001f;
 
-void GetGroupedTensors(const TensorSeq* gradients, std::vector<int>* tensor_sizes,
-                       std::vector<std::vector<void*>>* grouped_tensor_pointers) {
+void GetGroupedTensors(const TensorSeq* gradients, InlinedVector<int>* tensor_sizes,
+                       InlinedVector<std::vector<void*>>* grouped_tensor_pointers) {
   for (size_t i = 0; i < gradients->Size(); ++i) {
     (*tensor_sizes)[i] = static_cast<int>(gradients->Get(i).Shape().Size());
     (*grouped_tensor_pointers)[i] = {const_cast<float*>(gradients->Get(i).Data<float>())};
   }
 }
 
-Status GetL2Norm(cudaStream_t stream, std::vector<int>& tensor_sizes,
-                 std::vector<std::vector<void*>>& grouped_tensor_pointers, float** l2_norm) {
+Status GetL2Norm(cudaStream_t stream, InlinedVector<int>& tensor_sizes,
+                 InlinedVector<std::vector<void*>>& grouped_tensor_pointers, float** l2_norm) {
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(*l2_norm, 0, sizeof(float), stream));
   MultiTensorReduceL2<float, float> multi_tensor_reduce_l2_functor;
   launch_multi_tensor_functor<ClipGradNormGroupSize, MultiTensorReduceL2<float, float>>(
@@ -73,8 +73,8 @@ ONNX_OPERATOR_KERNEL_EX(
 Status ClipGradNorm::ComputeInternal(OpKernelContext* ctx) const {
   // Prepare the inputs
   const TensorSeq* gradients = ctx->Input<TensorSeq>(0);
-  std::vector<int> tensor_sizes(gradients->Size());
-  std::vector<std::vector<void*>> grouped_tensor_pointers(gradients->Size());
+  InlinedVector<int> tensor_sizes(gradients->Size());
+  InlinedVector<std::vector<void*>> grouped_tensor_pointers(gradients->Size());
   GetGroupedTensors(gradients, &tensor_sizes, &grouped_tensor_pointers);
 
   AllocatorPtr alloc;
