@@ -3,11 +3,11 @@
 
 #include "python/tools/kernel_explorer/kernels/gemm_rocblas.h"
 
-#include <string>
-#include <vector>
-
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+
+#include <string>
+#include <vector>
 
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
