@@ -141,13 +141,7 @@ class CKGemm : public GemmBase<T> {
     for (int i = 0; i < impls_.size(); i++) {
       if (impls_[i]->GetTypeString() == name) {
         selected_impl_ = i;
-        auto is_suppotred = UpdateArgumentAndInvoker();
-        // Run it once before the profiling run, in case there are implicit workspace allocation or some other
-        // allocation during first time launch.
-        if (is_suppotred) {
-          Run();
-        }
-        return is_suppotred;
+        return UpdateArgumentAndInvoker();
       }
     }
 
