@@ -62,9 +62,10 @@ Please add tests for all ops. Tests are defined in `orttraining/orttraining/eage
 
 Open this branch in a code space / dev container. This will clone PyTorch at `/workspaces/pytorch`. To have PyTorch source readily available in VS Code, you can add the the PyTorch directory to your workspace (File -> Add Folder to Workspace - /workspaces/pytorch)
 
-Run the following commands to build PyTorch and install in local environment:
+Run the following commands to checkout PyTorch v1.12.0, build it, and and install in local environment:
 
 ```
+/workspaces/pytorch> git checkout v1.12.0
 /workspaces/pytorch> export CMAKE_PREFIX_PATH=/usr/lib/python3/dist-packages
 /workspaces/pytorch> DEBUG=1 USE_CUDA=0 USE_KINETO=0 BUILD_CAFFE2=0 USE_DISTRIBUTED=0 USE_NCCL=0 BUILD_TEST=0 USE_XNNPACK=0 USE_FBGEMM=0 USE_QNNPACK=0 USE_MKLDNN=0 USE_MIOPEN=0 USE_NNPACK=0 BUILD_CAFFE2_OPS=0 USE_TENSORPIPE=0 python3 setup.py develop --user
 ```
