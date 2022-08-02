@@ -1,17 +1,36 @@
 ---
 title: PyTorch Inference
-description: How to run PyTorch models 
+description: How to run PyTorch models effciently and across multiple platforms
 parent: Accelerate PyTorch
 grand_parent: Tutorials
 nav_order: 1
 ---
-# PyTorch inference
-
+# Inference PyTorch models
 {: .no_toc }
 
-ONNX Runtime can be used to accelerate PyTorch models inferencing.
+Intro section. Blurb about PyTorch. Blurb about ONNX Runtime.
+
+## Overview of PyTorch
+
+## Overview of PyTorch integration with ONNX Runtime
+
+## Performance
+
+Latency, throughput
+Model optimization
+Model size: quantization
+
+## Cross platform
+
+Run on cloud
+Run on mobile
+Run on web
 
 ## Further reading
+
+### PyTorch 
+
+* [PyTorch tutorials](https://pytorch.org/tutorials/)
 
 ### Convert model to ONNX
 
