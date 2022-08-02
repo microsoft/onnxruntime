@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <limits>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -87,5 +88,12 @@ OpQuantParam ParseQuantParamForOp(const OpKernelInfo& info, int32_t x_dtype, siz
 const char* TensorQtypeToString(enum TensorQuantType type);
 const char* OpTypeToString(OpComputeType opCtype);
 
+template <typename T>
+auto xnn_u8s8_quantize(float val, float scale, T zero_point) {
+  auto typed_min = static_cast<float>(std::numeric_limits<T>::min());
+  auto typed_max = static_cast<float>(std::numeric_limits<T>::max());
+  auto zp = static_cast<float>(zero_point);
+  return static_cast<T>(lrintf(fminf(fmaxf(val / scale + zp, typed_min), typed_max)));
+}
 }  // namespace xnnpack
 }  // namespace onnxruntime

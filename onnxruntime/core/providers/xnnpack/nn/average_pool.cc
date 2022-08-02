@@ -31,21 +31,21 @@ Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
   if (pool_attrs.auto_pad == AutoPadType::SAME_UPPER) {
     flags |= XNN_FLAG_TENSORFLOW_SAME_PADDING;
   }
-
+  float foutput_min = clip_min_max ? clip_min_max->first : -INFINITY;
+  float foutput_max = clip_min_max ? clip_min_max->second : INFINITY;
   xnn_status status = xnn_status_unsupported_parameter;
   if (avgpool_type == OpComputeType::op_compute_type_fp32) {
-    float output_min = clip_min_max ? clip_min_max->first : -INFINITY;
-    float output_max = clip_min_max ? clip_min_max->second : INFINITY;
-
     status = xnn_create_average_pooling2d_nhwc_f32(input_padding_top, input_padding_right,
                                                    input_padding_bottom, input_padding_left,
                                                    pooling_height, pooling_width,
                                                    stride_height, stride_width,
                                                    C, C, C,  // channels, input_pixel_stride, output_pixel_stride
-                                                   output_min, output_max, flags, &p);
+                                                   foutput_min, foutput_max, flags, &p);
   } else if (avgpool_type == OpComputeType::op_compute_type_qu8) {
-    uint8_t output_min = 0;
-    uint8_t output_max = 255;
+    const float output_scale = quant_param[1].first[0];
+    const uint8_t output_zero_point = quant_param[1].second;
+    const uint8_t output_min = xnn_u8s8_quantize<uint8_t>(foutput_min, output_scale, output_zero_point);
+    const uint8_t output_max = xnn_u8s8_quantize<uint8_t>(foutput_max, output_scale, output_zero_point);
     status = xnn_create_average_pooling2d_nhwc_qu8(input_padding_top, input_padding_right,
                                                    input_padding_bottom, input_padding_left,
                                                    pooling_height, pooling_width,
