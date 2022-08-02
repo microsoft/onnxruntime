@@ -1559,8 +1559,20 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
 
-  ORT_RETURN_IF_ERROR(shaper.DepthToSpace(input, blocksize, use_nchw, output));
-  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  //ORT_RETURN_IF_ERROR(shaper.DepthToSpace(input, blocksize, use_nchw, output));
+  //const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+
+  // Uses shape info from output node arg tensorshapeproto
+  const auto& shape_info = node_unit.Outputs()[0].node_arg.Shape();
+  const auto& shape_dims = shape_info->dim();
+  std::vector<uint32_t> output_shape(shape_info->dim_size());
+  for (int i = 0; i < shape_dims.size(); i++) {
+    auto& shape_dim = shape_dims.Get(i);
+    output_shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
+  }
+
+  shaper.AddShape(output, output_shape);
+  const OperandType output_operand_type(operand_types.at(input).type, output_shape);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_DEPTH_TO_SPACE, input_indices, {output},
                                                  {output_operand_type}));
   return Status::OK();
