@@ -289,7 +289,6 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   // Start/end a parallel section, within which calls to
   // RunInParallelSection may be made.  Parallel sections are
   // non-nesting.
-  virtual std::unique_ptr<ThreadPoolParallelSection, void (*)(ThreadPoolParallelSection*)> AllocateParallelSection() = 0;
   virtual void StartParallelSection(ThreadPoolParallelSection& ps) = 0;
   virtual void EndParallelSection(ThreadPoolParallelSection& ps) = 0;
 
@@ -787,17 +786,6 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   // Parallel sections
   // -----------------
   //
-  // Allocate a new ThreadPoolParallelSection, owned by the returned
-  // unique_ptr.  The explicit deleter avoids the Eigen-specific
-  // definition of ThreadPoolParallelSection needing to be avilable in
-  // threadpool.h where the user-facing parallel section API is defined.
-  GSL_SUPPRESS(r .11)
-  std::unique_ptr<ThreadPoolParallelSection, void (*)(ThreadPoolParallelSection*)> AllocateParallelSection() override {
-    return std::unique_ptr<ThreadPoolParallelSection, void (*)(ThreadPoolParallelSection*)>(new ThreadPoolParallelSection,
-                                                                                            [](ThreadPoolParallelSection* tps) {
-                                                                                              delete tps;
-                                                                                            });
-  }
 
   // Start a parallel section, using a caller-provided
   // ThreadPoolParallelSection for maintaining the per-section state.
