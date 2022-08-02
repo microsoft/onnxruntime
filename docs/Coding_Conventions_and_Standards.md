@@ -12,13 +12,13 @@ Google style from <https://google.github.io/styleguide/cppguide.html> with a few
   * Allowed
   * Use a non-const reference for arguments that are modifiable but cannot be `nullptr` so the API clearly advertises the intent
   * Const correctness and usage of smart pointers (`shared_ptr` and `unique_ptr`) is expected. A non-const reference equates to "this is a non-null object that you can change but are not being given ownership of".
-* Prefer passing `gsl::span<const T>` by value (or `std::span` when supported) as input arguments when passing const references to containers with contiguous storage (like `std::vector`). This allows to make the function container independent, represent arbitrary memory spans or pass sub-spans as an argument. The below examples allow the client code to use either `std::vector`, `InlinedVector`, an instance of a `gsl::span` would be created automatically
+* Prefer passing `gsl::span<const T>` by value (or `std::span` when supported) as input arguments when passing const references to containers with contiguous storage (like `std::vector`). This allows the function to be container independent, and the argument to represent arbitrary memory spans or sub-spans. The below examples allow the client code to use either `std::vector` or `InlinedVector`. An instance of a `gsl::span` would be created automatically.
 ```cpp
 /// Instead of
 void foo(const std::vector<int64_t>&);
 
 /// Use to pass any contiguous const container containing int64_t
-// Now you can seamless pass either `std::vector`, `InlinedVector`, `std::array` or `gsl::span` as an argument.
+// Now you can seamlessly pass either `std::vector`, `InlinedVector`, `std::array` or `gsl::span` as an argument.
 void foo(gsl::span<const int64_t>);
 
 // Example with pointer to const data. Instead of
@@ -57,7 +57,7 @@ foo(AsSpan<std::string>{"abc", "dbf"}); // Works
 
 ### Containers to use
 
-Onnxruntime aims to reduce latency and latency variance by minimizing the amount of dynamic memory allocations and avoid using locks.
+Onnxruntime aims to reduce latency and latency variance by minimizing the amount of dynamic memory allocations.
 
 * The use of the following container `typedef`s to reduce memory allocations is required:
   * Use `TensorShapeVector` typedef to build or modify shapes from `core/framework/tensor_shape.h`. It is based on a vector implementation that features small buffer optimization. Its small buffer size is the same to that of in TensorShape.
@@ -91,7 +91,7 @@ void foo(gsl::span<const std::string> names) {
 * When adding a new class, disable copy/assignment/move until you have a proven need for these capabilities. If a need arises, enable copy/assignment/move selectively, and when doing so validate that the implementation of the class supports what is being enabled.
   * Use `ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE` initially
   * See the other `ORT_DISALLOW_*` macros in <https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/common.h>
-* `std::unique_ptr` is often used for delayed or optional construction of objects or members of classes. Use `std::optional` as appropriate to reduce the number of allocations.
+* Sometimes, `std::unique_ptr` might be considered for delayed or optional construction of objects or members of classes. Instead, use `std::optional` as appropriate to reduce the number of allocations.
 * Don't use `else` after `return`. see: [https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return](https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return)
 * Don't overuse `std::shared_ptr`. Use `std::shared_ptr` only if it's not clear when and where the object will be de-allocated. See also: [https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr)
 * Avoid using the `long` type, which could be either 32 bits or 64 bits.
