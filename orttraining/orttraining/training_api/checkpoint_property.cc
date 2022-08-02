@@ -51,17 +51,11 @@ CheckpointProperty::CheckpointProperty(const ONNX_NAMESPACE::TensorProto& tensor
 
 ONNX_NAMESPACE::TensorProto CheckpointProperty::ToTensorProto() const {
   onnx::TensorProto t_proto;
-  if (std::holds_alternative<float>(prop_value_)) {
-    const float* fval = std::get_if<float>(&prop_value_);
-    ORT_ENFORCE(fval, "Fail to parse the property value using float type.");
+  if (const float* fval = std::get_if<float>(&prop_value_); fval != nullptr) {
     t_proto = ONNX_NAMESPACE::ToTensor<float>(*fval);
-  } else if (std::holds_alternative<int64_t>(prop_value_)) {
-    const int64_t* ival = std::get_if<int64_t>(&prop_value_);
-    ORT_ENFORCE(ival, "Fail to parse the property value using int64_t type.");
+  } else if (const int64_t* ival = std::get_if<int64_t>(&prop_value_); ival != nullptr) {
     t_proto = ONNX_NAMESPACE::ToTensor<int64_t>(*ival);
-  } else if (std::holds_alternative<std::string>(prop_value_)) {
-    const std::string* sval = std::get_if<std::string>(&prop_value_);
-    ORT_ENFORCE(sval, "Fail to parse the property value using std::string type.");
+  } else if (const std::string* sval = std::get_if<std::string>(&prop_value_); sval != nullptr) {
     t_proto = ONNX_NAMESPACE::ToTensor<std::string>(*sval);
   } else {
     ORT_THROW("Should not go there, unexpected data_type for prop value.");

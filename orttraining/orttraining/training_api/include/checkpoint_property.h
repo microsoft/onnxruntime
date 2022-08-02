@@ -35,7 +35,7 @@ struct CheckpointProperty {
     return prop_value_;
   }
 
- protected:
+ private:
   std::string prop_name_;
   CheckPointPropertyDataType prop_value_;
 };
@@ -64,7 +64,7 @@ struct PropertyBag {
 
     CheckPointPropertyDataType cloned_val = it->second.GetData();
     T* tval = std::get_if<T>(&cloned_val);
-    ORT_ENFORCE(tval, "Fail to parse the property value using specified type.");
+    ORT_ENFORCE(tval, "Fail to get the property value using specified type.");
     return *tval;
   }
 

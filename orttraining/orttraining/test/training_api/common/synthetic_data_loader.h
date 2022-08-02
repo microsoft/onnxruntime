@@ -23,10 +23,11 @@ namespace training {
 namespace test {
 namespace training_api {
 
-typedef std::vector<std::variant<int32_t, int64_t, float, uint8_t>> SyntheticDataVector;
+typedef std::variant<std::vector<int32_t>, std::vector<int64_t>, std::vector<float>, std::vector<uint8_t>>
+    SyntheticDataVector;
 
-struct TypedSyntheticInput {
-  explicit TypedSyntheticInput(const std::vector<int64_t>& shape) : shape_(shape) {
+struct SyntheticInput {
+  explicit SyntheticInput(const std::vector<int64_t>& shape) : shape_(shape) {
     for (auto d : shape) {
       num_of_elements_ *= d;
     }
@@ -44,7 +45,7 @@ struct TypedSyntheticInput {
     return data_;
   }
 
- protected:
+ private:
   std::vector<int64_t> shape_;
   size_t num_of_elements_{1};
   SyntheticDataVector data_;
@@ -59,10 +60,10 @@ struct SyntheticSampleBatch {
   void AddBoolInput(const std::vector<int64_t>& shape);
 
   size_t NumOfInput() {
-    return data_vector_.size();
+    return input_count_;
   }
 
-  TypedSyntheticInput& GetInputAtIndex(size_t index) {
+  SyntheticInput& GetInputAtIndex(size_t index) {
     return data_vector_[index];
   }
 
@@ -70,7 +71,8 @@ struct SyntheticSampleBatch {
   template <typename T>
   void AddIntInput(const std::vector<int64_t>& shape, T low, T high);
 
-  std::vector<TypedSyntheticInput> data_vector_;
+  std::vector<SyntheticInput> data_vector_;
+  size_t input_count_{0};
 };
 
 struct SyntheticDataLoader {
@@ -91,9 +93,6 @@ struct SyntheticDataLoader {
   }
 
  private:
-  template <typename T>
-  OrtValue* CreateTensorWithData(const OrtApi* ort_api, Ort::MemoryInfo& memory_info, TypedSyntheticInput& input);
-
   // Be noted: all raw data MUST remain during the training, because all OrtValue created as session inputs
   // did not explicitly copy the data in.
   // And also, the created OrtValue also won't clean the raw data pointer. The raw data should be removed when

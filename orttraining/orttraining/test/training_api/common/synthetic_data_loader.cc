@@ -42,16 +42,14 @@ void RandomInts(std::vector<IntType>& rets, IntType low, IntType high) {
 
 template <typename T>
 void SyntheticSampleBatch::AddIntInput(const std::vector<int64_t>& shape, T low, T high) {
-  data_vector_.emplace_back(TypedSyntheticInput(shape));
+  data_vector_.emplace_back(SyntheticInput(shape));
 
   std::vector<T> values(data_vector_.back().NumOfElements());
   RandomInts(values, low, high);
 
-  auto& data = data_vector_.back().GetData();
-  data.reserve(values.size());
-  for (size_t i = 0; i < values.size(); ++i) {
-    data.push_back(values[i]);
-  }
+  SyntheticDataVector& data = data_vector_.back().GetData();
+  data = values;
+  input_count_++;
 }
 
 void SyntheticSampleBatch::AddInt64Input(const std::vector<int64_t>& shape, int64_t low, int64_t high) {
@@ -69,16 +67,14 @@ void SyntheticSampleBatch::AddBoolInput(const std::vector<int64_t>& shape) {
 }
 
 void SyntheticSampleBatch::AddFloatInput(const std::vector<int64_t>& shape) {
-  data_vector_.emplace_back(TypedSyntheticInput(shape));
+  data_vector_.emplace_back(SyntheticInput(shape));
 
   std::vector<float> values(data_vector_.back().NumOfElements());
   RandomFloats(values);
 
-  auto& data = data_vector_.back().GetData();
-  data.reserve(values.size());
-  for (size_t i = 0; i < values.size(); ++i) {
-    data[i] = values[i];
-  }
+  SyntheticDataVector& data = data_vector_.back().GetData();
+  data = values;
+  input_count_++;
 }
 
 #define ORT_RETURN_ON_ERROR(expr)                              \
@@ -90,43 +86,9 @@ void SyntheticSampleBatch::AddFloatInput(const std::vector<int64_t>& shape) {
       printf("Run failed with error code :%d\n", code);        \
       printf("Error message :%s\n", msg);                      \
       ort_api->ReleaseStatus(onnx_status);                     \
-      return nullptr;                                          \
+      return;                                                  \
     }                                                          \
   } while (0);
-
-template <typename T>
-OrtValue* SyntheticDataLoader::CreateTensorWithData(const OrtApi* ort_api, Ort::MemoryInfo& memory_info,
-                                                    TypedSyntheticInput& input) {
-  std::variant<int32_t, int64_t, float, uint8_t>& first_elem = input.GetData()[0];
-
-  if (T* fval = std::get_if<T>(&first_elem)) {
-    ONNXTensorElementDataType elem_data_type;
-    if (std::is_same<float, T>::value) {
-      elem_data_type = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-    } else if (std::is_same<int32_t, T>::value) {
-      elem_data_type = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
-    } else if (std::is_same<int64_t, T>::value) {
-      elem_data_type = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
-    } else if (std::is_same<uint8_t, T>::value) {
-      elem_data_type = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
-    } else {
-      throw std::runtime_error("Unsupported element type.");
-    }
-
-    OrtValue* value = nullptr;
-    auto shape_vector = input.ShapeVector();
-    // Be noted: the created OrtValue won't clean the raw data after its lifetime ended.
-    ORT_RETURN_ON_ERROR(ort_api->CreateTensorWithDataAsOrtValue(
-        memory_info,
-        input.GetData().data(), (input.NumOfElements() * sizeof(T)),
-        shape_vector.data(), shape_vector.size(),
-        elem_data_type,
-        &value));
-    return value;
-  }
-
-  return nullptr;
-}
 
 bool SyntheticDataLoader::GetNextSampleBatch(std::vector<OrtValue*>& batches) {
   if (sample_batch_iter_index_ >= NumOfSampleBatches()) {
@@ -139,33 +101,37 @@ bool SyntheticDataLoader::GetNextSampleBatch(std::vector<OrtValue*>& batches) {
   auto& sample = sample_batch_collections_[sample_batch_iter_index_];
   const auto* ort_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   for (size_t i = 0; i < sample->NumOfInput(); ++i) {
-    auto& input = sample->GetInputAtIndex(i);
+    SyntheticInput& input = sample->GetInputAtIndex(i);
 
-    OrtValue* value = CreateTensorWithData<float>(ort_api, memory_info, input);
-    if (value) {
+    std::visit([&batches, &input, &ort_api, &memory_info](auto&& arg) -> void {
+      ONNXTensorElementDataType elem_data_type;
+      using T = std::decay_t<decltype(arg)>;
+      if constexpr (std::is_same_v<T, std::vector<float>>) {
+        elem_data_type = Ort::TypeToTensorType<float>::type;
+      } else if constexpr (std::is_same_v<T, std::vector<int32_t>>) {
+        elem_data_type = Ort::TypeToTensorType<int32_t>::type;
+      } else if constexpr (std::is_same_v<T, std::vector<int64_t>>) {
+        elem_data_type = Ort::TypeToTensorType<int64_t>::type;
+      } else if constexpr (std::is_same_v<T, std::vector<uint8_t>>) {
+        elem_data_type = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
+      } else {
+        throw std::runtime_error("Unsupported element type.");
+      }
+
+      void* p_data = arg.data();
+      OrtValue* value = nullptr;
+      auto shape_vector = input.ShapeVector();
+      // Be noted: the created OrtValue won't clean the raw data after its lifetime ended.
+      ORT_RETURN_ON_ERROR(ort_api->CreateTensorWithDataAsOrtValue(
+          memory_info,
+          p_data, (input.NumOfElements() * sizeof(T)),
+          shape_vector.data(), shape_vector.size(),
+          elem_data_type,
+          &value));
+
       batches.emplace_back(value);
-      continue;
-    }
-
-    value = CreateTensorWithData<int32_t>(ort_api, memory_info, input);
-    if (value) {
-      batches.emplace_back(value);
-      continue;
-    }
-
-    value = CreateTensorWithData<int64_t>(ort_api, memory_info, input);
-    if (value) {
-      batches.emplace_back(value);
-      continue;
-    }
-
-    value = CreateTensorWithData<uint8_t>(ort_api, memory_info, input);
-    if (value) {
-      batches.emplace_back(value);
-      continue;
-    }
-
-    throw std::runtime_error("unknown data types.");
+    },
+               input.GetData());
   }
 
   sample_batch_iter_index_ += 1;
