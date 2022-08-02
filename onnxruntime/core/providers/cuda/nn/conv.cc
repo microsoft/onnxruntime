@@ -86,6 +86,10 @@ Status SliceOutUnwantedOutputSection(cudaStream_t stream,
   return SliceCuda::Impl(stream, input_data, input_dims, output_data, compute_metadata, element_size);
 }
 
+static cudaStream_t ConvCudnnStream() {
+  return nullptr;
+}
+
 template <typename T>
 Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const {
   //set X
@@ -335,10 +339,23 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   return Status::OK();
 }
 
+//make dst stream wait on src stream
+static void MakeStreamWaitOnAnother(cudaStream_t src, cudaStream_t dst) {
+  cudaEvent_t current_event;
+  CUDA_CALL_THROW(cudaEventCreateWithFlags(&current_event, cudaEventDisableTiming));
+  CUDA_CALL_THROW(cudaEventRecord(current_event, src));
+  CUDA_CALL_THROW(cudaStreamWaitEvent(dst, current_event));
+  CUDA_CALL_THROW(cudaEventDestroy(current_event));
+}
+
 template <typename T>
 Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   std::lock_guard<OrtMutex> lock(s_.mutex);
-  CUDNN_CONFIG_CALL_THROW(cudnnSetStream(s_.handle, Stream(context)));
+  cudaStream_t current_stream = Stream(context);
+  //default stream wait on current stream before launch cudnn
+  MakeStreamWaitOnAnother(current_stream, ConvCudnnStream());
+
+  CUDNN_CONFIG_CALL_THROW(cudnnSetStream(s_.handle, ConvCudnnStream()));
   ORT_RETURN_IF_ERROR(UpdateState(context));
   if (s_.Y->Shape().Size() == 0) {
     return Status::OK();
@@ -361,20 +378,22 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
                                                 s_.y_tensor,
                                                 s_.y_data),
       s_.handle,
-      Stream(context));
+      ConvCudnnStream());
   if (nullptr != s_.b_data) {
     CUDNN_RETURN_IF_ERROR(cudnnAddTensor(s_.handle, &alpha, s_.b_tensor, s_.b_data,
                                          &alpha, s_.y_tensor, s_.y_data),
         s_.handle,
-        Stream(context));
+        ConvCudnnStream());
   }
   // To deal with asymmetric padding, we may have over-padded on one or both sides of the spatial dimensions
   // This may have lead to extra results that are unnecessary and hence we slice that off here
   if (s_.post_slicing_required) {
-    ORT_RETURN_IF_ERROR(SliceOutUnwantedOutputSection(Stream(context), s_.y_data, gsl::make_span(s_.y_dims_with_adjusted_pads),
+    ORT_RETURN_IF_ERROR(SliceOutUnwantedOutputSection(ConvCudnnStream(), s_.y_data, gsl::make_span(s_.y_dims_with_adjusted_pads),
                                                       s_.Y->MutableDataRaw(), s_.y_dims.GetDims(), s_.slice_starts,
                                                       s_.slice_ends, s_.slice_axes, s_.element_size));
   }
+  //current stream wait on default stream to complete cudnn
+  MakeStreamWaitOnAnother(ConvCudnnStream(), current_stream);
   return Status::OK();
 }  // namespace cuda
 
