@@ -31,13 +31,14 @@ It starts by loading the model trained in example
 trained on *Iris* datasets. The model takes
 a vector of dimension 2 and returns a class among three.
 
-.. GENERATED FROM PYTHON SOURCE LINES 18-29
+.. GENERATED FROM PYTHON SOURCE LINES 18-30
 
 .. code-block:: default
 
+    import numpy
+
     import onnxruntime as rt
     from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
-    import numpy
     from onnxruntime.datasets import get_example
 
     example2 = get_example("logreg_iris.onnx")
@@ -53,13 +54,13 @@ a vector of dimension 2 and returns a class among three.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 30-33
+.. GENERATED FROM PYTHON SOURCE LINES 31-34
 
 The first example fails due to *bad types*.
 *onnxruntime* only expects single floats (4 bytes)
 and cannot handle any other kind of floats.
 
-.. GENERATED FROM PYTHON SOURCE LINES 33-41
+.. GENERATED FROM PYTHON SOURCE LINES 34-42
 
 .. code-block:: default
 
@@ -70,14 +71,12 @@ and cannot handle any other kind of floats.
     except Exception as e:
         print("Unexpected type")
         print("{0}: {1}".format(type(e), e))
-    
+
 
 
 
 
 .. rst-class:: sphx-glr-script-out
-
- Out:
 
  .. code-block:: none
 
@@ -87,12 +86,12 @@ and cannot handle any other kind of floats.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 42-44
+.. GENERATED FROM PYTHON SOURCE LINES 43-45
 
 The model fails to return an output if the name
 is misspelled.
 
-.. GENERATED FROM PYTHON SOURCE LINES 44-52
+.. GENERATED FROM PYTHON SOURCE LINES 45-53
 
 .. code-block:: default
 
@@ -110,8 +109,6 @@ is misspelled.
 
 .. rst-class:: sphx-glr-script-out
 
- Out:
-
  .. code-block:: none
 
     Misspelled output name
@@ -120,12 +117,12 @@ is misspelled.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 53-55
+.. GENERATED FROM PYTHON SOURCE LINES 54-56
 
 The output name is optional, it can be replaced by *None*
 and *onnxruntime* will then return all the outputs.
 
-.. GENERATED FROM PYTHON SOURCE LINES 55-64
+.. GENERATED FROM PYTHON SOURCE LINES 56-65
 
 .. code-block:: default
 
@@ -144,8 +141,6 @@ and *onnxruntime* will then return all the outputs.
 
 .. rst-class:: sphx-glr-script-out
 
- Out:
-
  .. code-block:: none
 
     All outputs
@@ -154,11 +149,11 @@ and *onnxruntime* will then return all the outputs.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 65-66
+.. GENERATED FROM PYTHON SOURCE LINES 66-67
 
 The same goes if the input name is misspelled.
 
-.. GENERATED FROM PYTHON SOURCE LINES 66-74
+.. GENERATED FROM PYTHON SOURCE LINES 67-75
 
 .. code-block:: default
 
@@ -176,8 +171,6 @@ The same goes if the input name is misspelled.
 
 .. rst-class:: sphx-glr-script-out
 
- Out:
-
  .. code-block:: none
 
     Misspelled input name
@@ -186,23 +179,23 @@ The same goes if the input name is misspelled.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 75-77
+.. GENERATED FROM PYTHON SOURCE LINES 76-78
 
 *onnxruntime* does not necessarily fail if the input
 dimension is a multiple of the expected input dimension.
 
-.. GENERATED FROM PYTHON SOURCE LINES 77-104
+.. GENERATED FROM PYTHON SOURCE LINES 78-105
 
 .. code-block:: default
 
 
     for x in [
-            numpy.array([1.0, 2.0, 3.0, 4.0], dtype=numpy.float32),
-            numpy.array([[1.0, 2.0, 3.0, 4.0]], dtype=numpy.float32),
-            numpy.array([[1.0, 2.0], [3.0, 4.0]], dtype=numpy.float32),
-            numpy.array([1.0, 2.0, 3.0], dtype=numpy.float32),
-            numpy.array([[1.0, 2.0, 3.0]], dtype=numpy.float32),
-            ]:
+        numpy.array([1.0, 2.0, 3.0, 4.0], dtype=numpy.float32),
+        numpy.array([[1.0, 2.0, 3.0, 4.0]], dtype=numpy.float32),
+        numpy.array([[1.0, 2.0], [3.0, 4.0]], dtype=numpy.float32),
+        numpy.array([1.0, 2.0, 3.0], dtype=numpy.float32),
+        numpy.array([[1.0, 2.0, 3.0]], dtype=numpy.float32),
+    ]:
         try:
             r = sess.run([output_name], {input_name: x})
             print("Shape={0} and predicted labels={1}".format(x.shape, r))
@@ -210,12 +203,12 @@ dimension is a multiple of the expected input dimension.
             print("ERROR with Shape={0} - {1}".format(x.shape, e))
 
     for x in [
-            numpy.array([1.0, 2.0, 3.0, 4.0], dtype=numpy.float32),
-            numpy.array([[1.0, 2.0, 3.0, 4.0]], dtype=numpy.float32),
-            numpy.array([[1.0, 2.0], [3.0, 4.0]], dtype=numpy.float32),
-            numpy.array([1.0, 2.0, 3.0], dtype=numpy.float32),
-            numpy.array([[1.0, 2.0, 3.0]], dtype=numpy.float32),
-            ]:
+        numpy.array([1.0, 2.0, 3.0, 4.0], dtype=numpy.float32),
+        numpy.array([[1.0, 2.0, 3.0, 4.0]], dtype=numpy.float32),
+        numpy.array([[1.0, 2.0], [3.0, 4.0]], dtype=numpy.float32),
+        numpy.array([1.0, 2.0, 3.0], dtype=numpy.float32),
+        numpy.array([[1.0, 2.0, 3.0]], dtype=numpy.float32),
+    ]:
         try:
             r = sess.run(None, {input_name: x})
             print("Shape={0} and predicted probabilities={1}".format(x.shape, r[1]))
@@ -228,8 +221,6 @@ dimension is a multiple of the expected input dimension.
 
 .. rst-class:: sphx-glr-script-out
 
- Out:
-
  .. code-block:: none
 
     ERROR with Shape=(4,) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid rank for input: float_input Got: 1 Expected: 2 Please fix either the inputs or the model.
@@ -262,21 +253,21 @@ dimension is a multiple of the expected input dimension.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 105-107
+.. GENERATED FROM PYTHON SOURCE LINES 106-108
 
 It does not fail either if the number of dimension
 is higher than expects but produces a warning.
 
-.. GENERATED FROM PYTHON SOURCE LINES 107-118
+.. GENERATED FROM PYTHON SOURCE LINES 108-119
 
 .. code-block:: default
 
 
     for x in [
-            numpy.array([[[1.0, 2.0], [3.0, 4.0]]], dtype=numpy.float32),
-            numpy.array([[[1.0, 2.0, 3.0]]], dtype=numpy.float32),
-            numpy.array([[[1.0, 2.0]], [[3.0, 4.0]]], dtype=numpy.float32),
-            ]:
+        numpy.array([[[1.0, 2.0], [3.0, 4.0]]], dtype=numpy.float32),
+        numpy.array([[[1.0, 2.0, 3.0]]], dtype=numpy.float32),
+        numpy.array([[[1.0, 2.0]], [[3.0, 4.0]]], dtype=numpy.float32),
+    ]:
         try:
             r = sess.run([output_name], {input_name: x})
             print("Shape={0} and predicted labels={1}".format(x.shape, r))
@@ -287,8 +278,6 @@ is higher than expects but produces a warning.
 
 
 .. rst-class:: sphx-glr-script-out
-
- Out:
 
  .. code-block:: none
 
@@ -302,28 +291,23 @@ is higher than expects but produces a warning.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** ( 0 minutes  0.011 seconds)
+   **Total running time of the script:** ( 0 minutes  0.009 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_common_errors.py:
 
+.. only:: html
 
-.. only :: html
-
- .. container:: sphx-glr-footer
-    :class: sphx-glr-footer-example
+  .. container:: sphx-glr-footer sphx-glr-footer-example
 
 
+    .. container:: sphx-glr-download sphx-glr-download-python
 
-  .. container:: sphx-glr-download sphx-glr-download-python
+      :download:`Download Python source code: plot_common_errors.py <plot_common_errors.py>`
 
-     :download:`Download Python source code: plot_common_errors.py <plot_common_errors.py>`
+    .. container:: sphx-glr-download sphx-glr-download-jupyter
 
-
-
-  .. container:: sphx-glr-download sphx-glr-download-jupyter
-
-     :download:`Download Jupyter notebook: plot_common_errors.ipynb <plot_common_errors.ipynb>`
+      :download:`Download Jupyter notebook: plot_common_errors.ipynb <plot_common_errors.ipynb>`
 
 
 .. only:: html

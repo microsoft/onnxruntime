@@ -11,9 +11,10 @@ Profile the execution of a simple model
 *ONNX Runtime* can profile the execution of the model.
 This example shows how to interpret the results.
 """
-import onnx
-import onnxruntime as rt
 import numpy
+import onnx
+
+import onnxruntime as rt
 from onnxruntime.datasets import get_example
 
 
@@ -25,8 +26,6 @@ def change_ir_version(filename, ir_version=6):
     if model.opset_import[0].version <= 7:
         model.opset_import[0].version = 11
     return model
-
-
 
 
 #########################
@@ -61,10 +60,9 @@ print(prof_file)
 # The results are stored un a file in JSON format.
 # Let's see what it contains.
 import json
+
 with open(prof_file, "r") as f:
     sess_time = json.load(f)
 import pprint
+
 pprint.pprint(sess_time)
-
-
-    

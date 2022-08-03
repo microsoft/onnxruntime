@@ -222,7 +222,7 @@ table.modindextable td {
 /* -- general body styles --------------------------------------------------- */
 
 div.body {
-    min-width: 450px;
+    min-width: 360px;
     max-width: 800px;
 }
 
@@ -236,7 +236,6 @@ div.body p, div.body dd, div.body li, div.body blockquote {
 a.headerlink {
     visibility: hidden;
 }
-
 a.brackets:before,
 span.brackets > a:before{
     content: "[";
@@ -246,6 +245,7 @@ a.brackets:after,
 span.brackets > a:after {
     content: "]";
 }
+
 
 h1:hover > a.headerlink,
 h2:hover > a.headerlink,
@@ -334,13 +334,11 @@ aside.sidebar {
 p.sidebar-title {
     font-weight: bold;
 }
-
 div.admonition, div.topic, blockquote {
     clear: left;
 }
 
 /* -- topics ---------------------------------------------------------------- */
-
 div.topic {
     border: 1px solid #ccc;
     padding: 7px;
@@ -426,10 +424,6 @@ table.docutils td, table.docutils th {
     border-left: 0;
     border-right: 0;
     border-bottom: 1px solid #aaa;
-}
-
-table.footnote td, table.footnote th {
-    border: 0 !important;
 }
 
 th {
@@ -614,7 +608,6 @@ ol.simple p,
 ul.simple p {
     margin-bottom: 0;
 }
-
 dl.footnote > dt,
 dl.citation > dt {
     float: left;
@@ -643,10 +636,10 @@ dl.field-list > dt {
     padding-left: 0.5em;
     padding-right: 5px;
 }
-
 dl.field-list > dt:after {
     content: ":";
 }
+
 
 dl.field-list > dd {
     padding-left: 0.5em;

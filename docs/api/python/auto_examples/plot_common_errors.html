@@ -6,7 +6,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
 
-    <title>Common errors with onnxruntime &#8212; ONNX Runtime 1.12.0 documentation</title>
+    <title>Common errors with onnxruntime &#8212; ONNX Runtime 1.13.0 documentation</title>
     <link rel="stylesheet" type="text/css" href="../static/pygments.css" />
     <link rel="stylesheet" type="text/css" href="../static/alabaster.css" />
     <link rel="stylesheet" type="text/css" href="../static/graphviz.css" />
@@ -17,6 +17,7 @@
     <script data-url_root="../" id="documentation_options" src="../static/documentation_options.js"></script>
     <script src="../static/jquery.js"></script>
     <script src="../static/underscore.js"></script>
+    <script src="../static/_sphinx_javascript_frameworks_compat.js"></script>
     <script src="../static/doctools.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
@@ -44,7 +45,7 @@
 to download the full example code</p>
 </div>
 <section class="sphx-glr-example-title" id="common-errors-with-onnxruntime">
-<span id="l-example-common-error"></span><span id="sphx-glr-auto-examples-plot-common-errors-py"></span><h1>Common errors with onnxruntime<a class="headerlink" href="#common-errors-with-onnxruntime" title="Permalink to this headline">¶</a></h1>
+<span id="l-example-common-error"></span><span id="sphx-glr-auto-examples-plot-common-errors-py"></span><h1>Common errors with onnxruntime<a class="headerlink" href="#common-errors-with-onnxruntime" title="Permalink to this heading">¶</a></h1>
 <p>This example looks into several common situations
 in which <em>onnxruntime</em> does not return the model
 prediction but raises an exception instead.
@@ -52,9 +53,10 @@ It starts by loading the model trained in example
 <a class="reference internal" href="../tutorial.html#l-logreg-example"><span class="std std-ref">Step 1: Train a model using your favorite framework</span></a> which produced a logistic regression
 trained on <em>Iris</em> datasets. The model takes
 a vector of dimension 2 and returns a class among three.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">onnxruntime</span> <span class="k">as</span> <span class="nn">rt</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">numpy</span>
+
+<span class="kn">import</span> <span class="nn">onnxruntime</span> <span class="k">as</span> <span class="nn">rt</span>
 <span class="kn">from</span> <span class="nn">onnxruntime.capi.onnxruntime_pybind11_state</span> <span class="k">import</span> <span class="n">InvalidArgument</span>
-<span class="kn">import</span> <span class="nn">numpy</span>
 <span class="kn">from</span> <span class="nn">onnxruntime.datasets</span> <span class="k">import</span> <span class="n">get_example</span>
 
 <span class="n">example2</span> <span class="o">=</span> <span class="n">get_example</span><span class="p">(</span><span class="s2">&quot;logreg_iris.onnx&quot;</span><span class="p">)</span>
@@ -75,7 +77,6 @@ and cannot handle any other kind of floats.</p>
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">{0}</span><span class="s2">: </span><span class="si">{1}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">),</span> <span class="n">e</span><span class="p">))</span>
 </pre></div>
 </div>
-<p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Unexpected type
 &lt;class &#39;onnxruntime.capi.onnxruntime_pybind11_state.InvalidArgument&#39;&gt;: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Unexpected input data type. Actual: (tensor(double)) , expected: (tensor(float))
 </pre></div>
@@ -90,7 +91,6 @@ is misspelled.</p>
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">{0}</span><span class="s2">: </span><span class="si">{1}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">),</span> <span class="n">e</span><span class="p">))</span>
 </pre></div>
 </div>
-<p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Misspelled output name
 &lt;class &#39;onnxruntime.capi.onnxruntime_pybind11_state.InvalidArgument&#39;&gt;: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid Output Name:misspelled
 </pre></div>
@@ -106,7 +106,6 @@ and <em>onnxruntime</em> will then return all the outputs.</p>
     <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
 </pre></div>
 </div>
-<p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>All outputs
 [array([0, 0, 0], dtype=int64), [{0: 0.9505997896194458, 1: 0.027834143489599228, 2: 0.021566055715084076}, {0: 0.9974970817565918, 1: 5.6270167988259345e-05, 2: 0.0024466365575790405}, {0: 0.9997311234474182, 1: 1.787709464906584e-07, 2: 0.0002686927327886224}]]
 </pre></div>
@@ -120,7 +119,6 @@ and <em>onnxruntime</em> will then return all the outputs.</p>
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">{0}</span><span class="s2">: </span><span class="si">{1}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">),</span> <span class="n">e</span><span class="p">))</span>
 </pre></div>
 </div>
-<p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Misspelled input name
 &lt;class &#39;onnxruntime.capi.onnxruntime_pybind11_state.InvalidArgument&#39;&gt;: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid Feed Input Name:misspelled
 </pre></div>
@@ -128,12 +126,12 @@ and <em>onnxruntime</em> will then return all the outputs.</p>
 <p><em>onnxruntime</em> does not necessarily fail if the input
 dimension is a multiple of the expected input dimension.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="p">[</span>
-        <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
-        <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
-        <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
-        <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
-        <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
-        <span class="p">]:</span>
+    <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
+    <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
+    <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
+    <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
+    <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
+<span class="p">]:</span>
     <span class="k">try</span><span class="p">:</span>
         <span class="n">r</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">output_name</span><span class="p">],</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">x</span><span class="p">})</span>
         <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Shape=</span><span class="si">{0}</span><span class="s2"> and predicted labels=</span><span class="si">{1}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">r</span><span class="p">))</span>
@@ -141,12 +139,12 @@ dimension is a multiple of the expected input dimension.</p>
         <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;ERROR with Shape=</span><span class="si">{0}</span><span class="s2"> - </span><span class="si">{1}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">e</span><span class="p">))</span>
 
 <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="p">[</span>
-        <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
-        <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
-        <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
-        <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
-        <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
-        <span class="p">]:</span>
+    <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
+    <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
+    <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
+    <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
+    <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
+<span class="p">]:</span>
     <span class="k">try</span><span class="p">:</span>
         <span class="n">r</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">x</span><span class="p">})</span>
         <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Shape=</span><span class="si">{0}</span><span class="s2"> and predicted probabilities=</span><span class="si">{1}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">r</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
@@ -154,7 +152,6 @@ dimension is a multiple of the expected input dimension.</p>
         <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;ERROR with Shape=</span><span class="si">{0}</span><span class="s2"> - </span><span class="si">{1}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">e</span><span class="p">))</span>
 </pre></div>
 </div>
-<p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>ERROR with Shape=(4,) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid rank for input: float_input Got: 1 Expected: 2 Please fix either the inputs or the model.
 ERROR with Shape=(1, 4) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: float_input for the following indices
  index: 0 Got: 1 Expected: 3
@@ -186,10 +183,10 @@ ERROR with Shape=(1, 3) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invali
 <p>It does not fail either if the number of dimension
 is higher than expects but produces a warning.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="p">[</span>
-        <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">]]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
-        <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">]]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
-        <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">]],</span> <span class="p">[[</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">]]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
-        <span class="p">]:</span>
+    <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">]]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
+    <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">]]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
+    <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">]],</span> <span class="p">[[</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">]]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">),</span>
+<span class="p">]:</span>
     <span class="k">try</span><span class="p">:</span>
         <span class="n">r</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">output_name</span><span class="p">],</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">x</span><span class="p">})</span>
         <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Shape=</span><span class="si">{0}</span><span class="s2"> and predicted labels=</span><span class="si">{1}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">r</span><span class="p">))</span>
@@ -197,14 +194,13 @@ is higher than expects but produces a warning.</p>
         <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;ERROR with Shape=</span><span class="si">{0}</span><span class="s2"> - </span><span class="si">{1}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">e</span><span class="p">))</span>
 </pre></div>
 </div>
-<p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>ERROR with Shape=(1, 2, 2) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid rank for input: float_input Got: 3 Expected: 2 Please fix either the inputs or the model.
 ERROR with Shape=(1, 1, 3) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid rank for input: float_input Got: 3 Expected: 2 Please fix either the inputs or the model.
 ERROR with Shape=(2, 1, 2) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid rank for input: float_input Got: 3 Expected: 2 Please fix either the inputs or the model.
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  0.011 seconds)</p>
-<div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-common-errors-py">
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  0.009 seconds)</p>
+<div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-common-errors-py">
 <div class="sphx-glr-download sphx-glr-download-python docutils container">
 <p><a class="reference download internal" download="" href="../downloads/3a2955e44bf8f95a0eee6e71695ad788/plot_common_errors.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_common_errors.py</span></code></a></p>
 </div>
@@ -261,7 +257,7 @@ ERROR with Shape=(2, 1, 2) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid
     </form>
     </div>
 </div>
-<script>$('#searchbox').show(0);</script>
+<script>document.getElementById('searchbox').style.display = "block"</script>
 
 
 
@@ -278,7 +274,7 @@ ERROR with Shape=(2, 1, 2) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid
       &copy;2018-2021, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 4.5.0</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.1.1</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |

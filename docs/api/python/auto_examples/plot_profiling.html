@@ -6,7 +6,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
 
-    <title>Profile the execution of a simple model &#8212; ONNX Runtime 1.12.0 documentation</title>
+    <title>Profile the execution of a simple model &#8212; ONNX Runtime 1.13.0 documentation</title>
     <link rel="stylesheet" type="text/css" href="../static/pygments.css" />
     <link rel="stylesheet" type="text/css" href="../static/alabaster.css" />
     <link rel="stylesheet" type="text/css" href="../static/graphviz.css" />
@@ -17,6 +17,7 @@
     <script data-url_root="../" id="documentation_options" src="../static/documentation_options.js"></script>
     <script src="../static/jquery.js"></script>
     <script src="../static/underscore.js"></script>
+    <script src="../static/_sphinx_javascript_frameworks_compat.js"></script>
     <script src="../static/doctools.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
@@ -44,12 +45,13 @@
 to download the full example code</p>
 </div>
 <section class="sphx-glr-example-title" id="profile-the-execution-of-a-simple-model">
-<span id="l-example-profiling"></span><span id="sphx-glr-auto-examples-plot-profiling-py"></span><h1>Profile the execution of a simple model<a class="headerlink" href="#profile-the-execution-of-a-simple-model" title="Permalink to this headline">¶</a></h1>
+<span id="l-example-profiling"></span><span id="sphx-glr-auto-examples-plot-profiling-py"></span><h1>Profile the execution of a simple model<a class="headerlink" href="#profile-the-execution-of-a-simple-model" title="Permalink to this heading">¶</a></h1>
 <p><em>ONNX Runtime</em> can profile the execution of the model.
 This example shows how to interpret the results.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">onnx</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">numpy</span>
+<span class="kn">import</span> <span class="nn">onnx</span>
+
 <span class="kn">import</span> <span class="nn">onnxruntime</span> <span class="k">as</span> <span class="nn">rt</span>
-<span class="kn">import</span> <span class="nn">numpy</span>
 <span class="kn">from</span> <span class="nn">onnxruntime.datasets</span> <span class="k">import</span> <span class="n">get_example</span>
 
 
@@ -75,7 +77,6 @@ This example shows how to interpret the results.</p>
 <span class="nb">print</span><span class="p">(</span><span class="n">res</span><span class="p">)</span>
 </pre></div>
 </div>
-<p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[array([[ 1.,  4.],
        [ 9., 16.],
        [25., 36.]], dtype=float32)]
@@ -95,40 +96,40 @@ before running the predictions.</p>
 <span class="nb">print</span><span class="p">(</span><span class="n">prof_file</span><span class="p">)</span>
 </pre></div>
 </div>
-<p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>onnxruntime_profile__2022-04-05_00-37-57.json
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>onnxruntime_profile__2022-08-03_03-47-43.json
 </pre></div>
 </div>
 <p>The results are stored un a file in JSON format.
 Let’s see what it contains.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">json</span>
+
 <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">prof_file</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
     <span class="n">sess_time</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
 <span class="kn">import</span> <span class="nn">pprint</span>
+
 <span class="n">pprint</span><span class="o">.</span><span class="n">pprint</span><span class="p">(</span><span class="n">sess_time</span><span class="p">)</span>
 </pre></div>
 </div>
-<p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[{&#39;args&#39;: {},
   &#39;cat&#39;: &#39;Session&#39;,
   &#39;dur&#39;: 68,
   &#39;name&#39;: &#39;model_loading_array&#39;,
   &#39;ph&#39;: &#39;X&#39;,
-  &#39;pid&#39;: 3140,
-  &#39;tid&#39;: 3140,
+  &#39;pid&#39;: 3144,
+  &#39;tid&#39;: 3144,
   &#39;ts&#39;: 1},
  {&#39;args&#39;: {},
   &#39;cat&#39;: &#39;Session&#39;,
-  &#39;dur&#39;: 237,
+  &#39;dur&#39;: 255,
   &#39;name&#39;: &#39;session_initialization&#39;,
   &#39;ph&#39;: &#39;X&#39;,
-  &#39;pid&#39;: 3140,
-  &#39;tid&#39;: 3140,
-  &#39;ts&#39;: 87}]
+  &#39;pid&#39;: 3144,
+  &#39;tid&#39;: 3144,
+  &#39;ts&#39;: 86}]
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  0.006 seconds)</p>
-<div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-profiling-py">
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  0.005 seconds)</p>
+<div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-profiling-py">
 <div class="sphx-glr-download sphx-glr-download-python docutils container">
 <p><a class="reference download internal" download="" href="../downloads/cfe61aca1f0a89486c7024466ea500fd/plot_profiling.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_profiling.py</span></code></a></p>
 </div>
@@ -185,7 +186,7 @@ Let’s see what it contains.</p>
     </form>
     </div>
 </div>
-<script>$('#searchbox').show(0);</script>
+<script>document.getElementById('searchbox').style.display = "block"</script>
 
 
 
@@ -202,7 +203,7 @@ Let’s see what it contains.</p>
       &copy;2018-2021, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 4.5.0</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.1.1</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |

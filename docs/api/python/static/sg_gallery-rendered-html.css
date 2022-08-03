@@ -1,7 +1,21 @@
 /* Adapted from notebook/static/style/style.min.css */
+html[data-theme="light"] {
+  --sg-text-color: #000;
+  --sg-background-color: #ffffff;
+  --sg-code-background-color: #eff0f1;
+  --sg-tr-hover-color: rgba(66, 165, 245, 0.2);
+  --sg-tr-odd-color: #f5f5f5;
+}
+html[data-theme="dark"] {
+  --sg-text-color: #fff;
+  --sg-background-color: #121212;
+  --sg-code-background-color: #2f2f30;
+  --sg-tr-hover-color: rgba(66, 165, 245, 0.2);
+  --sg-tr-odd-color: #1f1f1f;
+}
 
 .rendered_html {
-  color: #000;
+  color: var(--sg-text-color);
   /* any extras will just be numbers: */
 }
 .rendered_html em {
@@ -112,27 +126,27 @@
   margin-top: 1em;
 }
 .rendered_html hr {
-  color: black;
-  background-color: black;
+  color: var(--sg-text-color);
+  background-color: var(--sg-text-color);
 }
 .rendered_html pre {
   margin: 1em 2em;
   padding: 0px;
-  background-color: #fff;
+  background-color: var(--sg-background-color);
 }
 .rendered_html code {
-  background-color: #eff0f1;
+  background-color: var(--sg-code-background-color);
 }
 .rendered_html p code {
   padding: 1px 5px;
 }
 .rendered_html pre code {
-  background-color: #fff;
+  background-color: var(--sg-background-color);
 }
 .rendered_html pre,
 .rendered_html code {
   border: 0;
-  color: #000;
+  color: var(--sg-text-color);
   font-size: 100%;
 }
 .rendered_html blockquote {
@@ -144,12 +158,12 @@
   border: none;
   border-collapse: collapse;
   border-spacing: 0;
-  color: black;
+  color: var(--sg-text-color);
   font-size: 12px;
   table-layout: fixed;
 }
 .rendered_html thead {
-  border-bottom: 1px solid black;
+  border-bottom: 1px solid var(--sg-text-color);
   vertical-align: bottom;
 }
 .rendered_html tr,
@@ -167,10 +181,11 @@
   font-weight: bold;
 }
 .rendered_html tbody tr:nth-child(odd) {
-  background: #f5f5f5;
+  background: var(--sg-tr-odd-color);
 }
 .rendered_html tbody tr:hover {
-  background: rgba(66, 165, 245, 0.2);
+  color: var(--sg-text-color);
+  background: var(--sg-tr-hover-color);
 }
 .rendered_html * + table {
   margin-top: 1em;

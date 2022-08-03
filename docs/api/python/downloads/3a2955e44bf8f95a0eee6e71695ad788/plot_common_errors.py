@@ -15,9 +15,10 @@ It starts by loading the model trained in example
 trained on *Iris* datasets. The model takes
 a vector of dimension 2 and returns a class among three.
 """
+import numpy
+
 import onnxruntime as rt
 from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
-import numpy
 from onnxruntime.datasets import get_example
 
 example2 = get_example("logreg_iris.onnx")
@@ -37,7 +38,7 @@ try:
 except Exception as e:
     print("Unexpected type")
     print("{0}: {1}".format(type(e), e))
-    
+
 #########################
 # The model fails to return an output if the name
 # is misspelled.
@@ -76,12 +77,12 @@ except Exception as e:
 # dimension is a multiple of the expected input dimension.
 
 for x in [
-        numpy.array([1.0, 2.0, 3.0, 4.0], dtype=numpy.float32),
-        numpy.array([[1.0, 2.0, 3.0, 4.0]], dtype=numpy.float32),
-        numpy.array([[1.0, 2.0], [3.0, 4.0]], dtype=numpy.float32),
-        numpy.array([1.0, 2.0, 3.0], dtype=numpy.float32),
-        numpy.array([[1.0, 2.0, 3.0]], dtype=numpy.float32),
-        ]:
+    numpy.array([1.0, 2.0, 3.0, 4.0], dtype=numpy.float32),
+    numpy.array([[1.0, 2.0, 3.0, 4.0]], dtype=numpy.float32),
+    numpy.array([[1.0, 2.0], [3.0, 4.0]], dtype=numpy.float32),
+    numpy.array([1.0, 2.0, 3.0], dtype=numpy.float32),
+    numpy.array([[1.0, 2.0, 3.0]], dtype=numpy.float32),
+]:
     try:
         r = sess.run([output_name], {input_name: x})
         print("Shape={0} and predicted labels={1}".format(x.shape, r))
@@ -89,12 +90,12 @@ for x in [
         print("ERROR with Shape={0} - {1}".format(x.shape, e))
 
 for x in [
-        numpy.array([1.0, 2.0, 3.0, 4.0], dtype=numpy.float32),
-        numpy.array([[1.0, 2.0, 3.0, 4.0]], dtype=numpy.float32),
-        numpy.array([[1.0, 2.0], [3.0, 4.0]], dtype=numpy.float32),
-        numpy.array([1.0, 2.0, 3.0], dtype=numpy.float32),
-        numpy.array([[1.0, 2.0, 3.0]], dtype=numpy.float32),
-        ]:
+    numpy.array([1.0, 2.0, 3.0, 4.0], dtype=numpy.float32),
+    numpy.array([[1.0, 2.0, 3.0, 4.0]], dtype=numpy.float32),
+    numpy.array([[1.0, 2.0], [3.0, 4.0]], dtype=numpy.float32),
+    numpy.array([1.0, 2.0, 3.0], dtype=numpy.float32),
+    numpy.array([[1.0, 2.0, 3.0]], dtype=numpy.float32),
+]:
     try:
         r = sess.run(None, {input_name: x})
         print("Shape={0} and predicted probabilities={1}".format(x.shape, r[1]))
@@ -106,10 +107,10 @@ for x in [
 # is higher than expects but produces a warning.
 
 for x in [
-        numpy.array([[[1.0, 2.0], [3.0, 4.0]]], dtype=numpy.float32),
-        numpy.array([[[1.0, 2.0, 3.0]]], dtype=numpy.float32),
-        numpy.array([[[1.0, 2.0]], [[3.0, 4.0]]], dtype=numpy.float32),
-        ]:
+    numpy.array([[[1.0, 2.0], [3.0, 4.0]]], dtype=numpy.float32),
+    numpy.array([[[1.0, 2.0, 3.0]]], dtype=numpy.float32),
+    numpy.array([[[1.0, 2.0]], [[3.0, 4.0]]], dtype=numpy.float32),
+]:
     try:
         r = sess.run([output_name], {input_name: x})
         print("Shape={0} and predicted labels={1}".format(x.shape, r))

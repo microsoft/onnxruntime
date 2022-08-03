@@ -35,16 +35,18 @@ Train a logistic regression
 
 The first step consists in retrieving the iris datset.
 
-.. GENERATED FROM PYTHON SOURCE LINES 23-31
+.. GENERATED FROM PYTHON SOURCE LINES 23-33
 
 .. code-block:: default
 
 
     from sklearn.datasets import load_iris
+
     iris = load_iris()
     X, y = iris.data, iris.target
 
     from sklearn.model_selection import train_test_split
+
     X_train, X_test, y_train, y_test = train_test_split(X, y)
 
 
@@ -54,16 +56,17 @@ The first step consists in retrieving the iris datset.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 32-33
+.. GENERATED FROM PYTHON SOURCE LINES 34-35
 
 Then we fit a model.
 
-.. GENERATED FROM PYTHON SOURCE LINES 33-38
+.. GENERATED FROM PYTHON SOURCE LINES 35-41
 
 .. code-block:: default
 
 
     from sklearn.linear_model import LogisticRegression
+
     clr = LogisticRegression()
     clr.fit(X_train, y_train)
 
@@ -73,21 +76,32 @@ Then we fit a model.
 
 .. rst-class:: sphx-glr-script-out
 
- Out:
-
  .. code-block:: none
 
+    /home/runner/.local/lib/python3.8/site-packages/sklearn/linear_model/_logistic.py:444: ConvergenceWarning: lbfgs failed to converge (status=1):
+    STOP: TOTAL NO. of ITERATIONS REACHED LIMIT.
 
-    LogisticRegression()
+    Increase the number of iterations (max_iter) or scale the data as shown in:
+        https://scikit-learn.org/stable/modules/preprocessing.html
+    Please also refer to the documentation for alternative solver options:
+        https://scikit-learn.org/stable/modules/linear_model.html#logistic-regression
+      n_iter_i = _check_optimize_result(
 
 
+.. raw:: html
 
-.. GENERATED FROM PYTHON SOURCE LINES 39-41
+    <div class="output_subarea output_html rendered_html output_result">
+    <style>#sk-container-id-2 {color: black;background-color: white;}#sk-container-id-2 pre{padding: 0;}#sk-container-id-2 div.sk-toggleable {background-color: white;}#sk-container-id-2 label.sk-toggleable__label {cursor: pointer;display: block;width: 100%;margin-bottom: 0;padding: 0.3em;box-sizing: border-box;text-align: center;}#sk-container-id-2 label.sk-toggleable__label-arrow:before {content: "▸";float: left;margin-right: 0.25em;color: #696969;}#sk-container-id-2 label.sk-toggleable__label-arrow:hover:before {color: black;}#sk-container-id-2 div.sk-estimator:hover label.sk-toggleable__label-arrow:before {color: black;}#sk-container-id-2 div.sk-toggleable__content {max-height: 0;max-width: 0;overflow: hidden;text-align: left;background-color: #f0f8ff;}#sk-container-id-2 div.sk-toggleable__content pre {margin: 0.2em;color: black;border-radius: 0.25em;background-color: #f0f8ff;}#sk-container-id-2 input.sk-toggleable__control:checked~div.sk-toggleable__content {max-height: 200px;max-width: 100%;overflow: auto;}#sk-container-id-2 input.sk-toggleable__control:checked~label.sk-toggleable__label-arrow:before {content: "▾";}#sk-container-id-2 div.sk-estimator input.sk-toggleable__control:checked~label.sk-toggleable__label {background-color: #d4ebff;}#sk-container-id-2 div.sk-label input.sk-toggleable__control:checked~label.sk-toggleable__label {background-color: #d4ebff;}#sk-container-id-2 input.sk-hidden--visually {border: 0;clip: rect(1px 1px 1px 1px);clip: rect(1px, 1px, 1px, 1px);height: 1px;margin: -1px;overflow: hidden;padding: 0;position: absolute;width: 1px;}#sk-container-id-2 div.sk-estimator {font-family: monospace;background-color: #f0f8ff;border: 1px dotted black;border-radius: 0.25em;box-sizing: border-box;margin-bottom: 0.5em;}#sk-container-id-2 div.sk-estimator:hover {background-color: #d4ebff;}#sk-container-id-2 div.sk-parallel-item::after {content: "";width: 100%;border-bottom: 1px solid gray;flex-grow: 1;}#sk-container-id-2 div.sk-label:hover label.sk-toggleable__label {background-color: #d4ebff;}#sk-container-id-2 div.sk-serial::before {content: "";position: absolute;border-left: 1px solid gray;box-sizing: border-box;top: 0;bottom: 0;left: 50%;z-index: 0;}#sk-container-id-2 div.sk-serial {display: flex;flex-direction: column;align-items: center;background-color: white;padding-right: 0.2em;padding-left: 0.2em;position: relative;}#sk-container-id-2 div.sk-item {position: relative;z-index: 1;}#sk-container-id-2 div.sk-parallel {display: flex;align-items: stretch;justify-content: center;background-color: white;position: relative;}#sk-container-id-2 div.sk-item::before, #sk-container-id-2 div.sk-parallel-item::before {content: "";position: absolute;border-left: 1px solid gray;box-sizing: border-box;top: 0;bottom: 0;left: 50%;z-index: -1;}#sk-container-id-2 div.sk-parallel-item {display: flex;flex-direction: column;z-index: 1;position: relative;background-color: white;}#sk-container-id-2 div.sk-parallel-item:first-child::after {align-self: flex-end;width: 50%;}#sk-container-id-2 div.sk-parallel-item:last-child::after {align-self: flex-start;width: 50%;}#sk-container-id-2 div.sk-parallel-item:only-child::after {width: 0;}#sk-container-id-2 div.sk-dashed-wrapped {border: 1px dashed gray;margin: 0 0.4em 0.5em 0.4em;box-sizing: border-box;padding-bottom: 0.4em;background-color: white;}#sk-container-id-2 div.sk-label label {font-family: monospace;font-weight: bold;display: inline-block;line-height: 1.2em;}#sk-container-id-2 div.sk-label-container {text-align: center;}#sk-container-id-2 div.sk-container {/* jupyter's `normalize.less` sets `[hidden] { display: none; }` but bootstrap.min.css set `[hidden] { display: none !important; }` so we also need the `!important` here to be able to override the default hidden behavior on the sphinx rendered scikit-learn.org. See: https://github.com/scikit-learn/scikit-learn/issues/21755 */display: inline-block !important;position: relative;}#sk-container-id-2 div.sk-text-repr-fallback {display: none;}</style><div id="sk-container-id-2" class="sk-top-container"><div class="sk-text-repr-fallback"><pre>LogisticRegression()</pre><b>In a Jupyter environment, please rerun this cell to show the HTML representation or trust the notebook. <br />On GitHub, the HTML representation is unable to render, please try loading this page with nbviewer.org.</b></div><div class="sk-container" hidden><div class="sk-item"><div class="sk-estimator sk-toggleable"><input class="sk-toggleable__control sk-hidden--visually" id="sk-estimator-id-4" type="checkbox" checked><label for="sk-estimator-id-4" class="sk-toggleable__label sk-toggleable__label-arrow">LogisticRegression</label><div class="sk-toggleable__content"><pre>LogisticRegression()</pre></div></div></div></div></div>
+    </div>
+    <br />
+    <br />
+
+.. GENERATED FROM PYTHON SOURCE LINES 42-44
 
 We compute the prediction on the test set
 and we show the confusion matrix.
 
-.. GENERATED FROM PYTHON SOURCE LINES 41-46
+.. GENERATED FROM PYTHON SOURCE LINES 44-49
 
 .. code-block:: default
 
@@ -102,27 +116,25 @@ and we show the confusion matrix.
 
 .. rst-class:: sphx-glr-script-out
 
- Out:
-
  .. code-block:: none
 
-    [[ 8  0  0]
-     [ 0  9  1]
-     [ 0  2 18]]
+    [[13  0  0]
+     [ 0  8  1]
+     [ 0  0 16]]
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 47-53
+.. GENERATED FROM PYTHON SOURCE LINES 50-56
 
 Conversion to ONNX format
 +++++++++++++++++++++++++
 
-We use module 
+We use module
 `sklearn-onnx <https://github.com/onnx/sklearn-onnx>`_
 to convert the model into ONNX format.
 
-.. GENERATED FROM PYTHON SOURCE LINES 53-62
+.. GENERATED FROM PYTHON SOURCE LINES 56-65
 
 .. code-block:: default
 
@@ -130,7 +142,7 @@ to convert the model into ONNX format.
     from skl2onnx import convert_sklearn
     from skl2onnx.common.data_types import FloatTensorType
 
-    initial_type = [('float_input', FloatTensorType([None, 4]))]
+    initial_type = [("float_input", FloatTensorType([None, 4]))]
     onx = convert_sklearn(clr, initial_types=initial_type)
     with open("logreg_iris.onnx", "wb") as f:
         f.write(onx.SerializeToString())
@@ -142,31 +154,28 @@ to convert the model into ONNX format.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 63-65
+.. GENERATED FROM PYTHON SOURCE LINES 66-68
 
 We load the model with ONNX Runtime and look at
 its input and output.
 
-.. GENERATED FROM PYTHON SOURCE LINES 65-74
+.. GENERATED FROM PYTHON SOURCE LINES 68-76
 
 .. code-block:: default
 
 
     import onnxruntime as rt
+
     sess = rt.InferenceSession("logreg_iris.onnx", providers=rt.get_available_providers())
 
-    print("input name='{}' and shape={}".format(
-        sess.get_inputs()[0].name, sess.get_inputs()[0].shape))
-    print("output name='{}' and shape={}".format(
-        sess.get_outputs()[0].name, sess.get_outputs()[0].shape))
+    print("input name='{}' and shape={}".format(sess.get_inputs()[0].name, sess.get_inputs()[0].shape))
+    print("output name='{}' and shape={}".format(sess.get_outputs()[0].name, sess.get_outputs()[0].shape))
 
 
 
 
 
 .. rst-class:: sphx-glr-script-out
-
- Out:
 
  .. code-block:: none
 
@@ -176,11 +185,11 @@ its input and output.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 75-76
+.. GENERATED FROM PYTHON SOURCE LINES 77-78
 
 We compute the predictions.
 
-.. GENERATED FROM PYTHON SOURCE LINES 76-84
+.. GENERATED FROM PYTHON SOURCE LINES 78-87
 
 .. code-block:: default
 
@@ -189,6 +198,7 @@ We compute the predictions.
     label_name = sess.get_outputs()[0].name
 
     import numpy
+
     pred_onx = sess.run([label_name], {input_name: X_test.astype(numpy.float32)})[0]
     print(confusion_matrix(pred, pred_onx))
 
@@ -198,18 +208,16 @@ We compute the predictions.
 
 .. rst-class:: sphx-glr-script-out
 
- Out:
-
  .. code-block:: none
 
-    [[ 8  0  0]
-     [ 0 11  0]
-     [ 0  0 19]]
+    [[13  0  0]
+     [ 0  8  0]
+     [ 0  0 17]]
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 85-94
+.. GENERATED FROM PYTHON SOURCE LINES 88-97
 
 The prediction are perfectly identical.
 
@@ -221,7 +229,7 @@ relevant metrics such as the ROC Curve.
 Let's see how to get them first with
 scikit-learn.
 
-.. GENERATED FROM PYTHON SOURCE LINES 94-98
+.. GENERATED FROM PYTHON SOURCE LINES 97-101
 
 .. code-block:: default
 
@@ -235,23 +243,21 @@ scikit-learn.
 
 .. rst-class:: sphx-glr-script-out
 
- Out:
-
  .. code-block:: none
 
-    [[2.50532892e-03 8.48834843e-01 1.48659828e-01]
-     [1.80424972e-04 2.23589233e-01 7.76230342e-01]
-     [9.47235933e-01 5.27628799e-02 1.18664935e-06]]
+    [[3.89179878e-06 1.91737264e-02 9.80822382e-01]
+     [1.34575380e-03 4.09726583e-01 5.88927663e-01]
+     [1.15008076e-04 5.82656789e-02 9.41619313e-01]]
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 99-101
+.. GENERATED FROM PYTHON SOURCE LINES 102-104
 
 And then with ONNX Runtime.
-The probabilies appear to be 
+The probabilies appear to be
 
-.. GENERATED FROM PYTHON SOURCE LINES 101-108
+.. GENERATED FROM PYTHON SOURCE LINES 104-112
 
 .. code-block:: default
 
@@ -260,6 +266,7 @@ The probabilies appear to be
     prob_rt = sess.run([prob_name], {input_name: X_test.astype(numpy.float32)})[0]
 
     import pprint
+
     pprint.pprint(prob_rt[0:3])
 
 
@@ -268,26 +275,25 @@ The probabilies appear to be
 
 .. rst-class:: sphx-glr-script-out
 
- Out:
-
  .. code-block:: none
 
-    [{0: 0.00250532990321517, 1: 0.8488348722457886, 2: 0.1486598700284958},
-     {0: 0.00018042475858237594, 1: 0.22358904778957367, 2: 0.77623051404953},
-     {0: 0.9472358822822571, 1: 0.052762895822525024, 2: 1.1866491149703506e-06}]
+    [{0: 3.891796040988993e-06, 1: 0.019173720851540565, 2: 0.9808223843574524},
+     {0: 0.0013457534369081259, 1: 0.4097265601158142, 2: 0.588927686214447},
+     {0: 0.00011500807158881798, 1: 0.058265671133995056, 2: 0.941619336605072}]
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 109-110
+.. GENERATED FROM PYTHON SOURCE LINES 113-114
 
 Let's benchmark.
 
-.. GENERATED FROM PYTHON SOURCE LINES 110-126
+.. GENERATED FROM PYTHON SOURCE LINES 114-132
 
 .. code-block:: default
 
     from timeit import Timer
+
 
     def speed(inst, number=10, repeat=20):
         timer = Timer(inst, globals=globals())
@@ -296,6 +302,7 @@ Let's benchmark.
         mi, ma = raw.min() / number, raw.max() / number
         print("Average %1.3g min=%1.3g max=%1.3g" % (ave, mi, ma))
         return ave
+
 
     print("Execution time for clr.predict")
     speed("clr.predict(X_test)")
@@ -309,28 +316,27 @@ Let's benchmark.
 
 .. rst-class:: sphx-glr-script-out
 
- Out:
-
  .. code-block:: none
 
     Execution time for clr.predict
-    Average 5.1e-05 min=4.58e-05 max=6.63e-05
+    Average 4.42e-05 min=4.29e-05 max=5.45e-05
     Execution time for ONNX Runtime
-    Average 2.42e-05 min=2.33e-05 max=3.53e-05
+    Average 1.91e-05 min=1.85e-05 max=2.87e-05
 
-    2.4194435000879365e-05
+    1.9148999999458738e-05
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 127-130
+.. GENERATED FROM PYTHON SOURCE LINES 133-136
 
 Let's benchmark a scenario similar to what a webservice
 experiences: the model has to do one prediction at a time
 as opposed to a batch of prediction.
 
-.. GENERATED FROM PYTHON SOURCE LINES 130-148
+.. GENERATED FROM PYTHON SOURCE LINES 136-158
 
 .. code-block:: default
+
 
 
     def loop(X_test, fct, n=None):
@@ -339,13 +345,16 @@ as opposed to a batch of prediction.
             n = nrow
         for i in range(0, n):
             im = i % nrow
-            fct(X_test[im: im+1])
+            fct(X_test[im : im + 1])
+
 
     print("Execution time for clr.predict")
     speed("loop(X_test, clr.predict, 100)")
 
+
     def sess_predict(x):
         return sess.run([label_name], {input_name: x.astype(numpy.float32)})[0]
+
 
     print("Execution time for sess_predict")
     speed("loop(X_test, sess_predict, 100)")
@@ -356,24 +365,22 @@ as opposed to a batch of prediction.
 
 .. rst-class:: sphx-glr-script-out
 
- Out:
-
  .. code-block:: none
 
     Execution time for clr.predict
-    Average 0.00499 min=0.00471 max=0.0057
+    Average 0.00412 min=0.00409 max=0.00418
     Execution time for sess_predict
-    Average 0.00116 min=0.00105 max=0.00138
+    Average 0.000942 min=0.000935 max=0.000967
 
-    0.001157615160000205
+    0.0009417411449996393
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 149-150
+.. GENERATED FROM PYTHON SOURCE LINES 159-160
 
 Let's do the same for the probabilities.
 
-.. GENERATED FROM PYTHON SOURCE LINES 150-160
+.. GENERATED FROM PYTHON SOURCE LINES 160-172
 
 .. code-block:: default
 
@@ -381,8 +388,10 @@ Let's do the same for the probabilities.
     print("Execution time for predict_proba")
     speed("loop(X_test, clr.predict_proba, 100)")
 
+
     def sess_predict_proba(x):
         return sess.run([prob_name], {input_name: x.astype(numpy.float32)})[0]
+
 
     print("Execution time for sess_predict_proba")
     speed("loop(X_test, sess_predict_proba, 100)")
@@ -393,42 +402,41 @@ Let's do the same for the probabilities.
 
 .. rst-class:: sphx-glr-script-out
 
- Out:
-
  .. code-block:: none
 
     Execution time for predict_proba
-    Average 0.00729 min=0.00697 max=0.00805
+    Average 0.00616 min=0.00603 max=0.00695
     Execution time for sess_predict_proba
-    Average 0.00109 min=0.00106 max=0.00114
+    Average 0.000981 min=0.000973 max=0.000989
 
-    0.0010851338200001236
+    0.0009807766450003895
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 161-165
+.. GENERATED FROM PYTHON SOURCE LINES 173-177
 
-This second comparison is better as 
+This second comparison is better as
 ONNX Runtime, in this experience,
 computes the label and the probabilities
 in every case.
 
-.. GENERATED FROM PYTHON SOURCE LINES 167-171
+.. GENERATED FROM PYTHON SOURCE LINES 179-183
 
 Benchmark with RandomForest
 +++++++++++++++++++++++++++
 
 We first train and save a model in ONNX format.
 
-.. GENERATED FROM PYTHON SOURCE LINES 171-180
+.. GENERATED FROM PYTHON SOURCE LINES 183-193
 
 .. code-block:: default
 
     from sklearn.ensemble import RandomForestClassifier
+
     rf = RandomForestClassifier()
     rf.fit(X_train, y_train)
 
-    initial_type = [('float_input', FloatTensorType([1, 4]))]
+    initial_type = [("float_input", FloatTensorType([1, 4]))]
     onx = convert_sklearn(rf, initial_types=initial_type)
     with open("rf_iris.onnx", "wb") as f:
         f.write(onx.SerializeToString())
@@ -440,19 +448,21 @@ We first train and save a model in ONNX format.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 181-182
+.. GENERATED FROM PYTHON SOURCE LINES 194-195
 
 We compare.
 
-.. GENERATED FROM PYTHON SOURCE LINES 182-194
+.. GENERATED FROM PYTHON SOURCE LINES 195-209
 
 .. code-block:: default
 
 
     sess = rt.InferenceSession("rf_iris.onnx", providers=rt.get_available_providers())
 
+
     def sess_predict_proba_rf(x):
         return sess.run([prob_name], {input_name: x.astype(numpy.float32)})[0]
+
 
     print("Execution time for predict_proba")
     speed("loop(X_test, rf.predict_proba, 100)")
@@ -466,50 +476,50 @@ We compare.
 
 .. rst-class:: sphx-glr-script-out
 
- Out:
-
  .. code-block:: none
 
     Execution time for predict_proba
-    Average 0.845 min=0.839 max=0.853
+    Average 0.718 min=0.716 max=0.72
     Execution time for sess_predict_proba
-    Average 0.00131 min=0.00129 max=0.00133
+    Average 0.0011 min=0.00109 max=0.00112
 
-    0.0013066128300005175
+    0.0011003508200002443
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 195-196
+.. GENERATED FROM PYTHON SOURCE LINES 210-211
 
 Let's see with different number of trees.
 
-.. GENERATED FROM PYTHON SOURCE LINES 196-223
+.. GENERATED FROM PYTHON SOURCE LINES 211-240
 
 .. code-block:: default
 
 
     measures = []
 
-    for n_trees in range(5, 51, 5):   
+    for n_trees in range(5, 51, 5):
         print(n_trees)
         rf = RandomForestClassifier(n_estimators=n_trees)
         rf.fit(X_train, y_train)
-        initial_type = [('float_input', FloatTensorType([1, 4]))]
+        initial_type = [("float_input", FloatTensorType([1, 4]))]
         onx = convert_sklearn(rf, initial_types=initial_type)
         with open("rf_iris_%d.onnx" % n_trees, "wb") as f:
             f.write(onx.SerializeToString())
         sess = rt.InferenceSession("rf_iris_%d.onnx" % n_trees, providers=rt.get_available_providers())
+
         def sess_predict_proba_loop(x):
             return sess.run([prob_name], {input_name: x.astype(numpy.float32)})[0]
+
         tsk = speed("loop(X_test, rf.predict_proba, 100)", number=5, repeat=5)
         trt = speed("loop(X_test, sess_predict_proba_loop, 100)", number=5, repeat=5)
-        measures.append({'n_trees': n_trees, 'sklearn': tsk, 'rt': trt})
+        measures.append({"n_trees": n_trees, "sklearn": tsk, "rt": trt})
 
     from pandas import DataFrame
+
     df = DataFrame(measures)
     ax = df.plot(x="n_trees", y="sklearn", label="scikit-learn", c="blue", logy=True)
-    df.plot(x="n_trees", y="rt", label="onnxruntime",
-                    ax=ax, c="green", logy=True)
+    df.plot(x="n_trees", y="rt", label="onnxruntime", ax=ax, c="green", logy=True)
     ax.set_xlabel("Number of trees")
     ax.set_ylabel("Prediction time (s)")
     ax.set_title("Speed comparison between scikit-learn and ONNX Runtime\nFor a random forest on Iris dataset")
@@ -525,70 +535,63 @@ Let's see with different number of trees.
 
 .. rst-class:: sphx-glr-script-out
 
- Out:
-
  .. code-block:: none
 
     5
-    Average 0.0745 min=0.0741 max=0.0748
-    Average 0.00103 min=0.000996 max=0.00105
+    Average 0.0515 min=0.0512 max=0.0518
+    Average 0.000957 min=0.000947 max=0.000982
     10
-    Average 0.115 min=0.114 max=0.116
-    Average 0.00103 min=0.001 max=0.00106
+    Average 0.0866 min=0.0865 max=0.0869
+    Average 0.000968 min=0.000961 max=0.000987
     15
-    Average 0.156 min=0.154 max=0.157
-    Average 0.00109 min=0.00107 max=0.00112
+    Average 0.122 min=0.121 max=0.122
+    Average 0.000984 min=0.000977 max=0.000998
     20
-    Average 0.197 min=0.196 max=0.197
-    Average 0.00108 min=0.00105 max=0.00113
+    Average 0.157 min=0.156 max=0.16
+    Average 0.000992 min=0.000986 max=0.00101
     25
-    Average 0.236 min=0.235 max=0.238
-    Average 0.00109 min=0.00106 max=0.00113
+    Average 0.193 min=0.191 max=0.196
+    Average 0.00104 min=0.00103 max=0.00105
     30
-    Average 0.277 min=0.277 max=0.278
-    Average 0.00112 min=0.00107 max=0.00116
+    Average 0.226 min=0.226 max=0.226
+    Average 0.00104 min=0.00103 max=0.00105
     35
-    Average 0.319 min=0.318 max=0.321
-    Average 0.00114 min=0.00113 max=0.00116
+    Average 0.261 min=0.261 max=0.262
+    Average 0.00106 min=0.00105 max=0.00108
     40
-    Average 0.359 min=0.358 max=0.361
-    Average 0.00114 min=0.0011 max=0.00118
+    Average 0.297 min=0.297 max=0.297
+    Average 0.00107 min=0.00106 max=0.00109
     45
-    Average 0.399 min=0.397 max=0.401
-    Average 0.00116 min=0.00113 max=0.00118
+    Average 0.333 min=0.331 max=0.336
+    Average 0.00108 min=0.00107 max=0.00111
     50
-    Average 0.439 min=0.437 max=0.441
-    Average 0.00116 min=0.00115 max=0.00121
+    Average 0.366 min=0.365 max=0.366
+    Average 0.00108 min=0.00107 max=0.00111
 
-    <matplotlib.legend.Legend object at 0x7fa5848e9040>
+    <matplotlib.legend.Legend object at 0x7f832143f460>
 
 
 
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** ( 3 minutes  57.930 seconds)
+   **Total running time of the script:** ( 3 minutes  19.794 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_train_convert_predict.py:
 
+.. only:: html
 
-.. only :: html
-
- .. container:: sphx-glr-footer
-    :class: sphx-glr-footer-example
+  .. container:: sphx-glr-footer sphx-glr-footer-example
 
 
+    .. container:: sphx-glr-download sphx-glr-download-python
 
-  .. container:: sphx-glr-download sphx-glr-download-python
+      :download:`Download Python source code: plot_train_convert_predict.py <plot_train_convert_predict.py>`
 
-     :download:`Download Python source code: plot_train_convert_predict.py <plot_train_convert_predict.py>`
+    .. container:: sphx-glr-download sphx-glr-download-jupyter
 
-
-
-  .. container:: sphx-glr-download sphx-glr-download-jupyter
-
-     :download:`Download Jupyter notebook: plot_train_convert_predict.ipynb <plot_train_convert_predict.ipynb>`
+      :download:`Download Jupyter notebook: plot_train_convert_predict.ipynb <plot_train_convert_predict.ipynb>`
 
 
 .. only:: html
