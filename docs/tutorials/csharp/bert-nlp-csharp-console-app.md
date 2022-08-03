@@ -366,5 +366,3 @@ There are many different BERT models that have been finetuned for different take
 
 - [C# API Doc](https://onnxruntime.ai/docs/api/csharp-api)
 - [Get Started with C# in ONNX Runtime](https://onnxruntime.ai/docs/get-started/with-csharp.html)
-- [Github Source for this example]()
-
