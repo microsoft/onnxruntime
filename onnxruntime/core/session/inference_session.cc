@@ -2372,9 +2372,9 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
       severity = static_cast<logging::Severity>(session_options_.session_log_severity_level);
     }
 
-    // There's log_id in both the Env and session_option,
-    // inference session will use the one from Env if nothing set on session_option
-    // session_option can always overwrite the log id, in case the Env can be shared across sessions,
+    // There's log_id in both the Env and session_option.
+    // Inference session will use the one from Env if nothing set on session_option.
+    // Session_option can always overwrite the log id, in case the Env can be shared across sessions.
     std::string log_id = session_options_.session_logid;    
     std::string log_id_from_logger = logging_manager->DefaultLogger().GetLogID();
     if (log_id.empty() && !log_id_from_logger.empty()) {
