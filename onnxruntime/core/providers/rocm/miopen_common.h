@@ -196,5 +196,28 @@ SetLRNDescriptorHelper(miopenLRNDescriptor_t normDesc,
   return miopenSetLRNDescriptor(normDesc, miopenLRNCrossChannel, lrnN, lrnAlpha, lrnBeta, lrnK);
 }
 
+inline miopenStatus_t
+PoolingForwardHelper(miopenHandle_t handle,
+                     const miopenPoolingDescriptor_t poolDesc,
+                     const void* alpha,
+                     const miopenTensorDescriptor_t xDesc,
+                     const void* x,
+                     const void* beta,
+                     const miopenTensorDescriptor_t yDesc,
+                     void* y) {
+  return miopenPoolingForward(handle, poolDesc, alpha, xDesc, x, beta, yDesc, y, false, nullptr, 0);
+}
+
+inline miopenStatus_t
+SetPoolingNdDescriptorHelper(miopenPoolingDescriptor_t poolDesc,
+                             const miopenPoolingMode_t mode,
+                             miopenNanPropagation_t /* unavailable */,
+                             int nbDims,
+                             int* windowDimA,
+                             int* padA,
+                             int* stridesA) {
+  return miopenSetNdPoolingDescriptor(poolDesc, mode, nbDims, windowDimA, padA, stridesA);
+}
+
 }  // namespace rocm
 }  // namespace onnxruntime
