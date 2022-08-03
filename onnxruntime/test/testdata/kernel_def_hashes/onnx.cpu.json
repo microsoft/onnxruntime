@@ -377,6 +377,10 @@
     ],
     [
         "ConvInteger ai.onnx CPUExecutionProvider",
+        100167825365193136
+    ],
+    [
+        "ConvInteger ai.onnx CPUExecutionProvider",
         6765364645530232000
     ],
     [
