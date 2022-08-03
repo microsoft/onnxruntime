@@ -206,6 +206,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool IsSubGraphOfControlFlowOp(const GraphViewer& graph) const;
   bool IsWholeSubGraphSupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
   bool AllNodesAssignedToSpecificEP(const GraphViewer& graph, const std::string& provider_type) const;
+  void ResolveGraphOuterScopeValues(Graph* build_graph, const Graph* graph) const;
 
   /** 
   Get a unique_lock object to control the concurrency behavior. 

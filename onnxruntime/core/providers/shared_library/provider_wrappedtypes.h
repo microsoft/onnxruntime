@@ -579,6 +579,7 @@ struct Node final {
   void ToProto(ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) const { return g_host->Node__ToProto(this, proto, update_subgraphs); }
 
   const NodeAttributes& GetAttributes() const noexcept { return g_host->Node__GetAttributes(this); }
+  NodeAttributes& GetMutableAttributes() noexcept { return g_host->Node__GetMutableAttributes(this); }
   size_t GetInputEdgesCount() const noexcept { return g_host->Node__GetInputEdgesCount(this); }
   size_t GetOutputEdgesCount() const noexcept { return g_host->Node__GetOutputEdgesCount(this); }
 
@@ -618,6 +619,8 @@ struct Node final {
   EdgeConstIterator OutputEdgesEnd() const noexcept { return g_host->Node__OutputEdgesEnd(this); }
 
   void ForEachDef(std::function<void(const NodeArg&, bool is_input)> func, bool include_missing_optional_defs = false) const { g_host->Node__ForEachDef(this, func, std::move(include_missing_optional_defs)); }
+  const std::unordered_map<std::string, gsl::not_null<Graph*>>& GetAttributeNameToMutableSubgraphMap() { return g_host->Node__GetAttributeNameToMutableSubgraphMap(this); }
+  std::unordered_map<std::string, gsl::not_null<const Graph*>> GetAttributeNameToSubgraphMap() const { return g_host->Node__GetAttributeNameToSubgraphMap(this); }
 
   PROVIDER_DISALLOW_ALL(Node)
 };
@@ -665,11 +668,17 @@ struct Model final {
   void operator=(const Model&) = delete;
 };
 
+struct GraphNodes final {
+
+};
+
 struct Graph final {
   std::unique_ptr<GraphViewer> CreateGraphViewer() const { return g_host->Graph__CreateGraphViewer(this); }
   std::unique_ptr<ONNX_NAMESPACE::GraphProto> ToGraphProto() const { return g_host->Graph__ToGraphProto(this); }
 
   NodeArg& GetOrCreateNodeArg(const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) { return g_host->Graph__GetOrCreateNodeArg(this, name, p_arg_type); }
+  const std::unordered_set<std::string>& GetOuterScopeNodeArgNames() const noexcept { return g_host->Graph__GetOuterScopeNodeArgNames(this); }
+  void AddOuterScopeNodeArg(const std::string& name) { g_host->Graph__AddOuterScopeNodeArg(this, name); }
 
   Status Resolve() { return g_host->Graph__Resolve(this); }
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor) { return g_host->Graph__AddInitializedTensor(this, tensor); }
@@ -681,6 +690,14 @@ struct Graph final {
   const std::vector<const NodeArg*>& GetInputs() const noexcept { return g_host->Graph__GetInputs(this); }
 
   bool GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const { return g_host->Graph__GetInitializedTensor(this, tensor_name, value); }
+
+  //const Graph* ParentGraph() const { return g_host->Graph__ParentGraph(this); }
+  const Node* ParentNode() const { return g_host->Graph__ParentNode(this); }
+  Node* GetNode(NodeIndex node_index) noexcept { return g_host->Graph__GetNode(this, node_index); }
+  const Node* GetNode(NodeIndex node_index) const noexcept { return g_host->Graph__GetNode(this, node_index); }
+  const NodeArg* GetNodeArg(const std::string& name) const { return g_host->Graph__GetNodeArg(this, name); }
+  //GraphNodes& Nodes() noexcept { return g_host->Graph__Nodes(this); }
+  int MaxNodeIndex() const noexcept { return g_host->Graph__MaxNodeIndex(this); }
 
   PROVIDER_DISALLOW_ALL(Graph)
 };

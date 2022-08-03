@@ -473,7 +473,7 @@ class Node {
                           If graph optimization has been run this is most likely required
                           to ensure the complete Graph is valid.
   */
-  void ToProto(ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) const;
+  void ToProto(ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = true) const;
 
   Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                          flatbuffers::Offset<onnxruntime::fbs::Node>& fbs_node) const;

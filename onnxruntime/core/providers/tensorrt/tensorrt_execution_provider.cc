@@ -616,7 +616,15 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
     if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
       for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
         const auto& node_idx = it->GetNode().Index();
-        const auto& output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
+        const onnxruntime::NodeArg* output;
+        // The dst_arg_index from GetDstArgIndex() could be the index for explicit/implicit input defs of the node.
+        // We need to get the correct input index accordingly. (See Graph::BuildConnections() in graph.cc for more details)
+        if (it->GetDstArgIndex() < static_cast<int>(it->GetNode().InputDefs().size())) {
+          output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
+        } else {
+          output = (it->GetNode()).ImplicitInputDefs()[it->GetDstArgIndex() - static_cast<int>(it->GetNode().InputDefs().size())];
+        }
+        //const auto& output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
         if (node_set.find(node_idx) != node_set.end()) {
           const auto& iter = fused_inputs.find(output);
           if (iter != fused_inputs.end()) {
@@ -695,6 +703,49 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   return sub_graph;
 }
 
+void TensorrtExecutionProvider::ResolveGraphOuterScopeValues(Graph* build_graph, const Graph* graph) const {
+  // outer scope values should be added to graph, otherwisue graph.Resolve() will complain.
+  // Note: graph->GetOuterScopeNodeArgNames() always returns empty? so we need to use ImplicitInputDefs to handle instead.
+  if (graph->ParentNode()) {
+    for (const auto& input : graph->ParentNode()->ImplicitInputDefs()) {
+      if (build_graph->GetNodeArg(input->Name())) {
+        build_graph->AddOuterScopeNodeArg(input->Name());
+      }
+    }  
+  }
+
+  // iterate all the nodes and recurse into subgraph
+  for (int i = 0; i < build_graph->MaxNodeIndex(); ++i) {
+    auto build_graph_node = build_graph->GetNode(i);
+
+    if (build_graph_node == nullptr) {
+      continue;
+    }
+
+    auto build_subgraph_map = build_graph_node->GetAttributeNameToMutableSubgraphMap();
+    const Node* graph_node = nullptr;
+    std::unordered_map<std::string, gsl::not_null<const Graph*>> subgraph_map;
+
+    for (int j = 0; j < graph->MaxNodeIndex(); ++j) {
+      if (graph->GetNode(j) && graph->GetNode(j)->Name() == build_graph_node->Name()) {
+        graph_node = graph->GetNode(j);
+        subgraph_map = graph_node->GetAttributeNameToSubgraphMap();
+        break;
+      }
+    }
+
+    for (auto& entry : build_subgraph_map) {
+      auto attr_name = entry.first;
+      Graph* subgraph = entry.second;
+      if (subgraph_map.find(attr_name) != subgraph_map.end()) {
+        // recurse into subgraph
+        const Graph* graph_subgraph = subgraph_map.at(attr_name);
+        ResolveGraphOuterScopeValues(subgraph, graph_subgraph);
+      }
+    }
+  }
+}
+
 SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollection_t nodes_vector_input, int iterations, const int max_iterations,
                                                                  const GraphViewer& graph, bool* early_termination) const {
   // Return if iterations are exceeding predefined number
@@ -757,9 +808,11 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
               subgraph_output_names.push_back(name);
             }
           }
+          //graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &(const_cast<Node*>(node)->GetMutableAttributes()), node->Domain());
           graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
         }
 
+        ResolveGraphOuterScopeValues(&graph_build, &graph.GetGraph());
         ORT_ENFORCE(graph_build.Resolve().IsOK());
 
         // Add parent graph output to the subgraph
@@ -894,6 +947,10 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
       }
 
       for (const auto& input : node->InputDefs()) {
+        input_to_nodes_map[input->Name()].insert(node_name);
+      }
+
+      for (const auto& input : node->ImplicitInputDefs()) {
         input_to_nodes_map[input->Name()].insert(node_name);
       }
 
