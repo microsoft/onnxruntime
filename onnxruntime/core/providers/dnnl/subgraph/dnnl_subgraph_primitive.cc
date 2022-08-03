@@ -200,7 +200,7 @@ void DnnlSubgraphPrimitive::AddKernels() {
     //    https://github.com/microsoft/onnxruntime/blob/master/docs/ContribOperators.md#com.microsoft.FusedMatMul
     } else if (node.OpType() == "MatMul" || node.OpType() == "MatMulPostOps" || node.OpType() == "FusedMatMul") {
       DnnlMatMul().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "MatMulInteger") {
+    } else if (node.OpType() == "MatMulInteger" || node.OpType() == "MatMulIntegerPostOps") {
       DnnlMatMulInteger().CreatePrimitive(*this, node);
     } else if (pool_ops.count(node.OpType())) {
       DnnlPool().CreatePrimitive(*this, node);
