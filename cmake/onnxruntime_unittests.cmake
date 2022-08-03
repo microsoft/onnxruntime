@@ -535,6 +535,12 @@ if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nnapi)
 endif()
 
+if(onnxruntime_USE_HAILO)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/hailo/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_hailo)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_hailo onnxruntime_providers_shared)
+endif()
+
 if(onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/rknpu/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_rknpu)

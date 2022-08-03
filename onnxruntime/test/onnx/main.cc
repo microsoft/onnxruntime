@@ -36,7 +36,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', "
-      "'openvino', 'nuphar', 'rocm', 'migraphx', 'acl', 'armnn', 'nnapi' or 'coreml'. "
+      "'openvino', 'nuphar', 'rocm', 'migraphx', 'acl', 'armnn', 'nnapi', 'coreml' or 'hailo'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -93,6 +93,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   int p_models = GetNumCpuCores();
   bool enable_cuda = false;
   bool enable_dnnl = false;
+  bool enable_hailo = false;
   bool enable_openvino = false;
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
@@ -159,6 +160,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_cuda = true;
           } else if (!CompareCString(optarg, ORT_TSTR("dnnl"))) {
             enable_dnnl = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("hailo"))) {
+            enable_hailo = true;
           } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
             enable_openvino = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
@@ -355,6 +358,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
       fprintf(stderr, "DNNL is not supported in this build");
+      return -1;
+#endif
+    }
+    if (enable_hailo) {
+#ifdef USE_HAILO
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Hailo(sf, enable_cpu_mem_arena ? 1 : 0));
+      p_models = 1;
+#else
+      fprintf(stderr, "Hailo is not supported in this build");
       return -1;
 #endif
     }

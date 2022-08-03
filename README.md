@@ -6,7 +6,11 @@
 
 **ONNX Runtime training** can accelerate the model training time on multi-node NVIDIA GPUs for transformer models with a one-line addition for existing PyTorch training scripts. [Learn more &rarr;](https://www.onnxruntime.ai/docs/#onnx-runtime-for-training)
 
+# ONNX Runtime + Hailo (PREVIEW)
 
+This is a fork of onnxruntime modified to work on Hailo-8 devices. For instructions about how to install ONNX Runtime using Hailo as an Execution Provider and further details go to [Hailo](hailo/README.md).
+
+> **⚠ WARNING: This feature is still in preview.**
 ## Get Started
 
 **General Information**: [onnxruntime.ai](https://onnxruntime.ai)

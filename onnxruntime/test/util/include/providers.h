@@ -7,6 +7,9 @@
 #ifdef USE_DNNL
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #endif
+#ifdef USE_HAILO
+#include "core/providers/hailo/hailo_provider_factory.h"
+#endif
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 #endif

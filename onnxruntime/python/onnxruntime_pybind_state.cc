@@ -574,6 +574,12 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
                session_options.enable_cpu_mem_arena)
         ->CreateProvider();
 #endif
+  } else if (type == kHailoExecutionProvider) {
+#ifdef USE_HAILO
+    return onnxruntime::CreateExecutionProviderFactory_Hailo(
+               session_options.enable_cpu_mem_arena)
+        ->CreateProvider();
+#endif
   } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
     OrtOpenVINOProviderOptions params;
@@ -649,10 +655,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kTvmExecutionProvider) {
 #if USE_TVM
-    onnxruntime::TvmExecutionProviderInfo info{};
+    onnxruntime::tvm::TvmEPOptions info{};
     const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
-      info = onnxruntime::TvmExecutionProviderInfo::FromProviderOptions(it->second);
+      info = onnxruntime::tvm::TvmEPOptionsHelper::FromProviderOptions(it->second);
     }
 
     return onnxruntime::CreateExecutionProviderFactory_Tvm(info)->CreateProvider();
@@ -1245,7 +1251,27 @@ RunOptions instance. The individual calls will exit gracefully and return an err
                      R"pbdoc(Choose to run in training or inferencing mode)pbdoc")
 #endif
       .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches,
-                     R"pbdoc(Only execute the nodes needed by fetch list)pbdoc");
+                     R"pbdoc(Only execute the nodes needed by fetch list)pbdoc")
+      .def(
+          "add_run_config_entry",
+          [](RunOptions* options, const char* config_key, const char* config_value) -> void {
+            //config_key and config_value will be copied
+            const Status status = options->config_options.AddConfigEntry(config_key, config_value);
+            if (!status.IsOK())
+              throw std::runtime_error(status.ErrorMessage());
+          },
+          R"pbdoc(Set a single run configuration entry as a pair of strings.)pbdoc")
+      .def(
+          "get_run_config_entry",
+          [](const RunOptions* options, const char* config_key) -> std::string {
+            const std::string key(config_key);
+            std::string value;
+            if (!options->config_options.TryGetConfigEntry(key, value))
+              throw std::runtime_error("RunOptions does not have configuration with key: " + key);
+
+            return value;
+          },
+          R"pbdoc(Get a single run configuration value using the given configuration key.)pbdoc");
 
   py::class_<ModelMetadata>(m, "ModelMetadata", R"pbdoc(Pre-defined and custom metadata about the model.
 It is usually used to identify the model used to run the prediction and

@@ -67,6 +67,7 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/dnnl/dnnl_provider_factory.h"
+#include "core/providers/hailo/hailo_provider_factory.h"
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #include "core/providers/openvino/openvino_provider_factory.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
@@ -1073,12 +1074,14 @@ static ProviderLibrary s_library_rocm(LIBRARY_PREFIX "onnxruntime_providers_rocm
 #endif
 );
 static ProviderLibrary s_library_dnnl(LIBRARY_PREFIX "onnxruntime_providers_dnnl" LIBRARY_EXTENSION);
+static ProviderLibrary s_library_hailo(LIBRARY_PREFIX "onnxruntime_providers_hailo" LIBRARY_EXTENSION);
 static ProviderLibrary s_library_openvino(LIBRARY_PREFIX "onnxruntime_providers_openvino" LIBRARY_EXTENSION);
 static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX "onnxruntime_providers_tensorrt" LIBRARY_EXTENSION);
 static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX "onnxruntime_providers_migraphx" LIBRARY_EXTENSION);
 
 void UnloadSharedProviders() {
   s_library_dnnl.Unload();
+  s_library_hailo.Unload();
   s_library_openvino.Unload();
   s_library_tensorrt.Unload();
   s_library_cuda.Unload();
@@ -1145,6 +1148,13 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rocm(c
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena) {
   if (auto* provider = s_library_dnnl.Get())
+    return provider->CreateExecutionProviderFactory(use_arena);
+
+  return nullptr;
+}
+
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Hailo(int use_arena) {
+  if (auto* provider = s_library_hailo.Get())
     return provider->CreateExecutionProviderFactory(use_arena);
 
   return nullptr;
@@ -1339,6 +1349,18 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessi
   auto factory = onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Dnnl: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Hailo, _In_ OrtSessionOptions* options, int use_arena) {
+  API_IMPL_BEGIN
+  auto factory = onnxruntime::CreateExecutionProviderFactory_Hailo(use_arena);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Hailo: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);

@@ -43,6 +43,11 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
 #ifdef USE_DNNL
             onnxruntime::CreateExecutionProviderFactory_Dnnl(1),
 #endif
+
+#ifdef USE_HAILO
+            onnxruntime::CreateExecutionProviderFactory_Hailo(1),
+#endif
+
 #ifdef USE_OPENVINO
             onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, "", 8, false, ""),
 #endif

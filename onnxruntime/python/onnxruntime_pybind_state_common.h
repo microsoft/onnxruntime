@@ -127,6 +127,9 @@ struct OrtStatus {
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #endif
+#ifdef USE_HAILO
+#include "core/providers/hailo/hailo_provider_factory.h"
+#endif
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
@@ -157,7 +160,7 @@ extern std::string nuphar_settings;
 }  // namespace onnxruntime
 #endif
 #ifdef USE_TVM
-#include "core/providers/tvm/tvm_execution_provider_info.h"
+#include "core/providers/tvm/tvm_ep_options.h"
 #endif
 #ifdef USE_VITISAI
 #include "core/providers/vitisai/vitisai_provider_factory.h"
@@ -481,10 +484,11 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGrap
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Hailo(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 #ifdef USE_TVM
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const TvmExecutionProviderInfo& info);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const tvm::TvmEPOptions& info);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char* params);
 #endif
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id,

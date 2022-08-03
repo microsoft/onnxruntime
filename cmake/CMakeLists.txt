@@ -53,6 +53,7 @@ option(onnxruntime_USE_COREML "Build with CoreML support" OFF)
 option(onnxruntime_USE_NNAPI_BUILTIN "Build with builtin NNAPI lib for Android NNAPI support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
+option(onnxruntime_USE_HAILO "Build with HAILO support" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
@@ -877,8 +878,8 @@ else()
         if (${onnxruntime_target_platform} MATCHES "^(ARM.*|arm.*)$" )
             message(WARNING "Cpuinfo not included for compilation problems with Windows ARM.")
             set(CPUINFO_SUPPORTED FALSE)
-        elseif (WINDOWS_STORE OR (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib))
-            message(WARNING "Cpuinfo not included in Windows Store or WCOS builds")
+        elseif (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
+            message(WARNING "Cpuinfo not included non-Desktop builds")
             set(CPUINFO_SUPPORTED FALSE)
         endif()
     elseif (NOT ${onnxruntime_target_platform} MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
@@ -1069,6 +1070,11 @@ if (onnxruntime_USE_DNNL)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_DNNL=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES dnnl)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_DNNL=1)
+endif()
+if (onnxruntime_USE_HAILO)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_HAILO=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES hailo)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_HAILO=1)
 endif()
 if (onnxruntime_USE_OPENVINO)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_OPENVINO=1)
@@ -1892,7 +1898,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
 endif()
 
 if (WIN32)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SYS_PATH_LIB} Shlwapi)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SYS_PATH_LIB})
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES debug Dbghelp)
 else()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
@@ -1900,25 +1906,19 @@ else()
 endif()
 
 if (WIN32)
-  if (WINDOWS_STORE)
-    # Setting WINAPI_FAMILY, WINVER and _WIN32_WINNT restrict the APIs exposed in Windows headers to those available
-    # in store or desktop, and that support at least the version of Windows specified
-    add_compile_definitions(WINAPI_FAMILY=2)  # Windows Store app
-    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00 NTDDI_VERSION=0x0A000000)  # Support Windows 10 or newer
-    # /ZW adds /FUplatform.winmd and /FUwindows.winmd. windows.winmd, in turn, overrides the include path for
-    # the cppwinrt headers, which we set to use the WinML built ones.
-    # Instead, we use /ZW:nostdlib and force include platform.winml only.
-    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:SHELL:/ZW:nostdlib /FUplatform.winmd>")
-    get_filename_component(msvc_path "${CMAKE_C_COMPILER}/../../../.." ABSOLUTE)
-    link_directories("${msvc_path}/lib/${onnxruntime_target_platform}/store")
-    add_link_options(/APPCONTAINER)
+  add_compile_definitions(WINAPI_FAMILY=100) # Desktop app
+  if (onnxruntime_USE_WINML)
+    add_compile_definitions(WINVER=0x0602 _WIN32_WINNT=0x0602 NTDDI_VERSION=0x06020000)  # Support Windows 8 and newer
   else()
-    add_compile_definitions(WINAPI_FAMILY=100) # Desktop app
-    if (onnxruntime_USE_WINML)
-      add_compile_definitions(WINVER=0x0602 _WIN32_WINNT=0x0602 NTDDI_VERSION=0x06020000)  # Support Windows 7 and newer
-    else()
-      add_compile_definitions(WINVER=0x0601 _WIN32_WINNT=0x0601 NTDDI_VERSION=0x06010000)  # Support Windows 7 and newer
-    endif()
+    add_compile_definitions(WINVER=0x0601 _WIN32_WINNT=0x0601 NTDDI_VERSION=0x06010000)  # Support Windows 7 and newer
+  endif()
+  if (NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
+    # On onecore, link to the onecore build of the MSVC runtime
+    get_filename_component(msvc_path "${CMAKE_C_COMPILER}/../../../.." ABSOLUTE)
+    link_directories(BEFORE "${msvc_path}/lib/onecore/${onnxruntime_target_platform}")
+    # The .lib files in the MSVC runtime have a DEFAULITLIB entry for onecore.lib, which in turn links to reverse forwarders.
+    # We ignore that entry and use onecore_apiset.lib instead, since system components must not rely on reverse forwarders.
+    add_link_options("/NODEFAULTLIB:onecore.lib")
   endif()
 endif()
 
@@ -2002,16 +2002,6 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
 
   message(STATUS "WebAssembly Build is enabled")
   include(onnxruntime_webassembly.cmake)
-endif()
-
-if (WINDOWS_STORE)
-  target_link_options(onnxruntime PRIVATE /DYNAMICBASE /NXCOMPAT /APPCONTAINER)
-  target_link_options(winml_dll PRIVATE /DYNAMICBASE /NXCOMPAT /APPCONTAINER)
-
-  if (onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
-    target_link_options(onnxruntime PRIVATE /SAFESEH)
-    target_link_options(winml_dll PRIVATE /SAFESEH)
-  endif()
 endif()
 
 if (UNIX)

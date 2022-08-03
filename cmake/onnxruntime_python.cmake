@@ -130,7 +130,7 @@ if (onnxruntime_ENABLE_EAGER_MODE)
   endif()
   if (MSVC) 
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4100" "/wd4324" "/wd4458" "/wd4127" "/wd4193" "/wd4624" "/wd4702")
-    target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj" "/wd4275" "/wd4244" "/wd4267")
+    target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj" "/wd4275" "/wd4244" "/wd4267" "/wd4067")
   endif()
 endif()
 
@@ -643,6 +643,16 @@ if (onnxruntime_USE_DNNL)
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         ${DNNL_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_dnnl>
+        $<TARGET_FILE:onnxruntime_providers_shared>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+endif()
+
+if (onnxruntime_USE_HAILO)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${DNNL_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_hailo>
         $<TARGET_FILE:onnxruntime_providers_shared>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )

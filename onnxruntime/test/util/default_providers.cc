@@ -191,5 +191,15 @@ std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider() {
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> DefaultHailoExecutionProvider(bool enable_arena) {
+#ifdef USE_HAILO
+  if (auto factory = CreateExecutionProviderFactory_Hailo(enable_arena ? 1 : 0))
+    return factory->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(enable_arena);
+#endif
+  return nullptr;
+}
+
 }  // namespace test
 }  // namespace onnxruntime

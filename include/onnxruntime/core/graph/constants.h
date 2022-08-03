@@ -21,6 +21,7 @@ constexpr const char* kMSDmlDomain = "com.microsoft.dml";
 constexpr const char* kNGraphDomain = "com.intel.ai";
 constexpr const char* kMIGraphXDomain = "";
 constexpr const char* kVitisAIDomain = "com.xilinx";
+constexpr const char* kHailoDomain = "ai.hailo";
 
 constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
 constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
@@ -38,6 +39,7 @@ constexpr const char* kArmNNExecutionProvider = "ArmNNExecutionProvider";
 constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
 constexpr const char* kCoreMLExecutionProvider = "CoreMLExecutionProvider";
 constexpr const char* kTvmExecutionProvider = "TvmExecutionProvider";
+constexpr const char* kHailoExecutionProvider = "HailoExecutionProvider";
 
 constexpr const char* kExecutionProviderSharedLibraryPath = "shared_lib_path";
 constexpr const char* kExecutionProviderSharedLibraryEntry = "provider_factory_entry_point";

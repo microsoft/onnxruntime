@@ -22,6 +22,9 @@
 #ifdef USE_DML
 #include "core/graph/dml_ops/dml_defs.h"
 #endif
+#ifdef USE_HAILO
+#include "core/graph/hailo_ops/hailo_defs.h"
+#endif
 
 #include "core/platform/env.h"
 #include "core/util/thread_utils.h"
@@ -227,6 +230,9 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 #ifdef USE_DML
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
 #endif
+#ifdef USE_HAILO
+      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kHailoDomain, 1, 1);
+#endif
 // Register contributed schemas.
 // The corresponding kernels are registered inside the appropriate execution provider.
 #ifndef DISABLE_CONTRIB_OPS
@@ -240,6 +246,10 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       dml::RegisterDmlSchemas();
 #endif
       RegisterOnnxOperatorSetSchema();
+
+#ifdef USE_HAILO
+      RegisterHailoSchemas();
+#endif
 
 #ifndef DISABLE_ML_OPS
       RegisterOnnxMLOperatorSetSchema();

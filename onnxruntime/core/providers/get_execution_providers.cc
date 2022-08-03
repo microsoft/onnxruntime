@@ -74,6 +74,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
+            kHailoExecutionProvider,
+#ifdef USE_HAILO
+            true,
+#else
+            false,
+#endif
+        },
+        {
             kTvmExecutionProvider,
 #ifdef USE_TVM
             true,

@@ -224,6 +224,10 @@ def parse_arguments():
     parser.add_argument(
         "--enable_cuda_line_info", action='store_true', help="Enable CUDA line info.")
 
+    # HAILO related
+    parser.add_argument(
+        "--use_hailo", action='store_true', help="Enable HAILO.")
+
     # Python bindings
     parser.add_argument(
         "--enable_pybind", action='store_true', help="Enable Python Bindings.")
@@ -488,9 +492,6 @@ def parse_arguments():
         "--enable_wcos", action='store_true',
         help="Build for Windows Core OS.")
     parser.add_argument(
-        "--enable_windows_store", action='store_true',
-        help="Build for Windows Store")
-    parser.add_argument(
         "--enable_lto", action='store_true',
         help="Enable Link Time Optimization")
     parser.add_argument(
@@ -728,8 +729,8 @@ def add_cmake_define_without_override(cmake_extra_defines, key, value):
     cmake_extra_defines.append(key + "=" + value)
 
 
-def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home,
-                        mpi_home, nccl_home, tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
+def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
+                        tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
                         path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
@@ -890,6 +891,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     if args.winml_root_namespace_override:
         cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" +
                        args.winml_root_namespace_override]
+
+    if args.use_hailo:
+        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_USE_HAILO", "ON")
+
     if args.use_openvino:
         cmake_args += ["-Donnxruntime_USE_OPENVINO=ON",
                        "-Donnxruntime_USE_OPENVINO_MYRIAD=" + (
@@ -1931,7 +1936,7 @@ def is_cross_compiling_on_apple(args):
 
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
-    if (args.arm or args.arm64 or args.arm64ec or args.enable_windows_store) and \
+    if (args.arm or args.arm64 or args.arm64ec) and \
             not (is_windows() or is_cross_compiling_on_apple(args)):
         raise BuildError(
             'Currently only support building protoc for Windows host while '
@@ -2213,10 +2218,6 @@ def main():
                 cmake_extra_args = [
                     '-A', 'x64', '-T', toolset, '-G', args.cmake_generator
                 ]
-            if args.enable_windows_store:
-                cmake_extra_defines.append(
-                    'CMAKE_TOOLCHAIN_FILE=' + os.path.join(
-                        source_dir, 'cmake', 'store_toolchain.cmake'))
             if args.enable_wcos:
                 cmake_extra_defines.append('CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake')
         elif args.cmake_generator is not None and not (is_macOS() and args.use_xcode):
@@ -2241,7 +2242,7 @@ def main():
             log.info("Activating emsdk...")
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
 
-        if (args.android or args.ios or args.enable_windows_store or args.build_wasm
+        if (args.android or args.ios or args.build_wasm
                 or is_cross_compiling_on_apple(args)) and args.path_to_protoc_exe is None:
             # Cross-compiling for Android, iOS, and WebAssembly
             path_to_protoc_exe = build_protoc_for_host(
