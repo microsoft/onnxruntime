@@ -17,7 +17,7 @@ from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from ..training import postprocess
 from .checkpointing_utils import CombineZeroCheckpoint, get_checkpoint_name, list_checkpoint_files
 
-DEFAULT_OPSET_VERSION = 15
+DEFAULT_OPSET_VERSION = 14
 
 
 class IODescription:

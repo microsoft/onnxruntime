@@ -42,7 +42,7 @@ class Test_PostPasses(unittest.TestCase):
             device,
             world_rank=0,
             world_size=1,
-            _opset_version=15,
+            _opset_version=14,
             _enable_internal_postprocess=_enable_internal_postprocess,
             _extra_postprocess=_extra_postprocess,
         )
