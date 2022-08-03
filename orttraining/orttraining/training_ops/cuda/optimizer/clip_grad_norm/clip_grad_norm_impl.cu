@@ -11,7 +11,7 @@ namespace cuda {
 template <typename T>
 __global__ void ClipGradNorm(
     ChunkGroup<ClipGradNormGroupSize> chunks,
-    const float* l2_norm,
+    const float* total_norm,
     const float epsilon,
     const float max_norm) {
   const int tensor_idx = chunks.block_index_to_tensor_group_index[blockIdx.x];
@@ -27,7 +27,7 @@ __global__ void ClipGradNorm(
 
 #pragma unroll(4)
   for (int i = threadIdx.x; i < chunk_size; i += blockDim.x) {
-    float clip_coefficient = max_norm / (*l2_norm + epsilon);
+    float clip_coefficient = max_norm / (*total_norm + epsilon);
     gradients_chunk_ptr[i] = static_cast<T>(gradients_chunk_ptr[i]) *
                              static_cast<T>(fminf(clip_coefficient, 1.0f));
   }
@@ -37,24 +37,24 @@ template <typename T>
 void ClipGradNormFunctor<T>::operator()(
     cudaStream_t stream,
     ChunkGroup<ClipGradNormGroupSize> chunks,
-    const float* l2_norm,
+    const float* total_norm,
     const float epsilon,
     const float max_norm) {
   const int num_blocks_per_grid = chunks.chunk_count;
   const int num_threads_per_block = ChunkGroup<ClipGradNormGroupSize>::thread_count_per_block;
 
-  ClipGradNorm<T><<<num_blocks_per_grid, num_threads_per_block, 0, stream>>>(chunks, l2_norm, epsilon, max_norm);
+  ClipGradNorm<T><<<num_blocks_per_grid, num_threads_per_block, 0, stream>>>(chunks, total_norm, epsilon, max_norm);
 }
 
 #define SPECIALIZE_CLIPGRADNORM_FUNCTOR(T)                                                   \
   template void ClipGradNormFunctor<T>::operator()(cudaStream_t stream,                      \
                                                    ChunkGroup<ClipGradNormGroupSize> chunks, \
-                                                   const float* l2_norm,                     \
+                                                   const float* total_norm,                  \
                                                    const float epsilon,                      \
                                                    const float max_norm);                    \
                                                                                              \
   template __global__ void ClipGradNorm<T>(ChunkGroup<ClipGradNormGroupSize> chunks,         \
-                                           const float* l2_norm,                             \
+                                           const float* total_norm,                          \
                                            const float epsilon,                              \
                                            const float max_norm);
 

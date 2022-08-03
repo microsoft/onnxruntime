@@ -10,18 +10,18 @@
 namespace onnxruntime {
 namespace cuda {
 
-class ClipGradNorm final : public CudaKernel {
+class ClipGradNormInplace final : public CudaKernel {
  public:
-  ClipGradNorm(const OpKernelInfo& info) : CudaKernel(info) {
+  ClipGradNormInplace(const OpKernelInfo& info) : CudaKernel(info) {
     info.GetAttrOrDefault("max_norm", &max_norm_, 1.0f);
-    info.GetAttrOrDefault("norm_type", &norm_type, std::string("fro"));
+    info.GetAttrOrDefault("norm_type", &norm_type_, std::string("fro"));
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
   float max_norm_;
-  std::string norm_type;
+  std::string norm_type_;
 };
 
 }  // namespace cuda

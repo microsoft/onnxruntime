@@ -61,16 +61,16 @@ Status PopulateOutput(cudaStream_t stream, AllocatorPtr alloc, const TensorSeq* 
 }  // namespace
 
 ONNX_OPERATOR_KERNEL_EX(
-    ClipGradNorm,
+    ClipGradNormInplace,
     kMSDomain,
     1,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .Alias(0, 0) /* Return updated gradients in-place */
         .TypeConstraint("S_GRAD", DataTypeImpl::AllFixedSizeSequenceTensorTypes()),
-    ClipGradNorm);
+    ClipGradNormInplace);
 
-Status ClipGradNorm::ComputeInternal(OpKernelContext* ctx) const {
+Status ClipGradNormInplace::ComputeInternal(OpKernelContext* ctx) const {
   // Prepare the inputs
   const TensorSeq* gradients = ctx->Input<TensorSeq>(0);
   InlinedVector<int> tensor_sizes(gradients->Size());
@@ -78,16 +78,17 @@ Status ClipGradNorm::ComputeInternal(OpKernelContext* ctx) const {
   GetGroupedTensors(gradients, &tensor_sizes, &grouped_tensor_pointers);
 
   AllocatorPtr alloc;
-  ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc).IsOK(), "ClipGradNorm: Unable to get an allocator.");
+  ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc).IsOK(), "ClipGradNormInplace: Unable to get an allocator.");
 
   // Get frobenius norm for the grouped inputs
-  float* l2_norm = reinterpret_cast<float*>(alloc->Alloc(sizeof(float)));
-  ORT_RETURN_IF_ERROR(GetL2Norm(Stream(), tensor_sizes, grouped_tensor_pointers, &l2_norm));
+  float* total_norm = reinterpret_cast<float*>(alloc->Alloc(sizeof(float)));
+  ORT_ENFORCE(norm_type_ == "fro", "Given norm type ", norm_type_, " is not supported for ClipGradNormInplace.");
+  ORT_RETURN_IF_ERROR(GetL2Norm(Stream(), tensor_sizes, grouped_tensor_pointers, &total_norm));
 
   // Perform gradient clipping
   ClipGradNormFunctor<float> clip_grad_functor;
   launch_multi_tensor_functor<ClipGradNormGroupSize, decltype(clip_grad_functor)>(
-      Stream(), ChunkSize, tensor_sizes, grouped_tensor_pointers, clip_grad_functor, l2_norm,
+      Stream(), ChunkSize, tensor_sizes, grouped_tensor_pointers, clip_grad_functor, total_norm,
       Epsilon, max_norm_);
 
   // Populate the output sequence tensors.

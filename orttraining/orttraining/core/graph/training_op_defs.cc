@@ -1388,12 +1388,13 @@ void RegisterTrainingOpSchemas() {
       });
 
   /**
-   * ClipGradNorm operator, taking multiple gradients as inputs (seq<tensor>).
-   * ClipGradNorm should be used in conjunction with optimizers that are expecting seq<tensor> gradients as input,
+   * ClipGradNormInplace operator, taking multiple gradients as inputs (seq<tensor>).
+   * ClipGradNormInplace should be used in conjunction with optimizers that are expecting seq<tensor> gradients as input,
    * since this op takes input a sequence of tensors and outputs a sequence of tensors there by avoiding the need
    * for SequenceConstruct (and making any unnecessary copy).
+   * Please note that the gradient clipping happens inplace.
    */
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ClipGradNorm)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ClipGradNormInplace)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "gradients", "Sequence of gradients computed in this iteration.", "S_GRAD")
