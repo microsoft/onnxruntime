@@ -58,6 +58,31 @@ start in `orttraining/orttraining/eager/opgen/opgen/custom_ops.py`, which will g
 
 Please add tests for all ops. Tests are defined in `orttraining/orttraining/eager/test/ort_ops.py`
 
+## Setting up dev container with combined onnxruntime + PyTorch
+
+Open this branch in a code space / dev container. This will clone PyTorch at `/workspaces/pytorch`. To have PyTorch source readily available in VS Code, you can add the the PyTorch directory to your workspace (File -> Add Folder to Workspace - /workspaces/pytorch)
+
+From the `/workspaces/pytorch` directory, run the following commands to checkout PyTorch v1.12.0, build it, and and install in local environment:
+
+
+```
+git checkout v1.12.0
+
+export CMAKE_PREFIX_PATH=/usr/lib/python3/dist-packages
+
+DEBUG=1 USE_CUDA=0 USE_KINETO=0 BUILD_CAFFE2=0 USE_DISTRIBUTED=0 USE_NCCL=0 BUILD_TEST=0 USE_XNNPACK=0 USE_FBGEMM=0 USE_QNNPACK=0 USE_MKLDNN=0 USE_MIOPEN=0 USE_NNPACK=0 BUILD_CAFFE2_OPS=0 USE_TENSORPIPE=0 python3 setup.py develop --user
+```
+
+- Review: better undersrtand the `CMAKE_PREFIX_PATH` setting
+
+After this you can build / test onnx runtime as normal.
+
+From `workspaces/onnxruntime` directory, run the following commands:
+
+```
+./build.sh --cmake_generator Ninja --config Debug --build_shared_lib --parallel --build_eager_mode --enable_training --enable_pybind  --build_wheel --skip_tests
+```
+
 ## Decisions worth noting
 - Resizing the output tensor: Aten supports resizing any out tensor but prints a warning this is depracated and support
 will end. With that in mind, we have decided to error in `resize_output` if the output tensor is not empty or already
