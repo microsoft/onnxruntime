@@ -1569,11 +1569,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The id of the end-of-sequence token</dd>
 <dt><tt>model_type</tt> : int</dt>
 <dd>model type: 0 for decoder only like GPT-2; 1 for encoder decoder like Bart</dd>
+<dt><tt>no_repeat_ngram_size</tt> : int</dt>
+<dd>no repeat ngrams size</dd>
 <dt><tt>pad_token_id</tt> : int (required)</dt>
 <dd>The id of the padding token</dd>
 </dl>
 
-#### Inputs (2 - 4)
+#### Inputs (2 - 6)
 
 <dl>
 <dt><tt>input_ids</tt> : I</dt>
@@ -1584,6 +1586,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)</dd>
 <dt><tt>repetition_penalty</tt> (optional) : T</dt>
 <dd>The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)</dd>
+<dt><tt>vocab_mask</tt> (optional) : I</dt>
+<dd>Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)</dd>
+<dt><tt>prefix_vocab_mask</tt> (optional) : I</dt>
+<dd>Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)</dd>
 </dl>
 
 #### Outputs
