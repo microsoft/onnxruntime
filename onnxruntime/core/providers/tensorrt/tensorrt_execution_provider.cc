@@ -703,10 +703,11 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   return sub_graph;
 }
 
+// Resolve outer scope values for the newly built subgraph for meeting ORT graph requirements
 void TensorrtExecutionProvider::ResolveGraphOuterScopeValues(Graph* build_graph, const Graph* graph) const {
-  // outer scope values should be added to graph, otherwisue graph.Resolve() will complain.
-  // Note: graph->GetOuterScopeNodeArgNames() always returns empty? so we need to use ImplicitInputDefs to handle instead.
-  if (graph->ParentNode()) {
+  // outer scope values should be added to graph, otherwise graph.Resolve() will fail.
+  // Note: graph->GetOuterScopeNodeArgNames() always returns empty? so we need to use ImplicitInputDefs to handle outer scope values instead.
+  if (build_graph->ParentNode()) {
     for (const auto& input : graph->ParentNode()->ImplicitInputDefs()) {
       if (build_graph->GetNodeArg(input->Name())) {
         build_graph->AddOuterScopeNodeArg(input->Name());
@@ -808,7 +809,6 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
               subgraph_output_names.push_back(name);
             }
           }
-          //graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &(const_cast<Node*>(node)->GetMutableAttributes()), node->Domain());
           graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
         }
 
