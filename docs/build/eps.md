@@ -190,22 +190,22 @@ These instructions are for JetPack SDK 4.6.1.
 
 ## oneDNN
 
-See more information on ondDNN (formerly DNNL) [here](../execution-providers/oneDNN-ExecutionProvider.md).
+See more information on oneDNN (formerly DNNL) [here](../execution-providers/oneDNN-ExecutionProvider.md).
 
 ### Build Instructions
 {: .no_toc }
 
 
-The DNNL execution provider can be built for Intel CPU or GPU. To build for Intel GPU, install [Intel SDK for OpenCL Applications](https://software.intel.com/content/www/us/en/develop/tools/opencl-sdk.html). Install the latest GPU driver - [Windows graphics driver](https://downloadcenter.intel.com/product/80939/Graphics), [Linux graphics compute runtime and OpenCL driver](https://github.com/intel/compute-runtime/releases).
+The DNNL execution provider can be built for Intel CPU or GPU. To build for Intel GPU, install [Intel SDK for OpenCL Applications](https://software.intel.com/content/www/us/en/develop/tools/opencl-sdk.html) or build OpenCL from [Khronos OpenCL SDK](https://github.com/KhronosGroup/OpenCL-SDK). Pass in the OpenCL SDK path as dnnl_opencl_root to the build command. Install the latest GPU driver - [Windows graphics driver](https://downloadcenter.intel.com/product/80939/Graphics), [Linux graphics compute runtime and OpenCL driver](https://github.com/intel/compute-runtime/releases).
 
+For CPU
 #### Windows
 `.\build.bat --use_dnnl`
 
 #### Linux
 `./build.sh --use_dnnl`
 
-To build for Intel GPU, replace dnnl_opencl_root with the path of the Intel SDK for OpenCL Applications.
-
+For GPU
 #### Windows 
 
 `.\build.bat --use_dnnl --dnnl_gpu_runtime ocl --dnnl_opencl_root "c:\program files (x86)\intelswtools\sw_dev_tools\opencl\sdk"`
