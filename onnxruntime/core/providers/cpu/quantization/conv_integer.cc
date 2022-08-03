@@ -29,10 +29,20 @@ ONNX_OPERATOR_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
     ConvInteger);
-
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    ConvInteger,
+    kOnnxDomain,
+    10,
+    uint8_t_int8_t,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
+    ConvInteger);
 Status ConvInteger::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const auto* X = context->Input<Tensor>(0);
