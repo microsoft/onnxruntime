@@ -1112,6 +1112,75 @@ at::Tensor& mm_out(
 
   return out;
 }
+// this is just for prototype, we will generate the code later.
+at::Tensor fmod_Scalar(
+    const at::Tensor& self,
+    const at::Scalar& other) {
+  ORT_LOG_FN(self, other);
+
+  if (
+      !IsSupportedType(self, {at::kBFloat16, at::kByte, at::kDouble, at::kFloat, at::kHalf, at::kInt, at::kLong, at::kShort}) ||
+      !IsSupportedType(other, {at::kBFloat16, at::kByte, at::kDouble, at::kFloat, at::kHalf, at::kInt, at::kLong, at::kShort})) {
+    return at::native::call_fallback_fn<
+        &at::native::cpu_fallback,
+        ATEN_OP(fmod_Scalar)>::call(self, other);
+  }
+  auto& invoker = GetORTInvoker(self.device());
+
+  auto ort_input_0_self = create_ort_value(invoker, self);
+  auto ort_input_0_other = create_ort_value(invoker, other);
+  auto ort_fmod_value = create_ort_value(invoker, at::Scalar(1));
+
+  std::vector<OrtValue> ort_outputs_0_Mod(1);
+
+  auto status = invoker.Invoke("Mod", {
+                                          std::move(ort_input_0_self),
+                                          std::move(ort_input_0_other),
+                                          std::move(ort_fmod_value),
+                                      },
+                               ort_outputs_0_Mod);
+  CHECK_STATUS(status);
+
+  at::TensorOptions tensor_options = self.options();
+  return aten_tensor_from_ort(
+      std::move(ort_outputs_0_Mod[0]),
+      tensor_options);
+}
+
+// this is just for prototype, we will generate the code later.
+at::Tensor fmod_Tensor(
+    const at::Tensor& self,
+    const at::Tensor& other) {
+  ORT_LOG_FN(self, other);
+
+  if (
+      !IsSupportedType(self, {at::kBFloat16, at::kByte, at::kDouble, at::kFloat, at::kHalf, at::kInt, at::kLong, at::kShort}) ||
+      !IsSupportedType(other, {at::kBFloat16, at::kByte, at::kDouble, at::kFloat, at::kHalf, at::kInt, at::kLong, at::kShort})) {
+    return at::native::call_fallback_fn<
+        &at::native::cpu_fallback,
+        ATEN_OP(fmod_Tensor)>::call(self, other);
+  }
+  auto& invoker = GetORTInvoker(self.device());
+
+  auto ort_input_0_self = create_ort_value(invoker, self);
+  auto ort_input_0_other = create_ort_value(invoker, other);
+  auto ort_fmod_value = create_ort_value(invoker, at::Scalar(1));
+
+  std::vector<OrtValue> ort_outputs_0_Mod(1);
+
+  auto status = invoker.Invoke("Mod", {
+                                          std::move(ort_input_0_self),
+                                          std::move(ort_input_0_other),
+                                          std::move(ort_fmod_value),
+                                      },
+                               ort_outputs_0_Mod);
+  CHECK_STATUS(status);
+
+  at::TensorOptions tensor_options = self.options();
+  return aten_tensor_from_ort(
+      std::move(ort_outputs_0_Mod[0]),
+      tensor_options);
+}
 
 }  // namespace aten
 

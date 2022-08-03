@@ -601,6 +601,9 @@ class ORTGen:
 
         return in_place_params, return_outputs
 
+    def _write_function_not_impl(self, writer: opgenwriter.SourceWriter, mapped_func: MappedOpFunction):
+        writer.writeline(f'throw std::runtime_error("{mapped_func.mapped_op_name} is not implemented");')
+
     # Generates code for the entire body of the function (everything between { and }.)
     # TODO: Pick the right "out" Torch parameter; do not assume the first one
     # TODO: Handle multiple results

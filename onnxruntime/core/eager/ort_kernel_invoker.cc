@@ -14,7 +14,7 @@ namespace onnxruntime {
 #define ORT_EAGER_ONNX_OPSET_VERSION 14
 
 common::Status ORTInvoker::Invoke(const std::string& op_name,
-                                  //optional inputs / outputs?
+                                  // optional inputs / outputs?
                                   const std::vector<OrtValue>& inputs,
                                   std::vector<OrtValue>& outputs,
                                   const NodeAttributes* attributes,
@@ -22,9 +22,9 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
                                   const int version) {
   std::unordered_map<std::string, int> domain_version_map = {{kOnnxDomain, ORT_EAGER_ONNX_OPSET_VERSION},
                                                              {kMSDomain, 1}};
-  //create a graph
-  Model model("test", 
-              false, 
+  // create a graph
+  Model model("test",
+              false,
               ModelMetaData(),
               ORT_TSTR(""),
               custom_op_registries_,
@@ -63,7 +63,7 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
   node.SetExecutionProviderType(execution_provider_->Type());
   std::vector<const Node*> frame_nodes{&node};
 
-  OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_provider_, [](std::string const& ) { return false; });
+  OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_provider_, [](std::string const&) { return false; });
   const KernelCreateInfo* kernel_create_info = nullptr;
   ORT_RETURN_IF_ERROR(info.TryFindKernel(&node, &kernel_create_info));
   if (!kernel_create_info) {
@@ -93,6 +93,18 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
   ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
 
   return frame.GetOutputs(outputs);
+}
+
+common::Status ORTInvoker::Invoke(const std::string& op_name,
+                                  const std::vector<OrtValue>& inputs,
+                                  std::vector<OrtValue>& outputs,
+                                  const std::string& domain) {
+  auto& kernel_functions = execution_provider_->GetKernelFunctions();
+  auto it = kernel_functions.find(op_name);
+  if (it == kernel_functions.end()) {
+    ORT_THROW("Could not find kernel name:", op_name, ", domain:", domain);
+  }
+  return it->second(inputs, outputs, *execution_provider_);
 }
 
 }  // namespace onnxruntime

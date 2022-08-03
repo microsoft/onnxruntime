@@ -43,6 +43,29 @@ using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState
 using ComputeFunc = std::function<Status(FunctionState, const OrtApi*, OrtKernelContext*)>;
 using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
 
+class IExecutionProvider;
+// this is the prototype of the signature of a onnx kernel that can be invoked directly
+// inputs: the vector of input tensors together with attributes.
+//         for example, for op Mod:
+//                      Mod (input_0, input_1, ouptut_0, fmod = 1)
+//         The kernel function signature will be:
+//                      Mod ({input_0, input_1, Tensor(1)}, {output_0})
+//         This will save the cost by create string "fmod", but rely on the order of attributes in onnx OpSchema.
+//         the order of attribute tensors are serialzied based on the order of attributes in onnx OpSchema.
+//         (The order of attributes in onnx OpSchema is fixed currently: https://github.com/onnx/onnx/blob/main/onnx/defs/schema.h#L771,
+//          but we might want to make it part of the spec to make sure we are safe)
+// outputs: the vector of output tensors. The output tensors may not be initialized yet.
+// providers: here we need a component which provide following utils to kernel function authors:
+//            1. allocators to allocate output/scratch buffer
+//            2. logger
+//            3. threadpool
+//            4. anything else?
+// for quick prototype, we just use EP to get allocator.
+using KernelFunc = std::function<Status(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs, const IExecutionProvider& provider)>;
+// the design for the key need to be further discussed.
+// in prototype, we just use op_type.
+using KernelFuncMap = std::unordered_map<std::string, KernelFunc>;
+
 struct NodeComputeInfo {
   CreateFunctionStateFunc create_state_func;
   ComputeFunc compute_func;
@@ -291,6 +314,11 @@ class IExecutionProvider {
   /** Does the EP support concurrent calls to InferenceSession::Run to execute the model.
    */
   virtual bool ConcurrentRunSupported() const { return true; }
+
+  virtual KernelFuncMap& GetKernelFunctions() const {
+    static KernelFuncMap empty = {};
+    return empty;
+  }
 
  private:
   const std::string type_;

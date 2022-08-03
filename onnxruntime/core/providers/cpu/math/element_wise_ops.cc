@@ -380,7 +380,7 @@ REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mean, 8, 12, float, Mean_8);
 REG_ELEMENTWISE_TYPED_KERNEL(Mean, 13, float, Mean_8);
 
 REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint8_t, BitShift);
-//REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint16_t, BitShift);
+// REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint16_t, BitShift);
 REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint32_t, BitShift);
 REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint64_t, BitShift);
 
@@ -1602,7 +1602,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 namespace mod_internal {
 
 template <class T>
-void BroadCastFMod(OpKernelContext* context) {
+void BroadCastFMod(const Tensor& X, const Tensor& Y, Tensor& output) {
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
         const T& X = per_iter_bh.ScalarInput0<T>();
@@ -1635,7 +1635,16 @@ void BroadCastFMod(OpKernelContext* context) {
                        });
       }};
 
-  UntypedBroadcastTwo(*context, funcs);
+  UntypedBroadcastTwo(X, Y, output, funcs);
+}
+
+template <class T>
+void BroadCastFMod(OpKernelContext* context) {
+  const Tensor& X = *context->Input<Tensor>(0);
+  const Tensor& Y = *context->Input<Tensor>(1);
+  InputBroadcaster input_broadcaster(X, Y);
+  Tensor& output = *context->Output(0, input_broadcaster.GetOutputShape());
+  BroadCastFMod<T>(X, Y, output);
 }
 
 template <class T>
@@ -1648,7 +1657,7 @@ inline T Modulus(T x, T y) {
 }
 
 template <class T>
-void BroadCastMod(OpKernelContext* context) {
+void BroadCastMod(const Tensor& X, const Tensor& Y, Tensor& output) {
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
         const T& X = per_iter_bh.ScalarInput0<T>();
@@ -1681,10 +1690,19 @@ void BroadCastMod(OpKernelContext* context) {
                        });
       }};
 
-  UntypedBroadcastTwo(*context, funcs);
+  UntypedBroadcastTwo(X, Y, output, funcs);
 }
 
-void BroadCastMLFloat16FMod(OpKernelContext* context) {
+template <class T>
+void BroadCastMod(OpKernelContext* context) {
+  const Tensor& X = *context->Input<Tensor>(0);
+  const Tensor& Y = *context->Input<Tensor>(1);
+  InputBroadcaster input_broadcaster(X, Y);
+  Tensor& output = *context->Output(0, input_broadcaster.GetOutputShape());
+  BroadCastMod<T>(X, Y, output);
+}
+
+void BroadCastMLFloat16FMod(const Tensor& X, const Tensor& Y, Tensor& output) {
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
         const auto X = per_iter_bh.ScalarInput0<MLFloat16>();
@@ -1719,7 +1737,15 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
                        });
       }};
 
-  UntypedBroadcastTwo(*context, funcs);
+  UntypedBroadcastTwo(X, Y, output, funcs);
+}
+
+void BroadCastMLFloat16FMod(OpKernelContext* context) {
+  const Tensor& X = *context->Input<Tensor>(0);
+  const Tensor& Y = *context->Input<Tensor>(1);
+  InputBroadcaster input_broadcaster(X, Y);
+  Tensor& output = *context->Output(0, input_broadcaster.GetOutputShape());
+  BroadCastMLFloat16FMod(X, Y, output);
 }
 
 template <class T, typename Enable = void>
@@ -1767,6 +1793,48 @@ Status Mod::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+template <typename T>
+Status ModImpl(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
+  const auto& X = inputs[0].template Get<Tensor>();
+  const auto& Y = inputs[1].template Get<Tensor>();
+  const auto& fmod_tensor = inputs[2].template Get<Tensor>();
+  int64_t fmod = fmod_tensor.template Data<int64_t>()[0];
+  ORT_ENFORCE(fmod, "fmod attribute must be true for floating point types");
+  auto& output = *outputs[0].template GetMutable<Tensor>();
+  mod_internal::BroadCastFMod<T>(X, Y, output);
+  return Status::OK();
+}
+
+template Status ModImpl<float>(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs);
+template Status ModImpl<double>(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs);
+
+template <>
+Status ModImpl<int64_t>(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
+  const auto& X = inputs[0].template Get<Tensor>();
+  const auto& Y = inputs[1].template Get<Tensor>();
+  const auto& fmod_tensor = inputs[2].template Get<Tensor>();
+  int64_t fmod = fmod_tensor.template Data<int64_t>()[0];
+  auto& output = *outputs[0].template GetMutable<Tensor>();
+  if (fmod)
+    mod_internal::BroadCastFMod<int64_t>(X, Y, output);
+  else {
+    mod_internal::BroadCastMod<int64_t>(X, Y, output);
+  }
+  return Status::OK();
+}
+
+template <>
+Status ModImpl<MLFloat16>(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
+  const auto& X = inputs[0].template Get<Tensor>();
+  const auto& Y = inputs[1].template Get<Tensor>();
+  const auto& fmod_tensor = inputs[2].template Get<Tensor>();
+  int64_t fmod = fmod_tensor.template Data<int64_t>()[0];
+  ORT_ENFORCE(fmod, "fmod attribute must be true for floating point types");
+  auto& output = *outputs[0].template GetMutable<Tensor>();
+  mod_internal::BroadCastMLFloat16FMod(X, Y, output);
+  return Status::OK();
+}
+
 // Broadcast two inputs with no parallelization.
 //
 // This function is type agnostic, and uses function pointers instead of std::function, to minimize binary size.
@@ -1777,6 +1845,15 @@ void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFun
   InputBroadcaster input_broadcaster(*context.Input<Tensor>(0), *context.Input<Tensor>(1));
   OutputBroadcaster output_broadcaster(input_broadcaster.GetSpanSize(),
                                        *context.Output(0, input_broadcaster.GetOutputShape()));
+  BroadcastHelper broadcast_helper(input_broadcaster, output_broadcaster, user_data);
+
+  BroadcastLooper(broadcast_helper, funcs);
+}
+
+void UntypedBroadcastTwo(const Tensor& input_0, const Tensor& input_1, Tensor& output, const ProcessBroadcastSpanFuncs& funcs, void* user_data) {
+  InputBroadcaster input_broadcaster(input_0, input_1);
+  OutputBroadcaster output_broadcaster(input_broadcaster.GetSpanSize(),
+                                       output);
   BroadcastHelper broadcast_helper(input_broadcaster, output_broadcaster, user_data);
 
   BroadcastLooper(broadcast_helper, funcs);

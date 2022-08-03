@@ -407,6 +407,15 @@ class OrtOpTests(unittest.TestCase):
             # check result between nonzero.out and nonzero
             assert torch.equal(ort_result.to("cpu"), ort_out_tensor.to("cpu"))
 
+    def test_mod_prototype(self):
+        x = torch.ones(2,3) * 4
+        y = torch.ones(2,3) * 3
+        z = torch.fmod(x, y)
+        ort_x = x.to('ort')
+        ort_y = y.to('ort')
+        ort_z = torch.fmod(ort_x, ort_y)
+        assert torch.allclose(z, ort_z.cpu())
+
     def test_mm(self):
         device = self.get_device()
 

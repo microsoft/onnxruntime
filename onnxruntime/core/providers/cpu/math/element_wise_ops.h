@@ -950,6 +950,11 @@ static void ParallelizeSingleSpan(TBroadcastHelper& helper, const ProcessBroadca
 // via BroadcastHelper.GetUserData().
 void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFuncs& funcs, void* user_data = nullptr);
 
+void UntypedBroadcastTwo(const Tensor& input_0, const Tensor& input_1, Tensor& output, const ProcessBroadcastSpanFuncs& funcs, void* user_data = nullptr);
+
+template <typename T>
+Status ModImpl(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs);
+
 // Broadcast two inputs with parallelization.
 //
 // Operator usage is the same as the parallelization is opaque to the operator.
@@ -995,8 +1000,8 @@ struct TensorAllocator {
   template <typename T>
   std::unique_ptr<Tensor> Allocate(const TensorShape& shape) const {
     return std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
-                                            shape,
-                                            allocator_);
+                                    shape,
+                                    allocator_);
   }
 
  private:

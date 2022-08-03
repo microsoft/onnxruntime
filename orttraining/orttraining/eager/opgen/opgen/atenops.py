@@ -135,6 +135,9 @@ hand_implemented = {
     "aten::_copy_from_and_resize": SignatureOnly(),
     "aten::resize_": SignatureOnly(),
     "aten::as_strided": SignatureOnly(),
+    # move fmod to signature only for prototype.
+    "aten::fmod.Scalar": SignatureOnly(),
+    "aten::fmod.Tensor": SignatureOnly(),
     # manually implement Slice using stride and offset.
     "aten::slice.Tensor": SignatureOnly(),
     "aten::addmm": Gemm("mat1", "mat2", "self", alpha="alpha", beta="beta"),
@@ -146,8 +149,6 @@ hand_implemented = {
     ),  # the default constant is 0, so don't need to speicify attribute
     "aten::sum.dim_IntList": ReduceSum("self", "dim", keepdims="keepdim"),
     "aten::threshold_backward": ReluGrad("grad_output", "self"),
-    "aten::fmod.Scalar": Mod("self", "other", fmod=1),
-    "aten::fmod.Tensor": Mod("self", "other", fmod=1),
     "aten::softshrink": Shrink("self", bias="lambd", lambd="lambd"),  # yes, bias is set to 'lambd'
     "aten::hardshrink": Shrink("self", bias=0, lambd="lambd"),
     "aten::gelu": Gelu("self"),

@@ -15,6 +15,7 @@
 #endif
 
 #include "core/framework/compute_capability.h"
+#include "core/providers/cpu/kernerl_functions.h"
 
 namespace {
 struct KernelRegistryAndStatus {
@@ -2180,4 +2181,12 @@ std::shared_ptr<KernelRegistry> CPUExecutionProvider::GetKernelRegistry() const 
 std::unique_ptr<IDataTransfer> CPUExecutionProvider::GetDataTransfer() const {
   return std::make_unique<CPUDataTransfer>();
 }
+
+KernelFuncMap& CPUExecutionProvider::GetKernelFunctions() const {
+  static KernelFuncMap kernel_functions = {
+      {"Mod", CPU_EP::Mod},
+  };
+  return kernel_functions;
+}
+
 }  // namespace onnxruntime
