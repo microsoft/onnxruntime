@@ -133,6 +133,10 @@ In your CocoaPods `Podfile`, add the `onnxruntime-c`, `onnxruntime-mobile-c`, `o
 
 Run `pod install`.
 
+#### Custom build
+
+Refer to the instructions for creating a [custom iOS package](../build/custom.md#ios).
+
 ### Install on Android
 
 #### Java/Kotlin
@@ -160,6 +164,10 @@ In your Android Studio Project, make the following changes to:
 #### C/C++
 
 Download the [onnxruntime-android](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android) (full package) or [onnxruntime-mobile](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile) (mobile package) AAR hosted at MavenCentral, change the file extension from `.aar` to `.zip`, and unzip it. Include the header files from the `headers` folder, and the relevant `libonnxruntime.so` dynamic library from the `jni` folder in your NDK project.
+
+#### Custom build
+
+Refer to the instructions for creating a [custom Android package](../build/custom.md#android).
 
 ## ORT Training package
 

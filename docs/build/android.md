@@ -132,3 +132,7 @@ Android NNAPI Execution Provider can be built using building commands in [Androi
 ## Test Android changes using emulator
 
 See [Testing Android Changes using the Emulator](https://github.com/microsoft/onnxruntime/blob/master/docs/Android_testing.md).
+
+## Building a Custom Android Package
+
+Refer to the documentation for [custom builds](./custom.md). In particular, see the section about the [Android Package](./custom.md#android).
