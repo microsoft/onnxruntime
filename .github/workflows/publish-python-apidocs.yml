@@ -21,7 +21,7 @@ jobs:
         run: |
           cd docs/python
           pip install -r requirements.txt
-          pip install -i index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ ort-nightly
+          pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ ort-nightly
           pip list
       - name: Generate Python docs with Sphinx
         run: |
