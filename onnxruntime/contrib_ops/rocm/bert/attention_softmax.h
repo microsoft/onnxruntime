@@ -192,9 +192,9 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
   T thread_data = -ROCMRT_INF_F;
   if (threadIdx.x < all_sequence_length) {
     if (add_before_softmax == nullptr) {
-      thread_data = T(input[index]) * T(rsqrt_head_size);
+      thread_data = input[index] * T(rsqrt_head_size);
     } else {
-      thread_data = T(input[index] + add_before_softmax[index]) * T(rsqrt_head_size);
+      thread_data = (input[index] + add_before_softmax[index]) * T(rsqrt_head_size);
     }
 
     const int sequence_index = blockIdx.x % sequence_length;
@@ -229,12 +229,12 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
 
   if (skip_softmax) {
     if (threadIdx.x < all_sequence_length) {
-      output[index] = T(thread_data);
+      output[index] = thread_data;
     }
     return;
   }
 
-  const T max = BlockReduce(tmp_storage).Reduce(thread_data, hipcub::Max(), all_sequence_length);
+  const T max = BlockReduce(tmp_storage).Reduce(thread_data, hipcub::Max());
 
   // Store max value
   if (threadIdx.x == 0) {
@@ -243,7 +243,7 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
   __syncthreads();
 
   T thread_data_exp = threadIdx.x < all_sequence_length ? expf(thread_data - max_block) : 0.0f;
-  const T sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, hipcub::Sum(), all_sequence_length);
+  const T sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, hipcub::Sum());
 
   // Store value of 1.0/sum
   if (threadIdx.x == 0) {
