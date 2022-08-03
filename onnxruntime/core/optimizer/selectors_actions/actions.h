@@ -147,12 +147,12 @@ struct ReplaceWithNewFixed : public ReplaceWithNew {
         value_moves_{std::move(value_moves)} {
   }
 
+  NodeAttributes ExtraAttributes(const RuntimeState&) const override { return extra_attrs_; }
+
  protected:
   std::string OpType(const RuntimeState&) const override { return op_type_; }
 
   std::string Domain(const RuntimeState&) const override { return domain_; }
-
-  NodeAttributes ExtraAttributes(const RuntimeState&) const override { return extra_attrs_; }
 
   std::vector<NodeAndMoveInfo> ValueMoves(const RuntimeState&) const override { return value_moves_; }
 

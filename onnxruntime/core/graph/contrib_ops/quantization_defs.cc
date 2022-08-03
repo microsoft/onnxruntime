@@ -595,7 +595,7 @@ The output tensor has the same shape.
 )DOC")
       .Attr("axis", "apply softmax to elements for dimensions axis,"
       "or all dims along with axis according to op-version", AttributeProto::INT, static_cast<int64_t>(-1))
-      .Attr("opset", "opset version of corresponding SoftMax.", AttributeProto::INT, static_cast<int64_t>(1))
+      .Attr("opset", "opset version of corresponding SoftMax.", AttributeProto::INT)
       .Input(0, "X", "The input tensor", "T")
       .Input(1, "X_scale", "Scale of quantized input 'X'. It must be a scalar.", "tensor(float)")
       .Input(2, "x_zero_point",
