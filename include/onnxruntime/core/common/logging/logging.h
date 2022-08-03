@@ -243,6 +243,12 @@ class Logger {
   void SetVerbosity(int vlog_level) noexcept { max_vlog_level_ = vlog_level; }
 
   /**
+     Get the log id for log messages to be output.
+     @returns The log id.
+  */
+  std::string GetLogID() const noexcept { return id_; }
+
+  /**
      Check if output is enabled for the provided LogSeverity and DataType values.
      @param severity The severity.
      @param data_type Type of the data.
