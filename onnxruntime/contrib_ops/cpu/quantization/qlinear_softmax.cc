@@ -330,15 +330,14 @@ Status QLinearSoftmax::ComputeImplOpset13(OpKernelContext* context,
   return status;
 }
 
-#define REGISTER_QLINEAR_LOOKUPTABLE_TYPED_KERNEL(op_name, version, data_type, KERNEL_CLASS) \
-  ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(                                                         \
-      op_name, version, data_type,                                                           \
-      KernelDefBuilder()                                                                     \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()),                    \
-      KERNEL_CLASS);
-
-REGISTER_QLINEAR_LOOKUPTABLE_TYPED_KERNEL(QLinearSoftmax, 1, uint8_t, QLinearSoftmax);
-REGISTER_QLINEAR_LOOKUPTABLE_TYPED_KERNEL(QLinearSoftmax, 1, int8_t, QLinearSoftmax);
+ONNX_CPU_OPERATOR_MS_KERNEL(
+    QLinearSoftmax,
+    1,
+    KernelDefBuilder().TypeConstraint(
+        "T",
+        {DataTypeImpl::GetTensorType<uint8_t>(),
+         DataTypeImpl::GetTensorType<int8_t>()}),
+    QLinearSoftmax)
 
 }  // namespace contrib
 }  // namespace onnxruntime

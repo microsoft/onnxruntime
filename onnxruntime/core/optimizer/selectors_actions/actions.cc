@@ -3,8 +3,6 @@
 
 #include "core/optimizer/selectors_actions/actions.h"
 
-#include <string>
-
 #include "core/framework/op_kernel.h"
 #include "core/optimizer/selectors_actions/helpers.h"
 #include "core/optimizer/utils.h"
