@@ -86,10 +86,6 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
       global_scratch_buffer.get(),
       global_scratch_bytes));
 
-  AutoDestoryCudaStream memory_copy_stream;
-  cudaStream_t& memcpy_stream = memory_copy_stream.Get();
-  CUDA_RETURN_IF_ERROR(cudaStreamCreate(&memcpy_stream));
-
   // Copy batch_global_num to CPU
   size_t pinned_buffer_bytes = GetPinnedBufferSize(batch_size);
   auto pinned_buffer = AllocateBufferOnCPUPinned<void>(pinned_buffer_bytes);
@@ -98,14 +94,14 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                        batch_global_num_buffer.get(),
                                        batch_size * sizeof(int),
                                        cudaMemcpyDeviceToHost,
-                                       memcpy_stream));
+                                       stream));
 
   // Create an event to make sure the async copy is finished before reading the data.
   AutoDestoryCudaEvent new_event;
   cudaEvent_t& is_copy_done = new_event.Get();
 
   CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&is_copy_done, cudaEventDisableTiming));
-  CUDA_RETURN_IF_ERROR(cudaEventRecord(is_copy_done, memcpy_stream));
+  CUDA_RETURN_IF_ERROR(cudaEventRecord(is_copy_done, stream));
 
   // Use GEMM for fully connection.
   int m = batch_size * sequence_length;
@@ -182,7 +178,6 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           device_prop,
           cublas,
           stream,
-          memcpy_stream,
           is_copy_done,
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
           reinterpret_cast<const CudaT*>(mask->template Data<T>()),

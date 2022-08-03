@@ -24,8 +24,7 @@ size_t GetLongformerAttentionWorkspaceSize(
 bool LaunchLongformerAttentionKernel(
     const cudaDeviceProp& device_prop,  // Device Properties
     cublasHandle_t cublas,              // Cublas handle
-    cudaStream_t stream,                // CUDA stream for computing
-    cudaStream_t memcpy_stream,         // CUDA stream for copying data
+    cudaStream_t stream,                // CUDA stream
     cudaEvent_t &is_copy_done,          // CUDA event to synchronize data copy
     const void* input,                  // Input tensor
     const void* attention_mask,         // Attention mask with shape (B, S)
