@@ -58,8 +58,8 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   const float alpha = 1.0f;
   const float zero = 0.0f;
 
-  if (MatMulImpl<T>(this, helper, reinterpret_cast<const T*>(X->template Data<T>()),
-                    reinterpret_cast<const T*>(W->template Data<T>()),
+  if (MatMulImpl<T>(this, helper, reinterpret_cast<const T*>(X->Data<T>()),
+                    reinterpret_cast<const T*>(W->Data<T>()),
                     reinterpret_cast<T*>(gemm_buffer.get()),
                     X->Shape(), W->Shape(),
                     transa, transb, trans_batch_a, trans_batch_b, alpha, zero) != Status::OK()) {
@@ -73,8 +73,8 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
                                   static_cast<int>(fast_gelu_input_length),
                                   static_cast<int>(bias_length),
                                   reinterpret_cast<HipT*>(gemm_buffer.get()),
-                                  (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->template Data<T>()) : nullptr,
-                                  reinterpret_cast<HipT*>(Y->template MutableData<T>()),
+                                  (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr,
+                                  reinterpret_cast<HipT*>(Y->MutableData<T>()),
                                   false)) {
     HIP_CALL(hipGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
