@@ -37,3 +37,6 @@ RUN apt-get update \
 # Install non-PyTorch Python dependencies for OnnxRuntime
 RUN pip install packaging "wheel>=0.35.1" parameterized
 
+# Dependencies required to build PyTorch
+RUN pip3 install astunparse pyyaml setuptools cffi typing_extensions future six requests dataclasses
+RUN pip3 install mkl mkl-devel
