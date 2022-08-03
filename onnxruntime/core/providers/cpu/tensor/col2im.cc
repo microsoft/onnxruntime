@@ -66,20 +66,42 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
 
   std::cout << "\n\tStatus Col2Im<T>::Compute() --> math::Col2imNd<>()" << std::endl;
 
-  math::Col2imNd<T, CPUMathUtil, StorageOrder::NCHW>(
-    col_input_data,                                   // const T* data_col,
-    image_shape->Data<int64_t>(),                     // const int64_t* img_shape,
-    Yshape.Slice(2).GetDims().data(),                 // const int64_t* output_shape,
-    col_input_C,                                      // int64_t channels_col, --> output_num_channels * kernel_shape_size
-    image_shape_size,                                 // int64_t img_size,
-    kernel_shape->Data<int64_t>(),                    // const int64_t* kernel_shape,
-    col2im_attrs_.strides.data(),                     // const int64_t* stride,
-    col2im_attrs_.dilations.data(),                   // const int64_t* dilation,
-    col2im_attrs_.pads.data(),                        // const int64_t* pad,
-    kernel_shape->Shape().Size(),                     // ptrdiff_t N, --> number of spatial dims for image
-    Ydata,                                            // T* data_img,
-    &CPUMathUtil::Instance()                          // Provider* provider
-    );
+  if (image_shape->Shape()[0] == 2) {
+    std::cout << "image_shape->Shape()[0] == 2 --> Col2Im" << std::endl;
+    math::Col2im<float, CPUMathUtil, StorageOrder::NCHW>(
+      col_input_data,
+      col_input_C,
+      image_shape->Data<int64_t>()[0],
+      image_shape->Data<int64_t>()[1],
+      kernel_shape->Data<int64_t>()[0],
+      kernel_shape->Data<int64_t>()[1],
+      col2im_attrs_.dilations[0],
+      col2im_attrs_.dilations[1],
+      col2im_attrs_.pads[0],
+      col2im_attrs_.pads[1],
+      col2im_attrs_.pads[2],
+      col2im_attrs_.pads[3],
+      col2im_attrs_.strides[0],
+      col2im_attrs_.strides[1],
+      Ydata,
+      &CPUMathUtil::Instance());
+  } else {
+    std::cout << "image_shape->Shape()[0] != 2 --> Col2ImNd (nd=" << image_shape->Shape()[0] << ") " << std::endl;
+    math::Col2imNd<T, CPUMathUtil, StorageOrder::NCHW>(
+      col_input_data,                                   // const T* data_col,
+      image_shape->Data<int64_t>(),                     // const int64_t* img_shape,
+      Yshape.Slice(2).GetDims().data(),                 // const int64_t* output_shape,
+      col_input_C,                                      // int64_t channels_col, --> output_num_channels * kernel_shape_size
+      image_shape_size,                                 // int64_t img_size,
+      kernel_shape->Data<int64_t>(),                    // const int64_t* kernel_shape,
+      col2im_attrs_.strides.data(),                     // const int64_t* stride,
+      col2im_attrs_.dilations.data(),                   // const int64_t* dilation,
+      col2im_attrs_.pads.data(),                        // const int64_t* pad,
+      kernel_shape->Shape().Size(),                     // ptrdiff_t N, --> number of spatial dims for image
+      Ydata,                                            // T* data_img,
+      &CPUMathUtil::Instance()                          // Provider* provider
+      );
+  }
   std::cout << "\n\n Return Col2Im<T>::Compute() --> "; for (auto i=0; i < Yshape.Size(); ++i) std::cout <<  Ydata[i] << ", "; std::cout << ") with shape " << Yshape << std::endl << std::endl;
 
   return Status::OK();

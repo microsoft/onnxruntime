@@ -384,7 +384,7 @@ void Im2col<T, StorageOrder::NCHW>::operator()(
   std::cout << ",\n\tconst int64_t* kernel_shape={"; for (auto i=0; i < rank; ++i) std::cout << kernel_shape[i] << ", "; std::cout << "}";
   std::cout << ",\n\tconst int64_t* stride={"; for (auto i=0; i < rank; ++i) std::cout << stride[i] << ", "; std::cout << "}";
   std::cout << ",\n\tconst int64_t* dilation={"; for (auto i=0; i < rank; ++i) std::cout << dilation[i] << ", "; std::cout << "}";
-  std::cout << ",\n\tconst int64_t* pad={"; for (auto i=0; i < rank; ++i) std::cout << pad[i] << ", "; std::cout << "}";
+  std::cout << ",\n\tconst int64_t* pad={"; for (auto i=0; i < 2*rank; ++i) std::cout << pad[i] << ", "; std::cout << "}";
   std::cout << ",\n\tptrdiff_t rank=" << rank;
   std::cout << ",\n\tT* data_col= preallocated pointer to write at {"; for (auto i=0; i < output_shape_size; ++i) std::cout << data_col[i] << ", "; std::cout << "}";
   std::cout << ",\n\tbool accumulate_output=" << accumulate_output;
