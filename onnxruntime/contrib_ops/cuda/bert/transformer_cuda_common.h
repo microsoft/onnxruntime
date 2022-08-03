@@ -28,25 +28,6 @@ class AutoDestoryCudaEvent {
   cudaEvent_t cuda_event_;
 };
 
-// A wrapper class of cudaStream_t to destroy the stream automatically for avoiding memory leak.
-class AutoDestoryCudaStream {
- public:
-  AutoDestoryCudaStream() : cuda_stream_(nullptr) {
-  }
-
-  ~AutoDestoryCudaStream() {
-    if (cuda_stream_ != nullptr)
-      cudaStreamDestroy(cuda_stream_);
-  }
-
-  cudaStream_t& Get() {
-    return cuda_stream_;
-  }
-
- private:
-  cudaStream_t cuda_stream_;
-};
-
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
