@@ -17,7 +17,7 @@ Foreach
   3 Compile
 ```
 
-GetCapability returns a collection of IndexedSubGraphs that the given execution provider can run. During layout transformation, new nodes (Transpose, Gather etc) can be added within these subgraphs. Therefore, calling GetCapability for the second time ensures that the EP can claim these new nodes as well as fuse sub graphs. This is important for perf. Without this the execution will unnecessarily switch to a fallback EP (in most cases CPU EP).
+GetCapability returns a collection of IndexedSubGraphs that the given execution provider can run. During layout transformation, new nodes (Transpose, Gather etc) can be added within these subgraphs. Therefore, calling GetCapability for the second time ensures that the EP can claim these new nodes as well as fuse subgraphs. This is important for perf. Without this the execution will unnecessarily switch to a fallback EP (in most cases CPU EP).
 
 *IMPORTANT NOTE* Layout transformation creates new nodes for layout sensitive ops with domain as "kMSInternalNHWCDomain" and copies the type information and the adjusted shape information from the original node to this new node. If the graph is serialized at this point, the type and shape inference information is lost and it cannot be inferred again on load because the node's domain and format are changed. This is why layout transformation is *NOT ENABLED* when Graph Partitioner Mode is kAssignOnly.
 
@@ -31,7 +31,7 @@ Layout Transformer does multiple top to bottom passes on the graph in order to p
 ### Optimize the converted graph
 After the first pass is complete, layout transformer calls the transpose optimizer to remove all the canceling as well as redundant transposes from the graph. The following passes happen as part of transpose optimization.
 
-1. Iterate over sorted nodes in reverse order to find which outputs have paths through supported ops to  transpose nodes. Transposes will be pulled pushed towards these outputs. Graph is not altered in this pass. [Code](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc#L1875)
+1. Iterate over sorted nodes in reverse order to find which outputs have paths through supported ops to transpose nodes. Transposes will be moved towards these outputs. Graph is not altered in this pass. [Code](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc#L1875)
 
 2. Push transposes through applicable nodes and remove canceling transposes. At the end of this pass the model will be efficient and will only contain the transpose ops which are necessary for correctness. [Code](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc#L1905)
 
