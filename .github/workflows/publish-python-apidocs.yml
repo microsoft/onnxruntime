@@ -1,10 +1,8 @@
 name: Update Python API Docs
 on:
-  workflow_dispatch:
   push:
     branches:
       - master
-      - snnn/patch-7
 
 jobs:
   publish:
