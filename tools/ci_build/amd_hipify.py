@@ -109,10 +109,18 @@ provider_excluded_files = [
     "math/softmax_impl.cu",
     "math/softmax_warpwise_impl.cuh",
     "math/softmax.cc",
+    "nn/batch_norm.cc",
+    "nn/batch_norm.h",
     "nn/conv.cc",
     "nn/conv.h",
     "nn/conv_transpose.cc",
     "nn/conv_transpose.h",
+    "nn/instance_norm.cc",
+    "nn/instance_norm.h",
+    "nn/instance_norm_impl.cu",
+    "nn/instance_norm_impl.h",
+    "nn/lrn.cc",
+    "nn/lrn.h",
     "nn/max_pool_with_index.cu",
     "nn/max_pool_with_index.h",
     "nn/pool.cc",
@@ -309,9 +317,6 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace("hipdnn", "miopen")
     s = s.replace("HIPDNN_STATUS_SUCCESS", "miopenStatusSuccess")
     s = s.replace("HIPDNN", "MIOPEN")
-    s = s.replace("MIOPEN_BATCHNORM_SPATIAL", "miopenBNSpatial")
-    s = s.replace("MIOPEN_BATCHNORM_PER_ACTIVATION", "miopenBNPerActivation")
-    s = s.replace("MIOPEN_LRN_CROSS_CHANNEL", "miopenLRNCrossChannel")
 
     # CUSPARSE -> HIPSPARSE
     s = s.replace("CUSPARSE", "HIPSPARSE")

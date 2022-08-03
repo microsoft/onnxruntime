@@ -69,7 +69,7 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
     CudnnTensor stats_desc;
     ORT_RETURN_IF_ERROR(stats_desc.Set(data_desc, CUDNN_BATCHNORM_SPATIAL));
 
-    CUDNN_RETURN_IF_ERROR(BatchNormalizationForwardTrainingHelper(
+    CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
         CudnnHandle(),
         CUDNN_BATCHNORM_SPATIAL,
         &one,
@@ -116,7 +116,7 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(unused_bias.get(), 0, stats_byte_count, Stream()));
 
     // first, compute mean and variance per-instance per-channel using cudnnBatchNorm training
-    CUDNN_RETURN_IF_ERROR(BatchNormalizationForwardTrainingHelper(
+    CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
         CudnnHandle(),
         CUDNN_BATCHNORM_SPATIAL,
         &one,
@@ -207,7 +207,7 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
     auto bias_data_fp32 = GetScratchBuffer<float>(C);
     Impl_Cast<CudaT, float>(Stream(), bias_data, bias_data_fp32.get(), C);
 
-    CUDNN_RETURN_IF_ERROR(BatchNormalizationForwardTrainingHelper(
+    CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
         CudnnHandle(),
         CUDNN_BATCHNORM_SPATIAL,
         &one,
@@ -259,7 +259,7 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(unused_bias.get(), 0, stats_byte_count, Stream()));
 
     // first, compute mean and variance per-instance per-channel using cudnnBatchNorm training
-    CUDNN_RETURN_IF_ERROR(BatchNormalizationForwardTrainingHelper(
+    CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
         CudnnHandle(),
         CUDNN_BATCHNORM_SPATIAL,
         &one,

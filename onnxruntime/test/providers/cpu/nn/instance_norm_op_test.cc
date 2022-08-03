@@ -116,8 +116,8 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch2) {
 #endif
 }
 
-// Only CUDA and ROCm kernels have float 16 support
-#if defined(USE_CUDA) || defined(USE_ROCM)
+// Only CUDA kernel has float 16 support
+#ifdef USE_CUDA
 
 TEST(InstanceNormalizationOpTest, InstanceNormBatch1_fp16) {
   OpTester test("InstanceNormalization");
