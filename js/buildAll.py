@@ -13,6 +13,7 @@ build_dir = ["wasm", "wasm_SIMD", "wasm_threaded", "wasm_SIMD_threaded"]
 build_flags = ["", " --enable_wasm_simd", " --enable_wasm_threads", " --enable_wasm_simd --enable_wasm_threads "]
 wasm_file_names = ["ort-wasm.wasm", "ort-wasm-simd.wasm", "ort-wasm-threaded.wasm", "ort-wasm-simd-threaded.wasm"]
 js_file_names = ["ort-wasm.js", "ort-wasm-threaded.worker.js", "ort-wasm-threaded.js"]
+build_dir_js = ["wasm", "wasm_threaded", "wasm_threaded"]
 
 default_flags = " --build_wasm --skip_tests --skip_submodule_sync --parallel "
 BinariesDirectory = ".\\build\\"
@@ -44,7 +45,7 @@ parser.add_argument(
 parser.add_argument(
     "--copy",
     choices=["Release", "Debug", "RelWithDebInfo"],
-    help="copy WASM artifacts to destination folders- {Release,Debug,RelWithDebInfo}",
+    help="copy WASM artifacts to destination folders - {Release,Debug,RelWithDebInfo}",
 )
 args = parser.parse_args()
 configuration = "none"
@@ -59,8 +60,7 @@ if args.config:
             + configuration
             + default_flags
             + " --build_dir "
-            + BinariesDirectory
-            + path
+            + os.path.join(BinariesDirectory, path)
             + build_flags[i]
         )
         p = subprocess.Popen(command, shell=True)
@@ -68,18 +68,20 @@ if args.config:
 
 # copy the files to the right location
 if args.copy:
-    configuration = "\\" + args.copy + "\\"
+    configuration = args.copy
     ## Copying WASM artifacts
     for i, file_name in enumerate(wasm_file_names):
-        shutil.copyfile(BinariesDirectory + build_dir[i] + configuration + file_name, Dist_Path + file_name)
+        shutil.copyfile(
+            os.path.join(BinariesDirectory, build_dir[i], configuration, file_name), os.path.join(Dist_Path, file_name)
+        )
 
     ## Copying JS binding files
-    file_name = "ort-wasm.js"
-    shutil.copyfile(BinariesDirectory + "\\wasm\\" + configuration + file_name, Binding_Path + file_name)
-    file_name = "ort-wasm-threaded.worker.js"
-    shutil.copyfile(BinariesDirectory + build_dir[2] + configuration + file_name, Binding_Path + file_name)
-    file_name = "ort-wasm-threaded.js"
-    shutil.copyfile(BinariesDirectory + build_dir[2] + configuration + file_name, Binding_Path + file_name)
+    for i, file_name in enumerate(js_file_names):
+        shutil.copyfile(
+            os.path.join(BinariesDirectory, build_dir_js[i], configuration, file_name),
+            os.path.join(Binding_Path, file_name),
+        )
+
 ####
 
 # build NPM
