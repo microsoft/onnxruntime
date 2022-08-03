@@ -177,12 +177,13 @@ TEST(CheckpointApiTest, LoadCheckpointToModel) {
 
   // Phase 3: Make sure the Model's weights are not equal to zero after loading the new ones.
   // Load imported initializers into the Model
-  for (auto& init : *(p_model.mutable_graph()->mutable_initializer())) {
-    // Convert the tensor bytes to a float array to compare.
+  for (auto& init : p_model.graph().initializer()) {
+    // Convert the tensor bytes to a float vector to compare.
     size_t len = init.raw_data().size() / sizeof(float);
-    float float_values[len];
-    std::memcpy(float_values, init.raw_data().data(), init.raw_data().size());
+    std::vector<float> float_values(len);
+    std::copy(init.raw_data().data(), init.raw_data().data() + init.raw_data().size(), reinterpret_cast<char*>(&float_values.front()));
 
+    // Make sure the weights are no longer a zero.
     for (size_t i = 0; i < len; i++) {
       ASSERT_NE(float_values[i], 0.0f);
     }
