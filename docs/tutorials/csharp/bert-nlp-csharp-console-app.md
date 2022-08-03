@@ -22,7 +22,7 @@ In order to be able to preprocess our text in C# we will leverage the open sourc
 - BERT Base Uncased
 - BERT Large Uncased
 
-There are many models (including the one for this tutorial) that have been finetuned based on these base models. The tokenizer for the model is still the same as the base model that it was finetuned from.
+There are many models (including the one for this tutorial) that have been fine tuned based on these base models. The tokenizer for the model is still the same as the base model that it was fine tuned from.
 
 ## Contents
 {: .no_toc }
@@ -46,7 +46,7 @@ To run in the cloud with Azure Machine Learning:
 
 ## Use Hugging Face to download the BERT model
 
-Hugging Face has a great API for downloading open source models and then we can use python and pytorch to export them to onnx format. This is a great option when using an open source model that is not already part of the [ONNX Model Zoo](https://github.com/onnx/models). 
+Hugging Face has a great API for downloading open source models and then we can use python and pytorch to export them to ONNX format. This is a great option when using an open source model that is not already part of the [ONNX Model Zoo](https://github.com/onnx/models). 
 
 ### Steps to download and export our model
 
@@ -110,7 +110,7 @@ torch.onnx.export(model,
 ## Understanding the model
 When taking a prebuilt model and operationalizing it, its useful to take a moment and understand the models pre and post processing, and the input/output shapes and labels. Many models have sample code provided in Python. We will be inferencing our model with C# but first lets test it and see how its done in Python. This will help us with our C# logic in the next step.
 
-- Create the `preprocess`, `postprocess`, `init` and `run` fuctions in python to test the model.
+- Create the `preprocess`, `postprocess`, `init` and `run` functions in python to test the model.
 
 ```python
 import os
@@ -258,7 +258,7 @@ namespace MyApp // Note: actual namespace depends on the project name.
     }
 ```
 
-- Create a sentence (question and context) and tokenize the sentence with the `BertUncasedLargeTokenizer`. The base model for this finetuned model was the BERT Uncased Large so the tokenizer is the same.
+- Create a sentence (question and context) and tokenize the sentence with the `BertUncasedLargeTokenizer`. The base model for this fine tuned model was the BERT Uncased Large so the tokenizer is the same.
 
 ```csharp
   var sentence = "{\"question\": \"Where is Bob Dylan From?\", \"context\": \"Bob Dylan is from Duluth, Minnesota and is an American singer-songwriter\"}";
@@ -362,7 +362,7 @@ In this example we created a simple console app however this could easily be imp
 
 ## Next steps
 
-There are many different BERT models that have been finetuned for different tasks and different base models you could finetune for your specific task. This code will work for most BERT models, just update the input and output and postprocessing for your specific model.
+There are many different BERT models that have been fine tuned for different tasks and different base models you could fine tune for your specific task. This code will work for most BERT models, just update the input and output and postprocessing for your specific model.
 
 - [C# API Doc](https://onnxruntime.ai/docs/api/csharp-api)
 - [Get Started with C# in ONNX Runtime](https://onnxruntime.ai/docs/get-started/with-csharp.html)
