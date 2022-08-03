@@ -10,9 +10,9 @@
 namespace onnxruntime {
 namespace cuda {
 
-class ClipGradNormInplace final : public CudaKernel {
+class InplaceClipGradNorm final : public CudaKernel {
  public:
-  ClipGradNormInplace(const OpKernelInfo& info) : CudaKernel(info) {
+  InplaceClipGradNorm(const OpKernelInfo& info) : CudaKernel(info) {
     info.GetAttrOrDefault("max_norm", &max_norm_, 1.0f);
     info.GetAttrOrDefault("norm_type", &norm_type_, std::string("fro"));
   }

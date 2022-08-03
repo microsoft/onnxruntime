@@ -10,8 +10,8 @@ namespace test {
 
 #ifdef USE_CUDA
 
-TEST(OptimizerTest, ClipGradNormInplace) {
-  OpTester test("ClipGradNormInplace", 1, onnxruntime::kMSDomain);
+TEST(OptimizerTest, InplaceClipGradNorm) {
+  OpTester test("InplaceClipGradNorm", 1, onnxruntime::kMSDomain);
 
   SeqTensors<float> gradients_input;
   gradients_input.AddTensor({3}, {1.f, 2.f, 3.f});
@@ -33,8 +33,8 @@ TEST(OptimizerTest, ClipGradNormInplace) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
-TEST(OptimizerTest, ClipGradNormInplaceNoClipping) {
-  OpTester test("ClipGradNormInplace", 1, onnxruntime::kMSDomain);
+TEST(OptimizerTest, InplaceClipGradNormNoClipping) {
+  OpTester test("InplaceClipGradNorm", 1, onnxruntime::kMSDomain);
 
   SeqTensors<float> gradients_input;
   gradients_input.AddTensor({3}, {1.f, 2.f, 3.f});

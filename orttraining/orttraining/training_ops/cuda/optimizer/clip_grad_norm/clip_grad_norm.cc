@@ -61,28 +61,32 @@ Status PopulateOutput(cudaStream_t stream, AllocatorPtr alloc, const TensorSeq* 
 }  // namespace
 
 ONNX_OPERATOR_KERNEL_EX(
-    ClipGradNormInplace,
+    InplaceClipGradNorm,
     kMSDomain,
     1,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .Alias(0, 0) /* Return updated gradients in-place */
+        .Alias(0, 0)  // Return updated gradients in-place
+                      // Note that the allocation planner may or may not plan for the output
+                      // buffer to be the same as the input buffer.
         .TypeConstraint("S_GRAD", DataTypeImpl::AllFixedSizeSequenceTensorTypes()),
-    ClipGradNormInplace);
+    InplaceClipGradNorm);
 
-Status ClipGradNormInplace::ComputeInternal(OpKernelContext* ctx) const {
+Status InplaceClipGradNorm::ComputeInternal(OpKernelContext* ctx) const {
   // Prepare the inputs
   const TensorSeq* gradients = ctx->Input<TensorSeq>(0);
   InlinedVector<int> tensor_sizes(gradients->Size());
+  // Need to use InlinedVector<std::vector<void*>> until the signature of launch_multi_tensor_functor
+  // is updated so that nested InlinedVector can be passed in.
   InlinedVector<std::vector<void*>> grouped_tensor_pointers(gradients->Size());
   GetGroupedTensors(gradients, &tensor_sizes, &grouped_tensor_pointers);
 
   AllocatorPtr alloc;
-  ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc).IsOK(), "ClipGradNormInplace: Unable to get an allocator.");
+  ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc).IsOK(), "InplaceClipGradNorm: Unable to get an allocator.");
 
   // Get frobenius norm for the grouped inputs
   float* total_norm = reinterpret_cast<float*>(alloc->Alloc(sizeof(float)));
-  ORT_ENFORCE(norm_type_ == "fro", "Given norm type ", norm_type_, " is not supported for ClipGradNormInplace.");
+  ORT_ENFORCE(norm_type_ == "fro", "Given norm type ", norm_type_, " is not supported for InplaceClipGradNorm.");
   ORT_RETURN_IF_ERROR(GetL2Norm(Stream(), tensor_sizes, grouped_tensor_pointers, &total_norm));
 
   // Perform gradient clipping
