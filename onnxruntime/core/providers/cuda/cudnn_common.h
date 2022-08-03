@@ -249,7 +249,7 @@ SetPoolingNdDescriptorHelper(cudnnPoolingDescriptor_t poolingDesc,
                              const int windowDimA[],
                              const int paddingA[],
                              const int strideA[]) {
-  return cudnnSetPoolingNdDescriptor(poolingDesc, mode, maxpoolingNanOpt, nbDims, windowDimA, paddingA, strideA)
+  return cudnnSetPoolingNdDescriptor(poolingDesc, mode, maxpoolingNanOpt, nbDims, windowDimA, paddingA, strideA);
 }
 
 }  // namespace cuda
