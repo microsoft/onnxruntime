@@ -52,7 +52,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   if (num_inputs >= 3) {
     const auto* X_Zero_Point = context->Input<Tensor>(2);
     ORT_ENFORCE(IsScalarOr1ElementVector(X_Zero_Point), "Must be a scalar or 1D tensor or size 1.");
-    input_offset = *(X_Zero_Point->Data<uint8_t>());
+    input_offset = *static_cast<const uint8_t*>(X_Zero_Point->DataRaw());
   }
   if (num_inputs >= 4) {
     const auto* W_Zero_Point = context->Input<Tensor>(3);
@@ -119,7 +119,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
 
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
-  const auto* Xdata = X->template Data<uint8_t>();
+  const auto* Xdata = static_cast<const uint8_t*>(X->DataRaw());
   const auto* Wdata = static_cast<const uint8_t*>(W->DataRaw());
   auto* Ydata = Y->template MutableData<int32_t>();
 
