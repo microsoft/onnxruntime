@@ -46,7 +46,7 @@ class ONNXQuantizer:
         nodes_to_quantize,
         nodes_to_exclude,
         op_types_to_quantize,
-        extra_options={},
+        extra_options=None,
     ):
 
         if not model_has_infer_metadata(model):
@@ -65,7 +65,7 @@ class ONNXQuantizer:
         self.static = static  # use static quantization for inputs.
         self.fuse_dynamic_quant = False
 
-        self.extra_options = extra_options if extra_options is not None else {}
+        self.extra_options = extra_options if extra_options else {}
         self.enable_subgraph_quantization = (
             "EnableSubgraph" in self.extra_options and self.extra_options["EnableSubgraph"]
         )

@@ -207,24 +207,23 @@ class TestQDQExtraOptions(unittest.TestCase):
         # QDQ pair shoud not be added to node's output
         for node in quantizer.model.nodes():
             if node.name == "MatMul1":
-                self.assertTrue("T_DequantizeLinear_Output_1" in node.input)
-            if node.name == "MatMul2":
-                self.assertTrue("T_DequantizeLinear_Output_2" in node.input)
-            if node.name == "MatMul3":
-                self.assertTrue("T_DequantizeLinear_Output_3" in node.input)
-            if node.name == "Add":
-                for input in node.input:
-                    self.assertTrue("L_DequantizeLinear_Output" not in input)
+                self.assertIn("T_DequantizeLinear_Output_1", node.input)
+            elif node.name == "MatMul2":
+                self.assertIn("T_DequantizeLinear_Output_2", node.input)
+            elif node.name == "MatMul3":
+                self.assertIn("T_DequantizeLinear_Output_3", node.input)
+            elif node.name == "Add":
+                self.assertNotIn("L_DequantizeLinear_Output", node.input)
 
             # QDQ pair shoud not be added to MatMul's output
             if node.op_type == "QuantizeLinear":
-                self.assertTrue(
-                    node.input[0]
-                    not in [
+                self.assertNotIn(
+                    node.input[0],
+                    {
                         "M_QuantizeLinear_Input",
                         "N_QuantizeLinear_Input",
                         "O_QuantizeLinear_Input",
-                    ]
+                    },
                 )
 
 

@@ -55,7 +55,7 @@ class QDQQuantizer(ONNXQuantizer):
         nodes_to_quantize,
         nodes_to_exclude,
         op_types_to_quantize,
-        extra_options={},
+        extra_options=None,
     ):
         ONNXQuantizer.__init__(
             self,
@@ -72,7 +72,7 @@ class QDQQuantizer(ONNXQuantizer):
             op_types_to_quantize,
             extra_options,
         )
-        self.tensors_to_quantize = dict()
+        self.tensors_to_quantize = {}
         self.bias_to_quantize = []
 
         self.nodes_to_remove = []
@@ -274,7 +274,7 @@ class QDQQuantizer(ONNXQuantizer):
         ):
             num_dedicated_qdq_pair = len(self.tensor_to_its_receiving_nodes[tensor_name])
             for i in range(num_dedicated_qdq_pair):
-                postfix = "_" + str(i + 1)
+                postfix = f"_{i + 1}"
                 tensor_name_quant_output_postfix = add_quant_output_suffix(tensor_name) + postfix
                 tensor_name_dequant_output_postfix = add_dequant_output_suffix(tensor_name) + postfix
                 self._create_qdq_nodes(
@@ -342,12 +342,10 @@ class QDQQuantizer(ONNXQuantizer):
                 else:
                     data_found, scale_name, zp_name, _, _ = self._get_quantization_params(tensor_name)
 
-                    if data_found == False:
+                    if not data_found:
                         raise ValueError(
-                            "Quantization parameters are not specified for param {}. "
-                            "In static mode quantization params for inputs and outputs of nodes to be quantized are required.".format(
-                                tensor_name
-                            )
+                            f"Quantization parameters are not specified for param {tensor_name}. "
+                            "In static mode quantization params for inputs and outputs of nodes to be quantized are required."
                         )
 
                     self._add_qdq_pair_for_activation(tensor_name, scale_name, zp_name)
@@ -356,7 +354,6 @@ class QDQQuantizer(ONNXQuantizer):
 
     def _quantize_sharing_param_tensors(self):
         while self.tensors_to_quantize:
-            has_update = False
             for tensor_name, tensor_info in self.tensors_to_quantize.copy().items():
                 tensor_provider_name = tensor_info.quant_para_provider
                 if tensor_provider_name in self.quantized_value_map:
@@ -365,18 +362,9 @@ class QDQQuantizer(ONNXQuantizer):
                     quantized_value = self.quantized_value_map[tensor_provider_name]
                     # Quantize the input
                     initializer = find_by_name(tensor_name, self.model.initializer())
-                    if initializer is not None:
+                    if initializer:
                         raise ValueError("Quantization parameter shared mode is not supported for weight yet")
-                    else:
-                        scale_name = quantized_value.scale_name
-                        zp_name = quantized_value.zp_name
-                        self._add_qdq_pair_for_activation(
-                            tensor_name, quantized_value.scale_name, quantized_value.zp_name
-                        )
-                    has_update = True
-
-            if not has_update:
-                raise ValueError("There is acyclic dependence in quantization parameter shared mode")
+                    self._add_qdq_pair_for_activation(tensor_name, quantized_value.scale_name, quantized_value.zp_name)
 
     def _quantize_bias_tensors(self):
         for bias_name, input_name, weight_name, beta in self.bias_to_quantize:

@@ -555,14 +555,11 @@ def clone_model_with_shape_infer(model):
 
 def tensor_proto_to_array(initializer):
     if initializer.data_type == onnx_proto.TensorProto.FLOAT:
-        weights = onnx.numpy_helper.to_array(initializer)
-    else:
-        raise ValueError(
-            "Only float type quantization is supported. Weights {} is {}. ".format(
-                initializer.name, type_to_name[initializer.data_type]
-            )
-        )
-    return weights
+        return onnx.numpy_helper.to_array(initializer)
+
+    raise ValueError(
+        f"Only float type is supported. Weights {initializer.name} is {type_to_name[initializer.data_type]}"
+    )
 
 
 def add_quant_suffix(tensor_name):
