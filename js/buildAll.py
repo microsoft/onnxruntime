@@ -20,7 +20,7 @@ BinariesDirectory = ".\\build\\"
 Dist_Path = ".\\js\\web\\dist\\"
 Binding_Path = ".\\js\\web\\lib\\wasm\\binding\\"
 
-### generating the build folders
+# Stage #1 - Creating the folders for the build process
 if not os.path.isdir(BinariesDirectory):
     os.mkdir(BinariesDirectory)
 
@@ -35,7 +35,7 @@ if not os.path.isdir(Dist_Path):
 if not os.path.isdir(Binding_Path):
     os.mkdir(Binding_Path)
 
-#### running the WASM build commands
+# Stage #1.1 - reading the script parameters
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--config",
@@ -50,6 +50,7 @@ parser.add_argument(
 args = parser.parse_args()
 configuration = "none"
 
+# Stage #2 - Building the WASM artifacts in 4 different folders listed in - build_dir
 if args.config:
     configuration = args.config
 
@@ -66,13 +67,14 @@ if args.config:
         p = subprocess.Popen(command, shell=True)
         p.wait()
 
-# copy the files to the right location
+# Stage 3 - copy the files to the right location as instructed in the build process for ORT Web
 if args.copy:
     configuration = args.copy
     ## Copying WASM artifacts
     for i, file_name in enumerate(wasm_file_names):
         shutil.copyfile(
-            os.path.join(BinariesDirectory, build_dir[i], configuration, file_name), os.path.join(Dist_Path, file_name)
+            os.path.join(BinariesDirectory, build_dir[i], configuration, file_name),
+            os.path.join(Dist_Path, file_name),
         )
 
     ## Copying JS binding files
@@ -82,9 +84,7 @@ if args.copy:
             os.path.join(Binding_Path, file_name),
         )
 
-####
-
-# build NPM
+# Stage 4 - running the npm build
 path = abspath(dirname(__file__))
 p = subprocess.Popen("npm ci", shell=True, cwd=path)
 p.wait()
