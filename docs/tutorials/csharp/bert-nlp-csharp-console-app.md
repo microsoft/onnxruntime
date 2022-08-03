@@ -358,11 +358,11 @@ namespace MyApp // Note: actual namespace depends on the project name.
 
 ## Deploy with Azure Web App
 
-In this example we created a simple console app however this could easily be implmented in something like a C# Web App. Check out the docs on how to [Quickstart: Deploy an ASP.NET web app](https://docs.microsoft.com/en-us/azure/app-service/quickstart-dotnetcore?tabs=net60&pivots=development-environment-vs).
+In this example we created a simple console app however this could easily be implemented in something like a C# Web App. Check out the docs on how to [Quickstart: Deploy an ASP.NET web app](https://docs.microsoft.com/en-us/azure/app-service/quickstart-dotnetcore?tabs=net60&pivots=development-environment-vs).
 
 ## Next steps
 
-There are many different BERT models that have been finetuned for different takes and different base models you could finetume for your specific task. This code will work for most BERT models, just update the input and output and postprocessing for your specific model.
+There are many different BERT models that have been finetuned for different tasks and different base models you could finetune for your specific task. This code will work for most BERT models, just update the input and output and postprocessing for your specific model.
 
 - [C# API Doc](https://onnxruntime.ai/docs/api/csharp-api)
 - [Get Started with C# in ONNX Runtime](https://onnxruntime.ai/docs/get-started/with-csharp.html)
