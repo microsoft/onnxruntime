@@ -8,7 +8,7 @@ import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
 
 import {calculateOutputShape, ConvAttributes} from './conv';
-import {getActicationSnippet} from './fuse-utils';
+import {getActivationSnippet} from './fuse-utils';
 
 const createUnpackedGroupedConvProgramMetadata = (hasBias: boolean, cacheHint: string): ProgramMetadata => ({
   name: 'GroupedConv',
@@ -33,7 +33,7 @@ const createUnpackedGroupedConvProgramInfo =
       const outputShape =
           calculateOutputShape(xShape, wShape, attributes.dilations, attributes.pads, attributes.strides);
       const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
-      const {activationFunction, applyActivation} = getActicationSnippet(attributes);
+      const {activationFunction, applyActivation} = getActivationSnippet(attributes);
 
       const shaderSource = `
   const ivec2 strides = ivec2(${attributes.strides[0]}, ${attributes.strides[1]});

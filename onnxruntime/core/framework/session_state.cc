@@ -195,7 +195,7 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
   return Status::OK();
 }
 
-const SequentialExecutionPlan* SessionState::GetExecutionPlan() const { 
+const SequentialExecutionPlan* SessionState::GetExecutionPlan() const {
   if (!p_seq_exec_plan_.has_value()) {
     return nullptr;
   }
@@ -679,7 +679,6 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(
     gsl::span<const OrtValue> tensor_inputs,
     gsl::span<const int> feed_mlvalue_idxs,
     const InlinedHashMap<int, TensorShape>*& out_inferred_shapes) const {
-
   out_inferred_shapes = nullptr;
   int64_t key = CalculateMemoryPatternsKey(tensor_inputs);
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
@@ -707,7 +706,6 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(
   }
   return &it->second;
 }
-
 
 void SessionState::ResolveMemoryPatternFlag() {
   if (enable_mem_pattern_) {
@@ -1185,13 +1183,14 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
   if (is_verbose_mode) {
     LOGS(logger, VERBOSE) << "Node placements";
     if (node_placements.size() == 1) {
-      LOGS(logger, VERBOSE) << "All nodes have been placed on [" << node_placements.begin()->first << "].";
+      const auto& [provider, node_strs] = *node_placements.begin();
+      LOGS(logger, VERBOSE) << " All nodes placed on [" << provider << "]. Number of nodes: " << node_strs.size();
     } else {
       for (const auto& [provider, node_strs] : node_placements) {
-        std::ostringstream all_nodes_str;
-        std::copy(node_strs.begin(), node_strs.end(), std::ostream_iterator<std::string>(all_nodes_str, ", "));
-        LOGS(logger, VERBOSE) << " Provider: [" << provider << "]"
-                              << ": [" << all_nodes_str.str() << "]";
+        LOGS(logger, VERBOSE) << " Node(s) placed on [" << provider << "]. Number of nodes: " << node_strs.size();
+        for (const auto& node_str : node_strs) {
+          LOGS(logger, VERBOSE) << "  " << node_str;
+        }
       }
     }
   }
@@ -1419,12 +1418,12 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     subgraphs_kernel_create_info_maps,
                                                     outer_scope_node_arg_to_location_map,
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));
-  // Record the allocation plan
+// Record the allocation plan
 
-  // Uncomment the below to dump the allocation plan to std::cout
-  // LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
+// Uncomment the below to dump the allocation plan to std::cout
+// LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  MemoryInfo::GenerateTensorMap(GetExecutionPlan(), GetOrtValueNameIdxMap());
+  GetMemoryProfiler()->Init(GetExecutionPlan(), GetOrtValueNameIdxMap());
 #endif
 
   // Memory pattern tracer allocates all initializers on a single contiguous
@@ -1452,6 +1451,18 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   const auto& initializer_allocation_order = p_seq_exec_plan_->initializer_allocation_order;
 
   // move initializers from TensorProto instances in Graph to OrtValue instances in SessionState
+  session_state_utils::MemoryProfileFunction memory_profile_func = nullptr;
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  memory_profile_func = [this](ITensorAllocator& planner) {
+    GetMemoryProfiler()->GetMemoryInfo().RecordPatternInfo(
+        planner.GetMemPatterns(), MemoryInfo::MapType::Initializer);
+    GetMemoryProfiler()->CreateEvents(
+        "initializer_" + std::to_string(GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
+        GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::Initializer, "", 0);
+  };
+
+#endif
+
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInitializedTensors(
           Env::Default(), graph_location, *graph_viewer_,
@@ -1460,10 +1471,11 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
           [this](int idx, const OrtValue& value, const OrtCallback& d, bool constant, bool sparse) -> Status {
             return AddInitializedTensor(idx, value, &d, constant, sparse);
           },
-          logger_, data_transfer_mgr_, *p_seq_exec_plan_, session_options));
+          logger_, data_transfer_mgr_, *p_seq_exec_plan_, session_options, memory_profile_func));
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Record Weight allocation info on device
-  MemoryInfo::RecordInitializerAllocInfo(GetInitializedTensors());
+  GetMemoryProfiler()->GetMemoryInfo().RecordInitializerAllocInfo(GetInitializedTensors());
 #endif
 
   // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was

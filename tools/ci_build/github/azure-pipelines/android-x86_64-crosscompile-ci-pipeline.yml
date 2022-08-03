@@ -1,283 +1,46 @@
 # Known Limits
 # 1. Anchors are not supported in GHA
 # https://github.community/t/support-for-yaml-anchors/16128/90
-# 2. today most cloud-based CI services are still lacking hardware acceleration support from the host VM, 
+# 2. today most cloud-based CI services are still lacking hardware acceleration support from the host VM,
 # which is the no.1 blocker for running tests on modern Android Emulators (especially on recent API levels) on CI.
 
-jobs:
-- job: Build_CPU_EP
-  pool: Linux-CPU-2019
-  workspace:
-    clean: all
-  timeoutInMinutes: 30
-  steps:
-  # Onnx has no 3.9 python package available yet, need to use python 3.8
-  # to avoid build onnx package
-  # pythonVersion can be updated in Azure pipeline settings
-  # https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=53
-  - task: UsePythonVersion@0
-    displayName: Use Python $(pythonVersion)
-    inputs:
-      versionSpec: $(pythonVersion)
+# It'd better to check out https://github.com/microsoft/onnxruntime/wiki/Leverage-Existing-Artifacts
+# to save debugging time.
+parameters:
+- name: specificArtifact
+  displayName: Use Specific Artifact
+  type: boolean
+  default: false
+- name: runId
+  displayName: Specific Artifact's RunId
+  type: number
+  default: 0
 
-  - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
-    displayName: Install coreutils and ninja
-
-  - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-    displayName: Setup gradle wrapper to use gradle 6.8.3
-
-  # We build the host protoc to <ORT_ROOT>/protobuf_install
-  - script: |
-      /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
-        $(Build.SourcesDirectory) \
-        $(Build.BinariesDirectory)/protobuf \
-        $(Build.SourcesDirectory)/protobuf_install
-    displayName: Build Host Protoc
-
-  - script: |
-      export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-      export ANDROID_HOME=/usr/local/lib/android/sdk
-      export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
-      export ANDROID_NDK_ROOT=/usr/local/lib/android/sdk/ndk-bundle
-      env | grep ANDROID
-    displayName: Set Android ENVs
-
-  # Start switching to jdk 11 after the Android Emulator is started
-  # since Android SDK manager requires java 8
-  - task: JavaToolInstaller@0
-    displayName: Use jdk 11
-    inputs:
-      versionSpec: '11'
-      jdkArchitectureOption: 'x64'
-      jdkSourceOption: 'PreInstalled'
-
-  - script: |
-      python3 tools/ci_build/build.py \
-        --android \
-        --build_dir build \
-        --android_sdk_path $ANDROID_HOME \
-        --android_ndk_path $ANDROID_NDK_HOME \
-        --android_abi=x86_64 \
-        --android_api=30 \
-        --skip_submodule_sync \
-        --parallel \
-        --cmake_generator=Ninja \
-        --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
-        --build_java \
-        --skip_tests
-    displayName: CPU EP, Build
-
-  - task: CopyFiles@2
-    displayName: Copy apks
-    inputs:
-      contents: 'build/**/*.apk'
-      targetFolder: $(Build.ArtifactStagingDirectory)
-      overWrite: true
-
-  - task: CopyFiles@2
-    displayName: Copy test data 
-    inputs:
-      contents: 'build/**/testdata/**'
-      targetFolder: $(Build.ArtifactStagingDirectory)
-      overWrite: true
-
-  - task: CopyFiles@2
-    displayName: Copy test executables
-    inputs:
-      contents: 'build/Debug/*'
-      targetFolder: $(Build.ArtifactStagingDirectory)
-      overWrite: true
-
-  - task: PublishBuildArtifacts@1
-    inputs:
-      pathToPublish: $(Build.ArtifactStagingDirectory)
-      artifactName: CPUBuildOutput
-
-  - template: templates/clean-agent-build-directory-step.yml
-
-- job: Test_CPU_EP
-  pool:
-    vmImage: 'macOS-11'
-  dependsOn: Build_CPU_EP
-  workspace:
-    clean: all
-  condition: succeeded()
-  steps:
-    - script: |
-        set -ex
-        system_profiler SPSoftwareDataType SPHardwareDataType
-      displayName: 'Mac Agent Info'
-
-    - task: DownloadPipelineArtifact@2
-      inputs:
-        source: 'current'
-        artifact: 'CPUBuildOutput'
-        path: $(Build.SourcesDirectory)
-
-    - script: |
-        python3 tools/python/run_android_emulator.py \
-        --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
-        --start --emulator-extra-args="-partition-size 4096" \
-        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-      displayName: Start Android emulator
-
-    - script: |
-        python3 tools/ci_build/build.py \
-        --android \
-        --build_dir build \
-        --android_sdk_path $ANDROID_HOME \
-        --android_ndk_path $ANDROID_NDK_HOME \
-        --android_abi=x86_64 \
-        --android_api=30 \
-        --test
-      displayName: CPU EP, Test on Android Emulator
-
-    - script: |
-        python3 tools/python/run_android_emulator.py \
-          --android-sdk-root ${ANDROID_SDK_ROOT} \
-          --stop \
-          --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-      displayName: Stop Android emulator
-      condition: always()
-
-    - template: templates/clean-agent-build-directory-step.yml
-
-- job: Build_NNAPI_EP
-  pool: Linux-CPU-2019
-  timeoutInMinutes: 30
-  workspace:
-    clean: all
-  condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
-  steps:
-  - task: UsePythonVersion@0
-    displayName: Use Python $(pythonVersion)
-    inputs:
-      versionSpec: $(pythonVersion)
-
-  - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
-    displayName: Install coreutils and ninja
-
-  - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-    displayName: Setup gradle wrapper to use gradle 6.8.3
-
-  # We build the host protoc to <ORT_ROOT>/protobuf_install
-  - script: |
-      /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
-        $(Build.SourcesDirectory) \
-        $(Build.BinariesDirectory)/protobuf \
-        $(Build.SourcesDirectory)/protobuf_install
-    displayName: Build Host Protoc
-
-  - script: |
-      export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-      export ANDROID_HOME=/usr/local/lib/android/sdk
-      export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
-      export ANDROID_NDK_ROOT=/usr/local/lib/android/sdk/ndk-bundle
-      env | grep ANDROID
-    displayName: set Android ENVs
-
-  # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
-  - task: JavaToolInstaller@0
-    displayName: Use jdk 11
-    inputs:
-      versionSpec: '11'
-      jdkArchitectureOption: 'x64'
-      jdkSourceOption: 'PreInstalled'
-
-  - script: |
-      python3 tools/ci_build/build.py \
-        --android \
-        --build_dir build_nnapi \
-        --android_sdk_path $ANDROID_HOME \
-        --android_ndk_path $ANDROID_NDK_HOME \
-        --android_abi=x86_64 \
-        --android_api=29 \
-        --skip_submodule_sync \
-        --parallel \
-        --use_nnapi \
-        --cmake_generator=Ninja \
-        --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
-        --build_java \
-        --skip_tests
-    displayName: NNAPI EP, Build
-
-  - task: CopyFiles@2
-    displayName: Copy apks
-    inputs:
-      contents: 'build_nnapi/**/*.apk'
-      targetFolder: $(Build.ArtifactStagingDirectory)
-      overWrite: true
-
-  - task: CopyFiles@2
-    displayName: Copy test data
-    inputs:
-      contents: 'build_nnapi/**/testdata/**'
-      targetFolder: $(Build.ArtifactStagingDirectory)
-      overWrite: true
-
-  - task: CopyFiles@2
-    displayName: Copy Test Executables
-    inputs:
-      contents: 'build_nnapi/Debug/*'
-      targetFolder: $(Build.ArtifactStagingDirectory)
-      overWrite: true
-
-  - task: PublishBuildArtifacts@1
-    inputs:
-      pathToPublish: $(Build.ArtifactStagingDirectory)
-      artifactName: NNAPIBuildOutput
-      
-  - template: templates/clean-agent-build-directory-step.yml
-
-- job: Test_NNAPI_EP
-  pool:
-    vmImage: 'macOS-11'
-  timeoutInMinutes: 90
-  workspace:
-    clean: all
-  dependsOn: Build_NNAPI_EP
-  condition: and(succeeded(), notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
-  steps:
-    - script: |
-        set -ex
-        system_profiler SPSoftwareDataType SPHardwareDataType
-      displayName: 'Mac Agent Info'
-
-    - task: DownloadPipelineArtifact@2
-      inputs:
-        source: 'current'
-        artifact: 'NNAPIBuildOutput'
-        path: $(Build.SourcesDirectory)
-
+stages:
+- stage: BUILD_STAGE
+  jobs:
+  - job: Build_CPU_EP
+    pool: Linux-CPU-2019
+    workspace:
+      clean: all
+    timeoutInMinutes: 30
+    steps:
+    # Onnx has no 3.9 python package available yet, need to use python 3.8
+    # to avoid build onnx package
+    # pythonVersion can be updated in Azure pipeline settings
+    # https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=53
     - task: UsePythonVersion@0
       displayName: Use Python $(pythonVersion)
       inputs:
         versionSpec: $(pythonVersion)
 
-    - script: |
-        python3 tools/python/run_android_emulator.py \
-        --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
-        --start --emulator-extra-args="-partition-size 4096" \
-        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-      displayName: Start Android emulator
-      
-    - script: |
-        python3 tools/ci_build/build.py \
-        --android \
-        --build_dir build_nnapi \
-        --android_sdk_path $ANDROID_HOME \
-        --android_ndk_path $ANDROID_NDK_HOME \
-        --android_abi=x86_64 \
-        --android_api=29 \
-        --use_nnapi \
-        --test
-      displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
-
-    # used by Build Minimal ORT
-    - script: brew install coreutils ninja
+    - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
       displayName: Install coreutils and ninja
+
+    - template: "templates/use-android-ndk.yml"
+
+    - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
+      displayName: Setup gradle wrapper to use gradle 6.8.3
 
     # We build the host protoc to <ORT_ROOT>/protobuf_install
     - script: |
@@ -287,73 +50,10 @@ jobs:
           $(Build.SourcesDirectory)/protobuf_install
       displayName: Build Host Protoc
 
-    - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-      displayName: Setup gradle wrapper to use gradle 6.8.3
-
-    # Start switching to jdk 11 after the Android Emulator is started
-    # since Android SDK manager requires java 8
-    - task: JavaToolInstaller@0
-      displayName: Use jdk 11
-      inputs:
-        versionSpec: '11'
-        jdkArchitectureOption: 'x64'
-        jdkSourceOption: 'PreInstalled'
-
-    - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
-      # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
-      displayName: Build Minimal ORT with NNAPI and run tests
-
     - script: |
-        python3 tools/python/run_android_emulator.py \
-          --android-sdk-root ${ANDROID_SDK_ROOT} \
-          --stop \
-          --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-      displayName: Stop Android emulator
-      condition: always()
-      
-    - template: templates/clean-agent-build-directory-step.yml
+        env | grep ANDROID
+      displayName: View Android ENVs
 
-# The below jobs only run on master build
-- job: NNAPI_EP_MASTER
-  pool:
-    vmImage: 'macOS-11'
-  timeoutInMinutes: 180
-  workspace:
-    clean: all
-  condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
-  steps:
-    - script: |
-        set -ex
-        system_profiler SPSoftwareDataType SPHardwareDataType
-      displayName: 'Mac Agent Info'
-
-    - task: UsePythonVersion@0
-      displayName: Use Python $(pythonVersion)
-      inputs:
-        versionSpec: $(pythonVersion)
-
-    - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-      displayName: Setup gradle wrapper to use gradle 6.8.3
-
-    # used by Build Minimal ORT
-    - script: brew install coreutils ninja
-      displayName: Install coreutils and ninja
-
-    # We build the host protoc to <ORT_ROOT>/protobuf_install
-    - script: |
-        /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
-          $(Build.SourcesDirectory) \
-          $(Build.BinariesDirectory)/protobuf \
-          $(Build.SourcesDirectory)/protobuf_install
-      displayName: Build Host Protoc
- 
-    - script: |
-        python3 tools/python/run_android_emulator.py \
-        --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --create-avd --system-image "system-images;android-29;google_apis;x86_64" \
-        --start --emulator-extra-args="-partition-size 4096" \
-        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-      displayName: Start Android emulator
     # Start switching to jdk 11 after the Android Emulator is started
     # since Android SDK manager requires java 8
     - task: JavaToolInstaller@0
@@ -365,77 +65,435 @@ jobs:
 
     - script: |
         python3 tools/ci_build/build.py \
-        --android \
-        --build_dir build_nnapi \
-        --android_sdk_path $ANDROID_HOME \
-        --android_ndk_path $ANDROID_NDK_HOME \
-        --android_abi=x86_64 \
-        --android_api=29 \
-        --skip_submodule_sync \
-        --parallel \
-        --use_nnapi \
-        --build_shared_lib \
-        --cmake_generator=Ninja \
-        --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
-        --build_java \
-        --code_coverage
-      displayName: NNAPI EP, Build, Test, CodeCoverage on Android Emulator
-      
+          --android \
+          --build_dir build \
+          --android_sdk_path $ANDROID_HOME \
+          --android_ndk_path $ANDROID_NDK_HOME \
+          --android_abi=x86_64 \
+          --android_api=30 \
+          --skip_submodule_sync \
+          --parallel \
+          --cmake_generator=Ninja \
+          --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
+          --build_java \
+          --skip_tests
+      displayName: CPU EP, Build
+
+    - task: CopyFiles@2
+      displayName: Copy apks
+      inputs:
+        contents: 'build/**/*.apk'
+        targetFolder: $(Build.ArtifactStagingDirectory)
+        overWrite: true
+
+    - task: CopyFiles@2
+      displayName: Copy test data
+      inputs:
+        contents: 'build/**/testdata/**'
+        targetFolder: $(Build.ArtifactStagingDirectory)
+        overWrite: true
+
+    - task: CopyFiles@2
+      displayName: Copy test executables
+      inputs:
+        contents: |
+          build/Debug/*
+          build/Debug/java/androidtest/android/**
+        targetFolder: $(Build.ArtifactStagingDirectory)
+        overWrite: true
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: $(Build.ArtifactStagingDirectory)
+        artifactName: CPUBuildOutput
+
+    - template: templates/clean-agent-build-directory-step.yml
+
+  - job: Build_NNAPI_EP
+    pool: Linux-CPU-2019
+    timeoutInMinutes: 30
+    workspace:
+      clean: all
+    condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+    steps:
+    - task: UsePythonVersion@0
+      displayName: Use Python $(pythonVersion)
+      inputs:
+        versionSpec: $(pythonVersion)
+
+    - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
+      displayName: Install coreutils and ninja
+
+    - template: "templates/use-android-ndk.yml"
+
+    - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
+      displayName: Setup gradle wrapper to use gradle 6.8.3
+
+    # We build the host protoc to <ORT_ROOT>/protobuf_install
     - script: |
-        python3 -m pip install gcovr && \
-        python3 tools/ci_build/coverage.py \
+        /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
+          $(Build.SourcesDirectory) \
+          $(Build.BinariesDirectory)/protobuf \
+          $(Build.SourcesDirectory)/protobuf_install
+      displayName: Build Host Protoc
+
+    - script: |
+        env | grep ANDROID
+      displayName: View Android ENVs
+
+    # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
+    - task: JavaToolInstaller@0
+      displayName: Use jdk 11
+      inputs:
+        versionSpec: '11'
+        jdkArchitectureOption: 'x64'
+        jdkSourceOption: 'PreInstalled'
+
+    - script: |
+        python3 tools/ci_build/build.py \
+          --android \
           --build_dir build_nnapi \
-          --android_sdk_path $ANDROID_HOME
-      displayName: Retrieve runtime code coverage files from the emulator and analyze
-    - script: cat '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
-      displayName: Print coverage report
+          --android_sdk_path $ANDROID_HOME \
+          --android_ndk_path $ANDROID_NDK_HOME \
+          --android_abi=x86_64 \
+          --android_api=29 \
+          --skip_submodule_sync \
+          --parallel \
+          --use_nnapi \
+          --cmake_generator=Ninja \
+          --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
+          --build_java \
+          --skip_tests
+      displayName: NNAPI EP, Build
 
-    - task: PublishPipelineArtifact@0
-      displayName: 'Publish code coverage report'
+    - task: CopyFiles@2
+      displayName: Copy apks
       inputs:
-          artifactName: "coverage_rpt.txt"
-          targetPath: '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
-          publishLocation: 'pipeline'
+        contents: 'build_nnapi/**/*.apk'
+        targetFolder: $(Build.ArtifactStagingDirectory)
+        overWrite: true
 
-    - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
-      # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
-      displayName: Build Minimal ORT with NNAPI and run tests
+    - task: CopyFiles@2
+      displayName: Copy test data
+      inputs:
+        contents: 'build_nnapi/**/testdata/**'
+        targetFolder: $(Build.ArtifactStagingDirectory)
+        overWrite: true
 
-    - script: |
-        python3 tools/python/run_android_emulator.py \
+    - task: CopyFiles@2
+      displayName: Copy Test Executables
+      inputs:
+        contents: |
+          build_nnapi/Debug/*
+          build_nnapi/Debug/java/androidtest/android/**
+        targetFolder: $(Build.ArtifactStagingDirectory)
+        overWrite: true
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: $(Build.ArtifactStagingDirectory)
+        artifactName: NNAPIBuildOutput
+
+    - template: templates/clean-agent-build-directory-step.yml
+
+- stage: TEST_STAGE
+  dependsOn: BUILD_STAGE
+  jobs:
+  - job: Test_CPU_EP
+    pool:
+      vmImage: 'macOS-11'
+    workspace:
+      clean: all
+    condition: succeeded()
+    steps:
+      - script: |
+          set -ex
+          system_profiler SPSoftwareDataType SPHardwareDataType
+        displayName: 'Mac Agent Info'
+
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          ${{ if eq(parameters.specificArtifact, true) }}:
+            source: 'specific'
+            project: 'onnxruntime'
+            pipeline: $(Build.DefinitionName)
+            runVersion: 'specific'
+            runId: ${{ parameters.runId }}
+          ${{ if ne(parameters.specificArtifact, true) }}:
+            source: 'current'
+          artifact: 'CPUBuildOutput'
+          path: $(Build.SourcesDirectory)
+
+      - task: UsePythonVersion@0
+        displayName: Use Python $(pythonVersion)
+        inputs:
+          versionSpec: $(pythonVersion)
+
+      - template: "templates/use-android-ndk.yml"
+
+      - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
+        displayName: Setup gradle wrapper to use gradle 6.8.3
+
+      - script: |
+          python3 tools/python/run_android_emulator.py \
           --android-sdk-root ${ANDROID_SDK_ROOT} \
-          --stop \
+          --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
+          --start --emulator-extra-args="-partition-size 4096" \
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-      displayName: Stop Android emulator
-      condition: always()
-      
-    - template: templates/clean-agent-build-directory-step.yml
-      
-- job: Update_Dashboard
-  workspace:
-    clean: all
-  variables:
-  - name: skipComponentGovernanceDetection
-    value: true
-  pool: 'Linux-CPU-2019'
-  condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
-  dependsOn: 
-  - Test_CPU_EP
-  - NNAPI_EP_MASTER
-  steps:
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download code coverage report'
-      inputs:
-        artifactName: 'coverage_rpt.txt'
-        targetPath: '$(Build.BinariesDirectory)'
+        displayName: Start Android emulator
 
-    - task: AzureCLI@2
-      displayName: 'Post Android Code Coverage To DashBoard'
-      inputs:
-        azureSubscription: AIInfraBuild
-        scriptType: bash
-        scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
-        arguments: '"$(Build.BinariesDirectory)/coverage_rpt.txt" "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" arm android nnapi'
-        workingDirectory: '$(Build.BinariesDirectory)'
-      
-    - template: templates/clean-agent-build-directory-step.yml
+      # Start switching to jdk 11 after the Android Emulator is started
+      # since Android SDK manager requires java 8
+      - task: JavaToolInstaller@0
+        displayName: Use jdk 11
+        inputs:
+          versionSpec: '11'
+          jdkArchitectureOption: 'x64'
+          jdkSourceOption: 'PreInstalled'
+
+      - script: |
+          python3 tools/ci_build/build.py \
+          --android \
+          --build_dir build \
+          --android_sdk_path $ANDROID_HOME \
+          --android_ndk_path $ANDROID_NDK_HOME \
+          --android_abi=x86_64 \
+          --android_api=30 \
+          --build_java \
+          --test
+        displayName: CPU EP, Test on Android Emulator
+
+      - script: |
+          python3 tools/python/run_android_emulator.py \
+            --android-sdk-root ${ANDROID_SDK_ROOT} \
+            --stop \
+            --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+        displayName: Stop Android emulator
+        condition: always()
+
+      - template: templates/clean-agent-build-directory-step.yml
+
+  - job: Test_NNAPI_EP
+    pool:
+      vmImage: 'macOS-11'
+    timeoutInMinutes: 90
+    workspace:
+      clean: all
+    condition: and(succeeded(), notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+    steps:
+      - script: |
+          set -ex
+          system_profiler SPSoftwareDataType SPHardwareDataType
+        displayName: 'Mac Agent Info'
+
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          ${{ if eq(parameters.specificArtifact, true) }}:
+            source: 'specific'
+            project: 'onnxruntime'
+            pipeline: $(Build.DefinitionName)
+            runVersion: 'specific'
+            runId: ${{ parameters.runId }}
+          ${{ if ne(parameters.specificArtifact, true) }}:
+            source: 'current'
+          artifact: 'NNAPIBuildOutput'
+          path: $(Build.SourcesDirectory)
+
+      - task: UsePythonVersion@0
+        displayName: Use Python $(pythonVersion)
+        inputs:
+          versionSpec: $(pythonVersion)
+
+      - template: "templates/use-android-ndk.yml"
+
+      - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
+        displayName: Setup gradle wrapper to use gradle 6.8.3
+
+      - script: |
+          python3 tools/python/run_android_emulator.py \
+          --android-sdk-root ${ANDROID_SDK_ROOT} \
+          --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
+          --start --emulator-extra-args="-partition-size 4096" \
+          --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+        displayName: Start Android emulator
+
+      # Start switching to jdk 11 after the Android Emulator is started
+      # since Android SDK manager requires java 8
+      - task: JavaToolInstaller@0
+        displayName: Use jdk 11
+        inputs:
+          versionSpec: '11'
+          jdkArchitectureOption: 'x64'
+          jdkSourceOption: 'PreInstalled'
+
+      - script: |
+          python3 tools/ci_build/build.py \
+          --android \
+          --build_dir build_nnapi \
+          --android_sdk_path $ANDROID_HOME \
+          --android_ndk_path $ANDROID_NDK_HOME \
+          --android_abi=x86_64 \
+          --android_api=29 \
+          --build_java \
+          --use_nnapi \
+          --test
+        displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
+
+      # used by Build Minimal ORT
+      - script: brew install coreutils ninja
+        displayName: Install coreutils and ninja
+
+      # We build the host protoc to <ORT_ROOT>/protobuf_install
+      - script: |
+          /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
+            $(Build.SourcesDirectory) \
+            $(Build.BinariesDirectory)/protobuf \
+            $(Build.SourcesDirectory)/protobuf_install
+        displayName: Build Host Protoc
+
+      - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
+        # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
+        displayName: Build Minimal ORT with NNAPI and run tests
+
+      - script: |
+          python3 tools/python/run_android_emulator.py \
+            --android-sdk-root ${ANDROID_SDK_ROOT} \
+            --stop \
+            --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+        displayName: Stop Android emulator
+        condition: always()
+      - template: templates/clean-agent-build-directory-step.yml
+
+- stage: MASTER_BUILD_STAGE
+  # The below jobs only run on master build.
+  # because coverage report is hard to support in cross machines.
+  displayName: NNAPI MASTER BUILD&TEST
+  dependsOn: []
+  condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+  jobs:
+  - job: NNAPI_EP_MASTER
+    pool:
+      vmImage: 'macOS-11'
+    timeoutInMinutes: 180
+    workspace:
+      clean: all
+    condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+    steps:
+      - script: |
+          set -ex
+          system_profiler SPSoftwareDataType SPHardwareDataType
+        displayName: 'Mac Agent Info'
+
+      - task: UsePythonVersion@0
+        displayName: Use Python $(pythonVersion)
+        inputs:
+          versionSpec: $(pythonVersion)
+
+      - template: "templates/use-android-ndk.yml"
+
+      - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
+        displayName: Setup gradle wrapper to use gradle 6.8.3
+
+      # used by Build Minimal ORT
+      - script: brew install coreutils ninja
+        displayName: Install coreutils and ninja
+
+      # We build the host protoc to <ORT_ROOT>/protobuf_install
+      - script: |
+          /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
+            $(Build.SourcesDirectory) \
+            $(Build.BinariesDirectory)/protobuf \
+            $(Build.SourcesDirectory)/protobuf_install
+        displayName: Build Host Protoc
+
+      - script: |
+          python3 tools/python/run_android_emulator.py \
+          --android-sdk-root ${ANDROID_SDK_ROOT} \
+          --create-avd --system-image "system-images;android-29;google_apis;x86_64" \
+          --start --emulator-extra-args="-partition-size 4096" \
+          --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+        displayName: Start Android emulator
+
+      # Start switching to jdk 11 after the Android Emulator is started
+      # since Android SDK manager requires java 8
+      - task: JavaToolInstaller@0
+        displayName: Use jdk 11
+        inputs:
+          versionSpec: '11'
+          jdkArchitectureOption: 'x64'
+          jdkSourceOption: 'PreInstalled'
+
+      - script: |
+          python3 tools/ci_build/build.py \
+          --android \
+          --build_dir build_nnapi \
+          --android_sdk_path $ANDROID_HOME \
+          --android_ndk_path $ANDROID_NDK_HOME \
+          --android_abi=x86_64 \
+          --android_api=29 \
+          --skip_submodule_sync \
+          --parallel \
+          --use_nnapi \
+          --build_shared_lib \
+          --cmake_generator=Ninja \
+          --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
+          --build_java \
+          --code_coverage
+        displayName: NNAPI EP, Build, Test, CodeCoverage on Android Emulator
+
+      - script: |
+          python3 -m pip install gcovr && \
+          python3 tools/ci_build/coverage.py \
+            --build_dir build_nnapi \
+            --android_sdk_path $ANDROID_HOME
+        displayName: Retrieve runtime code coverage files from the emulator and analyze
+      - script: cat '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
+        displayName: Print coverage report
+
+      - task: PublishPipelineArtifact@0
+        displayName: 'Publish code coverage report'
+        inputs:
+            artifactName: "coverage_rpt.txt"
+            targetPath: '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
+            publishLocation: 'pipeline'
+
+      - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
+        # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
+        displayName: Build Minimal ORT with NNAPI and run tests
+
+      - script: |
+          python3 tools/python/run_android_emulator.py \
+            --android-sdk-root ${ANDROID_SDK_ROOT} \
+            --stop \
+            --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+        displayName: Stop Android emulator
+        condition: always()
+      - template: templates/clean-agent-build-directory-step.yml
+
+  - job: Update_Dashboard
+    workspace:
+      clean: all
+    variables:
+    - name: skipComponentGovernanceDetection
+      value: true
+    pool: 'Linux-CPU-2019'
+    condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+    dependsOn:
+    - NNAPI_EP_MASTER
+    steps:
+      - task: DownloadPipelineArtifact@0
+        displayName: 'Download code coverage report'
+        inputs:
+          artifactName: 'coverage_rpt.txt'
+          targetPath: '$(Build.BinariesDirectory)'
+
+      - task: AzureCLI@2
+        displayName: 'Post Android Code Coverage To DashBoard'
+        inputs:
+          azureSubscription: AIInfraBuild
+          scriptType: bash
+          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
+          arguments: '"$(Build.BinariesDirectory)/coverage_rpt.txt" "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" arm android nnapi'
+          workingDirectory: '$(Build.BinariesDirectory)'
+
+      - template: templates/clean-agent-build-directory-step.yml

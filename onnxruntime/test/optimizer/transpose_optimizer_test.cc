@@ -5,6 +5,8 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "gmock/gmock.h"
+
 #include "graph_transform_test_builder.h"
 
 #include "core/graph/graph.h"
@@ -3620,7 +3622,6 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearTransposePropagation) {
     EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
   };
 
-
   TransformerTester(build_test_case_1,
                     check_graph,
                     TransformerLevel::Default,
@@ -4046,6 +4047,42 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue10305) {
   InferenceSession session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(model_uri));
   ASSERT_STATUS_OK(session_object.Initialize());  // optimizers run during initialization
+}
+
+// regression test for a model with DQ node with per-axis dequantization followed by a Transpose.
+// the second phase can swap those around, but needs to use the correct perms for updating the 'axis'
+// attribute in the DQ node.
+// see https://github.com/microsoft/onnxruntime/issues/12151 for more details.
+TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue12151) {
+  Status status;
+  auto model_uri = ORT_TSTR("testdata/ort_github_issue_12151.onnx");
+
+  NameMLValMap feeds;  // no inputs for this model
+  std::vector<std::string> output_names{"Z"};
+  std::vector<OrtValue> fetches_orig;
+  std::vector<OrtValue> fetches;
+
+  SessionOptions so;
+  so.session_logid = "TransposeOptimizerTests.RegressionTest_GitHubIssue12151";
+
+  {
+    so.graph_optimization_level = TransformerLevel::Default;  // off
+    InferenceSession session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.Load(model_uri));
+    ASSERT_STATUS_OK(session_object.Initialize());
+    ASSERT_STATUS_OK(session_object.Run(feeds, output_names, &fetches_orig));
+  }
+
+  {
+    so.graph_optimization_level = TransformerLevel::Level1;  // enable transpose optimizer
+    InferenceSession session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.Load(model_uri));
+    ASSERT_STATUS_OK(session_object.Initialize());
+    ASSERT_STATUS_OK(session_object.Run(feeds, output_names, &fetches));
+  }
+
+  ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
+              testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
 }
 }  // namespace test
 }  // namespace onnxruntime

@@ -4,6 +4,7 @@
 #include "gradient_control.h"
 #include "gradient_control_impl.h"
 
+#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/cuda_allocator.h"
@@ -86,6 +87,68 @@ Status InPlaceAccumulator<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) cons
       reinterpret_cast<const CudaT_GRAD*>(right_addee_buffer.template Data<T_GRAD>()),
       reinterpret_cast<CudaT*>(accumulation_output.template MutableData<T>()),
       right_addee_buffer.Shape().Size());
+
+  return Status::OK();
+}
+
+#define REGISTER_IN_PLACE_TENSOR_ACCUMULATORV2_TYPED(T, T_GRAD)                       \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                      \
+      InPlaceAccumulatorV2,                                                           \
+      kMSDomain,                                                                      \
+      1,                                                                              \
+      T##_##T_GRAD,                                                                   \
+      kCudaExecutionProvider,                                                         \
+      (*KernelDefBuilder::Create())                                                   \
+          .Alias(0, 1)                              /* Accumulate tensors in-place */ \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)   /* overwrite_flag is on CPU*/     \
+          .OutputMemoryType(OrtMemTypeCPUOutput, 0) /* updated_flag is on CPU*/       \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                      \
+          .TypeConstraint("T_GRAD", DataTypeImpl::GetTensorType<T_GRAD>()),           \
+      InPlaceAccumulatorV2<T, T_GRAD>);
+
+REGISTER_IN_PLACE_TENSOR_ACCUMULATORV2_TYPED(float, float)
+REGISTER_IN_PLACE_TENSOR_ACCUMULATORV2_TYPED(float, MLFloat16)
+
+template <typename T, typename T_GRAD>
+Status InPlaceAccumulatorV2<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) const {
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  typedef typename ToCudaType<T_GRAD>::MappedType CudaT_GRAD;
+
+  Tensor& left_addee_buffer = *const_cast<Tensor*>(ctx->Input<Tensor>(0));
+  const Tensor& right_addee_buffer = *ctx->Input<Tensor>(1);
+  const Tensor* overwrite_tensor = ctx->Input<Tensor>(2);
+  const bool overwrite = overwrite_tensor != nullptr ? *(overwrite_tensor->template Data<bool>()) : false;
+
+  if (overwrite) {
+    const T_GRAD* source = right_addee_buffer.template Data<T_GRAD>();
+    T* target = left_addee_buffer.template MutableData<T>();
+    if (std::is_same<T, T_GRAD>::value) {
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, right_addee_buffer.SizeInBytes(), cudaMemcpyDeviceToDevice,
+                                           Stream()));
+    } else {
+      Impl_Cast<CudaT_GRAD, CudaT>(
+          Stream(),
+          reinterpret_cast<const CudaT_GRAD*>(source),
+          reinterpret_cast<CudaT*>(target),
+          right_addee_buffer.Shape().Size());
+    }
+  } else {
+    InPlaceAccumulatorImpl(
+        Stream(),
+        reinterpret_cast<const CudaT*>(left_addee_buffer.template Data<T>()),
+        reinterpret_cast<const CudaT_GRAD*>(right_addee_buffer.template Data<T_GRAD>()),
+        reinterpret_cast<CudaT*>(left_addee_buffer.template MutableData<T>()),
+        right_addee_buffer.Shape().Size());
+  }
+
+  Tensor& updated_output = *ctx->Output(0, {1});
+  bool* updated_output_ptr = updated_output.MutableData<bool>();
+  *updated_output_ptr = true;
+
+  Tensor* accumulation_output = ctx->Output(1, left_addee_buffer.Shape());
+  if (nullptr != accumulation_output) {
+    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T>(Stream(), left_addee_buffer, *accumulation_output));
+  }
 
   return Status::OK();
 }
