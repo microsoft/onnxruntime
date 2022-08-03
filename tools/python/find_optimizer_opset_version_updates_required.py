@@ -85,7 +85,6 @@ def get_multiline_call_args_from_file(filename: str, function_or_declaration: st
                 start = len(function_and_args)
                 function_and_args += line.strip()
 
-            end = -1
             if function_and_args:
                 end = function_and_args.find(")", start)
 
