@@ -25,6 +25,7 @@ from ._fallback import ORTModuleONNXModelException, wrap_exception
 BANNED_AUTOGRAD_FUNCTION_NAMES = frozenset([torch.utils.checkpoint.CheckpointFunction.__name__])
 
 
+# pylint: disable=protected-access
 # Mapping from pytorch scalar type to onnx scalar type.
 _CAST_PYTORCH_TO_ONNX = {
     "Byte": torch._C._onnx.TensorProtoDataType.UINT8,
@@ -41,6 +42,7 @@ _CAST_PYTORCH_TO_ONNX = {
     "BFloat16": torch._C._onnx.TensorProtoDataType.BFLOAT16,
     "Undefined": torch._C._onnx.TensorProtoDataType.UNDEFINED,
 }
+# pylint: enable=protected-access
 
 
 def _export_pt_1_10(g, n, *args, **kwargs):
