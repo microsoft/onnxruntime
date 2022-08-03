@@ -11,9 +11,9 @@ nav_order: 1
 # Inference with C# BERT NLP and ONNX Runtime
 {: .no_toc }
 
-In this tutorial we will look at how we can do inferencing for the popular BERT Natural Language Processing model in a C# console app.
+In this tutorial we will learn how to do inferencing for the popular BERT Natural Language Processing model in C#.
 
-In order to be able to preprocess our text in C# we will leverage the open source [BERTTokenizers](https://github.com/NMZivkovic/BertTokenizers) that includes tokenizers for most BERT models. See below for supported models. There are models (including the one for this tutorial) that have been finetuned based on these models. The tokenizer for the original model is still the same regardless of the finetuning performed. 
+In order to be able to preprocess our text in C# we will leverage the open source [BERTTokenizers](https://github.com/NMZivkovic/BertTokenizers) that includes tokenizers for most BERT models. See below for supported models. 
 
 - BERT Base
 - BERT Large
@@ -21,6 +21,8 @@ In order to be able to preprocess our text in C# we will leverage the open sourc
 - BERT Multilingual
 - BERT Base Uncased
 - BERT Large Uncased
+
+There are many models (including the one for this tutorial) that have been finetuned based on these base models. The tokenizer for the model is still the same as the base model that it was finetuned from.
 
 ## Contents
 {: .no_toc }
@@ -33,21 +35,22 @@ This tutorial can be run locally or by leveraging Azure Machine Learning compute
 
 To run locally:
 
-- [vs code]() and/or [visual studio]()
-- [Anacaonda]()
+- [Visual Studio](https://visualstudio.microsoft.com/downloads/)
+- [VS Code](https://code.visualstudio.com/Download) with the [Jupyter notebook extension](https://marketplace.visualstudio.com/items?itemName=ms-toolsai.jupyter).
+- [Anacaonda](https://www.anaconda.com/)
 
-To run in Azure Machine Learning:
+To run in the cloud with Azure Machine Learning:
 
-- [Azure Subscription]()
-- [Azure Machine Learning Resource]()
+- [Azure Subscription](https://azure.microsoft.com/free/)
+- [Azure Machine Learning Resource](https://azure.microsoft.com/services/machine-learning/)
 
 ## Use Hugging Face to download the BERT model
 
-Hugging Face has a great API for downloading open source models and then we can use python and pytorch to export them to onnx format. This is a great option when using an open source model that is not already part of the [ONNX Model Zoo](). 
+Hugging Face has a great API for downloading open source models and then we can use python and pytorch to export them to onnx format. This is a great option when using an open source model that is not already part of the [ONNX Model Zoo](https://github.com/onnx/models). 
 
-Below we will go through the step to download and export our model.
+### Steps to download and export our model
 
-- Use the `transformers` API to download the `BertForQuestionAnswering` model named `bert-large-uncased-whole-word-masking-finetuned-squad`
+Use the `transformers` API to download the `BertForQuestionAnswering` model named `bert-large-uncased-whole-word-masking-finetuned-squad`
 
 ```python
 import torch
@@ -62,30 +65,32 @@ model = BertForQuestionAnswering.from_pretrained(model_name)
 # to turn the model to inference mode. This is required since operators like dropout or batchnorm 
 # behave differently in inference and training mode.
 model.eval()
-
-
 ```
 
-- Now that we have downloaded the model we need to export it to an `ONNX` format. This is built into Pytorch with the `torch.onnx.export` function. 
+Now that we have downloaded the model we need to export it to an `ONNX` format. This is built into Pytorch with the `torch.onnx.export` function. 
 
-- The `inputs` variable indicates what the input shape will be. You can either create a dummy input like we did below, or use a sample input.
+- The `inputs` variable indicates what the input shape will be. You can either create a dummy input like below, or use a sample input from testing the model.
 
-- Set the `opset_version` to the highest that is compatible with the model. Learn more about the opset versions [here]().
+- Set the `opset_version` to the highest and compatible version with the model. Learn more about the opset versions [here](https://onnxruntime.ai/docs/reference/compatibility.html#:~:text=ONNX%20Runtime%20supports%20all%20opsets%20from%20the%20latest,with%20ONNX%20opset%20versions%20in%20the%20range%20%5B7-9%5D.).
 
 - Set the `input_names` and `output_names` for the model.
 
 - Set the `dynamic_axes` for the dynamic length input because the `sentence` and `context` variables will be of different lengths for each question inferenced.
 
 ```python
-# Generate dummy inputs to the model. Adjust if neccessary
+# Generate dummy inputs to the model. Adjust if neccessary.
 inputs = {
-        'input_ids':   torch.randint(32, [1, 32], dtype=torch.long), # list of numerical ids for the tokenized text
-        'attention_mask': torch.ones([1, 32], dtype=torch.long),     # dummy list of ones
-        'token_type_ids':  torch.ones([1, 32], dtype=torch.long)     # dummy list of ones
+        # list of numerical ids for the tokenized text
+        'input_ids':   torch.randint(32, [1, 32], dtype=torch.long), 
+        # dummy list of ones
+        'attention_mask': torch.ones([1, 32], dtype=torch.long),     
+        # dummy list of ones
+        'token_type_ids':  torch.ones([1, 32], dtype=torch.long)     
     }
 
 symbolic_names = {0: 'batch_size', 1: 'max_seq_len'}
-torch.onnx.export(model,                                         # model being run
+torch.onnx.export(model,                                         
+# model being run
                   (inputs['input_ids'],
                    inputs['attention_mask'], 
                    inputs['token_type_ids']),                    # model input (or a tuple for multiple inputs)
@@ -103,7 +108,7 @@ torch.onnx.export(model,                                         # model being r
                                 'end_logits': symbolic_names})   # variable length axes/dynamic input
 ```
 ## Understanding the model
-When taking a prebuilt model and operationalizing it, its useful to take a moment and understand the model pre and post processing, and the input/output shapes and labels. Many models have sample code provided in Python to use the model there. We will be inferencing our model with C# but first lets see how its done in Python. This will help us with our C# logic in the next step.
+When taking a prebuilt model and operationalizing it, its useful to take a moment and understand the models pre and post processing, and the input/output shapes and labels. Many models have sample code provided in Python. We will be inferencing our model with C# but first lets test it and see how its done in Python. This will help us with our C# logic in the next step.
 
 - Create the `preprocess`, `postprocess`, `init` and `run` fuctions in python to test the model.
 
@@ -186,7 +191,7 @@ def run(raw_data):
     return results
 
 ```
-- Call the `init()` to download the model and create the `InferenceSession`
+- Call the `init()` function to download the model and create the `InferenceSession`.
 
 ```python
 init()
@@ -197,7 +202,7 @@ input = "{\"question\": \"What is Dolly Parton's middle name?\", \"context\": \"
 
 print(run(input))
 ```
-- Here is what the output should look like for the above question. We will use the `input_ids` to validate our tokenization in C#.
+- Here is what the output should look like for the above question. Use the `input_ids` to validate the tokenization in C#.
 
 ```text
 Output:
@@ -226,7 +231,7 @@ using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 ```
-- Add the namespace, class and Main function.
+- Add the `namespace`, `class` and `Main` function.
 
 ```csharp
 
@@ -242,40 +247,65 @@ namespace MyApp // Note: actual namespace depends on the project name.
 }
 ```
 
+- Add the `BertInput` class
+
 ```csharp
     public class BertInput
     {
-        [ColumnName("input_ids")]
         public long[] InputIds { get; set; }
-
-        [ColumnName("attention_mask")]
         public long[] AttentionMask { get; set; }
-
-        [ColumnName("token_type_ids")]
         public long[] TypeIds { get; set; }
     }
 ```
+
+- Create a sentence (question and context) and tokenize the sentence with the `BertUncasedLargeTokenizer`. The base model for this finetuned model was the BERT Uncased Large so the tokenizer is the same.
 
 ```csharp
   var sentence = "{\"question\": \"Where is Bob Dylan From?\", \"context\": \"Bob Dylan is from Duluth, Minnesota and is an American singer-songwriter\"}";
   Console.WriteLine(sentence);
 
+  // Create Tokenizer and tokenize the sentence.
   var tokenizer = new BertUncasedLargeTokenizer();
+
+  // Get the sentence tokens.
   var tokens = tokenizer.Tokenize(sentence);
   // Console.WriteLine(String.Join(", ", tokens));
 
-  // encode sentence based
+  // Encode the sentence and pass in the count of the tokens in the sentence.
   var encoded = tokenizer.Encode(tokens.Count(), sentence);
 
-  // Break out encoding to InputIds, AttentionMask and TypeIds from list of (input_id, attention_mask, type_id)
+  // Break out encoding to InputIds, AttentionMask and TypeIds from list of (input_id, attention_mask, type_id).
   var bertInput = new BertInput()
   {
       InputIds = encoded.Select(t => t.InputIds).ToArray(),
       AttentionMask = encoded.Select(t => t.AttentionMask).ToArray(),
       TypeIds = encoded.Select(t => t.TokenTypeIds).ToArray(),
   };
+ 
+```
+- Create the `ConvertToTensor` function. Set the shape of the Tensor `new[] { 1, inputDimension }` and the values to be added to the `NamedOnnxValue` input list.
 
-  //Console.WriteLine(String.Join(", ", bertInput.InputIds));
+```csharp
+        public static Tensor<long> ConvertToTensor(long[] inputArray, int inputDimension)
+        {
+            // Create a tensor with the shape the model is expecting. Here we are sending in 1 batch with the inputDimension as the amount of tokens.
+            Tensor<long> input = new DenseTensor<long>(new[] { 1, inputDimension });
+
+            // Loop through the inputArray (InputIds, AttentionMask and TypeIds)
+            for (var i = 0; i < inputArray.Length; i++)
+            {
+                // Add each to the input Tenor result.
+                // Set index and array value of each input Tensor.
+                input[0,i] = inputArray[i];
+            }
+            return input;
+        }
+```
+
+- Get the model, call the `ConvertToTensor` function to create the tensor and create the list of `NamedOnnxValue` input variables for inferencing.
+
+```csharp
+
 
   // Get path to model to create inference session.
   var modelPath = @"C:\code\bert-nlp-csharp\BertNlpTest\BertNlpTest\bert-large-uncased-finetuned-qa.onnx";
@@ -292,47 +322,49 @@ namespace MyApp // Note: actual namespace depends on the project name.
                                          NamedOnnxValue.CreateFromTensor("input_mask", attention_mask), 
                                          NamedOnnxValue.CreateFromTensor("segment_ids", token_type_ids) };
 
+
+```
+
+- Create the `InferenceSession`, run the inference and print out the result.
+
+```csharp
   // Create an InferenceSession from the Model Path.
   var session = new InferenceSession(modelPath);
 
-  // Run session and send input data in to get inference output. Call ToList then get the Last item. Then usethe AsEnumerable extension method to return the Value result as an Enumerable of NamedOnnxValue.
+  // Run session and send the input data in to get inference output. 
   var output = session.Run(input);
-  //var startLogits = output.ToList().First().Value;
+
+  // Call ToList on the output.
+  // Get the First and Last item in the list.
+  // Get the Value of the item and cast as IEnumerable<float> to get a list result.
   List<float> startLogits = (output.ToList().First().Value as IEnumerable<float>).ToList();
   List<float> endLogits = (output.ToList().Last().Value as IEnumerable<float>).ToList();
 
-  //argmax results
+  // Get the Index of the Max value from the output lists.
   var startIndex = startLogits.ToList().IndexOf(startLogits.Max()); 
   var endIndex = endLogits.ToList().IndexOf(endLogits.Max());
 
-  //from list of tokens
-  //get token from the index of the highest value from start to end
-  var predictedTokens =tokens
+  // From the list of the original tokens in the sentence
+  // Get the tokens between the startIndex and endIndex and convert to the vocabulary from the ID of the token.
+  var predictedTokens = tokens
               .Skip(startIndex)
               .Take(endIndex + 1 - startIndex)
               .Select(o => tokenizer.IdToToken((int)o.VocabularyIndex))
               .ToList();
 
+  // Print the result.
   Console.WriteLine(String.Join(" ", predictedTokens));
-```
-
-- Create the `ConvertToTensor` function
-
-```csharp
-        public static Tensor<long> ConvertToTensor(long[] inputArray, int inputDimension)
-        {
-            Tensor<long> input = new DenseTensor<long>(new[] { 1, inputDimension });
-            for (var i = 0; i < inputArray.Length; i++)
-            {
-                input[0,i] = inputArray[i];
-            }
-            return input;
-        }
-```
+  ```
 
 ## Deploy with Azure Web App
 
 In this example we created a simple console app however this could easily be implmented in something like a C# Web App. Check out the docs on how to [Quickstart: Deploy an ASP.NET web app](https://docs.microsoft.com/en-us/azure/app-service/quickstart-dotnetcore?tabs=net60&pivots=development-environment-vs).
 
-## More Resources
+## Next steps
+
+There are many different BERT models that have been finetuned for different takes and different base models you could finetume for your specific task. This code will work for most BERT models, just update the input and output and postprocessing for your specific model.
+
+- [C# API Doc](https://onnxruntime.ai/docs/api/csharp-api)
+- [Get Started with C# in ONNX Runtime](https://onnxruntime.ai/docs/get-started/with-csharp.html)
+- [Github Source for this example]()
 
