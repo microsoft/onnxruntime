@@ -11,7 +11,7 @@ namespace cuda {
 #define MTA_ADAMW_GROUP_SIZE 4
 #define MTA_ADAMW_CHUNK_SIZE 2048 * 32
 
-template <typename T_WEIGHT, typename T_GRAD, typename T_MOMENTUM>
+template <typename T_WEIGHT, typename T_GRAD, typename T_MOMENTUM, int CHUNK_SIZE>
 struct AdamWMTAFunctor {
   void operator()(cudaStream_t stream,
                   ChunkGroup<MTA_ADAMW_GROUP_SIZE> chunks,

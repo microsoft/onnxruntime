@@ -37,7 +37,7 @@ class MultipleParametersModule(torch.nn.Module):
         return out
 
 
-def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_count, adam_mode, json_file_name, device):
+def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_count, adam_mode, json_file_name, device, dimension_hidden):
     """Generate test data using specified model/data and other configs."""
 
     is_cuda = device == "cuda"
@@ -145,7 +145,7 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
     import json
     import os
 
-    directory = device
+    directory = os.path.join(device, str(dimension_hidden))
     if not os.path.exists(directory):
         os.makedirs(directory)
 
@@ -156,19 +156,25 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
 def generate_adamw_single_weight_tests(adam_mode, run_step_count, device):
     """Generate test data using specified mode of adamw."""
     seed = 8888
-    batch_size, dimension_in, dimension_hidden = 2, 2, 3
 
-    def _model_setup_func():
-        pt_model = SingleParameterModule(dimension_in, dimension_hidden).to(device)
-        return pt_model
+    # 250002
+    candidates = [1, 4, 7, 514, 768, 3072]
 
-    def _data_func():
-        input = torch.randn(batch_size, dimension_in, device=device, dtype=torch.float32)
-        target = torch.randn(batch_size, dimension_hidden, device=device, dtype=torch.float32)
-        return input, target
+    batch_size, dimension_in = 2, 768
 
-    json_file_name = f"adamw_test_single_weight_mode_{adam_mode}.json"
-    generate_adamw_test_data(seed, _model_setup_func, _data_func, run_step_count, adam_mode, json_file_name, device)
+    for dimension_hidden in candidates:
+
+        def _model_setup_func():
+            pt_model = SingleParameterModule(dimension_in, dimension_hidden).to(device)
+            return pt_model
+
+        def _data_func():
+            input = torch.randn(batch_size, dimension_in, device=device, dtype=torch.float32)
+            target = torch.randn(batch_size, dimension_hidden, device=device, dtype=torch.float32)
+            return input, target
+
+        json_file_name = f"adamw_test_single_weight_mode_{adam_mode}.json"
+        generate_adamw_test_data(seed, _model_setup_func, _data_func, run_step_count, adam_mode, json_file_name, device, dimension_hidden)
 
 
 def generate_adamw_multiple_weights_tests(adam_mode, run_step_count, device):
@@ -186,17 +192,17 @@ def generate_adamw_multiple_weights_tests(adam_mode, run_step_count, device):
         return input, target
 
     json_file_name = f"adamw_test_multiple_weights_mode_{adam_mode}.json"
-    generate_adamw_test_data(seed, _model_setup_func, data_func, run_step_count, adam_mode, json_file_name, device)
+    generate_adamw_test_data(seed, _model_setup_func, data_func, run_step_count, adam_mode, json_file_name, device, 3)
 
 
 def main():
     """Main entry."""
     device_candidates = ["cuda", "cpu"]
-    test_data_step_count = 11
+    test_data_step_count = 2
     for device in device_candidates:
         for adam_mode in range(0, 2):
             generate_adamw_single_weight_tests(adam_mode, test_data_step_count, device)
-            generate_adamw_multiple_weights_tests(adam_mode, test_data_step_count, device)
+            # generate_adamw_multiple_weights_tests(adam_mode, test_data_step_count, device)
 
 
 if __name__ == "__main__":

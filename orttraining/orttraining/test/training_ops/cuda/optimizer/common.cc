@@ -104,6 +104,58 @@ void GetPerStepInput(
   }
 }
 
+// template <typename T>
+// void AdaptiveToleranceFloatCheck(const Tensor& expected_tensor,
+//                                  const Tensor& output_tensor,
+//                                  const std::string& provider_type,
+//                                  const CheckParams& params) {
+//   const T* expected;
+//   const T* output;
+//   auto size = output_tensor.Shape().Size();
+
+//   expected = expected_tensor.Data<T>();
+//   output = output_tensor.Data<T>();
+
+// #if defined(USE_CUDA) || defined(USE_ROCM)
+//   constexpr float threshold = 0.005f;
+// #else
+//   constexpr float threshold = 0.0001f;
+// #endif
+
+//   for (int i = 0; i < size; ++i) {
+//     if (std::isnan(expected[i])) {
+//       ASSERT_TRUE(std::isnan(output[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;
+//     } else if (std::isinf(expected[i])) {  // Test infinity for equality
+//       ASSERT_EQ(expected[i], output[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
+//     } else {
+//       float atol = 1e-8;
+//       float rtol = 1e-3;
+//       if (expected[i] < 1e-5) {
+//         atol = 1e-8;
+//         rtol = std::min((float)1e-8 / (float)expected[i], 1);
+//       }
+
+//       if (!has_abs_err && !has_rel_err) {
+//         // the default for existing tests
+//         ASSERT_NEAR(expected[i], output[i], threshold)
+//             << "i:" << i << ", provider_type: " << provider_type;
+//       } else {
+//         if (has_abs_err) {
+//           ASSERT_NEAR(expected[i], output[i],
+//                       *(params.absolute_error_))
+//               << "i:" << i << ", provider_type: " << provider_type;
+//         }
+//         if (has_rel_err) {
+//           ASSERT_NEAR(expected[i], output[i],
+//                       *(params.relative_error_) *
+//                           std::abs(expected[i]))
+//               << "i:" << i << ", provider_type: " << provider_type;
+//         }
+//       }
+//     }
+//   }
+// }
+
 void AdamWTestLoop(
     std::unique_ptr<IExecutionProvider> execution_provider,
     bool use_baseline_inputs_for_each_iteration, size_t total_step, float lr,
@@ -205,6 +257,40 @@ void AdamWTestLoop(
       test.AddSeqOutput("updated_momentums_2", data.Momentum_2_Seq(), momentum_2_tolerance.first,
                         momentum_2_tolerance.second);
     }
+
+    // auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
+    //   auto& expected_data_vector = GetOutputData();
+
+    //   ASSERT_EQ(expected_data_vector.size(), fetches.size());
+    //   for (size_t i = 1; i < fetches.size(); ++i) {
+    //     OrtValue& output_value = fetches[i];
+    //     // const auto& output_tensor = FetchTensor(fetches[i]);
+    //     auto& expected_data = expected_data_vector[i];
+    //     ASSERT_TRUE(expected_data.data_.IsTensorSequence());
+    //     ASSERT_TRUE(output_value.IsTensorSequence());
+
+    //     const auto& exp_seq = expected_data.data_.Get<TensorSeq>();
+    //     const auto& output_seq = output_value.Get<TensorSeq>();
+
+    //     ASSERT_EQ(exp_seq.DataType(), output_seq.DataType());
+    //     ASSERT_EQ(exp_seq.Size(), output_seq.Size());
+
+    //     // now check the contents of the tensors
+    //     CheckParams check_params = MakeCheckParams(expected_data);
+
+    //     auto element_type = exp_seq.DataType()->AsPrimitiveDataType()->GetDataType();
+    //     utils::MLTypeCallDispatcher<bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t,
+    //                                 int8_t, int16_t, int32_t, int64_t, std::string, MLFloat16,
+    //                                 BFloat16>
+    //         t_disp(element_type);
+
+    //     for (size_t j = 0; j < output_seq.Size();; ++j) {
+    //       t_disp.Invoke<TensorCheck>(exp_seq.Get(i), output_seq.Get(i), provider_type, check_params);
+    //     }
+    //   }
+    // };
+
+    // test.SetCustomOutputVerifier(output_verifier);
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 

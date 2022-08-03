@@ -49,7 +49,7 @@ Status AdamWOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* update_signal = ctx->Input<Tensor>(6);
   if (update_signal == nullptr || *update_signal->template Data<bool>()) {
     typedef typename ToCudaType<float>::MappedType CudaT_FLOAT;
-    typedef AdamWMTAFunctor<CudaT_FLOAT, CudaT_FLOAT, CudaT_FLOAT> TFunctor;
+    typedef AdamWMTAFunctor<CudaT_FLOAT, CudaT_FLOAT, CudaT_FLOAT, MTA_ADAMW_CHUNK_SIZE> TFunctor;
     TFunctor functor;
 
     const float* lr_ptr = p.learning_rate->template Data<float>();

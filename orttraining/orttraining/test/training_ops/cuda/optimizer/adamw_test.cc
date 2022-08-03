@@ -29,6 +29,165 @@ typedef std::unordered_map<std::string, WeightDictType> TestDataDictType;
 
 const PathString ADAM_TEST_DATA_FOLDER = ORT_TSTR("testdata/test_data_generation/adamw_test/");
 
+void TorchAdamWSingleWeightTestLoop1Steps(int dim, bool use_baseline_inputs_for_each_iteration, bool* update_signal = nullptr) {
+  std::cout << "1111111111111 dim: " << dim << std::endl;
+  size_t total_step = 1;
+  float lr = 1e-03f;
+
+  std::pair<float, float> weight_tolerance{1e-1f, 1e-3f};  // rtol, atol
+  std::pair<float, float> momentum1_tolerance{1e-1f, 1e-4f};
+  std::pair<float, float> momentum2_tolerance{1e-1f, 1e-4f};
+
+  if (!use_baseline_inputs_for_each_iteration) {
+    // Loose the tolerance as all states are maintained (without reloading from baseline) across different steps.
+    momentum2_tolerance.first = 1e-2f;
+    momentum2_tolerance.second = 1e-4f;
+  }
+
+  std::vector<std::pair<PathString, std::unique_ptr<IExecutionProvider>>> testdata_ep_pair_vector;
+  testdata_ep_pair_vector.push_back(std::make_pair(
+      ToPathString("cuda/" + std::to_string(dim) + "/adamw_test_single_weight_mode_0.json"),
+      DefaultCudaExecutionProvider()));
+
+  for (auto it = testdata_ep_pair_vector.begin(); it != testdata_ep_pair_vector.end(); ++it) {
+    std::basic_ostringstream<PathChar> oss;
+    oss << ADAM_TEST_DATA_FOLDER << it->first;
+    const PathString data_uri = oss.str();
+    std::ifstream in{data_uri};
+
+    TestDataDictType test_data;
+    const json j = json::parse(in);
+    j.get_to<TestDataDictType>(test_data);
+
+    // 11 steps of weight values before applying optimization.
+    WeightDictType& named_weights = test_data[kParamName];
+
+    // 10 steps of gradient values used to apply optimization.
+    WeightDictType& named_gradients = test_data[kGradientName];
+
+    // 11 steps of momentum1 values before applying optimization.
+    WeightDictType& named_momentum1s = test_data[kMomentum1Name];
+
+    // 11 steps of momentum2 values before applying optimization.
+    WeightDictType& named_momentum2s = test_data[kMomentum2Name];
+
+    ASSERT_EQ(named_weights.size(), 1);
+    ASSERT_EQ(named_gradients.size(), 1);
+    ASSERT_EQ(named_momentum1s.size(), 1);
+    ASSERT_EQ(named_momentum2s.size(), 1);
+
+    ASSERT_EQ(named_weights["fc1.weight"].size(), total_step + 1);
+    ASSERT_EQ(named_gradients["fc1.weight"].size(), total_step);
+    ASSERT_EQ(named_momentum1s["fc1.weight"].size(), total_step + 1);
+    ASSERT_EQ(named_momentum2s["fc1.weight"].size(), total_step + 1);
+
+    std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
+        {{"fc1.weight", {768, dim}}};
+
+    AdamWTestLoop(std::move(it->second),
+                  use_baseline_inputs_for_each_iteration, total_step, lr,
+                  static_cast<float>(0.9f),    // alpha
+                  static_cast<float>(0.999f),  // beta
+                  static_cast<float>(1e-8f),   // epsilon
+                  static_cast<float>(1e-2f),   // weight_decay
+                  static_cast<int64_t>(0),     // adam_mode
+                  static_cast<int64_t>(1),     // correct_bias
+                  named_weights, named_gradients,
+                  named_momentum1s, named_momentum2s,
+                  weight_name_shape_mapping,
+                  weight_tolerance,
+                  momentum1_tolerance,
+                  momentum2_tolerance,
+                  update_signal);
+  }
+}
+
+void HFAdamWSingleWeightTestLoop1Steps(int dim, bool use_baseline_inputs_for_each_iteration) {
+  std::cout << "222222222222 dim: " << dim << std::endl;
+  size_t total_step = 1;
+  float lr = 1e-03f;
+
+  std::pair<float, float> weight_tolerance{1e-0f, 1e-3f};  // rtol, atol
+  std::pair<float, float> momentum1_tolerance{1e-0f, 1e-4f};
+  std::pair<float, float> momentum2_tolerance{1e-0f, 1e-4f};
+
+  std::vector<std::pair<PathString, std::unique_ptr<IExecutionProvider>>> testdata_ep_pair_vector;
+  testdata_ep_pair_vector.push_back(std::make_pair(
+      ToPathString("cuda/" + std::to_string(dim) + "/adamw_test_single_weight_mode_1.json"),
+      DefaultCudaExecutionProvider()));
+
+  for (auto it = testdata_ep_pair_vector.begin(); it != testdata_ep_pair_vector.end(); ++it) {
+    std::basic_ostringstream<PathChar> oss;
+    oss << ADAM_TEST_DATA_FOLDER << it->first;
+    const PathString data_uri = oss.str();
+    std::ifstream in{data_uri};
+
+    TestDataDictType test_data;
+    const json j = json::parse(in);
+    j.get_to<TestDataDictType>(test_data);
+
+    // 11 steps of weight values before applying optimization.
+    WeightDictType& named_weights = test_data[kParamName];
+
+    // 10 steps of gradient values used to apply optimization.
+    WeightDictType& named_gradients = test_data[kGradientName];
+
+    // 11 steps of momentum1 values before applying optimization.
+    WeightDictType& named_momentum1s = test_data[kMomentum1Name];
+
+    // 11 steps of momentum2 values before applying optimization.
+    WeightDictType& named_momentum2s = test_data[kMomentum2Name];
+
+    ASSERT_EQ(named_weights.size(), 1);
+    ASSERT_EQ(named_gradients.size(), 1);
+    ASSERT_EQ(named_momentum1s.size(), 1);
+    ASSERT_EQ(named_momentum2s.size(), 1);
+
+    ASSERT_EQ(named_weights["fc1.weight"].size(), total_step + 1);
+    ASSERT_EQ(named_gradients["fc1.weight"].size(), total_step);
+    ASSERT_EQ(named_momentum1s["fc1.weight"].size(), total_step + 1);
+    ASSERT_EQ(named_momentum2s["fc1.weight"].size(), total_step + 1);
+
+    std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
+        {{"fc1.weight", {768, dim}}};
+
+    AdamWTestLoop(std::move(it->second),
+                  use_baseline_inputs_for_each_iteration, total_step, lr,
+                  static_cast<float>(0.9f),    // alpha
+                  static_cast<float>(0.999f),  // beta
+                  static_cast<float>(1e-6f),   // epsilon
+                  static_cast<float>(0.0f),    // weight_decay
+                  static_cast<int64_t>(1),     // adam_mode
+                  static_cast<int64_t>(1),     // correct_bias
+                  named_weights, named_gradients,
+                  named_momentum1s, named_momentum2s,
+                  weight_name_shape_mapping,
+                  weight_tolerance,
+                  momentum1_tolerance,
+                  momentum2_tolerance);
+  }
+}
+
+TEST(AdamWTest, AdamWSingleWeightTest_Loop1Steps_Perf) {
+  // 250002
+  std::vector<int> dims{1, 4, 7, 514, 768, 3072};
+  for (auto it = dims.begin(); it != dims.end(); ++it) {
+    TorchAdamWSingleWeightTestLoop1Steps(*it, true);
+  }
+
+  for (auto it = dims.begin(); it != dims.end(); ++it) {
+    TorchAdamWSingleWeightTestLoop1Steps(*it, false);
+  }
+
+  for (auto it = dims.begin(); it != dims.end(); ++it) {
+    HFAdamWSingleWeightTestLoop1Steps(*it, true);
+  }
+
+  for (auto it = dims.begin(); it != dims.end(); ++it) {
+    HFAdamWSingleWeightTestLoop1Steps(*it, false);
+  }
+}
+
 void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_inputs_for_each_iteration, bool* update_signal = nullptr) {
   size_t total_step = 10;
   float lr = 1e-03f;
@@ -359,11 +518,11 @@ void HFAdamWMultipleWeightsTestLoop10Steps(
 }
 
 TEST(AdamWTest, HFAdamWMultipleWeightsTest_Loop10Steps) {
-  HFAdamWMultipleWeightsTestLoop10Steps(false);
+  HFAdamWMultipleWeightsTestLoop10Steps(true);
 }
 
 TEST(AdamWTest, HFAdamWMultipleWeightsStrictTest_Loop10Steps) {
-  HFAdamWMultipleWeightsTestLoop10Steps(true);
+  HFAdamWMultipleWeightsTestLoop10Steps(false);
 }
 
 }  // namespace

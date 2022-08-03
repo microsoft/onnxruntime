@@ -13,7 +13,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T_WEIGHT, typename T_GRAD, typename T_MOMENTUM>
+template <typename T_WEIGHT, typename T_GRAD, typename T_MOMENTUM, int CHUNK_SIZE>
 __device__ void PrepareMTAData(
     const ChunkGroup<MTA_ADAMW_GROUP_SIZE>& chunks,
     const int& block_idx,
@@ -29,10 +29,10 @@ __device__ void PrepareMTAData(
   T_MOMENTUM* momentum_1_tensor_ptr = static_cast<T_MOMENTUM*>(chunks.tensor_ptrs[2][tensor_idx]);
   T_MOMENTUM* momentum_2_tensor_ptr = static_cast<T_MOMENTUM*>(chunks.tensor_ptrs[3][tensor_idx]);
   const int chunk_start_idx = chunks.block_index_to_chunk_start_index[block_idx];
-  // chunk_size is chunks.chunk_size if the loaded chunk is full. Otherwise (this
+  // chunk_size is chunks.chunk_size (should be equal to CHUNK_SIZE) if the loaded chunk is full. Otherwise (this
   // chunk is the last one in the source tensor), the actual size is determined
   // by the bound of the source tensor.
-  chunk_size = min(tensor_size, chunk_start_idx + chunks.chunk_size) - chunk_start_idx;
+  chunk_size = min(tensor_size, chunk_start_idx + CHUNK_SIZE) - chunk_start_idx;
 
   weight_chunk_ptr = weight_tensor_ptr + chunk_start_idx;
   grad_chunk_ptr = grad_tensor_ptr + chunk_start_idx;
@@ -41,7 +41,7 @@ __device__ void PrepareMTAData(
 }
 
 // Torch Adam equivalence.
-template <typename T_WEIGHT, typename T_GRAD, typename T_MOMENTUM>
+template <typename T_WEIGHT, typename T_GRAD, typename T_MOMENTUM, int CHUNK_SIZE>
 __global__ void AdamWComputeMode0(
     ChunkGroup<MTA_ADAMW_GROUP_SIZE> chunks,
     const float alpha,
@@ -58,41 +58,44 @@ __global__ void AdamWComputeMode0(
   T_MOMENTUM* momentum_1_chunk_ptr;
   T_MOMENTUM* momentum_2_chunk_ptr;
 
-  // TODO(pengwa): unroll this one for better perf.
-  int chunk_size;
+  // Count of valid elements in the chunk.
+  int valid_chunk_size;
 
-  PrepareMTAData(chunks, block_idx, weight_chunk_ptr, grad_chunk_ptr,
-                 momentum_1_chunk_ptr, momentum_2_chunk_ptr, chunk_size);
+  PrepareMTAData<T_WEIGHT, T_GRAD, T_MOMENTUM, CHUNK_SIZE>(chunks, block_idx, weight_chunk_ptr, grad_chunk_ptr,
+                                                           momentum_1_chunk_ptr, momentum_2_chunk_ptr,
+                                                           valid_chunk_size);
 
-#pragma unroll(4)
-  for (int i = threadIdx.x; i < chunk_size; i += blockDim.x) {
-    float w = static_cast<float>(weight_chunk_ptr[i]);
-    float g = static_cast<float>(grad_chunk_ptr[i]);
-    float m1 = static_cast<float>(momentum_1_chunk_ptr[i]);
-    float m2 = static_cast<float>(momentum_2_chunk_ptr[i]);
+#pragma unroll
+  for (int i = threadIdx.x; i < CHUNK_SIZE; i += blockDim.x) {
+    if (i < valid_chunk_size) {
+      float w = static_cast<float>(weight_chunk_ptr[i]);
+      float g = static_cast<float>(grad_chunk_ptr[i]);
+      float m1 = static_cast<float>(momentum_1_chunk_ptr[i]);
+      float m2 = static_cast<float>(momentum_2_chunk_ptr[i]);
 
-    // Perform weight decay.
-    w = w - (w * lr * decay);
+      // Perform weight decay.
+      w = w - (w * lr * decay);
 
-    // Compute exponentially-averaged historical gradient.
-    m1 = alpha * m1 + (1.f - alpha) * g;
+      // Compute exponentially-averaged historical gradient.
+      m1 = alpha * m1 + (1.f - alpha) * g;
 
-    // Compute exponentially-averaged historical squared gradient.
-    m2 = beta * m2 + (1.f - beta) * g * g;
+      // Compute exponentially-averaged historical squared gradient.
+      m2 = beta * m2 + (1.f - beta) * g * g;
 
-    // Compute the new weight.
-    const float denom = (_Sqrt(m2) / _Sqrt(beta_correction)) + epsilon;
-    w = w - (lr * m1) / (alpha_correction * denom);
+      // Compute the new weight.
+      const float denom = (_Sqrt(m2) / _Sqrt(beta_correction)) + epsilon;
+      w = w - (lr * m1) / (alpha_correction * denom);
 
-    // Update the new weight and momentums.
-    weight_chunk_ptr[i] = static_cast<T_WEIGHT>(w);
-    momentum_1_chunk_ptr[i] = static_cast<T_MOMENTUM>(m1);
-    momentum_2_chunk_ptr[i] = static_cast<T_MOMENTUM>(m2);
+      // Update the new weight and momentums.
+      weight_chunk_ptr[i] = static_cast<T_WEIGHT>(w);
+      momentum_1_chunk_ptr[i] = static_cast<T_MOMENTUM>(m1);
+      momentum_2_chunk_ptr[i] = static_cast<T_MOMENTUM>(m2);
+    }
   }
 }
 
 // Huggingface AdamW equivalence.
-template <typename T_WEIGHT, typename T_GRAD, typename T_MOMENTUM>
+template <typename T_WEIGHT, typename T_GRAD, typename T_MOMENTUM, int CHUNK_SIZE>
 __global__ void AdamWComputeMode1(
     ChunkGroup<MTA_ADAMW_GROUP_SIZE> chunks,
     const float alpha,
@@ -107,39 +110,43 @@ __global__ void AdamWComputeMode1(
   T_GRAD* grad_chunk_ptr;
   T_MOMENTUM* momentum_1_chunk_ptr;
   T_MOMENTUM* momentum_2_chunk_ptr;
-  int chunk_size;
 
-  PrepareMTAData(chunks, block_idx, weight_chunk_ptr, grad_chunk_ptr,
-                 momentum_1_chunk_ptr, momentum_2_chunk_ptr, chunk_size);
+  // Count of valid elements in the chunk.
+  int valid_chunk_size;
 
-#pragma unroll(4)
-  for (int i = threadIdx.x; i < chunk_size; i += blockDim.x) {
-    float w = static_cast<float>(weight_chunk_ptr[i]);
-    float g = static_cast<float>(grad_chunk_ptr[i]);
-    float m1 = static_cast<float>(momentum_1_chunk_ptr[i]);
-    float m2 = static_cast<float>(momentum_2_chunk_ptr[i]);
+  PrepareMTAData<T_WEIGHT, T_GRAD, T_MOMENTUM, CHUNK_SIZE>(chunks, block_idx, weight_chunk_ptr, grad_chunk_ptr,
+                                                           momentum_1_chunk_ptr, momentum_2_chunk_ptr,
+                                                           valid_chunk_size);
 
-    // Compute exponentially-averaged historical gradient.
-    m1 = alpha * m1 + (1.f - alpha) * g;
+  for (int i = threadIdx.x; i < CHUNK_SIZE; i += blockDim.x) {
+    if (i < valid_chunk_size) {
+      float w = static_cast<float>(weight_chunk_ptr[i]);
+      float g = static_cast<float>(grad_chunk_ptr[i]);
+      float m1 = static_cast<float>(momentum_1_chunk_ptr[i]);
+      float m2 = static_cast<float>(momentum_2_chunk_ptr[i]);
 
-    // Compute exponentially-averaged historical squared gradient.
-    m2 = beta * m2 + (1.f - beta) * g * g;
+      // Compute exponentially-averaged historical gradient.
+      m1 = alpha * m1 + (1.f - alpha) * g;
 
-    float denom = _Sqrt(m2) + epsilon;
-    w = w - (lr_corrected * m1 / denom);
+      // Compute exponentially-averaged historical squared gradient.
+      m2 = beta * m2 + (1.f - beta) * g * g;
 
-    // Perform weight decay.
-    w = w - (lr * decay * w);
+      float denom = _Sqrt(m2) + epsilon;
+      w = w - (lr_corrected * m1 / denom);
 
-    // Update the new weight and momentums.
-    weight_chunk_ptr[i] = static_cast<T_WEIGHT>(w);
-    momentum_1_chunk_ptr[i] = static_cast<T_MOMENTUM>(m1);
-    momentum_2_chunk_ptr[i] = static_cast<T_MOMENTUM>(m2);
+      // Perform weight decay.
+      w = w - (lr * decay * w);
+
+      // Update the new weight and momentums.
+      weight_chunk_ptr[i] = static_cast<T_WEIGHT>(w);
+      momentum_1_chunk_ptr[i] = static_cast<T_MOMENTUM>(m1);
+      momentum_2_chunk_ptr[i] = static_cast<T_MOMENTUM>(m2);
+    }
   }
 }
 
-template <typename T_WEIGHT, typename T_GRAD, typename T_MOMENTUM>
-void AdamWMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(
+template <typename T_WEIGHT, typename T_GRAD, typename T_MOMENTUM, int CHUNK_SIZE>
+void AdamWMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM, CHUNK_SIZE>::operator()(
     cudaStream_t stream,
     ChunkGroup<MTA_ADAMW_GROUP_SIZE> chunks,
     const float alpha,
@@ -152,6 +159,9 @@ void AdamWMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(
     const int64_t update_count) {
   const int block_count = chunks.chunk_count;
   const int thread_count = ChunkGroup<MTA_ADAMW_GROUP_SIZE>::thread_count_per_block;
+
+  ORT_ENFORCE(CHUNK_SIZE == chunks.chunk_size, "launch_multi_tensor_functor use a different chunk size with ",
+              CHUNK_SIZE);
 
   float alpha_correction = 1.f, beta_correction = 1.f;
   float lr_corrected = lr;
@@ -174,49 +184,49 @@ void AdamWMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(
   //         bias correction is applied on learning rate, then use lr_corrected for subsequent computations.
   //         weight decay is applied after weight is updated.
   if (adam_mode == 0) {
-    AdamWComputeMode0<T_WEIGHT, T_GRAD, T_MOMENTUM><<<block_count, thread_count, 0, stream>>>(
+    AdamWComputeMode0<T_WEIGHT, T_GRAD, T_MOMENTUM, CHUNK_SIZE><<<block_count, thread_count, 0, stream>>>(
         chunks, alpha, beta, epsilon, lr, alpha_correction, beta_correction, decay);
   } else if (adam_mode == 1) {
-    AdamWComputeMode1<T_WEIGHT, T_GRAD, T_MOMENTUM><<<block_count, thread_count, 0, stream>>>(
+    AdamWComputeMode1<T_WEIGHT, T_GRAD, T_MOMENTUM, CHUNK_SIZE><<<block_count, thread_count, 0, stream>>>(
         chunks, alpha, beta, epsilon, lr, lr_corrected, decay);
   } else {
     ORT_THROW("Unsupported Adamw optimizer mode.");
   }
 }
 
-#define INSTANTIATE_ADAMMTA_FUNCTOR(T_WEIGHT, T_GRAD, T_MOMENTUM)           \
-  template void AdamWMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(  \
-      cudaStream_t stream,                                                  \
-      ChunkGroup<MTA_ADAMW_GROUP_SIZE> chunks,                              \
-      const float alpha,                                                    \
-      const float beta,                                                     \
-      const float epsilon,                                                  \
-      const float lr,                                                       \
-      const float decay,                                                    \
-      const int64_t adam_mode,                                              \
-      const int64_t correct_bias,                                           \
-      const int64_t update_count);                                          \
-                                                                            \
-  template __global__ void AdamWComputeMode0<T_WEIGHT, T_GRAD, T_MOMENTUM>( \
-      ChunkGroup<MTA_ADAMW_GROUP_SIZE> chunks,                              \
-      const float alpha,                                                    \
-      const float beta,                                                     \
-      const float epsilon,                                                  \
-      const float lr,                                                       \
-      const float alpha_correction,                                         \
-      const float beta_correction,                                          \
-      const float decay);                                                   \
-                                                                            \
-  template __global__ void AdamWComputeMode1<T_WEIGHT, T_GRAD, T_MOMENTUM>( \
-      ChunkGroup<MTA_ADAMW_GROUP_SIZE> chunks,                              \
-      const float alpha,                                                    \
-      const float beta,                                                     \
-      const float epsilon,                                                  \
-      const float lr,                                                       \
-      const float lr_corrected,                                             \
+#define INSTANTIATE_ADAMMTA_FUNCTOR(T_WEIGHT, T_GRAD, T_MOMENTUM, CHUNK_SIZE)           \
+  template void AdamWMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM, CHUNK_SIZE>::operator()(  \
+      cudaStream_t stream,                                                              \
+      ChunkGroup<MTA_ADAMW_GROUP_SIZE> chunks,                                          \
+      const float alpha,                                                                \
+      const float beta,                                                                 \
+      const float epsilon,                                                              \
+      const float lr,                                                                   \
+      const float decay,                                                                \
+      const int64_t adam_mode,                                                          \
+      const int64_t correct_bias,                                                       \
+      const int64_t update_count);                                                      \
+                                                                                        \
+  template __global__ void AdamWComputeMode0<T_WEIGHT, T_GRAD, T_MOMENTUM, CHUNK_SIZE>( \
+      ChunkGroup<MTA_ADAMW_GROUP_SIZE> chunks,                                          \
+      const float alpha,                                                                \
+      const float beta,                                                                 \
+      const float epsilon,                                                              \
+      const float lr,                                                                   \
+      const float alpha_correction,                                                     \
+      const float beta_correction,                                                      \
+      const float decay);                                                               \
+                                                                                        \
+  template __global__ void AdamWComputeMode1<T_WEIGHT, T_GRAD, T_MOMENTUM, CHUNK_SIZE>( \
+      ChunkGroup<MTA_ADAMW_GROUP_SIZE> chunks,                                          \
+      const float alpha,                                                                \
+      const float beta,                                                                 \
+      const float epsilon,                                                              \
+      const float lr,                                                                   \
+      const float lr_corrected,                                                         \
       const float decay);
 
-INSTANTIATE_ADAMMTA_FUNCTOR(float, float, float);
+INSTANTIATE_ADAMMTA_FUNCTOR(float, float, float, MTA_ADAMW_CHUNK_SIZE);
 
 }  // namespace cuda
 }  // namespace onnxruntime
