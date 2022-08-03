@@ -180,7 +180,7 @@ TEST(CheckpointApiTest, LoadCheckpointToModel) {
   for (auto& init : p_model.graph().initializer()) {
     // Convert the tensor bytes to a float vector to compare.
     size_t len = init.raw_data().size() / sizeof(float);
-    std::vector<float> float_values(len);
+    InlinedVector<float> float_values(len);
     std::copy(init.raw_data().data(), init.raw_data().data() + init.raw_data().size(), reinterpret_cast<char*>(&float_values.front()));
 
     // Make sure the weights are no longer a zero.

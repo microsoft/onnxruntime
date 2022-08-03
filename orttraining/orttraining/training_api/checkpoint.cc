@@ -533,8 +533,8 @@ Status OrtLoadCustomPropertyInternal(const PathString& property_folder_path,
 Status OrtLoadInternal(const PathString& checkpoint_path,
                        ONNX_NAMESPACE::ModelProto& model_proto) {
   // Find tensor proto files.
-  std::unordered_map<std::string, ONNX_NAMESPACE::TensorProto> param_tensor_protos;
-  std::vector<PathString> tensor_proto_filenames;
+  InlinedHashMap<std::string, ONNX_NAMESPACE::TensorProto> param_tensor_protos;
+  InlinedVector<PathString> tensor_proto_filenames;
 
   FilterFilesFromDirectory(
       checkpoint_path,
