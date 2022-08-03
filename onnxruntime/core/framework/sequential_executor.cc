@@ -154,7 +154,11 @@ std::string ComposeSeriesName(const GraphViewer& graph_viewer) {
 class SessionScope {
  public:
   friend class KernelScope;
-  SessionScope(const SessionState& session_state, const ExecutionFrame& frame) : session_state_(session_state), frame_(frame)
+  SessionScope(const SessionState& session_state, const ExecutionFrame& frame) : session_state_(session_state)
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+                                                                                 ,
+                                                                                 frame_(frame)
+#endif
 #ifdef CONCURRENCY_VISUALIZER
                                                                                  ,
                                                                                  series_(ComposeSeriesName(session_state.GetGraphViewer())
@@ -183,6 +187,9 @@ class SessionScope {
 // Enable TRACE_EXECUTION compile flag to dump execution plan
 #if defined(TRACE_EXECUTION)
     std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
+#endif
+#if defined(ORT_MINIMAL_BUILD) || !defined(ORT_MEMORY_PROFILE)
+    ORT_UNUSED_PARAMETER(frame);
 #endif
   }
 
@@ -222,15 +229,18 @@ class SessionScope {
 
     for (const auto& node_exec_plan : exec_plan_vec) {
       if (terminate_flag_) {
-      LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
+        LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
+      }
     }
 #endif
   }
 private:
   const SessionState& session_state_;
-  const ExecutionFrame& frame_;
   TimePoint session_start_;
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  const ExecutionFrame& frame_;
+#endif
 
 #ifdef CONCURRENCY_VISUALIZER
   diagnostic::marker_series series_;

@@ -101,7 +101,7 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
   for (size_t i = 0; i < notification_owners.size(); ++i) {
     auto& stream = device_streams[notification_owners[i]];
     if (stream)
-      notifications.push_back(std::move(stream->CreateNotification(/*TODO: calculate num of consumers*/ 0)));
+      notifications.emplace_back(std::move(stream->CreateNotification(/*TODO: calculate num of consumers*/ 0)));
     else
       notifications.push_back(nullptr);
   }
