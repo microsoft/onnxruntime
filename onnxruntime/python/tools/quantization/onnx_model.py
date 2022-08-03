@@ -206,7 +206,7 @@ class ONNXModel:
         """Find out if a node exists in a graph or a node is in the
         new set of nodes created during quantization.
 
-        Return:
+        Returns:
             The node found or None.
         """
         graph_nodes_list = list(graph.node)  # deep copy

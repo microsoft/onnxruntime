@@ -362,7 +362,7 @@ class QDQQuantizer(ONNXQuantizer):
                     quantized_value = self.quantized_value_map[tensor_provider_name]
                     # Quantize the input
                     initializer = find_by_name(tensor_name, self.model.initializer())
-                    if initializer:
+                    if initializer is not None:
                         raise ValueError("Quantization parameter shared mode is not supported for weight yet")
                     self._add_qdq_pair_for_activation(tensor_name, quantized_value.scale_name, quantized_value.zp_name)
 
