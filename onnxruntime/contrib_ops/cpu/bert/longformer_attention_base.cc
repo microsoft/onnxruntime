@@ -33,11 +33,11 @@ Status LongformerAttentionBase::CheckInputs(const TensorShape& input_shape,
   int hidden_size = static_cast<int>(dims[2]);
   if (sequence_length % (2 * window_) != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'input' dimension 1 should be divisiable by 2W, where W is value of the window attribute.");
+                           "Input 'input' dimension 1 should be divisible by 2W, where W is value of the window attribute.");
   }
   if (hidden_size % num_heads_ != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'input' dimension 2 should be divisiable by value of the num_heads attribute.");
+                           "Input 'input' dimension 2 should be divisible by value of the num_heads attribute.");
   }
 
   const auto& weights_dims = weights_shape.GetDims();

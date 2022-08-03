@@ -66,15 +66,17 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   constexpr size_t element_size = sizeof(T);
 
-  // TODO: only calculate once per model.
+  // TODO: only calculate global index once per model. Right now, we calculate once per LongformerAttention node.
   // Build Global Index
   auto global_index_buffer = GetScratchBuffer<int>(batch_size * sequence_length);
   auto batch_global_num_buffer = GetScratchBuffer<int>(batch_size);
 
-  size_t global_scratch_bytes = GetGlobalScratchSize(batch_size, sequence_length);
+  size_t global_scratch_bytes = GetGlobalScratchSize(sequence_length);
   auto global_scratch_buffer = GetScratchBuffer<void>(global_scratch_bytes);
 
-  BuildGlobalIndex(
+  auto& device_prop = GetDeviceProp();
+  ORT_RETURN_IF_ERROR(BuildGlobalIndex(
+      device_prop,
       stream,
       global_attention->template Data<int>(),
       batch_size,
@@ -82,7 +84,11 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
       global_index_buffer.get(),
       batch_global_num_buffer.get(),
       global_scratch_buffer.get(),
-      global_scratch_bytes);
+      global_scratch_bytes));
+
+  AutoDestoryCudaStream memory_copy_stream;
+  cudaStream_t& memcpy_stream = memory_copy_stream.Get();
+  CUDA_RETURN_IF_ERROR(cudaStreamCreate(&memcpy_stream));
 
   // Copy batch_global_num to CPU
   size_t pinned_buffer_bytes = GetPinnedBufferSize(batch_size);
@@ -92,14 +98,14 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                        batch_global_num_buffer.get(),
                                        batch_size * sizeof(int),
                                        cudaMemcpyDeviceToHost,
-                                       stream));
+                                       memcpy_stream));
 
   // Create an event to make sure the async copy is finished before reading the data.
   AutoDestoryCudaEvent new_event;
-  cudaEvent_t& isCopyDone = new_event.Get();
+  cudaEvent_t& is_copy_done = new_event.Get();
 
-  CUDA_RETURN_IF_ERROR(cudaEventCreate(&isCopyDone));
-  CUDA_RETURN_IF_ERROR(cudaEventRecord(isCopyDone, stream));
+  CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&is_copy_done, cudaEventDisableTiming));
+  CUDA_RETURN_IF_ERROR(cudaEventRecord(is_copy_done, memcpy_stream));
 
   // Use GEMM for fully connection.
   int m = batch_size * sequence_length;
@@ -114,7 +120,6 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
   // Bias shape is (N), broadcast using B(N, M) = 1 * bias(N, 1) x ones(1, M) + 0 * B.
-  auto& device_prop = GetDeviceProp();
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
       reinterpret_cast<const CudaT*>(bias->template Data<T>()), n,
@@ -129,7 +134,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
       &one, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   // Wait for async copy of batch_global_num
-  CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
+  CUDA_RETURN_IF_ERROR(cudaEventSynchronize(is_copy_done));
 
   // Find the maximum number of global tokens in all batches
   int max_num_global = 0;
@@ -147,7 +152,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // Fully connection for global projection.
   // Note that Q only need handle global query tokens if we split GEMM to global Q/K/V separately.
-  // When there is no global token, need not run glboal GEMM.
+  // When there is no global token, need not run global GEMM.
   auto global_gemm_buffer = GetScratchBuffer<void>(max_num_global > 0 ? qkv_size : 0);
 
   if (max_num_global > 0) {
@@ -177,6 +182,8 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           device_prop,
           cublas,
           stream,
+          memcpy_stream,
+          is_copy_done,
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
           reinterpret_cast<const CudaT*>(mask->template Data<T>()),
           reinterpret_cast<const CudaT*>(global_gemm_buffer.get()),

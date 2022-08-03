@@ -26,6 +26,7 @@ limitations under the License.
 #include <library_types.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
+#include "transformer_cuda_common.h"
 #include "longformer_attention_impl.h"
 #include "attention_impl.h"
 #include "longformer_attention_softmax.h"
@@ -120,17 +121,14 @@ __launch_bounds__(blockSize)
                                             void* input_pointers,
                                             const T* attention_mask,
                                             float scaler,
-                                            int dim0,
                                             int sequence_length,
-                                            int window,
-                                            int num_heads) {
+                                            int num_heads,
+                                            int window) {
   typedef cub::BlockReduce<float, blockSize> BlockReduce;
   __shared__ typename BlockReduce::TempStorage block_reduce_temp;
-  __shared__ float max_shared;
-  __shared__ float sum_shared;
 
   int tid = threadIdx.x;
-  const int batch_index = blockIdx.x / dim0;
+  const int batch_index = blockIdx.x / (sequence_length * num_heads);
   const int row_index = blockIdx.x % sequence_length;
   const int head_index = (blockIdx.x / sequence_length) % num_heads;
 
@@ -210,9 +208,11 @@ __launch_bounds__(blockSize)
   }
 
   float sum_input = 0.;
+  __shared__ float sum_shared;
 
   // Calculate max input
   float max_input = -CUDART_INF_F;
+  __shared__ float max_shared;
 
   if (is_local_row) {
     const T* input_block = nullptr;
@@ -244,7 +244,9 @@ __launch_bounds__(blockSize)
 
     const T* input_global = nullptr;
     int local_global = row_index - window;
-    if (local_global > global_num) local_global = global_num;
+    if (local_global > global_num) {
+      local_global = global_num;
+    }
     if (local_global > 0) {
       input_global = inputs[3] + (row_index - window) * input_strides[3] + head_index * input_sizes[3];
     }
@@ -364,6 +366,8 @@ __launch_bounds__(blockSize)
 
 bool LaunchLongformerSoftmaxKernel(
     cudaStream_t stream,
+    cudaStream_t memcpy_stream,
+    cudaEvent_t &is_copy_done,
     cublasHandle_t cublas,
     void* workspace,
     const void* q,                // transposed Q with shape (B, N, S, H)
@@ -439,7 +443,7 @@ bool LaunchLongformerSoftmaxKernel(
   //      [W][W][W]
   //         [W][W]
   // The first and last rows have 2 blocks per row, and the remaining has 3 blocks per row.
-  // The calculation are splited into 3 parts: middle rows,  then the first row and finally the last row.
+  // The calculation are splited into 3 parts: the first row, middle rows and finally the last row.
   // To save space, we do not store the whole matrix. Instead, we only allocate space for these blocks.
   //
   // For global attention part, we have two assumptions:
@@ -492,10 +496,37 @@ bool LaunchLongformerSoftmaxKernel(
   memcpy(temp_buffer + 5 * sizeof(void*), &output_pointers[0], 5 * sizeof(void*));
   memcpy(temp_buffer + 10 * sizeof(void*), &buffer_sizes[0], 5 * sizeof(size_t));
   memcpy(temp_buffer + 10 * sizeof(void*) + 5 * sizeof(size_t), &buffer_strides[0], 5 * sizeof(size_t));
-  CHECK_CUDA(cudaMemcpyAsync(scratch2, temp_buffer, totalBytes, cudaMemcpyHostToDevice, stream));
+  CHECK_CUDA(cudaMemcpyAsync(scratch2, temp_buffer, totalBytes, cudaMemcpyHostToDevice, memcpy_stream));
+  CHECK_CUDA(cudaEventRecord(is_copy_done, memcpy_stream));
 
   // Local attention part
   {
+    // local attention per head - head
+    CHECK(cublasGemmStridedBatchedEx(cublas,
+                                     CUBLAS_OP_T,
+                                     CUBLAS_OP_N,
+                                     2 * w,                   // m
+                                     w,                       // n
+                                     head_size,               // k
+                                     alpha,                   // alpha
+                                     k,                       // A
+                                     Atype,                   // A type
+                                     head_size,               // lda
+                                     stride_per_head,         // strideA
+                                     q,                       // B
+                                     Btype,                   // B type
+                                     head_size,               // ldb
+                                     stride_per_head,         // strideB
+                                     beta_0,                  // beta
+                                     input_pointers[0],       // C
+                                     Ctype,                   // C type
+                                     2 * w,                   // ldc
+                                     buffer_sizes[0],         // strideC
+                                     batch_size * num_heads,  // batch count
+                                     resultType,
+                                     algo));
+
+    // local attention per head - middle
     if (middle_count > 0) {
       for (int i = 0; i < batch_size; ++i) {
         for (int j = 0; j < num_heads; ++j) {
@@ -532,30 +563,7 @@ bool LaunchLongformerSoftmaxKernel(
       }
     }
 
-    CHECK(cublasGemmStridedBatchedEx(cublas,
-                                     CUBLAS_OP_T,
-                                     CUBLAS_OP_N,
-                                     2 * w,                   // m
-                                     w,                       // n
-                                     head_size,               // k
-                                     alpha,                   // alpha
-                                     k,                       // A
-                                     Atype,                   // A type
-                                     head_size,               // lda
-                                     stride_per_head,         // strideA
-                                     q,                       // B
-                                     Btype,                   // B type
-                                     head_size,               // ldb
-                                     stride_per_head,         // strideB
-                                     beta_0,                  // beta
-                                     input_pointers[0],       // C
-                                     Ctype,                   // C type
-                                     2 * w,                   // ldc
-                                     buffer_sizes[0],         // strideC
-                                     batch_size * num_heads,  // batch count
-                                     resultType,
-                                     algo));
-
+    // local attention per head - tail
     const void* q_head = reinterpret_cast<const char*>(q) + (last_block * w * head_size) * element_size;
     const void* k_head = reinterpret_cast<const char*>(k) + ((last_block - 1) * w * head_size) * element_size;
 
@@ -616,9 +624,8 @@ bool LaunchLongformerSoftmaxKernel(
                                        resultType,
                                        algo));
 
-      // It is feasible to use compact format for Global_Q with shape BxNxGxH to save space.
-      // In that case, elements_per_batch is num_heads * max_num_global * head_size,
-      // and stride_per_head is max_num_global * head_size.
+      // TODO(tianleiwu): Use compact format for Global_Q with shape BxNxGxH to save space:
+      // global_q_elements_per_batch = num_heads * max_num_global * head_size; strideB = max_num_global * head_size
 
       const void* global_q_batch = reinterpret_cast<const char*>(global_q) + (i * elements_per_batch) * element_size;
       const void* global_k_batch = reinterpret_cast<const char*>(global_k) + (i * elements_per_batch) * element_size;
@@ -652,8 +659,8 @@ bool LaunchLongformerSoftmaxKernel(
     }
   }
 
-  int dim0 = sequence_length * num_heads;
-  int dim1 = sequence_length;
+  // Make sure async copy to scratch2 is ready.
+  CHECK_CUDA(cudaEventSynchronize(is_copy_done));
 
   const int blockSize = 64;
   const int gridSize = batch_size * num_heads * sequence_length;
@@ -664,7 +671,7 @@ bool LaunchLongformerSoftmaxKernel(
         batch_global_num,
         scratch2,
         static_cast<const __half*>(attention_mask),
-        scaler, dim0, dim1, window, num_heads);
+        scaler, sequence_length, num_heads, window);
   } else {
     LongformerSoftmaxKernel<float, blockSize><<<gridSize, blockSize, 0, stream>>>(
         global_attention,
@@ -672,23 +679,44 @@ bool LaunchLongformerSoftmaxKernel(
         batch_global_num,
         scratch2,
         static_cast<const float*>(attention_mask),
-        scaler, dim0, dim1, window, num_heads);
+        scaler, sequence_length, num_heads, window);
   }
 
-  // Run the matrix multiply: output = softmax_out * v
-  //   softmax_out: B x N x S x S
-  //             v: B x N x S x H
-  //      attn_out: B x N x S x H
-  // Calculation uses sliding blocks in a way similar to local attention part.
-
+  // local values attending the softmax score.
   {
+    // local attention per head - head
+    CHECK(cublasGemmStridedBatchedEx(cublas,
+                                  CUBLAS_OP_N,
+                                  CUBLAS_OP_N,
+                                  head_size,               // m
+                                  w,                       // n
+                                  2 * w,                   // k
+                                  alpha,                   // alpha
+                                  v,                       // A
+                                  Atype,                   // A type
+                                  head_size,               // lda
+                                  stride_per_head,         // strideA
+                                  output_pointers[0],      // B
+                                  Btype,                   // B type
+                                  (int)buffer_strides[0],  // ldb
+                                  buffer_sizes[0],         // strideB
+                                  beta_0,                  // beta
+                                  output,                  // C
+                                  Ctype,                   // C type
+                                  head_size,               // ldc
+                                  stride_per_head,         // strideC
+                                  batch_size * num_heads,  // batch count
+                                  resultType,
+                                  algo));
+
+    // local attention per head - middle
     if (middle_count > 0) {
       for (int i = 0; i < batch_size; ++i) {
         for (int j = 0; j < num_heads; ++j) {
           const void* v_head = reinterpret_cast<const char*>(v) + \
                                (i * elements_per_batch + j * head_size * sequence_length) * element_size;
           const void* prob_head = reinterpret_cast<const char*>(output_pointers[1]) + \
-                                  (i * num_heads * buffer_sizes[1] + j * buffer_sizes[1]) * element_size;
+                                  (i * num_heads + j) * buffer_sizes[1] * element_size;
           void* out_head = reinterpret_cast<char*>(output) + \
                            (i * elements_per_batch + j * head_size * sequence_length + w * head_size) * element_size;
           CHECK(cublasGemmStridedBatchedEx(cublas,
@@ -718,30 +746,7 @@ bool LaunchLongformerSoftmaxKernel(
       }
     }
 
-    CHECK(cublasGemmStridedBatchedEx(cublas,
-                                     CUBLAS_OP_N,
-                                     CUBLAS_OP_N,
-                                     head_size,               // m
-                                     w,                       // n
-                                     2 * w,                   // k
-                                     alpha,                   // alpha
-                                     v,                       // A
-                                     Atype,                   // A type
-                                     head_size,               // lda
-                                     stride_per_head,         // strideA
-                                     output_pointers[0],      // B
-                                     Btype,                   // B type
-                                     (int)buffer_strides[0],  // ldb
-                                     buffer_sizes[0],         // strideB
-                                     beta_0,                  // beta
-                                     output,                  // C
-                                     Ctype,                   // C type
-                                     head_size,               // ldc
-                                     stride_per_head,         // strideC
-                                     batch_size * num_heads,  // batch count
-                                     resultType,
-                                     algo));
-
+    // local attention per head - tail
     const void* v_head = reinterpret_cast<const char*>(v) + (last_block - 1) * w * head_size * element_size;
     void* out_head = reinterpret_cast<char*>(output) + last_block * w * head_size * element_size;
 
@@ -770,6 +775,7 @@ bool LaunchLongformerSoftmaxKernel(
                                      algo));
   }
 
+  // global attention part
   for (int i = 0; i < batch_size; ++i) {
     if (global_count[i] > 0) {
       int glob_longdim_mm = sequence_length - 2 * w;
@@ -839,7 +845,8 @@ bool LaunchLongformerSoftmaxKernel(
 
 template <typename T>
 bool LongformerQkvToContext(
-    const cudaDeviceProp& device_prop, cublasHandle_t cublas, cudaStream_t stream,
+    const cudaDeviceProp& device_prop, cublasHandle_t cublas,
+    cudaStream_t stream, cudaStream_t memcpy_stream, cudaEvent_t &is_copy_done,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
     const int window, const size_t element_size,
     const T* input, const T* attention_mask,
@@ -933,6 +940,8 @@ bool LongformerQkvToContext(
     assert(max_num_global <= window);
     if (!LaunchLongformerSoftmaxKernel(
             stream,
+            memcpy_stream,
+            is_copy_done,
             cublas,
             workspace,         // softmax space
             q,                 // Transposed Q with shape B x N x S x H
@@ -967,6 +976,8 @@ bool LaunchLongformerAttentionKernel(
     const cudaDeviceProp& device_prop,
     cublasHandle_t cublas,
     cudaStream_t stream,
+    cudaStream_t memcpy_stream,
+    cudaEvent_t &is_copy_done,
     const void* input,
     const void* attention_mask,
     const void* global_input,
@@ -992,7 +1003,7 @@ bool LaunchLongformerAttentionKernel(
                                                                     window,
                                                                     disable_compact_memory);
   if (element_size == 2) {
-    return LongformerQkvToContext(device_prop, cublas, stream,
+    return LongformerQkvToContext(device_prop, cublas, stream, memcpy_stream, is_copy_done,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
                                   reinterpret_cast<const half*>(input),
                                   reinterpret_cast<const half*>(attention_mask),
@@ -1007,7 +1018,7 @@ bool LaunchLongformerAttentionKernel(
                                   softmax_workspace_size,
                                   disable_compact_memory);
   } else {
-    return LongformerQkvToContext(device_prop, cublas, stream,
+    return LongformerQkvToContext(device_prop, cublas, stream, memcpy_stream, is_copy_done,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
                                   reinterpret_cast<const float*>(input),
                                   reinterpret_cast<const float*>(attention_mask),
