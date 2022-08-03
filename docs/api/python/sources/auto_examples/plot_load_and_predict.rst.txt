@@ -27,13 +27,14 @@ This example demonstrates how to load a model and compute
 the output for an input vector. It also shows how to
 retrieve the definition of its inputs and outputs.
 
-.. GENERATED FROM PYTHON SOURCE LINES 14-19
+.. GENERATED FROM PYTHON SOURCE LINES 14-20
 
 .. code-block:: default
 
 
-    import onnxruntime as rt
     import numpy
+
+    import onnxruntime as rt
     from onnxruntime.datasets import get_example
 
 
@@ -43,12 +44,12 @@ retrieve the definition of its inputs and outputs.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 20-22
+.. GENERATED FROM PYTHON SOURCE LINES 21-23
 
 Let's load a very simple model.
 The model is available on github `onnx...test_sigmoid <https://github.com/onnx/onnx/tree/master/onnx/backend/test/data/node/test_sigmoid>`_.
 
-.. GENERATED FROM PYTHON SOURCE LINES 22-26
+.. GENERATED FROM PYTHON SOURCE LINES 23-27
 
 .. code-block:: default
 
@@ -63,11 +64,11 @@ The model is available on github `onnx...test_sigmoid <https://github.com/onnx/o
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 27-28
+.. GENERATED FROM PYTHON SOURCE LINES 28-29
 
 Let's see the input name and shape.
 
-.. GENERATED FROM PYTHON SOURCE LINES 28-36
+.. GENERATED FROM PYTHON SOURCE LINES 29-37
 
 .. code-block:: default
 
@@ -85,8 +86,6 @@ Let's see the input name and shape.
 
 .. rst-class:: sphx-glr-script-out
 
- Out:
-
  .. code-block:: none
 
     input name x
@@ -96,17 +95,17 @@ Let's see the input name and shape.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 37-38
+.. GENERATED FROM PYTHON SOURCE LINES 38-39
 
 Let's see the output name and shape.
 
-.. GENERATED FROM PYTHON SOURCE LINES 38-46
+.. GENERATED FROM PYTHON SOURCE LINES 39-47
 
 .. code-block:: default
 
 
     output_name = sess.get_outputs()[0].name
-    print("output name", output_name)  
+    print("output name", output_name)
     output_shape = sess.get_outputs()[0].shape
     print("output shape", output_shape)
     output_type = sess.get_outputs()[0].type
@@ -118,8 +117,6 @@ Let's see the output name and shape.
 
 .. rst-class:: sphx-glr-script-out
 
- Out:
-
  .. code-block:: none
 
     output name y
@@ -129,17 +126,18 @@ Let's see the output name and shape.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 47-48
+.. GENERATED FROM PYTHON SOURCE LINES 48-49
 
 Let's compute its outputs (or predictions if it is a machine learned model).
 
-.. GENERATED FROM PYTHON SOURCE LINES 48-54
+.. GENERATED FROM PYTHON SOURCE LINES 49-56
 
 .. code-block:: default
 
 
     import numpy.random
-    x = numpy.random.random((3,4,5))
+
+    x = numpy.random.random((3, 4, 5))
     x = x.astype(numpy.float32)
     res = sess.run([output_name], {input_name: x})
     print(res)
@@ -149,24 +147,22 @@ Let's compute its outputs (or predictions if it is a machine learned model).
 
 .. rst-class:: sphx-glr-script-out
 
- Out:
-
  .. code-block:: none
 
-    [array([[[0.6514643 , 0.7119085 , 0.51459455, 0.61384887, 0.5246651 ],
-            [0.5636192 , 0.56092787, 0.64965874, 0.6829034 , 0.59758645],
-            [0.6981421 , 0.5157956 , 0.6199459 , 0.58960956, 0.6927162 ],
-            [0.5597512 , 0.68971556, 0.57514626, 0.6138272 , 0.52836967]],
+    [array([[[0.7181126 , 0.65765196, 0.50775594, 0.6166646 , 0.6350356 ],
+            [0.53492904, 0.5963961 , 0.5488868 , 0.6961161 , 0.58540165],
+            [0.64418113, 0.66904193, 0.6335114 , 0.5164772 , 0.6974722 ],
+            [0.7033416 , 0.64575016, 0.56331015, 0.5821388 , 0.5837912 ]],
 
-           [[0.6518691 , 0.59283644, 0.58380157, 0.6333722 , 0.7277889 ],
-            [0.5069886 , 0.60194266, 0.71367145, 0.5432901 , 0.50752676],
-            [0.5166088 , 0.5692218 , 0.5205236 , 0.6938001 , 0.6609123 ],
-            [0.5552745 , 0.6102384 , 0.6113623 , 0.57109815, 0.5270999 ]],
+           [[0.69752556, 0.61930084, 0.7144223 , 0.53591865, 0.7099111 ],
+            [0.5853495 , 0.61599123, 0.5145214 , 0.7234099 , 0.72237855],
+            [0.6751449 , 0.6281296 , 0.5525636 , 0.6620259 , 0.62551606],
+            [0.7307813 , 0.641821  , 0.66006947, 0.55245376, 0.711584  ]],
 
-           [[0.5491344 , 0.5831849 , 0.5123648 , 0.71404976, 0.72816455],
-            [0.66446227, 0.5016449 , 0.55448776, 0.71575   , 0.6223295 ],
-            [0.6581422 , 0.51240706, 0.6351511 , 0.6651438 , 0.6633214 ],
-            [0.5530689 , 0.6762203 , 0.5492414 , 0.6816697 , 0.7236053 ]]],
+           [[0.6177659 , 0.5299392 , 0.61798215, 0.6528201 , 0.6309845 ],
+            [0.6274849 , 0.6118186 , 0.62008744, 0.7007474 , 0.5699445 ],
+            [0.71763307, 0.5693434 , 0.6995249 , 0.6884517 , 0.5660751 ],
+            [0.6854328 , 0.5046489 , 0.5702859 , 0.6000469 , 0.580108  ]]],
           dtype=float32)]
 
 
@@ -175,28 +171,23 @@ Let's compute its outputs (or predictions if it is a machine learned model).
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** ( 0 minutes  0.011 seconds)
+   **Total running time of the script:** ( 0 minutes  0.007 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_load_and_predict.py:
 
+.. only:: html
 
-.. only :: html
-
- .. container:: sphx-glr-footer
-    :class: sphx-glr-footer-example
+  .. container:: sphx-glr-footer sphx-glr-footer-example
 
 
+    .. container:: sphx-glr-download sphx-glr-download-python
 
-  .. container:: sphx-glr-download sphx-glr-download-python
+      :download:`Download Python source code: plot_load_and_predict.py <plot_load_and_predict.py>`
 
-     :download:`Download Python source code: plot_load_and_predict.py <plot_load_and_predict.py>`
+    .. container:: sphx-glr-download sphx-glr-download-jupyter
 
-
-
-  .. container:: sphx-glr-download sphx-glr-download-jupyter
-
-     :download:`Download Jupyter notebook: plot_load_and_predict.ipynb <plot_load_and_predict.ipynb>`
+      :download:`Download Jupyter notebook: plot_load_and_predict.ipynb <plot_load_and_predict.ipynb>`
 
 
 .. only:: html
