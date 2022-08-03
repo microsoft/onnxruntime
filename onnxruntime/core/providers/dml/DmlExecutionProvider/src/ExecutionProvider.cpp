@@ -115,15 +115,15 @@ namespace Dml
     {
         ORT_TRY
         {
-        ComPtr<IUnknown> allocation;
-        allocation.Attach(static_cast<IUnknown* >(m_allocator->Alloc(size, roundingMode)));
+            ComPtr<IUnknown> allocation;
+            allocation.Attach(static_cast<IUnknown* >(m_allocator->Alloc(size, roundingMode)));
 
-        const auto* allocInfo = m_allocator->DecodeDataHandle(allocation.Get());
+            const auto* allocInfo = m_allocator->DecodeDataHandle(allocation.Get());
 
-        ComPtr<ID3D12Resource> resource = allocInfo->GetResource();
-        resource.CopyTo(d3dResource);
-        *pooledResource = allocation.Detach();
-        return S_OK;
+            ComPtr<ID3D12Resource> resource = allocInfo->GetResource();
+            resource.CopyTo(d3dResource);
+            *pooledResource = allocation.Detach();
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -219,10 +219,10 @@ namespace Dml
     {
         ORT_TRY
         {
-        assert(!m_closed);
-        m_context->ExecuteCommandList(commandList, fence, completionValue);
+            assert(!m_closed);
+            m_context->ExecuteCommandList(commandList, fence, completionValue);
 
-        return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -231,11 +231,11 @@ namespace Dml
     {
         ORT_TRY
         {
-        assert(!m_closed);
+            assert(!m_closed);
 
-        m_context->AddUAVBarrier();
+            m_context->AddUAVBarrier();
 
-        return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -248,39 +248,39 @@ namespace Dml
     {
         ORT_TRY
         {
-        assert(!m_closed);
+            assert(!m_closed);
 
-        bool hasInputsToBind = false;
-        std::vector<DML_BUFFER_BINDING> inputBufferBindings(inputBindings.size());
+            bool hasInputsToBind = false;
+            std::vector<DML_BUFFER_BINDING> inputBufferBindings(inputBindings.size());
 
-        for (gsl::index i = 0; i < inputBindings.size(); i++)
-        {
-            if (inputBindings[i].Buffer)
+            for (gsl::index i = 0; i < inputBindings.size(); i++)
             {
-                hasInputsToBind = true;
-                inputBufferBindings[i] = { inputBindings[i].Buffer, inputBindings[i].Offset, inputBindings[i].SizeInBytes };
+                if (inputBindings[i].Buffer)
+                {
+                    hasInputsToBind = true;
+                    inputBufferBindings[i] = { inputBindings[i].Buffer, inputBindings[i].Offset, inputBindings[i].SizeInBytes };
+                }
             }
-        }
 
-        DML_BINDING_DESC persistentResourceBindingDesc =
-            persistentResourceBinding
-            ? DML_BINDING_DESC{ DML_BINDING_TYPE_BUFFER, persistentResourceBinding }
-            : DML_BINDING_DESC{ DML_BINDING_TYPE_NONE, nullptr };
+            DML_BINDING_DESC persistentResourceBindingDesc =
+                persistentResourceBinding
+                ? DML_BINDING_DESC{ DML_BINDING_TYPE_BUFFER, persistentResourceBinding }
+                : DML_BINDING_DESC{ DML_BINDING_TYPE_NONE, nullptr };
 
-        DML_BUFFER_ARRAY_BINDING inputBufferArrayDesc;
-        inputBufferArrayDesc.BindingCount = gsl::narrow_cast<uint32_t>(inputBufferBindings.size());
-        inputBufferArrayDesc.Bindings = inputBufferBindings.data();
+            DML_BUFFER_ARRAY_BINDING inputBufferArrayDesc;
+            inputBufferArrayDesc.BindingCount = gsl::narrow_cast<uint32_t>(inputBufferBindings.size());
+            inputBufferArrayDesc.Bindings = inputBufferBindings.data();
 
-        DML_BINDING_DESC inputArrayBindingDesc = hasInputsToBind ? 
-            DML_BINDING_DESC{ DML_BINDING_TYPE_BUFFER_ARRAY, &inputBufferArrayDesc } : 
-            DML_BINDING_DESC{ DML_BINDING_TYPE_NONE, nullptr };
+            DML_BINDING_DESC inputArrayBindingDesc = hasInputsToBind ? 
+                DML_BINDING_DESC{ DML_BINDING_TYPE_BUFFER_ARRAY, &inputBufferArrayDesc } : 
+                DML_BINDING_DESC{ DML_BINDING_TYPE_NONE, nullptr };
 
-        m_context->InitializeOperator(
-            op,
-            persistentResourceBindingDesc,
-            inputArrayBindingDesc);
+            m_context->InitializeOperator(
+                op,
+                persistentResourceBindingDesc,
+                inputArrayBindingDesc);
 
-        return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -294,74 +294,74 @@ namespace Dml
     {
         ORT_TRY
         {
-        assert(!m_closed);
+            assert(!m_closed);
 
-        std::vector<uint32_t> shape;
+            std::vector<uint32_t> shape;
 
-        for (IMLOperatorTensor* tensor : inputTensors)
-        {
-            if (tensor)
-            {
-                shape.resize(tensor->GetDimensionCount());
-                ORT_THROW_IF_FAILED(tensor->GetShape(tensor->GetDimensionCount(), shape.data()));
-
-                if (OperatorHelper::ContainsEmptyDimensions(shape))
-                {
-                    return S_OK;
-                }
-            }
-        }
-
-        for (IMLOperatorTensor* tensor : outputTensors)
-        {
-            if (tensor)
-            {
-                shape.resize(tensor->GetDimensionCount());
-                ORT_THROW_IF_FAILED(tensor->GetShape(tensor->GetDimensionCount(), shape.data()));
-
-                if (OperatorHelper::ContainsEmptyDimensions(shape))
-                {
-                    return S_OK;
-                }
-            }
-        }
-
-        auto FillBindings = [this](auto& bufferBindings, auto& bindingDescs, auto& tensors)
-        {
-            for (IMLOperatorTensor* tensor : tensors)
+            for (IMLOperatorTensor* tensor : inputTensors)
             {
                 if (tensor)
                 {
-                    assert(tensor->IsDataInterface());
-                    const AllocationInfo* allocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(tensor).GetDataInterface().Get());
-                    ID3D12Resource* resource = allocInfo->GetResource();
-                    D3D12_RESOURCE_DESC resourceDesc = resource->GetDesc();
-                    bufferBindings.push_back({ resource, 0, resourceDesc.Width });
-                    bindingDescs.push_back({ DML_BINDING_TYPE_BUFFER, &bufferBindings.back() });
-                }
-                else
-                {
-                    bufferBindings.push_back({ nullptr, 0, 0 });
-                    bindingDescs.push_back({ DML_BINDING_TYPE_NONE, nullptr });
+                    shape.resize(tensor->GetDimensionCount());
+                    ORT_THROW_IF_FAILED(tensor->GetShape(tensor->GetDimensionCount(), shape.data()));
+
+                    if (OperatorHelper::ContainsEmptyDimensions(shape))
+                    {
+                        return S_OK;
+                    }
                 }
             }
-        };
 
-        std::vector<DML_BUFFER_BINDING> inputBufferBindings;
-        inputBufferBindings.reserve(inputTensors.size());
-        std::vector<DML_BINDING_DESC> inputBindings;
-        inputBindings.reserve(inputTensors.size());
-        FillBindings(inputBufferBindings, inputBindings, inputTensors);
+            for (IMLOperatorTensor* tensor : outputTensors)
+            {
+                if (tensor)
+                {
+                    shape.resize(tensor->GetDimensionCount());
+                    ORT_THROW_IF_FAILED(tensor->GetShape(tensor->GetDimensionCount(), shape.data()));
 
-        std::vector<DML_BUFFER_BINDING> outputBufferBindings;
-        outputBufferBindings.reserve(outputTensors.size());
-        std::vector<DML_BINDING_DESC> outputBindings;
-        outputBindings.reserve(outputTensors.size());
-        FillBindings(outputBufferBindings, outputBindings, outputTensors);
+                    if (OperatorHelper::ContainsEmptyDimensions(shape))
+                    {
+                        return S_OK;
+                    }
+                }
+            }
 
-        ORT_THROW_IF_FAILED(ExecuteOperator(op, persistentResourceBinding, inputBindings, outputBindings));
+            auto FillBindings = [this](auto& bufferBindings, auto& bindingDescs, auto& tensors)
+            {
+                for (IMLOperatorTensor* tensor : tensors)
+                {
+                    if (tensor)
+                    {
+                        assert(tensor->IsDataInterface());
+                        const AllocationInfo* allocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(tensor).GetDataInterface().Get());
+                        ID3D12Resource* resource = allocInfo->GetResource();
+                        D3D12_RESOURCE_DESC resourceDesc = resource->GetDesc();
+                        bufferBindings.push_back({ resource, 0, resourceDesc.Width });
+                        bindingDescs.push_back({ DML_BINDING_TYPE_BUFFER, &bufferBindings.back() });
+                    }
+                    else
+                    {
+                        bufferBindings.push_back({ nullptr, 0, 0 });
+                        bindingDescs.push_back({ DML_BINDING_TYPE_NONE, nullptr });
+                    }
+                }
+            };
+
+            std::vector<DML_BUFFER_BINDING> inputBufferBindings;
+            inputBufferBindings.reserve(inputTensors.size());
+            std::vector<DML_BINDING_DESC> inputBindings;
+            inputBindings.reserve(inputTensors.size());
+            FillBindings(inputBufferBindings, inputBindings, inputTensors);
+
+            std::vector<DML_BUFFER_BINDING> outputBufferBindings;
+            outputBufferBindings.reserve(outputTensors.size());
+            std::vector<DML_BINDING_DESC> outputBindings;
+            outputBindings.reserve(outputTensors.size());
+            FillBindings(outputBufferBindings, outputBindings, outputTensors);
+
+            ORT_THROW_IF_FAILED(ExecuteOperator(op, persistentResourceBinding, inputBindings, outputBindings));
         
-        return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -375,20 +375,20 @@ namespace Dml
     {
         ORT_TRY
         {
-        assert(!m_closed);
+            assert(!m_closed);
         
-        DML_BINDING_DESC persistentResourceBindingDesc =
-            persistentResourceBinding
-            ? DML_BINDING_DESC{ DML_BINDING_TYPE_BUFFER, persistentResourceBinding }
-            : DML_BINDING_DESC{ DML_BINDING_TYPE_NONE, nullptr };
+            DML_BINDING_DESC persistentResourceBindingDesc =
+                persistentResourceBinding
+                ? DML_BINDING_DESC{ DML_BINDING_TYPE_BUFFER, persistentResourceBinding }
+                : DML_BINDING_DESC{ DML_BINDING_TYPE_NONE, nullptr };
 
-        m_context->ExecuteOperator(
-            op, 
-            persistentResourceBindingDesc,
-            inputTensors,
-            outputTensors);
+            m_context->ExecuteOperator(
+                op, 
+                persistentResourceBindingDesc,
+                inputTensors,
+                outputTensors);
 
-        return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -407,68 +407,68 @@ namespace Dml
     {
         ORT_TRY
         {
-        assert(!m_closed);
+            assert(!m_closed);
 
-        const size_t sourceSizeInBytes = ComputeByteSizeFromTensor(*src);
-        const size_t dataSizeInBytes = ComputeByteSizeFromTensor(*dst);
-        ORT_THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != sourceSizeInBytes); // Tensors must be the same size
+            const size_t sourceSizeInBytes = ComputeByteSizeFromTensor(*src);
+            const size_t dataSizeInBytes = ComputeByteSizeFromTensor(*dst);
+            ORT_THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != sourceSizeInBytes); // Tensors must be the same size
 
-        if (dataSizeInBytes == 0)
-        {
-            return S_OK;
-        }
+            if (dataSizeInBytes == 0)
+            {
+                return S_OK;
+            }
 
-        if (src->IsCpuData() && !dst->IsCpuData())
-        {
-            // 
-            // CPU -> GPU copy (upload)
-            // 
-            const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(dst).GetDataInterface().Get());
+            if (src->IsCpuData() && !dst->IsCpuData())
+            {
+                // 
+                // CPU -> GPU copy (upload)
+                // 
+                const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(dst).GetDataInterface().Get());
             
-            ID3D12Resource* dstData = dstAllocInfo->GetResource();
-            const void* srcData = src->GetData();
+                ID3D12Resource* dstData = dstAllocInfo->GetResource();
+                const void* srcData = src->GetData();
 
-            const uint64_t dstOffset = 0;
-            const auto dstState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
+                const uint64_t dstOffset = 0;
+                const auto dstState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
-            m_uploadHeap->BeginUploadToGpu(dstData, dstOffset, dstState, AsByteSpan(srcData, dataSizeInBytes));
-        }
-        else if (!src->IsCpuData() && dst->IsCpuData())
-        {
-            // 
-            // GPU -> CPU copy (readback)
-            // 
+                m_uploadHeap->BeginUploadToGpu(dstData, dstOffset, dstState, AsByteSpan(srcData, dataSizeInBytes));
+            }
+            else if (!src->IsCpuData() && dst->IsCpuData())
+            {
+                // 
+                // GPU -> CPU copy (readback)
+                // 
 
-            void* dstData = dst->GetData();
-            const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(src).GetDataInterface().Get());
+                void* dstData = dst->GetData();
+                const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(src).GetDataInterface().Get());
 
-            ID3D12Resource* srcData = srcAllocInfo->GetResource();
+                ID3D12Resource* srcData = srcAllocInfo->GetResource();
 
-            const uint64_t srcOffset = 0;
-            const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
+                const uint64_t srcOffset = 0;
+                const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
-            // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
-            m_readbackHeap->ReadbackFromGpu(AsByteSpan(dstData, dataSizeInBytes), srcData, srcOffset, srcState);
-        }
-        else if (!src->IsCpuData() && !dst->IsCpuData())
-        {
-            // 
-            // GPU -> GPU copy
-            // 
-            const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(src).GetDataInterface().Get());
-            const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(dst).GetDataInterface().Get());
+                // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
+                m_readbackHeap->ReadbackFromGpu(AsByteSpan(dstData, dataSizeInBytes), srcData, srcOffset, srcState);
+            }
+            else if (!src->IsCpuData() && !dst->IsCpuData())
+            {
+                // 
+                // GPU -> GPU copy
+                // 
+                const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(src).GetDataInterface().Get());
+                const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(dst).GetDataInterface().Get());
 
-            ID3D12Resource* srcData = srcAllocInfo->GetResource();
-            ID3D12Resource* dstData = dstAllocInfo->GetResource();
-            m_context->CopyBufferRegion(dstData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, srcData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, dataSizeInBytes);
-        }
-        else
-        {
-            // CPU -> CPU copies not supported
-            ORT_THROW_HR(E_INVALIDARG);
-        }
+                ID3D12Resource* srcData = srcAllocInfo->GetResource();
+                ID3D12Resource* dstData = dstAllocInfo->GetResource();
+                m_context->CopyBufferRegion(dstData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, srcData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, dataSizeInBytes);
+            }
+            else
+            {
+                // CPU -> CPU copies not supported
+                ORT_THROW_HR(E_INVALIDARG);
+            }
 
-        return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -480,15 +480,15 @@ namespace Dml
     {
         ORT_TRY
         {
-        auto mlTensor = MLOperatorTensor(dst).GetDataInterface();
-        if (mlTensor != nullptr)
-        {
-            const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(mlTensor.Get());
-            ID3D12Resource* dstData = dstAllocInfo->GetResource();
-            m_context->FillBufferWithPattern(dstData, rawValue);
-        }
+            auto mlTensor = MLOperatorTensor(dst).GetDataInterface();
+            if (mlTensor != nullptr)
+            {
+                const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(mlTensor.Get());
+                ID3D12Resource* dstData = dstAllocInfo->GetResource();
+                m_context->FillBufferWithPattern(dstData, rawValue);
+            }
 
-        return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -497,11 +497,11 @@ namespace Dml
     {
         ORT_TRY
         {
-        assert(!m_closed);
+            assert(!m_closed);
 
-        m_uploadHeap->BeginUploadToGpu(dstData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, AsByteSpan(srcData, static_cast<size_t>(srcDataSize)));
+            m_uploadHeap->BeginUploadToGpu(dstData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, AsByteSpan(srcData, static_cast<size_t>(srcDataSize)));
 
-        return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -848,6 +848,7 @@ namespace Dml
         ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(nullptr, 0, pooledResourceId, pResource, (size_t)pResource->GetDesc().Width);
         return allocInfo.Detach();
     }
+
     void FreeGPUAllocation(void* ptr)
     {
         ComPtr<AllocationInfo> allocInfo;
