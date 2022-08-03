@@ -400,6 +400,7 @@ struct alignas(sizeof(T) * vec_size) aligned_vector {
 
 // WARP related definitions and functions
 constexpr int GPU_WARP_SIZE = 32;
+constexpr int GPU_WARP_SIZE_HOST = GPU_WARP_SIZE;
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {

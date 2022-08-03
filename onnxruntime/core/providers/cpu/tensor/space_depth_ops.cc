@@ -80,8 +80,8 @@ static void SpaceDepthOpCpuImpl(const Tensor& input, Tensor& output,
                                 const Eigen::DenseIndex in_dim4, const Eigen::DenseIndex in_dim5,
                                 const Eigen::DenseIndex out_dim1, const Eigen::DenseIndex out_dim2, const Eigen::DenseIndex out_dim3,
                                 const Eigen::DenseIndex out_dim4, const Eigen::DenseIndex out_dim5) {
-  EigenTensorMap<T>(output.template MutableData<T>(), batch_size, out_dim1, out_dim2, out_dim3, out_dim4, out_dim5) =
-      ConstEigenTensorMap<T>(input.template Data<T>(), batch_size,
+  EigenTensorMap<T>(output.MutableData<T>(), batch_size, out_dim1, out_dim2, out_dim3, out_dim4, out_dim5) =
+      ConstEigenTensorMap<T>(input.Data<T>(), batch_size,
                              in_dim1, in_dim2, in_dim3, in_dim4, in_dim5)
           .shuffle(permutation);
 }

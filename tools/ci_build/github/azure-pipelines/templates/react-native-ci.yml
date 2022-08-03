@@ -133,7 +133,8 @@ jobs:
       publishJUnitResults: true
       testResultsFiles: '**/TEST-*.xml'
       testRunTitle: 'React Native Android Instrumented Test results'
-      javaHomeOption: 'JDKVersion'
+      javaHomeOption: 'path'
+      jdkDirectory: '$(JAVA_HOME_11_X64)'
       sonarQubeRunAnalysis: false
       spotBugsAnalysis: false
     displayName: Run React Native Android Instrumented Tests
@@ -214,7 +215,8 @@ jobs:
       publishJUnitResults: true
       testResultsFiles: '**/TEST-*.xml'
       testRunTitle: 'React Native Android e2e Test results'
-      javaHomeOption: 'JDKVersion'
+      javaHomeOption: 'path'
+      jdkDirectory: '$(JAVA_HOME_11_X64)'
       sonarQubeRunAnalysis: false
       spotBugsAnalysis: false
     displayName: Run React Native Android e2e Tests

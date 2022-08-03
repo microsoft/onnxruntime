@@ -3,9 +3,10 @@
 
 #include "core/providers/cuda/tensor/scatter_elements.h"
 
-#include "core/providers/cuda/tensor/scatter_elements_impl.h"
-#include "core/providers/cuda/tensor/gather_elements.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/cuda/tensor/gather_elements.h"
+#include "core/providers/cuda/tensor/gather_elements_impl.h"
+#include "core/providers/cuda/tensor/scatter_elements_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -33,21 +34,17 @@ ONNX_OPERATOR_KERNEL_EX(ScatterElements, kOnnxDomain, 13, kCudaExecutionProvider
                                                                             DataTypeImpl::GetTensorType<int64_t>()}),
                         ScatterElements);
 
-#define CASE_SCATTER_ELEMENTS_IMPL(type)                                                                               \
-  case sizeof(type): {                                                                                                 \
-    const type* indices_data = reinterpret_cast<const type*>(indices_data_raw);                                        \
-    ORT_RETURN_IF_ERROR(ScatterElementsImpl(stream, rank, axis, input_data, input_size, input_dim_along_axis,          \
-                                            input_stride_along_axis, masked_input_strides, indices_data, indices_size, \
-                                            indices_fdms, updates_data, output_data));                                 \
+#define CASE_SCATTER_ELEMENTS_IMPL(type)                                                                         \
+  case sizeof(type): {                                                                                           \
+    const type* indices_data = reinterpret_cast<const type*>(indices_data_raw);                                  \
+    ORT_RETURN_IF_ERROR(ScatterElementsImpl(stream, input_data, indices_data, updates_data, output_data, args)); \
   } break
 
 template <typename T>
 struct ScatterElements::ComputeImpl {
   Status operator()(cudaStream_t stream, const void* input_data_raw, const void* updates_data_raw,
-                    const void* indices_data_raw, void* output_data_raw, const int64_t rank, const int64_t axis,
-                    const int64_t input_size, const int64_t input_dim_along_axis, const int64_t input_stride_along_axis,
-                    const TArray<int64_t>& masked_input_strides, const int64_t indices_size,
-                    TArray<fast_divmod>& indices_fdms, const size_t index_element_size) const {
+                    const void* indices_data_raw, void* output_data_raw, const size_t index_element_size,
+                    const GatherScatterElementsArgs& args) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
     const CudaT* input_data = reinterpret_cast<const CudaT*>(input_data_raw);
     const CudaT* updates_data = reinterpret_cast<const CudaT*>(updates_data_raw);
@@ -81,7 +78,6 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
   }
 
   const auto& indices_shape = indices_tensor->Shape();
-  const int64_t indices_size = indices_shape.Size();
 
   auto indices_dims = indices_shape.GetDims();
   auto updates_dims = updates_tensor->Shape().GetDims();
@@ -103,13 +99,12 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
   auto* output_tensor = context->Output(0, input_shape);
   if (input_size == 0) return Status::OK();
 
+  GatherScatterElementsArgs args;
+  args.input_size = input_size;
+  args.indices_size = indices_shape.Size();
   TensorShapeVector input_shape_vec = input_shape.AsShapeVector();
   TensorShapeVector indices_shape_vec = indices_shape.AsShapeVector();
-  int64_t new_axis, new_rank, input_stride_along_axis;
-  TArray<int64_t> masked_input_strides;
-  TArray<fast_divmod> indices_fdms;
-  CoalesceDimensions(input_shape_vec, indices_shape_vec, axis, new_axis, new_rank, input_stride_along_axis,
-                     masked_input_strides, indices_fdms);
+  CoalesceDimensions(input_shape_vec, indices_shape_vec, nullptr, axis, args);
 
   // Use element size instead of concrete types so we can specialize less template functions to reduce binary size.
   int dtype = GetElementType(input_tensor->DataType()->Size());
@@ -118,10 +113,9 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
   }
 
   utils::MLTypeCallDispatcher<int8_t, MLFloat16, float, double> t_disp(dtype);
-  return t_disp.InvokeRet<Status, ComputeImpl>(
-      Stream(), input_tensor->DataRaw(), updates_tensor->DataRaw(), indices_tensor->DataRaw(),
-      output_tensor->MutableDataRaw(), new_rank, new_axis, input_size, input_shape_vec[new_axis],
-      input_stride_along_axis, masked_input_strides, indices_size, indices_fdms, indices_tensor->DataType()->Size());
+  return t_disp.InvokeRet<Status, ComputeImpl>(Stream(), input_tensor->DataRaw(), updates_tensor->DataRaw(),
+                                               indices_tensor->DataRaw(), output_tensor->MutableDataRaw(),
+                                               indices_tensor->DataType()->Size(), args);
 }
 
 }  // namespace cuda

@@ -6,6 +6,7 @@ package ai.onnxruntime.reactnative;
 import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
 import static org.mockito.Mockito.when;
 
+import ai.onnxruntime.OnnxJavaType;
 import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OnnxValue;
 import ai.onnxruntime.OrtEnvironment;
@@ -438,6 +439,46 @@ public class TensorHelperTest {
       String dataEncoded = outputMap.getString("data");
       LongBuffer buffer =
           ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asLongBuffer();
+      for (int i = 0; i < 5; ++i) {
+        Assert.assertEquals(buffer.get(i), inputData[i]);
+      }
+
+      OnnxValue.close(container);
+    } finally {
+      mockSession.finishMocking();
+    }
+  }
+
+  @Test
+  public void createOutputTensor_uint8() throws Exception {
+    MockitoSession mockSession = mockitoSession().mockStatic(Arguments.class).startMocking();
+    try {
+      when(Arguments.createMap()).thenAnswer(i -> new JavaOnlyMap());
+      when(Arguments.createArray()).thenAnswer(i -> new JavaOnlyArray());
+
+      OrtSession.SessionOptions options = new OrtSession.SessionOptions();
+      byte[] modelData = readBytesFromResourceFile(ai.onnxruntime.reactnative.test.R.raw.test_types_uint8);
+      OrtSession session = ortEnvironment.createSession(modelData, options);
+
+      long[] dims = new long[] {1, 5};
+      byte[] inputData = new byte[] {1, 2, -3, Byte.MAX_VALUE, Byte.MAX_VALUE};
+
+      String inputName = session.getInputNames().iterator().next();
+      Map<String, OnnxTensor> container = new HashMap<>();
+      ByteBuffer inputBuffer = ByteBuffer.wrap(inputData);
+      OnnxTensor onnxTensor = OnnxTensor.createTensor(ortEnvironment, inputBuffer, dims, OnnxJavaType.UINT8);
+      container.put(inputName, onnxTensor);
+
+      OrtSession.Result result = session.run(container);
+
+      ReadableMap resultMap = TensorHelper.createOutputTensor(result);
+      ReadableMap outputMap = resultMap.getMap("output");
+      for (int i = 0; i < 2; ++i) {
+        Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
+      }
+      Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeUnsignedByte);
+      String dataEncoded = outputMap.getString("data");
+      ByteBuffer buffer = ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT));
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(buffer.get(i), inputData[i]);
       }

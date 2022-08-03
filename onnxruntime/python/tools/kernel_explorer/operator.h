@@ -3,12 +3,21 @@
 
 #pragma once
 
-#include "timer.h"
+#include <hip/hip_runtime.h>
+#include "contrib_ops/rocm/bert/util.h"
 
-template <typename T>
+using onnxruntime::contrib::rocm::Timer;
+
+// To be deleted after we remove the use of namespace onnxruntime::rocm
+// in contrib_ops/rocm/bert/fast_gelu_impl_kernel.h
+namespace onnxruntime {
+namespace rocm {
+}  // namespace rocm
+}  // namespace onnxruntime
+
 class Operator {
  public:
-  Operator() : repeats_(100) {}
+  Operator() : repeats_(100), stream_(0) {}
 
   virtual void Run() = 0;
 
@@ -29,6 +38,11 @@ class Operator {
     timer.End();
     return timer.time()/repeats_;
   }
+
+  virtual ~Operator() {}
+
+ protected:
+  hipStream_t stream_;
 
  private:
   int repeats_;

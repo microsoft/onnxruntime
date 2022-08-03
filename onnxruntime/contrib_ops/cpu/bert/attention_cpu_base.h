@@ -65,14 +65,14 @@ class AttentionCPUBase : public AttentionBase {
     }
     BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
 
-    const int32_t* mask_index_data = mask_index != nullptr ? mask_index->template Data<int32_t>() : nullptr;
+    const int32_t* mask_index_data = mask_index != nullptr ? mask_index->Data<int32_t>() : nullptr;
     gsl::span<const int64_t> mask_index_dims = mask_index != nullptr ? mask_index->Shape().GetDims() : gsl::span<const int64_t>{};
-    const T* past_data = past != nullptr ? past->template Data<T>() : nullptr;
-    T* present_data = present != nullptr ? present->template MutableData<T>() : nullptr;
+    const T* past_data = past != nullptr ? past->Data<T>() : nullptr;
+    T* present_data = present != nullptr ? present->MutableData<T>() : nullptr;
 
     const T* extra_add_qk_data = nullptr;
     if (extra_add_qk != nullptr) {
-      extra_add_qk_data = extra_add_qk->template Data<T>();
+      extra_add_qk_data = extra_add_qk->Data<T>();
     }
 
     ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
@@ -83,9 +83,9 @@ class AttentionCPUBase : public AttentionBase {
     // Compute the attentionScore * Value. It does: out_tmp(B, N, S, H) = attention_probs(B, N, S, S*) x V(B, N, S*, H)
     auto out_tmp_data =
         allocator->Alloc(SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * v_head_size * sizeof(T));
-    BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(allocator));
+    BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(std::move(allocator)));
 
-    ComputeVxAttentionScore(output->template MutableData<T>(), static_cast<T*>(out_tmp_data), static_cast<T*>(attention_probs), V,
+    ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(out_tmp_data), static_cast<T*>(attention_probs), V,
                             batch_size, sequence_length, past_sequence_length, v_head_size, v_hidden_size,
                             past_data, present_data, tp);
 

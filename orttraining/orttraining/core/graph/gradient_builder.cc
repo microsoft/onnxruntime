@@ -1039,7 +1039,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
       grad = IA("Unqueezed_Grad");
       if (SrcNodeOpsetVersion() < 13) {  // axes is attribute for unsqueeze
         result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
-      }else{
+      } else {
         NodeDef axes_values_node = ConstantVectorNode(axes_values, Name("axes_values"));
         result.push_back(axes_values_node);
         result.push_back(NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13}, {GO(0), axes_values_node.output_args[0]}, {grad}));
@@ -1722,27 +1722,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
   }
   attrs.push_back(MakeAttribute("input_tensor_types", input_tensor_types));
 
-  // input_tensor_ranks[i] is the rank of the i-th input tensor of autograd.Function.bacwkard.
+  // input_tensor_ranks[i] is the rank of the i-th input tensor of autograd.Function.backward.
   // Note that the left side is the gradient of the right side:
-  //  i-th input tensor of autograd.Function.bacwkard <---> i-th output tensor of autograd.Function.apply
+  //  i-th input tensor of autograd.Function.backward <---> i-th output tensor of autograd.Function.apply
   std::vector<int64_t> input_tensor_ranks;
   for (const auto input_tensor_rank : src_attrs["output_tensor_ranks"].ints()) {
     input_tensor_ranks.push_back(input_tensor_rank);
   }
   attrs.push_back(MakeAttribute("input_tensor_ranks", input_tensor_ranks));
-
-  std::vector<int64_t> input_tensor_requires_grads;
-  // Context doesn't need gradient.
-  input_tensor_requires_grads.push_back(0);
-  // Set up gradients from outputs of autograd.Function.backward(...).
-  // The relation between forward and backward can be described by
-  // x -> forward -> y
-  // dy -> backward -> dx
-  // Here, if y (output of PythonOp) requires gradient, dy has requires_gradient=True.
-  for (const auto requires_grad : src_attrs["output_tensor_requires_grads"].ints()) {
-    input_tensor_requires_grads.push_back(requires_grad);
-  }
-  attrs.push_back(MakeAttribute("input_tensor_requires_grads", input_tensor_requires_grads));
 
   // output_tensor_types[i] stores the type of autograd.Function.apply's i-th input.
   // We assume a tensor and its gradient have the same type.
@@ -1765,7 +1752,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
   input_args.push_back(O(0));
   // Put other outputs.
   for (int i = 1; i < GetSrcNodeOutputSize(); ++i) {
-    if (src_attrs["output_tensor_requires_grads"].ints().Get(i - 1)) {
+    if (IsGradientAvailableForSrcNodeOutput(i)) {
       // Only add FW outputs which
       //  1. are tensors,
       //  2. needs gradients (requires_grad=True in Pytorch).
@@ -1775,30 +1762,43 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
     }
   }
 
-  // Also connect forward outputs to PythonOpGrad for random segement fault issues.
-  // Todo (pengwa): remove the control dependency from PythonOpGrad schema.
-  for (int i = 1; i < GetSrcNodeOutputSize(); ++i) {
-    input_args.push_back(ArgDef());
-  }
-
-  // src_attrs["input_requires_grads"] stores all inputs's requires_grad attributes,
-  // including both tensor inputs and non-tensor inputs (e.g. constants), here we filter out
-  // those non-tensor inputs when constructing PythonOpGrad's outputs.
+  // We filter out those non-tensor inputs when constructing PythonOpGrad's outputs.
   const std::string& input_convention = src_attrs.at("input_convention").s();
-  const auto& fw_input_requires_grads = src_attrs["input_requires_grads"].ints();
+  int fw_tensor_input_index = 0;
+  // The value for i-th element of updated_input_requires_grads is 1 if the i-th input of autograd.Function.apply
+  // requires grad; otherwise, the value is 0.
+  std::vector<int64_t> updated_input_requires_grads;
+  // The value for i-th element of bw_tensor_output_requires_grads is 1 if the i-th TENSOR input of
+  // autograd.Function.apply requires grad; otherwise, the value is 0. The major difference between
+  // updated_input_requires_grads and bw_tensor_output_requires_grads is that the latter contains only tensor
+  // input's require grad info.
   std::vector<int64_t> bw_tensor_output_requires_grads;
-  for (auto i = 0; i < fw_input_requires_grads.size(); ++i) {
-    if (input_convention[i] == 'd') {  // only handle gradients for tensor type inputs.
-      bw_tensor_output_requires_grads.push_back(fw_input_requires_grads.Get(i));
+  for (size_t i = 0; i < input_convention.length(); ++i) {
+    if (input_convention[i] == 'd') {
+      if (IsGradientRequiredForSrcNodeInput(fw_tensor_input_index)) {
+        bw_tensor_output_requires_grads.push_back(1);
+        updated_input_requires_grads.push_back(1);
+      } else {
+        bw_tensor_output_requires_grads.push_back(0);
+        updated_input_requires_grads.push_back(0);
+      }
+      ++fw_tensor_input_index;
+    } else {
+      updated_input_requires_grads.push_back(0);
     }
   }
+
+  // Collect updated python op require grad info, used for resetting after gradient graph build complete.
+  // PythonOp use cases guarantee node names are present and unique, so using it should be fine.
+  SetPythonOpRequireGradInfo(NodeName(), updated_input_requires_grads);
+
   ORT_ENFORCE(static_cast<size_t>(GetSrcNodeInputSize()) == bw_tensor_output_requires_grads.size(),
               "PythonOpGrad requiring gradient output count mismatch.");
   attrs.push_back(MakeAttribute("output_tensor_requires_grads", bw_tensor_output_requires_grads));
 
   std::vector<ArgDef> output_args;
   for (int i = 0; i < GetSrcNodeInputSize(); ++i) {
-    if (bw_tensor_output_requires_grads[i]) {
+    if (IsGradientRequiredForSrcNodeInput(i)) {
       output_args.push_back(GI(i));
     } else {
       output_args.push_back(ArgDef());
