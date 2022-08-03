@@ -4,7 +4,7 @@
 torch==1.11.0
 pandas
 sklearn
-numpy==1.21.0
+numpy==1.22.0
 transformers==v4.3.2
 tensorboard>=2.2.0,<2.5.0
 h5py
