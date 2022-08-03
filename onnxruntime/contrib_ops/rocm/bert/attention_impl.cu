@@ -170,6 +170,45 @@ bool QkvToContext(
   return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, false, scratch3, output);
 }
 
+bool LaunchAttentionKernel(
+    const hipDeviceProp_t& prop,
+    hipStream_t stream,
+    const void* input,
+    const int* mask_index,
+    gsl::span<const int64_t> mask_index_dims,
+    void* output,
+    const int batch_size,
+    const int sequence_length,
+    const int num_heads,
+    const int head_size,
+    void* workspace,
+    rocblas_handle& rocblas,
+    const size_t element_size,
+    bool is_unidirectional,
+    int past_sequence_length,
+    const void* past,
+    const void* extra_add_qk,
+    void* present) {
+  // For testing, environment variable ORT_TRANSFORMER_OPTIONS=1 could enable persistent softmax
+  const TransformerOptions* options = TransformerOptions::GetInstance();
+  bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
+  if (element_size == 2) {
+    return QkvToContext(prop, rocblas, stream,
+                        batch_size, sequence_length, num_heads, head_size, element_size,
+                        reinterpret_cast<const __half*>(input), reinterpret_cast<__half*>(output), reinterpret_cast<__half*>(workspace),
+                        mask_index, mask_index_dims, is_unidirectional,
+                        past_sequence_length, reinterpret_cast<const __half*>(past), reinterpret_cast<const __half*>(extra_add_qk),
+                        reinterpret_cast<__half*>(present), use_persistent_softmax);
+  } else {
+    return QkvToContext(prop, rocblas, stream,
+                        batch_size, sequence_length, num_heads, head_size, element_size,
+                        reinterpret_cast<const float*>(input), reinterpret_cast<float*>(output), reinterpret_cast<float*>(workspace),
+                        mask_index, mask_index_dims, is_unidirectional,
+                        past_sequence_length, reinterpret_cast<const float*>(past), reinterpret_cast<const float*>(extra_add_qk),
+                        reinterpret_cast<float*>(present), use_persistent_softmax);
+  }
+}
+
 
 template <typename T>
 bool DecoderQkvToContext(
@@ -335,45 +374,6 @@ bool DecoderQkvToContext(
                         num_heads, max_threads_per_block, true, scratch3, output);
 }
 
-
-bool LaunchAttentionKernel(
-    const hipDeviceProp_t& prop,
-    hipStream_t stream,
-    const void* input,
-    const int* mask_index,
-    gsl::span<const int64_t> mask_index_dims,
-    void* output,
-    const int batch_size,
-    const int sequence_length,
-    const int num_heads,
-    const int head_size,
-    void* workspace,
-    rocblas_handle& rocblas,
-    const size_t element_size,
-    bool is_unidirectional,
-    int past_sequence_length,
-    const void* past,
-    const void* extra_add_qk,
-    void* present) {
-  // For testing, environment variable ORT_TRANSFORMER_OPTIONS=1 could enable persistent softmax
-  const TransformerOptions* options = TransformerOptions::GetInstance();
-  bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
-  if (element_size == 2) {
-    return QkvToContext(prop, rocblas, stream,
-                        batch_size, sequence_length, num_heads, head_size, element_size,
-                        reinterpret_cast<const __half*>(input), reinterpret_cast<__half*>(output), reinterpret_cast<__half*>(workspace),
-                        mask_index, mask_index_dims, is_unidirectional,
-                        past_sequence_length, reinterpret_cast<const __half*>(past), reinterpret_cast<const __half*>(extra_add_qk),
-                        reinterpret_cast<__half*>(present), use_persistent_softmax);
-  } else {
-    return QkvToContext(prop, rocblas, stream,
-                        batch_size, sequence_length, num_heads, head_size, element_size,
-                        reinterpret_cast<const float*>(input), reinterpret_cast<float*>(output), reinterpret_cast<float*>(workspace),
-                        mask_index, mask_index_dims, is_unidirectional,
-                        past_sequence_length, reinterpret_cast<const float*>(past), reinterpret_cast<const float*>(extra_add_qk),
-                        reinterpret_cast<float*>(present), use_persistent_softmax);
-  }
-}
 
 bool LaunchDecoderAttentionKernel(
   const hipDeviceProp_t& prop,

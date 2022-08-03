@@ -4,7 +4,6 @@
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
-#include "test/common/rocm_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
@@ -32,11 +31,13 @@ TEST(NGramRepeatBlockTest, NGramSize_3) {
     execution_providers.push_back(DefaultCudaExecutionProvider());
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
-  if (HasRocmEnvironment(0)) {
+#ifdef USE_ROCM
+  if (nullptr != DefaultRocmExecutionProvider().get()) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultRocmExecutionProvider());
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
+#endif
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
