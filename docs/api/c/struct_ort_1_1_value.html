@@ -220,10 +220,10 @@ Public Member Functions</h2></td></tr>
 Static Public Member Functions</h2></td></tr>
 <tr class="memitem:a3898146b5fc35b838bd48db807dd6c8e"><td class="memTemplParams" colspan="2">template&lt;typename T &gt; </td></tr>
 <tr class="memitem:a3898146b5fc35b838bd48db807dd6c8e"><td class="memTemplItemLeft" align="right" valign="top">static <a class="el" href="struct_ort_1_1_value.html">Value</a>&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_value.html#a3898146b5fc35b838bd48db807dd6c8e">CreateTensor</a> (const <a class="el" href="group___global.html#ga088f45e429651ac29b4a9efb4d88571a">OrtMemoryInfo</a> *info, T *p_data, size_t p_data_element_count, const int64_t *shape, size_t shape_len)</td></tr>
-<tr class="memdesc:a3898146b5fc35b838bd48db807dd6c8e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wraps <a class="el" href="struct_ort_api.html#a2aad3ccd68c66d0b38bdb966467d9324" title="Create a tensor backed by a user supplied buffer.">OrtApi::CreateTensorWithDataAsOrtValue</a>.  <a href="struct_ort_1_1_value.html#a3898146b5fc35b838bd48db807dd6c8e">More...</a><br /></td></tr>
+<tr class="memdesc:a3898146b5fc35b838bd48db807dd6c8e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Creates a tensor with a user supplied buffer. Wraps <a class="el" href="struct_ort_api.html#a2aad3ccd68c66d0b38bdb966467d9324" title="Create a tensor backed by a user supplied buffer.">OrtApi::CreateTensorWithDataAsOrtValue</a>.  <a href="struct_ort_1_1_value.html#a3898146b5fc35b838bd48db807dd6c8e">More...</a><br /></td></tr>
 <tr class="separator:a3898146b5fc35b838bd48db807dd6c8e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ab19ff01babfb77660ed022c4057046ef"><td class="memItemLeft" align="right" valign="top">static <a class="el" href="struct_ort_1_1_value.html">Value</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_value.html#ab19ff01babfb77660ed022c4057046ef">CreateTensor</a> (const <a class="el" href="group___global.html#ga088f45e429651ac29b4a9efb4d88571a">OrtMemoryInfo</a> *info, void *p_data, size_t p_data_byte_count, const int64_t *shape, size_t shape_len, <a class="el" href="group___global.html#gaec63cdda46c29b8183997f38930ce38e">ONNXTensorElementDataType</a> type)</td></tr>
-<tr class="memdesc:ab19ff01babfb77660ed022c4057046ef"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wraps <a class="el" href="struct_ort_api.html#a2aad3ccd68c66d0b38bdb966467d9324" title="Create a tensor backed by a user supplied buffer.">OrtApi::CreateTensorWithDataAsOrtValue</a>.  <a href="struct_ort_1_1_value.html#ab19ff01babfb77660ed022c4057046ef">More...</a><br /></td></tr>
+<tr class="memdesc:ab19ff01babfb77660ed022c4057046ef"><td class="mdescLeft">&#160;</td><td class="mdescRight">Creates a tensor with a user supplied buffer. Wraps <a class="el" href="struct_ort_api.html#a2aad3ccd68c66d0b38bdb966467d9324" title="Create a tensor backed by a user supplied buffer.">OrtApi::CreateTensorWithDataAsOrtValue</a>.  <a href="struct_ort_1_1_value.html#ab19ff01babfb77660ed022c4057046ef">More...</a><br /></td></tr>
 <tr class="separator:ab19ff01babfb77660ed022c4057046ef"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a07bd3c4da603a8fc23ea6e1f86482f6b"><td class="memTemplParams" colspan="2">template&lt;typename T &gt; </td></tr>
 <tr class="memitem:a07bd3c4da603a8fc23ea6e1f86482f6b"><td class="memTemplItemLeft" align="right" valign="top">static <a class="el" href="struct_ort_1_1_value.html">Value</a>&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_value.html#a07bd3c4da603a8fc23ea6e1f86482f6b">CreateSparseTensor</a> (const <a class="el" href="group___global.html#ga088f45e429651ac29b4a9efb4d88571a">OrtMemoryInfo</a> *info, T *p_data, const <a class="el" href="struct_ort_1_1_value_1_1_shape.html">Shape</a> &amp;dense_shape, const <a class="el" href="struct_ort_1_1_value_1_1_shape.html">Shape</a> &amp;values_shape)</td></tr>
@@ -234,8 +234,10 @@ Static Public Member Functions</h2></td></tr>
 <tr class="separator:a059315bd22476066e30a2d6034bfb9d3"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:acacfe668acf9b55ffcd9d375c7f32053"><td class="memTemplParams" colspan="2">template&lt;typename T &gt; </td></tr>
 <tr class="memitem:acacfe668acf9b55ffcd9d375c7f32053"><td class="memTemplItemLeft" align="right" valign="top">static <a class="el" href="struct_ort_1_1_value.html">Value</a>&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_value.html#acacfe668acf9b55ffcd9d375c7f32053">CreateTensor</a> (<a class="el" href="struct_ort_allocator.html">OrtAllocator</a> *allocator, const int64_t *shape, size_t shape_len)</td></tr>
+<tr class="memdesc:acacfe668acf9b55ffcd9d375c7f32053"><td class="mdescLeft">&#160;</td><td class="mdescRight">Creates a tensor using a supplied <a class="el" href="struct_ort_allocator.html" title="Memory allocation interface.">OrtAllocator</a>. Wraps <a class="el" href="struct_ort_api.html#afa229d9d92820cc59298ed38d3f4f73f" title="Create a tensor.">OrtApi::CreateTensorAsOrtValue</a>.  <a href="struct_ort_1_1_value.html#acacfe668acf9b55ffcd9d375c7f32053">More...</a><br /></td></tr>
 <tr class="separator:acacfe668acf9b55ffcd9d375c7f32053"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5d35080239ae47cdbc9e505666dc32ec"><td class="memItemLeft" align="right" valign="top">static <a class="el" href="struct_ort_1_1_value.html">Value</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_value.html#a5d35080239ae47cdbc9e505666dc32ec">CreateTensor</a> (<a class="el" href="struct_ort_allocator.html">OrtAllocator</a> *allocator, const int64_t *shape, size_t shape_len, <a class="el" href="group___global.html#gaec63cdda46c29b8183997f38930ce38e">ONNXTensorElementDataType</a> type)</td></tr>
+<tr class="memdesc:a5d35080239ae47cdbc9e505666dc32ec"><td class="mdescLeft">&#160;</td><td class="mdescRight">Creates a tensor using a supplied <a class="el" href="struct_ort_allocator.html" title="Memory allocation interface.">OrtAllocator</a>. Wraps <a class="el" href="struct_ort_api.html#afa229d9d92820cc59298ed38d3f4f73f" title="Create a tensor.">OrtApi::CreateTensorAsOrtValue</a>.  <a href="struct_ort_1_1_value.html#a5d35080239ae47cdbc9e505666dc32ec">More...</a><br /></td></tr>
 <tr class="separator:a5d35080239ae47cdbc9e505666dc32ec"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a560452c9940a9756089e42d767932e46"><td class="memTemplParams" colspan="2">template&lt;typename T &gt; </td></tr>
 <tr class="memitem:a560452c9940a9756089e42d767932e46"><td class="memTemplItemLeft" align="right" valign="top">static <a class="el" href="struct_ort_1_1_value.html">Value</a>&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_value.html#a560452c9940a9756089e42d767932e46">CreateSparseTensor</a> (<a class="el" href="struct_ort_allocator.html">OrtAllocator</a> *allocator, const <a class="el" href="struct_ort_1_1_value_1_1_shape.html">Shape</a> &amp;dense_shape)</td></tr>
@@ -785,7 +787,23 @@ template&lt;typename T &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Wraps <a class="el" href="struct_ort_api.html#a2aad3ccd68c66d0b38bdb966467d9324" title="Create a tensor backed by a user supplied buffer.">OrtApi::CreateTensorWithDataAsOrtValue</a>. </p>
+<p>Creates a tensor with a user supplied buffer. Wraps <a class="el" href="struct_ort_api.html#a2aad3ccd68c66d0b38bdb966467d9324" title="Create a tensor backed by a user supplied buffer.">OrtApi::CreateTensorWithDataAsOrtValue</a>. </p>
+<dl class="tparams"><dt>Template Parameters</dt><dd>
+  <table class="tparams">
+    <tr><td class="paramname">T</td><td>The numeric datatype. This API is not suitable for strings. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">info</td><td>Memory description of where the p_data buffer resides (CPU vs GPU etc). </td></tr>
+    <tr><td class="paramname">p_data</td><td>Pointer to the data buffer. </td></tr>
+    <tr><td class="paramname">p_data_element_count</td><td>The number of elements in the data buffer. </td></tr>
+    <tr><td class="paramname">shape</td><td>Pointer to the tensor shape dimensions. </td></tr>
+    <tr><td class="paramname">shape_len</td><td>The number of tensor shape dimensions. </td></tr>
+  </table>
+  </dd>
+</dl>
 
 </div>
 </div>
@@ -847,7 +865,18 @@ template&lt;typename T &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Wraps <a class="el" href="struct_ort_api.html#a2aad3ccd68c66d0b38bdb966467d9324" title="Create a tensor backed by a user supplied buffer.">OrtApi::CreateTensorWithDataAsOrtValue</a>. </p>
+<p>Creates a tensor with a user supplied buffer. Wraps <a class="el" href="struct_ort_api.html#a2aad3ccd68c66d0b38bdb966467d9324" title="Create a tensor backed by a user supplied buffer.">OrtApi::CreateTensorWithDataAsOrtValue</a>. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">info</td><td>Memory description of where the p_data buffer resides (CPU vs GPU etc). </td></tr>
+    <tr><td class="paramname">p_data</td><td>Pointer to the data buffer. </td></tr>
+    <tr><td class="paramname">p_data_byte_count</td><td>The number of bytes in the data buffer. </td></tr>
+    <tr><td class="paramname">shape</td><td>Pointer to the tensor shape dimensions. </td></tr>
+    <tr><td class="paramname">shape_len</td><td>The number of tensor shape dimensions. </td></tr>
+    <tr><td class="paramname">type</td><td>The data type. </td></tr>
+  </table>
+  </dd>
+</dl>
 
 </div>
 </div>
@@ -892,6 +921,22 @@ template&lt;typename T &gt; </div>
   </tr>
 </table>
 </div><div class="memdoc">
+
+<p>Creates a tensor using a supplied <a class="el" href="struct_ort_allocator.html" title="Memory allocation interface.">OrtAllocator</a>. Wraps <a class="el" href="struct_ort_api.html#afa229d9d92820cc59298ed38d3f4f73f" title="Create a tensor.">OrtApi::CreateTensorAsOrtValue</a>. </p>
+<dl class="tparams"><dt>Template Parameters</dt><dd>
+  <table class="tparams">
+    <tr><td class="paramname">T</td><td>The numeric datatype. This API is not suitable for strings. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">allocator</td><td>The allocator to use. </td></tr>
+    <tr><td class="paramname">shape</td><td>Pointer to the tensor shape dimensions. </td></tr>
+    <tr><td class="paramname">shape_len</td><td>The number of tensor shape dimensions. </td></tr>
+  </table>
+  </dd>
+</dl>
 
 </div>
 </div>
@@ -940,6 +985,17 @@ template&lt;typename T &gt; </div>
   </tr>
 </table>
 </div><div class="memdoc">
+
+<p>Creates a tensor using a supplied <a class="el" href="struct_ort_allocator.html" title="Memory allocation interface.">OrtAllocator</a>. Wraps <a class="el" href="struct_ort_api.html#afa229d9d92820cc59298ed38d3f4f73f" title="Create a tensor.">OrtApi::CreateTensorAsOrtValue</a>. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">allocator</td><td>The allocator to use. </td></tr>
+    <tr><td class="paramname">shape</td><td>Pointer to the tensor shape dimensions. </td></tr>
+    <tr><td class="paramname">shape_len</td><td>The number of tensor shape dimensions. </td></tr>
+    <tr><td class="paramname">type</td><td>The data type. </td></tr>
+  </table>
+  </dd>
+</dl>
 
 </div>
 </div>

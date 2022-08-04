@@ -113,6 +113,9 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a8768dcc6052d4144b1dc8523b2cd4288"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session.html#a8768dcc6052d4144b1dc8523b2cd4288">Session</a> (<a class="el" href="struct_ort_1_1_env.html">Env</a> &amp;env, const void *model_data, size_t model_data_length, const <a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp;options)</td></tr>
 <tr class="memdesc:a8768dcc6052d4144b1dc8523b2cd4288"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wraps <a class="el" href="struct_ort_api.html#a8c9d4f617fd806cd10da1fecd265dd8c" title="Create an OrtSession from memory.">OrtApi::CreateSessionFromArray</a>.  <a href="struct_ort_1_1_session.html#a8768dcc6052d4144b1dc8523b2cd4288">More...</a><br /></td></tr>
 <tr class="separator:a8768dcc6052d4144b1dc8523b2cd4288"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae5806a9a58243006dee63e0867acea88"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session.html#ae5806a9a58243006dee63e0867acea88">Session</a> (<a class="el" href="struct_ort_1_1_env.html">Env</a> &amp;env, const void *model_data, size_t model_data_length, const <a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp;options, <a class="el" href="group___global.html#ga4b0ed31cf137ed2f763dddd2da40c2cf">OrtPrepackedWeightsContainer</a> *prepacked_weights_container)</td></tr>
+<tr class="memdesc:ae5806a9a58243006dee63e0867acea88"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wraps <a class="el" href="struct_ort_api.html#a103f6e5e3b33ac8b8e89fb3e24410eed" title="Create session from memory with prepacked weights container.">OrtApi::CreateSessionFromArrayWithPrepackedWeightsContainer</a>.  <a href="struct_ort_1_1_session.html#ae5806a9a58243006dee63e0867acea88">More...</a><br /></td></tr>
+<tr class="separator:ae5806a9a58243006dee63e0867acea88"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae1149a662d2a2e218e5740672bbf0ebe"><td class="memItemLeft" align="right" valign="top">std::vector&lt; <a class="el" href="struct_ort_1_1_value.html">Value</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session.html#ae1149a662d2a2e218e5740672bbf0ebe">Run</a> (const <a class="el" href="struct_ort_1_1_run_options.html">RunOptions</a> &amp;run_options, const char *const *input_names, const <a class="el" href="struct_ort_1_1_value.html">Value</a> *input_values, size_t input_count, const char *const *output_names, size_t output_count)</td></tr>
 <tr class="memdesc:ae1149a662d2a2e218e5740672bbf0ebe"><td class="mdescLeft">&#160;</td><td class="mdescRight">Run the model returning results in an <a class="el" href="namespace_ort.html" title="All C++ Onnxruntime APIs are defined inside this namespace.">Ort</a> allocated vector.  <a href="struct_ort_1_1_session.html#ae1149a662d2a2e218e5740672bbf0ebe">More...</a><br /></td></tr>
 <tr class="separator:ae1149a662d2a2e218e5740672bbf0ebe"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -134,15 +137,27 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a147c44cc42331f7126cb892ec46b812b"><td class="memItemLeft" align="right" valign="top">char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session.html#a147c44cc42331f7126cb892ec46b812b">GetInputName</a> (size_t index, <a class="el" href="struct_ort_allocator.html">OrtAllocator</a> *allocator) const</td></tr>
 <tr class="memdesc:a147c44cc42331f7126cb892ec46b812b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wraps <a class="el" href="struct_ort_api.html#a811b1773c7d713750716a36b432e2102" title="Get input name.">OrtApi::SessionGetInputName</a>.  <a href="struct_ort_1_1_session.html#a147c44cc42331f7126cb892ec46b812b">More...</a><br /></td></tr>
 <tr class="separator:a147c44cc42331f7126cb892ec46b812b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:acf68f0a62296f14e3f6ec8e1ed7825b6"><td class="memItemLeft" align="right" valign="top"><a class="el" href="namespace_ort.html#a06553255861e1c30a7437f2e18b70ec0">AllocatedStringPtr</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session.html#acf68f0a62296f14e3f6ec8e1ed7825b6">GetInputNameAllocated</a> (size_t index, <a class="el" href="struct_ort_allocator.html">OrtAllocator</a> *allocator) const</td></tr>
+<tr class="memdesc:acf68f0a62296f14e3f6ec8e1ed7825b6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns a copy of input name at the specified index.  <a href="struct_ort_1_1_session.html#acf68f0a62296f14e3f6ec8e1ed7825b6">More...</a><br /></td></tr>
+<tr class="separator:acf68f0a62296f14e3f6ec8e1ed7825b6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a20e648093c056dd85d95f54cab637147"><td class="memItemLeft" align="right" valign="top">char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session.html#a20e648093c056dd85d95f54cab637147">GetOutputName</a> (size_t index, <a class="el" href="struct_ort_allocator.html">OrtAllocator</a> *allocator) const</td></tr>
 <tr class="memdesc:a20e648093c056dd85d95f54cab637147"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wraps <a class="el" href="struct_ort_api.html#a130f69dae071631abd50cae5a26d5d9d" title="Get output name.">OrtApi::SessionGetOutputName</a>.  <a href="struct_ort_1_1_session.html#a20e648093c056dd85d95f54cab637147">More...</a><br /></td></tr>
 <tr class="separator:a20e648093c056dd85d95f54cab637147"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7fe84b18ecf82917cbc984b95139abc7"><td class="memItemLeft" align="right" valign="top"><a class="el" href="namespace_ort.html#a06553255861e1c30a7437f2e18b70ec0">AllocatedStringPtr</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session.html#a7fe84b18ecf82917cbc984b95139abc7">GetOutputNameAllocated</a> (size_t index, <a class="el" href="struct_ort_allocator.html">OrtAllocator</a> *allocator) const</td></tr>
+<tr class="memdesc:a7fe84b18ecf82917cbc984b95139abc7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns a copy of output name at then specified index.  <a href="struct_ort_1_1_session.html#a7fe84b18ecf82917cbc984b95139abc7">More...</a><br /></td></tr>
+<tr class="separator:a7fe84b18ecf82917cbc984b95139abc7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac89a79b7fc58860ddf754a15dd1fab9a"><td class="memItemLeft" align="right" valign="top">char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session.html#ac89a79b7fc58860ddf754a15dd1fab9a">GetOverridableInitializerName</a> (size_t index, <a class="el" href="struct_ort_allocator.html">OrtAllocator</a> *allocator) const</td></tr>
 <tr class="memdesc:ac89a79b7fc58860ddf754a15dd1fab9a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wraps <a class="el" href="struct_ort_api.html#aae6197279efef5aa794eac94e56c2d70" title="Get overridable initializer name.">OrtApi::SessionGetOverridableInitializerName</a>.  <a href="struct_ort_1_1_session.html#ac89a79b7fc58860ddf754a15dd1fab9a">More...</a><br /></td></tr>
 <tr class="separator:ac89a79b7fc58860ddf754a15dd1fab9a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5c396769d1cee59e0c673521a8110131"><td class="memItemLeft" align="right" valign="top"><a class="el" href="namespace_ort.html#a06553255861e1c30a7437f2e18b70ec0">AllocatedStringPtr</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session.html#a5c396769d1cee59e0c673521a8110131">GetOverridableInitializerNameAllocated</a> (size_t index, <a class="el" href="struct_ort_allocator.html">OrtAllocator</a> *allocator) const</td></tr>
+<tr class="memdesc:a5c396769d1cee59e0c673521a8110131"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns a copy of the overridable initializer name at then specified index.  <a href="struct_ort_1_1_session.html#a5c396769d1cee59e0c673521a8110131">More...</a><br /></td></tr>
+<tr class="separator:a5c396769d1cee59e0c673521a8110131"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a9c71afbbf1165d2fc265b2e8e1a08c49"><td class="memItemLeft" align="right" valign="top">char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session.html#a9c71afbbf1165d2fc265b2e8e1a08c49">EndProfiling</a> (<a class="el" href="struct_ort_allocator.html">OrtAllocator</a> *allocator) const</td></tr>
 <tr class="memdesc:a9c71afbbf1165d2fc265b2e8e1a08c49"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wraps <a class="el" href="struct_ort_api.html#af1ed6fb7c562e68ffa8310595f6ad0d2" title="End profiling and return filename of the profile data.">OrtApi::SessionEndProfiling</a>.  <a href="struct_ort_1_1_session.html#a9c71afbbf1165d2fc265b2e8e1a08c49">More...</a><br /></td></tr>
 <tr class="separator:a9c71afbbf1165d2fc265b2e8e1a08c49"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:acf32166dac88aa541ea6b7a32254820d"><td class="memItemLeft" align="right" valign="top"><a class="el" href="namespace_ort.html#a06553255861e1c30a7437f2e18b70ec0">AllocatedStringPtr</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session.html#acf32166dac88aa541ea6b7a32254820d">EndProfilingAllocated</a> (<a class="el" href="struct_ort_allocator.html">OrtAllocator</a> *allocator) const</td></tr>
+<tr class="memdesc:acf32166dac88aa541ea6b7a32254820d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns a copy of the profiling file name.  <a href="struct_ort_1_1_session.html#acf32166dac88aa541ea6b7a32254820d">More...</a><br /></td></tr>
+<tr class="separator:acf32166dac88aa541ea6b7a32254820d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a98f99ec7569ee0b9603982117d1cbcfc"><td class="memItemLeft" align="right" valign="top">uint64_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session.html#a98f99ec7569ee0b9603982117d1cbcfc">GetProfilingStartTimeNs</a> () const</td></tr>
 <tr class="memdesc:a98f99ec7569ee0b9603982117d1cbcfc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wraps <a class="el" href="struct_ort_api.html#ae08368d7b5e9c107fbfdca81a34d589c" title="Return the time that profiling was started.">OrtApi::SessionGetProfilingStartTimeNs</a>.  <a href="struct_ort_1_1_session.html#a98f99ec7569ee0b9603982117d1cbcfc">More...</a><br /></td></tr>
 <tr class="separator:a98f99ec7569ee0b9603982117d1cbcfc"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -195,7 +210,7 @@ Additional Inherited Members</h2></td></tr>
 <div class="textblock"><p >Wrapper around <a class="el" href="group___global.html#ga5220ca3b3f0a31a01a3f15057c35cac6">OrtSession</a>. </p>
 </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="a333dc25d8897861ed3f0221c21b9b4dc" name="a333dc25d8897861ed3f0221c21b9b4dc"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a333dc25d8897861ed3f0221c21b9b4dc">&#9670;&nbsp;</a></span>Session() <span class="overload">[1/4]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a333dc25d8897861ed3f0221c21b9b4dc">&#9670;&nbsp;</a></span>Session() <span class="overload">[1/5]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -223,7 +238,7 @@ Additional Inherited Members</h2></td></tr>
 </div>
 </div>
 <a id="a1340c72e42d048d5e7fa8d71a26f2e60" name="a1340c72e42d048d5e7fa8d71a26f2e60"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a1340c72e42d048d5e7fa8d71a26f2e60">&#9670;&nbsp;</a></span>Session() <span class="overload">[2/4]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a1340c72e42d048d5e7fa8d71a26f2e60">&#9670;&nbsp;</a></span>Session() <span class="overload">[2/5]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -259,7 +274,7 @@ Additional Inherited Members</h2></td></tr>
 </div>
 </div>
 <a id="a2d0f7354f12e01535b275e9b6ebfc205" name="a2d0f7354f12e01535b275e9b6ebfc205"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a2d0f7354f12e01535b275e9b6ebfc205">&#9670;&nbsp;</a></span>Session() <span class="overload">[3/4]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a2d0f7354f12e01535b275e9b6ebfc205">&#9670;&nbsp;</a></span>Session() <span class="overload">[3/5]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -301,7 +316,7 @@ Additional Inherited Members</h2></td></tr>
 </div>
 </div>
 <a id="a8768dcc6052d4144b1dc8523b2cd4288" name="a8768dcc6052d4144b1dc8523b2cd4288"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a8768dcc6052d4144b1dc8523b2cd4288">&#9670;&nbsp;</a></span>Session() <span class="overload">[4/4]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a8768dcc6052d4144b1dc8523b2cd4288">&#9670;&nbsp;</a></span>Session() <span class="overload">[4/5]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -342,6 +357,54 @@ Additional Inherited Members</h2></td></tr>
 
 </div>
 </div>
+<a id="ae5806a9a58243006dee63e0867acea88" name="ae5806a9a58243006dee63e0867acea88"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae5806a9a58243006dee63e0867acea88">&#9670;&nbsp;</a></span>Session() <span class="overload">[5/5]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">Ort::Session::Session </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="struct_ort_1_1_env.html">Env</a> &amp;&#160;</td>
+          <td class="paramname"><em>env</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const void *&#160;</td>
+          <td class="paramname"><em>model_data</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>model_data_length</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp;&#160;</td>
+          <td class="paramname"><em>options</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="group___global.html#ga4b0ed31cf137ed2f763dddd2da40c2cf">OrtPrepackedWeightsContainer</a> *&#160;</td>
+          <td class="paramname"><em>prepacked_weights_container</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Wraps <a class="el" href="struct_ort_api.html#a103f6e5e3b33ac8b8e89fb3e24410eed" title="Create session from memory with prepacked weights container.">OrtApi::CreateSessionFromArrayWithPrepackedWeightsContainer</a>. </p>
+
+</div>
+</div>
 <h2 class="groupheader">Member Function Documentation</h2>
 <a id="a9c71afbbf1165d2fc265b2e8e1a08c49" name="a9c71afbbf1165d2fc265b2e8e1a08c49"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a9c71afbbf1165d2fc265b2e8e1a08c49">&#9670;&nbsp;</a></span>EndProfiling()</h2>
@@ -360,6 +423,34 @@ Additional Inherited Members</h2></td></tr>
 </div><div class="memdoc">
 
 <p>Wraps <a class="el" href="struct_ort_api.html#af1ed6fb7c562e68ffa8310595f6ad0d2" title="End profiling and return filename of the profile data.">OrtApi::SessionEndProfiling</a>. </p>
+<dl class="deprecated"><dt><b><a class="el" href="deprecated.html#_deprecated000012">Deprecated:</a></b></dt><dd>use <a class="el" href="struct_ort_1_1_session.html#acf32166dac88aa541ea6b7a32254820d" title="Returns a copy of the profiling file name.">EndProfilingAllocated()</a> [[deprecated]] This interface produces a pointer that must be released by the specified allocator and is often leaked. Not exception safe. </dd></dl>
+
+</div>
+</div>
+<a id="acf32166dac88aa541ea6b7a32254820d" name="acf32166dac88aa541ea6b7a32254820d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#acf32166dac88aa541ea6b7a32254820d">&#9670;&nbsp;</a></span>EndProfilingAllocated()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="namespace_ort.html#a06553255861e1c30a7437f2e18b70ec0">AllocatedStringPtr</a> Ort::Session::EndProfilingAllocated </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="struct_ort_allocator.html">OrtAllocator</a> *&#160;</td>
+          <td class="paramname"><em>allocator</em></td><td>)</td>
+          <td> const</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Returns a copy of the profiling file name. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">allocator</td><td>to allocate memory for the copy of the string returned </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>a instance of smart pointer that would deallocate the buffer when out of scope. The <a class="el" href="struct_ort_allocator.html" title="Memory allocation interface.">OrtAllocator</a> instances must be valid at the point of memory release. Wraps <a class="el" href="struct_ort_api.html#af1ed6fb7c562e68ffa8310595f6ad0d2" title="End profiling and return filename of the profile data.">OrtApi::SessionEndProfiling</a> </dd></dl>
 
 </div>
 </div>
@@ -409,6 +500,45 @@ Additional Inherited Members</h2></td></tr>
 </div><div class="memdoc">
 
 <p>Wraps <a class="el" href="struct_ort_api.html#a811b1773c7d713750716a36b432e2102" title="Get input name.">OrtApi::SessionGetInputName</a>. </p>
+<dl class="deprecated"><dt><b><a class="el" href="deprecated.html#_deprecated000009">Deprecated:</a></b></dt><dd>use <a class="el" href="struct_ort_1_1_session.html#acf68f0a62296f14e3f6ec8e1ed7825b6" title="Returns a copy of input name at the specified index.">GetInputNameAllocated()</a> [[deprecated]] This interface produces a pointer that must be released by the specified allocator and is often leaked. Not exception safe. </dd></dl>
+
+</div>
+</div>
+<a id="acf68f0a62296f14e3f6ec8e1ed7825b6" name="acf68f0a62296f14e3f6ec8e1ed7825b6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#acf68f0a62296f14e3f6ec8e1ed7825b6">&#9670;&nbsp;</a></span>GetInputNameAllocated()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="namespace_ort.html#a06553255861e1c30a7437f2e18b70ec0">AllocatedStringPtr</a> Ort::Session::GetInputNameAllocated </td>
+          <td>(</td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>index</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="struct_ort_allocator.html">OrtAllocator</a> *&#160;</td>
+          <td class="paramname"><em>allocator</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Returns a copy of input name at the specified index. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">index</td><td>must less than the value returned by <a class="el" href="struct_ort_1_1_session.html#a2a5985283caf77d65823318079fa4a6c" title="Returns the number of model inputs.">GetInputCount()</a> </td></tr>
+    <tr><td class="paramname">allocator</td><td>to allocate memory for the copy of the name returned </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>a instance of smart pointer that would deallocate the buffer when out of scope. The <a class="el" href="struct_ort_allocator.html" title="Memory allocation interface.">OrtAllocator</a> instances must be valid at the point of memory release. </dd></dl>
 
 </div>
 </div>
@@ -497,6 +627,45 @@ Additional Inherited Members</h2></td></tr>
 </div><div class="memdoc">
 
 <p>Wraps <a class="el" href="struct_ort_api.html#a130f69dae071631abd50cae5a26d5d9d" title="Get output name.">OrtApi::SessionGetOutputName</a>. </p>
+<dl class="deprecated"><dt><b><a class="el" href="deprecated.html#_deprecated000010">Deprecated:</a></b></dt><dd>use <a class="el" href="struct_ort_1_1_session.html#a7fe84b18ecf82917cbc984b95139abc7" title="Returns a copy of output name at then specified index.">GetOutputNameAllocated()</a> [[deprecated]] This interface produces a pointer that must be released by the specified allocator and is often leaked. Not exception safe. </dd></dl>
+
+</div>
+</div>
+<a id="a7fe84b18ecf82917cbc984b95139abc7" name="a7fe84b18ecf82917cbc984b95139abc7"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a7fe84b18ecf82917cbc984b95139abc7">&#9670;&nbsp;</a></span>GetOutputNameAllocated()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="namespace_ort.html#a06553255861e1c30a7437f2e18b70ec0">AllocatedStringPtr</a> Ort::Session::GetOutputNameAllocated </td>
+          <td>(</td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>index</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="struct_ort_allocator.html">OrtAllocator</a> *&#160;</td>
+          <td class="paramname"><em>allocator</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Returns a copy of output name at then specified index. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">index</td><td>must less than the value returned by <a class="el" href="struct_ort_1_1_session.html#a74d8bee30facccd949c245fc50161af9" title="Returns the number of model outputs.">GetOutputCount()</a> </td></tr>
+    <tr><td class="paramname">allocator</td><td>to allocate memory for the copy of the name returned </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>a instance of smart pointer that would deallocate the buffer when out of scope. The <a class="el" href="struct_ort_allocator.html" title="Memory allocation interface.">OrtAllocator</a> instances must be valid at the point of memory release. </dd></dl>
 
 </div>
 </div>
@@ -566,6 +735,45 @@ Additional Inherited Members</h2></td></tr>
 </div><div class="memdoc">
 
 <p>Wraps <a class="el" href="struct_ort_api.html#aae6197279efef5aa794eac94e56c2d70" title="Get overridable initializer name.">OrtApi::SessionGetOverridableInitializerName</a>. </p>
+<dl class="deprecated"><dt><b><a class="el" href="deprecated.html#_deprecated000011">Deprecated:</a></b></dt><dd>use <a class="el" href="struct_ort_1_1_session.html#a5c396769d1cee59e0c673521a8110131" title="Returns a copy of the overridable initializer name at then specified index.">GetOverridableInitializerNameAllocated()</a> [[deprecated]] This interface produces a pointer that must be released by the specified allocator and is often leaked. Not exception safe. </dd></dl>
+
+</div>
+</div>
+<a id="a5c396769d1cee59e0c673521a8110131" name="a5c396769d1cee59e0c673521a8110131"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a5c396769d1cee59e0c673521a8110131">&#9670;&nbsp;</a></span>GetOverridableInitializerNameAllocated()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="namespace_ort.html#a06553255861e1c30a7437f2e18b70ec0">AllocatedStringPtr</a> Ort::Session::GetOverridableInitializerNameAllocated </td>
+          <td>(</td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>index</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="struct_ort_allocator.html">OrtAllocator</a> *&#160;</td>
+          <td class="paramname"><em>allocator</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Returns a copy of the overridable initializer name at then specified index. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">index</td><td>must less than the value returned by <a class="el" href="struct_ort_1_1_session.html#a6603e24602d46fd1fce04c7707039e07" title="Returns the number of inputs that have defaults that can be overridden.">GetOverridableInitializerCount()</a> </td></tr>
+    <tr><td class="paramname">allocator</td><td>to allocate memory for the copy of the name returned </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>a instance of smart pointer that would deallocate the buffer when out of scope. The <a class="el" href="struct_ort_allocator.html" title="Memory allocation interface.">OrtAllocator</a> instances must be valid at the point of memory release. Wraps <a class="el" href="struct_ort_api.html#aae6197279efef5aa794eac94e56c2d70" title="Get overridable initializer name.">OrtApi::SessionGetOverridableInitializerName</a> </dd></dl>
 
 </div>
 </div>

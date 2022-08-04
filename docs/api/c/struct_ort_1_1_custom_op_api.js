@@ -1,6 +1,9 @@
 var struct_ort_1_1_custom_op_api =
 [
     [ "CustomOpApi", "struct_ort_1_1_custom_op_api.html#abf028f27de7ac28bf78d89917dfe56b9", null ],
+    [ "CopyKernelInfo", "struct_ort_1_1_custom_op_api.html#ae39a4bb631faea94364121264fb0c7d3", null ],
+    [ "CreateOp", "struct_ort_1_1_custom_op_api.html#a8c66daa44131353c1ba93ed41078f320", null ],
+    [ "CreateOpAttr", "struct_ort_1_1_custom_op_api.html#a2740576ee3310312e198533bd9f0fddb", null ],
     [ "GetDimensions", "struct_ort_1_1_custom_op_api.html#a53dbeeb8fba97a7c5c1e5a97a8f1978a", null ],
     [ "GetDimensionsCount", "struct_ort_1_1_custom_op_api.html#a09e1878a345d126e64b59e193fc06050", null ],
     [ "GetTensorData", "struct_ort_1_1_custom_op_api.html#afd1a695491b0cd72147170e6ff28ef61", null ],
@@ -10,12 +13,16 @@ var struct_ort_1_1_custom_op_api =
     [ "GetTensorShape", "struct_ort_1_1_custom_op_api.html#a4c60b4f47540791b366228dd6f790a7c", null ],
     [ "GetTensorShapeElementCount", "struct_ort_1_1_custom_op_api.html#a769b23926ee250807eda73df88746bc9", null ],
     [ "GetTensorTypeAndShape", "struct_ort_1_1_custom_op_api.html#a4bac2252005fbe045acb35090a545a3d", null ],
+    [ "InvokeOp", "struct_ort_1_1_custom_op_api.html#a17cae29d7ef679bae9b9b0857b188b45", null ],
     [ "KernelContext_GetGPUComputeStream", "struct_ort_1_1_custom_op_api.html#a0bb133692d307824f5da57019963d4a2", null ],
     [ "KernelContext_GetInput", "struct_ort_1_1_custom_op_api.html#afa21769ea0c1dca10da330d4d4544baa", null ],
     [ "KernelContext_GetInputCount", "struct_ort_1_1_custom_op_api.html#a17348789cfde3e1a93bf1e2af67c183e", null ],
     [ "KernelContext_GetOutput", "struct_ort_1_1_custom_op_api.html#a3ee901b1e84cc4c47221dc230d357b66", null ],
     [ "KernelContext_GetOutputCount", "struct_ort_1_1_custom_op_api.html#a015cb844d1127a400228c2756892d453", null ],
     [ "KernelInfoGetAttribute", "struct_ort_1_1_custom_op_api.html#a47632080bea3d198cc8036e6c57a9288", null ],
+    [ "ReleaseKernelInfo", "struct_ort_1_1_custom_op_api.html#af74d63c508411150a9c905824e9ee95b", null ],
+    [ "ReleaseOp", "struct_ort_1_1_custom_op_api.html#a31dc7e04f29cfa16413f22198ecd824e", null ],
+    [ "ReleaseOpAttr", "struct_ort_1_1_custom_op_api.html#a5c929d4036f582b452ce4bc9b8633c86", null ],
     [ "ReleaseTensorTypeAndShapeInfo", "struct_ort_1_1_custom_op_api.html#a42981ee288830f4b60683bbd4a21627d", null ],
     [ "SetDimensions", "struct_ort_1_1_custom_op_api.html#ad5fd03a24b54f6a42dc1660499d789e1", null ],
     [ "ThrowOnError", "struct_ort_1_1_custom_op_api.html#a5e6b792b3e87a2c4fcf79d9e8bf3773c", null ]

@@ -9,6 +9,7 @@ var searchData=
   ['ortlanguageprojection_6',['OrtLanguageProjection',['../group___global.html#ga43f32dc7d75b0c13fd64ca5792e63a62',1,'onnxruntime_c_api.h']]],
   ['ortlogginglevel_7',['OrtLoggingLevel',['../group___global.html#ga1c0fbcf614dbd0e2c272ae1cc04c629c',1,'onnxruntime_c_api.h']]],
   ['ortmemtype_8',['OrtMemType',['../group___global.html#gab7805016f4b26871e899a3cf4114ee0d',1,'onnxruntime_c_api.h']]],
-  ['ortsparseformat_9',['OrtSparseFormat',['../group___global.html#gaba2697542109e4ab6b24a8fbb847812d',1,'onnxruntime_c_api.h']]],
-  ['ortsparseindicesformat_10',['OrtSparseIndicesFormat',['../group___global.html#ga497c04502f658b896b265233fc890787',1,'onnxruntime_c_api.h']]]
+  ['ortopattrtype_9',['OrtOpAttrType',['../group___global.html#gad2d78682b8468cfbfbbc20563a2424cc',1,'onnxruntime_c_api.h']]],
+  ['ortsparseformat_10',['OrtSparseFormat',['../group___global.html#gaba2697542109e4ab6b24a8fbb847812d',1,'onnxruntime_c_api.h']]],
+  ['ortsparseindicesformat_11',['OrtSparseIndicesFormat',['../group___global.html#ga497c04502f658b896b265233fc890787',1,'onnxruntime_c_api.h']]]
 ];
