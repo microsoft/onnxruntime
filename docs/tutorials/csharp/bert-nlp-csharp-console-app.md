@@ -48,7 +48,7 @@ To run in the cloud with Azure Machine Learning:
 
 Hugging Face has a great API for downloading open source models and then we can use python and Pytorch to export them to ONNX format. This is a great option when using an open source model that is not already part of the [ONNX Model Zoo](https://github.com/onnx/models). 
 
-### Steps to download and export our model
+### Steps to download and export our model in Python
 
 Use the `transformers` API to download the `BertForQuestionAnswering` model named `bert-large-uncased-whole-word-masking-finetuned-squad`
 
@@ -107,7 +107,7 @@ torch.onnx.export(model,
                                 'start_logits' : symbolic_names, 
                                 'end_logits': symbolic_names})   # variable length axes/dynamic input
 ```
-## Understanding the model
+## Understanding the model in Python
 When taking a prebuilt model and operationalizing it, its useful to take a moment and understand the models pre and post processing, and the input/output shapes and labels. Many models have sample code provided in Python. We will be inferencing our model with C# but first lets test it and see how its done in Python. This will help us with our C# logic in the next step.
 
 - Create the `preprocess`, `postprocess`, `init` and `run` functions in python to test the model.
@@ -215,6 +215,7 @@ Now that we have tested the model in Python its time to build it out in C#. The 
 
 - Open Visual Studio and [Create a Console App](https://docs.microsoft.com/en-us/visualstudio/get-started/csharp/tutorial-console?view=vs-2022)
 
+### Install the Nuget Packages
 - Install the Nuget packages `BERTTokenizers`, `Microsoft.ML.OnnxRuntime`, `Microsoft.ML.OnnxRuntime.Managed`, `Microsoft.ML`
 ```PowerShell
 dotnet add package Microsoft.ML.OnnxRuntime --version 1.12.0
@@ -222,6 +223,9 @@ dotnet add package Microsoft.ML.OnnxRuntime.Managed --version 1.12.0
 dotnet add package dotnet add package Microsoft.ML
 dotnet add package dotnet add package BERTTokenizers --version 1.1.0
 ```
+
+### Create the App
+
 - Import the packages
 
 ```csharp
@@ -246,7 +250,7 @@ namespace MyApp // Note: actual namespace depends on the project name.
     }
 }
 ```
-
+### Create the BertInput class for encoding
 - Add the `BertInput` class
 
 ```csharp
@@ -257,7 +261,7 @@ namespace MyApp // Note: actual namespace depends on the project name.
         public long[] TypeIds { get; set; }
     }
 ```
-
+### Tokenize the sentence with the `BertUncasedLargeTokenizer`
 - Create a sentence (question and context) and tokenize the sentence with the `BertUncasedLargeTokenizer`. The base model for this fine tuned model was the BERT Uncased Large so the tokenizer is the same.
 
 ```csharp
@@ -283,6 +287,7 @@ namespace MyApp // Note: actual namespace depends on the project name.
   };
  
 ```
+### Create the Tensors
 - Create the `ConvertToTensor` function. Set the shape of the Tensor `new[] { 1, inputDimension }` and the values to be added to the `NamedOnnxValue` input list.
 
 ```csharp
@@ -302,11 +307,11 @@ namespace MyApp // Note: actual namespace depends on the project name.
         }
 ```
 
+### Create the `input` of `List<NamedOnnxValue>` that is needed for inference
+
 - Get the model, call the `ConvertToTensor` function to create the tensor and create the list of `NamedOnnxValue` input variables for inferencing.
 
 ```csharp
-
-
   // Get path to model to create inference session.
   var modelPath = @"C:\code\bert-nlp-csharp\BertNlpTest\BertNlpTest\bert-large-uncased-finetuned-qa.onnx";
 
@@ -324,7 +329,7 @@ namespace MyApp // Note: actual namespace depends on the project name.
 
 
 ```
-
+### Run Inference
 - Create the `InferenceSession`, run the inference and print out the result.
 
 ```csharp
@@ -333,7 +338,10 @@ namespace MyApp // Note: actual namespace depends on the project name.
 
   // Run session and send the input data in to get inference output. 
   var output = session.Run(input);
+  ```
+  ### Postprocess the `output` and print the result
 
+  ```csharp
   // Call ToList on the output.
   // Get the First and Last item in the list.
   // Get the Value of the item and cast as IEnumerable<float> to get a list result.
