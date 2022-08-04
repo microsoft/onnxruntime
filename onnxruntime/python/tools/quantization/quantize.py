@@ -7,26 +7,10 @@ import logging
 import tempfile
 from pathlib import Path
 
-from onnx import onnx_pb as onnx_proto
-
 from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator
-from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
-from .quant_utils import (
-    QuantFormat,
-    QuantizationMode,
-    QuantizedInitializer,
-    QuantizedValue,
-    QuantizedValueType,
-    QuantType,
-    attribute_to_kwarg,
-    find_by_name,
-    generate_identified_filename,
-    get_elem_index,
-    get_mul_node,
-    load_model,
-)
+from .quant_utils import QuantFormat, QuantizationMode, QuantType, load_model
 from .registry import IntegerOpsRegistry, QLinearOpsRegistry
 
 
