@@ -338,10 +338,10 @@ namespace MyApp // Note: actual namespace depends on the project name.
 
   // Run session and send the input data in to get inference output. 
   var output = session.Run(input);
-  ```
-  ### Postprocess the `output` and print the result
+```
+### Postprocess the `output` and print the result
 
-  ```csharp
+```csharp
   // Call ToList on the output.
   // Get the First and Last item in the list.
   // Get the Value of the item and cast as IEnumerable<float> to get a list result.
