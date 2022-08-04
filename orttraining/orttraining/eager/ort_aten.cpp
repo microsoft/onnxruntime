@@ -1119,7 +1119,9 @@ at::Tensor squeeze(
   ORT_LOG_FN(self);
 
   if (
-    !IsSupportedType(self, {at::kBFloat16,at::kBool,at::kByte,at::kDouble,at::kFloat,at::kHalf,at::kInt,at::kLong,at::kShort}))
+       std::vector<at::ScalarType> supportedTypes =
+          {at::kBFloat16, at::kBool, at::kByte, at::kDouble, at::kFloat, at::kHalf, at::kInt, at::kLong, at::kShort};
+      !IsSupportedType(self, supportedTypes))
     return at::native::call_fallback_fn<
       &at::native::cpu_fallback,
       ATEN_OP(squeeze)>::call(self);
