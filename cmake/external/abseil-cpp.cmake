@@ -13,6 +13,10 @@ else()
   set(ABSL_PATCH_COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/abseil/Fix_Nvidia_Build_Break.patch)
 endif()
 
+# NB! Advancing Abseil version changes its internal namespace,
+# currently absl::lts_20211102 which affects abseil-cpp.natvis debugger
+# visualization file, that must be adjusted accordingly, unless we eliminate
+# that namespace at build time.
 FetchContent_Declare(
     abseil_cpp
     PREFIX "${CMAKE_CURRENT_BINARY_DIR}/abseil-cpp"
