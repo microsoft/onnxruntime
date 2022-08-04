@@ -178,7 +178,6 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           device_prop,
           cublas,
           stream,
-          is_copy_done,
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
           reinterpret_cast<const CudaT*>(mask->template Data<T>()),
           reinterpret_cast<const CudaT*>(global_gemm_buffer.get()),

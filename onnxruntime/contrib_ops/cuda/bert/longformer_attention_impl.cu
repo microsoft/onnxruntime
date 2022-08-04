@@ -366,7 +366,6 @@ __launch_bounds__(blockSize)
 
 bool LaunchLongformerSoftmaxKernel(
     cudaStream_t stream,
-    cudaEvent_t &is_copy_done,
     cublasHandle_t cublas,
     void* workspace,
     const void* q,                // transposed Q with shape (B, N, S, H)
@@ -496,7 +495,6 @@ bool LaunchLongformerSoftmaxKernel(
   memcpy(temp_buffer + 10 * sizeof(void*), &buffer_sizes[0], 5 * sizeof(size_t));
   memcpy(temp_buffer + 10 * sizeof(void*) + 5 * sizeof(size_t), &buffer_strides[0], 5 * sizeof(size_t));
   CHECK_CUDA(cudaMemcpyAsync(scratch2, temp_buffer, totalBytes, cudaMemcpyHostToDevice, stream));
-  CHECK_CUDA(cudaEventRecord(is_copy_done, stream));
 
   // Local attention part
   {
@@ -657,9 +655,6 @@ bool LaunchLongformerSoftmaxKernel(
                                        algo));
     }
   }
-
-  // Make sure async copy to scratch2 is ready.
-  CHECK_CUDA(cudaEventSynchronize(is_copy_done));
 
   const int blockSize = 64;
   const int gridSize = batch_size * num_heads * sequence_length;
@@ -845,7 +840,7 @@ bool LaunchLongformerSoftmaxKernel(
 template <typename T>
 bool LongformerQkvToContext(
     const cudaDeviceProp& device_prop, cublasHandle_t cublas,
-    cudaStream_t stream, cudaEvent_t &is_copy_done,
+    cudaStream_t stream,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
     const int window, const size_t element_size,
     const T* input, const T* attention_mask,
@@ -940,7 +935,6 @@ bool LongformerQkvToContext(
 
     if (!LaunchLongformerSoftmaxKernel(
             stream,
-            is_copy_done,
             cublas,
             workspace,         // softmax space
             q,                 // Transposed Q with shape B x N x S x H
@@ -975,7 +969,6 @@ bool LaunchLongformerAttentionKernel(
     const cudaDeviceProp& device_prop,
     cublasHandle_t cublas,
     cudaStream_t stream,
-    cudaEvent_t &is_copy_done,
     const void* input,
     const void* attention_mask,
     const void* global_input,
@@ -1001,7 +994,7 @@ bool LaunchLongformerAttentionKernel(
                                                                     window,
                                                                     disable_compact_memory);
   if (element_size == 2) {
-    return LongformerQkvToContext(device_prop, cublas, stream, is_copy_done,
+    return LongformerQkvToContext(device_prop, cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
                                   reinterpret_cast<const half*>(input),
                                   reinterpret_cast<const half*>(attention_mask),
@@ -1016,7 +1009,7 @@ bool LaunchLongformerAttentionKernel(
                                   softmax_workspace_size,
                                   disable_compact_memory);
   } else {
-    return LongformerQkvToContext(device_prop, cublas, stream, is_copy_done,
+    return LongformerQkvToContext(device_prop, cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
                                   reinterpret_cast<const float*>(input),
                                   reinterpret_cast<const float*>(attention_mask),

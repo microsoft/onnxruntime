@@ -25,7 +25,6 @@ bool LaunchLongformerAttentionKernel(
     const cudaDeviceProp& device_prop,  // Device Properties
     cublasHandle_t cublas,              // Cublas handle
     cudaStream_t stream,                // CUDA stream
-    cudaEvent_t &is_copy_done,          // CUDA event to synchronize data copy
     const void* input,                  // Input tensor
     const void* attention_mask,         // Attention mask with shape (B, S)
     const void* global_input,           // Global attention input, or nullptr when max_num_global == 0.
