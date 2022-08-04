@@ -30,7 +30,7 @@ There are many models (including the one for this tutorial) that have been fine 
 * TOC placeholder
 {:toc}
 
-## Prerequisties
+## Prerequisites
 This tutorial can be run locally or by leveraging Azure Machine Learning compute.
 
 To run locally:
@@ -46,7 +46,7 @@ To run in the cloud with Azure Machine Learning:
 
 ## Use Hugging Face to download the BERT model
 
-Hugging Face has a great API for downloading open source models and then we can use python and pytorch to export them to ONNX format. This is a great option when using an open source model that is not already part of the [ONNX Model Zoo](https://github.com/onnx/models). 
+Hugging Face has a great API for downloading open source models and then we can use python and Pytorch to export them to ONNX format. This is a great option when using an open source model that is not already part of the [ONNX Model Zoo](https://github.com/onnx/models). 
 
 ### Steps to download and export our model
 
