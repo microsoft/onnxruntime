@@ -166,12 +166,12 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
  */
 TEST(CheckpointApiTest, LoadCheckpointToModel) {
   // Phase 1: Load a Model with weights set to zero.
-  auto model_uri = MODEL_FOLDER "transform/load_checkpoint/zero_model.onnx";
+  auto model_uri = MODEL_FOLDER "training_api/zero_model.onnx";
   ONNX_NAMESPACE::ModelProto p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model));
   // Phase 2: Load the checkpoint weights into the Model.
   // Call Load APIs
-  PathString checkpoint_path = ORT_TSTR("testdata/transform/load_checkpoint");
+  PathString checkpoint_path = ORT_TSTR("testdata/training_api/load_checkpoint");
   ASSERT_STATUS_OK(LoadCheckpointToModel(checkpoint_path, p_model));
 
   // Phase 3: Make sure the Model's weights are not equal to zero after loading the new ones.
