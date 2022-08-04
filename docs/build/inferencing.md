@@ -161,21 +161,6 @@ Nuget packages are created under <native_build_dir>\nuget-artifacts
 
 [Reduced Operator Kernel](./custom.md#reduce-operator-kernels) builds allow you to customize the kernels in the build to provide smaller binary sizes.
 
-### OpenMP (Deprecated)
-
-#### Build Instructions
-
-##### Windows
-
-```powershell
-.\build.bat --use_openmp
-```
-
-##### Linux/macOS
-
-```bash
-./build.sh --use_openmp
-```
 
 ### DebugNodeInputsOutputs
 OnnxRuntime supports build options for enabling debugging of intermediate tensor shapes and data.
