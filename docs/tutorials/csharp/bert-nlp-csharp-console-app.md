@@ -1,5 +1,5 @@
 ---
-title: Inference with C# BERT NLP Deep Learning and ONNX Runtime
+title: Inference with C# BERT NLP and ONNX Runtime
 description: We will learn how to use BERT in a C# Console App.
 parent: Inference with C#
 grand_parent: Tutorials
