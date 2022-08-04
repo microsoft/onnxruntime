@@ -9,3 +9,10 @@ sphinx_rtd_theme
 pyquickhelper
 pandas
 pydot
+coloredlogs
+flatbuffers
+numpy
+packaging
+protobuf
+sympy
+onnx
