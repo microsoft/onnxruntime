@@ -1573,7 +1573,6 @@ def test_numpy_T(input_shape):
 
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
 
-
 @pytest.mark.skip(reason="Fails on Nightly Torch version")
 def test_gradient_correctness_bce_with_logits():
     class NeuralNetBCEWithLogitsLoss(torch.nn.Module):
