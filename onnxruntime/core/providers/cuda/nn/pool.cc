@@ -128,7 +128,7 @@ class CudnnPoolingDescriptor final {
     for (int i = 0; i < rank; i++) {
       stride[i] = gsl::narrow_cast<int>(strides[i]);
     }
-    CUDNN_RETURN_IF_ERROR(cudnnSetPoolingNdDescriptor(
+    CUDNN_RETURN_IF_ERROR(SetPoolingNdDescriptorHelper(
         desc_,
         mode,
         CUDNN_PROPAGATE_NAN,
@@ -212,7 +212,8 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
     IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count);
     auto temp_Y = GetScratchBuffer<float>(output_count);
     Impl_Cast<CudaT, float>(Stream(), reinterpret_cast<const CudaT*>(x_data), temp_X.get(), input_count);
-    CUDNN_RETURN_IF_ERROR(cudnnPoolingForward(CudnnHandle(), pooling_desc, &alpha, x_tensor, temp_X.get(), &beta, y_tensor, temp_Y.get()));
+    CUDNN_RETURN_IF_ERROR(PoolingForwardHelper(CudnnHandle(), pooling_desc, &alpha,
+                                               x_tensor, temp_X.get(), &beta, y_tensor, temp_Y.get()));
     Impl_Cast<float, CudaT>(Stream(), temp_Y.get(), y_data, output_count);
   } else {
     const auto alpha = Consts<CudaT>::One;
@@ -222,7 +223,8 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_ERROR(x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
     ORT_RETURN_IF_ERROR(y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
 
-    CUDNN_RETURN_IF_ERROR(cudnnPoolingForward(CudnnHandle(), pooling_desc, &alpha, x_tensor, x_data, &beta, y_tensor, y_data));
+    CUDNN_RETURN_IF_ERROR(PoolingForwardHelper(CudnnHandle(), pooling_desc, &alpha,
+                                               x_tensor, x_data, &beta, y_tensor, y_data));
   }
 
   return Status::OK();

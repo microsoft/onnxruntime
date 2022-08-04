@@ -3,9 +3,10 @@
 
 #pragma once
 
-#include <cctype>
 #include <unordered_map>
-#include <core/common/status.h>
+
+#include "core/common/path_string.h"
+#include "core/common/status.h"
 
 namespace ONNX_NAMESPACE {
 class ValueInfoProto;
@@ -58,15 +59,7 @@ onnxruntime::common::Status LoadOpsetImportOrtFormat(
     std::unordered_map<std::string, int>& domain_to_version);
 
 // check if filename ends in .ort
-template <typename T>
-bool IsOrtFormatModel(const std::basic_string<T>& filename) {
-  auto len = filename.size();
-  return len > 4 &&
-         filename[len - 4] == '.' &&
-         std::tolower(filename[len - 3]) == 'o' &&
-         std::tolower(filename[len - 2]) == 'r' &&
-         std::tolower(filename[len - 1]) == 't';
-}
+bool IsOrtFormatModel(const PathString& filename);
 
 // check if bytes has the flatbuffer ORT identifier
 bool IsOrtFormatModelBytes(const void* bytes, int num_bytes);
