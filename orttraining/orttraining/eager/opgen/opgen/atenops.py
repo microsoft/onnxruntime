@@ -178,6 +178,7 @@ hand_implemented = {
     "aten::nll_loss_forward.output": MakeTorchFallback(),
     "aten::nll_loss_backward.grad_input": MakeTorchFallback(),
     "aten::_log_softmax_backward_data.out": MakeTorchFallback(),
+    "aten::native_dropout": SignatureOnly(),
 }
 
 # If the aten op expects a specific output type that differs from self

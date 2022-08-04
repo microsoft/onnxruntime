@@ -1121,6 +1121,44 @@ at::Tensor& mm_out(
   return out;
 }
 
+// aten::native_dropout(Tensor input, float p, bool? train) -> (Tensor, Tensor)
+std::tuple<at::Tensor, at::Tensor> native_dropout(
+  const at::Tensor& input,
+  double p,
+  c10::optional<bool> train) {
+  ORT_LOG_FN(input, p, train);
+
+  if (
+    !IsSupportedType(input, {at::kBFloat16,at::kDouble,at::kFloat,at::kHalf}) ||
+    !IsSupportedType(p, {at::kDouble,at::kFloat,at::kHalf})) {
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(native_dropout)>::call(input, p, train);
+  }
+  auto& invoker = GetORTInvoker(input.device());
+
+  bool train_effective_value = train.has_value() ? *train : true;
+
+  auto ort_input_0_input = create_ort_value(invoker, input);
+  auto ort_input_0_p = create_ort_value(invoker, p);
+  auto ort_input_0_train = create_ort_value(invoker, train_effective_value);
+
+  std::vector<OrtValue> ort_outputs_0_Dropout(2);
+
+  auto status = invoker.Invoke("Dropout", {
+    std::move(ort_input_0_input),
+    std::move(ort_input_0_p),
+    std::move(ort_input_0_train),
+  }, ort_outputs_0_Dropout, nullptr);
+  CHECK_STATUS(status);
+
+  at::TensorOptions tensor_options = input.options();
+
+  return std::make_tuple(
+    aten_tensor_from_ort(std::move(ort_outputs_0_Dropout[0]), tensor_options),
+    aten_tensor_from_ort(std::move(ort_outputs_0_Dropout[1]), tensor_options));
+}
+
 }  // namespace aten
 
 // #pragma endregion
