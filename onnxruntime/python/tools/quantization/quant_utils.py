@@ -142,13 +142,23 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
     rmin = min(rmin, 0)
     rmax = max(rmax, 0)
 
+    tiny_float = numpy.finfo(numpy.float32).tiny
+    if rmax < tiny_float:
+        rmax = 0
+    if rmin > -tiny_float:
+        rmin = 0
+
     if symmetric:
         absmax = max(abs(rmin), abs(rmax))
         rmin = -absmax
         rmax = +absmax
 
-    scale = (rmax - rmin) / float(qmax - qmin) if rmax != rmin else 1.0
-    zero_point = round(qmin - rmin / scale)
+    if rmax == rmin:
+        scale = 1.0
+        zero_point = 0
+    else:
+        scale = (rmax - rmin) / float(qmax - qmin)
+        zero_point = round(qmin - rmin / scale)
 
     return [zero_point, scale]
 
