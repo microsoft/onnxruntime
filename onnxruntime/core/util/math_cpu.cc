@@ -18,9 +18,7 @@
 #include "core/util/math_cpuonly.h"
 #include "core/util/math.h"
 
-#include <windows.h>
 #include <algorithm>
-#include <iostream>
 #include <gsl/gsl>
 #include "core/common/inlined_containers_fwd.h"
 #include "core/mlas/inc/mlas.h"
@@ -325,7 +323,7 @@ void Im2col<T, StorageOrder::NCHW>::operator()(
   const int64_t output_w = (width + pad_l + pad_r - (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
 
   const auto dop = ThreadPool::DegreeOfParallelism(tp);
-  constexpr int64_t cost_per_batch = 8192;
+  constexpr int64_t cost_per_batch = 6144;
   const auto cost_per_channel = kernel_h * kernel_w * output_h * output_w;
   const auto total_cost = cost_per_channel * channels;
   const auto batches = std::min<int64_t>((total_cost + cost_per_batch - 1) / cost_per_batch, dop);
@@ -403,7 +401,7 @@ void Im2col<T, StorageOrder::NCHW>::operator()(
   const auto output_size = std::accumulate(output_shape, output_shape + rank, 1LL, std::multiplies<int64_t>());
 
   const auto dop = ThreadPool::DegreeOfParallelism(tp);
-  constexpr int64_t cost_per_batch = 8129;
+  constexpr int64_t cost_per_batch = 6144;
   const auto total_cost = output_size * (rank + 1) * channels_col;
   const auto batches = std::min<int64_t>((total_cost + cost_per_batch - 1) / cost_per_batch, dop);
 
@@ -485,7 +483,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
     T padding_value) {
 
   const auto dop = ThreadPool::DegreeOfParallelism(tp);
-  constexpr int64_t cost_per_batch = 8192;  // Tunable
+  constexpr int64_t cost_per_batch = 6144;  // Tunable
   const auto cost_per_output = kernel_h * kernel_w * group_channels;
   const auto total_cost = output_count * cost_per_output;
   const auto batches = std::min<int64_t>((total_cost + cost_per_batch - 1) / cost_per_batch, dop);
@@ -562,7 +560,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
   const auto kernel_size = std::accumulate(kernel_shape, kernel_shape + rank, 1LL, std::multiplies<int64_t>());
   const auto output_count = std::accumulate(output_shape, output_shape + rank, 1LL, std::multiplies<int64_t>());
 
-  constexpr int64_t cost_per_batch = 8192;
+  constexpr int64_t cost_per_batch = 6144;
   const auto cost_per_output = kernel_size * (group_channels + rank);
   const auto total_cost = output_count * cost_per_output;
   const auto batches = std::min<int64_t>((total_cost + cost_per_batch - 1) / cost_per_batch, dop);
@@ -622,7 +620,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
     const T* padding_ptr) {
 
   const auto dop = ThreadPool::DegreeOfParallelism(tp);
-  constexpr int64_t cost_per_batch = 8192;
+  constexpr int64_t cost_per_batch = 6144;
 
   if (rank == 1) {
     const int64_t stride_w = stride[0];
@@ -754,7 +752,7 @@ void Col2imPar<float, StorageOrder::NCHW>(const float* data_col, int64_t channel
   const int64_t hwc = hw * channels;  // Total output
 
   const auto dop = ThreadPool::DegreeOfParallelism(tp);
-  constexpr int64_t cost_per_batch = 8129;
+  constexpr int64_t cost_per_batch = 6144;
   const auto data_per_channel = kernel_h * kernel_w * output_hw;  // Input. From the loops below
   const auto total_cost = data_per_channel * channels;
   const auto batches = std::min<int64_t>((total_cost + cost_per_batch - 1) / cost_per_batch, dop);
