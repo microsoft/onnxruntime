@@ -180,7 +180,7 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
                                                const int mask_dimension,
                                                const int max_sequence_length,
                                                const bool skip_softmax) {
-  using BlockReduce = hipcub::BlockReduce<T, TPB>;
+  using BlockReduce = hipcub::BlockReduce<float, TPB>;
   __shared__ typename BlockReduce::TempStorage tmp_storage;
 
   __shared__ T sum_reverse_block;
@@ -234,16 +234,16 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
     return;
   }
 
-  const T max = BlockReduce(tmp_storage).Reduce(thread_data, hipcub::Max());
+  const T max = T(BlockReduce(tmp_storage).Reduce(thread_data, hipcub::Max()));
 
   // Store max value
   if (threadIdx.x == 0) {
-    max_block = max;
+    max_block = T(max);
   }
   __syncthreads();
 
   T thread_data_exp = threadIdx.x < all_sequence_length ? expf(thread_data - max_block) : 0.0f;
-  const T sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, hipcub::Sum());
+  const T sum = T(BlockReduce(tmp_storage).Reduce(thread_data_exp, hipcub::Sum()));
 
   // Store value of 1.0/sum
   if (threadIdx.x == 0) {
