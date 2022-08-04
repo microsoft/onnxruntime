@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 from logging import getLogger
-from typing import List
+from typing import List, Optional
 
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_biasgelu import FusionBiasGelu
@@ -17,6 +17,7 @@ from fusion_options import FusionOptions
 from fusion_reshape import FusionReshape
 from fusion_shape import FusionShape
 from fusion_skiplayernorm import FusionBiasSkipLayerNormalization, FusionSkipLayerNormalization
+from fusion_qordered_matmul import FusionQOrderedMatMul
 from fusion_utils import FusionUtils
 from onnx import GraphProto, ModelProto, TensorProto, ValueInfoProto, helper
 from onnx_model import OnnxModel
@@ -38,8 +39,8 @@ class BertOnnxModel(OnnxModel):
 
         Args:
             model (ModelProto): the ONNX model
-            num_heads (int, optional): number of attentioin heads. Defaults to 0, and we will detect the parameter automatically.
-            hidden_size (int, optional): hidden dimension. Defaults to 0, and we will detect the parameter automatically.
+            num_heads (int, optional): number of attention heads. Defaults to 0 (detect the parameter automatically).
+            hidden_size (int, optional): hidden dimension. Defaults to 0 (detect the parameter automatically).
         """
         assert (num_heads == 0 and hidden_size == 0) or (num_heads > 0 and hidden_size % num_heads == 0)
 
@@ -93,6 +94,10 @@ class BertOnnxModel(OnnxModel):
 
     def fuse_skip_layer_norm(self):
         fusion = FusionSkipLayerNormalization(self)
+        fusion.apply()
+
+    def fuse_qordered_mamtul(self):
+        fusion = FusionQOrderedMatMul(self)
         fusion.apply()
 
     def get_graph_inputs_from_node_type(self, op_type: str, input_indices: List[int], casted: bool):
@@ -337,7 +342,12 @@ class BertOnnxModel(OnnxModel):
         self.clean_graph()
         self.prune_graph()
 
-    def optimize(self, options: FusionOptions = None, add_dynamic_axes=False):
+    def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
+        if (options is not None) and not options.enable_shape_inference:
+            self.disable_shape_inference()
+
+        self.utils.remove_identity_nodes()
+
         # Remove cast nodes that having same data type of input and output based on symbolic shape inference.
         self.utils.remove_useless_cast_nodes()
 
@@ -358,6 +368,11 @@ class BertOnnxModel(OnnxModel):
             if options is not None:
                 self.attention_mask.set_mask_format(options.attention_mask_format)
             self.fuse_attention()
+
+        # Perform the QOrderedMatMul fusion after the QOrderedAttention fusion
+        # as we don't want to fuse the MatMuls inside the Attention
+        if (options is None) or options.enable_qordered_matmul:
+            self.fuse_qordered_mamtul()
 
         self.fuse_shape()
 
