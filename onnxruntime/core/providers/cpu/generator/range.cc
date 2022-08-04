@@ -62,9 +62,9 @@ template <typename T>
 static Status ComputeRange(
     OpKernelContext* ctx,
     const Tensor& start_tensor, const Tensor& limit_tensor, const Tensor* delta_tensor_ptr) {
-  T start = *start_tensor.template Data<T>();
-  T limit = *limit_tensor.template Data<T>();
-  T delta = (delta_tensor_ptr == nullptr) ? T{1} : *(delta_tensor_ptr->template Data<T>());
+  T start = *start_tensor.Data<T>();
+  T limit = *limit_tensor.Data<T>();
+  T delta = (delta_tensor_ptr == nullptr) ? T{1} : *(delta_tensor_ptr->Data<T>());
 
   if (delta == T{0}) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "delta in Range operator can not be zero!");
@@ -73,7 +73,7 @@ static Status ComputeRange(
   if (n <= 0)
     n = 0;
   TensorShape shape = {n};
-  T* y = ctx->Output(0, shape)->template MutableData<T>();
+  T* y = ctx->Output(0, shape)->MutableData<T>();
   for (int64_t i = 0; i < n; ++i) {
     *y++ = start;
     start += delta;
