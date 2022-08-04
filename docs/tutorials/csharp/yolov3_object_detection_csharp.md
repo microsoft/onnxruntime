@@ -1,6 +1,12 @@
 ---
-nav_exclude: true
+title: Object detection in C# using OpenVINO
+description: Object detection with YOLOv3 in C# using OpenVINO Execution Provider
+parent: Inference with C#
+grand_parent: Tutorials
+has_children: false
+nav_order: 1
 ---
+
 
 # Object detection with YOLOv3 in C# using OpenVINO Execution Provider:
 {: .no_toc }
