@@ -76,8 +76,8 @@ template <typename T>
 Status Clip_6<T>::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<Tensor>(0);
   Tensor* Y = ctx->Output(0, X->Shape());
-  EigenVectorMap<T>(Y->template MutableData<T>(), Y->Shape().Size()) =
-      ConstEigenVectorMap<T>(X->template Data<T>(), X->Shape().Size())
+  EigenVectorMap<T>(Y->MutableData<T>(), Y->Shape().Size()) =
+      ConstEigenVectorMap<T>(X->Data<T>(), X->Shape().Size())
           .cwiseMax(this->min_)
           .cwiseMin(this->max_);
   return Status::OK();
@@ -90,15 +90,15 @@ struct Clip::ComputeImpl {
     auto max_val = std::numeric_limits<T>::max();
     if (min) {
       ORT_ENFORCE(min->Shape().IsScalar(), "min should be a scalar.");
-      min_val = *(min->template Data<T>());
+      min_val = *(min->Data<T>());
     }
     if (max) {
       ORT_ENFORCE(max->Shape().IsScalar(), "max should be a scalar.");
-      max_val = *(max->template Data<T>());
+      max_val = *(max->Data<T>());
     }
 
-    EigenVectorMap<T>(Y->template MutableData<T>(), Y->Shape().Size()) =
-        ConstEigenVectorMap<T>(X->template Data<T>(), X->Shape().Size())
+    EigenVectorMap<T>(Y->MutableData<T>(), Y->Shape().Size()) =
+        ConstEigenVectorMap<T>(X->Data<T>(), X->Shape().Size())
             .cwiseMax(min_val)
             .cwiseMin(max_val);
   }

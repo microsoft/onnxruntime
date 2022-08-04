@@ -116,7 +116,7 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
   } else {
     tpool = it->second;
   }
-  const T* x_data = X->template Data<T>();
+  const T* x_data = X->Data<T>();
   arm_compute::Window aclInpuWindow;
   aclInpuWindow.use_tensor_dimensions(tpool.in->info()->tensor_shape());
 
@@ -132,7 +132,7 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
       },
       aclInputIt);
 
-  T* y_data = Y->template MutableData<T>();
+  T* y_data = Y->MutableData<T>();
   ACLImportMemory(tpool.out->allocator(), (void*)y_data, Y->Shape().Size() * 4);
 
   tpool.layer->run();

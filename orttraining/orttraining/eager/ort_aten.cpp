@@ -663,20 +663,28 @@ at::Tensor& copy_(
   auto& invoker = GetORTInvoker(self.device().type() == at::kORT ? self.device() : src.device());
   const auto ort_src = create_ort_value(invoker, src);
   auto ort_self = create_ort_value(invoker, self);
+
   if (self.scalar_type() != src.scalar_type()) {
-    // invoke cast first
-    std::vector<OrtValue> ort_cast_output(1);
-    onnxruntime::NodeAttributes attrs(1);
-    attrs["to"] = create_ort_attribute(
-        "to", (int64_t)GetONNXTensorProtoDataType(self.scalar_type()), at::kLong);
+    if(src.device().type() != at::kORT)
+    {
+      // invoke cast first and then copy for non-ORT device types
+      auto val = at::native::to(src, self.scalar_type());
+      const auto ort_val = create_ort_value(invoker, val);
+      copy(invoker, ort_val, ort_self);
+    }else{
+      // For ORT device type, the cast operation will perform the copy as well
+      std::vector<OrtValue> ort_cast_output(1);
+      ort_cast_output[0] = ort_self;
+      onnxruntime::NodeAttributes attrs(1);
+      attrs["to"] = create_ort_attribute(
+          "to", (int64_t)GetONNXTensorProtoDataType(self.scalar_type()), at::kLong);
 
-    auto status = invoker.Invoke("Cast",
-                                 {std::move(ort_src)},
-                                 ort_cast_output, &attrs);
+      auto status = invoker.Invoke("Cast",
+                                  {std::move(ort_src)},
+                                  ort_cast_output, &attrs);
 
-    CHECK_STATUS(status);
-
-    copy(invoker, ort_cast_output[0], ort_self);
+      CHECK_STATUS(status);
+    }
   } else {
     copy(invoker, ort_src, ort_self);
   }

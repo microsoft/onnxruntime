@@ -1999,8 +1999,8 @@ TEST_F(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(expected_dims_prod);
   ASSERT_EQ(expected_shape, rtensor.Shape());
-  const std::vector<MLFloat16> found(rtensor.template Data<MLFloat16>(),
-                                     rtensor.template Data<MLFloat16>() + expected_dims_prod.size());
+  const std::vector<MLFloat16> found(rtensor.Data<MLFloat16>(),
+                                     rtensor.Data<MLFloat16>() + expected_dims_prod.size());
   ASSERT_EQ(expected_values_prod, found);
 }
 

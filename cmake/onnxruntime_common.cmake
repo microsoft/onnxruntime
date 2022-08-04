@@ -110,6 +110,13 @@ endif()
 
 if(NOT onnxruntime_DISABLE_ABSEIL)
   include(external/abseil-cpp.cmake)
+  if (MSVC)
+    set(ABSEIL_NATVIS_FILE "abseil-cpp.natvis")
+    target_sources(
+        onnxruntime_common
+        INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/external/${ABSEIL_NATVIS_FILE}>
+    )
+  endif()
 endif()
 
 onnxruntime_add_include_to_target(onnxruntime_common date_interface wil)

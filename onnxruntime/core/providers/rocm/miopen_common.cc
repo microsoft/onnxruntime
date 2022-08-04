@@ -82,6 +82,11 @@ miopenDataType_t MiopenTensor::GetDataType() {
 }
 
 template<>
+miopenDataType_t MiopenTensor::GetDataType<double>() {
+  return miopenDouble;
+}
+
+template<>
 miopenDataType_t MiopenTensor::GetDataType<float>() {
   return miopenFloat;
 }

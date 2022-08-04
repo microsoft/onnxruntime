@@ -188,10 +188,10 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // Copy static_kv, use_past and has_layer_state to CPU
   auto pinned_buffer = AllocateBufferOnCPUPinned<void>(4 * sizeof(bool));
   bool* kernel_state_pinned = reinterpret_cast<bool*>(pinned_buffer.get());
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned, static_kv->template Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 1, use_past->template Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 2, has_layer_state->template Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 3, has_key_padding_mask->template Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned, static_kv->Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 1, use_past->Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 2, has_layer_state->Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 3, has_key_padding_mask->Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
 
   // Create an event to make sure the async copy is finished before reading the data.
   AutoDestoryCudaEvent new_event;
@@ -261,14 +261,14 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // broadcast bias for query: (h2, S*B)
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
-      reinterpret_cast<const CudaT*>(bias->template Data<T>()), n,
+      reinterpret_cast<const CudaT*>(bias->Data<T>()), n,
       GetConstOnes<CudaT>(m), 1,
       &zero, reinterpret_cast<CudaT*>(gemm_query_buffer_p.get()), n, device_prop));
   // matmul: (h2, h1)*(h1, S*B)
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-      reinterpret_cast<const CudaT*>(q_weights->template Data<T>()), n,
-      reinterpret_cast<const CudaT*>(query->template Data<T>()), k,
+      reinterpret_cast<const CudaT*>(q_weights->Data<T>()), n,
+      reinterpret_cast<const CudaT*>(query->Data<T>()), k,
       &one, reinterpret_cast<CudaT*>(gemm_query_buffer_p.get()), n, device_prop));
   // gemm_query_buffer in col-base: (h2, S*B)
 
@@ -285,14 +285,14 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       // broadcast bias for key and value: (2*h2, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
-          reinterpret_cast<const CudaT*>(bias->template Data<T>() + hidden_size), n,
+          reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size), n,
           GetConstOnes<CudaT>(m), 1,
           &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-          reinterpret_cast<const CudaT*>(kv_weights->template Data<T>()), n,
-          reinterpret_cast<const CudaT*>(query->template Data<T>()), k,
+          reinterpret_cast<const CudaT*>(kv_weights->Data<T>()), n,
+          reinterpret_cast<const CudaT*>(query->Data<T>()), k,
           &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // gemm_kv_buffer in col-base: (2*h2, T_S*B)
     } else {
@@ -304,14 +304,14 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       // broadcast bias for key and value: (2*h2, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
-          reinterpret_cast<const CudaT*>(bias->template Data<T>() + hidden_size), n,
+          reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size), n,
           GetConstOnes<CudaT>(m), 1,
           &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-          reinterpret_cast<const CudaT*>(kv_weights->template Data<T>()), n,
-          reinterpret_cast<const CudaT*>(key->template Data<T>()), k,
+          reinterpret_cast<const CudaT*>(kv_weights->Data<T>()), n,
+          reinterpret_cast<const CudaT*>(key->Data<T>()), k,
           &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // gemm_kv_buffer in col-base: (2*h2, T_S*B)
     }
@@ -327,14 +327,14 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       // broadcast bias for key and value: (2*h2, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
-          reinterpret_cast<const CudaT*>(bias->template Data<T>() + hidden_size), n,
+          reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size), n,
           GetConstOnes<CudaT>(m), 1,
           &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-          reinterpret_cast<const CudaT*>(kv_weights->template Data<T>()), n,
-          reinterpret_cast<const CudaT*>(query->template Data<T>()), k,
+          reinterpret_cast<const CudaT*>(kv_weights->Data<T>()), n,
+          reinterpret_cast<const CudaT*>(query->Data<T>()), k,
           &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // gemm_kv_buffer in col-base: (2*h2, T_S*B)
     } else {
@@ -366,14 +366,14 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
           has_key_padding_mask_,
           nullptr == gemm_query_buffer_p ? nullptr : reinterpret_cast<const CudaT*>(gemm_query_buffer_p.get()),
           nullptr == gemm_kv_buffer_p ? nullptr : reinterpret_cast<const CudaT*>(gemm_kv_buffer_p.get()),
-          nullptr == key_padding_mask ? nullptr : key_padding_mask->template Data<bool>(),
-          nullptr == key_cache ? nullptr : key_cache->template Data<T>(),
-          nullptr == value_cache ? nullptr : value_cache->template Data<T>(),
+          nullptr == key_padding_mask ? nullptr : key_padding_mask->Data<bool>(),
+          nullptr == key_cache ? nullptr : key_cache->Data<T>(),
+          nullptr == value_cache ? nullptr : value_cache->Data<T>(),
           qkv_buffer_p.get(),
           workspace_p.get(),
-          output->template MutableData<T>(),
-          nullptr == new_key_cache ? nullptr : new_key_cache->template MutableData<T>(),
-          nullptr == new_value_cache ? nullptr : new_value_cache->template MutableData<T>())) {
+          output->MutableData<T>(),
+          nullptr == new_key_cache ? nullptr : new_key_cache->MutableData<T>(),
+          nullptr == new_value_cache ? nullptr : new_value_cache->MutableData<T>())) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);

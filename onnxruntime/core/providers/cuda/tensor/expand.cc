@@ -91,7 +91,7 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
   const auto& input_shape_tensor = *ctx->Input<Tensor>(1);
 
   // new shape to be expanded to
-  const auto* p_shape = input_shape_tensor.template Data<int64_t>();
+  const auto* p_shape = input_shape_tensor.Data<int64_t>();
   TensorShapeVector output_dims{p_shape, p_shape + input_shape_tensor.Shape().Size()};
   TensorShape output_shape(output_dims);
 

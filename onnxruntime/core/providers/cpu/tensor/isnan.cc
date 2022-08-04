@@ -56,7 +56,7 @@ Status IsNaN<MLFloat16>::Compute(OpKernelContext* context) const {
   if (!X_ptr) {
     return Status(common::ONNXRUNTIME, common::FAIL, "Null input ptr");
   }
-  auto X_data = X_ptr->template Data<MLFloat16>();
+  auto X_data = X_ptr->Data<MLFloat16>();
   auto& dims = X_ptr->Shape();
   auto shape_size = dims.Size();
   auto& Y = *context->Output(0, dims);
