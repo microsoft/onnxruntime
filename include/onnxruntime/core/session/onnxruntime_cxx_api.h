@@ -496,7 +496,7 @@ struct ModelMetadata : Base<OrtModelMetadata> {
 
   /** \brief Looks up a value by a key in the Custom Metadata map
    *
-   * \param zero terminated string key to lookup
+   * \param key zero terminated string key to lookup
    * \param allocator to allocate memory for the copy of the string returned
    * \return a instance of smart pointer that would deallocate the buffer when out of scope.
    *  maybe nullptr if key is not found.
