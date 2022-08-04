@@ -183,35 +183,29 @@ size_t onnxTypeSize(ONNXTensorElementDataType type) {
     }
 }
 
-JavaTensorTypeShape getTensorTypeShape(JNIEnv * jniEnv, const OrtApi * api, const OrtValue * value) {
-  JavaTensorTypeShape output;
-  output.valid = 0;
-
+OrtErrorCode getTensorTypeShape(JNIEnv * jniEnv, JavaTensorTypeShape* output, const OrtApi * api, const OrtValue * value) {
   OrtTensorTypeAndShapeInfo* info;
   OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorTypeAndShape(value, &info));
   if (code != ORT_OK) {
-    return output;
+    return code;
   }
-  code = checkOrtStatus(jniEnv, api, api->GetDimensionsCount(info, &output.dimensions));
+  code = checkOrtStatus(jniEnv, api, api->GetDimensionsCount(info, &output->dimensions));
   if (code != ORT_OK) {
     api->ReleaseTensorTypeAndShapeInfo(info);
-    return output;
+    return code;
   }
-  code = checkOrtStatus(jniEnv, api, api->GetTensorShapeElementCount(info, &output.arrSize));
+  code = checkOrtStatus(jniEnv, api, api->GetTensorShapeElementCount(info, &output->elementCount));
   if (code != ORT_OK) {
     api->ReleaseTensorTypeAndShapeInfo(info);
-    return output;
+    return code;
   }
-  code = checkOrtStatus(jniEnv, api, api->GetTensorElementType(info, &output.onnxTypeEnum));
+  code = checkOrtStatus(jniEnv, api, api->GetTensorElementType(info, &output->onnxTypeEnum));
   api->ReleaseTensorTypeAndShapeInfo(info);
   if (code != ORT_OK) {
-    return output;
+    return code;
   }
 
-  // If all the elements extracted properly this is a valid struct
-  output.valid = 1;
-
-  return output;
+  return ORT_OK;
 }
 
 typedef union FP32 {
@@ -1069,6 +1063,7 @@ OrtErrorCode checkOrtStatus(JNIEnv *jniEnv, const OrtApi * api, OrtStatus * stat
     size_t len = strlen(message)+1;
     char* copy = malloc(sizeof(char)*len);
     if (copy == NULL) {
+      api->ReleaseStatus(status);
       throwOrtException(jniEnv, 1, "Not enough memory");
       return ORT_FAIL;
     }

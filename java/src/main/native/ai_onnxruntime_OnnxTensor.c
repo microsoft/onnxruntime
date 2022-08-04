@@ -22,8 +22,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createTensor
     ONNXTensorElementDataType onnxType = convertToONNXDataFormat(onnxTypeJava);
 
     // Extract the shape information
-    jboolean mkCopy;
-    jlong* shapeArr = (*jniEnv)->GetLongArrayElements(jniEnv, shape, &mkCopy);
+    jlong* shapeArr = (*jniEnv)->GetLongArrayElements(jniEnv, shape, NULL);
     jsize shapeLen = (*jniEnv)->GetArrayLength(jniEnv, shape);
 
     // Create the OrtValue
@@ -40,16 +39,33 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createTensor
         // Check if we're copying a scalar or not
         if (shapeLen == 0) {
           // Scalars are passed in as a single element array
-          copyJavaToPrimitiveArray(jniEnv, onnxType, tensorData, dataObj);
+          size_t copied = copyJavaToPrimitiveArray(jniEnv, onnxType, tensorData, dataObj);
+          if (copied == 0) {
+            // Copy failed, release value
+            api->ReleaseValue(ortValue);
+            ortValue = NULL;
+          }
         } else {
           // Extract the tensor shape information
-          JavaTensorTypeShape typeShape = getTensorTypeShape(jniEnv, api, ortValue);
+          JavaTensorTypeShape typeShape;
+          code = getTensorTypeShape(jniEnv, &typeShape, api, ortValue);
 
-          if (typeShape.valid) {
+          if (code == ORT_OK) {
             // Copy the java array into the tensor
-            copyJavaToTensor(jniEnv, onnxType, tensorData, typeShape.arrSize, typeShape.dimensions, dataObj);
+            size_t copied = copyJavaToTensor(jniEnv, onnxType, tensorData, typeShape.elementCount, typeShape.dimensions, dataObj);
+            if (copied == 0) {
+              // Copy failed, release value
+              api->ReleaseValue(ortValue);
+              ortValue = NULL;
+            }
+          } else {
+            api->ReleaseValue(ortValue);
+            ortValue = NULL;
           }
         }
+      } else {
+        api->ReleaseValue(ortValue);
+        ortValue = NULL;
       }
     }
 
@@ -82,8 +98,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createTensorFromBuffer
     bufferArr = bufferArr + bufferPos;
 
     // Extract the shape information
-    jboolean mkCopy;
-    jlong* shapeArr = (*jniEnv)->GetLongArrayElements(jniEnv, shape, &mkCopy);
+    jlong* shapeArr = (*jniEnv)->GetLongArrayElements(jniEnv, shape, NULL);
     jsize shapeLen = (*jniEnv)->GetArrayLength(jniEnv, shape);
 
     // Create the OrtValue
@@ -109,7 +124,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createString
 
   // Create the OrtValue
   int64_t shapeArr = 1;
-  OrtValue* ortValue;
+  OrtValue* ortValue = NULL;
   OrtErrorCode code = checkOrtStatus(jniEnv, api, api->CreateTensorAsOrtValue(allocator, &shapeArr, 0,
                                                                               ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING, &ortValue));
 
@@ -118,10 +133,16 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createString
     const char* stringBuffer = (*jniEnv)->GetStringUTFChars(jniEnv,input,NULL);
 
     // Assign the strings into the Tensor
-    checkOrtStatus(jniEnv, api, api->FillStringTensor(ortValue,&stringBuffer,1));
+    code = checkOrtStatus(jniEnv, api, api->FillStringTensor(ortValue,&stringBuffer,1));
 
     // Release the Java string whether the call succeeded or failed
     (*jniEnv)->ReleaseStringUTFChars(jniEnv,input,stringBuffer);
+
+    // Assignment failed, return null
+    if (code != ORT_OK) {
+      api->ReleaseValue(ortValue);
+      return (jlong) NULL;
+    }
   }
 
   return (jlong) ortValue;
@@ -139,8 +160,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createStringTensor
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
 
     // Extract the shape information
-    jboolean mkCopy;
-    jlong* shapeArr = (*jniEnv)->GetLongArrayElements(jniEnv, shape, &mkCopy);
+    jlong* shapeArr = (*jniEnv)->GetLongArrayElements(jniEnv, shape, NULL);
     jsize shapeLen = (*jniEnv)->GetArrayLength(jniEnv, shape);
 
     // Array length
@@ -154,7 +174,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createStringTensor
 
     if (code == ORT_OK) {
       // Create the buffers for the Java strings
-      const char** strings;
+      const char** strings = NULL;
       code = checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator, sizeof(char*) * length, (void**)&strings));
 
       if (code == ORT_OK) {
@@ -165,7 +185,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createStringTensor
         }
 
         // Assign the strings into the Tensor
-        checkOrtStatus(jniEnv, api, api->FillStringTensor(ortValue, strings, length));
+        code = checkOrtStatus(jniEnv, api, api->FillStringTensor(ortValue, strings, length));
 
         // Release the Java strings
         for (int i = 0; i < length; i++) {
@@ -175,6 +195,12 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createStringTensor
 
         // Release the buffers
         checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)strings));
+
+        // Assignment failed, return null
+        if (code != ORT_OK) {
+          api->ReleaseValue(ortValue);
+          return (jlong) NULL;
+        }
       }
     }
 
@@ -191,16 +217,21 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxTensor_getBuffer
     (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtValue* ortValue = (OrtValue *) handle;
-    JavaTensorTypeShape typeShape = getTensorTypeShape(jniEnv, api, ortValue);
+    JavaTensorTypeShape typeShape;
+    OrtErrorCode code = getTensorTypeShape(jniEnv, &typeShape, api, ortValue);
 
-    if (typeShape.valid) {
+    if (code == ORT_OK) {
       size_t typeSize = onnxTypeSize(typeShape.onnxTypeEnum);
-      size_t sizeBytes = typeShape.arrSize*typeSize;
+      size_t sizeBytes = typeShape.elementCount *typeSize;
 
       uint8_t* arr = NULL;
-      checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
+      code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
 
-      return (*jniEnv)->NewDirectByteBuffer(jniEnv, arr, sizeBytes);
+      if (code == ORT_OK) {
+        return (*jniEnv)->NewDirectByteBuffer(jniEnv, arr, (jlong) sizeBytes);
+      } else {
+        return NULL;
+      }
     } else {
       return NULL;
     }
@@ -213,20 +244,23 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxTensor_getBuffer
  */
 JNIEXPORT jfloat JNICALL Java_ai_onnxruntime_OnnxTensor_getFloat
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
-    (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
-    const OrtApi* api = (const OrtApi*) apiHandle;
-    if (onnxType == 9) {
-        uint16_t* arr = NULL;
-        checkOrtStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)handle,(void**)&arr));
-        jfloat floatVal = convertHalfToFloat(*arr);
-        return floatVal;
-    } else if (onnxType == 10) {
-        jfloat* arr = NULL;
-        checkOrtStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)handle,(void**)&arr));
-        return *arr;
-    } else {
-        return NAN;
+  (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
+  if (onnxType == 9) {
+    uint16_t* arr = NULL;
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)handle,(void**)&arr));
+    if (code == ORT_OK) {
+      jfloat floatVal = convertHalfToFloat(*arr);
+      return floatVal;
     }
+  } else if (onnxType == 10) {
+    jfloat* arr = NULL;
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)handle,(void**)&arr));
+    if (code == ORT_OK) {
+      return *arr;
+    }
+  }
+  return NAN;
 }
 
 /*
@@ -239,8 +273,12 @@ JNIEXPORT jdouble JNICALL Java_ai_onnxruntime_OnnxTensor_getDouble
     (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     jdouble* arr = NULL;
-    checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
-    return *arr;
+    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
+    if (code == ORT_OK) {
+      return *arr;
+    } else {
+      return NAN;
+    }
 }
 
 /*
@@ -253,16 +291,19 @@ JNIEXPORT jbyte JNICALL Java_ai_onnxruntime_OnnxTensor_getByte
     (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
   if (onnxType == 1) {
-    uint8_t* arr;
-    checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
-    return (jbyte) *arr;
+    uint8_t* arr = NULL;
+    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
+    if (code == ORT_OK) {
+      return (jbyte) *arr;
+    }
   } else if (onnxType == 2) {
-    int8_t* arr;
-    checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
-    return (jbyte) *arr;
-  } else {
-    return (jbyte) 0;
+    int8_t* arr = NULL;
+    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
+    if (code == ORT_OK) {
+      return (jbyte) *arr;
+    }
   }
+  return (jbyte) 0;
 }
 
 /*
@@ -276,15 +317,18 @@ JNIEXPORT jshort JNICALL Java_ai_onnxruntime_OnnxTensor_getShort
     const OrtApi* api = (const OrtApi*) apiHandle;
   if (onnxType == 3) {
     uint16_t* arr;
-    checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
-    return (jshort) *arr;
+    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
+    if (code == ORT_OK) {
+      return (jshort) *arr;
+    }
   } else if (onnxType == 4) {
     int16_t* arr;
-    checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
-    return (jshort) *arr;
-  } else {
-    return (jshort) 0;
+    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
+    if (code == ORT_OK) {
+      return (jshort) *arr;
+    }
   }
+  return (jshort) 0;
 }
 
 /*
@@ -297,16 +341,19 @@ JNIEXPORT jint JNICALL Java_ai_onnxruntime_OnnxTensor_getInt
     (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
   if (onnxType == 5) {
-    uint32_t* arr;
-    checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
-    return (jint) *arr;
+    uint32_t* arr = NULL;
+    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
+    if (code == ORT_OK) {
+      return (jint) *arr;
+    }
   } else if (onnxType == 6) {
-    int32_t* arr;
-    checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
-    return (jint) *arr;
-  } else {
-    return (jint) 0;
+    int32_t* arr = NULL;
+    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
+    if (code == ORT_OK) {
+      return (jint) *arr;
+    }
   }
+  return (jint) 0;
 }
 
 /*
@@ -319,16 +366,19 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_getLong
     (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
   if (onnxType == 7) {
-    uint64_t* arr;
-    checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
-    return (jlong) *arr;
+    uint64_t* arr = NULL;
+    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
+    if (code == ORT_OK) {
+      return (jlong) *arr;
+    }
   } else if (onnxType == 8) {
-    int64_t* arr;
-    checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
-    return (jlong) *arr;
-  } else {
-    return (jlong) 0;
+    int64_t* arr = NULL;
+    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
+    if (code == ORT_OK) {
+      return (jlong) *arr;
+    }
   }
+  return (jlong) 0;
 }
 
 /*
@@ -365,9 +415,13 @@ JNIEXPORT jboolean JNICALL Java_ai_onnxruntime_OnnxTensor_getBool
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
     (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
-    jboolean* arr;
-    checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
-    return *arr;
+    jboolean* arr = NULL;
+    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
+    if (code == ORT_OK) {
+      return *arr;
+    } else {
+      return 0;
+    }
 }
 
 /*
@@ -380,14 +434,17 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OnnxTensor_getArray
     (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtValue* value = (OrtValue*) handle;
-    JavaTensorTypeShape typeShape = getTensorTypeShape(jniEnv, api, value);
-    if (typeShape.valid) {
+    JavaTensorTypeShape typeShape;
+    OrtErrorCode code = getTensorTypeShape(jniEnv, &typeShape, api, value);
+    if (code == ORT_OK) {
       if (typeShape.onnxTypeEnum == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
-        copyStringTensorToArray(jniEnv, api, (OrtAllocator*) allocatorHandle, value, typeShape.arrSize, carrier);
+        copyStringTensorToArray(jniEnv, api, (OrtAllocator*) allocatorHandle, value, typeShape.elementCount, carrier);
       } else {
-        uint8_t* arr;
-        checkOrtStatus(jniEnv, api, api->GetTensorMutableData(value, (void**)&arr));
-        copyTensorToJava(jniEnv, typeShape.onnxTypeEnum, arr, typeShape.arrSize, typeShape.dimensions, (jarray)carrier);
+        uint8_t* arr = NULL;
+        code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData(value, (void**)&arr));
+        if (code == ORT_OK) {
+          copyTensorToJava(jniEnv, typeShape.onnxTypeEnum, arr, typeShape.elementCount, typeShape.dimensions, (jarray)carrier);
+        }
       }
     }
 }

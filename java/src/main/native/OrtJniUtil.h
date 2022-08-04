@@ -12,10 +12,12 @@ extern "C" {
 #endif
 
 typedef struct {
+  /* The number of dimensions in the Tensor */
   size_t dimensions;
-  size_t arrSize;
+  /* The number of elements in the Tensor */
+  size_t elementCount;
+  /* The type of the Tensor */
   ONNXTensorElementDataType onnxTypeEnum;
-  jbyte valid;
 } JavaTensorTypeShape;
 
 jint JNI_OnLoad(JavaVM *vm, void *reserved);
@@ -32,7 +34,7 @@ ONNXTensorElementDataType convertToONNXDataFormat(jint type);
 
 size_t onnxTypeSize(ONNXTensorElementDataType type);
 
-JavaTensorTypeShape getTensorTypeShape(JNIEnv * jniEnv, const OrtApi * api, const OrtValue * value);
+OrtErrorCode getTensorTypeShape(JNIEnv * jniEnv, JavaTensorTypeShape * output, const OrtApi * api, const OrtValue * value);
 
 jfloat convertHalfToFloat(uint16_t half);
 
