@@ -7,7 +7,7 @@ import random
 
 import onnx
 
-from onnxruntime.capi._pybind_state import GradientGraphBuilder
+from onnxruntime.capi._pybind_state import GradientGraphBuilder, get_optimized_model
 
 
 def get_output_from_output_name(onnx_model, output_name):
@@ -84,6 +84,11 @@ def build_gradient_graph(accessor, user_args_requiring_grad, user_args_not_requi
     # whose gradient should be built.
     for argument_name in user_args_requiring_grad:
         all_args_requiring_gradient.append(argument_name)
+
+    # Run graph transformations to optimize the graph
+    model.CopyFrom(
+        onnx.load_from_string(get_optimized_model(model.SerializeToString(), set(all_args_requiring_gradient)))
+    )
 
     # Assumption is that the first graph output is the loss output
     if isinstance(output_names, str):

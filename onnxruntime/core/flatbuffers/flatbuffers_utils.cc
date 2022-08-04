@@ -306,12 +306,12 @@ Status LoadOpsetImportOrtFormat(const flatbuffers::Vector<flatbuffers::Offset<fb
 }
 
 bool IsOrtFormatModel(const PathString& filename) {
-  auto len = filename.size();
+  const auto len = filename.size();
   return len > 4 &&
          filename[len - 4] == ORT_TSTR('.') &&
-         std::tolower(filename[len - 3]) == ORT_TSTR('o') &&
-         std::tolower(filename[len - 2]) == ORT_TSTR('r') &&
-         std::tolower(filename[len - 1]) == ORT_TSTR('t');
+         ToLowerPathChar(filename[len - 3]) == ORT_TSTR('o') &&
+         ToLowerPathChar(filename[len - 2]) == ORT_TSTR('r') &&
+         ToLowerPathChar(filename[len - 1]) == ORT_TSTR('t');
 }
 
 bool IsOrtFormatModelBytes(const void* bytes, int num_bytes) {

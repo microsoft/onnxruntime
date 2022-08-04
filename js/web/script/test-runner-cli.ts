@@ -32,7 +32,7 @@ const TEST_DATA_OP_ROOT = path.join(TEST_ROOT, 'data', 'ops');
 const TEST_DATA_BASE = args.env === 'node' ? TEST_ROOT : '/base/test/';
 
 npmlog.verbose('TestRunnerCli.Init', 'Ensure test data folder...');
-fs.ensureSymlinkSync(path.join(__dirname, '../../test/data/node'), TEST_DATA_MODEL_NODE_ROOT, 'dir');
+fs.ensureSymlinkSync(path.join(__dirname, '../../test/data/node'), TEST_DATA_MODEL_NODE_ROOT, 'junction');
 npmlog.verbose('TestRunnerCli.Init', 'Ensure test data folder... DONE');
 
 let testlist: Test.TestList;

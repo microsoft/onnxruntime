@@ -7,6 +7,7 @@
 
 #include "core/common/common.h"
 #include "core/common/path_string.h"
+#include "core/common/status.h"
 
 namespace ONNX_NAMESPACE {
 class ValueInfoProto;
