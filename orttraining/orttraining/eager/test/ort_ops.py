@@ -8,6 +8,7 @@ import unittest
 import numpy as np
 import onnxruntime_pybind11_state as torch_ort
 import torch
+import torch._ops
 from parameterized import parameterized
 
 
@@ -443,6 +444,21 @@ class OrtOpTests(unittest.TestCase):
             torch.mm(ort_mat1, ort_wrong_type)
         with self.assertRaises(RuntimeError):
             torch.mm(ort_mat1, ort_not_matrix)
+
+    def test_native_dropout(self):
+        device = self.get_device()
+
+        # out version test
+        cpu_tensor = torch.rand(3, 2)
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_result = torch.ops.aten.native_dropout(cpu_tensor, 0.5, True)
+        ort_result = torch.ops.aten.native_dropout(ort_tensor, 0.5, True)
+
+        # The result is random - we could look at setting specific random seed...
+        # For now, just check tensor shape
+        # self.assertEqual(cpu_result[0].size(), ort_result[0].size())
+        # self.assertEqual(cpu_result[1].size(), ort_result[1].size())
 
     ################################ parameterized test follow #######################################
     # OPS - is a list of [test_operator, tested_tensor=torch.rand (6)].
