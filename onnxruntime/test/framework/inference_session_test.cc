@@ -388,13 +388,13 @@ TEST(InferenceSessionTests, LogIdTest) {
   SessionOptions so_without_log_id;
   InferenceSession session_object1{so_without_log_id, GetEnvironment()};
   // test_main has log_id set in ortenv_setup()
-  ASSERT_TRUE(session_object1.GetLogger()->GetLogID() == "Default");
+  ASSERT_EQ(session_object1.GetLogger()->GetLogID(), "Default");
 
   std::string so_log_id = "LogIdFromSessionOption";
   SessionOptions so_with_log_id;
   so_with_log_id.session_logid = so_log_id;
   InferenceSession session_object2{so_with_log_id, GetEnvironment()};
-  ASSERT_TRUE(session_object2.GetLogger()->GetLogID() == so_log_id);
+  ASSERT_EQ(session_object2.GetLogger()->GetLogID(), so_log_id);
 }
 
 TEST(InferenceSessionTests, NoTimeout) {
