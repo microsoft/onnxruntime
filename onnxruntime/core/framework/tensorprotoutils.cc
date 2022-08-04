@@ -131,17 +131,24 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
   std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
   ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
 
-  if (tensor_proto_dir != nullptr) {
-    external_file_path = onnxruntime::ConcatPathComponent<ORTCHAR_T>(tensor_proto_dir, external_data_info->GetRelPath());
+  const auto& location = external_data_info->GetRelPath();
+
+  if (location == onnxruntime::utils::kMemoryAddressTag) {
+    external_file_path = location;
+    tensor_byte_size = external_data_info->GetLength();
   } else {
-    external_file_path = external_data_info->GetRelPath();
+    if (tensor_proto_dir != nullptr) {
+      external_file_path = onnxruntime::ConcatPathComponent<ORTCHAR_T>(tensor_proto_dir, external_data_info->GetRelPath());
+    } else {
+      external_file_path = external_data_info->GetRelPath();
+    }
+
+    ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
   }
 
   file_offset = external_data_info->GetOffset();
 
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
   const size_t external_data_length = external_data_info->GetLength();
-
   ORT_RETURN_IF_NOT(external_data_length == 0 || external_data_length == tensor_byte_size,
                     "TensorProto: ", tensor_proto.name(), " external data size mismatch. Computed size: ", *&tensor_byte_size,
                     ", external_data.length: ", external_data_length);
@@ -597,18 +604,26 @@ Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
   ORT_RETURN_IF_ERROR(GetExternalDataInfo(tensor_proto, t_prot_dir_s, external_data_file_path, file_offset,
                                           raw_data_safe_len));
 
-  size_t file_length;
-  ORT_RETURN_IF_ERROR(env.GetFileLength(external_data_file_path.c_str(), file_length));
+  if (external_data_file_path == onnxruntime::utils::kMemoryAddressTag) {
+    // the value in location is the memory address of the data
+    ext_data_buf = reinterpret_cast<void*>(file_offset);
+    ext_data_len = raw_data_safe_len;
+    ext_data_deleter = OrtCallback{nullptr, nullptr};
+  } else {
+    size_t file_length;
+    ORT_RETURN_IF_ERROR(env.GetFileLength(external_data_file_path.c_str(), file_length));
 
-  SafeInt<FileOffsetType> end_of_read(file_offset);
-  end_of_read += raw_data_safe_len;
-  ORT_RETURN_IF(file_offset < 0 || end_of_read > gsl::narrow<FileOffsetType>(file_length),
+    SafeInt<FileOffsetType> end_of_read(file_offset);
+    end_of_read += raw_data_safe_len;
+    ORT_RETURN_IF(file_offset < 0 || end_of_read > gsl::narrow<FileOffsetType>(file_length),
                   "External initializer: ", tensor_proto.name(),
                   " offset: ", file_offset, " size to read: ", static_cast<size_t>(raw_data_safe_len),
                   " given file_length: ", file_length, " are out of bounds or can not be read in full.");
-  ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path.c_str(), file_offset, raw_data_safe_len,
-                                     ext_data_buf, ext_data_deleter));
-  ext_data_len = raw_data_safe_len;
+    ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path.c_str(), file_offset, raw_data_safe_len,
+                                       ext_data_buf, ext_data_deleter));
+    ext_data_len = raw_data_safe_len;
+  }
+
   return Status::OK();
 }
 

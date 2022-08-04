@@ -485,9 +485,12 @@ class Node {
 #endif
 
   static Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, Graph& graph,
+                                  bool can_use_flatbuffer_for_initializers,
                                   const logging::Logger& logger, std::unique_ptr<Node>& node);
 
-  Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, const logging::Logger& logger);
+  Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
+                           bool can_use_flatbuffer_for_initializers,
+                           const logging::Logger& logger);
   Status LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_edgs, const Graph& graph);
 
   /**
@@ -690,8 +693,8 @@ class Graph {
 
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS)
   /** This function takes externally provided data for initializers with external data
-  *    and replaces graph initializers with its content.
-  */
+   *    and replaces graph initializers with its content.
+   */
   common::Status InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers);
 #endif  // !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
@@ -1273,7 +1276,7 @@ class Graph {
     return Resolve(default_options);
   }
 
-  const std::unordered_set<std::string>& GetOuterScopeNodeArgNames() const noexcept{
+  const std::unordered_set<std::string>& GetOuterScopeNodeArgNames() const noexcept {
     return outer_scope_node_arg_names_;
   }
 
@@ -1305,26 +1308,27 @@ class Graph {
   Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::GraphProto& subgraph_proto);
 
   Graph(const Model& owning_model,
-      IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-      ONNX_NAMESPACE::GraphProto& subgraph_proto,
-      const std::unordered_map<std::string, int>& domain_version_map,
-      const logging::Logger& logger,
-      bool strict_shape_type_inference);
+        IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+        ONNX_NAMESPACE::GraphProto& subgraph_proto,
+        const std::unordered_map<std::string, int>& domain_version_map,
+        const logging::Logger& logger,
+        bool strict_shape_type_inference);
 #endif
 
   virtual ~Graph();
 
-  static common::Status LoadFromOrtFormat(
-      const onnxruntime::fbs::Graph& fbs_graph, const Model& owning_model,
-      const std::unordered_map<std::string, int>& domain_to_version,
+  static common::Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph, const Model& owning_model,
+                                          const std::unordered_map<std::string, int>& domain_to_version,
 #if !defined(ORT_MINIMAL_BUILD)
-      IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+                                          IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
 #endif
-      const logging::Logger& logger, std::unique_ptr<Graph>& graph);
+                                          bool can_use_flatbuffer_for_initializers,
+                                          const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
   // deserialize a subgraph
   static Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                   Graph& parent_graph, const Node& parent_node,
+                                  bool can_use_flatbuffer_for_initializers,
                                   const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1368,7 +1372,8 @@ class Graph {
         bool strict_shape_type_inference);
 
   // Populate Graph instance from ORT format serialized data.
-  common::Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph);
+  common::Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
+                                   bool can_use_flatbuffer_for_initializers);
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Constructor: Given a <GraphProto> loaded from model file, construct
@@ -1585,9 +1590,9 @@ class Graph {
 #if !defined(ORT_MINIMAL_BUILD)
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
 
-  //Currently to make the ORT in-memory graph work, we have to create a temporary op schema
-  //for the fused kernel. I really don't like it. but for short-term solution, let's host
-  //those schemas here.
+  // Currently to make the ORT in-memory graph work, we have to create a temporary op schema
+  // for the fused kernel. I really don't like it. but for short-term solution, let's host
+  // those schemas here.
   InlinedVector<std::unique_ptr<ONNX_NAMESPACE::OpSchema>> fused_schemas_containers_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
