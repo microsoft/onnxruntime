@@ -110,7 +110,7 @@ torch.onnx.export(model,
 ## Understanding the model in Python
 When taking a prebuilt model and operationalizing it, its useful to take a moment and understand the models pre and post processing, and the input/output shapes and labels. Many models have sample code provided in Python. We will be inferencing our model with C# but first lets test it and see how its done in Python. This will help us with our C# logic in the next step.
 
-- The code to test out the model is provided [in this tutorial](https://onnxruntime.ai/docs/tutorials/azureml.html). Check out the source for testing and inferencing this model in Python. Below a sample `input` sentence and sample `output` from running the model.
+- The code to test out the model is provided [in this tutorial](https://onnxruntime.ai/docs/tutorials/azureml.html). Check out the source for testing and inferencing this model in Python. Below is a sample `input` sentence and a sample `output` from running the model.
 
 - Sample `input`
 
