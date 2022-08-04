@@ -26,9 +26,9 @@ class TestQuantUtil(unittest.TestCase):
         self.assertEqual(compute_scale_zp(-1.0, 2.0, 0, 255, symmetric=True), [128, 4.0 / 255])
         self.assertEqual(compute_scale_zp(-1.0, 2.0, 0, 255, symmetric=False), [85, 3.0 / 255])
 
-        smallest_subnormal = numpy.float32(numpy.finfo(numpy.float32).smallest_subnormal)
-        self.assertEqual(compute_scale_zp(-smallest_subnormal, smallest_subnormal, 0, 255, symmetric=True), [0, 1.0])
-        self.assertEqual(compute_scale_zp(-smallest_subnormal, 0.0, 0, 255, symmetric=False), [0, 1.0])
+        tiny_float = numpy.float32(numpy.finfo(numpy.float32).tiny * 0.1)
+        self.assertEqual(compute_scale_zp(-tiny_float, tiny_float, 0, 255, symmetric=True), [0, 1.0])
+        self.assertEqual(compute_scale_zp(-tiny_float, 0.0, 0, 255, symmetric=False), [0, 1.0])
 
 
 if __name__ == "__main__":
