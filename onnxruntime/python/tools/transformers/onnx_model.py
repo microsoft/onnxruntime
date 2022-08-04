@@ -25,17 +25,23 @@ class OnnxModel:
         self.model: ModelProto = model
         self._node_name_suffix: Dict[str, int] = {}  # key is node name prefix, value is the last suffix generated
         self.shape_infer_helper = None
+        self.enable_shape_infer = True
         self.all_graphs = None
 
-    def infer_runtime_shape(self, dynamic_axis_mapping={}, update=False):
-        if self.shape_infer_helper is None or update:
-            self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
+    def disable_shape_inference(self):
+        self.enable_shape_infer = False
 
-        try:
-            if self.shape_infer_helper.infer(dynamic_axis_mapping):
-                return self.shape_infer_helper
-        except:
-            print("failed in shape inference", sys.exc_info()[0])
+    def infer_runtime_shape(self, dynamic_axis_mapping={}, update=False):
+        if self.enable_shape_infer:
+            if self.shape_infer_helper is None or update:
+                self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
+
+            try:
+                if self.shape_infer_helper.infer(dynamic_axis_mapping):
+                    return self.shape_infer_helper
+            except:
+                self.enable_shape_infer = False  # disable shape inference to suppress same error message.
+                print("failed in shape inference", sys.exc_info()[0])
 
         return None
 

@@ -303,7 +303,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(int parall
 template <typename InputType, typename ThresholdType, typename OutputType>
 Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::compute(OpKernelContext* ctx,
                                                                          const Tensor* X,
-                                                                         Tensor* Y, 
+                                                                         Tensor* Y,
                                                                          Tensor* label) const {
   switch (aggregate_function_) {
     case AGGREGATE_FUNCTION::AVERAGE:
@@ -341,15 +341,15 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::compute(OpKerne
 
 template <typename InputType, typename ThresholdType, typename OutputType>
 template <typename AGG>
-void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concurrency::ThreadPool* ttp, 
+void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concurrency::ThreadPool* ttp,
                                                                           const Tensor* X, Tensor* Z,
                                                                           Tensor* label, const AGG& agg) const {
   int64_t stride = X->Shape().NumDimensions() == 1 ? X->Shape()[0] : X->Shape()[1];
   int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
-  OutputType* z_data = Z->template MutableData<OutputType>();
+  OutputType* z_data = Z->MutableData<OutputType>();
 
-  const InputType* x_data = X->template Data<InputType>();
-  int64_t* label_data = label == nullptr ? nullptr : label->template MutableData<int64_t>();
+  const InputType* x_data = X->Data<InputType>();
+  int64_t* label_data = label == nullptr ? nullptr : label->MutableData<int64_t>();
   auto max_num_threads = concurrency::ThreadPool::DegreeOfParallelism(ttp);
 
   if (n_targets_or_classes_ == 1) {
@@ -792,7 +792,7 @@ Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::Init(
 template <typename InputType, typename ThresholdType, typename OutputType>
 Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::compute(OpKernelContext* ctx,
                                                                                    const Tensor* X,
-                                                                                   Tensor* Z, 
+                                                                                   Tensor* Z,
                                                                                    Tensor* label) const {
   if (classlabels_strings_.empty()) {
     this->ComputeAgg(
@@ -814,8 +814,8 @@ Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::compu
             this->post_transform_, this->base_values_,
             class_labels_, binary_case_,
             weights_are_all_positive_));
-    const int64_t* plabel = label_int64.template Data<int64_t>();
-    std::string* labels = label->template MutableData<std::string>();
+    const int64_t* plabel = label_int64.Data<int64_t>();
+    std::string* labels = label->MutableData<std::string>();
     for (size_t i = 0; i < (size_t)N; ++i)
       labels[i] = classlabels_strings_[plabel[i]];
   }

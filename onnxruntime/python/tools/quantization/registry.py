@@ -3,11 +3,11 @@ from .operators.argmax import QArgMax
 from .operators.attention import AttentionQuant
 from .operators.base_operator import QuantOperatorBase
 from .operators.binary_op import QLinearBinaryOp
-from .operators.concat import QDQConcat, QLinearConcat
+from .operators.concat import QLinearConcat
 from .operators.conv import ConvInteger, QDQConv, QLinearConv
 from .operators.direct_q8 import Direct8BitOp, QDQDirect8BitOp
 from .operators.embed_layernorm import EmbedLayerNormalizationQuant
-from .operators.gather import GatherQuant
+from .operators.gather import GatherQuant, QDQGather
 from .operators.gavgpool import QGlobalAveragePool
 from .operators.gemm import QDQGemm, QLinearGemm
 from .operators.lstm import LSTMQuant
@@ -70,8 +70,8 @@ QDQRegistry = {
     "Resize": QDQResize,
     "MaxPool": QDQMaxPool,
     "AveragePool": QDQDirect8BitOp,
-    "Concat": QDQConcat,
     "MatMul": QDQMatMul,
+    "Gather": QDQGather,
 }
 
 

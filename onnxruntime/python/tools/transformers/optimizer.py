@@ -247,7 +247,7 @@ def optimize_model(
             else [
                 "QDQPropagationTransformer",
             ]
-        )    
+        )
         # basic optimizations (like constant folding and cast elimination) are not specified to execution provider.
         # CPU provider is used here so that there is no extra node for GPU memory copy.
         temp_model_path = optimize_by_onnxruntime(input, use_gpu=False, opt_level=1, 

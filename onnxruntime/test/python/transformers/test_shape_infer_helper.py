@@ -1,15 +1,17 @@
 import unittest
 
+import onnx
 import pytest
+import torch
 from parity_utilities import find_transformers_source
 
 if find_transformers_source():
-    from benchmark_helper import OptimizerInfo, Precision
+    from benchmark_helper import ConfigModifier, OptimizerInfo, Precision
     from huggingface_models import MODELS
     from onnx_exporter import export_onnx_model_from_pt
     from shape_infer_helper import SymbolicShapeInferenceHelper
 else:
-    from onnxruntime.transformers.benchmark_helper import OptimizerInfo, Precision
+    from onnxruntime.transformers.benchmark_helper import ConfigModifier, OptimizerInfo, Precision
     from onnxruntime.transformers.huggingface_models import MODELS
     from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_pt
     from onnxruntime.transformers.shape_infer_helper import SymbolicShapeInferenceHelper
@@ -19,15 +21,18 @@ class SymbolicShapeInferenceHelperTest(unittest.TestCase):
     def _load_onnx(self, model_name):
         input_names = MODELS[model_name][0]
         base_path = "../onnx_models/"
-        import torch
 
+        config_modifier = ConfigModifier(None)
+        fusion_options = None
+        model_class = "AutoModel"
         with torch.no_grad():
             export_onnx_model_from_pt(
                 model_name,
                 MODELS[model_name][1],
                 MODELS[model_name][2],
                 MODELS[model_name][3],
-                None,
+                model_class,
+                config_modifier,
                 "../cache_models",
                 base_path,
                 input_names[:1],
@@ -38,10 +43,9 @@ class SymbolicShapeInferenceHelperTest(unittest.TestCase):
                 True,
                 False,
                 {},
+                fusion_options,
             )
         model_path = base_path + model_name.replace("-", "_") + "_1.onnx"
-        import onnx
-
         return onnx.load_model(model_path)
 
     # TODO: use a static lightweight model for test

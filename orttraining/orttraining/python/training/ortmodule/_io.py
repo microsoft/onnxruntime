@@ -3,14 +3,15 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from collections import abc
 import copy
-import inspect
-import torch
-import warnings
 import gc
+import inspect
+import warnings
+from collections import abc
 
-from ._fallback import _FallbackManager, ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
+import torch
+
+from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, _FallbackManager, wrap_exception
 from ._utils import warn_of_constant_inputs
 
 
@@ -595,5 +596,9 @@ def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):
     if is_deepcopy:
         del model_copy
         gc.collect()
+        if torch.cuda.is_available():
+            # Trigger python GC is not enough.
+            # Release the memory cached by torch.
+            torch.cuda.empty_cache()
     # Return output names, output dynamic axes and output schema
     return output_names, output_dynamic_axes, output_schema

@@ -73,10 +73,12 @@ contrib_ops_excluded_files = [
     "tensor/image_scaler_impl.h",
     "transformers/beam_search.cc",
     "transformers/beam_search.h",
-    "transformers/beam_search_device_helper.cc",
-    "transformers/beam_search_device_helper.h",
+    "transformers/generation_device_helper.cc",
+    "transformers/generation_device_helper.h",
     "transformers/beam_search_impl.cu",
     "transformers/beam_search_impl.h",
+    "transformers/greedy_search.cc",
+    "transformers/greedy_search.h",
     "transformers/dump_cuda_tensor.cc",
     "transformers/dump_cuda_tensor.h",
     "conv_transpose_with_dynamic_pads.cc",
@@ -104,31 +106,14 @@ provider_excluded_files = [
     "math/einsum.h",
     "math/gemm.cc",
     "math/matmul.cc",
-    "math/matmul_integer.cc",
-    "math/matmul_integer.cu",
-    "math/matmul_integer.cuh",
-    "math/matmul_integer.h",
     "math/softmax_impl.cu",
     "math/softmax_warpwise_impl.cuh",
     "math/softmax.cc",
-    "nn/batch_norm.cc",
-    "nn/batch_norm.h",
     "nn/conv.cc",
     "nn/conv.h",
     "nn/conv_transpose.cc",
     "nn/conv_transpose.h",
-    "nn/instance_norm.cc",
-    "nn/instance_norm.h",
-    "nn/instance_norm_impl.cu",
-    "nn/instance_norm_impl.h",
-    "nn/lrn.cc",
-    "nn/lrn.h",
-    "nn/max_pool_with_index.cu",
-    "nn/max_pool_with_index.h",
-    "nn/pool.cc",
-    "nn/pool.h",
     "reduction/reduction_ops.cc",
-    "reduction/reduction_ops.h",
     "rnn/cudnn_rnn_base.cc",
     "rnn/cudnn_rnn_base.h",
     "rnn/gru.cc",
@@ -141,7 +126,6 @@ provider_excluded_files = [
     "rnn/rnn_impl.h",
     "shared_inc/cuda_call.h",
     "shared_inc/fpgeneric.h",
-    "shared_inc/integer_gemm.h",
     "cuda_allocator.cc",
     "cuda_allocator.h",
     "cuda_call.cc",
@@ -239,6 +223,7 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace("hipblasDestroy", "rocblas_destroy_handle")
     s = s.replace("hipblasSetStream", "rocblas_set_stream")
     s = s.replace("HIPBLAS_OP_T", "rocblas_operation_transpose")
+    s = s.replace("HIPBLAS_OP_N", "rocblas_operation_none")
 
     s = s.replace("RegisterCudaContribKernels", "RegisterRocmContribKernels")
     s = s.replace("cudaEvent", "hipEvent")
@@ -320,6 +305,12 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace("hipdnn", "miopen")
     s = s.replace("HIPDNN_STATUS_SUCCESS", "miopenStatusSuccess")
     s = s.replace("HIPDNN", "MIOPEN")
+    s = s.replace("MIOPEN_BATCHNORM_SPATIAL", "miopenBNSpatial")
+    s = s.replace("MIOPEN_BATCHNORM_PER_ACTIVATION", "miopenBNPerActivation")
+    s = s.replace("MIOPEN_LRN_CROSS_CHANNEL", "miopenLRNCrossChannel")
+    s = s.replace("MIOPEN_POOLING_MAX", "miopenPoolingMax")
+    s = s.replace("MIOPEN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING", "miopenPoolingAverageInclusive")
+    s = s.replace("MIOPEN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING", "miopenPoolingAverage")
 
     # CUSPARSE -> HIPSPARSE
     s = s.replace("CUSPARSE", "HIPSPARSE")

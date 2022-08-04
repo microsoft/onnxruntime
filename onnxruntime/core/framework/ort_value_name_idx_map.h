@@ -30,7 +30,7 @@ class OrtValueNameIdxMap {
     return p.first->second;
   }
 
-  common::Status GetIdx(const std::string& name, int& idx) const {
+  common::Status GetIdx(std::string_view name, int& idx) const {
     idx = -1;
 
     auto it = map_.find(name);

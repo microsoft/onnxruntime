@@ -64,13 +64,16 @@ jobs:
         mkdir -p $(artifacts_directory)
       workingDirectory: $(Build.BinariesDirectory)
 
-  - template: set-version-number-variables-step.yml
   - template: get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuild
+
+  - template: set-version-number-variables-step.yml
+
+  - template: use-android-ndk.yml
 
   - task: CmdLine@2
     displayName: Build Android AAR Packages

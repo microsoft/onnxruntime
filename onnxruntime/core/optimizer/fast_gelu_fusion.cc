@@ -110,7 +110,7 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
 MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
                                                InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) const {
   MatchResult matchResult{false, nullptr, nullptr};
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow1_node, "Pow", {7, 12, 13}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow1_node, "Pow", {7, 12, 13, 15}) ||
       !graph_utils::IsSupportedProvider(pow1_node, GetCompatibleExecutionProviders()) ||
       pow1_node.GetOutputEdgesCount() != 1 ||
       !IsSupportedDataType(pow1_node)) {
@@ -180,15 +180,15 @@ In case of ORTModule, there are extra Cast nodes exported for fp16. They should 
 
 x --> Cast --> FastGelu
 
-The first Cast should have been fused in CommonSubexpressionElimination transformer, thus it has 2 output edges. 
+The first Cast should have been fused in CommonSubexpressionElimination transformer, thus it has 2 output edges.
 
 +--------------------------------------------> Mul ---> Cast ----+
 |                                                                |
 |                                                                v
-X --> Cast --> Pow --> Mul --> Add --> Mul --> Tanh --> Add --> Mul 
-       |                        ^                  
-       |                        |                
-       +------------------------+     
+X --> Cast --> Pow --> Mul --> Add --> Mul --> Tanh --> Add --> Mul
+       |                        ^
+       |                        |
+       +------------------------+
 
 */
 Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
