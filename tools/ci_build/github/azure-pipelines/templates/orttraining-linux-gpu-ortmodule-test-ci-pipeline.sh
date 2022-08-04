@@ -2,7 +2,7 @@
 
 REQDIR="requirements_torch1.11.0_cu11.3";
 
-if [ $5 == "Schedule" ]; then
+if [ $5 == "Manual" ]; then
     REQDIR="requirements_torch_nightly"
 fi
 
