@@ -141,7 +141,7 @@ class CKGemm : public GemmBase<T> {
   }
 
   bool SelectImpl(const std::string& name) override {
-    for (int i = 0; i < impls_.size(); i++) {
+    for (size_t i = 0; i < impls_.size(); i++) {
       if (impls_[i]->GetTypeString() == name) {
         selected_impl_ = i;
         return UpdateArgumentAndInvoker();
@@ -151,7 +151,7 @@ class CKGemm : public GemmBase<T> {
     ORT_THROW("Cannot find implementation ", name);
   }
 
-  void Run() {
+  void Run() override {
     invoker_->Run(arg_.get());
   }
 
