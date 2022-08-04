@@ -18,13 +18,31 @@ def dtype_to_suffix(dtype):
 
 
 def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=False):
+    assert dtype in ["float32", "float16"]
+
     a_shape = (k, m) if transa else (m, k)
     b_shape = (n, k) if transb else (k, n)
 
     np.random.seed(0)
-    a = (np.random.rand(*a_shape) * 2 - 1).astype(dtype)
-    b = (np.random.rand(*b_shape) * 2 - 1).astype(dtype)
+    a = (np.random.rand(*a_shape) + 0.5).astype(dtype).astype("float64")
+    b = (np.random.rand(*b_shape) + 0.5).astype(dtype).astype("float64")
     ref_c = (a.T if transa else a) @ (b.T if transb else b)
+
+    # The machine epsilon, unit roundoff, the smallest positive floating point number n such that the floating point
+    # number that represents 1 + n is greater than 1.
+    machine_eps = 2.0 ** -(24 if dtype == "float32" else 11)
+
+    # The following implements error bound 5.7 in paper I. C. Ipsen and H. Zhou, “Probabilistic error analysis for
+    # Inner Products,” SIAM Journal on Matrix Analysis and Applications, vol. 41, no. 4, pp. 1726–1741, 2020.
+    # NOTE: the bound is not tight for float16 when k is large
+    absa_mul_absb = np.abs(a.T if transa else a) @ np.abs(b.T if transb else b)
+    coeff = np.max(absa_mul_absb / np.abs(ref_c))
+    gamma_2k = (1.0 + machine_eps) ** (2 * k) - 1.0
+    bound_5_7 = coeff * np.sqrt(np.log(2 / 1e-10) * machine_eps * gamma_2k / 2)
+    bound = bound_5_7
+
+    a = a.astype(dtype)
+    b = b.astype(dtype)
 
     my_c = np.zeros((m, n), dtype=dtype)
     dev_a = ke.DeviceArray(a)
@@ -40,6 +58,8 @@ def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=Fa
     my_gemm = func(opa, opb, m, n, k, alpha, dev_a, lda, dev_b, ldb, beta, dev_c, n)
 
     failures = {}
+    print(f"m={m:<5} n={n:<5} k={k:<5} dtype={dtype} bound: {bound}")
+
     for impl in my_gemm.ListImpls():
         if not my_gemm.SelectImpl(impl):
             continue
@@ -47,11 +67,8 @@ def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=Fa
         my_gemm.Run()
         dev_c.UpdateHostNumpyArray()
 
-        rtol = 1e-3 if dtype == "float16" else 1e-5
-        atol = 1e-3 if dtype == "float16" else 1e-5
-
         try:
-            np.testing.assert_allclose(ref_c, my_c, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(my_c, ref_c, rtol=bound)
         except Exception as err:
             failures[impl] = str(err)
 
@@ -59,19 +76,12 @@ def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=Fa
         raise Exception(failures)
 
 
-def get_basic_cases(full=True):
-    dtypes = ["float32", "float16"]
-    transabs = product([True, False], repeat=2)
-    if full:
-        basic_sizes = product([1, 3, 4, 16, 127, 128, 129, 133, 1024], repeat=3)
-    else:
-        basic_sizes = product([1, 4, 127, 133], [3, 16, 128], [3, 129, 1024])
-    return list(product(dtypes, basic_sizes, transabs))
+dtypes = ["float32", "float16"]
+all_transabs = list(product([True, False], repeat=2))
+all_basic_sizes = list(product([1, 3, 4, 16, 127, 128, 129, 133, 1024], repeat=3))
 
 
-def get_bert_cases():
-    dtypes = ["float32", "float16"]
-    transabs = [(False, False)]
+def get_bert_sizes(full=True):
     bert_base_sizes = [
         # m, n, k
         (384, 768, 768),
@@ -85,28 +95,32 @@ def get_bert_cases():
     ]
 
     # we then multiply m with the batch size
-    batch_sizes = [1, 64]
+    if full:
+        batch_sizes = [1, 64]
+    else:
+        batch_sizes = [1]
     bert_sizes = []
     for bsz in batch_sizes:
         bert_sizes.extend([(m * bsz, n, k) for m, n, k in bert_base_sizes])
+    return bert_sizes
 
-    return list(product(dtypes, bert_sizes, transabs))
 
-
-@pytest.mark.parametrize(
-    "dtype, size, transab",
-    get_basic_cases() + get_bert_cases(),
-)
+@pytest.mark.parametrize("dtype", dtypes)
+@pytest.mark.parametrize("size", all_basic_sizes + get_bert_sizes(full=False))
+@pytest.mark.parametrize("transab", all_transabs)
 def test_rocblas_gemm_all_cases(dtype, size, transab):
     _test_gemm(getattr(ke, "RocblasGemm_" + dtype_to_suffix(dtype)), dtype, *size, *transab)
 
 
-@pytest.mark.parametrize(
-    "dtype, size, transab",
-    # ck has various impls to be tested, use the full basic cases will result too many cases to test.
-    # So we use a reduced combination here.
-    get_basic_cases(full=False) + get_bert_cases(),
-)
+# ck has various impls to be tested, use the full basic cases will result too many cases to test.
+# So we use a reduced combination here.
+reduced_basic_sizes = list(product([1, 4, 127, 133], [3, 16, 128], [3, 129, 1024]))
+no_transabs = [[False, False]]
+
+
+@pytest.mark.parametrize("dtype", dtypes)
+@pytest.mark.parametrize("size", reduced_basic_sizes + get_bert_sizes(full=False))
+@pytest.mark.parametrize("transab", no_transabs)
 def test_ck_gemm_bert_cases(dtype, size, transab):
     _test_gemm(getattr(ke, "CKGemm_" + dtype_to_suffix(dtype)), dtype, *size, *transab)
 
@@ -142,10 +156,12 @@ def profile_gemm_func(f, dtype, m, n, k):
 
 
 def profile():
-    for dtype, (m, n, k), _ in get_bert_cases():
-        suffix = dtype_to_suffix(dtype)
-        profile_gemm_func(getattr(ke, "RocblasGemm_" + suffix), dtype, m, n, k)
-        profile_gemm_func(getattr(ke, "CKGemm_" + suffix), dtype, m, n, k)
+    for dtype in dtypes:
+        for m, n, k in get_bert_sizes(full=True):
+            suffix = dtype_to_suffix(dtype)
+            profile_gemm_func(getattr(ke, "RocblasGemm_" + suffix), dtype, m, n, k)
+            profile_gemm_func(getattr(ke, "CKGemm_" + suffix), dtype, m, n, k)
+            print()
         print()
 
 
