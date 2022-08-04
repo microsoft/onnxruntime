@@ -9,6 +9,7 @@
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
+#include "core/common/path_string.h"
 #include "core/common/profiler.h"
 #include "core/common/status.h"
 #include "core/framework/execution_providers.h"
@@ -156,11 +157,11 @@ class InferenceSession {
     */
   InferenceSession(const SessionOptions& session_options,
                    const Environment& session_env,
-                   const std::string& model_uri);
+                   const PathString& model_uri);
 #ifdef _WIN32
   InferenceSession(const SessionOptions& session_options,
                    const Environment& session_env,
-                   const std::wstring& model_uri);
+                   const std::string& model_uri);
 #endif
 
   /**
@@ -258,9 +259,9 @@ class InferenceSession {
    * @param model_uri absolute path of the model file.
    * @return OK if success.
    */
-  common::Status Load(const std::string& model_uri) ORT_MUST_USE_RESULT;
+  common::Status Load(const PathString& model_uri) ORT_MUST_USE_RESULT;
 #ifdef _WIN32
-  common::Status Load(const std::wstring& model_uri) ORT_MUST_USE_RESULT;
+  common::Status Load(const std::string& model_uri) ORT_MUST_USE_RESULT;
 #endif
   /**
    * Load an ONNX or ORT format model.
@@ -484,17 +485,17 @@ class InferenceSession {
    * @param protobuf object corresponding to the model file. model_proto will be copied by the API.
    * @return OK if success.
    */
-  common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto) ORT_MUST_USE_RESULT;
+  common::Status LoadOnnxModel(ONNX_NAMESPACE::ModelProto model_proto) ORT_MUST_USE_RESULT;
 
   /**
    * Load an ONNX model.
    * @param protobuf object corresponding to the model file. This is primarily to support large models.
    * @return OK if success.
    */
-  common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto) ORT_MUST_USE_RESULT;
+  common::Status LoadOnnxModel(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto) ORT_MUST_USE_RESULT;
 
-  common::Status Load(std::function<common::Status(std::shared_ptr<Model>&)> loader,
-                      const std::string& event_name) ORT_MUST_USE_RESULT;
+  common::Status LoadWithLoader(std::function<common::Status(std::shared_ptr<Model>&)> loader,
+                                const std::string& event_name) ORT_MUST_USE_RESULT;
 
   common::Status DoPostLoadProcessing(onnxruntime::Model& model) ORT_MUST_USE_RESULT;
 
@@ -543,7 +544,7 @@ class InferenceSession {
   std::unordered_set<std::string> model_output_names_;
 
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
-  std::basic_string<ORTCHAR_T> model_location_;
+  PathString model_location_;
 
   // The list of execution providers.
   ExecutionProviders execution_providers_;
@@ -558,14 +559,13 @@ class InferenceSession {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-  template <typename T>
-  common::Status Load(const std::basic_string<T>& model_uri) ORT_MUST_USE_RESULT;
+  common::Status LoadOnnxModel(const PathString& model_uri) ORT_MUST_USE_RESULT;
 
   bool HasLocalSchema() const {
     return !custom_schema_registries_.empty();
   }
 
-  common::Status SaveToOrtFormat(const std::basic_string<ORTCHAR_T>& filepath) const;
+  common::Status SaveToOrtFormat(const PathString& filepath) const;
 #endif
 
   /**
@@ -573,10 +573,7 @@ class InferenceSession {
    * @param model_uri absolute path of the model file.
    * @return OK if success.
    */
-  common::Status LoadOrtModel(const std::string& model_uri) ORT_MUST_USE_RESULT;
-#ifdef _WIN32
-  common::Status LoadOrtModel(const std::wstring& model_uri) ORT_MUST_USE_RESULT;
-#endif
+  common::Status LoadOrtModel(const PathString& model_uri) ORT_MUST_USE_RESULT;
 
   /**
    * Load an ORT format model.
@@ -588,7 +585,7 @@ class InferenceSession {
    */
   common::Status LoadOrtModel(const void* model_data, int model_data_len) ORT_MUST_USE_RESULT;
 
-  common::Status LoadOrtModel(std::function<Status()> load_ort_format_model_bytes) ORT_MUST_USE_RESULT;
+  common::Status LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) ORT_MUST_USE_RESULT;
 
   // Create a Logger for a single execution if possible. Otherwise use the default logger.
   // If a new logger is created, it will also be stored in new_run_logger,

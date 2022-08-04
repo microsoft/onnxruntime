@@ -122,13 +122,12 @@ template <typename T>
 Status GreedySearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
   // Input shapes:
   //   input_ids  : (batch_size, sequence_length)
-
-  const Tensor* input_ids = context.Input<Tensor>(0);
-  const auto& dims = input_ids->Shape().GetDims();
-  if (dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'input_ids' is expected to have 2 dimensions, got ",
-                           dims.size());
-  }
+  //   vocab_mask : (vocab_size) or nullptr
+  ORT_RETURN_IF_ERROR(this->CheckInputsImpl(parameters_,
+                                            context.Input<Tensor>(0),   // input_ids
+                                            context.Input<Tensor>(4),   // vocab_mask
+                                            context.Input<Tensor>(5),   // prefix_vocab_mask
+                                            nullptr));                  // attention_mask
 
   return Status::OK();
 }
@@ -144,9 +143,6 @@ Status GreedySearchBase<T>::Initialize() {
 
   // This flag will be updated later when the scores output exists.
   parameters_->output_scores = false;
-
-  // no_repeat_ngram_size is currently not supported in Greedy search
-  parameters_->no_repeat_ngram_size = 0;
 
   if (!this->IsCuda()) {
     // Logits processor is used in CPU only. In CUDA, cuda kernels are used instead.
