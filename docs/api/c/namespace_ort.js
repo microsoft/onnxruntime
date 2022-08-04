@@ -1,5 +1,6 @@
 var namespace_ort =
 [
+    [ "detail", "namespace_ort_1_1detail.html", "namespace_ort_1_1detail" ],
     [ "Allocator", "struct_ort_1_1_allocator.html", "struct_ort_1_1_allocator" ],
     [ "AllocatorWithDefaultOptions", "struct_ort_1_1_allocator_with_default_options.html", "struct_ort_1_1_allocator_with_default_options" ],
     [ "ArenaCfg", "struct_ort_1_1_arena_cfg.html", "struct_ort_1_1_arena_cfg" ],
@@ -25,6 +26,7 @@ var namespace_ort =
     [ "TypeInfo", "struct_ort_1_1_type_info.html", "struct_ort_1_1_type_info" ],
     [ "Unowned", "struct_ort_1_1_unowned.html", "struct_ort_1_1_unowned" ],
     [ "Value", "struct_ort_1_1_value.html", "struct_ort_1_1_value" ],
+    [ "AllocatedStringPtr", "namespace_ort.html#a06553255861e1c30a7437f2e18b70ec0", null ],
     [ "GetApi", "namespace_ort.html#a8930fa08683b5153ee3aa4df63745ce3", null ],
     [ "GetAvailableProviders", "namespace_ort.html#ac2f785275bced9e6853a2f4ea6b71c04", null ],
     [ "OrtRelease", "namespace_ort.html#ab02f1610bce528edcaf1c09ed3630c25", null ],

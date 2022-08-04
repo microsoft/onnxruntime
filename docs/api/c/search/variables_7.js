@@ -11,6 +11,7 @@ var searchData=
   ['getoutputcharacteristic_8',['GetOutputCharacteristic',['../struct_ort_custom_op.html#a0fe03707bc8b2adae0cf3752c0fbec4a',1,'OrtCustomOp']]],
   ['getoutputtype_9',['GetOutputType',['../struct_ort_custom_op.html#ad86baba54616d6398a0ee51831a21ab4',1,'OrtCustomOp']]],
   ['getoutputtypecount_10',['GetOutputTypeCount',['../struct_ort_custom_op.html#a33fb94532f6eebe323b48cf2a63c2eb4',1,'OrtCustomOp']]],
-  ['getversionstring_11',['GetVersionString',['../struct_ort_api_base.html#a526ca6b93c227df319c4730974199e59',1,'OrtApiBase']]],
-  ['gpu_5fmem_5flimit_12',['gpu_mem_limit',['../struct_ort_c_u_d_a_provider_options.html#a69e9ef15821960254f52adc33a8d0f92',1,'OrtCUDAProviderOptions::gpu_mem_limit()'],['../struct_ort_r_o_c_m_provider_options.html#a7c7c135368a2e0d66f6714b29574ceb3',1,'OrtROCMProviderOptions::gpu_mem_limit()']]]
+  ['gettrainingapi_11',['GetTrainingApi',['../struct_ort_api.html#aecf909dbe8b0aca1687d77615cc996bd',1,'OrtApi']]],
+  ['getversionstring_12',['GetVersionString',['../struct_ort_api_base.html#a526ca6b93c227df319c4730974199e59',1,'OrtApiBase']]],
+  ['gpu_5fmem_5flimit_13',['gpu_mem_limit',['../struct_ort_c_u_d_a_provider_options.html#a69e9ef15821960254f52adc33a8d0f92',1,'OrtCUDAProviderOptions::gpu_mem_limit()'],['../struct_ort_r_o_c_m_provider_options.html#a7c7c135368a2e0d66f6714b29574ceb3',1,'OrtROCMProviderOptions::gpu_mem_limit()']]]
 ];

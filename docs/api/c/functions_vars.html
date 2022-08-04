@@ -94,6 +94,7 @@ $(document).ready(function(){initNavTree('functions_vars.html',''); initResizabl
 
 <h3><a id="index_a" name="index_a"></a>- a -</h3><ul>
 <li>Alloc&#160;:&#160;<a class="el" href="struct_ort_allocator.html#aa2a68a69192b9650d9e0f0c6aeca2835">OrtAllocator</a></li>
+<li>allocator_&#160;:&#160;<a class="el" href="struct_ort_1_1detail_1_1_allocated_free.html#a9997b2f270f597fef711f2c4796e4b44">Ort::detail::AllocatedFree</a></li>
 <li>api_&#160;:&#160;<a class="el" href="struct_ort_1_1_global.html#ab942ff324e47dc1fa29f5ee030fcf872">Ort::Global&lt; T &gt;</a></li>
 <li>arena_extend_strategy&#160;:&#160;<a class="el" href="struct_ort_c_u_d_a_provider_options.html#a6e1465dbb581ba943c92ac595fc4c1d2">OrtCUDAProviderOptions</a>, <a class="el" href="struct_ort_r_o_c_m_provider_options.html#aca6e8574be4791f3ec7d32eb2039af10">OrtROCMProviderOptions</a></li>
 </ul>
@@ -117,13 +118,15 @@ $(document).ready(function(){initNavTree('functions_vars.html',''); initResizabl
 <h3><a id="index_d" name="index_d"></a>- d -</h3><ul>
 <li>data&#160;:&#160;<a class="el" href="struct_ort_1_1_value_1_1_ort_sparse_values_param.html#aea8bef6e03c8581002ed6f084c1d7232">Ort::Value::OrtSparseValuesParam</a></li>
 <li>default_memory_arena_cfg&#160;:&#160;<a class="el" href="struct_ort_c_u_d_a_provider_options.html#abd39e249214231af0f7d0ebbcd429cef">OrtCUDAProviderOptions</a>, <a class="el" href="struct_ort_r_o_c_m_provider_options.html#a62208d43b2cff138e00c19f24967f87e">OrtROCMProviderOptions</a></li>
-<li>device_id&#160;:&#160;<a class="el" href="struct_ort_c_u_d_a_provider_options.html#ae105c47aba5b45504a830b19a0f9a420">OrtCUDAProviderOptions</a>, <a class="el" href="struct_ort_open_v_i_n_o_provider_options.html#a9e425ed28e08a063a3e2a3a6f8d59371">OrtOpenVINOProviderOptions</a>, <a class="el" href="struct_ort_r_o_c_m_provider_options.html#a275656f9f59635a4cdd6dbbea7d40d4d">OrtROCMProviderOptions</a>, <a class="el" href="struct_ort_tensor_r_t_provider_options.html#a13ebbf0eb5bdb5c8b9ce9f90bee2560d">OrtTensorRTProviderOptions</a></li>
+<li>device_id&#160;:&#160;<a class="el" href="struct_ort_c_u_d_a_provider_options.html#ae105c47aba5b45504a830b19a0f9a420">OrtCUDAProviderOptions</a>, <a class="el" href="struct_ort_m_i_graph_x_provider_options.html#a686b16b0949b7373371c193eb37e722c">OrtMIGraphXProviderOptions</a>, <a class="el" href="struct_ort_open_v_i_n_o_provider_options.html#a9e425ed28e08a063a3e2a3a6f8d59371">OrtOpenVINOProviderOptions</a>, <a class="el" href="struct_ort_r_o_c_m_provider_options.html#a275656f9f59635a4cdd6dbbea7d40d4d">OrtROCMProviderOptions</a>, <a class="el" href="struct_ort_tensor_r_t_provider_options.html#a13ebbf0eb5bdb5c8b9ce9f90bee2560d">OrtTensorRTProviderOptions</a></li>
 <li>device_type&#160;:&#160;<a class="el" href="struct_ort_open_v_i_n_o_provider_options.html#a71b6a09d23ca413982ece2c557aae595">OrtOpenVINOProviderOptions</a></li>
 <li>do_copy_in_default_stream&#160;:&#160;<a class="el" href="struct_ort_c_u_d_a_provider_options.html#a5186a856edeaf860dc547db309e85f95">OrtCUDAProviderOptions</a>, <a class="el" href="struct_ort_r_o_c_m_provider_options.html#a5a3afd088ec9d4bc66397dd16f8fbec7">OrtROCMProviderOptions</a></li>
 </ul>
 
 
 <h3><a id="index_e" name="index_e"></a>- e -</h3><ul>
+<li>enable_dynamic_shapes&#160;:&#160;<a class="el" href="struct_ort_open_v_i_n_o_provider_options.html#adb6743cec5396119ec2e29617c37e9bf">OrtOpenVINOProviderOptions</a></li>
+<li>enable_opencl_throttling&#160;:&#160;<a class="el" href="struct_ort_open_v_i_n_o_provider_options.html#a17330d6b395d377d0787074dce5d0eac">OrtOpenVINOProviderOptions</a></li>
 <li>enable_vpu_fast_compile&#160;:&#160;<a class="el" href="struct_ort_open_v_i_n_o_provider_options.html#a560a1f5fac98d347ba7522375ee40638">OrtOpenVINOProviderOptions</a></li>
 </ul>
 
@@ -145,6 +148,7 @@ $(document).ready(function(){initNavTree('functions_vars.html',''); initResizabl
 <li>GetOutputCharacteristic&#160;:&#160;<a class="el" href="struct_ort_custom_op.html#a0fe03707bc8b2adae0cf3752c0fbec4a">OrtCustomOp</a></li>
 <li>GetOutputType&#160;:&#160;<a class="el" href="struct_ort_custom_op.html#ad86baba54616d6398a0ee51831a21ab4">OrtCustomOp</a></li>
 <li>GetOutputTypeCount&#160;:&#160;<a class="el" href="struct_ort_custom_op.html#a33fb94532f6eebe323b48cf2a63c2eb4">OrtCustomOp</a></li>
+<li>GetTrainingApi&#160;:&#160;<a class="el" href="struct_ort_api.html#aecf909dbe8b0aca1687d77615cc996bd">OrtApi</a></li>
 <li>GetVersionString&#160;:&#160;<a class="el" href="struct_ort_api_base.html#a526ca6b93c227df319c4730974199e59">OrtApiBase</a></li>
 <li>gpu_mem_limit&#160;:&#160;<a class="el" href="struct_ort_c_u_d_a_provider_options.html#a69e9ef15821960254f52adc33a8d0f92">OrtCUDAProviderOptions</a>, <a class="el" href="struct_ort_r_o_c_m_provider_options.html#a7c7c135368a2e0d66f6714b29574ceb3">OrtROCMProviderOptions</a></li>
 </ul>
@@ -167,6 +171,8 @@ $(document).ready(function(){initNavTree('functions_vars.html',''); initResizabl
 
 
 <h3><a id="index_m" name="index_m"></a>- m -</h3><ul>
+<li>migraphx_fp16_enable&#160;:&#160;<a class="el" href="struct_ort_m_i_graph_x_provider_options.html#a61df887d5290ff94187113dd299a20fc">OrtMIGraphXProviderOptions</a></li>
+<li>migraphx_int8_enable&#160;:&#160;<a class="el" href="struct_ort_m_i_graph_x_provider_options.html#a45862202fdcc457261818681ac9a8e90">OrtMIGraphXProviderOptions</a></li>
 <li>miopen_conv_exhaustive_search&#160;:&#160;<a class="el" href="struct_ort_r_o_c_m_provider_options.html#afb27ec844e96c69711c8a46461616157">OrtROCMProviderOptions</a></li>
 </ul>
 

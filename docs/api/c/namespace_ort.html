@@ -86,7 +86,9 @@ $(document).ready(function(){initNavTree('namespace_ort.html',''); initResizable
 
 <div class="header">
   <div class="summary">
+<a href="#namespaces">Namespaces</a> &#124;
 <a href="#nested-classes">Classes</a> &#124;
+<a href="#typedef-members">Typedefs</a> &#124;
 <a href="#func-members">Functions</a>  </div>
   <div class="headertitle"><div class="title">Ort Namespace Reference</div></div>
 </div><!--header-->
@@ -95,6 +97,11 @@ $(document).ready(function(){initNavTree('namespace_ort.html',''); initResizable
 <p>All C++ Onnxruntime APIs are defined inside this namespace.  
 <a href="namespace_ort.html#details">More...</a></p>
 <table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="namespaces" name="namespaces"></a>
+Namespaces</h2></td></tr>
+<tr class="memitem:namespace_ort_1_1detail"><td class="memItemLeft" align="right" valign="top">namespace &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespace_ort_1_1detail.html">detail</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="nested-classes" name="nested-classes"></a>
 Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_allocator.html">Allocator</a></td></tr>
@@ -162,6 +169,12 @@ Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_value.html">Value</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="typedef-members" name="typedef-members"></a>
+Typedefs</h2></td></tr>
+<tr class="memitem:a06553255861e1c30a7437f2e18b70ec0"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespace_ort.html#a06553255861e1c30a7437f2e18b70ec0">AllocatedStringPtr</a> = std::unique_ptr&lt; char, <a class="el" href="struct_ort_1_1detail_1_1_allocated_free.html">detail::AllocatedFree</a> &gt;</td></tr>
+<tr class="memdesc:a06553255861e1c30a7437f2e18b70ec0"><td class="mdescLeft">&#160;</td><td class="mdescRight">unique_ptr typedef used to own strings allocated by OrtAllocators and release them at the end of the scope. The lifespan of the given allocator must eclipse the lifespan of AllocatedStringPtr instance  <a href="namespace_ort.html#a06553255861e1c30a7437f2e18b70ec0">More...</a><br /></td></tr>
+<tr class="separator:a06553255861e1c30a7437f2e18b70ec0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
 <tr class="memitem:a8930fa08683b5153ee3aa4df63745ce3"><td class="memItemLeft" align="right" valign="top">const <a class="el" href="struct_ort_api.html">OrtApi</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespace_ort.html#a8930fa08683b5153ee3aa4df63745ce3">GetApi</a> ()</td></tr>
@@ -205,7 +218,24 @@ Functions</h2></td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p >All C++ Onnxruntime APIs are defined inside this namespace. </p>
-</div><h2 class="groupheader">Function Documentation</h2>
+</div><h2 class="groupheader">Typedef Documentation</h2>
+<a id="a06553255861e1c30a7437f2e18b70ec0" name="a06553255861e1c30a7437f2e18b70ec0"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a06553255861e1c30a7437f2e18b70ec0">&#9670;&nbsp;</a></span>AllocatedStringPtr</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">using <a class="el" href="namespace_ort.html#a06553255861e1c30a7437f2e18b70ec0">Ort::AllocatedStringPtr</a> = typedef std::unique_ptr&lt;char, <a class="el" href="struct_ort_1_1detail_1_1_allocated_free.html">detail::AllocatedFree</a>&gt;</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>unique_ptr typedef used to own strings allocated by OrtAllocators and release them at the end of the scope. The lifespan of the given allocator must eclipse the lifespan of AllocatedStringPtr instance </p>
+
+</div>
+</div>
+<h2 class="groupheader">Function Documentation</h2>
 <a id="a8930fa08683b5153ee3aa4df63745ce3" name="a8930fa08683b5153ee3aa4df63745ce3"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a8930fa08683b5153ee3aa4df63745ce3">&#9670;&nbsp;</a></span>GetApi()</h2>
 

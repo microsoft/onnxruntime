@@ -137,6 +137,20 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a0bb133692d307824f5da57019963d4a2"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5e6b792b3e87a2c4fcf79d9e8bf3773c"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_custom_op_api.html#a5e6b792b3e87a2c4fcf79d9e8bf3773c">ThrowOnError</a> (<a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> *result)</td></tr>
 <tr class="separator:a5e6b792b3e87a2c4fcf79d9e8bf3773c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a2740576ee3310312e198533bd9f0fddb"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#ga35c9298b30685c4e68e4830697a6a171">OrtOpAttr</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_custom_op_api.html#a2740576ee3310312e198533bd9f0fddb">CreateOpAttr</a> (const char *name, const void *data, int len, <a class="el" href="group___global.html#gad2d78682b8468cfbfbbc20563a2424cc">OrtOpAttrType</a> type)</td></tr>
+<tr class="separator:a2740576ee3310312e198533bd9f0fddb"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5c929d4036f582b452ce4bc9b8633c86"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_custom_op_api.html#a5c929d4036f582b452ce4bc9b8633c86">ReleaseOpAttr</a> (<a class="el" href="group___global.html#ga35c9298b30685c4e68e4830697a6a171">OrtOpAttr</a> *op_attr)</td></tr>
+<tr class="separator:a5c929d4036f582b452ce4bc9b8633c86"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a8c66daa44131353c1ba93ed41078f320"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#ga5f2a4b6be620e970f5c401795034c416">OrtOp</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_custom_op_api.html#a8c66daa44131353c1ba93ed41078f320">CreateOp</a> (const <a class="el" href="group___global.html#ga0dc9b747ee56ed963beb424a48ed6b8b">OrtKernelInfo</a> *info, const char *op_name, const char *domain, int version, const char **type_constraint_names, const <a class="el" href="group___global.html#gaec63cdda46c29b8183997f38930ce38e">ONNXTensorElementDataType</a> *type_constraint_values, int type_constraint_count, const <a class="el" href="group___global.html#ga35c9298b30685c4e68e4830697a6a171">OrtOpAttr</a> *const *attr_values, int attr_count, int input_count, int output_count)</td></tr>
+<tr class="separator:a8c66daa44131353c1ba93ed41078f320"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a17cae29d7ef679bae9b9b0857b188b45"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_custom_op_api.html#a17cae29d7ef679bae9b9b0857b188b45">InvokeOp</a> (const <a class="el" href="group___global.html#ga757f41782aa4ae79362a25d92a5d4230">OrtKernelContext</a> *context, const <a class="el" href="group___global.html#ga5f2a4b6be620e970f5c401795034c416">OrtOp</a> *ort_op, const <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *const *input_values, int input_count, <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *const *output_values, int output_count)</td></tr>
+<tr class="separator:a17cae29d7ef679bae9b9b0857b188b45"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a31dc7e04f29cfa16413f22198ecd824e"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_custom_op_api.html#a31dc7e04f29cfa16413f22198ecd824e">ReleaseOp</a> (<a class="el" href="group___global.html#ga5f2a4b6be620e970f5c401795034c416">OrtOp</a> *ort_op)</td></tr>
+<tr class="separator:a31dc7e04f29cfa16413f22198ecd824e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae39a4bb631faea94364121264fb0c7d3"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#ga0dc9b747ee56ed963beb424a48ed6b8b">OrtKernelInfo</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_custom_op_api.html#ae39a4bb631faea94364121264fb0c7d3">CopyKernelInfo</a> (const <a class="el" href="group___global.html#ga0dc9b747ee56ed963beb424a48ed6b8b">OrtKernelInfo</a> *info)</td></tr>
+<tr class="separator:ae39a4bb631faea94364121264fb0c7d3"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af74d63c508411150a9c905824e9ee95b"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_custom_op_api.html#af74d63c508411150a9c905824e9ee95b">ReleaseKernelInfo</a> (<a class="el" href="group___global.html#ga0dc9b747ee56ed963beb424a48ed6b8b">OrtKernelInfo</a> *info_copy)</td></tr>
+<tr class="separator:af74d63c508411150a9c905824e9ee95b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="abf028f27de7ac28bf78d89917dfe56b9" name="abf028f27de7ac28bf78d89917dfe56b9"></a>
@@ -166,6 +180,146 @@ Public Member Functions</h2></td></tr>
 </div>
 </div>
 <h2 class="groupheader">Member Function Documentation</h2>
+<a id="ae39a4bb631faea94364121264fb0c7d3" name="ae39a4bb631faea94364121264fb0c7d3"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae39a4bb631faea94364121264fb0c7d3">&#9670;&nbsp;</a></span>CopyKernelInfo()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="group___global.html#ga0dc9b747ee56ed963beb424a48ed6b8b">OrtKernelInfo</a> * Ort::CustomOpApi::CopyKernelInfo </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="group___global.html#ga0dc9b747ee56ed963beb424a48ed6b8b">OrtKernelInfo</a> *&#160;</td>
+          <td class="paramname"><em>info</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a8c66daa44131353c1ba93ed41078f320" name="a8c66daa44131353c1ba93ed41078f320"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a8c66daa44131353c1ba93ed41078f320">&#9670;&nbsp;</a></span>CreateOp()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="group___global.html#ga5f2a4b6be620e970f5c401795034c416">OrtOp</a> * Ort::CustomOpApi::CreateOp </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="group___global.html#ga0dc9b747ee56ed963beb424a48ed6b8b">OrtKernelInfo</a> *&#160;</td>
+          <td class="paramname"><em>info</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const char *&#160;</td>
+          <td class="paramname"><em>op_name</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const char *&#160;</td>
+          <td class="paramname"><em>domain</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>version</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const char **&#160;</td>
+          <td class="paramname"><em>type_constraint_names</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="group___global.html#gaec63cdda46c29b8183997f38930ce38e">ONNXTensorElementDataType</a> *&#160;</td>
+          <td class="paramname"><em>type_constraint_values</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>type_constraint_count</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="group___global.html#ga35c9298b30685c4e68e4830697a6a171">OrtOpAttr</a> *const *&#160;</td>
+          <td class="paramname"><em>attr_values</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>attr_count</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>input_count</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>output_count</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a2740576ee3310312e198533bd9f0fddb" name="a2740576ee3310312e198533bd9f0fddb"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a2740576ee3310312e198533bd9f0fddb">&#9670;&nbsp;</a></span>CreateOpAttr()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="group___global.html#ga35c9298b30685c4e68e4830697a6a171">OrtOpAttr</a> * Ort::CustomOpApi::CreateOpAttr </td>
+          <td>(</td>
+          <td class="paramtype">const char *&#160;</td>
+          <td class="paramname"><em>name</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const void *&#160;</td>
+          <td class="paramname"><em>data</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>len</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="group___global.html#gad2d78682b8468cfbfbbc20563a2424cc">OrtOpAttrType</a>&#160;</td>
+          <td class="paramname"><em>type</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
 <a id="a53dbeeb8fba97a7c5c1e5a97a8f1978a" name="a53dbeeb8fba97a7c5c1e5a97a8f1978a"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a53dbeeb8fba97a7c5c1e5a97a8f1978a">&#9670;&nbsp;</a></span>GetDimensions()</h2>
 
@@ -348,6 +502,58 @@ template&lt;typename T &gt; </div>
 
 </div>
 </div>
+<a id="a17cae29d7ef679bae9b9b0857b188b45" name="a17cae29d7ef679bae9b9b0857b188b45"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a17cae29d7ef679bae9b9b0857b188b45">&#9670;&nbsp;</a></span>InvokeOp()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void Ort::CustomOpApi::InvokeOp </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="group___global.html#ga757f41782aa4ae79362a25d92a5d4230">OrtKernelContext</a> *&#160;</td>
+          <td class="paramname"><em>context</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="group___global.html#ga5f2a4b6be620e970f5c401795034c416">OrtOp</a> *&#160;</td>
+          <td class="paramname"><em>ort_op</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *const *&#160;</td>
+          <td class="paramname"><em>input_values</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>input_count</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *const *&#160;</td>
+          <td class="paramname"><em>output_values</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>output_count</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
 <a id="a0bb133692d307824f5da57019963d4a2" name="a0bb133692d307824f5da57019963d4a2"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a0bb133692d307824f5da57019963d4a2">&#9670;&nbsp;</a></span>KernelContext_GetGPUComputeStream()</h2>
 
@@ -494,6 +700,60 @@ template&lt;typename T &gt; </div>
           <td></td>
           <td>)</td>
           <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="af74d63c508411150a9c905824e9ee95b" name="af74d63c508411150a9c905824e9ee95b"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#af74d63c508411150a9c905824e9ee95b">&#9670;&nbsp;</a></span>ReleaseKernelInfo()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void Ort::CustomOpApi::ReleaseKernelInfo </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="group___global.html#ga0dc9b747ee56ed963beb424a48ed6b8b">OrtKernelInfo</a> *&#160;</td>
+          <td class="paramname"><em>info_copy</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a31dc7e04f29cfa16413f22198ecd824e" name="a31dc7e04f29cfa16413f22198ecd824e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a31dc7e04f29cfa16413f22198ecd824e">&#9670;&nbsp;</a></span>ReleaseOp()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void Ort::CustomOpApi::ReleaseOp </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="group___global.html#ga5f2a4b6be620e970f5c401795034c416">OrtOp</a> *&#160;</td>
+          <td class="paramname"><em>ort_op</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a5c929d4036f582b452ce4bc9b8633c86" name="a5c929d4036f582b452ce4bc9b8633c86"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a5c929d4036f582b452ce4bc9b8633c86">&#9670;&nbsp;</a></span>ReleaseOpAttr()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void Ort::CustomOpApi::ReleaseOpAttr </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="group___global.html#ga35c9298b30685c4e68e4830697a6a171">OrtOpAttr</a> *&#160;</td>
+          <td class="paramname"><em>op_attr</em></td><td>)</td>
+          <td></td>
         </tr>
       </table>
 </div><div class="memdoc">

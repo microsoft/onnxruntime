@@ -167,9 +167,15 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a85b55eeb514e2cbef7fd57de6279b93d"><td class="memItemLeft" align="right" valign="top"><a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session_options.html#a85b55eeb514e2cbef7fd57de6279b93d">AddInitializer</a> (const char *name, const <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *ort_val)</td></tr>
 <tr class="memdesc:a85b55eeb514e2cbef7fd57de6279b93d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wraps <a class="el" href="struct_ort_api.html#a21a723218a1f795a0deabb6f8a2c541a" title="Add a pre-allocated initializer to a session.">OrtApi::AddInitializer</a>.  <a href="struct_ort_1_1_session_options.html#a85b55eeb514e2cbef7fd57de6279b93d">More...</a><br /></td></tr>
 <tr class="separator:a85b55eeb514e2cbef7fd57de6279b93d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a3277c66581b1a2a004ba88a9fd2027b7"><td class="memItemLeft" align="right" valign="top"><a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session_options.html#a3277c66581b1a2a004ba88a9fd2027b7">AddExternalInitializers</a> (const std::vector&lt; std::string &gt; &amp;names, const std::vector&lt; <a class="el" href="struct_ort_1_1_value.html">Value</a> &gt; &amp;ort_values)</td></tr>
+<tr class="memdesc:a3277c66581b1a2a004ba88a9fd2027b7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wraps <a class="el" href="struct_ort_api.html#a39534fa0be75e7f0fb00d57c67e5d189" title="Replace initialized Tensors with external data with the data provided in initializers.">OrtApi::AddExternalInitializers</a>.  <a href="struct_ort_1_1_session_options.html#a3277c66581b1a2a004ba88a9fd2027b7">More...</a><br /></td></tr>
+<tr class="separator:a3277c66581b1a2a004ba88a9fd2027b7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:afea37bbd589b4acd151ce2cc49ac7844"><td class="memItemLeft" align="right" valign="top"><a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session_options.html#afea37bbd589b4acd151ce2cc49ac7844">AppendExecutionProvider_CUDA</a> (const <a class="el" href="struct_ort_c_u_d_a_provider_options.html">OrtCUDAProviderOptions</a> &amp;provider_options)</td></tr>
 <tr class="memdesc:afea37bbd589b4acd151ce2cc49ac7844"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wraps <a class="el" href="struct_ort_api.html#a39509920aff0ea1395e121ec04020c70" title="Append CUDA provider to session options.">OrtApi::SessionOptionsAppendExecutionProvider_CUDA</a>.  <a href="struct_ort_1_1_session_options.html#afea37bbd589b4acd151ce2cc49ac7844">More...</a><br /></td></tr>
 <tr class="separator:afea37bbd589b4acd151ce2cc49ac7844"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a50ec5541f48ac4032737c1c344ff655c"><td class="memItemLeft" align="right" valign="top"><a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session_options.html#a50ec5541f48ac4032737c1c344ff655c">AppendExecutionProvider_CUDA_V2</a> (const <a class="el" href="group___global.html#ga6b319b3ba435fb46c3808d7957c4684f">OrtCUDAProviderOptionsV2</a> &amp;provider_options)</td></tr>
+<tr class="memdesc:a50ec5541f48ac4032737c1c344ff655c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wraps <a class="el" href="struct_ort_api.html#afa0cb6701f74f80d1d41e1a98c63ccec" title="Append CUDA execution provider to the session options.">OrtApi::SessionOptionsAppendExecutionProvider_CUDA_V2</a>.  <a href="struct_ort_1_1_session_options.html#a50ec5541f48ac4032737c1c344ff655c">More...</a><br /></td></tr>
+<tr class="separator:a50ec5541f48ac4032737c1c344ff655c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aaa789e496dfdd6682344f7d3748ecf52"><td class="memItemLeft" align="right" valign="top"><a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session_options.html#aaa789e496dfdd6682344f7d3748ecf52">AppendExecutionProvider_ROCM</a> (const <a class="el" href="struct_ort_r_o_c_m_provider_options.html">OrtROCMProviderOptions</a> &amp;provider_options)</td></tr>
 <tr class="memdesc:aaa789e496dfdd6682344f7d3748ecf52"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wraps <a class="el" href="struct_ort_api.html#a5b70c887bab24d053021de7b9e8cb0ea" title="Append ROCM execution provider to the session options.">OrtApi::SessionOptionsAppendExecutionProvider_ROCM</a>.  <a href="struct_ort_1_1_session_options.html#aaa789e496dfdd6682344f7d3748ecf52">More...</a><br /></td></tr>
 <tr class="separator:aaa789e496dfdd6682344f7d3748ecf52"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -179,6 +185,14 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a17bf9c1f81f7ac33cde7bb49034ca009"><td class="memItemLeft" align="right" valign="top"><a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session_options.html#a17bf9c1f81f7ac33cde7bb49034ca009">AppendExecutionProvider_TensorRT</a> (const <a class="el" href="struct_ort_tensor_r_t_provider_options.html">OrtTensorRTProviderOptions</a> &amp;provider_options)</td></tr>
 <tr class="memdesc:a17bf9c1f81f7ac33cde7bb49034ca009"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wraps <a class="el" href="struct_ort_api.html#a13721f0f99a5ba512adf8089eb76b3ed" title="Append TensorRT provider to session options.">OrtApi::SessionOptionsAppendExecutionProvider_TensorRT</a>.  <a href="struct_ort_1_1_session_options.html#a17bf9c1f81f7ac33cde7bb49034ca009">More...</a><br /></td></tr>
 <tr class="separator:a17bf9c1f81f7ac33cde7bb49034ca009"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac23781981a046c2e6066c0001693cbf0"><td class="memItemLeft" align="right" valign="top"><a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session_options.html#ac23781981a046c2e6066c0001693cbf0">AppendExecutionProvider_TensorRT_V2</a> (const <a class="el" href="group___global.html#ga331177427bd78a813d46a78f78f159a2">OrtTensorRTProviderOptionsV2</a> &amp;provider_options)</td></tr>
+<tr class="memdesc:ac23781981a046c2e6066c0001693cbf0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wraps <a class="el" href="struct_ort_api.html#a13721f0f99a5ba512adf8089eb76b3ed" title="Append TensorRT provider to session options.">OrtApi::SessionOptionsAppendExecutionProvider_TensorRT</a>.  <a href="struct_ort_1_1_session_options.html#ac23781981a046c2e6066c0001693cbf0">More...</a><br /></td></tr>
+<tr class="separator:ac23781981a046c2e6066c0001693cbf0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:abd2ed4c029bb4cfaebf89b792c9a4acc"><td class="memItemLeft" align="right" valign="top"><a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session_options.html#abd2ed4c029bb4cfaebf89b792c9a4acc">AppendExecutionProvider_MIGraphX</a> (const <a class="el" href="struct_ort_m_i_graph_x_provider_options.html">OrtMIGraphXProviderOptions</a> &amp;provider_options)</td></tr>
+<tr class="separator:abd2ed4c029bb4cfaebf89b792c9a4acc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5e0892dcb91736981c85768ff6339fe5"><td class="memItemLeft" align="right" valign="top"><a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session_options.html#a5e0892dcb91736981c85768ff6339fe5">AppendExecutionProvider</a> (const std::string &amp;provider_name, const std::unordered_map&lt; std::string, std::string &gt; &amp;provider_options={})</td></tr>
+<tr class="memdesc:a5e0892dcb91736981c85768ff6339fe5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wraps <a class="el" href="struct_ort_api.html#a5f357353ba83dce8103d0faff837996e" title=": Append execution provider to the session options.">OrtApi::SessionOptionsAppendExecutionProvider</a>. Currently supports SNPE and XNNPACK.  <a href="struct_ort_1_1_session_options.html#a5e0892dcb91736981c85768ff6339fe5">More...</a><br /></td></tr>
+<tr class="separator:a5e0892dcb91736981c85768ff6339fe5"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1b398d0102e5e9c924a3f4c8ee27d602"><td class="memItemLeft" align="right" valign="top"><a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_session_options.html#a1b398d0102e5e9c924a3f4c8ee27d602">SetCustomCreateThreadFn</a> (<a class="el" href="group___global.html#gae0957b6ccebab677893b6155dcb744e5">OrtCustomCreateThreadFn</a> ort_custom_create_thread_fn)</td></tr>
 <tr class="memdesc:a1b398d0102e5e9c924a3f4c8ee27d602"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wraps <a class="el" href="struct_ort_api.html#af6818f5c6e2ce2d5d81d33872275c13c" title="Set custom thread creation function.">OrtApi::SessionOptionsSetCustomCreateThreadFn</a>.  <a href="struct_ort_1_1_session_options.html#a1b398d0102e5e9c924a3f4c8ee27d602">More...</a><br /></td></tr>
 <tr class="separator:a1b398d0102e5e9c924a3f4c8ee27d602"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -351,6 +365,36 @@ Additional Inherited Members</h2></td></tr>
 
 </div>
 </div>
+<a id="a3277c66581b1a2a004ba88a9fd2027b7" name="a3277c66581b1a2a004ba88a9fd2027b7"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a3277c66581b1a2a004ba88a9fd2027b7">&#9670;&nbsp;</a></span>AddExternalInitializers()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp; Ort::SessionOptions::AddExternalInitializers </td>
+          <td>(</td>
+          <td class="paramtype">const std::vector&lt; std::string &gt; &amp;&#160;</td>
+          <td class="paramname"><em>names</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const std::vector&lt; <a class="el" href="struct_ort_1_1_value.html">Value</a> &gt; &amp;&#160;</td>
+          <td class="paramname"><em>ort_values</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Wraps <a class="el" href="struct_ort_api.html#a39534fa0be75e7f0fb00d57c67e5d189" title="Replace initialized Tensors with external data with the data provided in initializers.">OrtApi::AddExternalInitializers</a>. </p>
+
+</div>
+</div>
 <a id="a85b55eeb514e2cbef7fd57de6279b93d" name="a85b55eeb514e2cbef7fd57de6279b93d"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a85b55eeb514e2cbef7fd57de6279b93d">&#9670;&nbsp;</a></span>AddInitializer()</h2>
 
@@ -381,6 +425,36 @@ Additional Inherited Members</h2></td></tr>
 
 </div>
 </div>
+<a id="a5e0892dcb91736981c85768ff6339fe5" name="a5e0892dcb91736981c85768ff6339fe5"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a5e0892dcb91736981c85768ff6339fe5">&#9670;&nbsp;</a></span>AppendExecutionProvider()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp; Ort::SessionOptions::AppendExecutionProvider </td>
+          <td>(</td>
+          <td class="paramtype">const std::string &amp;&#160;</td>
+          <td class="paramname"><em>provider_name</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const std::unordered_map&lt; std::string, std::string &gt; &amp;&#160;</td>
+          <td class="paramname"><em>provider_options</em> = <code>{}</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Wraps <a class="el" href="struct_ort_api.html#a5f357353ba83dce8103d0faff837996e" title=": Append execution provider to the session options.">OrtApi::SessionOptionsAppendExecutionProvider</a>. Currently supports SNPE and XNNPACK. </p>
+
+</div>
+</div>
 <a id="afea37bbd589b4acd151ce2cc49ac7844" name="afea37bbd589b4acd151ce2cc49ac7844"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#afea37bbd589b4acd151ce2cc49ac7844">&#9670;&nbsp;</a></span>AppendExecutionProvider_CUDA()</h2>
 
@@ -398,6 +472,45 @@ Additional Inherited Members</h2></td></tr>
 </div><div class="memdoc">
 
 <p>Wraps <a class="el" href="struct_ort_api.html#a39509920aff0ea1395e121ec04020c70" title="Append CUDA provider to session options.">OrtApi::SessionOptionsAppendExecutionProvider_CUDA</a>. </p>
+
+</div>
+</div>
+<a id="a50ec5541f48ac4032737c1c344ff655c" name="a50ec5541f48ac4032737c1c344ff655c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a50ec5541f48ac4032737c1c344ff655c">&#9670;&nbsp;</a></span>AppendExecutionProvider_CUDA_V2()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp; Ort::SessionOptions::AppendExecutionProvider_CUDA_V2 </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="group___global.html#ga6b319b3ba435fb46c3808d7957c4684f">OrtCUDAProviderOptionsV2</a> &amp;&#160;</td>
+          <td class="paramname"><em>provider_options</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Wraps <a class="el" href="struct_ort_api.html#afa0cb6701f74f80d1d41e1a98c63ccec" title="Append CUDA execution provider to the session options.">OrtApi::SessionOptionsAppendExecutionProvider_CUDA_V2</a>. </p>
+
+</div>
+</div>
+<a id="abd2ed4c029bb4cfaebf89b792c9a4acc" name="abd2ed4c029bb4cfaebf89b792c9a4acc"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#abd2ed4c029bb4cfaebf89b792c9a4acc">&#9670;&nbsp;</a></span>AppendExecutionProvider_MIGraphX()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp; Ort::SessionOptions::AppendExecutionProvider_MIGraphX </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="struct_ort_m_i_graph_x_provider_options.html">OrtMIGraphXProviderOptions</a> &amp;&#160;</td>
+          <td class="paramname"><em>provider_options</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<p >Wraps <a class="el" href="struct_ort_api.html#a21660e2cfcd3d64d2091335db0d91e89" title="Append MIGraphX provider to session options.">OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX</a> </p>
 
 </div>
 </div>
@@ -451,6 +564,26 @@ Additional Inherited Members</h2></td></tr>
           <td class="memname"><a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp; Ort::SessionOptions::AppendExecutionProvider_TensorRT </td>
           <td>(</td>
           <td class="paramtype">const <a class="el" href="struct_ort_tensor_r_t_provider_options.html">OrtTensorRTProviderOptions</a> &amp;&#160;</td>
+          <td class="paramname"><em>provider_options</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Wraps <a class="el" href="struct_ort_api.html#a13721f0f99a5ba512adf8089eb76b3ed" title="Append TensorRT provider to session options.">OrtApi::SessionOptionsAppendExecutionProvider_TensorRT</a>. </p>
+
+</div>
+</div>
+<a id="ac23781981a046c2e6066c0001693cbf0" name="ac23781981a046c2e6066c0001693cbf0"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ac23781981a046c2e6066c0001693cbf0">&#9670;&nbsp;</a></span>AppendExecutionProvider_TensorRT_V2()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="struct_ort_1_1_session_options.html">SessionOptions</a> &amp; Ort::SessionOptions::AppendExecutionProvider_TensorRT_V2 </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="group___global.html#ga331177427bd78a813d46a78f78f159a2">OrtTensorRTProviderOptionsV2</a> &amp;&#160;</td>
           <td class="paramname"><em>provider_options</em></td><td>)</td>
           <td></td>
         </tr>

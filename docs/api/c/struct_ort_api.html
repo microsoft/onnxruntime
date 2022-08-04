@@ -87,6 +87,7 @@ $(document).ready(function(){initNavTree('struct_ort_api.html',''); initResizabl
 <div class="header">
   <div class="summary">
 <a href="#pub-methods">Public Member Functions</a> &#124;
+<a href="#pub-attribs">Public Attributes</a> &#124;
 <a href="struct_ort_api-members.html">List of all members</a>  </div>
   <div class="headertitle"><div class="title">OrtApi Struct Reference<div class="ingroups"><a class="el" href="group___global.html">Global</a></div></div></div>
 </div><!--header-->
@@ -105,6 +106,39 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:ad40e9592f46363fc1fd64c8fc14ac6a4"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#ad40e9592f46363fc1fd64c8fc14ac6a4">SynchronizeBoundOutputs</a> (<a class="el" href="group___global.html#ga58e534aaa9cdcee02d79ffddced86c93">OrtIoBinding</a> *binding_ptr)</td></tr>
 <tr class="memdesc:ad40e9592f46363fc1fd64c8fc14ac6a4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Synchronize bound outputs. The call may be necessary for some providers, such as cuda, in case the system that allocated bound memory operated on a different stream. However, the operation is provider specific and could be a no-op.  <a href="struct_ort_api.html#ad40e9592f46363fc1fd64c8fc14ac6a4">More...</a><br /></td></tr>
 <tr class="separator:ad40e9592f46363fc1fd64c8fc14ac6a4"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a21660e2cfcd3d64d2091335db0d91e89"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#a21660e2cfcd3d64d2091335db0d91e89">SessionOptionsAppendExecutionProvider_MIGraphX</a> (<a class="el" href="group___global.html#gaa6c56bcb36e39611481a17065d3ce620">OrtSessionOptions</a> *options, const <a class="el" href="struct_ort_m_i_graph_x_provider_options.html">OrtMIGraphXProviderOptions</a> *migraphx_options)</td></tr>
+<tr class="memdesc:a21660e2cfcd3d64d2091335db0d91e89"><td class="mdescLeft">&#160;</td><td class="mdescRight">Append MIGraphX provider to session options.  <a href="struct_ort_api.html#a21660e2cfcd3d64d2091335db0d91e89">More...</a><br /></td></tr>
+<tr class="separator:a21660e2cfcd3d64d2091335db0d91e89"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a39534fa0be75e7f0fb00d57c67e5d189"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#a39534fa0be75e7f0fb00d57c67e5d189">AddExternalInitializers</a> (<a class="el" href="group___global.html#gaa6c56bcb36e39611481a17065d3ce620">OrtSessionOptions</a> *options, const char *const *initializer_names, const <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *const *initializers, size_t initializers_num)</td></tr>
+<tr class="memdesc:a39534fa0be75e7f0fb00d57c67e5d189"><td class="mdescLeft">&#160;</td><td class="mdescRight">Replace initialized Tensors with external data with the data provided in initializers.  <a href="struct_ort_api.html#a39534fa0be75e7f0fb00d57c67e5d189">More...</a><br /></td></tr>
+<tr class="separator:a39534fa0be75e7f0fb00d57c67e5d189"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae8dbae9378a2d2aeeca7fcf393c2a712"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#ae8dbae9378a2d2aeeca7fcf393c2a712">CreateOpAttr</a> (const char *name, const void *data, int len, <a class="el" href="group___global.html#gad2d78682b8468cfbfbbc20563a2424cc">OrtOpAttrType</a> type, <a class="el" href="group___global.html#ga35c9298b30685c4e68e4830697a6a171">OrtOpAttr</a> **op_attr)</td></tr>
+<tr class="memdesc:ae8dbae9378a2d2aeeca7fcf393c2a712"><td class="mdescLeft">&#160;</td><td class="mdescRight">: Create attribute of onnxruntime operator  <a href="struct_ort_api.html#ae8dbae9378a2d2aeeca7fcf393c2a712">More...</a><br /></td></tr>
+<tr class="separator:ae8dbae9378a2d2aeeca7fcf393c2a712"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:afcfc3e40fc03ccf5d194fd00d8fabfdc"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#afcfc3e40fc03ccf5d194fd00d8fabfdc">ReleaseOpAttr</a> (<a class="el" href="group___global.html#ga35c9298b30685c4e68e4830697a6a171">OrtOpAttr</a> *input)</td></tr>
+<tr class="separator:afcfc3e40fc03ccf5d194fd00d8fabfdc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a41ef10344a1abfa900ed29b45f2410b8"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#a41ef10344a1abfa900ed29b45f2410b8">CreateOp</a> (const <a class="el" href="group___global.html#ga0dc9b747ee56ed963beb424a48ed6b8b">OrtKernelInfo</a> *info, const char *op_name, const char *domain, int version, const char **type_constraint_names, const <a class="el" href="group___global.html#gaec63cdda46c29b8183997f38930ce38e">ONNXTensorElementDataType</a> *type_constraint_values, int type_constraint_count, const <a class="el" href="group___global.html#ga35c9298b30685c4e68e4830697a6a171">OrtOpAttr</a> *const *attr_values, int attr_count, int input_count, int output_count, <a class="el" href="group___global.html#ga5f2a4b6be620e970f5c401795034c416">OrtOp</a> **ort_op)</td></tr>
+<tr class="memdesc:a41ef10344a1abfa900ed29b45f2410b8"><td class="mdescLeft">&#160;</td><td class="mdescRight">: Create onnxruntime native operator  <a href="struct_ort_api.html#a41ef10344a1abfa900ed29b45f2410b8">More...</a><br /></td></tr>
+<tr class="separator:a41ef10344a1abfa900ed29b45f2410b8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a09c4aaaacf457a7c3a4379433e247ffd"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#a09c4aaaacf457a7c3a4379433e247ffd">InvokeOp</a> (const <a class="el" href="group___global.html#ga757f41782aa4ae79362a25d92a5d4230">OrtKernelContext</a> *context, const <a class="el" href="group___global.html#ga5f2a4b6be620e970f5c401795034c416">OrtOp</a> *ort_op, const <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *const *input_values, int input_count, <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *const *output_values, int output_count)</td></tr>
+<tr class="memdesc:a09c4aaaacf457a7c3a4379433e247ffd"><td class="mdescLeft">&#160;</td><td class="mdescRight">: Invoke the operator created by <a class="el" href="struct_ort_api.html#a41ef10344a1abfa900ed29b45f2410b8" title=": Create onnxruntime native operator">OrtApi::CreateOp</a> The inputs must follow the order as specified in onnx specification  <a href="struct_ort_api.html#a09c4aaaacf457a7c3a4379433e247ffd">More...</a><br /></td></tr>
+<tr class="separator:a09c4aaaacf457a7c3a4379433e247ffd"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae40ac238b11fcac230aca7c60fd33d47"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#ae40ac238b11fcac230aca7c60fd33d47">ReleaseOp</a> (<a class="el" href="group___global.html#ga5f2a4b6be620e970f5c401795034c416">OrtOp</a> *input)</td></tr>
+<tr class="separator:ae40ac238b11fcac230aca7c60fd33d47"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5f357353ba83dce8103d0faff837996e"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#a5f357353ba83dce8103d0faff837996e">SessionOptionsAppendExecutionProvider</a> (<a class="el" href="group___global.html#gaa6c56bcb36e39611481a17065d3ce620">OrtSessionOptions</a> *options, const char *provider_name, const char *const *provider_options_keys, const char *const *provider_options_values, size_t num_keys)</td></tr>
+<tr class="memdesc:a5f357353ba83dce8103d0faff837996e"><td class="mdescLeft">&#160;</td><td class="mdescRight">: Append execution provider to the session options.  <a href="struct_ort_api.html#a5f357353ba83dce8103d0faff837996e">More...</a><br /></td></tr>
+<tr class="separator:a5f357353ba83dce8103d0faff837996e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a472ac8b0c5a97d89c372730314f80d29"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#a472ac8b0c5a97d89c372730314f80d29">CopyKernelInfo</a> (const <a class="el" href="group___global.html#ga0dc9b747ee56ed963beb424a48ed6b8b">OrtKernelInfo</a> *info, <a class="el" href="group___global.html#ga0dc9b747ee56ed963beb424a48ed6b8b">OrtKernelInfo</a> **info_copy)</td></tr>
+<tr class="separator:a472ac8b0c5a97d89c372730314f80d29"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a2057c2ff617ed0d67dbcdfe76f9a686c"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#a2057c2ff617ed0d67dbcdfe76f9a686c">ReleaseKernelInfo</a> (<a class="el" href="group___global.html#ga0dc9b747ee56ed963beb424a48ed6b8b">OrtKernelInfo</a> *input)</td></tr>
+<tr class="separator:a2057c2ff617ed0d67dbcdfe76f9a686c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a4efb2c6f01315a22b9cfe943c9c28b06"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#a4efb2c6f01315a22b9cfe943c9c28b06">OrtApi</a> (const <a class="el" href="struct_ort_api.html">OrtApi</a> &amp;)=delete</td></tr>
+<tr class="separator:a4efb2c6f01315a22b9cfe943c9c28b06"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
+Public Attributes</h2></td></tr>
+<tr class="memitem:aecf909dbe8b0aca1687d77615cc996bd"><td class="memItemLeft" align="right" valign="top">const <a class="el" href="group___global.html#gac23a672ac48036d62cbbbb6631e667db">OrtTrainingApi</a> *(*&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#aecf909dbe8b0aca1687d77615cc996bd">GetTrainingApi</a> )(uint32_t version) __attribute__((nonnull))</td></tr>
+<tr class="separator:aecf909dbe8b0aca1687d77615cc996bd"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader">OrtStatus</h2></td></tr>
 <tr class="memitem:ab3f31bf5a89fae003e5f57f27c1503f0"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> *(*&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#ab3f31bf5a89fae003e5f57f27c1503f0">CreateStatus</a> )(<a class="el" href="group___global.html#gabab5349c294603a9eac437fdafd40a3d">OrtErrorCode</a> code, const char *msg) __attribute__((nonnull))</td></tr>
@@ -349,6 +383,9 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:abcaec019b71c48a6bade45f322d2a982"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#abcaec019b71c48a6bade45f322d2a982">EnableOrtCustomOps</a> (<a class="el" href="group___global.html#gaa6c56bcb36e39611481a17065d3ce620">OrtSessionOptions</a> *options)</td></tr>
 <tr class="memdesc:abcaec019b71c48a6bade45f322d2a982"><td class="mdescLeft">&#160;</td><td class="mdescRight">Enable custom operators.  <a href="struct_ort_api.html#abcaec019b71c48a6bade45f322d2a982">More...</a><br /></td></tr>
 <tr class="separator:abcaec019b71c48a6bade45f322d2a982"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a434bd1306840519fbf1b243c36dc6856"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#a434bd1306840519fbf1b243c36dc6856">HasValue</a> (const <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *value, int *out)</td></tr>
+<tr class="memdesc:a434bd1306840519fbf1b243c36dc6856"><td class="mdescLeft">&#160;</td><td class="mdescRight">Sets out to 1 iff an optional type OrtValue has an element, 0 otherwise (OrtValue is None) Use this API to find if the optional type OrtValue is None or not. If the optional type OrtValue is not None, use the OrtValue just like any other OrtValue. For example, if you get an OrtValue that corresponds to Optional(tensor) and if <a class="el" href="struct_ort_api.html#a434bd1306840519fbf1b243c36dc6856" title="Sets out to 1 iff an optional type OrtValue has an element, 0 otherwise (OrtValue is None) Use this A...">HasValue()</a> returns true, use it as tensor and so on.  <a href="struct_ort_api.html#a434bd1306840519fbf1b243c36dc6856">More...</a><br /></td></tr>
+<tr class="separator:a434bd1306840519fbf1b243c36dc6856"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:afa0cb6701f74f80d1d41e1a98c63ccec"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#afa0cb6701f74f80d1d41e1a98c63ccec">SessionOptionsAppendExecutionProvider_CUDA_V2</a> (<a class="el" href="group___global.html#gaa6c56bcb36e39611481a17065d3ce620">OrtSessionOptions</a> *options, const <a class="el" href="group___global.html#ga6b319b3ba435fb46c3808d7957c4684f">OrtCUDAProviderOptionsV2</a> *cuda_options)</td></tr>
 <tr class="memdesc:afa0cb6701f74f80d1d41e1a98c63ccec"><td class="mdescLeft">&#160;</td><td class="mdescRight">Append CUDA execution provider to the session options.  <a href="struct_ort_api.html#afa0cb6701f74f80d1d41e1a98c63ccec">More...</a><br /></td></tr>
 <tr class="separator:afa0cb6701f74f80d1d41e1a98c63ccec"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -492,9 +529,6 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a933ed01b9637fdbe41fd56527879bce3"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#a933ed01b9637fdbe41fd56527879bce3">GetSparseTensorIndices</a> (const <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *ort_value, enum <a class="el" href="group___global.html#ga497c04502f658b896b265233fc890787">OrtSparseIndicesFormat</a> indices_format, size_t *num_indices, const void **indices)</td></tr>
 <tr class="memdesc:a933ed01b9637fdbe41fd56527879bce3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns indices data for the type of the indices specified by indices_format.  <a href="struct_ort_api.html#a933ed01b9637fdbe41fd56527879bce3">More...</a><br /></td></tr>
 <tr class="separator:a933ed01b9637fdbe41fd56527879bce3"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a434bd1306840519fbf1b243c36dc6856"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#a434bd1306840519fbf1b243c36dc6856">HasValue</a> (const <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *value, int *out)</td></tr>
-<tr class="memdesc:a434bd1306840519fbf1b243c36dc6856"><td class="mdescLeft">&#160;</td><td class="mdescRight">Sets out to 1 iff an optional type OrtValue has an element, 0 otherwise (OrtValue is None) Use this API to find if the optional type OrtValue is None or not. If the optional type OrtValue is not None, use the OrtValue just like any other OrtValue. For example, if you get an OrtValue that corresponds to Optional(tensor) and if <a class="el" href="struct_ort_api.html#a434bd1306840519fbf1b243c36dc6856" title="Sets out to 1 iff an optional type OrtValue has an element, 0 otherwise (OrtValue is None) Use this A...">HasValue()</a> returns true, use it as tensor and so on.  <a href="struct_ort_api.html#a434bd1306840519fbf1b243c36dc6856">More...</a><br /></td></tr>
-<tr class="separator:a434bd1306840519fbf1b243c36dc6856"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader">OrtTypeInfo</h2></td></tr>
 <tr class="memitem:a3fbf64746f5b9dd0cf00bde569869a6f"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#a3fbf64746f5b9dd0cf00bde569869a6f">CastTypeInfoToTensorInfo</a> (const <a class="el" href="group___global.html#ga651ed4317ee24a2fb83ae63dd03687b2">OrtTypeInfo</a> *type_info, const <a class="el" href="group___global.html#ga6af32c548904330b6bd7e8cba6e186c1">OrtTensorTypeAndShapeInfo</a> **out)</td></tr>
@@ -625,8 +659,7 @@ Public Member Functions</h2></td></tr>
 <tr class="memdesc:a588deb2a1cd85f1a884856056671390e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Used for custom operators, get an output of a kernel.  <a href="struct_ort_api.html#a588deb2a1cd85f1a884856056671390e">More...</a><br /></td></tr>
 <tr class="separator:a588deb2a1cd85f1a884856056671390e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1207b882f7e6bff5a77e20cc621d7e9f"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_api.html#a1207b882f7e6bff5a77e20cc621d7e9f">KernelContext_GetGPUComputeStream</a> (const <a class="el" href="group___global.html#ga757f41782aa4ae79362a25d92a5d4230">OrtKernelContext</a> *context, void **out)</td></tr>
-<tr class="memdesc:a1207b882f7e6bff5a77e20cc621d7e9f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Used for custom operators, gets the GPU compute stream to use to launch the custom a GPU kernel <br  />
-  <a href="struct_ort_api.html#a1207b882f7e6bff5a77e20cc621d7e9f">More...</a><br /></td></tr>
+<tr class="memdesc:a1207b882f7e6bff5a77e20cc621d7e9f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Used for custom operators, gets the GPU compute stream to use to launch the custom a GPU kernel.  <a href="struct_ort_api.html#a1207b882f7e6bff5a77e20cc621d7e9f">More...</a><br /></td></tr>
 <tr class="separator:a1207b882f7e6bff5a77e20cc621d7e9f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader">OrtMapTypeInfo</h2></td></tr>
@@ -755,7 +788,34 @@ Public Member Functions</h2></td></tr>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p >The C API. </p>
 <p >All C API functions are defined inside this structure as pointers to functions. Call <a class="el" href="struct_ort_api_base.html#ae031126e31871e4ad58ba1a647a2c9f9" title="Get a pointer to the requested version of the OrtApi.">OrtApiBase::GetApi</a> to get a pointer to it </p>
-</div><h2 class="groupheader">Member Function Documentation</h2>
+</div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
+<a id="a4efb2c6f01315a22b9cfe943c9c28b06" name="a4efb2c6f01315a22b9cfe943c9c28b06"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a4efb2c6f01315a22b9cfe943c9c28b06">&#9670;&nbsp;</a></span>OrtApi()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">OrtApi::OrtApi </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="struct_ort_api.html">OrtApi</a> &amp;&#160;</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">delete</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<h2 class="groupheader">Member Function Documentation</h2>
 <a id="a6d0dfa93efdfec2e8d28990fe9df001e" name="a6d0dfa93efdfec2e8d28990fe9df001e"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a6d0dfa93efdfec2e8d28990fe9df001e">&#9670;&nbsp;</a></span>AddCustomOpDomain()</h2>
 
@@ -793,6 +853,62 @@ Public Member Functions</h2></td></tr>
 </dl>
 <p><dl class="section return"><dt>Returns</dt><dd>If no error, nullptr will be returned. If there is an error, a pointer to an <a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> that contains error details will be returned. Use <a class="el" href="struct_ort_api.html#a9b21334e290855a585f53d53dda44551">OrtApi::ReleaseStatus</a> to free this pointer.</dd></dl>
  </p>
+
+</div>
+</div>
+<a id="a39534fa0be75e7f0fb00d57c67e5d189" name="a39534fa0be75e7f0fb00d57c67e5d189"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a39534fa0be75e7f0fb00d57c67e5d189">&#9670;&nbsp;</a></span>AddExternalInitializers()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> * OrtApi::AddExternalInitializers </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="group___global.html#gaa6c56bcb36e39611481a17065d3ce620">OrtSessionOptions</a> *&#160;</td>
+          <td class="paramname"><em>options</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const char *const *&#160;</td>
+          <td class="paramname"><em>initializer_names</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *const *&#160;</td>
+          <td class="paramname"><em>initializers</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>initializers_num</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Replace initialized Tensors with external data with the data provided in initializers. </p>
+<p >The function will find the initialized TensorProtos with external data in the graph with the provided names and replace them with the provided tensors. The API verifies that the TensorProto being replaced has an external data reference and has the same name, dimensions and data type as its replacement. The replacement will occur before any of the optimizations take place. The data will be copied into the graph since TensorProto can't refer to the user provided buffers.</p>
+<p >Once the model has been loaded, the OrtValue(s) added to SessionOptions instance will be removed from the internal SessionOptions copy to save memory, the user provided buffers can then be deallocated and the SessionOptions instance that refers to them can be destroyed.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">options</td><td></td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">initializer_names</td><td>Array of null terminated UTF-8 encoded strings of the initializers names. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">initializers</td><td>Array of <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> type </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">initializers_num</td><td>Number of elements in the initializer_names and initializers</td></tr>
+  </table>
+  </dd>
+</dl>
+<p><dl class="section return"><dt>Returns</dt><dd>If no error, nullptr will be returned. If there is an error, a pointer to an <a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> that contains error details will be returned. Use <a class="el" href="struct_ort_api.html#a9b21334e290855a585f53d53dda44551">OrtApi::ReleaseStatus</a> to free this pointer.</dd></dl>
+</p>
+<dl class="section since"><dt>Since</dt><dd>Version 1.12. </dd></dl>
 
 </div>
 </div>
@@ -1466,6 +1582,34 @@ Public Member Functions</h2></td></tr>
 
 </div>
 </div>
+<a id="a472ac8b0c5a97d89c372730314f80d29" name="a472ac8b0c5a97d89c372730314f80d29"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a472ac8b0c5a97d89c372730314f80d29">&#9670;&nbsp;</a></span>CopyKernelInfo()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> * OrtApi::CopyKernelInfo </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="group___global.html#ga0dc9b747ee56ed963beb424a48ed6b8b">OrtKernelInfo</a> *&#160;</td>
+          <td class="paramname"><em>info</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="group___global.html#ga0dc9b747ee56ed963beb424a48ed6b8b">OrtKernelInfo</a> **&#160;</td>
+          <td class="paramname"><em>info_copy</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
 <a id="ad3aabe6f82aa81b75048a4bdf937d974" name="ad3aabe6f82aa81b75048a4bdf937d974"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#ad3aabe6f82aa81b75048a4bdf937d974">&#9670;&nbsp;</a></span>CreateAllocator()</h2>
 
@@ -1746,7 +1890,8 @@ Public Member Functions</h2></td></tr>
   </dd>
 </dl>
 <p><dl class="section return"><dt>Returns</dt><dd>If no error, nullptr will be returned. If there is an error, a pointer to an <a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> that contains error details will be returned. Use <a class="el" href="struct_ort_api.html#a9b21334e290855a585f53d53dda44551">OrtApi::ReleaseStatus</a> to free this pointer.</dd></dl>
- </p>
+</p>
+<dl class="section since"><dt>Since</dt><dd>Version 1.11. </dd></dl>
 
 </div>
 </div>
@@ -2115,6 +2260,114 @@ Public Member Functions</h2></td></tr>
 
 </div>
 </div>
+<a id="a41ef10344a1abfa900ed29b45f2410b8" name="a41ef10344a1abfa900ed29b45f2410b8"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a41ef10344a1abfa900ed29b45f2410b8">&#9670;&nbsp;</a></span>CreateOp()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> * OrtApi::CreateOp </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="group___global.html#ga0dc9b747ee56ed963beb424a48ed6b8b">OrtKernelInfo</a> *&#160;</td>
+          <td class="paramname"><em>info</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const char *&#160;</td>
+          <td class="paramname"><em>op_name</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const char *&#160;</td>
+          <td class="paramname"><em>domain</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>version</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const char **&#160;</td>
+          <td class="paramname"><em>type_constraint_names</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="group___global.html#gaec63cdda46c29b8183997f38930ce38e">ONNXTensorElementDataType</a> *&#160;</td>
+          <td class="paramname"><em>type_constraint_values</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>type_constraint_count</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="group___global.html#ga35c9298b30685c4e68e4830697a6a171">OrtOpAttr</a> *const *&#160;</td>
+          <td class="paramname"><em>attr_values</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>attr_count</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>input_count</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>output_count</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="group___global.html#ga5f2a4b6be620e970f5c401795034c416">OrtOp</a> **&#160;</td>
+          <td class="paramname"><em>ort_op</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>: Create onnxruntime native operator </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">info</td><td>Kernel info </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">op_name</td><td>Operator name </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">domain</td><td>Operator domain </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">version</td><td>Operator opset version </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">type_constraint_names</td><td>Name of the type contraints, such as "T" or "T1" </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">type_constraint_values</td><td>Type of each contraints </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">type_constraint_count</td><td>Number of contraints </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">attr_values</td><td>Attributes used to initialize the operator </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">attr_count</td><td>Number of the attributes </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">input_count</td><td>Number of inputs </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">output_count</td><td>Number of outputs </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">ort_op</td><td>Operator that has been created</td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section since"><dt>Since</dt><dd>Version 1.12. </dd></dl>
+
+</div>
+</div>
 <a id="ae12e59921f2c3480bb4bc0fcf7ddd6ec" name="ae12e59921f2c3480bb4bc0fcf7ddd6ec"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#ae12e59921f2c3480bb4bc0fcf7ddd6ec">&#9670;&nbsp;</a></span>CreateOpaqueValue()</h2>
 
@@ -2174,6 +2427,65 @@ Public Member Functions</h2></td></tr>
 </dl>
 <p><dl class="section return"><dt>Returns</dt><dd>If no error, nullptr will be returned. If there is an error, a pointer to an <a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> that contains error details will be returned. Use <a class="el" href="struct_ort_api.html#a9b21334e290855a585f53d53dda44551">OrtApi::ReleaseStatus</a> to free this pointer.</dd></dl>
  </p>
+
+</div>
+</div>
+<a id="ae8dbae9378a2d2aeeca7fcf393c2a712" name="ae8dbae9378a2d2aeeca7fcf393c2a712"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae8dbae9378a2d2aeeca7fcf393c2a712">&#9670;&nbsp;</a></span>CreateOpAttr()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> * OrtApi::CreateOpAttr </td>
+          <td>(</td>
+          <td class="paramtype">const char *&#160;</td>
+          <td class="paramname"><em>name</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const void *&#160;</td>
+          <td class="paramname"><em>data</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>len</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="group___global.html#gad2d78682b8468cfbfbbc20563a2424cc">OrtOpAttrType</a>&#160;</td>
+          <td class="paramname"><em>type</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="group___global.html#ga35c9298b30685c4e68e4830697a6a171">OrtOpAttr</a> **&#160;</td>
+          <td class="paramname"><em>op_attr</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>: Create attribute of onnxruntime operator </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">name</td><td>Name of the attribute </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">data</td><td>Data content of the attribute </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">len</td><td>Number of bytes stored in data </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">type</td><td>Data type </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">op_attr</td><td>Attribute that has been created, which must be released by <a class="el" href="struct_ort_api.html#afcfc3e40fc03ccf5d194fd00d8fabfdc">OrtApi::ReleaseOpAttr</a></td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section since"><dt>Since</dt><dd>Version 1.12. </dd></dl>
 
 </div>
 </div>
@@ -2698,8 +3010,8 @@ Public Member Functions</h2></td></tr>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">allocator</td><td></td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">shape</td><td>Tensor shape </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">shape_len</td><td>Number of elements in <code>shape</code> </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">shape</td><td>Pointer to the tensor shape dimensions. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">shape_len</td><td>The number of tensor shape dimensions. </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">type</td><td></td></tr>
     <tr><td class="paramdir">[out]</td><td class="paramname">out</td><td>Returns newly created <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a>. Must be freed with <a class="el" href="struct_ort_api.html#a426f5df37bf3edfe76f51babd38c351d">OrtApi::ReleaseValue</a></td></tr>
   </table>
@@ -2826,12 +3138,12 @@ Public Member Functions</h2></td></tr>
 <p >Create a tensor with user's buffer. You can fill the buffer either before calling this function or after. p_data is owned by caller. ReleaseValue won't release p_data.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramdir">[in]</td><td class="paramname">info</td><td></td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">p_data</td><td></td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">p_data_len</td><td></td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">shape</td><td></td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">shape_len</td><td></td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">type</td><td></td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">info</td><td>Memory description of where the p_data buffer resides (CPU vs GPU etc). </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">p_data</td><td>Pointer to the data buffer. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">p_data_len</td><td>The number of bytes in the data buffer. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">shape</td><td>Pointer to the tensor shape dimensions. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">shape_len</td><td>The number of tensor shape dimensions. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">type</td><td>The data type. </td></tr>
     <tr><td class="paramdir">[out]</td><td class="paramname">out</td><td>Returns newly created <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a>. Must be freed with <a class="el" href="struct_ort_api.html#a426f5df37bf3edfe76f51babd38c351d">OrtApi::ReleaseValue</a></td></tr>
   </table>
   </dd>
@@ -3811,10 +4123,13 @@ Public Member Functions</h2></td></tr>
   <table class="params">
     <tr><td class="paramname">cuda_options</td><td>- OrtCUDAProviderOptionsV2 instance </td></tr>
     <tr><td class="paramname">allocator</td><td>- a ptr to an instance of <a class="el" href="struct_ort_allocator.html" title="Memory allocation interface.">OrtAllocator</a> obtained with <a class="el" href="struct_ort_api.html#ad3aabe6f82aa81b75048a4bdf937d974" title="Create an allocator for an OrtSession following an OrtMemoryInfo.">CreateAllocator()</a> or <a class="el" href="struct_ort_api.html#a8dec797ae52ee1a681e4f88be1fb4bb3" title="Get the default allocator.">GetAllocatorWithDefaultOptions()</a> the specified allocator will be used to allocate continuous buffers for output strings and lengths. </td></tr>
-    <tr><td class="paramname">ptr</td><td>- is a UTF-8 null terminated string allocated using 'allocator'. The caller is responsible for using the same allocator to free it. </td></tr>
+    <tr><td class="paramname">ptr</td><td>- is a UTF-8 null terminated string allocated using 'allocator'. The caller is responsible for using the same allocator to free it.</td></tr>
   </table>
   </dd>
 </dl>
+<p><dl class="section return"><dt>Returns</dt><dd>If no error, nullptr will be returned. If there is an error, a pointer to an <a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> that contains error details will be returned. Use <a class="el" href="struct_ort_api.html#a9b21334e290855a585f53d53dda44551">OrtApi::ReleaseStatus</a> to free this pointer.</dd></dl>
+</p>
+<dl class="section since"><dt>Since</dt><dd>Version 1.11. </dd></dl>
 
 </div>
 </div>
@@ -5180,6 +5495,72 @@ Public Member Functions</h2></td></tr>
 
 </div>
 </div>
+<a id="a09c4aaaacf457a7c3a4379433e247ffd" name="a09c4aaaacf457a7c3a4379433e247ffd"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a09c4aaaacf457a7c3a4379433e247ffd">&#9670;&nbsp;</a></span>InvokeOp()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> * OrtApi::InvokeOp </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="group___global.html#ga757f41782aa4ae79362a25d92a5d4230">OrtKernelContext</a> *&#160;</td>
+          <td class="paramname"><em>context</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="group___global.html#ga5f2a4b6be620e970f5c401795034c416">OrtOp</a> *&#160;</td>
+          <td class="paramname"><em>ort_op</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *const *&#160;</td>
+          <td class="paramname"><em>input_values</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>input_count</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *const *&#160;</td>
+          <td class="paramname"><em>output_values</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>output_count</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>: Invoke the operator created by <a class="el" href="struct_ort_api.html#a41ef10344a1abfa900ed29b45f2410b8" title=": Create onnxruntime native operator">OrtApi::CreateOp</a> The inputs must follow the order as specified in onnx specification </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">context</td><td>Kernel context </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">ort_op</td><td>Operator that has been created </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">input_values</td><td>Array of inputs </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">input_count</td><td>Number of inputs </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">output_values</td><td>Array of outputs </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">output_count</td><td>Number of outputs</td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section since"><dt>Since</dt><dd>Version 1.12. </dd></dl>
+
+</div>
+</div>
 <a id="a28013fa0aa694a1b6b5e0412881b2155" name="a28013fa0aa694a1b6b5e0412881b2155"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a28013fa0aa694a1b6b5e0412881b2155">&#9670;&nbsp;</a></span>IsSparseTensor()</h2>
 
@@ -5284,8 +5665,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p>Used for custom operators, gets the GPU compute stream to use to launch the custom a GPU kernel <br  />
- </p>
+<p>Used for custom operators, gets the GPU compute stream to use to launch the custom a GPU kernel. </p>
 <dl class="section see"><dt>See also</dt><dd><a class="el" href="struct_ort_custom_op.html">OrtCustomOp</a> </dd></dl>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
@@ -6429,6 +6809,24 @@ Public Member Functions</h2></td></tr>
 
 </div>
 </div>
+<a id="a2057c2ff617ed0d67dbcdfe76f9a686c" name="a2057c2ff617ed0d67dbcdfe76f9a686c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a2057c2ff617ed0d67dbcdfe76f9a686c">&#9670;&nbsp;</a></span>ReleaseKernelInfo()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void OrtApi::ReleaseKernelInfo </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="group___global.html#ga0dc9b747ee56ed963beb424a48ed6b8b">OrtKernelInfo</a> *&#160;</td>
+          <td class="paramname"><em>input</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
 <a id="a8b7cfcd4c68ec46481f29723320c45b0" name="a8b7cfcd4c68ec46481f29723320c45b0"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a8b7cfcd4c68ec46481f29723320c45b0">&#9670;&nbsp;</a></span>ReleaseMapTypeInfo()</h2>
 
@@ -6475,6 +6873,42 @@ Public Member Functions</h2></td></tr>
           <td class="memname">void OrtApi::ReleaseModelMetadata </td>
           <td>(</td>
           <td class="paramtype"><a class="el" href="group___global.html#ga60c3d77af832d0d7fa5e14636009b408">OrtModelMetadata</a> *&#160;</td>
+          <td class="paramname"><em>input</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="ae40ac238b11fcac230aca7c60fd33d47" name="ae40ac238b11fcac230aca7c60fd33d47"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae40ac238b11fcac230aca7c60fd33d47">&#9670;&nbsp;</a></span>ReleaseOp()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void OrtApi::ReleaseOp </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="group___global.html#ga5f2a4b6be620e970f5c401795034c416">OrtOp</a> *&#160;</td>
+          <td class="paramname"><em>input</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="afcfc3e40fc03ccf5d194fd00d8fabfdc" name="afcfc3e40fc03ccf5d194fd00d8fabfdc"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#afcfc3e40fc03ccf5d194fd00d8fabfdc">&#9670;&nbsp;</a></span>ReleaseOpAttr()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void OrtApi::ReleaseOpAttr </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="group___global.html#ga35c9298b30685c4e68e4830697a6a171">OrtOpAttr</a> *&#160;</td>
           <td class="paramname"><em>input</em></td><td>)</td>
           <td></td>
         </tr>
@@ -7632,6 +8066,69 @@ Public Member Functions</h2></td></tr>
 
 </div>
 </div>
+<a id="a5f357353ba83dce8103d0faff837996e" name="a5f357353ba83dce8103d0faff837996e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a5f357353ba83dce8103d0faff837996e">&#9670;&nbsp;</a></span>SessionOptionsAppendExecutionProvider()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> * OrtApi::SessionOptionsAppendExecutionProvider </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="group___global.html#gaa6c56bcb36e39611481a17065d3ce620">OrtSessionOptions</a> *&#160;</td>
+          <td class="paramname"><em>options</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const char *&#160;</td>
+          <td class="paramname"><em>provider_name</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const char *const *&#160;</td>
+          <td class="paramname"><em>provider_options_keys</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const char *const *&#160;</td>
+          <td class="paramname"><em>provider_options_values</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t&#160;</td>
+          <td class="paramname"><em>num_keys</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>: Append execution provider to the session options. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">options</td><td></td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">provider_name</td><td>- provider to add. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">provider_options_keys</td><td>- keys to configure the provider options </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">provider_options_values</td><td>- values to configure the provider options </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">num_keys</td><td>- number of keys passed in</td></tr>
+  </table>
+  </dd>
+</dl>
+<p>Currently supported providers: SNPE XNNPACK</p>
+<p >Note: If an execution provider has a dedicated SessionOptionsAppendExecutionProvider_&lt;provider name&gt; function that should be used to add it.</p>
+<p >SNPE supported keys: "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16", "DSP", "DSP_FIXED8_TF", "AIP_FIXED_TF", "AIP_FIXED8_TF". Mapping to SNPE Runtime_t definition: CPU, CPU_FLOAT32 =&gt; zdl::DlSystem::Runtime_t::CPU; GPU, GPU_FLOAT32_16_HYBRID =&gt; zdl::DlSystem::Runtime_t::GPU; GPU_FLOAT16 =&gt; zdl::DlSystem::Runtime_t::GPU_FLOAT16; DSP, DSP_FIXED8_TF =&gt; zdl::DlSystem::Runtime_t::DSP. AIP_FIXED_TF, AIP_FIXED8_TF =&gt; zdl::DlSystem::Runtime_t::AIP_FIXED_TF. SNPE Runtime_t refers to <a href="https://developer.qualcomm.com/docs/snpe/group__c__plus__plus__apis.html">https://developer.qualcomm.com/docs/snpe/group__c__plus__plus__apis.html</a> "priority": execution priority, options: "low", "normal". "buffer_type": ITensor or user buffers, options: "ITENSOR", user buffer with different types - "TF8", "TF16", "UINT8", "FLOAT". "ITENSOR" &ndash; default, ITensor which is float only. "TF8" &ndash; quantized model required, "FLOAT" &ndash; for both quantized or non-quantized model If SNPE is not available (due to a non Snpe enabled build or its dependencies not being installed), this function will fail.</p>
+<p >XNNPACK supported keys: None currently</p>
+<dl class="section since"><dt>Since</dt><dd>Version 1.12. </dd></dl>
+
+</div>
+</div>
 <a id="a39509920aff0ea1395e121ec04020c70" name="a39509920aff0ea1395e121ec04020c70"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a39509920aff0ea1395e121ec04020c70">&#9670;&nbsp;</a></span>SessionOptionsAppendExecutionProvider_CUDA()</h2>
 
@@ -7710,7 +8207,49 @@ Public Member Functions</h2></td></tr>
   </dd>
 </dl>
 <p><dl class="section return"><dt>Returns</dt><dd>If no error, nullptr will be returned. If there is an error, a pointer to an <a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> that contains error details will be returned. Use <a class="el" href="struct_ort_api.html#a9b21334e290855a585f53d53dda44551">OrtApi::ReleaseStatus</a> to free this pointer.</dd></dl>
- </p>
+</p>
+<dl class="section since"><dt>Since</dt><dd>Version 1.11. </dd></dl>
+
+</div>
+</div>
+<a id="a21660e2cfcd3d64d2091335db0d91e89" name="a21660e2cfcd3d64d2091335db0d91e89"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a21660e2cfcd3d64d2091335db0d91e89">&#9670;&nbsp;</a></span>SessionOptionsAppendExecutionProvider_MIGraphX()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> * OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="group___global.html#gaa6c56bcb36e39611481a17065d3ce620">OrtSessionOptions</a> *&#160;</td>
+          <td class="paramname"><em>options</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="struct_ort_m_i_graph_x_provider_options.html">OrtMIGraphXProviderOptions</a> *&#160;</td>
+          <td class="paramname"><em>migraphx_options</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Append MIGraphX provider to session options. </p>
+<p >If MIGraphX is not available (due to a non MIGraphX enabled build, or if MIGraphX is not installed on the system), this function will return failure.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">options</td><td></td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">migraphx_options</td><td></td></tr>
+  </table>
+  </dd>
+</dl>
+<p><dl class="section return"><dt>Returns</dt><dd>If no error, nullptr will be returned. If there is an error, a pointer to an <a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> that contains error details will be returned. Use <a class="el" href="struct_ort_api.html#a9b21334e290855a585f53d53dda44551">OrtApi::ReleaseStatus</a> to free this pointer.</dd></dl>
+</p>
+<dl class="section since"><dt>Since</dt><dd>Version 1.11. </dd></dl>
 
 </div>
 </div>
@@ -8944,7 +9483,8 @@ Public Member Functions</h2></td></tr>
   </dd>
 </dl>
 <p><dl class="section return"><dt>Returns</dt><dd>If no error, nullptr will be returned. If there is an error, a pointer to an <a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> that contains error details will be returned. Use <a class="el" href="struct_ort_api.html#a9b21334e290855a585f53d53dda44551">OrtApi::ReleaseStatus</a> to free this pointer.</dd></dl>
- </p>
+</p>
+<dl class="section since"><dt>Since</dt><dd>Version 1.11. </dd></dl>
 
 </div>
 </div>
@@ -9262,6 +9802,20 @@ Public Member Functions</h2></td></tr>
 
 </div>
 </div>
+<a id="aecf909dbe8b0aca1687d77615cc996bd" name="aecf909dbe8b0aca1687d77615cc996bd"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aecf909dbe8b0aca1687d77615cc996bd">&#9670;&nbsp;</a></span>GetTrainingApi</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">const <a class="el" href="group___global.html#gac23a672ac48036d62cbbbb6631e667db">OrtTrainingApi</a> *( * OrtApi::GetTrainingApi) (uint32_t version) __attribute__((nonnull))</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
 <a id="afdeece84d4904571e2f78bd0e098865c" name="afdeece84d4904571e2f78bd0e098865c"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#afdeece84d4904571e2f78bd0e098865c">&#9670;&nbsp;</a></span>ReleaseCUDAProviderOptions</h2>
 
@@ -9275,7 +9829,8 @@ Public Member Functions</h2></td></tr>
 </div><div class="memdoc">
 
 <p>Release an <a class="el" href="group___global.html#ga6b319b3ba435fb46c3808d7957c4684f">OrtCUDAProviderOptionsV2</a>. </p>
-<dl class="section note"><dt>Note</dt><dd>This is an exception in the naming convention of other Release* functions, as the name of the method does not have the V2 suffix, but the type does </dd></dl>
+<dl class="section note"><dt>Note</dt><dd>This is an exception in the naming convention of other Release* functions, as the name of the method does not have the V2 suffix, but the type does</dd></dl>
+<dl class="section since"><dt>Since</dt><dd>Version 1.11. </dd></dl>
 
 </div>
 </div>

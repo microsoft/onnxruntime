@@ -120,8 +120,7 @@ Public Attributes</h2></td></tr>
  Defaults to 0.  <a href="struct_ort_c_u_d_a_provider_options.html#a6e1465dbb581ba943c92ac595fc4c1d2">More...</a><br /></td></tr>
 <tr class="separator:a6e1465dbb581ba943c92ac595fc4c1d2"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5186a856edeaf860dc547db309e85f95"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_c_u_d_a_provider_options.html#a5186a856edeaf860dc547db309e85f95">do_copy_in_default_stream</a></td></tr>
-<tr class="memdesc:a5186a856edeaf860dc547db309e85f95"><td class="mdescLeft">&#160;</td><td class="mdescRight">Flag indicating if copying needs to take place on the same stream as the compute stream in the CUDA EP <br  />
- 0 = Use separate streams for copying and compute. 1 = Use the same stream for copying and compute. Defaults to 1. WARNING: Setting this to 0 may result in data races for some models. Please see issue #4829 for more details.  <a href="struct_ort_c_u_d_a_provider_options.html#a5186a856edeaf860dc547db309e85f95">More...</a><br /></td></tr>
+<tr class="memdesc:a5186a856edeaf860dc547db309e85f95"><td class="mdescLeft">&#160;</td><td class="mdescRight">Flag indicating if copying needs to take place on the same stream as the compute stream in the CUDA EP 0 = Use separate streams for copying and compute. 1 = Use the same stream for copying and compute. Defaults to 1. WARNING: Setting this to 0 may result in data races for some models. Please see issue #4829 for more details.  <a href="struct_ort_c_u_d_a_provider_options.html#a5186a856edeaf860dc547db309e85f95">More...</a><br /></td></tr>
 <tr class="separator:a5186a856edeaf860dc547db309e85f95"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a2ca74dbd91996bad4a1c81af705a0ac7"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_c_u_d_a_provider_options.html#a2ca74dbd91996bad4a1c81af705a0ac7">has_user_compute_stream</a></td></tr>
 <tr class="memdesc:a2ca74dbd91996bad4a1c81af705a0ac7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Flag indicating if there is a user provided compute stream Defaults to 0.  <a href="struct_ort_c_u_d_a_provider_options.html#a2ca74dbd91996bad4a1c81af705a0ac7">More...</a><br /></td></tr>
@@ -242,8 +241,7 @@ Public Attributes</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p>Flag indicating if copying needs to take place on the same stream as the compute stream in the CUDA EP <br  />
- 0 = Use separate streams for copying and compute. 1 = Use the same stream for copying and compute. Defaults to 1. WARNING: Setting this to 0 may result in data races for some models. Please see issue #4829 for more details. </p>
+<p>Flag indicating if copying needs to take place on the same stream as the compute stream in the CUDA EP 0 = Use separate streams for copying and compute. 1 = Use the same stream for copying and compute. Defaults to 1. WARNING: Setting this to 0 may result in data races for some models. Please see issue #4829 for more details. </p>
 
 </div>
 </div>

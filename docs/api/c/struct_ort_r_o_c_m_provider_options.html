@@ -120,8 +120,7 @@ Public Attributes</h2></td></tr>
  Defaults to 0.  <a href="struct_ort_r_o_c_m_provider_options.html#aca6e8574be4791f3ec7d32eb2039af10">More...</a><br /></td></tr>
 <tr class="separator:aca6e8574be4791f3ec7d32eb2039af10"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5a3afd088ec9d4bc66397dd16f8fbec7"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_r_o_c_m_provider_options.html#a5a3afd088ec9d4bc66397dd16f8fbec7">do_copy_in_default_stream</a></td></tr>
-<tr class="memdesc:a5a3afd088ec9d4bc66397dd16f8fbec7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Flag indicating if copying needs to take place on the same stream as the compute stream in the ROCM EP <br  />
- 0 = Use separate streams for copying and compute. 1 = Use the same stream for copying and compute. Defaults to 1. WARNING: Setting this to 0 may result in data races for some models. Please see issue #4829 for more details.  <a href="struct_ort_r_o_c_m_provider_options.html#a5a3afd088ec9d4bc66397dd16f8fbec7">More...</a><br /></td></tr>
+<tr class="memdesc:a5a3afd088ec9d4bc66397dd16f8fbec7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Flag indicating if copying needs to take place on the same stream as the compute stream in the ROCM EP 0 = Use separate streams for copying and compute. 1 = Use the same stream for copying and compute. Defaults to 1. WARNING: Setting this to 0 may result in data races for some models. Please see issue #4829 for more details.  <a href="struct_ort_r_o_c_m_provider_options.html#a5a3afd088ec9d4bc66397dd16f8fbec7">More...</a><br /></td></tr>
 <tr class="separator:a5a3afd088ec9d4bc66397dd16f8fbec7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ad067f914da5032b44ae4a4806eae778e"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_r_o_c_m_provider_options.html#ad067f914da5032b44ae4a4806eae778e">has_user_compute_stream</a></td></tr>
 <tr class="memdesc:ad067f914da5032b44ae4a4806eae778e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Flag indicating if there is a user provided compute stream Defaults to 0.  <a href="struct_ort_r_o_c_m_provider_options.html#ad067f914da5032b44ae4a4806eae778e">More...</a><br /></td></tr>
@@ -226,8 +225,7 @@ Public Attributes</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p>Flag indicating if copying needs to take place on the same stream as the compute stream in the ROCM EP <br  />
- 0 = Use separate streams for copying and compute. 1 = Use the same stream for copying and compute. Defaults to 1. WARNING: Setting this to 0 may result in data races for some models. Please see issue #4829 for more details. </p>
+<p>Flag indicating if copying needs to take place on the same stream as the compute stream in the ROCM EP 0 = Use separate streams for copying and compute. 1 = Use the same stream for copying and compute. Defaults to 1. WARNING: Setting this to 0 may result in data races for some models. Please see issue #4829 for more details. </p>
 
 </div>
 </div>

@@ -1,6 +1,9 @@
 var annotated_dup =
 [
     [ "Ort", "namespace_ort.html", [
+      [ "detail", "namespace_ort_1_1detail.html", [
+        [ "AllocatedFree", "struct_ort_1_1detail_1_1_allocated_free.html", "struct_ort_1_1detail_1_1_allocated_free" ]
+      ] ],
       [ "Allocator", "struct_ort_1_1_allocator.html", "struct_ort_1_1_allocator" ],
       [ "AllocatorWithDefaultOptions", "struct_ort_1_1_allocator_with_default_options.html", "struct_ort_1_1_allocator_with_default_options" ],
       [ "ArenaCfg", "struct_ort_1_1_arena_cfg.html", "struct_ort_1_1_arena_cfg" ],
@@ -33,6 +36,7 @@ var annotated_dup =
     [ "OrtCUDAProviderOptions", "struct_ort_c_u_d_a_provider_options.html", "struct_ort_c_u_d_a_provider_options" ],
     [ "OrtCustomHandleType", "struct_ort_custom_handle_type.html", "struct_ort_custom_handle_type" ],
     [ "OrtCustomOp", "struct_ort_custom_op.html", "struct_ort_custom_op" ],
+    [ "OrtMIGraphXProviderOptions", "struct_ort_m_i_graph_x_provider_options.html", "struct_ort_m_i_graph_x_provider_options" ],
     [ "OrtOpenVINOProviderOptions", "struct_ort_open_v_i_n_o_provider_options.html", "struct_ort_open_v_i_n_o_provider_options" ],
     [ "OrtROCMProviderOptions", "struct_ort_r_o_c_m_provider_options.html", "struct_ort_r_o_c_m_provider_options" ],
     [ "OrtTensorRTProviderOptions", "struct_ort_tensor_r_t_provider_options.html", "struct_ort_tensor_r_t_provider_options" ]

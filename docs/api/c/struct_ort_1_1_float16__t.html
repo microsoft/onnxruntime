@@ -125,11 +125,11 @@ Public Attributes</h2></td></tr>
 <div class="line">std::vector&lt;int64_t&gt; dims = {values_length};  // one dimensional example</div>
 <div class="line">Ort::MemoryInfo info(&quot;Cpu&quot;, OrtDeviceAllocator, 0, OrtMemTypeDefault);</div>
 <div class="line">// Note we are passing bytes count in this api, not number of elements -&gt; sizeof(values)</div>
-<div class="line">auto float16_tensor = Ort::Value::CreateTensor(info, values, sizeof(values), </div>
+<div class="line">auto float16_tensor = Ort::Value::CreateTensor(info, values, sizeof(values),</div>
 <div class="line">                                               dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);</div>
 </div><!-- fragment --><p >Here is another example, a little bit more elaborate. Let's assume that you use your own float16 type and you want to use a templated version of the API above so the type is automatically set based on your type. You will need to supply an extra template specialization.</p>
 <div class="fragment"><div class="line">namespace yours { struct half {}; } // assume this is your type, define this:</div>
-<div class="line">namespace Ort { </div>
+<div class="line">namespace Ort {</div>
 <div class="line">template&lt;&gt;</div>
 <div class="line">struct TypeToTensorType&lt;yours::half&gt; { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16; };</div>
 <div class="line">} //namespace Ort</div>
