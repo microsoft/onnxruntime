@@ -1,8 +1,16 @@
 ---
-nav_exclude: true 
+title: Object detection with Faster RCNN in C#
+description: The sample walks through how to run a pretrained Faster R-CNN object detection ONNX model using the ONNX Runtime C# API.
+parent: Inference with C#
+grand_parent: Tutorials
+has_children: false
+redirect_from: /docs/tutorials/fasterrcnn_csharp
+nav_order: 2
 ---
 
-# Object detection with Faster RCNN in C#
+
+
+# Object detection with Faster RCNN Deep Learning in C#
 {: .no_toc }
 
 The sample walks through how to run a pretrained Faster R-CNN object detection ONNX model using the ONNX Runtime C# API.

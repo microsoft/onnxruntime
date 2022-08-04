@@ -1,7 +1,6 @@
 ---
 nav_exclude: true 
 ---
-
 # C# Tutorial: Basic
 
 Here is simple tutorial for getting started with running inference on an existing ONNX model for a given input data. The model is typically trained using any of the well-known training frameworks and exported into the ONNX format. 

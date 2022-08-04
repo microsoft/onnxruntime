@@ -11,3 +11,4 @@ _site
 .vscode
 
 build
+cmake

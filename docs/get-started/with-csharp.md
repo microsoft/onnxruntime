@@ -75,10 +75,10 @@ In some scenarios, you may want to reuse input/output tensors. This often happen
 ```cs
 InferenceSession session1, session2;  // let's say 2 sessions are initialized
 
-Tensor<float> t1;  // let's say data is fed into the Tensor objects
+Tensor<long> input = new DenseTensor<long>(new[] { 1, inputDimension });  // let's say data is fed into the Tensor objects
 var inputs1 = new List<NamedOnnxValue>()
               {
-                  NamedOnnxValue.CreateFromTensor<float>("name1", t1)
+                  NamedOnnxValue.CreateFromTensor("name1", input)
               };
 // session1 inference
 using (var outputs1 = session1.Run(inputs1))

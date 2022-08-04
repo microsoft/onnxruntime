@@ -1,5 +1,11 @@
 ---
-nav_exclude: true 
+title: Image recognition with ResNet50v2 in C#
+description: The sample walks through how to run a pretrained ResNet50 v2 ONNX model using the Onnx Runtime C# API.
+parent: Inference with C#
+grand_parent: Tutorials
+has_children: false
+redirect_from: /docs/tutorials/resnet50_csharp
+nav_order: 1
 ---
 
 
