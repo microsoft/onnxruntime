@@ -42,7 +42,7 @@ For more details on CUDA/cuDNN versions, please see [CUDA EP requirements](./CUD
 
 See [Build instructions](../build/eps.md#tensorrt).
 
-The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.2.3.0.
+The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.4.
 
 ## Usage
 ### C/C++
