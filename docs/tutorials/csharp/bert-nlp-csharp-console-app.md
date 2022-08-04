@@ -11,7 +11,7 @@ nav_order: 1
 # Inference with C# BERT NLP Deep Learning and ONNX Runtime
 {: .no_toc }
 
-In this tutorial we will learn how to do inferencing for the popular BERT Natural Language Processing model in C#.
+In this tutorial we will learn how to do inferencing for the popular BERT Natural Language Processing deep learning model in C#.
 
 In order to be able to preprocess our text in C# we will leverage the open source [BERTTokenizers](https://github.com/NMZivkovic/BertTokenizers) that includes tokenizers for most BERT models. See below for supported models. 
 
@@ -110,99 +110,15 @@ torch.onnx.export(model,
 ## Understanding the model in Python
 When taking a prebuilt model and operationalizing it, its useful to take a moment and understand the models pre and post processing, and the input/output shapes and labels. Many models have sample code provided in Python. We will be inferencing our model with C# but first lets test it and see how its done in Python. This will help us with our C# logic in the next step.
 
-- Create the `preprocess`, `postprocess`, `init` and `run` functions in python to test the model.
+- The code to test out the model is provided [in this tutorial](https://onnxruntime.ai/docs/tutorials/azureml.html). Check out the source for testing and inferencing this model in Python. Below a sample `input` sentence and sample `output` from running the model.
 
-```python
-import os
-import logging
-import json
-import numpy as np
-import onnxruntime
-import transformers
-import torch
-
-# The pre process function take a question and a context, and generates the tensor inputs to the model:
-# - input_ids: the words in the question encoded as integers
-# - attention_mask: not used in this model
-# - token_type_ids: a list of 0s and 1s that distinguish between the words of the question and the words of the context
-# This function also returns the words contained in the question and the context, so that the answer can be decoded into a phrase. 
-def preprocess(question, context):
-    encoded_input = tokenizer(question, context)
-    print(encoded_input)
-    tokens = tokenizer.convert_ids_to_tokens(encoded_input.input_ids)
-    return (encoded_input.input_ids, encoded_input.attention_mask, encoded_input.token_type_ids, tokens)
-
-# The post process function maps the list of start and end log probabilities onto a text answer, using the text tokens from the question
-# and context. 
-def postprocess(tokens, start, end):
-    results = {}
-    answer_start = np.argmax(start)
-    answer_end = np.argmax(end)
-    if answer_end >= answer_start:
-        answer = tokens[answer_start]
-        for i in range(answer_start+1, answer_end+1):
-            if tokens[i][0:2] == "##":
-                answer += tokens[i][2:]
-            else:
-                answer += " " + tokens[i]
-        results['answer'] = answer.capitalize()
-    else:
-        results['error'] = "I am unable to find the answer to this question. Can you please ask another question?"
-    return results
-
-# Perform the one-off initialization for the prediction. The init code is run once when the endpoint is setup.
-def init():
-    global tokenizer, session, model
-
-    model_name = "bert-large-uncased-whole-word-masking-finetuned-squad"
-    model = transformers.BertForQuestionAnswering.from_pretrained(model_name)
-    model_path = "./" + model_name + ".onnx"
-
-    # Create the tokenizer
-    tokenizer = transformers.BertTokenizer.from_pretrained(model_name)
-
-    # Create an ONNX Runtime session to run the ONNX model
-    session = onnxruntime.InferenceSession(model_path, providers=["CPUExecutionProvider"])  
-
-
-# Run the ONNX model with ONNX Runtime
-def run(raw_data):
-    logging.info("Request received")
-    inputs = json.loads(raw_data)
-    logging.info(inputs)
-
-    # Preprocess the question and context into tokenized ids
-    input_ids, input_mask, segment_ids, tokens = preprocess(inputs["question"], inputs["context"])
-    logging.info("Running inference")
-    
-    # Format the inputs for ONNX Runtime
-    model_inputs = {
-        'input_ids':   [input_ids], 
-        'input_mask':  [input_mask],
-        'segment_ids': [segment_ids]
-        }
-                  
-    outputs = session.run(['start_logits', 'end_logits'], model_inputs)
-    logging.info("Post-processing")  
-
-    # Post process the output of the model into an answer (or an error if the question could not be answered)
-    results = postprocess(tokens, outputs[0], outputs[1])
-    logging.info(results)
-    return results
-
-```
-- Call the `init()` function to download the model and create the `InferenceSession`.
-
-```python
-init()
-```
-- Create the `input` and run the model. 
+- Sample `input`
 ```python
 input = "{\"question\": \"What is Dolly Parton's middle name?\", \"context\": \"Dolly Rebecca Parton is an American singer-songwriter\"}"
 
 print(run(input))
 ```
-- Here is what the output should look like for the above question. Use the `input_ids` to validate the tokenization in C#.
+- Here is what the output should look like for the above question. You can use the `input_ids` to validate the tokenization in C#.
 
 ```text
 Output:
