@@ -8,7 +8,7 @@ nav_order: 1
 ---
 
 
-# Inference with C# BERT NLP and ONNX Runtime
+# Inference with C# BERT NLP Deep Learning and ONNX Runtime
 {: .no_toc }
 
 In this tutorial we will learn how to do inferencing for the popular BERT Natural Language Processing model in C#.
