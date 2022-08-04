@@ -74,19 +74,6 @@ Then we fit a model.
 
 
 
-.. rst-class:: sphx-glr-script-out
-
- .. code-block:: none
-
-    /home/runner/.local/lib/python3.8/site-packages/sklearn/linear_model/_logistic.py:444: ConvergenceWarning: lbfgs failed to converge (status=1):
-    STOP: TOTAL NO. of ITERATIONS REACHED LIMIT.
-
-    Increase the number of iterations (max_iter) or scale the data as shown in:
-        https://scikit-learn.org/stable/modules/preprocessing.html
-    Please also refer to the documentation for alternative solver options:
-        https://scikit-learn.org/stable/modules/linear_model.html#logistic-regression
-      n_iter_i = _check_optimize_result(
-
 
 .. raw:: html
 
@@ -119,8 +106,8 @@ and we show the confusion matrix.
  .. code-block:: none
 
     [[13  0  0]
-     [ 0  8  1]
-     [ 0  0 16]]
+     [ 0 11  2]
+     [ 0  0 12]]
 
 
 
@@ -211,8 +198,8 @@ We compute the predictions.
  .. code-block:: none
 
     [[13  0  0]
-     [ 0  8  0]
-     [ 0  0 17]]
+     [ 0 11  0]
+     [ 0  0 14]]
 
 
 
@@ -245,9 +232,9 @@ scikit-learn.
 
  .. code-block:: none
 
-    [[3.89179878e-06 1.91737264e-02 9.80822382e-01]
-     [1.34575380e-03 4.09726583e-01 5.88927663e-01]
-     [1.15008076e-04 5.82656789e-02 9.41619313e-01]]
+    [[9.60244512e-02 8.88242228e-01 1.57333213e-02]
+     [2.71799658e-02 9.10234192e-01 6.25858422e-02]
+     [9.45106278e-01 5.48934527e-02 2.69394014e-07]]
 
 
 
@@ -277,9 +264,9 @@ The probabilies appear to be
 
  .. code-block:: none
 
-    [{0: 3.891796040988993e-06, 1: 0.019173720851540565, 2: 0.9808223843574524},
-     {0: 0.0013457534369081259, 1: 0.4097265601158142, 2: 0.588927686214447},
-     {0: 0.00011500807158881798, 1: 0.058265671133995056, 2: 0.941619336605072}]
+    [{0: 0.09602457284927368, 1: 0.8882421851158142, 2: 0.015733299776911736},
+     {0: 0.027180003002285957, 1: 0.9102342128753662, 2: 0.06258579343557358},
+     {0: 0.9451063275337219, 1: 0.05489342659711838, 2: 2.693937801723223e-07}]
 
 
 
@@ -319,11 +306,11 @@ Let's benchmark.
  .. code-block:: none
 
     Execution time for clr.predict
-    Average 4.42e-05 min=4.29e-05 max=5.45e-05
+    Average 8.66e-05 min=7.56e-05 max=0.000104
     Execution time for ONNX Runtime
-    Average 1.91e-05 min=1.85e-05 max=2.87e-05
+    Average 2.74e-05 min=2.42e-05 max=3.36e-05
 
-    1.9148999999458738e-05
+    2.7374654999903216e-05
 
 
 
@@ -368,11 +355,11 @@ as opposed to a batch of prediction.
  .. code-block:: none
 
     Execution time for clr.predict
-    Average 0.00412 min=0.00409 max=0.00418
+    Average 0.00817 min=0.00748 max=0.00911
     Execution time for sess_predict
-    Average 0.000942 min=0.000935 max=0.000967
+    Average 0.00152 min=0.00143 max=0.00175
 
-    0.0009417411449996393
+    0.0015233170999999857
 
 
 
@@ -405,11 +392,11 @@ Let's do the same for the probabilities.
  .. code-block:: none
 
     Execution time for predict_proba
-    Average 0.00616 min=0.00603 max=0.00695
+    Average 0.0115 min=0.011 max=0.0136
     Execution time for sess_predict_proba
-    Average 0.000981 min=0.000973 max=0.000989
+    Average 0.0016 min=0.00147 max=0.00227
 
-    0.0009807766450003895
+    0.0015962060200003236
 
 
 
@@ -479,11 +466,11 @@ We compare.
  .. code-block:: none
 
     Execution time for predict_proba
-    Average 0.718 min=0.716 max=0.72
+    Average 1.31 min=1.29 max=1.33
     Execution time for sess_predict_proba
-    Average 0.0011 min=0.00109 max=0.00112
+    Average 0.0022 min=0.00198 max=0.00278
 
-    0.0011003508200002443
+    0.002198638819999985
 
 
 
@@ -538,44 +525,44 @@ Let's see with different number of trees.
  .. code-block:: none
 
     5
-    Average 0.0515 min=0.0512 max=0.0518
-    Average 0.000957 min=0.000947 max=0.000982
+    Average 0.0984 min=0.0967 max=0.1
+    Average 0.00149 min=0.00143 max=0.00152
     10
-    Average 0.0866 min=0.0865 max=0.0869
-    Average 0.000968 min=0.000961 max=0.000987
+    Average 0.162 min=0.158 max=0.164
+    Average 0.00153 min=0.0014 max=0.00172
     15
-    Average 0.122 min=0.121 max=0.122
-    Average 0.000984 min=0.000977 max=0.000998
+    Average 0.229 min=0.225 max=0.235
+    Average 0.00157 min=0.00151 max=0.00161
     20
-    Average 0.157 min=0.156 max=0.16
-    Average 0.000992 min=0.000986 max=0.00101
+    Average 0.287 min=0.283 max=0.291
+    Average 0.00161 min=0.00149 max=0.00184
     25
-    Average 0.193 min=0.191 max=0.196
-    Average 0.00104 min=0.00103 max=0.00105
+    Average 0.35 min=0.349 max=0.352
+    Average 0.00164 min=0.0015 max=0.00184
     30
-    Average 0.226 min=0.226 max=0.226
-    Average 0.00104 min=0.00103 max=0.00105
+    Average 0.414 min=0.411 max=0.422
+    Average 0.00165 min=0.0014 max=0.00175
     35
-    Average 0.261 min=0.261 max=0.262
-    Average 0.00106 min=0.00105 max=0.00108
+    Average 0.475 min=0.471 max=0.483
+    Average 0.00171 min=0.00159 max=0.00178
     40
-    Average 0.297 min=0.297 max=0.297
-    Average 0.00107 min=0.00106 max=0.00109
+    Average 0.532 min=0.527 max=0.536
+    Average 0.00176 min=0.00165 max=0.00198
     45
-    Average 0.333 min=0.331 max=0.336
-    Average 0.00108 min=0.00107 max=0.00111
+    Average 0.598 min=0.593 max=0.604
+    Average 0.00179 min=0.00171 max=0.00191
     50
-    Average 0.366 min=0.365 max=0.366
-    Average 0.00108 min=0.00107 max=0.00111
+    Average 0.669 min=0.663 max=0.677
+    Average 0.00186 min=0.00167 max=0.00213
 
-    <matplotlib.legend.Legend object at 0x7f832143f460>
+    <matplotlib.legend.Legend object at 0x7f551da12d00>
 
 
 
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** ( 3 minutes  19.794 seconds)
+   **Total running time of the script:** ( 6 minutes  3.597 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_train_convert_predict.py:

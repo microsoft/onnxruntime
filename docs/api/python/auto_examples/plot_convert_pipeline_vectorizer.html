@@ -133,7 +133,7 @@ and we show the confusion matrix.</p>
 <span class="nb">print</span><span class="p">(</span><span class="n">r2_score</span><span class="p">(</span><span class="n">y_test</span><span class="p">,</span> <span class="n">pred</span><span class="p">))</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>0.9158556051328638
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>0.8856745133131323
 </pre></div>
 </div>
 </section>
@@ -190,12 +190,12 @@ ONNX Runtime expects one observation at a time.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">r2_score</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">pred_onx</span><span class="p">))</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>0.9999999999999467
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>0.9999999999999486
 </pre></div>
 </div>
 <p>Very similar. <em>ONNX Runtime</em> uses floats instead of doubles,
 that explains the small discrepencies.</p>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  0.979 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  1.298 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-convert-pipeline-vectorizer-py">
 <div class="sphx-glr-download sphx-glr-download-python docutils container">
 <p><a class="reference download internal" download="" href="../downloads/982a1f7abbb8ffc5d5e98b671c35e5aa/plot_convert_pipeline_vectorizer.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_convert_pipeline_vectorizer.py</span></code></a></p>
