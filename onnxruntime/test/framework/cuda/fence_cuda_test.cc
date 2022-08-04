@@ -42,7 +42,7 @@ class FenceCudaTestInferenceSession : public InferenceSession {
   FenceCudaTestInferenceSession(const SessionOptions& so, const Environment& env) : InferenceSession(so, env) {}
   Status LoadModel(onnxruntime::Model& model) {
     auto model_proto = model.ToProto();
-    auto st = Load(model_proto);
+    auto st = LoadOnnxModel(std::move(model_proto));
     return st;
   }
 };

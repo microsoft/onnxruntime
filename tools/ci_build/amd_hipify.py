@@ -317,6 +317,9 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace("hipdnn", "miopen")
     s = s.replace("HIPDNN_STATUS_SUCCESS", "miopenStatusSuccess")
     s = s.replace("HIPDNN", "MIOPEN")
+    s = s.replace("MIOPEN_POOLING_MAX", "miopenPoolingMax")
+    s = s.replace("MIOPEN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING", "miopenPoolingAverageInclusive")
+    s = s.replace("MIOPEN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING", "miopenPoolingAverage")
 
     # CUSPARSE -> HIPSPARSE
     s = s.replace("CUSPARSE", "HIPSPARSE")

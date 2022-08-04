@@ -28,7 +28,7 @@ This file should be generated. See [cgmanifests/README](/cgmanifests/README.md) 
 1. If you are updating ONNX from a released tag to a new commit, please ask Changming (@snnn) to deploy the new test
    data along with other test models to our CI build machines. This is to ensure that our tests cover every ONNX opset.
 
-1. Send you PR, and **manually** queue a build for every packaging pipeline for your branch.
+1. Send your PR, and **manually** queue a build for every packaging pipeline for your branch.
 
 1. If there is a build failure in stage "Check out of dated documents" in WebAssembly CI pipeline, update ONNX Runtime
    Web WebGL operator support document:
@@ -42,3 +42,7 @@ This file should be generated. See [cgmanifests/README](/cgmanifests/README.md) 
 - [csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs](/csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs)
 - [onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc](/onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc)
 - [onnxruntime/test/testdata/onnx_backend_test_series_overrides.jsonc](/onnxruntime/test/testdata/onnx_backend_test_series_overrides.jsonc)
+
+1. If an operator has changed we may need to update optimizers involving that operator.
+- Run [find_optimizer_opset_version_updates_required.py](/tools/python/find_optimizer_opset_version_updates_required.py), compare with the output from the current main branch, and check for any new warnings.
+- If there are new warnings contact the optimizer owner (which can usually be determined by looking at who edited the file most recently) or failing that ask the 'ONNX Runtime Shared Core' mailing list.
