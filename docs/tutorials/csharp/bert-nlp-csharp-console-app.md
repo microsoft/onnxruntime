@@ -259,6 +259,8 @@ namespace MyApp // Note: actual namespace depends on the project name.
 ```
 ### Postprocess the `output` and print the result
 
+- Here we get the index for the start position (`startLogit`) and end position (`endLogits`). Then we take the original `tokens` of the input sentence and get the vocabulary value for the token ids predicted.
+
 ```csharp
   // Call ToList on the output.
   // Get the First and Last item in the list.
