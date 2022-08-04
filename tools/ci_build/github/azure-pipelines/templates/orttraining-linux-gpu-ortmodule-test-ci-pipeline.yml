@@ -22,22 +22,18 @@ steps:
   # The onnxruntime folder is deleted in the build directory
   # to enforce use of the onnxruntime wheel
   # Uninstall orttraining requirements.txt and install ortmodule requirements.txt before running tests.
-  - bash: tools/ci_build/github/azure-pipelines/templates/orttraining-linux-gpu-ortmodule-test-ci-pipeline.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) ${{ parameters.BuildConfig }} ${{ parameters.DockerImageTag }} variables['Build.Reason']
+- script: |
+    docker run \
+      --gpus all \
+      --shm-size=1024m \
+      --rm \
+      --volume $(Build.SourcesDirectory):/onnxruntime_src \
+      --volume $(Build.BinariesDirectory)/${{ parameters.BuildConfig }}:/build \
+      --volume /mnist:/mnist \
+      --volume /bert_data:/bert_data \
+      --volume /hf_models_cache:/hf_models_cache \
+      ${{ parameters.DockerImageTag }} \
+        bash -c orttraining-linux-gpu-ortmodule-test-ci-pipeline.sh variables['Build.Reason'] \
   displayName: 'Run orttraining_ortmodule_tests.py'
   condition: succeededOrFailed()
-
-# - script: |
-#     docker run \
-#       --gpus all \
-#       --shm-size=1024m \
-#       --rm \
-#       --volume $(Build.SourcesDirectory):/onnxruntime_src \
-#       --volume $(Build.BinariesDirectory)/${{ parameters.BuildConfig }}:/build \
-#       --volume /mnist:/mnist \
-#       --volume /bert_data:/bert_data \
-#       --volume /hf_models_cache:/hf_models_cache \
-#       ${{ parameters.DockerImageTag }} \
-#         bash -c orttraining-linux-gpu-ortmodule-test-ci-pipeline.sh variables['Build.Reason'] \
-#   displayName: 'Run orttraining_ortmodule_tests.py'
-#   condition: succeededOrFailed()
-#   timeoutInMinutes: 60
+  timeoutInMinutes: 60
