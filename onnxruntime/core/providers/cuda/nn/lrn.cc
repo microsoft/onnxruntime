@@ -106,7 +106,7 @@ Status CudnnLRNDescriptor::Set(uint32_t N, double alpha, double beta, double K) 
   if (!desc_)
     CUDNN_CONFIG_RETURN_IF_ERROR(cudnnCreateLRNDescriptor(&desc_));
 
-  CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetLRNDescriptor(desc_, N, alpha, beta, K));
+  CUDNN_CONFIG_RETURN_IF_ERROR(SetLRNDescriptorHelper(desc_, N, alpha, beta, K));
   return Status::OK();
 }
 
