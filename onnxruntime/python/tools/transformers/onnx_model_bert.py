@@ -17,6 +17,8 @@ from fusion_options import FusionOptions
 from fusion_reshape import FusionReshape
 from fusion_shape import FusionShape
 from fusion_skiplayernorm import FusionBiasSkipLayerNormalization, FusionSkipLayerNormalization
+from fusion_qordered_layernorm import FusionQOrderedLayerNormalization
+from fusion_qordered_gelu import FusionQOrderedGelu
 from fusion_qordered_matmul import FusionQOrderedMatMul
 from fusion_utils import FusionUtils
 from onnx import GraphProto, ModelProto, TensorProto, ValueInfoProto, helper
@@ -58,7 +60,12 @@ class BertOnnxModel(OnnxModel):
     def fuse_gelu(self):
         fusion = FusionGelu(self)
         fusion.apply()
+        
         fusion = FusionFastGelu(self)
+        fusion.apply()
+
+        # Only relevant in models with Q-DQ nodes
+        fusion = FusionQOrderedGelu(self)
         fusion.apply()
 
     def fuse_bias_gelu(self, is_fastgelu):
@@ -90,6 +97,10 @@ class BertOnnxModel(OnnxModel):
         fusion.apply()
 
         fusion = FusionLayerNormalizationTF(self)
+        fusion.apply()
+
+        # Only relevant in models with Q-DQ nodes
+        fusion = FusionQOrderedLayerNormalization(self)
         fusion.apply()
 
     def fuse_skip_layer_norm(self):
@@ -413,11 +424,15 @@ class BertOnnxModel(OnnxModel):
         ops = [
             "EmbedLayerNormalization",
             "Attention",
+            "QOrderedAttention",            
             "Gelu",
+            "QOrderedGelu",
             "FastGelu",
             "BiasGelu",
             "LayerNormalization",
+            "QOrderedLayerNormalization",
             "SkipLayerNormalization",
+            "QOrderedMatMul"
         ]
         for op in ops:
             nodes = self.get_nodes_by_op_type(op)

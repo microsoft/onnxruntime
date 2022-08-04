@@ -28,6 +28,7 @@ class FusionQOrderedGelu(Fusion):
 
         downstream_quantize_node = gelu_children[0]
  
+        # Make sure the downstream QuantizeLinear has the proper zero points and scales    
         y_scale = self.model.get_constant_value(downstream_quantize_node.input[1])
         if y_scale is None:
             return
@@ -36,7 +37,7 @@ class FusionQOrderedGelu(Fusion):
         if y_zero_point is None or y_zero_point != 0:
             return
 
-        # The first and second inputs to SkipLayerNormalization should flow through DequantizeLinear nodes
+        # The first input to Gelu should flow through a DequantizeLinear node
         first_path_id, first_input_parent_nodes, _ = self.model.match_parent_paths(
             node,
             [
@@ -50,6 +51,7 @@ class FusionQOrderedGelu(Fusion):
 
         dequantize_node_0 = first_input_parent_nodes[0]
 
+        # Make sure the upstream DequantizeLinear has the proper zero points and scales   
         x_scale_0 = self.model.get_constant_value(dequantize_node_0.input[1])
         if x_scale_0 is None:
             return
@@ -57,7 +59,8 @@ class FusionQOrderedGelu(Fusion):
         x_zero_point_0 = self.model.get_constant_value(dequantize_node_0.input[2])
         if x_zero_point_0 is None or x_zero_point_0 != 0:
             return
-            
+
+        # Fusion logic            
         subgraph_nodes = [node]  #Gelu
         subgraph_nodes.extend([downstream_quantize_node, dequantize_node_0])  #Relevant Q, DQ nodes
 

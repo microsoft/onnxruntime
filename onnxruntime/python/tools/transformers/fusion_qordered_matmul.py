@@ -12,6 +12,7 @@ from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
 
+
 class FusionQOrderedMatMul(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "QOrderedMatMul", "MatMul")
@@ -81,7 +82,7 @@ class FusionQOrderedMatMul(Fusion):
             ],
             output_name_to_node,
         )
-        
+
         # TODO: Adjust this once QOrderedAttention is ready
         if first_path_id < 0:
             first_path_id, first_input_parent_nodes, _ = self.model.match_parent_paths(
@@ -134,33 +135,23 @@ class FusionQOrderedMatMul(Fusion):
         if x_zero_point_1 is None or x_zero_point_1 != 0:
             return
 
-        # Make sure the upstream flow into the Residual Add node flows through Q-DQ nodes
-        residual_add_quantize_node = None
+        # Make sure the upstream flow into the Residual Add node flows through a DQ node
         residual_add_dequantize_node = None
 
         if has_residual_add:
             residual_path_id, residual_input_parent_nodes, _ = self.model.match_parent_paths(
-                residual_add_node,
-                [
-                    (["DequantizeLinear", "QuantizeLinear"], [1, 0]),
-                ],
-                output_name_to_node,
-            )
+                residual_add_node, [(["DequantizeLinear"], [1]),], output_name_to_node
+                )
 
             if residual_path_id < 0:
                 residual_path_id, residual_input_parent_nodes, _ = self.model.match_parent_paths(
-                    residual_add_node,
-                    [
-                        (["DequantizeLinear", "QuantizeLinear"], [0, 0]),
-                    ],
-                    output_name_to_node,
-                )                
+                    residual_add_node, [(["DequantizeLinear"], [0]),], output_name_to_node
+                )               
 
                 if residual_path_id < 0:
                     return
 
             residual_add_dequantize_node = residual_input_parent_nodes[0]
-            residual_add_quantize_node = residual_input_parent_nodes[1]
 
             # Make sure the upstream DequantizeLinear to the Residual Add has the proper zero points and scales       
             x_scale_1 = self.model.get_constant_value(residual_add_dequantize_node.input[1])
