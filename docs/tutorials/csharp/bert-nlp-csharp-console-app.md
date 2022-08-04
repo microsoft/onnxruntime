@@ -180,7 +180,7 @@ namespace MyApp // Note: actual namespace depends on the project name.
     }
 ```
 ### Tokenize the sentence with the `BertUncasedLargeTokenizer`
-- Create a sentence (question and context) and tokenize the sentence with the `BertUncasedLargeTokenizer`. The base model for this fine tuned model was the BERT Uncased Large so the tokenizer is the same.
+- Create a sentence (question and context) and tokenize the sentence with the `BertUncasedLargeTokenizer`. The base model is the `bert-large-uncased` therefore we use the `BertUncasedLargeTokenizer` from the library. Be sure to check what the base model was for your BERT model to confirm you are using the correct tokenizer.
 
 ```csharp
   var sentence = "{\"question\": \"Where is Bob Dylan From?\", \"context\": \"Bob Dylan is from Duluth, Minnesota and is an American singer-songwriter\"}";
