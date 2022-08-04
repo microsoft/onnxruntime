@@ -23,8 +23,8 @@ steps:
 # to enforce use of the onnxruntime wheel
 # Uninstall orttraining requirements.txt and install ortmodule requirements.txt before running tests.
 - bash: tools/ci_build/github/azure-pipelines/templates/orttraining-linux-gpu-ortmodule-test-ci-pipeline.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) ${{ parameters.BuildConfig }} ${{ parameters.DockerImageTag }} variables['Build.Reason']
-  displayName: 'Run orttraining_ortmodule_tests.py'
-  condition: succeededOrFailed()
+displayName: 'Run orttraining_ortmodule_tests.py'
+condition: succeededOrFailed()
 
 # - script: |
 #     docker run \
