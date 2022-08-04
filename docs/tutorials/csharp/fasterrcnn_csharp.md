@@ -4,6 +4,7 @@ description: The sample walks through how to run a pretrained Faster R-CNN objec
 parent: Inference with C#
 grand_parent: Tutorials
 has_children: false
+redirect_from: /docs/tutorials/fasterrcnn_csharp
 nav_order: 2
 ---
 

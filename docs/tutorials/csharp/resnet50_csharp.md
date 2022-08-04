@@ -4,6 +4,7 @@ description: The sample walks through how to run a pretrained ResNet50 v2 ONNX m
 parent: Inference with C#
 grand_parent: Tutorials
 has_children: false
+redirect_from: /docs/tutorials/resnet50_csharp
 nav_order: 1
 ---
 

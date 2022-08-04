@@ -4,6 +4,7 @@ description: Object detection with YOLOv3 in C# using OpenVINO Execution Provide
 parent: Inference with C#
 grand_parent: Tutorials
 has_children: false
+redirect_from: /docs/tutorials/yolov3_object_detection_csharp
 nav_order: 1
 ---
 
