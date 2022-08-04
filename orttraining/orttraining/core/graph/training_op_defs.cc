@@ -1392,10 +1392,10 @@ void RegisterTrainingOpSchemas() {
       .SinceVersion(1)
       .SetDoc(
           "InplaceClipGradNorm operator, taking multiple gradients as inputs (seq<tensor>). "
-          "InplaceClipGradNorm should be used in conjunction with optimizers that are expecting seq<tensor> "
-          "gradients as input, since this op takes input a sequence of tensors and outputs a sequence of tensors "
-          "there by avoiding the need for SequenceConstruct (and making any unnecessary copy). Please note that the "
-          "gradient clipping happens inplace.")
+          "InplaceClipGradNorm should be used in conjunction with optimizers that accept seq<tensor> "
+          "gradients as input, since this op takes a sequence of tensors as input and outputs a sequence of tensors "
+          "there by avoiding the need for SequenceConstruct (and making any unnecessary copy)."
+          "Please note that the gradient clipping happens inplace.")
       .Input(0, "gradients", "Sequence of gradients computed in this iteration.", "S_GRAD")
       .Output(0, "clipped_gradients", "Gradients after being clipped as per given inputs and attributes.", "S_GRAD")
       .Attr(

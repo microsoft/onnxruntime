@@ -15,6 +15,7 @@ class InplaceClipGradNorm final : public CudaKernel {
   InplaceClipGradNorm(const OpKernelInfo& info) : CudaKernel(info) {
     info.GetAttrOrDefault("max_norm", &max_norm_, 1.0f);
     info.GetAttrOrDefault("norm_type", &norm_type_, std::string("fro"));
+    ORT_ENFORCE(norm_type_ == "fro", "Given norm type ", norm_type_, " is not supported for InplaceClipGradNorm.");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;

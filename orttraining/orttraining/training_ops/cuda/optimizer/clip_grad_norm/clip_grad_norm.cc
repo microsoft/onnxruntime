@@ -38,6 +38,8 @@ Status GetL2Norm(cudaStream_t stream, InlinedVector<int>& tensor_sizes,
 
 Status PopulateOutput(cudaStream_t stream, AllocatorPtr alloc, const TensorSeq* gradients,
                       TensorSeq** clipped_gradients) {
+  // If the output buffer is the same as the input buffer, the planner has
+  // decided to reuse the buffer. No need to perform a memcpy in that case.
   if (const_cast<TensorSeq*>(gradients) == *clipped_gradients) {
     return Status::OK();
   }
@@ -86,7 +88,6 @@ Status InplaceClipGradNorm::ComputeInternal(OpKernelContext* ctx) const {
 
   // Get frobenius norm for the grouped inputs
   float* total_norm = reinterpret_cast<float*>(alloc->Alloc(sizeof(float)));
-  ORT_ENFORCE(norm_type_ == "fro", "Given norm type ", norm_type_, " is not supported for InplaceClipGradNorm.");
   ORT_RETURN_IF_ERROR(GetL2Norm(Stream(), tensor_sizes, grouped_tensor_pointers, &total_norm));
 
   // Perform gradient clipping
