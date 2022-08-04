@@ -168,8 +168,7 @@ TEST(CheckpointApiTest, LoadCheckpointToModel) {
   // Phase 1: Load a Model with weights set to zero.
   auto model_uri = MODEL_FOLDER "transform/load_checkpoint/zero_model.onnx";
   ONNX_NAMESPACE::ModelProto p_model;
-  ORT_ENFORCE(Model::Load(model_uri, p_model).IsOK());
-
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model));
   // Phase 2: Load the checkpoint weights into the Model.
   // Call Load APIs
   PathString checkpoint_path = ORT_TSTR("testdata/transform/load_checkpoint");
@@ -179,6 +178,7 @@ TEST(CheckpointApiTest, LoadCheckpointToModel) {
   // Load imported initializers into the Model
   for (auto& init : p_model.graph().initializer()) {
     // Convert the tensor bytes to a float vector to compare.
+    ORT_ENFORCE(init.has_raw_data(), "Raw data was not found on the Initializer.");
     size_t len = init.raw_data().size() / sizeof(float);
     InlinedVector<float> float_values(len);
     std::copy(init.raw_data().data(), init.raw_data().data() + init.raw_data().size(), reinterpret_cast<char*>(&float_values.front()));

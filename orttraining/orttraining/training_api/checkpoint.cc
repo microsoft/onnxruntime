@@ -552,14 +552,14 @@ Status OrtLoadInternal(const PathString& checkpoint_path,
     const auto tensor_file_full_path = ConcatPathComponent<PathChar>(checkpoint_path, tensor_file_path);
     LoadTensorProtoFromFile(tensor_file_full_path, tensor_protos, "[params]");
 
-    for (const auto& tensor_proto : tensor_protos) {
+    for (auto& tensor_proto : tensor_protos) {
       param_tensor_protos.emplace(std::make_pair(tensor_proto.name(), std::move(tensor_proto)));
     }
   }
 
   // Load imported initializers into the Model
   for (auto& init : *(model_proto.mutable_graph()->mutable_initializer())) {
-    if (!init.has_name()) ORT_THROW("An initializer should have a name.");
+    ORT_ENFORCE(init.has_name(), "An initializer should have a name.");
     auto it = param_tensor_protos.find(init.name());
     ORT_ENFORCE(it != param_tensor_protos.end(),
                 "The initializer name was not found in the checkpoint file loaded.");

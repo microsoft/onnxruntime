@@ -849,7 +849,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpointToModel(checkpoint_path, model_proto));
 
           std::string model_proto_str;
-          model_proto.SerializeToString(&model_proto_str);
+          ORT_ENFORCE(model_proto.SerializeToString(&model_proto_str), "Serializing Model failed.");
 
           return py::bytes(model_proto_str);
         });
