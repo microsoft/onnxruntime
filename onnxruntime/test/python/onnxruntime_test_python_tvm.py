@@ -162,7 +162,7 @@ def get_tvm_output(
 
 
 # pylint: disable=no-member
-def compile_virtual_machine(model: ModelProto, target_str: AnyStr) -> tvm.runtime.vm.Executable:
+def compile_virtual_machine(model: ModelProto, target_str: AnyStr, use_hash: bool = False) -> tvm.runtime.vm.Executable:
     """
     Compile ONNX model using VirtualMachine
     """
@@ -170,12 +170,13 @@ def compile_virtual_machine(model: ModelProto, target_str: AnyStr) -> tvm.runtim
         model,
         opset=model.opset_import[0].version,
         freeze_params=True,
+        get_hash=use_hash,
     )
     target = tvm.target.Target(target=target_str, host=target_str)
     return tvm.relay.backend.vm.compile(ir_mod, target)
 
 
-def serialize_virtual_machine(vm_exec: tvm.runtime.vm.Executable) -> AnyStr:
+def serialize_virtual_machine(vm_exec: tvm.runtime.vm.Executable, use_hash: bool = False) -> AnyStr:
     """
     Serialize VirtualMachine
     """
@@ -188,6 +189,8 @@ def serialize_virtual_machine(vm_exec: tvm.runtime.vm.Executable) -> AnyStr:
     lib.export_library(lib_path)
     with open(code_path, "wb") as code_file:
         code_file.write(code)
+    if use_hash:
+        vm_exec.save_hash(temp_directory)
     return temp_directory
 
 
@@ -234,6 +237,65 @@ class TestTVM(unittest.TestCase):
         tvm_output = get_tvm_output(onnx_model, data, provider_options)
 
         assert_almost_equal(cpu_output, tvm_output, decimal=5)
+
+    @staticmethod
+    def test_handshake_mechanism_for_tvm_so_1():
+        """
+        Handshake mechanism test for TVMso Ep, Scenario #1:
+        Check hash obtained from compiled VM (there is no file with hash)
+        """
+        print("Handshake mechanism scenario #1")
+        onnx_model = get_model_with_fixed_shapes()
+        data = get_input_data_for_model_with_fixed_shapes(onnx_model)
+
+        compiled_vm_exec = compile_virtual_machine(onnx_model, target_str="llvm", use_hash=True)
+
+        so_folder = serialize_virtual_machine(compiled_vm_exec)
+        provider_options = dict(
+            target="llvm",
+            so_folder=so_folder,
+            check_hash=True,
+        )
+        get_tvm_output(onnx_model, data, provider_options)
+
+    @staticmethod
+    def test_handshake_mechanism_for_tvm_so_2():
+        """
+        Handshake mechanism test for TVMso Ep, Scenario #2:
+        Check hash obtained from default file in so_folder
+        """
+        print("Handshake mechanism scenario #2")
+        onnx_model = get_model_with_fixed_shapes()
+        data = get_input_data_for_model_with_fixed_shapes(onnx_model)
+
+        compiled_vm_exec = compile_virtual_machine(onnx_model, target_str="llvm", use_hash=True)
+        so_folder = serialize_virtual_machine(compiled_vm_exec, use_hash=True)
+        provider_options = dict(
+            target="llvm",
+            so_folder=so_folder,
+            check_hash=True,
+        )
+        get_tvm_output(onnx_model, data, provider_options)
+
+    @staticmethod
+    def test_handshake_mechanism_for_tvm_so_3():
+        """
+        Handshake mechanism test for TVMso Ep, Scenario #3:
+        Check hash obtained from client file
+        """
+        print("Handshake mechanism scenario #3")
+        onnx_model = get_model_with_fixed_shapes()
+        data = get_input_data_for_model_with_fixed_shapes(onnx_model)
+
+        compiled_vm_exec = compile_virtual_machine(onnx_model, target_str="llvm", use_hash=True)
+        so_folder = serialize_virtual_machine(compiled_vm_exec, use_hash=True)
+        provider_options = dict(
+            target="llvm",
+            so_folder=so_folder,
+            check_hash=True,
+            hash_file_path=str(os.path.join(so_folder, "hash.txt")),
+        )
+        get_tvm_output(onnx_model, data, provider_options)
 
 
 if __name__ == "__main__":
