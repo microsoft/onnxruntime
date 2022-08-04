@@ -621,7 +621,7 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
 
   auto* tp = single_thread_mode ? nullptr : session_state.GetInterOpThreadPool();
 
-  for (int i = 0; i < execution_plan->execution_plan.size(); ++i) {
+  for (size_t i = 0; i < execution_plan->execution_plan.size(); ++i) {
     if (!execution_plan->execution_plan[i]->steps_.empty()) {
       concurrency::ThreadPool::Schedule(tp, [i, &ctx]() {
         RunSince(i, ctx, 0);

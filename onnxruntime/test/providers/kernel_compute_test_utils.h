@@ -88,7 +88,7 @@ class KernelComputeTester {
   }
 
   const char* op_;
-  const char* provider_;
+  std::string provider_;
   int opset_version_;
   const char* domain_;
 
