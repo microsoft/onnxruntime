@@ -166,8 +166,8 @@ class SessionScope {
 #ifdef ENABLE_NVTX_PROFILE
                                                                                  ,
                                                                                  session_tag_(profile::Context::GetInstance().GetThreadTagOrDefault(std::this_thread::get_id())),
-                                                                                 forward_range_("Batch-" + tag + " Forward", profile::Color::White),
-                                                                                 backward_range("Batch-" + tag + " Backward", profile::Color::Black)
+                                                                                 forward_range_("Batch-" + session_tag_ + " Forward", profile::Color::White),
+                                                                                 backward_range_("Batch-" + session_tag_ + " Backward", profile::Color::Black)
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
                                                                                  ,
@@ -214,8 +214,8 @@ class SessionScope {
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-  size_t program_counter = 0;
-  utils::NodeDumpContext dump_context{session_state.GetGraphExecutionCounter(), program_counter};
+    size_t program_counter = 0;
+    utils::NodeDumpContext dump_context{session_state.GetGraphExecutionCounter(), program_counter};
 #endif
     if (session_state_.Profiler().IsEnabled()) {
       session_state_.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
@@ -272,23 +272,23 @@ class KernelScope {
 #endif
 #ifdef ENABLE_NVTX_PROFILE
                                         ,
-                                        node_compute_range_(MakeString(node.OpType(),
+                                        node_compute_range_(MakeString(kernel_.Node().OpType(),
                                                                        ".",
-                                                                       node.Index(),
+                                                                       kernel_.Node().Index(),
                                                                        "(",
-                                                                       node.Name(),
+                                                                       kernel_.Node().Name(),
                                                                        ")"),
-                                                            profile::Color::Yellow);
+                                                            profile::Color::Yellow)
 #endif
   {
-
 #ifdef CONCURRENCY_VISUALIZER
-    session_scope_.series_.write_flag(node.Name().c_str());
+    session_scope_.series_.write_flag(kernel_.Node().Name().c_str());
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
-    profile::NvtxRangeCreator& forward_range = session_state_.forward_range_;
-    profile::NvtxRangeCreator& backward_range = session_state_.backward_range_;
+    auto& node = kernel_.Node();
+    profile::NvtxRangeCreator& forward_range = session_scope_.forward_range_;
+    profile::NvtxRangeCreator& backward_range = session_scope_.backward_range_;
     if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
       // Start timing forward pass when encountering the first forward node.
       forward_range.Begin();
@@ -305,13 +305,13 @@ class KernelScope {
     QueryPerformanceCounter(&kernel_start);
 #endif
 
- #ifdef DEBUG_NODE_INPUTS_OUTPUTS
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
     session_scope_.dump_context_.program_counter = program_counter_++;
     utils::DumpNodeInputs(session_scope_.dump_context_, kernel_context_, kernel_.Node(), session_state_);
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
-    node_compute_range.Begin();
+    node_compute_range_.Begin();
 #endif
 
     if (session_state_.Profiler().IsEnabled()) {
@@ -408,7 +408,7 @@ class KernelScope {
 
 onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t stream_idx) {
   auto* p_kernel = ctx.GetSessionState().GetKernel(idx);
-  //auto* intra_tp = ctx.GetSessionState().GetThreadPool();
+  // auto* intra_tp = ctx.GetSessionState().GetThreadPool();
 
   // TODO: set terminate flag from run_option
   OpKernelContextInternal kernel_ctx(ctx.GetSessionState(),
@@ -425,7 +425,7 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
     auto session_scope = ctx.GetSessionScope();
     ORT_ENFORCE(session_scope, "session scope uninitialized");
     KernelScope kernel_scope(*session_scope, kernel_ctx, *p_kernel);
-    //ORT_RETURN_IF_ERROR(p_kernel->Compute(&kernel_ctx));
+    // ORT_RETURN_IF_ERROR(p_kernel->Compute(&kernel_ctx));
     ORT_TRY {
 #ifdef ENABLE_TRAINING
       if (p_kernel->KernelDef().AllocateInputsContiguously()) {
@@ -466,7 +466,7 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
     const auto& node = p_kernel->Node();
     ss << "Non-zero status code returned while running " << node.OpType() << " node. Name:'" << node.Name()
        << "' Status Message: " << status.ErrorMessage();
-    //If the computation failed, we still can record the memory consumption
+    // If the computation failed, we still can record the memory consumption
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
                                                 MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
@@ -499,8 +499,6 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
     if (stream && stream->steps_.size() > 0)
       valid_streams++;
   }
-
-
 
   // prepare the execution context, notifications got initialized.
   ExecutionContext ctx(session_state,
@@ -562,9 +560,9 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 }
 
 onnxruntime::Status BindToDeviceStream(Stream* parent_stream,
-    const SequentialExecutionPlan& execution_plan,
-    DeviceStreamCollection& device_stream_map,
-    IStreamCommandHandleRegistry& stream_handle_registry) {
+                                       const SequentialExecutionPlan& execution_plan,
+                                       DeviceStreamCollection& device_stream_map,
+                                       IStreamCommandHandleRegistry& stream_handle_registry) {
   for (size_t i = 0; i < execution_plan.execution_plan.size(); ++i) {
     auto& logic_stream = execution_plan.execution_plan[i];
     if (logic_stream->steps_.size() > 0) {
@@ -608,7 +606,7 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                           PartialGraphExecutionState& state,
                                           const OrtValueCachePtr& cache) {
   auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
-                                          fetch_allocators, session_state, logger, device_streams, terminate_flag);
+                                        fetch_allocators, session_state, logger, device_streams, terminate_flag);
 
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));
 
