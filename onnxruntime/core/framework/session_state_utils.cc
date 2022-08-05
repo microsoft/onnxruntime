@@ -325,6 +325,10 @@ common::Status SaveInitializedTensors(
       }
     }
 
+    // 'name' is a reference to a string within the TensorProto that save_tensor_func may free
+    // so we need to output this message prior to calling save_tensor_fund
+    VLOGS(logger, 1) << "Adding weight with name : " << name << " with index: " << ort_value_index;
+
     // any outer scope value is shadowed by a local value and can't override it.
     // due to that check_outer_scope is false
     const bool constant = graph.IsConstantInitializer(name, /* check_outer_scope */ false);
@@ -334,8 +338,6 @@ common::Status SaveInitializedTensors(
 #else
     ORT_RETURN_IF_ERROR(save_tensor_func(name, ort_value_index, ort_value, deleter, constant, false));
 #endif
-
-    VLOGS(logger, 1) << "Added weight with name : " << name << " with index: " << ort_value_index;
   }
 
   LOGS(logger, INFO) << "Done saving initialized tensors";
