@@ -10,7 +10,6 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 #include <ngraph/ngraph.hpp>
-#include <ngraph/frontend/onnx_import/onnx.hpp>
 #if defined(_MSC_VER)
 #pragma warning(default : 4244 4245)
 #elif __GNUC__
@@ -85,18 +84,6 @@ int GetOnnxOpSet(const GraphViewer& graph_viewer) {
   return dm_to_ver.at(kOnnxDomain);
 }
 
-std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int onnx_opset) {
-  std::map<std::string, std::set<std::string>> ng_supported_ops;
-  ng_supported_ops.emplace(kOnnxDomain, ngraph::onnx_import::get_supported_operators(onnx_opset, kOnnxDomain));
-
-  const std::set<std::string> ng_disabled_ops = {"LSTM"};  //Place-holder for ops not supported.
-
-  for (const auto& disabled_op : ng_disabled_ops) {
-    ng_supported_ops.at(kOnnxDomain).erase(disabled_op);
-  }
-
-  return ng_supported_ops;
-}
 
 /**
  * Returns a vector clusters(or node_idx). For each unsupported node, the graph is split into 3 parts.

@@ -17,8 +17,6 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
-#include <ngraph/ngraph.hpp>
-#include <ngraph/frontend/onnx_import/onnx.hpp>
 #if defined(_MSC_VER)
 #pragma warning(default : 4244 4245)
 #elif __GNUC__
@@ -1279,8 +1277,7 @@ bool DataOps::dimension_unsupported(const Node* node) {
   return true;
 }
 
-bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string>>& op_map,
-                                const NodeIndex node_idx) {
+bool DataOps::node_is_supported(const NodeIndex node_idx) {
   const auto& node = graph_viewer_.GetNode(node_idx);
   const auto& optype = node->OpType();
 
@@ -1381,36 +1378,16 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
 #endif
     return false;
   }
-
-  //Check 3b
-  const auto opset = op_map.find(domain);
-  const auto op_fun = ops_supported_as_function.find(node->OpType());
-  if (opset == op_map.end()) {
-#ifndef NDEBUG
-    if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      std::cout << "Failed in Unsupported onnx model domain" << std::endl;
-    }
-#endif
-    return false;
-  }
-  if (opset->second.find(optype) == opset->second.end() && op_fun == ops_supported_as_function.end()) {
-#ifndef NDEBUG
-    if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      std::cout << "The operator is not available in OpenVINO ngraph operators list nor the operator is a special ONNX function" << std::endl;
-    }
-#endif
-    return false;
-  }
     return true;
 }
 
 std::vector<NodeIndex> DataOps::GetUnsupportedNodeIndices(std::unordered_set<std::string>& ng_required_initializers) {
-  const auto ng_supported_ops = GetNgSupportedOps(GetOnnxOpSet(graph_viewer_));
+  //const auto ng_supported_ops = GetNgSupportedOps(GetOnnxOpSet(graph_viewer_));
 
   std::vector<NodeIndex> unsupported_nodes_idx;
 
   for (const auto& node_idx : graph_viewer_.GetNodesInTopologicalOrder()) {
-    if (node_is_supported(ng_supported_ops, node_idx)) {
+    if (node_is_supported(node_idx)) {
       // Collect inputs that are initializers
       graph_viewer_.GetNode(node_idx)->ForEachDef([&ng_required_initializers, this](const NodeArg& node_arg, bool is_input) {
             if(is_input && this->graph_viewer_.GetAllInitializedTensors().count(node_arg.Name())) {
