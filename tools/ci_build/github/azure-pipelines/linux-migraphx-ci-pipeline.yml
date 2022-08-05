@@ -15,7 +15,7 @@ jobs:
 
   # generated from tools/ci_build/github/pai/migraphx-ci-pipeline-env.Dockerfile
   container:
-    image: onnxruntimecibuildenvironment.azurecr.io/migraphx-ci-pipeline-env
+    image: onnxruntimecibuildenvironment.azurecr.io/migraphx-ci-pipeline-env:rocm5.2
     endpoint: onnxruntimecibuildenvironmentforamd
     options: --privileged -e HIP_VISIBLE_DEVICES --security-opt seccomp=unconfined --device=/dev/kfd --device=/dev/dri  --group-add $(video) --group-add $(render)
 
@@ -35,7 +35,7 @@ jobs:
         --config RelWithDebInfo \
         --mpi_home /opt/ompi \
         --use_migraphx \
-        --rocm_version=5.1.1 \
+        --rocm_version=5.2 \
         --rocm_home /opt/rocm \
         --nccl_home /opt/rocm \
         --update \

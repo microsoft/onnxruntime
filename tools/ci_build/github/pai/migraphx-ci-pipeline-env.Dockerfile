@@ -1,4 +1,4 @@
-FROM rocm/pytorch:rocm5.1.1_ubuntu20.04_py3.7_pytorch_1.10.0
+FROM rocm/pytorch:rocm5.2_ubuntu20.04_py3.7_pytorch_1.11.0
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV MIGRAPHX_DISABLE_FAST_GELU=1
@@ -34,6 +34,6 @@ RUN pip3 install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.
 # Install MIGraphX from source
 RUN mkdir -p /migraphx
 RUN cd /migraphx && git clone --depth=1 --branch migraphx_for_ort https://github.com/ROCmSoftwarePlatform/AMDMIGraphX src
-RUN cd /migraphx && rbuild package --cxx /opt/rocm-5.1.1/llvm/bin/clang++ -d /migraphx/deps -B /migraphx/build -S /migraphx/src/ -DPYTHON_EXECUTABLE=/usr/bin/python3
+RUN cd /migraphx && rbuild package --cxx /opt/rocm/llvm/bin/clang++ -d /migraphx/deps -B /migraphx/build -S /migraphx/src/ -DPYTHON_EXECUTABLE=/usr/bin/python3
 RUN dpkg -i /migraphx/build/*.deb
 RUN rm -rf /migraphx
