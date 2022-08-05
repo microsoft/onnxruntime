@@ -41,7 +41,7 @@ is a list of tensors, one from each model run
 
 import time
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Sequence, Union
 
 import numpy
 import onnx
@@ -57,27 +57,27 @@ _TENSOR_SAVE_POSTFIX_LEN = len(_TENSOR_SAVE_POSTFIX)
 
 
 def augment_model_save_tensors(
-    onnx_model: Union[str, Path, ModelProto], op_types_for_saving: Optional[List[str]] = None
+    onnx_model: Union[str, Path, ModelProto], op_types_for_saving: Optional[Sequence[str]] = None
 ) -> ModelProto:
-    """Augment a given ONNX model to save node input/output tensors
+    """Augment a given ONNX model to save node input/output tensors.
 
-    Add all input/output tensors of eligible operator nodes to model outputs
-    so that their value can be retrieved for debugging purposes
+    Add all input/output tensors of operator nodes to model outputs
+    so that their values can be retrieved for debugging purposes.
 
     Args:
-        model: an ONNX model or the path to load the model
-        op_types_for_saving: Optional list of operator types for which the
-            input/output should be saved. By default, saving all the
-            float32/float16 tensors.
+        model: A ONNX model or the path to load the model
+        op_types_for_saving: Operator types for which the
+	        input/output should be saved. By default, saving all the
+	        float32/float16 tensors.
 
-    Returns
-        Augmented ONNX model
+    Returns:
+        The augmented ONNX model
     """
 
     if op_types_for_saving is None:
         op_types_for_saving = []
     saver = CalibraterBase(onnx_model, op_types_to_calibrate=op_types_for_saving)
-    model = clone_model_with_shape_infer(saver.model)  # type: ModelProto
+    model: ModelProto = clone_model_with_shape_infer(saver.model)
     tensors, _ = saver.select_tensors_to_calibrate(model)
     reshape_shape_name = "LinearReshape_" + str(time.time())
     reshape_shape = numpy_helper.from_array(numpy.array([-1], dtype=numpy.int64), reshape_shape_name)
@@ -92,8 +92,8 @@ def augment_model_save_tensors(
             name=reshape_output,
         )
         model.graph.node.append(reshape_node)
-        vinfo = helper.make_tensor_value_info(reshape_output, TensorProto.FLOAT, [1])
-        model.graph.output.append(vinfo)
+        reshape_output_value_info = helper.make_tensor_value_info(reshape_output, TensorProto.FLOAT, [1])
+        model.graph.output.append(reshape_output_value_info)
     return model
 
 
@@ -101,27 +101,21 @@ def run_collect_activations(
     augmented_model: str,
     input_reader: CalibrationDataReader,
     session_options=None,
-    execution_providers: Optional[List[str]] = None,
-) -> dict:
-    r"""Run augmented model and collect activations tensors
+    execution_providers: Optional[Sequence[str]] = None,
+) -> Dict[str, List[numpy.ndarray]]:
+    """Run augmented model and collect activations tensors.
 
-    Parameters
-    ----------
-    augmented_model : str
-        Path to augmented model created by augment_model_save_tensors()
-    input_reader : CalibrationDataReader
-        Logic for reading input for the model, augmented model have the same
-        input with the original model.
-    session_options :
-        Optional OnnxRuntime session options for controlling model run.
-        By default graph optimization is turned off
-    execution_providers : List[str]
-        Optional execution providers for running the model. CPU EP is used
-        by default.
+    Args:
+        augmented_model: Path to augmented model created by augment_model_save_tensors()
+        input_reader: Logic for reading input for the model, augmented model have the same
+            input with the original model.
+        session_options: Optional OnnxRuntime session options for controlling model run.
+            By default graph optimization is turned off
+        execution_providers: Collection of execution providers for running the model.
+            Only CPU EP is used by default.
 
-    Returns
-    -------
-    A dictionary where the key is tensor name and values are list of tensors from each batch
+    Returns:
+        A dictionary where the key is tensor name and values are list of tensors from each batch
     """
 
     if session_options is None:
@@ -130,7 +124,7 @@ def run_collect_activations(
     if execution_providers is None:
         execution_providers = ["CPUExecutionProvider"]
 
-    infer_session = onnxruntime.InferenceSession(
+    inference_session = onnxruntime.InferenceSession(
         augmented_model,
         sess_options=session_options,
         providers=execution_providers,
@@ -138,12 +132,12 @@ def run_collect_activations(
 
     intermediate_outputs = []
     for input_d in input_reader:
-        intermediate_outputs.append(infer_session.run(None, input_d))
-        if len(intermediate_outputs) == 0:
-            raise ValueError("No data is collected while running augmented model!")
+        intermediate_outputs.append(inference_session.run(None, input_d))
+        if not intermediate_outputs:
+            raise RuntimeError("No data is collected while running augmented model!")
 
     output_dict = {}
-    output_info = infer_session.get_outputs()
+    output_info = inference_session.get_outputs()
     for batch in intermediate_outputs:
         for output, output_data in zip(output_info, batch):
             if output.name.endswith(_TENSOR_SAVE_POSTFIX):

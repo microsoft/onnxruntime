@@ -1,13 +1,10 @@
-#!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
 
-"""Testing save_activations module
-"""
+"""Tests for the save_activations module."""
 
 import tempfile
 import unittest
@@ -157,11 +154,11 @@ class TestSaveActivations(unittest.TestCase):
                 output_dict.setdefault(output.name, []).append(output_data)
 
         for output_name, model_outputs in output_dict.items():
-            test_outputs = tensor_dict.get(output_name)
+            test_outputs = tensor_dict[output_name]
             for expected, actual in zip(model_outputs, test_outputs):
                 exp = expected.reshape(-1)
                 act = actual.reshape(-1)
-                self.assertTrue(np.array_equal(exp, act))
+                np.testing.assert_equal(exp, act)
 
 
 if __name__ == "__main__":
