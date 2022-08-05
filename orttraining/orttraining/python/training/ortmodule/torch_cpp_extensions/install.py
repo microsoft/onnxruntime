@@ -37,11 +37,12 @@ def _install_extension(ext_name, ext_path, cwd):
         print(f"There was an error compiling '{ext_name}' PyTorch CPP extension")
         sys.exit(ret_code)
 
+
 def _get_cuda_extra_build_params():
     nvcc_extra_args = ["-lineinfo", "-O3", "--use_fast_math"]
     raw_output = torch.version.cuda
     if raw_output is not None:
-        release = raw_output.split('.')
+        release = raw_output.split(".")
         bare_metal_major = release[0]
         bare_metal_minor = release[1]
 
@@ -49,7 +50,7 @@ def _get_cuda_extra_build_params():
             # If number is 0, the number of threads used is the number of CPUs on the machine.
             nvcc_extra_args += ["--threads", "0"]
 
-    os.environ["ONNXRUNTIME_CUDA_NVCC_EXTRA_ARGS"] = ','.join(nvcc_extra_args)
+    os.environ["ONNXRUNTIME_CUDA_NVCC_EXTRA_ARGS"] = ",".join(nvcc_extra_args)
 
 
 def build_torch_cpp_extensions():

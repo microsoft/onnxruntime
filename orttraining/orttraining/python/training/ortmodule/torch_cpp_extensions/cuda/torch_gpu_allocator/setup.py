@@ -25,11 +25,14 @@ with fileinput.FileInput(filename, inplace=True) as file:
 
 extra_compile_args = {"cxx": ["-O3"]}
 if not use_rocm:
-    extra_compile_args.update({"nvcc": os.environ["ONNXRUNTIME_CUDA_NVCC_EXTRA_ARGS"].split(',')})
+    extra_compile_args.update({"nvcc": os.environ["ONNXRUNTIME_CUDA_NVCC_EXTRA_ARGS"].split(",")})
 
 setup(
     name="torch_gpu_allocator",
-    ext_modules=[cpp_extension.CUDAExtension(name="torch_gpu_allocator", sources=[filename],
-                                             extra_compile_args=extra_compile_args)],
+    ext_modules=[
+        cpp_extension.CUDAExtension(
+            name="torch_gpu_allocator", sources=[filename], extra_compile_args=extra_compile_args
+        )
+    ],
     cmdclass={"build_ext": cpp_extension.BuildExtension},
 )
