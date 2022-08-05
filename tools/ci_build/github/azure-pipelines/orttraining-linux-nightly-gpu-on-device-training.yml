@@ -14,8 +14,9 @@ jobs:
   - template: templates/run-docker-build-steps.yml
     parameters:
       RunDockerBuildArgs: |
-        -o ptebic.azurecr.io/internal/azureml/aifx/nightly-ubuntu2004-cu113-py38-torch1130dev -d gpu -e \
+        -o nightly-ubuntu2004-cu113-py38-torch1130dev -d gpu -e \
         -t onnxruntime_ondevicetraining_nightly_tests_image \
+        --build-arg BASEIMAGE=ptebic.azurecr.io/internal/azureml/aifx \
         -x " \
           --config RelWithDebInfo \
           --enable_training \
