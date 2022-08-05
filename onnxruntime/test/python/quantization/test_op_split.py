@@ -42,8 +42,7 @@ class TestONNXModel(unittest.TestCase):
         split_node = helper.make_node(
             "Split",
             inputs=["input"],
-            outputs=["output_1",
-                     "output_2", "output_3"],
+            outputs=["output_1", "output_2", "output_3"],
             name="split_node",
             axis=0,
         )
@@ -51,9 +50,7 @@ class TestONNXModel(unittest.TestCase):
             [split_node],
             "qlinear_split_op_test",
             [input],
-            [output_1,
-             output_2,
-             output_3],
+            [output_1, output_2, output_3],
             initializer=initializers,
         )
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
