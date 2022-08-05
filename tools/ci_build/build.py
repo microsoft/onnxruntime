@@ -691,7 +691,9 @@ def get_config_build_dir(build_dir, config):
     return os.path.join(build_dir, config)
 
 
-def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None, shell=False, env={}, python_path=None):
+def run_subprocess(
+    args, cwd=None, capture_stdout=False, dll_path=None, shell=False, env={}, python_path=None, cuda_home=None
+):
     if isinstance(args, str):
         raise ValueError("args should be a sequence of strings, not a string")
 
@@ -707,6 +709,10 @@ def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None, shell=Fa
                 my_env["LD_LIBRARY_PATH"] += os.pathsep + dll_path
             else:
                 my_env["LD_LIBRARY_PATH"] = dll_path
+    # Add nvcc's folder to PATH env so that our cmake file can find nvcc
+    if cuda_home:
+        my_env["PATH"] = os.path.join(cuda_home, "bin") + os.pathsep + my_env["PATH"]
+
     if python_path:
         if "PYTHONPATH" in my_env:
             my_env["PYTHONPATH"] += os.pathsep + python_path
@@ -929,7 +935,8 @@ def generate_build_tree(
     add_default_definition(cmake_extra_defines, "onnxruntime_DEV_MODE", use_dev_mode(args))
     if args.use_cuda:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
-        add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_VERSION", args.cuda_version)
+        if args.cuda_version:
+            add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_VERSION", args.cuda_version)
         # TODO: this variable is not really needed
         add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_HOME", cuda_home)
         add_default_definition(cmake_extra_defines, "onnxruntime_CUDNN_HOME", cudnn_home)
@@ -1261,6 +1268,7 @@ def generate_build_tree(
                 "-DCMAKE_BUILD_TYPE={}".format(config),
             ],
             cwd=config_build_dir,
+            cuda_home=cuda_home,
         )
 
 
