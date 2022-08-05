@@ -456,6 +456,11 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
     if (fetch.IsAllocated()) {
       if (fetch.IsTensor()) {
         fetch_alloc_info[i] = &fetch.Get<Tensor>().Location();
+      } else if (fetch.IsTensorSequence()) {
+        const auto& tensor_seq = fetch.Get<TensorSeq>();
+        if (tensor_seq.Size() != std::size_t{0}) {
+          fetch_alloc_info[i] = &tensor_seq.Get(0).Location();
+        }
       } else if (fetch.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
         fetch_alloc_info[i] = &fetch.Get<SparseTensor>().Location();

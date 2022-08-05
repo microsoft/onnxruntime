@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "core/common/common.h"
+#include "gsl/gsl-lite.hpp"
 
 namespace onnxruntime {
 namespace cuda {
@@ -77,8 +78,8 @@ template <int TensorGroupSize, typename TMultiTensorFunctor, typename... TFuncto
 void launch_multi_tensor_functor(
     cudaStream_t stream,
     const int chunk_size,
-    std::vector<int>& tensor_sizes,
-    std::vector<std::vector<void*>>& grouped_tensor_pointers,
+    gsl::span<int> tensor_sizes,
+    gsl::span<std::vector<void*>> grouped_tensor_pointers,
     TMultiTensorFunctor multipleTensorKernel,
     TFunctorParams&&... kernelParams) {
   // Check if 32-bit integer is enough.
