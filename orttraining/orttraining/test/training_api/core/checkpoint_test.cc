@@ -178,7 +178,7 @@ TEST(CheckpointApiTest, LoadCheckpointToModel) {
   // Load imported initializers into the Model
   for (auto& init : p_model.graph().initializer()) {
     // Convert the tensor bytes to a float vector to compare.
-    ORT_ENFORCE(init.has_raw_data(), "Raw data was not found on the Initializer.");
+    ASSERT_TRUE(init.has_raw_data());
     size_t len = init.raw_data().size() / sizeof(float);
     InlinedVector<float> float_values(len);
     std::copy(init.raw_data().data(), init.raw_data().data() + init.raw_data().size(), reinterpret_cast<char*>(&float_values.front()));
