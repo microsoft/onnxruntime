@@ -173,9 +173,14 @@ hand_implemented = {
     "aten::nonzero": Transpose(NonZero("self")),
     "aten::nonzero.out": SignatureOnly(),
     "aten::_log_softmax.out": SignatureOnly(),
+    # NegativeLogLikelihoodLoss is not supported by the CPU Execution Provider so testing is not possible
+    # Leaving nll_loss_forward.output set to fallback. https://github.com/microsoft/onnxruntime/blob/master/docs/OperatorKernels.md.
     "aten::nll_loss_forward.output": MakeTorchFallback(),
     "aten::nll_loss_backward.grad_input": MakeTorchFallback(),
     "aten::_log_softmax_backward_data.out": MakeTorchFallback(),
+    "aten::squeeze.dim": Squeeze("self", "dim"),
+    "aten::squeeze": SignatureOnly(),
+    "aten::unsqueeze": Unsqueeze(data="self", axes="dim"),
 }
 
 # If the aten op expects a specific output type that differs from self
