@@ -52,7 +52,7 @@ import onnxruntime
 from .calibrate import CalibraterBase, CalibrationDataReader
 from .quant_utils import clone_model_with_shape_infer
 
-_tensor_save_postfix_ = "_ReshapedSavedOutput"
+_TENSOR_SAVE_POSTFIX = "_ReshapedSavedOutput"
 _tensor_save_postfix_len_ = len(_tensor_save_postfix_)
 
 
