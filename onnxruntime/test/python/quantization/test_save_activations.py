@@ -6,7 +6,7 @@
 # license information.
 # --------------------------------------------------------------------------
 
-"""Testing 
+"""Testing save_activations module
 """
 
 import tempfile
@@ -133,7 +133,7 @@ class TestSaveActivations(unittest.TestCase):
         sess_options = onnxruntime.SessionOptions()
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         infer_session = onnxruntime.InferenceSession(
-            test_model_path.as_posix(),
+            test_model_path,
             sess_options=sess_options,
             providers=["CPUExecutionProvider"],
         )

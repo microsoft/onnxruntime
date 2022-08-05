@@ -52,7 +52,7 @@ from .quant_utils import clone_model_with_shape_infer
 
 
 def aug_model_for_act_saving(
-    model:Union[str,Path,ModelProto],
+    onnx_model:Union[str,Path,ModelProto],
     op_types_for_saving=[]
 ) -> ModelProto:
     r"""Augment a given ONNX model by adding activation tensors as outputs
@@ -70,8 +70,8 @@ def aug_model_for_act_saving(
     Augmented ONNX model
     """
 
-    saver = CalibraterBase(model, op_types_to_calibrate=op_types_for_saving)
-    model = clone_model_with_shape_infer(saver.model)
+    saver = CalibraterBase(onnx_model, op_types_to_calibrate=op_types_for_saving)
+    model = clone_model_with_shape_infer(saver.model) # type: ModelProto
     tensors, _ = saver.select_tensors_to_calibrate(model)
     reshape_shape_name = str(uuid.uuid4())
     reshape_shape = numpy_helper.from_array(
