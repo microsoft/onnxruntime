@@ -17,7 +17,7 @@ namespace rocm {
 
 class Operator {
  public:
-  Operator() : repeats_(100), stream_(0) {}
+  Operator() : stream_(0), repeats_(100) {}
 
   virtual void Run() = 0;
 
@@ -36,7 +36,7 @@ class Operator {
       Run();
     }
     timer.End();
-    return timer.time()/repeats_;
+    return timer.time() / repeats_;
   }
 
   virtual ~Operator() {}
