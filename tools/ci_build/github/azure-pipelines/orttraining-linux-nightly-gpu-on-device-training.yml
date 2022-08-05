@@ -10,7 +10,6 @@ jobs:
   - checkout: self
     clean: true
     submodules: recursive
-  - script: 'docker pull '
 
   # Entry point for all on device training tests
   - script: |
