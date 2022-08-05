@@ -176,7 +176,7 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
                 "Either scales or sizes MUST be provided as input.");
     ORT_ENFORCE(sizes->Shape().Size() == static_cast<int64_t>(output_dims.size()),
                 "Resize: input tensor's rank does not match the output tensor's rank.");
-    memcpy(output_dims.data(), sizes->template Data<int64_t>(), sizes->Shape().Size() * sizeof(int64_t));
+    memcpy(output_dims.data(), sizes->Data<int64_t>(), sizes->Shape().Size() * sizeof(int64_t));
     ParseScalesDataFromOutputSize(output_dims, X->Shape().GetDims(), scales_array);
   }
 
