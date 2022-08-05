@@ -45,9 +45,6 @@ contrib_ops_excluded_files = [
     "bert/transformer_cuda_common.h",
     "bert/transformer_common.h",
     "bert/transformer_common.cc",
-    "math/bias_softmax.cc",
-    "math/bias_softmax.h",
-    "math/bias_softmax_impl.cu",
     "math/complex_mul.cc",
     "math/complex_mul.h",
     "math/complex_mul_impl.cu",
@@ -109,22 +106,10 @@ provider_excluded_files = [
     "math/softmax_impl.cu",
     "math/softmax_warpwise_impl.cuh",
     "math/softmax.cc",
-    "nn/batch_norm.cc",
-    "nn/batch_norm.h",
     "nn/conv.cc",
     "nn/conv.h",
     "nn/conv_transpose.cc",
     "nn/conv_transpose.h",
-    "nn/instance_norm.cc",
-    "nn/instance_norm.h",
-    "nn/instance_norm_impl.cu",
-    "nn/instance_norm_impl.h",
-    "nn/lrn.cc",
-    "nn/lrn.h",
-    "nn/max_pool_with_index.cu",
-    "nn/max_pool_with_index.h",
-    "nn/pool.cc",
-    "nn/pool.h",
     "reduction/reduction_ops.cc",
     "rnn/cudnn_rnn_base.cc",
     "rnn/cudnn_rnn_base.h",
@@ -138,6 +123,7 @@ provider_excluded_files = [
     "rnn/rnn_impl.h",
     "shared_inc/cuda_call.h",
     "shared_inc/fpgeneric.h",
+    "shared_inc/softmax.h",
     "cuda_allocator.cc",
     "cuda_allocator.h",
     "cuda_call.cc",
@@ -317,6 +303,12 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace("hipdnn", "miopen")
     s = s.replace("HIPDNN_STATUS_SUCCESS", "miopenStatusSuccess")
     s = s.replace("HIPDNN", "MIOPEN")
+    s = s.replace("MIOPEN_BATCHNORM_SPATIAL", "miopenBNSpatial")
+    s = s.replace("MIOPEN_BATCHNORM_PER_ACTIVATION", "miopenBNPerActivation")
+    s = s.replace("MIOPEN_LRN_CROSS_CHANNEL", "miopenLRNCrossChannel")
+    s = s.replace("MIOPEN_POOLING_MAX", "miopenPoolingMax")
+    s = s.replace("MIOPEN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING", "miopenPoolingAverageInclusive")
+    s = s.replace("MIOPEN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING", "miopenPoolingAverage")
 
     # CUSPARSE -> HIPSPARSE
     s = s.replace("CUSPARSE", "HIPSPARSE")
