@@ -10,23 +10,7 @@ jobs:
   - checkout: self
     clean: true
     submodules: recursive
-
-  - template: templates/run-docker-build-steps.yml
-    parameters:
-      RunDockerBuildArgs: |
-        -o nightly-ubuntu2004-cu113-py38-torch1130dev -d gpu -e \
-        -t onnxruntime_ondevicetraining_nightly_tests_image \
-        --build-arg BASEIMAGE=ptebic.azurecr.io/internal/azureml/aifx \
-        -x " \
-          --config RelWithDebInfo \
-          --enable_training \
-          --enable_training_on_device \
-          --use_cuda --cuda_version=11.3 --cuda_home=/usr/local/cuda-11.3 --cudnn_home=/usr/local/cuda-11.3 \
-          --build_wheel \
-          --skip_tests \
-          " \
-        -u
-      DisplayName: 'Build onnxruntime'
+  - script: 'docker pull ptebic.azurecr.io/internal/azureml/aifx/nightly-ubuntu2004-cu113-py38-torch1130dev:latest'
 
   # Entry point for all on device training tests
   - script: |
@@ -36,7 +20,7 @@ jobs:
         --rm \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
-        onnxruntime_ondevicetraining_nightly_tests_image \
+        ptebic.azurecr.io/internal/azureml/aifx/stable-ubuntu2004-cu113-py38-torch1110:latest \
           /build/RelWithDebInfo/launch_test.py \
             --cwd /build/RelWithDebInfo --cmd_line_with_args "python3 -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_nightly/requirements.txt && python orttraining_on_device_training_tests.py --cwd /build/RelWithDebInfo" \
     displayName: 'Run On-Device Training Tests'
