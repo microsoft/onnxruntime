@@ -1,11 +1,8 @@
-import itertools
-
 import onnx
-from onnx import onnx_pb as onnx_proto
 
-from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
+from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg
 
 
 class QSplit(QuantOperatorBase):
