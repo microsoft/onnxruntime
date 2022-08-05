@@ -13,6 +13,8 @@ if(NOT HIP_FOUND)
   message(FATAL_ERROR "hip is required but is not found")
 endif()
 
+include(composable_kernel)
+
 set(KERNEL_EXPLORER_ROOT ${ONNXRUNTIME_ROOT}/python/tools/kernel_explorer)
 set(BERT_DIR ${ONNXRUNTIME_ROOT}/contrib_ops/rocm/bert)
 
@@ -30,13 +32,22 @@ target_include_directories(kernel_explorer PUBLIC
 target_link_libraries(kernel_explorer
   PRIVATE
     $<TARGET_PROPERTY:onnxruntime_pybind11_state,LINK_LIBRARIES>
+    onnxruntime_composable_kernel_includes
+    # Currently we shall not use composablekernels::device_operations, the target includes all conv dependencies, which
+    # are extremely slow to compile. Instead, we only link all gemm related objects. See the following link on updating.
+    # https://github.com/ROCmSoftwarePlatform/composable_kernel/blob/85978e0201/library/src/tensor_operation_instance/gpu/CMakeLists.txt#L33-L54
+    device_gemm_instance
     ${HIP_LIB})
 target_compile_definitions(kernel_explorer
   PUBLIC ROCM_USE_FLOAT16
   PRIVATE $<TARGET_PROPERTY:onnxruntime_pybind11_state,COMPILE_DEFINITIONS>)
+
+# handle kernel_explorer sources as hip language
 target_compile_options(kernel_explorer PRIVATE "-xhip")
 # TODO: use predefined AMDGPU_TARGETS
-target_compile_options(kernel_explorer PRIVATE "--offload-arch=gfx906" "--offload-arch=gfx908" "--offload-arch=gfx90a")
+target_compile_options(kernel_explorer PRIVATE "--offload-arch=gfx908" "--offload-arch=gfx90a")
+# https://github.com/ROCm-Developer-Tools/HIP/blob/4514f350849b1090954295f8f87a5f8d78bd781b/hip-lang-config.cmake.in
+target_link_libraries(kernel_explorer PRIVATE ${CLANGRT_BUILTINS})
 
 add_dependencies(kernel_explorer onnxruntime_pybind11_state)
 

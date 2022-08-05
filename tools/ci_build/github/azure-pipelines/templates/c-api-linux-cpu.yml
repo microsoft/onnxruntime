@@ -23,10 +23,10 @@ parameters:
 - name: PoolName
   type: string
   default: 'Linux-CPU'
-  
+
 jobs:
 - job: Linux_C_API_Packaging_CPU_${{parameters.OnnxruntimeArch}}
-  
+
   workspace:
     clean: all
   variables:
@@ -46,16 +46,6 @@ jobs:
           sudo chmod 666 /var/run/docker.sock
         fi
       displayName: Install Docker Engine
-    # - bash: |
-    #     set -euo pipefail
-    #     if ! which dotnet; then
-    #       sudo apt-get install -y wget
-    #       wget  https://dot.net/v1/dotnet-install.sh
-    #       chmod 755 dotnet-install.sh
-    #       sudo ./dotnet-install.sh -c Current --install-dir /usr/bin
-    #       rm dotnet-install.sh
-    #     fi
-    #   displayName: Install Dotnet
     - template: set-version-number-variables-step.yml
     - template: get-docker-image-steps.yml
       parameters:
@@ -103,12 +93,10 @@ jobs:
           arch: '${{parameters.OnnxruntimeNodejsBindingArch}}'
           os: 'linux'
           artifactName: 'drop-onnxruntime-nodejs-linux-${{parameters.OnnxruntimeArch}}'
-
-    - ${{ if not(eq(parameters.OnnxruntimeNodejsBindingArch,, 'arm64')) }}:
+    - ${{ if not(eq(parameters.OnnxruntimeNodejsBindingArch, 'arm64')) }}:
       - template: component-governance-component-detection-steps.yml
-        parameters :
-          condition : 'succeeded'
-        
+        parameters:
+          condition: 'succeeded'
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()

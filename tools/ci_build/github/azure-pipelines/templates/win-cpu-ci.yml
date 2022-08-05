@@ -43,6 +43,7 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     setVcvars: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+    skipComponentGovernanceDetection: true
   workspace:
     clean: all
   pool: 'Win-CPU-2019'
@@ -233,7 +234,3 @@ jobs:
           searchFolder: '$(Build.BinariesDirectory)/${{ parameters.BuildConfig }}'
           testRunTitle: 'Unit Test Run'
         condition: succeededOrFailed()
-
-  - template: component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'

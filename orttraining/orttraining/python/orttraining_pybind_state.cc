@@ -8,6 +8,10 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
+#ifdef ENABLE_TRAINING_ON_DEVICE
+#include <google/protobuf/io/zero_copy_stream_impl.h>
+#endif
+
 #include "core/common/parse_string.h"
 #include "core/graph/model.h"
 #include "core/session/environment.h"
@@ -22,9 +26,14 @@
 #include "orttraining/core/graph/gradient_definition_registry.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 #include "orttraining/python/orttraining_pybind_common.h"
+#include "orttraining/core/optimizer/graph_transformer_utils.h"
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/core/framework/torch/custom_function_register.h"
+#endif
+
+#ifdef ENABLE_TRAINING_ON_DEVICE
+#include "orttraining/training_api/include/checkpoint.h"
 #endif
 
 PYBIND11_MAKE_OPAQUE(onnxruntime::OrtValueCache);
@@ -805,6 +814,107 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         [](const std::string& key, const std::unordered_set<size_t> edges) -> void {
           GradientDefinitionRegistry::Instance().SetStopGradientEdgesForNode(key, edges);
         });
+
+#ifdef ENABLE_TRAINING_ON_DEVICE
+  m.def("save_checkpoint",
+        [](const std::vector<py::bytes>& trainable_tensor_protos_pybytes,
+           const std::vector<py::bytes>& non_trainable_tensor_protos_pybytes,
+           const std::string& checkpoint_path) {
+          std::vector<TensorProto> trainable_tensor_protos(trainable_tensor_protos_pybytes.size());
+          std::vector<TensorProto> non_trainable_tensor_protos(non_trainable_tensor_protos_pybytes.size());
+
+          auto parse_pybytes_to_tensor_proto =
+              [](const std::vector<py::bytes>& tensor_protos_pybytes, std::vector<TensorProto>& tensor_protos) {
+                for (size_t i = 0; i < tensor_protos_pybytes.size(); ++i) {
+                  std::istringstream tensor_proto_istream(tensor_protos_pybytes[i]);
+                  ORT_ENFORCE(tensor_proto_istream.good(), "Broken tensor proto istream to read.");
+                  google::protobuf::io::IstreamInputStream zero_copy_input(&tensor_proto_istream);
+                  const bool result =
+                      tensor_protos[i].ParseFromZeroCopyStream(&zero_copy_input) && tensor_proto_istream.eof();
+                  ORT_ENFORCE(result, "Parse tensor proto failed.");
+                }
+              };
+
+          parse_pybytes_to_tensor_proto(trainable_tensor_protos_pybytes, trainable_tensor_protos);
+          parse_pybytes_to_tensor_proto(non_trainable_tensor_protos_pybytes, non_trainable_tensor_protos);
+
+          ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(trainable_tensor_protos,
+                                                                        non_trainable_tensor_protos, checkpoint_path));
+        });
+  m.def("load_checkpoint",
+        [](const std::string& checkpoint_path) {
+          std::vector<TensorProto> tensor_protos;
+          ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpoint(checkpoint_path, tensor_protos));
+          std::vector<py::bytes> tensor_protos_pybytes(tensor_protos.size());
+
+          const auto parse_tensor_proto_to_pybytes =
+              [](std::vector<py::bytes>& tensor_protos_pybytes, const std::vector<TensorProto>& tensor_protos) {
+                for (size_t i = 0; i < tensor_protos.size(); ++i) {
+                  std::string tensor_proto_str;
+                  tensor_protos[i].SerializeToString(&tensor_proto_str);
+                  tensor_protos_pybytes[i] = tensor_proto_str;
+                }
+              };
+
+          parse_tensor_proto_to_pybytes(tensor_protos_pybytes, tensor_protos);
+
+          return tensor_protos_pybytes;
+        });
+
+  m.def("get_optimized_model",
+        [](const py::bytes& serialized_model,
+           const std::unordered_set<std::string>& graph_entities_that_require_gradients) {
+          // Load the serialized model
+          std::istringstream buffer(serialized_model);
+          ONNX_NAMESPACE::ModelProto model_proto;
+          ORT_THROW_IF_ERROR(Model::Load(buffer, &model_proto));
+
+          // Get the ort model from ModelProto model
+          auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
+          logger_ptr->SetSeverity(logging::Severity::kINFO);
+          std::shared_ptr<onnxruntime::Model> ort_model;
+          ORT_THROW_IF_ERROR(Model::Load(model_proto, ort_model, nullptr, *logger_ptr));
+
+          Graph& graph = ort_model->MainGraph();
+          ORT_THROW_IF_ERROR(graph.Resolve());
+
+          // Register the pretraining graph transformations so that they are run twice
+          constexpr size_t NumSteps = 2;
+          GraphTransformerManager graph_transformation_mgr{NumSteps};
+          std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
+              std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+
+          const auto add_transformers = [&cpu_execution_provider,
+                                         &graph_transformation_mgr,
+                                         &graph_entities_that_require_gradients](TransformerLevel level) {
+            auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
+                level, graph_entities_that_require_gradients, TrainingGraphTransformerConfiguration(),
+                *cpu_execution_provider);
+            for (auto& entry : transformers_to_register) {
+              ORT_THROW_IF_ERROR(graph_transformation_mgr.Register(std::move(entry), level));
+            }
+            return Status::OK();
+          };
+
+          for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+            TransformerLevel level = static_cast<TransformerLevel>(i);
+            if (TransformerLevel::MaxLevel >= level) {
+              ORT_THROW_IF_ERROR(add_transformers(level));
+            }
+          }
+
+          // Run the graph transformations
+          for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+            ORT_THROW_IF_ERROR(
+                graph_transformation_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *logger_ptr));
+          }
+
+          // Return the optimized model.
+          std::string model_str;
+          ort_model->ToProto().SerializeToString(&model_str);
+          return py::bytes(model_str);
+        });
+#endif
 }
 
 }  // namespace python
