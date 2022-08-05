@@ -166,7 +166,7 @@ CMD ["/bin/bash"]
 #Build manylinux2014 docker image end
 ARG PYTHON_VERSION=3.9
 ARG TORCH_VERSION=1.11.0
-ARG OPSET_VERSION=14
+ARG OPSET_VERSION=15
 ARG INSTALL_DEPS_EXTRA_ARGS
 
 #Add our own dependencies
