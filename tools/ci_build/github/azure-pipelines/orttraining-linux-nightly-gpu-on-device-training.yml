@@ -14,7 +14,7 @@ jobs:
   - template: templates/run-docker-build-steps.yml
     parameters:
       RunDockerBuildArgs: |
-        -o nightly-ubuntu2004-cu113-py38-torch1130dev:latest -d gpu -e \
+        -o nightly-ubuntu2004-cu113-py38-torch1130dev -d gpu -e \
         -t onnxruntime_ondevicetraining_nightly_tests_image \
         -x " \
           --config RelWithDebInfo \
