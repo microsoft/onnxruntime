@@ -123,7 +123,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
   IAllocatorUniquePtr<T> weight_data_nd = GetScratchBuffer<T>(N_D);
   T* weight_data_nd_data = weight_data_nd.get();
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(weight_data_nd_data, 0, N_D * sizeof(T), Stream()));
-  ComputeWeightsSoftmaxCrossEntropyImpl(Stream(),
+  ComputeSoftmaxCrossEntropyWeightsImpl(Stream(),
                                         label_data,
                                         reinterpret_cast<const CudaT*>(weight_data),
                                         N_D, C,
@@ -242,7 +242,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
   IAllocatorUniquePtr<T> weight_data_nd = GetScratchBuffer<T>(N_D);
   T* weight_data_nd_data = weight_data_nd.get();
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(weight_data_nd_data, 0, N_D * sizeof(T), Stream()));
-  ComputeWeightsSoftmaxCrossEntropyImpl(Stream(),
+  ComputeSoftmaxCrossEntropyWeightsImpl(Stream(),
                                         label_data,
                                         reinterpret_cast<const CudaT*>(weight_data),
                                         N_D, C,

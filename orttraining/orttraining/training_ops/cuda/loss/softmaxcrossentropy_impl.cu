@@ -2,211 +2,160 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cu_inc/elementwise_impl.cuh"
 
 namespace onnxruntime {
 namespace cuda {
 
-namespace {
-#ifdef USE_ROCM
-constexpr int kElementsPerThread = 2;
-constexpr int kThreadsPerBlock = 512;
-#else
-constexpr int kElementsPerThread = GridDim::maxElementsPerThread;
-constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
-#endif
-}  // namespace
-
 template <typename T>
-__global__ void _SoftMaxCrossEntropy(const T* log_prob_data, const T* label_data, T normalize_factor, T* output_data,
-                                     CUDA_LONG N) {
-  CUDA_LONG start = kElementsPerThread * kThreadsPerBlock * blockIdx.x + threadIdx.x;
-  T value[kElementsPerThread];
+struct OpSoftmaxCrossEntropy {
+  OpSoftmaxCrossEntropy(const T* log_prob_data, const T* label_data, T normalize_factor)
+      : log_prob_data_(log_prob_data), label_data_(label_data), normalize_factor_(normalize_factor) {}
 
-  CUDA_LONG id = start;
-#pragma unroll
-  for (int i = 0; i < kElementsPerThread; ++i) {
-    if (id < N) {
-      value[i] = -log_prob_data[id] * label_data[id] / normalize_factor;
-      id += kThreadsPerBlock;
-    }
+  __device__ __inline__ T operator()(CUDA_LONG idx) const {
+    return -log_prob_data_[idx] * label_data_[idx] / normalize_factor_;
   }
 
-  id = start;
-#pragma unroll
-  for (int i = 0; i < kElementsPerThread; ++i) {
-    if (id < N) {
-      output_data[id] = value[i];
-      id += kThreadsPerBlock;
-    }
-  }
-}
+  const T* log_prob_data_;
+  const T* label_data_;
+  T normalize_factor_;
+};
 
 template <typename T>
 void SoftMaxCrossEntropyImpl(cudaStream_t stream, const T* log_prob, const T* label, size_t normalize_factor,
                              T* output_data, size_t count) {
-  CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  int blocksPerGrid = CeilDiv(N, kElementsPerThread * kThreadsPerBlock);
-  T nf = static_cast<T>(normalize_factor);
-  _SoftMaxCrossEntropy<T><<<blocksPerGrid, kThreadsPerBlock, 0, stream>>>(log_prob, label, nf, output_data, N);
+  OpSoftmaxCrossEntropy<T> op(log_prob, label, static_cast<T>(normalize_factor));
+  LaunchElementwiseKernel<T, decltype(op)>(stream, output_data, op, count);
 }
 
-#define SPECIALIZED_IMPL_SoftMaxEntropyImpl(T)                                                  \
-  template void SoftMaxCrossEntropyImpl(cudaStream_t stream, const T* log_prob, const T* label, \
-                                        size_t normalize_factor, T* output_data, size_t count)
-
-SPECIALIZED_IMPL_SoftMaxEntropyImpl(float);
+template void SoftMaxCrossEntropyImpl(cudaStream_t stream, const float* log_prob, const float* label,
+                                      size_t normalize_factor, float* output_data, size_t count);
 
 template <typename T>
-__global__ void _SoftMaxCrossEntropyGrad(const T* dY, const T* log_prob, const T* label, T normalize_factor,
-                                         T* output_data, CUDA_LONG N) {
-  CUDA_LONG start = kElementsPerThread * kThreadsPerBlock * blockIdx.x + threadIdx.x;
-  T value[kElementsPerThread];
+struct OpSoftmaxCrossEntropyGrad {
+  OpSoftmaxCrossEntropyGrad(const T* dY_data, const T* log_prob_data, const T* label_data, T normalize_factor)
+      : dY_data_(dY_data),
+        log_prob_data_(log_prob_data),
+        label_data_(label_data),
+        normalize_factor_(normalize_factor) {}
 
-  CUDA_LONG id = start;
-#pragma unroll
-  for (int i = 0; i < kElementsPerThread; ++i) {
-    if (id < N) {
-      value[i] = (_Exp(log_prob[id]) - label[id]) * (*dY) / normalize_factor;
-      id += kThreadsPerBlock;
-    }
+  __device__ __inline__ T operator()(CUDA_LONG idx) const {
+    return (_Exp(log_prob_data_[idx]) - label_data_[idx]) * (*dY_data_) / normalize_factor_;
   }
 
-  id = start;
-#pragma unroll
-  for (int i = 0; i < kElementsPerThread; ++i) {
-    if (id < N) {
-      output_data[id] = value[i];
-      id += kThreadsPerBlock;
-    }
-  }
-}
+  const T* dY_data_;
+  const T* log_prob_data_;
+  const T* label_data_;
+  T normalize_factor_;
+};
 
 template <typename T>
 void SoftMaxCrossEntropyGradImpl(cudaStream_t stream, const T* dY, const T* log_prob, const T* label,
                                  size_t normalize_factor, T* output_data, size_t count) {
-  CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  int blocksPerGrid = CeilDiv(N, kElementsPerThread * kThreadsPerBlock);
-  T nf = static_cast<T>(normalize_factor);
-  _SoftMaxCrossEntropyGrad<T><<<blocksPerGrid, kThreadsPerBlock, 0, stream>>>(dY, log_prob, label, nf, output_data, N);
+  OpSoftmaxCrossEntropyGrad<T> op(dY, log_prob, label, static_cast<T>(normalize_factor));
+  LaunchElementwiseKernel<T, decltype(op)>(stream, output_data, op, count);
 }
 
-#define SPECIALIZED_IMPL_SoftMaxEntropyGradImpl(T)                                                               \
-  template void SoftMaxCrossEntropyGradImpl(cudaStream_t stream, const T* dY, const T* log_prob, const T* label, \
-                                            size_t normalize_factor, T* output_data, size_t count)
-
-SPECIALIZED_IMPL_SoftMaxEntropyGradImpl(float);
+template void SoftMaxCrossEntropyGradImpl(cudaStream_t stream, const float* dY, const float* log_prob,
+                                          const float* label, size_t normalize_factor, float* output_data,
+                                          size_t count);
 
 template <typename T, typename Tin, bool IsWeighted>
-__global__ void _SparseSoftmaxCrossEntropy(const T* log_prob_data, const Tin* label_data, const T* weight_data,
-                                           const T* normalize_factor_data, T* output_data, Tin D, CUDA_LONG N) {
-  CUDA_LONG start = kElementsPerThread * kThreadsPerBlock * blockIdx.x + threadIdx.x;
-  T value[kElementsPerThread];
+struct OpSparseSoftmaxCrossEntropy {
+  OpSparseSoftmaxCrossEntropy(const T* log_prob_data, const Tin* label_data, const T* weight_data,
+                              const T* normalize_factor_data, Tin D)
+      : log_prob_data_(log_prob_data),
+        label_data_(label_data),
+        weight_data_(weight_data),
+        normalize_factor_data_(normalize_factor_data),
+        D_(D) {}
 
-  CUDA_LONG id = start;
-#pragma unroll
-  for (int i = 0; i < kElementsPerThread; ++i) {
-    if (id < N) {
-      if (*normalize_factor_data == T(0.f)) {
-        value[i] = T(0.f);
-      } else {
-        CUDA_KERNEL_ASSERT(label_data[id] >= 0 && label_data[id] < D);
-        value[i] = -log_prob_data[id * D + label_data[id]] * (IsWeighted ? weight_data[id] : T(1.f)) /
-                   (*normalize_factor_data);
-      }
-      id += kThreadsPerBlock;
+  __device__ __inline__ T operator()(CUDA_LONG idx) const {
+    if (*normalize_factor_data_ != T(0.f)) {
+      CUDA_KERNEL_ASSERT(label_data_[idx] >= 0 && label_data_[idx] < D_);
+      return -log_prob_data_[idx * D_ + label_data_[idx]] * (IsWeighted ? weight_data_[idx] : T(1.f)) /
+             (*normalize_factor_data_);
     }
+    return T(0.f);
   }
 
-  id = start;
-#pragma unroll
-  for (int i = 0; i < kElementsPerThread; ++i) {
-    if (id < N) {
-      output_data[id] = value[i];
-      id += kThreadsPerBlock;
-    }
-  }
-}
+  const T* log_prob_data_;
+  const Tin* label_data_;
+  const T* weight_data_;
+  const T* normalize_factor_data_;
+  Tin D_;
+};
 
 template <typename T, typename Tin>
 void SparseSoftmaxCrossEntropyImpl(cudaStream_t stream, const T* log_prob, const Tin* label, const T* weight,
                                    const T* normalize_factor, T* output_data, size_t count, size_t label_depth) {
-  CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  int blocksPerGrid = CeilDiv(N, kElementsPerThread * kThreadsPerBlock);
-  Tin D = static_cast<Tin>(label_depth);
   if (weight) {
-    _SparseSoftmaxCrossEntropy<T, Tin, true>
-        <<<blocksPerGrid, kThreadsPerBlock, 0, stream>>>(log_prob, label, weight, normalize_factor, output_data, D, N);
+    OpSparseSoftmaxCrossEntropy<T, Tin, true> op(log_prob, label, weight, normalize_factor,
+                                                 static_cast<Tin>(label_depth));
+    LaunchElementwiseKernel<T, decltype(op)>(stream, output_data, op, count);
   } else {
-    _SparseSoftmaxCrossEntropy<T, Tin, false>
-        <<<blocksPerGrid, kThreadsPerBlock, 0, stream>>>(log_prob, label, weight, normalize_factor, output_data, D, N);
+    OpSparseSoftmaxCrossEntropy<T, Tin, false> op(log_prob, label, nullptr, normalize_factor,
+                                                  static_cast<Tin>(label_depth));
+    LaunchElementwiseKernel<T, decltype(op)>(stream, output_data, op, count);
   }
 }
-
-#define SPECIALIZED_IMPL_SparseSoftMaxEntropyImpl(T, Tin)                                                 \
-  template void SparseSoftmaxCrossEntropyImpl(cudaStream_t stream, const T* log_prob, const Tin* label,   \
-                                              const T* weight, const T* normalize_factor, T* output_data, \
-                                              size_t count, size_t label_depth)
-
-SPECIALIZED_IMPL_SparseSoftMaxEntropyImpl(float, int32_t);
-SPECIALIZED_IMPL_SparseSoftMaxEntropyImpl(float, int64_t);
 
 template <typename T, typename Tin, bool IsWeighted>
-__global__ void _SparseSoftmaxCrossEntropyGrad(const T* dY, const T* log_prob, const Tin* label, const T* weight,
-                                               const T* normalize_factor, T* output_data, fast_divmod D_fdm,
-                                               CUDA_LONG N) {
-  CUDA_LONG start = kElementsPerThread * kThreadsPerBlock * blockIdx.x + threadIdx.x;
-  T value[kElementsPerThread];
+struct OpSparseSoftmaxCrossEntropyGrad {
+  OpSparseSoftmaxCrossEntropyGrad(const T* dY_data, const T* log_prob_data, const Tin* label_data, const T* weight_data,
+                                  const T* normalize_factor_data, fast_divmod D_fdm)
+      : dY_data_(dY_data),
+        log_prob_data_(log_prob_data),
+        label_data_(label_data),
+        weight_data_(weight_data),
+        normalize_factor_data_(normalize_factor_data),
+        D_fdm_(D_fdm) {}
 
-  CUDA_LONG id = start;
-#pragma unroll
-  for (int i = 0; i < kElementsPerThread; ++i) {
-    if (id < N) {
-      if (*normalize_factor == T(0.f)) {
-        value[i] = T(0.f);
-      } else {
-        int row, d;
-        D_fdm.divmod(id, row, d);
-        value[i] = (*dY) * (IsWeighted ? weight[row] : T(1.f)) * (_Exp(log_prob[id]) - (T)(d == label[row])) /
-                   (*normalize_factor);
-      }
-      id += kThreadsPerBlock;
+  __device__ __inline__ T operator()(CUDA_LONG idx) const {
+    if (*normalize_factor_data_ != T(0.f)) {
+      int row, d;
+      D_fdm_.divmod(idx, row, d);
+      return (*dY_data_) * (IsWeighted ? weight_data_[row] : T(1.f)) *
+             (_Exp(log_prob_data_[idx]) - (T)(d == label_data_[row])) / (*normalize_factor_data_);
     }
+    return T(0.f);
   }
 
-  id = start;
-#pragma unroll
-  for (int i = 0; i < kElementsPerThread; ++i) {
-    if (id < N) {
-      output_data[id] = value[i];
-      id += kThreadsPerBlock;
-    }
-  }
-}
+  const T* dY_data_;
+  const T* log_prob_data_;
+  const Tin* label_data_;
+  const T* weight_data_;
+  const T* normalize_factor_data_;
+  fast_divmod D_fdm_;
+};
 
 template <typename T, typename Tin>
 void SparseSoftmaxCrossEntropyGradImpl(cudaStream_t stream, const T* dY, const T* log_prob, const Tin* label,
                                        const T* weight, const T* normalize_factor, T* output_data, size_t count,
                                        size_t label_depth) {
-  CUDA_LONG N = static_cast<CUDA_LONG>(count * label_depth);
-  int blocksPerGrid = CeilDiv(N, kElementsPerThread * kThreadsPerBlock);
-  fast_divmod D_fdm(static_cast<int>(label_depth));
   if (weight) {
-    _SparseSoftmaxCrossEntropyGrad<T, Tin, true><<<blocksPerGrid, kThreadsPerBlock, 0, stream>>>(
-        dY, log_prob, label, weight, normalize_factor, output_data, D_fdm, N);
+    OpSparseSoftmaxCrossEntropyGrad<T, Tin, true> op(dY, log_prob, label, weight, normalize_factor,
+                                                     fast_divmod(static_cast<int>(label_depth)));
+    LaunchElementwiseKernel<T, decltype(op)>(stream, output_data, op, count * label_depth);
   } else {
-    _SparseSoftmaxCrossEntropyGrad<T, Tin, false><<<blocksPerGrid, kThreadsPerBlock, 0, stream>>>(
-        dY, log_prob, label, weight, normalize_factor, output_data, D_fdm, N);
+    OpSparseSoftmaxCrossEntropyGrad<T, Tin, false> op(dY, log_prob, label, nullptr, normalize_factor,
+                                                      fast_divmod(static_cast<int>(label_depth)));
+    LaunchElementwiseKernel<T, decltype(op)>(stream, output_data, op, count * label_depth);
   }
 }
 
-#define SPECIALIZED_IMPL_SparseSoftMaxEntropyGradImpl(T, Tin)                                                   \
+#define SPECIALIZED_SPARSE_SOFTMAX_ENTROPY_IMPL(T, Tin)                                                         \
+  template void SparseSoftmaxCrossEntropyImpl(cudaStream_t stream, const T* log_prob, const Tin* label,         \
+                                              const T* weight, const T* normalize_factor, T* output_data,       \
+                                              size_t count, size_t label_depth);                                \
   template void SparseSoftmaxCrossEntropyGradImpl(cudaStream_t stream, const T* dY, const T* log_prob,          \
                                                   const Tin* label, const T* weight, const T* normalize_factor, \
                                                   T* output_data, size_t count, size_t label_depth)
 
-SPECIALIZED_IMPL_SparseSoftMaxEntropyGradImpl(float, int32_t);
-SPECIALIZED_IMPL_SparseSoftMaxEntropyGradImpl(float, int64_t);
+SPECIALIZED_SPARSE_SOFTMAX_ENTROPY_IMPL(float, int32_t);
+SPECIALIZED_SPARSE_SOFTMAX_ENTROPY_IMPL(float, int64_t);
+
+#undef SPECIALIZED_SPARSE_SOFTMAX_ENTROPY_IMPL
 
 }  // namespace cuda
 }  // namespace onnxruntime
