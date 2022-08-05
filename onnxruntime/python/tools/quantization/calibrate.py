@@ -36,6 +36,15 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
         """generate the input data dict for ONNXinferenceSession run"""
         raise NotImplementedError
 
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        result = self.get_next()
+        if result is None:
+            raise StopIteration
+        return result
+
 
 class CalibraterBase:
     def __init__(
