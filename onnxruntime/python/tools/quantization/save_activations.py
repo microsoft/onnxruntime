@@ -44,16 +44,16 @@ from pathlib import Path
 
 import numpy
 import onnx
-import onnxruntime
-
 from onnx import ModelProto, TensorProto, helper, numpy_helper
+
+import onnxruntime
 from .calibrate import CalibrationDataReader, CalibraterBase
 from .quant_utils import clone_model_with_shape_infer
 
 
 def aug_model_for_act_saving(
     onnx_model:Union[str,Path,ModelProto],
-    op_types_for_saving=[]
+    op_types_for_saving:List=None
 ) -> ModelProto:
     r"""Augment a given ONNX model by adding activation tensors as outputs
 
@@ -61,7 +61,7 @@ def aug_model_for_act_saving(
     ----------
     model : ModelProto or Path
         an ONNX model or the path to load the model
-    op_types_for_saving : array
+    op_types_for_saving : List
         Optional list of operator types for which the input/output should be
         saved. By default, saving all the float32/float16 tensors.
 
@@ -70,6 +70,8 @@ def aug_model_for_act_saving(
     Augmented ONNX model
     """
 
+    if op_types_for_saving is None :
+        op_types_for_saving = []
     saver = CalibraterBase(onnx_model, op_types_to_calibrate=op_types_for_saving)
     model = clone_model_with_shape_infer(saver.model) # type: ModelProto
     tensors, _ = saver.select_tensors_to_calibrate(model)
@@ -97,7 +99,7 @@ def run_collect_activations(
     augmented_model:str,
     input_reader: CalibrationDataReader,
     session_options=None,
-    execution_providers:List[str]=["CPUExecutionProvider"]
+    execution_providers:List[str]=None
 ) -> dict:
     r"""Run augmented model and collect activations tensors
 
@@ -123,6 +125,8 @@ def run_collect_activations(
     if (session_options is None):
         session_options = onnxruntime.SessionOptions()
         session_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+    if (execution_providers is None):
+        execution_providers = ["CPUExecutionProvider"]
 
     infer_session = onnxruntime.InferenceSession(
         augmented_model,
@@ -141,7 +145,7 @@ def run_collect_activations(
             raise ValueError("No data is collected while running augmented model!")
 
     output_dict={}
-    output_info = infer_session.get_outputs();
+    output_info = infer_session.get_outputs()
     for batch in intermediate_outputs:
         for output, output_data in zip(output_info, batch):
             if output.name.endswith("_ReshapedSavedOutput") :
