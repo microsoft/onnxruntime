@@ -52,8 +52,6 @@ class QSplit(QuantOperatorBase):
 
 
 class QDQSplit(QDQOperatorBase):
-    def __init__(self, onnx_quantizer, onnx_node):
-        super().__init__(onnx_quantizer, onnx_node)
 
     def quantize(self):
         node = self.node
