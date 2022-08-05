@@ -196,10 +196,10 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createStringTensor
         }
 
         // Release the buffers
-        checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)strings));
+        OrtErrorCode freeCode = checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)strings));
 
         // Assignment failed, return null
-        if (code != ORT_OK) {
+        if ((code != ORT_OK) || (freeCode != ORT_OK))  {
           api->ReleaseValue(ortValue);
           return (jlong) NULL;
         }
