@@ -99,7 +99,7 @@ class TestONNXModel(unittest.TestCase):
         data_reader.rewind()
         check_model_correctness(self, model_fp32_path, model_uint8_path, data_reader.get_next())
 
-        #Verify QDQ mode
+        # Verify QDQ mode
         data_reader.rewind()
         quantize_static(
             model_fp32_path,
