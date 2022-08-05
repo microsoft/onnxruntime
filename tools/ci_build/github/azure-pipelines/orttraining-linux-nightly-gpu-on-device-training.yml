@@ -10,19 +10,13 @@ jobs:
   - checkout: self
     clean: true
     submodules: recursive
-  - script: 'docker pull ptebic.azurecr.io/internal/azureml/aifx/nightly-ubuntu2004-cu113-py38-torch1130dev:latest'
+  - script: 'docker pull '
 
   # Entry point for all on device training tests
   - script: |
-      docker run \
-        --gpus all \
-        --shm-size=1024m \
-        --rm \
-        --volume $(Build.SourcesDirectory):/onnxruntime_src \
-        --volume $(Build.BinariesDirectory):/build \
-        ptebic.azurecr.io/internal/azureml/aifx/stable-ubuntu2004-cu113-py38-torch1110:latest \
-          /build/RelWithDebInfo/launch_test.py \
-            --cwd /build/RelWithDebInfo --cmd_line_with_args "python3 -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_nightly/requirements.txt && python orttraining_on_device_training_tests.py --cwd /build/RelWithDebInfo" \
+      docker run ptebic.azurecr.io/internal/azureml/aifx/nightly-ubuntu2004-cu113-py38-torch1130dev:latest \
+      /build/RelWithDebInfo/launch_test.py \
+      --cwd /build/RelWithDebInfo --cmd_line_with_args "python3 -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_nightly/requirements.txt && python orttraining_on_device_training_tests.py --cwd /build/RelWithDebInfo" \
     displayName: 'Run On-Device Training Tests'
     condition: succeededOrFailed()
     timeoutInMinutes: 120
