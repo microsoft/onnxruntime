@@ -15,29 +15,31 @@
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_createSession__JJLjava_lang_String_2J
   (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong envHandle, jstring modelPath, jlong optsHandle) {
-    (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
-    const OrtApi* api = (const OrtApi*) apiHandle;
-    OrtSession* session;
+  (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
+  OrtSession* session = NULL;
 
 #ifdef _WIN32
-    const jchar* cPath = (*jniEnv)->GetStringChars(jniEnv, modelPath, NULL);
-    size_t stringLength = (*jniEnv)->GetStringLength(jniEnv, modelPath);
-    wchar_t* newString = (wchar_t*)calloc(stringLength + 1, sizeof(wchar_t));
-    if(newString == NULL) {
-        throwOrtException(jniEnv, 1, "Not enough memory");
-        return 0;
-    }
-    wcsncpy_s(newString, stringLength+1, (const wchar_t*) cPath, stringLength);
-    checkOrtStatus(jniEnv,api,api->CreateSession((OrtEnv*)envHandle, newString, (OrtSessionOptions*)optsHandle, &session));
-    free(newString);
-    (*jniEnv)->ReleaseStringChars(jniEnv,modelPath,cPath);
+  const jchar* cPath = (*jniEnv)->GetStringChars(jniEnv, modelPath, NULL);
+  size_t stringLength = (*jniEnv)->GetStringLength(jniEnv, modelPath);
+  wchar_t* newString = (wchar_t*)calloc(stringLength + 1, sizeof(wchar_t));
+  if(newString == NULL) {
+    (*jniEnv)->ReleaseStringChars(jniEnv, modelPath, cPath);
+    throwOrtException(jniEnv, 1, "Not enough memory");
+    return 0;
+  }
+  wcsncpy_s(newString, stringLength+1, (const wchar_t*) cPath, stringLength);
+  checkOrtStatus(jniEnv, api,
+                 api->CreateSession((OrtEnv*)envHandle, newString, (OrtSessionOptions*)optsHandle, &session));
+  free(newString);
+  (*jniEnv)->ReleaseStringChars(jniEnv,modelPath,cPath);
 #else
-    const char* cPath = (*jniEnv)->GetStringUTFChars(jniEnv, modelPath, NULL);
-    checkOrtStatus(jniEnv,api,api->CreateSession((OrtEnv*)envHandle, cPath, (OrtSessionOptions*)optsHandle, &session));
-    (*jniEnv)->ReleaseStringUTFChars(jniEnv,modelPath,cPath);
+  const char* cPath = (*jniEnv)->GetStringUTFChars(jniEnv, modelPath, NULL);
+  checkOrtStatus(jniEnv, api, api->CreateSession((OrtEnv*)envHandle, cPath, (OrtSessionOptions*)optsHandle, &session));
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv, modelPath, cPath);
 #endif
 
-    return (jlong) session;
+  return (jlong) session;
 }
 
 /*
@@ -49,14 +51,16 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_createSession__JJ_3BJ
   (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong envHandle, jbyteArray jModelArray, jlong optsHandle) {
     (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
-    OrtSession* session;
+    OrtEnv* env = (OrtEnv*) envHandle;
+    OrtSessionOptions* opts = (OrtSessionOptions*) optsHandle;
+    OrtSession* session = NULL;
 
     // Get a reference to the byte array elements
-    jbyte* modelArr = (*jniEnv)->GetByteArrayElements(jniEnv,jModelArray,NULL);
+    jbyte* modelArr = (*jniEnv)->GetByteArrayElements(jniEnv, jModelArray, NULL);
     size_t modelLength = (*jniEnv)->GetArrayLength(jniEnv,jModelArray);
-    checkOrtStatus(jniEnv,api,api->CreateSessionFromArray((OrtEnv*)envHandle, modelArr, modelLength, (OrtSessionOptions*)optsHandle, &session));
+    checkOrtStatus(jniEnv, api, api->CreateSessionFromArray(env, modelArr, modelLength, opts, &session));
     // Release the C array.
-    (*jniEnv)->ReleaseByteArrayElements(jniEnv,jModelArray,modelArr,JNI_ABORT);
+    (*jniEnv)->ReleaseByteArrayElements(jniEnv, jModelArray, modelArr, JNI_ABORT);
 
     return (jlong) session;
   }
@@ -70,7 +74,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_getNumInputs
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
-    size_t numInputs;
+    size_t numInputs = 0;
     checkOrtStatus(jniEnv,api,api->SessionGetInputCount((OrtSession*)handle, &numInputs));
     return numInputs;
 }
@@ -85,23 +89,36 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getInputNames
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
+    OrtSession* session = (OrtSession*) sessionHandle;
 
     // Setup
     char *stringClassName = "java/lang/String";
     jclass stringClazz = (*jniEnv)->FindClass(jniEnv, stringClassName);
 
     // Get the number of inputs
-    size_t numInputs = Java_ai_onnxruntime_OrtSession_getNumInputs(jniEnv, jobj, apiHandle, sessionHandle);
+    size_t numInputs = 0;
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->SessionGetInputCount(session, &numInputs));
+    if (code != ORT_OK) {
+      return NULL;
+    }
 
     // Allocate the return array
-    jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv,safecast_size_t_to_jsize(numInputs),stringClazz,NULL);
+    jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(numInputs), stringClazz, NULL);
     for (uint32_t i = 0; i < numInputs; i++) {
         // Read out the input name and convert it to a java.lang.String
-        char* inputName;
-        checkOrtStatus(jniEnv,api,api->SessionGetInputName((OrtSession*)sessionHandle, i, allocator, &inputName));
-        jstring name = (*jniEnv)->NewStringUTF(jniEnv,inputName);
+        char* inputName = NULL;
+        code = checkOrtStatus(jniEnv, api, api->SessionGetInputName(session, i, allocator, &inputName));
+        if (code != ORT_OK) {
+          // break out on error, return array and let Java throw the exception.
+          break;
+        }
+        jstring name = (*jniEnv)->NewStringUTF(jniEnv, inputName);
         (*jniEnv)->SetObjectArrayElement(jniEnv, array, i, name);
-        checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,inputName));
+        checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, inputName));
+        if (code != ORT_OK) {
+          // break out on error, return array and let Java throw the exception.
+          break;
+        }
     }
 
     return array;
@@ -116,8 +133,8 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_getNumOutputs
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
-    size_t numOutputs;
-    checkOrtStatus(jniEnv,api,api->SessionGetOutputCount((OrtSession*)handle, &numOutputs));
+    size_t numOutputs = 0;
+    checkOrtStatus(jniEnv, api, api->SessionGetOutputCount((OrtSession*)handle, &numOutputs));
     return numOutputs;
 }
 
@@ -130,6 +147,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getOutputNames
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle, jlong allocatorHandle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
+    OrtSession* session = (OrtSession*) sessionHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
 
     // Setup
@@ -137,17 +155,29 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getOutputNames
     jclass stringClazz = (*jniEnv)->FindClass(jniEnv, stringClassName);
 
     // Get the number of outputs
-    size_t numOutputs = Java_ai_onnxruntime_OrtSession_getNumOutputs(jniEnv, jobj, apiHandle, sessionHandle);
+    size_t numOutputs = 0;
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->SessionGetOutputCount(session, &numOutputs));
+    if (code != ORT_OK) {
+      return NULL;
+    }
 
     // Allocate the return array
-    jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv,safecast_size_t_to_jsize(numOutputs),stringClazz, NULL);
+    jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(numOutputs), stringClazz, NULL);
     for (uint32_t i = 0; i < numOutputs; i++) {
         // Read out the output name and convert it to a java.lang.String
         char* outputName;
-        checkOrtStatus(jniEnv,api,api->SessionGetOutputName((OrtSession*)sessionHandle, i, allocator, &outputName));
-        jstring name = (*jniEnv)->NewStringUTF(jniEnv,outputName);
+        code = checkOrtStatus(jniEnv, api, api->SessionGetOutputName(session, i, allocator, &outputName));
+        if (code != ORT_OK) {
+          // break out on error, return array and let Java throw the exception.
+          break;
+        }
+        jstring name = (*jniEnv)->NewStringUTF(jniEnv, outputName);
         (*jniEnv)->SetObjectArrayElement(jniEnv, array, i, name);
-        checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,outputName));
+        code = checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, outputName));
+        if (code != ORT_OK) {
+          // break out on error, return array and let Java throw the exception.
+          break;
+        }
     }
 
     return array;
@@ -162,34 +192,52 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getInputInfo
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle, jlong allocatorHandle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
+    OrtSession* session = (OrtSession*) sessionHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
 
     // Setup
     char *nodeInfoClassName = "ai/onnxruntime/NodeInfo";
     jclass nodeInfoClazz = (*jniEnv)->FindClass(jniEnv, nodeInfoClassName);
-    jmethodID nodeInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,nodeInfoClazz, "<init>", "(Ljava/lang/String;Lai/onnxruntime/ValueInfo;)V");
+    jmethodID nodeInfoConstructor = (*jniEnv)->GetMethodID(jniEnv, nodeInfoClazz, "<init>",
+                                                           "(Ljava/lang/String;Lai/onnxruntime/ValueInfo;)V");
 
     // Get the number of inputs
-    size_t numInputs = Java_ai_onnxruntime_OrtSession_getNumInputs(jniEnv, jobj, apiHandle, sessionHandle);
+    size_t numInputs = 0;
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->SessionGetInputCount(session, &numInputs));
+    if (code != ORT_OK) {
+      return NULL;
+    }
 
     // Allocate the return array
-    jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv,safecast_size_t_to_jsize(numInputs),nodeInfoClazz, NULL);
+    jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(numInputs), nodeInfoClazz, NULL);
     for (size_t i = 0; i < numInputs; i++) {
         // Read out the input name and convert it to a java.lang.String
         char* inputName;
-        checkOrtStatus(jniEnv,api,api->SessionGetInputName((OrtSession*)sessionHandle, i, allocator, &inputName));
-        jstring name = (*jniEnv)->NewStringUTF(jniEnv,inputName);
-        checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,inputName));
+        code = checkOrtStatus(jniEnv, api, api->SessionGetInputName(session, i, allocator, &inputName));
+        if (code != ORT_OK) {
+          break;
+        }
+        jstring name = (*jniEnv)->NewStringUTF(jniEnv, inputName);
+        code = checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, inputName));
+        if (code != ORT_OK) {
+          break;
+        }
 
         // Create a ValueInfo from the OrtTypeInfo
-        OrtTypeInfo* typeInfo;
-        checkOrtStatus(jniEnv,api,api->SessionGetInputTypeInfo((OrtSession*)sessionHandle, i, &typeInfo));
-        jobject valueInfoJava = convertToValueInfo(jniEnv,api,typeInfo);
+        OrtTypeInfo* typeInfo = NULL;
+        code = checkOrtStatus(jniEnv, api, api->SessionGetInputTypeInfo(session, i, &typeInfo));
+        if (code != ORT_OK) {
+          break;
+        }
+        jobject valueInfoJava = convertToValueInfo(jniEnv, api, typeInfo);
         api->ReleaseTypeInfo(typeInfo);
+        if (valueInfoJava == NULL) {
+          break;
+        }
 
         // Create a NodeInfo and assign into the array
         jobject nodeInfo = (*jniEnv)->NewObject(jniEnv, nodeInfoClazz, nodeInfoConstructor, name, valueInfoJava);
-        (*jniEnv)->SetObjectArrayElement(jniEnv, array,safecast_size_t_to_jsize(i),nodeInfo);
+        (*jniEnv)->SetObjectArrayElement(jniEnv, array, safecast_size_t_to_jsize(i), nodeInfo);
     }
 
     return array;
@@ -204,29 +252,48 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getOutputInfo
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle, jlong allocatorHandle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
+    OrtSession* session = (OrtSession*) sessionHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
+
     // Setup
     char *nodeInfoClassName = "ai/onnxruntime/NodeInfo";
     jclass nodeInfoClazz = (*jniEnv)->FindClass(jniEnv, nodeInfoClassName);
-    jmethodID nodeInfoConstructor = (*jniEnv)->GetMethodID(jniEnv, nodeInfoClazz, "<init>", "(Ljava/lang/String;Lai/onnxruntime/ValueInfo;)V");
+    jmethodID nodeInfoConstructor = (*jniEnv)->GetMethodID(jniEnv, nodeInfoClazz, "<init>",
+                                                           "(Ljava/lang/String;Lai/onnxruntime/ValueInfo;)V");
 
     // Get the number of outputs
-    size_t numOutputs = Java_ai_onnxruntime_OrtSession_getNumOutputs(jniEnv, jobj, apiHandle, sessionHandle);
+    size_t numOutputs = 0;
+    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->SessionGetOutputCount(session, &numOutputs));
+    if (code != ORT_OK) {
+      return NULL;
+    }
 
     // Allocate the return array
-    jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv,safecast_size_t_to_jsize(numOutputs),nodeInfoClazz,NULL);
+    jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(numOutputs), nodeInfoClazz, NULL);
     for (uint32_t i = 0; i < numOutputs; i++) {
         // Read out the output name and convert it to a java.lang.String
         char* outputName;
-        checkOrtStatus(jniEnv,api,api->SessionGetOutputName((OrtSession*)sessionHandle, i, allocator, &outputName));
-        jstring name = (*jniEnv)->NewStringUTF(jniEnv,outputName);
-        checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,outputName));
+        code = checkOrtStatus(jniEnv, api, api->SessionGetOutputName(session, i, allocator, &outputName));
+        if (code != ORT_OK) {
+          break;
+        }
+        jstring name = (*jniEnv)->NewStringUTF(jniEnv, outputName);
+        code = checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, outputName));
+        if (code != ORT_OK) {
+          break;
+        }
 
         // Create a ValueInfo from the OrtTypeInfo
         OrtTypeInfo* typeInfo;
-        checkOrtStatus(jniEnv,api,api->SessionGetOutputTypeInfo((OrtSession*)sessionHandle, i, &typeInfo));
-        jobject valueInfoJava = convertToValueInfo(jniEnv,api,typeInfo);
+        code = checkOrtStatus(jniEnv, api, api->SessionGetOutputTypeInfo(session, i, &typeInfo));
+        if (code != ORT_OK) {
+          break;
+        }
+        jobject valueInfoJava = convertToValueInfo(jniEnv, api, typeInfo);
         api->ReleaseTypeInfo(typeInfo);
+        if (valueInfoJava == NULL) {
+          break;
+        }
 
         // Create a NodeInfo and assign into the array
         jobject nodeInfo = (*jniEnv)->NewObject(jniEnv, nodeInfoClazz, nodeInfoConstructor, name, valueInfoJava);
@@ -332,8 +399,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_getProfilingStartTimeInNs
   OrtSession* session = (OrtSession*) sessionHandle;
 
   uint64_t timestamp = 0;
-
-  checkOrtStatus(jniEnv,api,api->SessionGetProfilingStartTimeNs(session,&timestamp));
+  checkOrtStatus(jniEnv, api, api->SessionGetProfilingStartTimeNs(session, &timestamp));
   return (jlong) timestamp;
 }
 
@@ -349,9 +415,12 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_endProfiling
   OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
 
   char* profileStr;
-  checkOrtStatus(jniEnv,api,api->SessionEndProfiling((OrtSession*)handle,allocator,&profileStr));
-  jstring profileOutput = (*jniEnv)->NewStringUTF(jniEnv,profileStr);
-  checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,profileStr));
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->SessionEndProfiling((OrtSession*)handle, allocator, &profileStr));
+  if (code != ORT_OK) {
+    return NULL;
+  }
+  jstring profileOutput = (*jniEnv)->NewStringUTF(jniEnv, profileStr);
+  checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, profileStr));
   return profileOutput;
 }
 
@@ -383,79 +452,83 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_constructMetadata
   jclass stringClazz = (*jniEnv)->FindClass(jniEnv, stringClassName);
   char *metadataClassName = "ai/onnxruntime/OnnxModelMetadata";
   jclass metadataClazz = (*jniEnv)->FindClass(jniEnv, metadataClassName);
-  //OnnxModelMetadata(String producerName, String graphName, String domain, String description, long version, String[] customMetadataArray)
-  jmethodID metadataConstructor = (*jniEnv)->GetMethodID(jniEnv, metadataClazz, "<init>",
-                                                         "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J[Ljava/lang/String;)V");
+  //OnnxModelMetadata(String producerName, String graphName, String domain, String description,
+  //                  long version, String[] customMetadataArray)
+  jmethodID metadataConstructor = (*jniEnv)->GetMethodID(
+    jniEnv, metadataClazz, "<init>",
+     "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J[Ljava/lang/String;)V");
 
   // Get metadata
   OrtModelMetadata* metadata;
-  checkOrtStatus(jniEnv,api,api->SessionGetModelMetadata((OrtSession*)nativeHandle,&metadata));
+  checkOrtStatus(jniEnv, api, api->SessionGetModelMetadata((OrtSession*)nativeHandle, &metadata));
 
   // Read out the producer name and convert it to a java.lang.String
   char* charBuffer;
-  checkOrtStatus(jniEnv,api,api->ModelMetadataGetProducerName(metadata, allocator, &charBuffer));
-  jstring producerStr = (*jniEnv)->NewStringUTF(jniEnv,charBuffer);
-  checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,charBuffer));
+  checkOrtStatus(jniEnv, api, api->ModelMetadataGetProducerName(metadata, allocator, &charBuffer));
+  jstring producerStr = (*jniEnv)->NewStringUTF(jniEnv, charBuffer);
+  checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, charBuffer));
 
   // Read out the graph name and convert it to a java.lang.String
-  checkOrtStatus(jniEnv,api,api->ModelMetadataGetGraphName(metadata, allocator, &charBuffer));
-  jstring graphStr = (*jniEnv)->NewStringUTF(jniEnv,charBuffer);
-  checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,charBuffer));
+  checkOrtStatus(jniEnv, api, api->ModelMetadataGetGraphName(metadata, allocator, &charBuffer));
+  jstring graphStr = (*jniEnv)->NewStringUTF(jniEnv, charBuffer);
+  checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, charBuffer));
 
   // Read out the graph description and convert it to a java.lang.String
-  checkOrtStatus(jniEnv,api,api->ModelMetadataGetGraphDescription(metadata, allocator, &charBuffer));
-  jstring graphDescStr = (*jniEnv)->NewStringUTF(jniEnv,charBuffer);
-  checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,charBuffer));
+  checkOrtStatus(jniEnv, api, api->ModelMetadataGetGraphDescription(metadata, allocator, &charBuffer));
+  jstring graphDescStr = (*jniEnv)->NewStringUTF(jniEnv, charBuffer);
+  checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, charBuffer));
 
   // Read out the domain and convert it to a java.lang.String
-  checkOrtStatus(jniEnv,api,api->ModelMetadataGetDomain(metadata, allocator, &charBuffer));
-  jstring domainStr = (*jniEnv)->NewStringUTF(jniEnv,charBuffer);
-  checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,charBuffer));
+  checkOrtStatus(jniEnv, api, api->ModelMetadataGetDomain(metadata, allocator, &charBuffer));
+  jstring domainStr = (*jniEnv)->NewStringUTF(jniEnv, charBuffer);
+  checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, charBuffer));
 
   // Read out the description and convert it to a java.lang.String
-  checkOrtStatus(jniEnv,api,api->ModelMetadataGetDescription(metadata, allocator, &charBuffer));
-  jstring descriptionStr = (*jniEnv)->NewStringUTF(jniEnv,charBuffer);
-  checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,charBuffer));
+  checkOrtStatus(jniEnv, api, api->ModelMetadataGetDescription(metadata, allocator, &charBuffer));
+  jstring descriptionStr = (*jniEnv)->NewStringUTF(jniEnv, charBuffer);
+  checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, charBuffer));
 
   // Read out the version
   int64_t version;
-  checkOrtStatus(jniEnv,api,api->ModelMetadataGetVersion(metadata, &version));
+  checkOrtStatus(jniEnv, api, api->ModelMetadataGetVersion(metadata, &version));
 
   // Read out the keys, look up the values.
   int64_t numKeys;
   char** keys;
-  checkOrtStatus(jniEnv,api,api->ModelMetadataGetCustomMetadataMapKeys(metadata, allocator, &keys, &numKeys));
+  checkOrtStatus(jniEnv, api, api->ModelMetadataGetCustomMetadataMapKeys(metadata, allocator, &keys, &numKeys));
   jobjectArray customArray = NULL;
   if (numKeys > 0) {
-    customArray = (*jniEnv)->NewObjectArray(jniEnv,safecast_int64_to_jsize(numKeys * 2),stringClazz, NULL);
+    customArray = (*jniEnv)->NewObjectArray(jniEnv, safecast_int64_to_jsize(numKeys * 2), stringClazz, NULL);
 
     // Iterate key array to extract the values
     for (int64_t i = 0; i < numKeys; i++) {
       // Create a java.lang.String for the key
-      jstring keyJava = (*jniEnv)->NewStringUTF(jniEnv,keys[i]);
+      jstring keyJava = (*jniEnv)->NewStringUTF(jniEnv, keys[i]);
 
       // Extract the value and convert it to a java.lang.String
-      checkOrtStatus(jniEnv,api,api->ModelMetadataLookupCustomMetadataMap(metadata,allocator,keys[i],&charBuffer));
-      jstring valueJava = (*jniEnv)->NewStringUTF(jniEnv,charBuffer);
-      checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,charBuffer));
+      checkOrtStatus(jniEnv, api, api->ModelMetadataLookupCustomMetadataMap(metadata, allocator, keys[i], &charBuffer));
+      jstring valueJava = (*jniEnv)->NewStringUTF(jniEnv, charBuffer);
+      checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, charBuffer));
 
       // Write the key and value into the array
-      (*jniEnv)->SetObjectArrayElement(jniEnv,customArray,safecast_int64_to_jsize(i*2),keyJava);
-      (*jniEnv)->SetObjectArrayElement(jniEnv,customArray,safecast_int64_to_jsize((i * 2) + 1),valueJava);
+      (*jniEnv)->SetObjectArrayElement(jniEnv, customArray, safecast_int64_to_jsize(i*2), keyJava);
+      (*jniEnv)->SetObjectArrayElement(jniEnv, customArray, safecast_int64_to_jsize((i * 2) + 1), valueJava);
     }
 
     // Release key array
     for (int64_t i = 0; i < numKeys; i++) {
-      checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,keys[i]));
+      checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, keys[i]));
     }
-    checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,keys));
+    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, keys));
   } else {
-    customArray = (*jniEnv)->NewObjectArray(jniEnv,0,stringClazz,NULL);
+    customArray = (*jniEnv)->NewObjectArray(jniEnv, 0, stringClazz, NULL);
   }
 
   // Invoke the metadata constructor
-  //OnnxModelMetadata(String producerName, String graphName, String graphDescription, String domain, String description, long version, String[] customMetadataArray)
-  jobject metadataJava = (*jniEnv)->NewObject(jniEnv, metadataClazz, metadataConstructor, producerStr, graphStr, graphDescStr, domainStr, descriptionStr, (jlong) version, customArray);
+  //OnnxModelMetadata(String producerName, String graphName, String graphDescription, String domain,
+  //                  String description, long version, String[] customMetadataArray)
+  jobject metadataJava = (*jniEnv)->NewObject(jniEnv, metadataClazz, metadataConstructor,
+                       producerStr, graphStr, graphDescStr, domainStr, descriptionStr, (jlong) version, customArray);
 
   // Release the metadata
   api->ReleaseModelMetadata(metadata);
