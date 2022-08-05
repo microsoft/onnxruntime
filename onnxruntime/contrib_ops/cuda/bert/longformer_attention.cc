@@ -48,10 +48,17 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* global_attention = context->Input<Tensor>(6);
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask->Shape(),
                                   global_weights->Shape(), global_bias->Shape(), global_attention->Shape()));
+  // Input shapes:
+  //   input           : (batch_size, sequence_length, hidden_size)
+  //   weights         : (hidden_size, 3 * hidden_size)
+  //   bias            : (3 * hidden_size)
+  //   mask            : (batch_size, sequence_length)
+  //   global_weights  : (hidden_size, 3 * hidden_size)
+  //   global_bias     : (3 * hidden_size)
+  //   global          : (batch_size, sequence_length)
+  // Output shapes:
+  //   output          : (batch_size, sequence_length, hidden_size)
 
-  // Input and output shapes:
-  //   Input 0 - input       : (batch_size, sequence_length, hidden_size)
-  //   Output 0 - output     : (batch_size, sequence_length, hidden_size)
   const auto& shape = input->Shape();
   int batch_size = static_cast<int>(shape[0]);
   int sequence_length = static_cast<int>(shape[1]);

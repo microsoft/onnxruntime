@@ -768,8 +768,7 @@ bool LaunchLongformerSoftmaxKernel(
   // global attention part
   for (int i = 0; i < batch_size; ++i) {
     if (global_count[i] > 0) {
-      int glob_longdim_mm = sequence_length - 2 * w;
-
+      // Local tokens attending global tokens
       const void* v_head = reinterpret_cast<const char*>(v) + (i * elements_per_batch) * element_size;
       const void* prob_head = reinterpret_cast<const char*>(buffer_pointers[3]) +
                               (i * buffer_sizes[3] * num_heads + w * buffer_strides[3]) * element_size;
@@ -778,28 +777,28 @@ bool LaunchLongformerSoftmaxKernel(
       CHECK(cublasGemmStridedBatchedEx(cublas,
                                        CUBLAS_OP_N,
                                        CUBLAS_OP_N,
-                                       head_size,               // m
-                                       glob_longdim_mm,         // n
-                                       global_count[i],         // k
-                                       alpha,                   // alpha
-                                       v_head,                  // A
-                                       Atype,                   // A type
-                                       head_size,               // lda
-                                       stride_per_head,         // strideA
-                                       prob_head,               // B
-                                       Btype,                   // B type
-                                       (int)buffer_strides[3],  // ldb
-                                       buffer_sizes[3],         // strideB
-                                       beta_1,                  // beta
-                                       out_head,                // C
-                                       Ctype,                   // C type
-                                       head_size,               // ldc
-                                       stride_per_head,         // strideC
-                                       num_heads,               // batch count
+                                       head_size,                // m
+                                       sequence_length - 2 * w,  // n
+                                       global_count[i],          // k
+                                       alpha,                    // alpha
+                                       v_head,                   // A
+                                       Atype,                    // A type
+                                       head_size,                // lda
+                                       stride_per_head,          // strideA
+                                       prob_head,                // B
+                                       Btype,                    // B type
+                                       (int)buffer_strides[3],   // ldb
+                                       buffer_sizes[3],          // strideB
+                                       beta_1,                   // beta
+                                       out_head,                 // C
+                                       Ctype,                    // C type
+                                       head_size,                // ldc
+                                       stride_per_head,          // strideC
+                                       num_heads,                // batch count
                                        resultType,
                                        algo));
 
-      // Global tokens
+      // Global tokens attending everything
       v_head = reinterpret_cast<const char*>(global_v) + (i * elements_per_batch) * element_size;
       prob_head = reinterpret_cast<const char*>(buffer_pointers[4]) + (i * buffer_sizes[4] * num_heads) * element_size;
       out_head = reinterpret_cast<char*>(output) + (i * elements_per_batch) * element_size;
