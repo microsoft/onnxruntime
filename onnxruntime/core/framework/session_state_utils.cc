@@ -77,10 +77,6 @@ static inline common::Status ExtDataTensorProtoToTensor(const Env& env,
                                                         const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                         Tensor& tensor, OrtCallback& ext_data_deleter) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
-  // TODO: Do we need a check here? It's internal only so I don't think having an empty proto_path when loading
-  // external data with 'location' set to kMemoryAddressTag would hide any real issues as validation that a 
-  // required proto_path was provided should have occured way before this point.
-  // ORT_ENFORCE(!proto_path.empty());
 
   void* ext_data_buf = nullptr;
   SafeInt<size_t> ext_data_len = 0;

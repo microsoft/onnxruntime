@@ -135,23 +135,22 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
 
   if (location == onnxruntime::utils::kMemoryAddressTag) {
     external_file_path = location;
-    tensor_byte_size = external_data_info->GetLength();
   } else {
     if (tensor_proto_dir != nullptr) {
-      external_file_path = onnxruntime::ConcatPathComponent<ORTCHAR_T>(tensor_proto_dir, external_data_info->GetRelPath());
+      external_file_path = onnxruntime::ConcatPathComponent<ORTCHAR_T>(tensor_proto_dir,
+                                                                       external_data_info->GetRelPath());
     } else {
       external_file_path = external_data_info->GetRelPath();
     }
-
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
   }
 
-  file_offset = external_data_info->GetOffset();
-
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
   const size_t external_data_length = external_data_info->GetLength();
   ORT_RETURN_IF_NOT(external_data_length == 0 || external_data_length == tensor_byte_size,
-                    "TensorProto: ", tensor_proto.name(), " external data size mismatch. Computed size: ", *&tensor_byte_size,
-                    ", external_data.length: ", external_data_length);
+                    "TensorProto: ", tensor_proto.name(), " external data size mismatch. Computed size: ",
+                    *&tensor_byte_size, ", external_data.length: ", external_data_length);
+
+  file_offset = external_data_info->GetOffset();
 
   return Status::OK();
 }
@@ -611,7 +610,12 @@ Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
     ext_data_deleter = OrtCallback{nullptr, nullptr};
   } else {
     size_t file_length;
-    ORT_RETURN_IF_ERROR(env.GetFileLength(external_data_file_path.c_str(), file_length));
+    // error reporting is inconsistent across platforms. Make sure the full path we attempted to open is included.
+    auto status = env.GetFileLength(external_data_file_path.c_str(), file_length);
+    if (!status.IsOK()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileLength for ", ToUTF8String(external_data_file_path),
+                             " failed:", status.ErrorMessage());
+    }
 
     SafeInt<FileOffsetType> end_of_read(file_offset);
     end_of_read += raw_data_safe_len;
