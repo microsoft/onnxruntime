@@ -950,12 +950,12 @@ static Status LoadOrtModelBytes(const PathString& model_uri,
 
   bytes_data_holder.resize(num_bytes);
 
-  std::ifstream bytes_stream(model_location, std::ifstream::in | std::ifstream::binary);
+  std::ifstream bytes_stream(model_uri, std::ifstream::in | std::ifstream::binary);
   bytes_stream.read(reinterpret_cast<char*>(bytes_data_holder.data()), num_bytes);
 
   if (!bytes_stream) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Load model from ", ToUTF8String(model_location), " failed. Only ",
+                           "Load model from ", ToUTF8String(model_uri), " failed. Only ",
                            bytes_stream.gcount(), "/", num_bytes, " bytes were able to be read.");
   }
 
