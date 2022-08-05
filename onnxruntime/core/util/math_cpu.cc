@@ -293,9 +293,10 @@ static inline bool NextPosition(int64_t N, const int64_t* shape, int64_t* dims) 
 
 static inline void NumToDims(int64_t num, gsl::span<const int64_t> shape, gsl::span<int64_t> dims) {
   ORT_ENFORCE(shape.size(), dims.size());
-  for (size_t d_i = dims.size() - 1; d_i >= 0 && num > 0; --d_i) {
-    const auto carry = num / shape[d_i];
-    dims[d_i] = num - carry * shape[d_i];
+  for (size_t d_i = dims.size(); d_i > 0 && num > 0; --d_i) {
+    const auto idx = d_i - 1;
+    const auto carry = num / shape[idx];
+    dims[idx] = num - carry * shape[idx];
     num = carry;
   }
 }

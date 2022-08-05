@@ -256,8 +256,6 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
   float* Ydata = p.Y->MutableData<float>();
   TensorShape output_shape = p.Y->Shape().Slice(2);
 
-  // std::cout << "ConvT<float>. Images: " << p.N << " groups: " << conv_transpose_attrs_.group;
-
   for (auto image_id = 0; image_id < p.N; ++image_id) {
     for (int group_id = 0; group_id < conv_transpose_attrs_.group; ++group_id) {
       // Weight term
