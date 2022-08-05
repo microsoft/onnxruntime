@@ -53,7 +53,7 @@ from .calibrate import CalibraterBase, CalibrationDataReader
 from .quant_utils import clone_model_with_shape_infer
 
 _TENSOR_SAVE_POSTFIX = "_ReshapedSavedOutput"
-_tensor_save_postfix_len_ = len(_tensor_save_postfix_)
+_TENSOR_SAVE_POSTFIX_LEN = len(_TENSOR_SAVE_POSTFIX)
 
 
 def augment_model_save_tensors(
@@ -84,7 +84,7 @@ def augment_model_save_tensors(
     model.graph.initializer.append(reshape_shape)
 
     for tensor_name in tensors:
-        reshape_output = tensor_name + _tensor_save_postfix_
+        reshape_output = tensor_name + _TENSOR_SAVE_POSTFIX
         reshape_node = onnx.helper.make_node(
             "Reshape",
             inputs=[tensor_name, reshape_shape_name],
@@ -146,8 +146,8 @@ def run_collect_activations(
     output_info = infer_session.get_outputs()
     for batch in intermediate_outputs:
         for output, output_data in zip(output_info, batch):
-            if output.name.endswith(_tensor_save_postfix_):
-                oname = output.name[0 : len(output.name) - _tensor_save_postfix_len_]
+            if output.name.endswith(_TENSOR_SAVE_POSTFIX):
+                oname = output.name[0 : len(output.name) - _TENSOR_SAVE_POSTFIX_LEN]
                 output_dict.setdefault(oname, []).append(output_data)
 
     return output_dict
