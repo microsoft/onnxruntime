@@ -7,7 +7,7 @@ from .operators.concat import QLinearConcat
 from .operators.conv import ConvInteger, QDQConv, QLinearConv
 from .operators.direct_q8 import Direct8BitOp, QDQDirect8BitOp
 from .operators.embed_layernorm import EmbedLayerNormalizationQuant
-from .operators.gather import GatherQuant
+from .operators.gather import GatherQuant, QDQGather
 from .operators.gavgpool import QGlobalAveragePool
 from .operators.gemm import QDQGemm, QLinearGemm
 from .operators.lstm import LSTMQuant
@@ -71,6 +71,7 @@ QDQRegistry = {
     "MaxPool": QDQMaxPool,
     "AveragePool": QDQDirect8BitOp,
     "MatMul": QDQMatMul,
+    "Gather": QDQGather,
 }
 
 
