@@ -23,10 +23,10 @@ parameters:
 - name: PoolName
   type: string
   default: 'Linux-CPU'
-
+ 
 jobs:
 - job: Linux_C_API_Packaging_CPU_${{parameters.OnnxruntimeArch}}
-
+ 
   workspace:
     clean: all
   variables:
