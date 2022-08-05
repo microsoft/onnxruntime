@@ -7,7 +7,7 @@
 import unittest
 
 import numpy as np
-from onnx import TensorProto, helper, numpy_helper, save
+from onnx import TensorProto, helper, save
 from op_test_utils import (
     InputFeedsNegOneZeroOne,
     check_model_correctness,
