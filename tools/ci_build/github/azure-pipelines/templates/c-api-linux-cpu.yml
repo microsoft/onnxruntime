@@ -5,28 +5,28 @@ parameters:
   type: string
   default: ''
 
-- name: BaseImage  
+- name: BaseImage
   type: string
 
-- name: OnnxruntimeArch  
+- name: OnnxruntimeArch
   type: string
 
-- name: OnnxruntimeCFlags  
+- name: OnnxruntimeCFlags
   type: string
 
-- name: OnnxruntimeCXXFlags  
+- name: OnnxruntimeCXXFlags
   type: string
 
-- name: OnnxruntimeNodejsBindingArch  
+- name: OnnxruntimeNodejsBindingArch
   type: string
 
 - name: PoolName
   type: string
   default: 'Linux-CPU'
-  
+
 jobs:
 - job: Linux_C_API_Packaging_CPU_${{parameters.OnnxruntimeArch}}
-  
+
   workspace:
     clean: all
   variables:
