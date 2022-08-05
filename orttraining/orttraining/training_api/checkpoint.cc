@@ -553,7 +553,8 @@ Status OrtLoadInternal(const PathString& checkpoint_path,
     LoadTensorProtoFromFile(tensor_file_full_path, tensor_protos, "[params]");
 
     for (auto& tensor_proto : tensor_protos) {
-      param_tensor_protos.emplace(std::make_pair(tensor_proto.name(), std::move(tensor_proto)));
+      auto tensor_proto_name = tensor_proto.name();
+      param_tensor_protos.emplace(std::make_pair(tensor_proto_name, std::move(tensor_proto)));
     }
   }
 
