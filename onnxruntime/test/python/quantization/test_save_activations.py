@@ -121,7 +121,7 @@ class TestSaveActivations(unittest.TestCase):
         cls._tmp_model_dir.cleanup()
 
     def test_saved_tensors_match_internal_tensors(self):
-        test_model_path = str(Path(self._tmp_model_dir.name).joinpath("test_model_1.onnx"))
+        test_model_path = str(Path(self._tmp_model_dir.name) / "augmented_model.onnx")
         construct_test_model1(test_model_path)
         data_reader = TestDataReader()
 
