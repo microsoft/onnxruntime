@@ -14,6 +14,7 @@ jobs:
   # Entry point for all on device training tests
   - script: |
       docker run ptebic.azurecr.io/internal/azureml/aifx/nightly-ubuntu2004-cu113-py38-torch1130dev:latest \
+      ls \
       /build/RelWithDebInfo/launch_test.py \
       --cwd /build/RelWithDebInfo --cmd_line_with_args "python3 -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_nightly/requirements.txt && python orttraining_on_device_training_tests.py --cwd /build/RelWithDebInfo" \
     displayName: 'Run On-Device Training Tests'
