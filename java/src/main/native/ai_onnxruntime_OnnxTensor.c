@@ -35,20 +35,17 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createTensor
                                        );
     (*jniEnv)->ReleaseLongArrayElements(jniEnv, shape, shapeArr, JNI_ABORT);
 
+    int failed = 0;
     if (code == ORT_OK) {
       // Get a reference to the OrtValue's data
-      uint8_t* tensorData;
+      uint8_t* tensorData = NULL;
       code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData(ortValue, (void**)&tensorData));
       if (code == ORT_OK) {
         // Check if we're copying a scalar or not
         if (shapeLen == 0) {
           // Scalars are passed in as a single element array
           size_t copied = copyJavaToPrimitiveArray(jniEnv, onnxType, tensorData, dataObj);
-          if (copied == 0) {
-            // Copy failed, release value
-            api->ReleaseValue(ortValue);
-            ortValue = NULL;
-          }
+          failed = copied == 0 ? 1 : failed;
         } else {
           // Extract the tensor shape information
           JavaTensorTypeShape typeShape;
@@ -58,20 +55,19 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createTensor
             // Copy the java array into the tensor
             size_t copied = copyJavaToTensor(jniEnv, onnxType, tensorData, typeShape.elementCount,
                                              typeShape.dimensions, dataObj);
-            if (copied == 0) {
-              // Copy failed, release value
-              api->ReleaseValue(ortValue);
-              ortValue = NULL;
-            }
+            failed = copied == 0 ? 1 : failed;
           } else {
-            api->ReleaseValue(ortValue);
-            ortValue = NULL;
+            failed = 1;
           }
         }
       } else {
-        api->ReleaseValue(ortValue);
-        ortValue = NULL;
+        failed = 1;
       }
+    }
+
+    if (failed) {
+      api->ReleaseValue(ortValue);
+      ortValue = NULL;
     }
 
     // Return the pointer to the OrtValue
@@ -228,19 +224,16 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxTensor_getBuffer
 
     if (code == ORT_OK) {
       size_t typeSize = onnxTypeSize(typeShape.onnxTypeEnum);
-      size_t sizeBytes = typeShape.elementCount *typeSize;
+      size_t sizeBytes = typeShape.elementCount * typeSize;
 
       uint8_t* arr = NULL;
       code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
 
       if (code == ORT_OK) {
-        return (*jniEnv)->NewDirectByteBuffer(jniEnv, arr, (jlong) sizeBytes);
-      } else {
-        return NULL;
+        return (*jniEnv)->NewDirectByteBuffer(jniEnv, arr, (jlong)sizeBytes);
       }
-    } else {
-      return NULL;
     }
+    return NULL;
 }
 
 /*
