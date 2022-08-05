@@ -86,7 +86,7 @@ if args.copy:
 
 # Stage 4 - running the npm build
 path = abspath(dirname(__file__))
-p = subprocess.Popen("npm ci", shell=True, cwd=path)
+p = subprocess.Popen("npm ci", shell=True, cwd=os.path.join(path))
 p.wait()
 p = subprocess.Popen("npm ci", shell=True, cwd=path + "\\common\\")
 p.wait()
