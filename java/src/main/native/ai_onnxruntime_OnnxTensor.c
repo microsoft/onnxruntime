@@ -242,17 +242,18 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxTensor_getBuffer
  * Signature: (JI)F
  */
 JNIEXPORT jfloat JNICALL Java_ai_onnxruntime_OnnxTensor_getFloat
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxTypeInt) {
   (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
-  if (onnxType == 9) {
+  ONNXTensorElementDataType onnxType = convertToONNXDataFormat(onnxTypeInt);
+  if (onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
     uint16_t* arr = NULL;
     OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
     if (code == ORT_OK) {
       jfloat floatVal = convertHalfToFloat(*arr);
       return floatVal;
     }
-  } else if (onnxType == 10) {
+  } else if (onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
     jfloat* arr = NULL;
     OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
     if (code == ORT_OK) {
@@ -286,17 +287,12 @@ JNIEXPORT jdouble JNICALL Java_ai_onnxruntime_OnnxTensor_getDouble
  * Signature: (JI)B
  */
 JNIEXPORT jbyte JNICALL Java_ai_onnxruntime_OnnxTensor_getByte
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxTypeInt) {
     (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
-  if (onnxType == 1) {
+  ONNXTensorElementDataType onnxType = convertToONNXDataFormat(onnxTypeInt);
+  if ((onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8) || (onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8)) {
     uint8_t* arr = NULL;
-    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
-    if (code == ORT_OK) {
-      return (jbyte) *arr;
-    }
-  } else if (onnxType == 2) {
-    int8_t* arr = NULL;
     OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
     if (code == ORT_OK) {
       return (jbyte) *arr;
@@ -311,17 +307,12 @@ JNIEXPORT jbyte JNICALL Java_ai_onnxruntime_OnnxTensor_getByte
  * Signature: (JI)S
  */
 JNIEXPORT jshort JNICALL Java_ai_onnxruntime_OnnxTensor_getShort
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxTypeInt) {
     (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
-  if (onnxType == 3) {
-    uint16_t* arr;
-    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
-    if (code == ORT_OK) {
-      return (jshort) *arr;
-    }
-  } else if (onnxType == 4) {
-    int16_t* arr;
+  ONNXTensorElementDataType onnxType = convertToONNXDataFormat(onnxTypeInt);
+  if ((onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16) || (onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16)) {
+    uint16_t* arr = NULL;
     OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
     if (code == ORT_OK) {
       return (jshort) *arr;
@@ -336,17 +327,12 @@ JNIEXPORT jshort JNICALL Java_ai_onnxruntime_OnnxTensor_getShort
  * Signature: (JI)I
  */
 JNIEXPORT jint JNICALL Java_ai_onnxruntime_OnnxTensor_getInt
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxTypeInt) {
     (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
-  if (onnxType == 5) {
+  ONNXTensorElementDataType onnxType = convertToONNXDataFormat(onnxTypeInt);
+  if ((onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32) || (onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32)) {
     uint32_t* arr = NULL;
-    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
-    if (code == ORT_OK) {
-      return (jint) *arr;
-    }
-  } else if (onnxType == 6) {
-    int32_t* arr = NULL;
     OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
     if (code == ORT_OK) {
       return (jint) *arr;
@@ -361,17 +347,12 @@ JNIEXPORT jint JNICALL Java_ai_onnxruntime_OnnxTensor_getInt
  * Signature: (JI)J
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_getLong
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxTypeInt) {
     (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
-  if (onnxType == 7) {
+  ONNXTensorElementDataType onnxType = convertToONNXDataFormat(onnxTypeInt);
+  if ((onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64) || (onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64)) {
     uint64_t* arr = NULL;
-    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
-    if (code == ORT_OK) {
-      return (jlong) *arr;
-    }
-  } else if (onnxType == 8) {
-    int64_t* arr = NULL;
     OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
     if (code == ORT_OK) {
       return (jlong) *arr;
