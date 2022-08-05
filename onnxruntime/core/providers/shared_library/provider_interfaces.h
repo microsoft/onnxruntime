@@ -313,6 +313,7 @@ struct ProviderHost {
   virtual void AttributeProto__operator_delete(ONNX_NAMESPACE::AttributeProto* p) = 0;
   virtual void AttributeProto__operator_assign(ONNX_NAMESPACE::AttributeProto* p, const ONNX_NAMESPACE::AttributeProto& v) = 0;
 
+  virtual const std::string& AttributeProto__name(const ONNX_NAMESPACE::AttributeProto* p) const = 0;
   virtual ONNX_NAMESPACE::AttributeProto_AttributeType AttributeProto__type(const ONNX_NAMESPACE::AttributeProto* p) = 0;
   virtual int AttributeProto__ints_size(const ONNX_NAMESPACE::AttributeProto* p) = 0;
   virtual int AttributeProto__floats_size(const ONNX_NAMESPACE::AttributeProto* p) = 0;
@@ -359,6 +360,13 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::GraphProto* ModelProto__mutable_graph(ONNX_NAMESPACE::ModelProto* p) = 0;
 
   virtual void ModelProto__set_ir_version(ONNX_NAMESPACE::ModelProto* p, int64_t value) = 0;
+
+  // NodeProto
+  virtual std::unique_ptr<ONNX_NAMESPACE::NodeProto> NodeProto__construct() = 0;
+  virtual void NodeProto__operator_delete(ONNX_NAMESPACE::NodeProto* p) = 0;
+  virtual void NodeProto__operator_assign(ONNX_NAMESPACE::NodeProto* p, const ONNX_NAMESPACE::NodeProto& v) = 0;
+  virtual const int NodeProto__attribute_size(ONNX_NAMESPACE::NodeProto* p) = 0;
+  virtual const ONNX_NAMESPACE::AttributeProto& NodeProto__attribute(const ONNX_NAMESPACE::NodeProto* p, int index) const = 0;
 
   // TensorProto
   virtual std::unique_ptr<ONNX_NAMESPACE::TensorProto> TensorProto__construct() = 0;
@@ -631,6 +639,8 @@ struct ProviderHost {
   virtual std::unique_ptr<NodeAttributes_Iterator> NodeAttributes__end(const NodeAttributes* p) = 0;
   virtual std::unique_ptr<NodeAttributes_Iterator> NodeAttributes__find(const NodeAttributes* p, const std::string& key) = 0;
   virtual void NodeAttributes__insert(NodeAttributes* p, const NodeAttributes& v) = 0;
+  virtual void NodeAttributes__emplace(NodeAttributes* p, const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) = 0;
+  virtual void NodeAttributes__reserve(NodeAttributes* p, size_t size) = 0;
 
   // Model
   virtual void Model__operator_delete(Model* p) = 0;

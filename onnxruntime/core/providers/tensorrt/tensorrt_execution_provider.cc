@@ -809,7 +809,28 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
               subgraph_output_names.push_back(name);
             }
           }
-          graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
+
+          // If the node has subgraphs, it's possible that the ORT graph of that subgraph and the GraphProto in the node attributes are not in sync because of graph optimization.
+          // Therefore, we need to force GraphProto attributes to be updated in order to get the valid GraphProto.
+          if (node->GetAttributes().size() > 0) {
+            auto node_proto = ONNX_NAMESPACE::NodeProto::Create();
+            // we need to update any GraphProto attributes for subgraphs so that any changes made by things
+            // such as the optimizers are captured. otherwise we can end up saving an invalid graph.
+            node->ToProto(*node_proto, /* update_subgraphs */ true);
+            const int num_attributes = node_proto->attribute_size();
+            auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
+            node_attributes->reserve(num_attributes);
+
+            for (int i = 0; i < num_attributes; ++i) {
+              auto& attr = node_proto->attribute(i);
+              node_attributes->emplace(attr.name(), attr);
+            }
+
+            // The GraphProto attributes are the updated ones.
+            graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, node_attributes.get(), node->Domain());
+          } else {
+            graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
+          }
         }
 
         ResolveGraphOuterScopeValues(&graph_build, &graph.GetGraph());
