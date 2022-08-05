@@ -37,6 +37,20 @@ def _install_extension(ext_name, ext_path, cwd):
         print(f"There was an error compiling '{ext_name}' PyTorch CPP extension")
         sys.exit(ret_code)
 
+def _get_cuda_extra_build_params():
+    nvcc_extra_args = ["-lineinfo", "-O3", "--use_fast_math"]
+    raw_output = torch.version.cuda
+    if raw_output is not None:
+        release = raw_output.split('.')
+        bare_metal_major = release[0]
+        bare_metal_minor = release[1]
+
+        if int(bare_metal_major) >= 11 and int(bare_metal_minor) >= 2:
+            # If number is 0, the number of threads used is the number of CPUs on the machine.
+            nvcc_extra_args += ["--threads", "0"]
+
+    os.environ["ONNXRUNTIME_CUDA_NVCC_EXTRA_ARGS"] = ','.join(nvcc_extra_args)
+
 
 def build_torch_cpp_extensions():
     """Builds PyTorch CPP extensions and returns metadata."""
@@ -53,6 +67,8 @@ def build_torch_cpp_extensions():
     os.environ["ONNXRUNTIME_ROCM_VERSION"] = (
         ortmodule.ONNXRUNTIME_ROCM_VERSION if ortmodule.ONNXRUNTIME_ROCM_VERSION is not None else ""
     )
+
+    _get_cuda_extra_build_params()
 
     ############################################################################
     # Pytorch CPP Extensions that DO require CUDA/ROCM
