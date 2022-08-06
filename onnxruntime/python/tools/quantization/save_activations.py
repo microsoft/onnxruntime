@@ -23,7 +23,7 @@ Example Usage:
 
     input_data_reader = ExampleDataReader()
 
-    aug_model = augment_model_save_tensors(path_to_onnx_model)
+    aug_model = modify_model_output_intermediate_tensors (path_to_onnx_model)
     augmented_model_path = str(Path(self._tmp_model_dir.name).joinpath("augmented_model.onnx"))
     onnx.save(
         aug_model,
@@ -31,7 +31,7 @@ Example Usage:
         save_as_external_data=False,
     )
 
-    tensor_dict = run_collect_activations(augmented_model_path, data_reader)
+    tensor_dict = collect_activations(augmented_model_path, data_reader)
 ```
 
 `tensor_dict` points to a dictionary where the keys are tensor names and each value
@@ -56,7 +56,7 @@ _TENSOR_SAVE_POSTFIX = "_ReshapedSavedOutput"
 _TENSOR_SAVE_POSTFIX_LEN = len(_TENSOR_SAVE_POSTFIX)
 
 
-def augment_model_save_tensors(
+def modify_model_output_intermediate_tensors (
     onnx_model: Union[str, Path, ModelProto], op_types_for_saving: Optional[Sequence[str]] = None
 ) -> ModelProto:
     """Augment a given ONNX model to save node input/output tensors.
@@ -65,7 +65,7 @@ def augment_model_save_tensors(
     so that their values can be retrieved for debugging purposes.
 
     Args:
-        model: A ONNX model or the path to load the model
+        model: An ONNX model or the path to load the model.
         op_types_for_saving: Operator types for which the
 	        input/output should be saved. By default, saving all the
 	        float32/float16 tensors.
@@ -97,7 +97,7 @@ def augment_model_save_tensors(
     return model
 
 
-def run_collect_activations(
+def collect_activations(
     augmented_model: str,
     input_reader: CalibrationDataReader,
     session_options=None,
@@ -106,7 +106,7 @@ def run_collect_activations(
     """Run augmented model and collect activations tensors.
 
     Args:
-        augmented_model: Path to augmented model created by augment_model_save_tensors()
+        augmented_model: Path to augmented model created by modify_model_output_intermediate_tensors ()
         input_reader: Logic for reading input for the model, augmented model have the same
             input with the original model.
         session_options: Optional OnnxRuntime session options for controlling model run.
@@ -141,7 +141,7 @@ def run_collect_activations(
     for batch in intermediate_outputs:
         for output, output_data in zip(output_info, batch):
             if output.name.endswith(_TENSOR_SAVE_POSTFIX):
-                oname = output.name[0 : len(output.name) - _TENSOR_SAVE_POSTFIX_LEN]
-                output_dict.setdefault(oname, []).append(output_data)
+                output_name = output.name[: -_TENSOR_SAVE_POSTFIX_LEN]
+                output_dict.setdefault(output_name, []).append(output_data)
 
     return output_dict

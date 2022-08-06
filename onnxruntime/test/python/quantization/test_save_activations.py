@@ -16,7 +16,7 @@ from onnx import TensorProto, helper, numpy_helper
 
 import onnxruntime
 from onnxruntime.quantization.calibrate import CalibrationDataReader
-from onnxruntime.quantization.save_activations import augment_model_save_tensors, run_collect_activations
+from onnxruntime.quantization.save_activations import modify_model_output_intermediate_tensors , collect_activations
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
@@ -122,7 +122,7 @@ class TestSaveActivations(unittest.TestCase):
         construct_test_model1(test_model_path)
         data_reader = TestDataReader()
 
-        aug_model = augment_model_save_tensors(test_model_path)
+        aug_model = modify_model_output_intermediate_tensors (test_model_path)
         augmented_model_path = str(Path(self._tmp_model_dir.name).joinpath("augmented_test_model_1.onnx"))
 
         onnx.save(
@@ -131,7 +131,7 @@ class TestSaveActivations(unittest.TestCase):
             save_as_external_data=False,
         )
 
-        tensor_dict = run_collect_activations(augmented_model_path, data_reader)
+        tensor_dict = collect_activations(augmented_model_path, data_reader)
 
         # run original model and compare the tensors
         sess_options = onnxruntime.SessionOptions()
