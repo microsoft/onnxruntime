@@ -2319,9 +2319,9 @@ TEST(ModOpTest, Fmod_bfloat16_mixed_sign) {
   OpTester test("Mod", 13);
   test.AddAttribute<int64_t>("fmod", 1);
   // Due to BFloat16's precision, if the result is too small, it's not easy get pass for both CUDA and ROCm.
-  test.AddInput<BFloat16>("X", {4}, MakeBFloat16({7.2f, 5.0f, -7.2f, 8.0f}));
+  test.AddInput<BFloat16>("X", {4}, MakeBFloat16({8.0f, 5.0f, -8.0f, 8.0f}));
   test.AddInput<BFloat16>("Y", {4}, MakeBFloat16({-3.4f, 8.0f, 3.4f, 5.0f}));
-  test.AddOutput<BFloat16>("Z", {4}, MakeBFloat16({0.4f, 5.f, -0.4f, 3.f}));
+  test.AddOutput<BFloat16>("Z", {4}, MakeBFloat16({1.2f, 5.f, -1.2f, 3.f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
