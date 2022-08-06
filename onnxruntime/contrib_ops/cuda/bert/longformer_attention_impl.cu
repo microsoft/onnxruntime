@@ -30,6 +30,7 @@ limitations under the License.
 #include "longformer_attention_impl.h"
 #include "attention_impl.h"
 #include "longformer_attention_softmax.h"
+#include "add_bias_transpose.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -838,51 +839,33 @@ bool LongformerQkvToContext(
     cudaStream_t stream,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
     const int window, const size_t element_size,
-    const T* input, const T* attention_mask,
-    const T* global_input, const int* global_attention,
+    const T* input, const T* bias, const T* attention_mask,
+    const T* global_input, const T* global_bias, const int* global_attention,
     const int* global_index, const int* batch_global_num, const int max_num_global,
     void* pinned_buffer, T* workspace,
     T* output,
     size_t softmax_workspace_size,
-    bool disable_compact_memory) {
+    bool disable_compact_memory,
+    bool use_merged_qkv_weights) {
   T* qkv = reinterpret_cast<T*>(reinterpret_cast<char*>(workspace) + softmax_workspace_size);
 
   // Number of elements in Q, K, V, Global_Q, Global_K or Global_V are same: BxNxSxH
   const int elements = batch_size * num_heads * sequence_length * head_size;
+  T* global_qkv = qkv + 3 * elements;
 
   const int max_threads_per_block(device_prop.maxThreadsPerBlock);
 
-  // Input should be BxSx3xNxH => qkv: 3xBxNxSxH
-  if (!LaunchTransQkv(stream,
-                      3,
-                      sequence_length,
-                      batch_size,
-                      head_size,
-                      num_heads,
-                      max_threads_per_block,
-                      false,
-                      input,
-                      qkv)) {
-    return false;
+  const int format = static_cast<int>(use_merged_qkv_weights);
+  LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size, sequence_length, num_heads, head_size,
+                         input, bias, qkv);
+
+  if (max_num_global > 0 && nullptr != global_input) {
+    LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size, sequence_length, num_heads, head_size,
+                           global_input, global_bias, global_qkv);
   }
 
-  // Input 'global_input' should be BxSx3xNxH => global_qkv: 3xBxNxSxH
-  T* global_qkv = qkv + 3 * elements;
-
-  // When there is no global token, no need to process global Q, K and V
-  if (max_num_global > 0 && nullptr != global_input) {
-    if (!LaunchTransQkv(stream,
-                        3,
-                        sequence_length,
-                        batch_size,
-                        head_size,
-                        num_heads,
-                        max_threads_per_block,
-                        false,
-                        global_input,
-                        global_qkv)) {
-      return false;
-    }
+  if (!CUDA_CALL(cudaPeekAtLastError())) {
+    return false;
   }
 
   // Now qkv has Q, K, V: each has size BxNxSxH
@@ -965,8 +948,10 @@ bool LaunchLongformerAttentionKernel(
     cublasHandle_t cublas,
     cudaStream_t stream,
     const void* input,
+    const void* bias,
     const void* attention_mask,
     const void* global_input,
+    const void* global_bias,
     const int* global_attention,
     const int* global_index,
     const int* batch_global_num,
@@ -980,7 +965,8 @@ bool LaunchLongformerAttentionKernel(
     int window,
     int max_num_global,
     const size_t element_size,
-    bool disable_compact_memory) {
+    bool disable_compact_memory,
+    bool use_merged_qkv_weights) {
   CublasMathModeSetter helper(device_prop, cublas, CUBLAS_TENSOR_OP_MATH);
   size_t softmax_workspace_size = GetLongformerSoftmaxWorkspaceSize(element_size,
                                                                     batch_size,
@@ -992,8 +978,10 @@ bool LaunchLongformerAttentionKernel(
     return LongformerQkvToContext(device_prop, cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
                                   reinterpret_cast<const half*>(input),
+                                  reinterpret_cast<const half*>(bias),
                                   reinterpret_cast<const half*>(attention_mask),
                                   reinterpret_cast<const half*>(global_input),
+                                  reinterpret_cast<const half*>(global_bias),
                                   global_attention,
                                   global_index,
                                   batch_global_num,
@@ -1002,13 +990,16 @@ bool LaunchLongformerAttentionKernel(
                                   reinterpret_cast<half*>(workspace),
                                   reinterpret_cast<half*>(output),
                                   softmax_workspace_size,
-                                  disable_compact_memory);
+                                  disable_compact_memory,
+                                  use_merged_qkv_weights);
   } else {
     return LongformerQkvToContext(device_prop, cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
                                   reinterpret_cast<const float*>(input),
+                                  reinterpret_cast<const float*>(bias),
                                   reinterpret_cast<const float*>(attention_mask),
                                   reinterpret_cast<const float*>(global_input),
+                                  reinterpret_cast<const float*>(global_bias),
                                   global_attention,
                                   global_index,
                                   batch_global_num,
@@ -1017,7 +1008,8 @@ bool LaunchLongformerAttentionKernel(
                                   reinterpret_cast<float*>(workspace),
                                   reinterpret_cast<float*>(output),
                                   softmax_workspace_size,
-                                  disable_compact_memory);
+                                  disable_compact_memory,
+                                  use_merged_qkv_weights);
   }
 }
 

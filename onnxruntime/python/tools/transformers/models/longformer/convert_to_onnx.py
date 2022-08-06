@@ -5,15 +5,18 @@
 # --------------------------------------------------------------------------
 
 # This script converts Longformer model from huggingface transformers 4.0 or later to ONNX.
-# Unlike normal ONNX model exporting, it will directly translate LongformerSelfAttention to the LongformerAttention operator in ONNX Runtime.
+# It translates LongformerSelfAttention to the LongformerAttention operator in ONNX Runtime.
 #
-# Before running this script, please run "python setup.py install" in ./torch_extensions under Linux with PyTorch installed.
-# Then you can update the path of longformer_attention.cpython-*.so and run this script in same environment.
+# Before running this script, prepare a python environment in Linux with PyTorch 1.9.0 and other packages installed.
+# Then run "python setup.py install" in ./torch_extensions directory. If your python version is not 3.8, you will need
+# update this script with correct name of longformer_attention.cpython-*.so (search TODO below).
 #
 # It is tested in Ubuntu 18.04 with python 3.8, onnxruntime-gpu 1.11.0, PyTorch 1.9.0, transformers 4.18.0.
-# Warning: Using newer version (1.10 or 1.11) of PyTorch might encounter issue in exporting, but they are fine for benchmarking.
+# Warning: Using  PyTorch 1.10 or newer version might encounter issue in exporting, but they are fine for benchmarking.
 #
 # Example commands for exporting longformer base model in Linux:
+#   pip install torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio==0.9.0 -f https://download.pytorch.org/whl/torch_stable.html
+#   pip install transformers==4.18.0 onnxruntime-gpu coloredlogs onnx
 #   cd ./torch_extensions
 #   python setup.py install
 #   cd ..
@@ -38,6 +41,8 @@ from torch.onnx.symbolic_helper import parse_args
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from torch_onnx_export_helper import torch_onnx_export
+
+stack_qkv_weight_dim = 0
 
 
 @parse_args("v", "v", "v", "v", "v", "v", "v", "i", "i")
@@ -96,6 +101,14 @@ def parse_arguments():
         help="Export padding logic to ONNX graph. If not enabled, user need pad input so that sequence length is multiple of window size.",
     )
     parser.set_defaults(export_padding=False)
+
+    parser.add_argument(
+        "--merge_qkv",
+        required=False,
+        action="store_true",
+        help="Stack the weights of q, k and v on dimension 1 instead of dimension 0.",
+    )
+    parser.set_defaults(merge_qkv=False)
 
     parser.add_argument(
         "-o",
@@ -161,8 +174,8 @@ def my_longformer_self_attention_forward_4(
     input_mask = input_mask.masked_fill(is_index_masked, -10000.0)
     # Yet another way to generate input_mask = torch.masked_fill(attention_mask, is_index_global_attn, 0.0)
 
-    # TODO: add postprocess of ONNX model to calculate based on graph input: input_mask = (attention_mask - 1) * 10000.0
-    # TODO: add postprocess of ONNX model to use graph input directly: glboal_mask = global_attention_mask
+    # TODO: add postprocessing of ONNX model to calculate based on graph input: input_mask = (attention_mask - 1) * 10000.0
+    # TODO: add postprocessing of ONNX model to use graph input directly: global_mask = global_attention_mask
 
     # The following check is based on the dummy inputs (only the last token is masked).
     assert (
@@ -178,9 +191,12 @@ def my_longformer_self_attention_forward_4(
             self.key.weight.transpose(0, 1),
             self.value.weight.transpose(0, 1),
         ),
-        dim=1,
+        dim=stack_qkv_weight_dim,
     )
-    weight = weight.reshape(self.embed_dim, 3 * self.embed_dim)
+
+    if stack_qkv_weight_dim == 1:
+        # shape is (hidden_size, 3*hidden_size) for merged qkv, otherwise (3, hidden_size, hidden_size) by default
+        weight = weight.reshape(self.embed_dim, 3 * self.embed_dim)
 
     bias = torch.stack((self.query.bias, self.key.bias, self.value.bias), dim=0)
     bias = bias.reshape(3 * self.embed_dim)
@@ -191,9 +207,11 @@ def my_longformer_self_attention_forward_4(
             self.key_global.weight.transpose(0, 1),
             self.value_global.weight.transpose(0, 1),
         ),
-        dim=1,
+        dim=stack_qkv_weight_dim,
     )
-    global_weight = global_weight.reshape(self.embed_dim, 3 * self.embed_dim)
+
+    if stack_qkv_weight_dim == 1:
+        global_weight = global_weight.reshape(self.embed_dim, 3 * self.embed_dim)
 
     global_bias = torch.stack((self.query_global.bias, self.key_global.bias, self.value_global.bias), dim=0)
     global_bias = global_bias.reshape(3 * self.embed_dim)
@@ -237,7 +255,7 @@ def my_longformer_self_attention_forward_4_3(
     )
 
 
-# For transformers 4.3.2
+# For transformers 4.3.2 or later versions
 def my_longformer_self_attention_forward_4_3_2(
     self,
     hidden_states,
@@ -274,7 +292,7 @@ def export_longformer(model, onnx_model_path, export_padding):
     if version.parse(transformers.__version__) < version.parse("4.0.0"):
         raise RuntimeError("This tool requires transformers 4.0.0 or later.")
 
-    # Here we replace LongformerSelfAttention.forward using our implmentation for exporting ONNX model
+    # Here we replace LongformerSelfAttention.forward using our implementation for exporting ONNX model
     import inspect
 
     from transformers import LongformerSelfAttention
@@ -322,7 +340,7 @@ def export_longformer(model, onnx_model_path, export_padding):
     )
     print(f"ONNX model exported to {onnx_model_path}")
 
-    # Restore original implementaiton:
+    # Restore original implementation:
     LongformerSelfAttention.forward = original_forward
 
 
@@ -349,6 +367,9 @@ def optimize_longformer(onnx_model_path, fp32_model_path, fp16_model_path=None):
 def main(args):
     model_name = args.model
     onnx_model_path = model_name + ".onnx"
+
+    global stack_qkv_weight_dim
+    stack_qkv_weight_dim = 1 if args.merge_qkv else 0
 
     from transformers import LongformerModel
 

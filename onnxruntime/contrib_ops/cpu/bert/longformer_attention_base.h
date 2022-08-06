@@ -17,7 +17,7 @@ class LongformerAttentionBase {
                      const TensorShape& mask_shape,
                      const TensorShape& global_weights_shape,
                      const TensorShape& global_bias_shape,
-                     const TensorShape& global_shape) const;
+                     const TensorShape& global_mask_shape) const;
 
  protected:
   LongformerAttentionBase(const OpKernelInfo& info) {
