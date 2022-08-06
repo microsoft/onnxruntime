@@ -350,6 +350,7 @@ class PlannerImpl {
     // Removing initializers is a temporary measure needed to limit the number of copies of
     // tensors in GPU memory.
     OrtValueIndex reused_buffer_index = -1;  // index of original buffer to reuse
+    bool is_inplace_reuse = false;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     OrtValueIndex inplace_reused_buffer_index = -1;  // index of original buffer to reuse inplace
 #endif
@@ -784,6 +785,12 @@ class PlannerImpl {
     return Status::OK();
   }
 
+  void ClearUseCount() {
+    for (auto& value_info : ort_value_info_) {
+      value_info.usecount = 0;
+    }
+  }
+
   Status ComputeValueLocation() {
     // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
     using GraphInputsSet = InlinedHashSet<std::string_view>;
@@ -1194,6 +1201,36 @@ class PlannerImpl {
     const auto& kernel_create_info_map = kernel_create_info_map_;
     auto& allocation_plan = plan_.allocation_plan;
 
+    // build the consumer list for each value
+    std::vector<std::vector<NodeIndex>> value_consumers;
+    int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
+    value_consumers.resize(num_ml_values);
+
+    // iterate each stream from back, so the first element is the last consumer in single stream case
+    for (auto& stream : stream_nodes_) {
+      for (auto it = stream.rbegin(), end = stream.rend(); it != end; ++it) {
+        NodeIndex node_index = *it;
+        auto* node = graph_viewer_.GetNode(node_index);
+
+        auto process_input = [&](const NodeArg& input, size_t /*arg_idx*/) {
+          if (input.Exists()) {
+            const auto& name = input.Name();
+            int value_idx;
+            ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetIdx(name, value_idx));
+            auto origin = Buffer(value_idx);
+            if (origin != -1 && plan_.allocation_plan[origin].alloc_kind == AllocKind::kAllocate) {
+              // add current node as consumer for origin buffer
+              value_consumers[origin].push_back(node_index);
+            }
+          }
+          return Status::OK();
+        };
+
+        ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(node->InputDefs(), process_input));
+        ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(node->ImplicitInputDefs(), process_input));
+      }
+    }
+
     std::function<void(NodeIndex)> TryReuseInput = [&](NodeIndex node_index) {
       auto* node = graph_viewer.GetNode(node_index);
 
@@ -1380,6 +1417,15 @@ class PlannerImpl {
                 break;
               }
             }
+            // output now trying to reuse buffer with index downstream_value
+            // we can only reuse it when all the consumers of node(downstream_value) is in current node(output)'s dependents
+            auto& output_deps = dependents_map[node_index];
+            for (auto consumer : value_consumers[downstream_value]) {
+              if (std::find(output_deps.begin(), output_deps.end(), consumer) == output_deps.end()) {
+                all_covered = false;
+                break;
+              }
+            }
             if (all_covered) {
               //LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << node_output->Name() << " reused by " << downstream_arg->Name() << " as remote tensor" << std::endl;
               std::cout << node_output->Name() << " reused by " << downstream_arg->Name() << " as remote tensor" << std::endl;
@@ -1434,9 +1480,26 @@ class PlannerImpl {
       // use parallel execution context to generate a baseline first (no memory sharing)
       context_ = &parallel_context;
     }
-    // compute use count first
-    ORT_RETURN_IF_ERROR(ComputeReuseCount());
-    ORT_RETURN_IF_ERROR(ComputeSingleStreamReusePlan());
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+    //copy the use counts to a vector, before computing reuse
+    std::vector<int> ort_value_usecount;
+#endif
+    for (size_t i = 0; i < stream_nodes_.size(); ++i) {
+      // compute use count first
+      ORT_RETURN_IF_ERROR(ComputeReuseCount());
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+      if (i == 0) {
+        for (auto ort_value_info : ort_value_info_) {
+          ort_value_usecount.push_back(ort_value_info.usecount);
+        }
+      }
+#endif
+      ORT_RETURN_IF_ERROR(ComputeSingleStreamReusePlan(i));
+      ClearUseCount();
+    }
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+    CalculateLifetime(ort_value_usecount);
+#endif
     if (IsSingleStream())
       return Status::OK();
     ORT_RETURN_IF_ERROR(OptimizeReusePlanForMultiStream());
@@ -1447,16 +1510,8 @@ class PlannerImpl {
   }
 
   // Should only be used after ProcessDef()
-  Status ComputeSingleStreamReusePlan() {
-    auto& execution_plan = graph_viewer_.GetNodesInTopologicalOrder();
-    //copy the use counts to a vector, before computing reuse
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-    std::vector<int> ort_value_usecount;
-    for (auto ort_value_info : ort_value_info_) {
-      ort_value_usecount.push_back(ort_value_info.usecount);
-    }
-#endif
-
+  Status ComputeSingleStreamReusePlan(size_t stream_index) {
+    auto& execution_plan = stream_nodes_[stream_index];
     // Cached graph outputs.
     const auto& graph_outputs = graph_viewer_.GetOutputs();
     for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
@@ -1477,9 +1532,6 @@ class PlannerImpl {
         // OrtValue index of the considered output NodeArg.
         const auto current = Index(node_output->Name());
         AllocPlan(current).value_type = utils::GetMLDataType(*node_output);
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-        AllocPlan(current).life_interval.first = program_counter;
-#endif
         // Declare OrtValue index of the reused buffer.
         // The the OrtValue indexed by current may reuse the memory in the OrtValue indexed by reused.
         OrtValueIndex reused;
@@ -1487,15 +1539,9 @@ class PlannerImpl {
         if (has_external_outputs) {
           ORT_ENFORCE(!IsNonTensor(*node_output), "Only tensors are supported for external outputs for now.");
           AllocPlan(current).alloc_kind = AllocKind::kAllocatedExternally;
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-          AllocPlan(current).life_interval.second = execution_plan.size();
-#endif
         } else if (std::find(graph_outputs.begin(), graph_outputs.end(), node_output) != graph_outputs.end()) {
           // node_output is graph's output, so we can't reuse intermediate buffer
           AllocPlan(current).alloc_kind = AllocKind::kAllocateOutput;
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-          AllocPlan(current).life_interval.second = execution_plan.size();
-#endif
 
           // hacky perf optimization to not copy a pre-existing value to an output if this is a Loop subgraph and
           // the value is not being changed in the subgraph.
@@ -1541,6 +1587,7 @@ class PlannerImpl {
           //}
           //std::cout << std::endl;
           Reuse(reused, current, AllocKind::kReuse);
+          ort_value_info_[current].is_inplace_reuse = true;
 #ifdef ENABLE_TRAINING
           if (is_strided_tensor) AllocPlan(current).is_strided_tensor = true;
 #else
@@ -1551,7 +1598,6 @@ class PlannerImpl {
 #endif
         } else if (IsNonTensor(*node_output)) {
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
-          AllocPlan(current).program_counter.AddStart(program_counter);
         } else if (!context_->IsParallelExecutionEnabled() &&
                    FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
@@ -1563,13 +1609,9 @@ class PlannerImpl {
           //std::cout << std::endl;
           Reuse(reused, current, AllocKind::kReuse);
           OrtValueIndex original = Buffer(reused);
-          if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
-            AllocPlan(original).program_counter.AddStart(program_counter);
-          }
         } else {
           // otherwise: allocate a new buffer for this output
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
-          AllocPlan(current).program_counter.AddStart(program_counter);
         }
       }
 
@@ -1580,18 +1622,8 @@ class PlannerImpl {
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-          // Compute lifetime
-          auto current = Index(sym);
-          if ((current != -1) && (0 == --ort_value_usecount[current])) {
-            AllocPlan(current).life_interval.second = program_counter;
-          }
-#endif
           if ((original != -1) && (0 == DecrementUseCount(original))) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
-            if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
-              AllocPlan(original).program_counter.AddEnd(program_counter);
-            }
           }
         }
       }
@@ -1602,18 +1634,8 @@ class PlannerImpl {
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-          // Compute lifetime
-          auto current = Index(sym);
-          if ((current != -1) && (0 == --ort_value_usecount[current])) {
-            AllocPlan(current).life_interval.second = program_counter;
-          }
-#endif
           if ((original != -1) && (0 == DecrementUseCount(original))) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
-            if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
-              AllocPlan(original).program_counter.AddEnd(program_counter);
-            }
           }
         }
       }
@@ -1625,23 +1647,122 @@ class PlannerImpl {
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-          auto current = Index(sym);
-          if ((current != -1) && (0 == --ort_value_usecount[current])) {
-            AllocPlan(current).life_interval.second = program_counter;
-          }
-#endif
           if (0 == DecrementUseCount(original)) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
-            if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
-              AllocPlan(original).program_counter.AddEnd(program_counter);
-            }
           }
         }
       }
     }
     return Status::OK();
   }
+
+  Status CalculateProgramCounter() {
+    ClearUseCount();
+    ORT_RETURN_IF_ERROR(ComputeReuseCount());
+    auto& execution_plan = graph_viewer_.GetNodesInTopologicalOrder();
+    for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
+      auto node_index = execution_plan[program_counter];
+      // the node (aka operator) which carries the considered program (aka computation).
+      const auto* pnode = graph_viewer_.GetNode(node_index);
+      // node outputs.
+      const auto& output_defs = pnode->OutputDefs();
+      for (size_t output_arg_def_index = 0, end = output_defs.size(); output_arg_def_index < end; ++output_arg_def_index) {
+        const auto& node_output = output_defs[output_arg_def_index];
+        if (!node_output->Exists()) continue;
+        // OrtValue index of the considered output NodeArg.
+        const auto current = Index(node_output->Name());
+        if (AllocPlan(current).alloc_kind == AllocKind::kAllocate) {
+          AllocPlan(current).program_counter.AddStart(program_counter);
+        } 
+      }
+
+      auto& node_release_action = plan_.node_release_list[node_index];
+      for (auto& action_idx : node_release_action) {
+        if (plan_.release_actions[action_idx].ref_count == 1) {
+          int value_idx = static_cast<OrtValueIndex>(plan_.release_actions[action_idx].value_index);
+          AllocPlan(value_idx).program_counter.AddEnd(program_counter);
+        } else {
+          // if the releaase action depends on multiple nodes, 
+          // we can't have a fixed lifetime for it.
+          // leave it empty and we will assign it to the lifetime of the whole program at line 1698
+        }
+      }
+    }
+
+    // there are some corner case that an node's output is not graph output but has no consumer
+    // currently we didn't generate deallocation plan for those values.
+    // so manually fix the PC here.
+    // TODO: fix the deallocation plan
+    for (auto& alloc_plan : plan_.allocation_plan) {
+      if ((alloc_plan.program_counter.Starts().size() - alloc_plan.program_counter.Ends().size()) == 1) {
+        alloc_plan.program_counter.AddEnd(execution_plan.size());
+      }
+    }
+
+    return Status::OK();
+  }
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  void CalculateLifetime(const std::vector<int>& ort_value_usecount) {
+    auto& execution_plan = graph_viewer_.GetNodesInTopologicalOrder();
+    for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
+      auto node_index = execution_plan[program_counter];
+      // the node (aka operator) which carries the considered program (aka computation).
+      const auto* pnode = graph_viewer_.GetNode(node_index);
+      // node outputs.
+      const auto& output_defs = pnode->OutputDefs();
+      // External outputs flag.
+      bool has_external_outputs = HasExternalOutputs(*pnode);
+      for (size_t output_arg_def_index = 0, end = output_defs.size(); output_arg_def_index < end; ++output_arg_def_index) {
+        const auto& node_output = output_defs[output_arg_def_index];
+        if (!node_output->Exists()) continue;
+        // OrtValue index of the considered output NodeArg.
+        const auto current = Index(node_output->Name());
+        AllocPlan(current).life_interval.first = program_counter;
+        if (AllocPlan(current).alloc_kind == AllocKind::kAllocatedExternally ||
+            AllocPlan(current).alloc_kind == AllocKind::kAllocateOutput) {
+          AllocPlan(current).life_interval.second = execution_plan.size();
+        }
+        // determine if inputs of *pnode can be freed:
+        for (auto node_input : pnode->InputDefs()) {
+          if (node_input->Exists()) {
+            auto& sym = node_input->Name();
+            // Compute lifetime
+            auto current = Index(sym);
+            if ((current != -1) && (0 == --ort_value_usecount[current])) {
+              AllocPlan(current).life_interval.second = program_counter;
+            }
+          }
+        }
+
+        for (auto node_input : pnode->ImplicitInputDefs()) {
+          if (node_input->Exists()) {
+            auto& sym = node_input->Name();
+            // Compute lifetime
+            auto current = Index(sym);
+            if ((current != -1) && (0 == --ort_value_usecount[current])) {
+              AllocPlan(current).life_interval.second = program_counter;
+            }
+          }
+        }
+
+        // determine if any outputs of *pnode are unused and can be freed:
+        for (auto node_output : pnode->OutputDefs()) {
+          if (node_output->Exists()) {
+            auto& sym = node_output->Name();
+            // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
+            // See comments in the OrtValueInfo definition.
+            auto current = Index(sym);
+            if ((current != -1) && (0 == --ort_value_usecount[current])) {
+              AllocPlan(current).life_interval.second = program_counter;
+            }
+          }
+        }
+      }
+    }
+  }
+#endif
+
 #ifdef ENABLE_TRAINING
   bool AllocateInputsContiguously(const Node& node) const {
     const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
@@ -2015,6 +2136,10 @@ Status PlannerImpl::CreatePlan(const ExecutionProviders& execution_providers,
 
   // convert information in the freelist_ into a deallocation plan in required format
   ORT_RETURN_IF_ERROR(GenerateDeallocationPlan());
+
+  //generate program counter
+  //TODO: it seems only training build need this?
+  ORT_RETURN_IF_ERROR(CalculateProgramCounter());
 
   // Ensure Memory-Time schedule is valid. This should be called at the end because memory start/end timestamps
   // are updated until GenerateDeallocationPlan is finished.

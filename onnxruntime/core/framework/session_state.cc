@@ -668,6 +668,7 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
     const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
     if (!ml_type->IsTensorType())
       continue;
+
     const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
     if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
         ml_data_type != DataTypeImpl::GetType<std::string>()) {
@@ -707,6 +708,14 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
     const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
     if (!ml_type->IsTensorType())
         continue;
+
+    auto* ep = GetExecutionProviders().Get(*node);
+    auto device_id = exe_plan->allocation_plan[ml_value_idx].location.device.Id();
+    auto ep_main_allocator = ep->GetAllocator(device_id, OrtMemType::OrtMemTypeDefault);
+    ORT_ENFORCE(ep_main_allocator);
+    if (exe_plan->allocation_plan[ml_value_idx].location != ep_main_allocator->Info())
+      continue;
+
     const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
     size_t size = 0;
     TryCalculateSizeFromResolvedShape(ml_value_idx, resolved_shapes, size);
@@ -795,6 +804,23 @@ void SessionState::ResolveMemoryPatternFlag() {
         break;
       }
     }
+
+    // if there are nodes belong to the same EP instance be partitioned to multiple streams
+    // disable the memory pattern because the execution order is not fixed.
+    // TODO: we can improve memory pattern to support multiple streams
+    bool multi_stream = false;
+    InlinedHashSet<const IExecutionProvider*> ep_set;
+    auto& streams = GetExecutionPlan()->execution_plan;
+    for (auto& logic_stream : streams) {
+      if (ep_set.find(logic_stream->ep_) != ep_set.end()) {
+        multi_stream = true;
+        break;
+      }
+      ep_set.insert(logic_stream->ep_);
+    }
+
+    if (multi_stream)
+      enable_mem_pattern_ = false;
 
     // For subgraphs, the implicit inputs need to meet the same crieria
     // as the explicit inputs for memory pattern to be enabled

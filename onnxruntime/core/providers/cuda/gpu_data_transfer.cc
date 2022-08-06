@@ -73,9 +73,7 @@ common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost, static_cast<cudaStream_t>(stream->handle)));
     }
   } else {
-    return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,
-                                         ::onnxruntime::common::FAIL,
-                                         "Copy between CPU memories can't be async."); 
+    memcpy(dst_data, src_data, bytes);
   }
 
   return Status::OK();
