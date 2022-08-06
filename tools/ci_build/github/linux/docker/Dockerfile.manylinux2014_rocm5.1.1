@@ -75,7 +75,7 @@ RUN export LIBXCRYPT_VERSION=4.4.28 && \
     export PERL_HASH=551efc818b968b05216024fb0b727ef2ad4c100f8cb6b43fab615fa78ae5be9a && \
     export PERL_DOWNLOAD_URL=https://www.cpan.org/src/5.0 && \
     manylinux-entrypoint /build_scripts/install-libxcrypt.sh
-	
+
 COPY scripts/install-protobuf.sh /build_scripts/
 RUN export PROTOBUF_VERSION=3.17.3 && \
     export PROTOBUF_ROOT=protobuf-all-${PROTOBUF_VERSION} && \
@@ -163,7 +163,7 @@ CMD ["/bin/bash"]
 
 ARG PYTHON_VERSION=3.7
 ARG TORCH_VERSION=1.11.0
-ARG OPSET_VERSION=14
+ARG OPSET_VERSION=15
 ARG INSTALL_DEPS_EXTRA_ARGS
 
 #Add our own dependencies
