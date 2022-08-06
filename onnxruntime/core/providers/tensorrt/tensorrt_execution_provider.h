@@ -125,7 +125,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/,
-                const KernelTypeStrResolver& /*kernel_type_str_resolver*/) const override;
+                const IKernelTypeStrResolver& /*kernel_type_str_resolver*/) const override;
 
   int GetDeviceId() const { return device_id_; }
 
@@ -169,7 +169,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   int device_id_;
   AllocatorPtr allocator_;
   bool context_memory_sharing_enable_ = false;
-  size_t max_ctx_mem_size_ = 0;  
+  size_t max_ctx_mem_size_ = 0;
   IAllocatorUniquePtr<void> context_memory_ = nullptr;
   mutable char model_path_[4096];  // Reserved for max path length
   bool engine_decryption_enable_ = false;
@@ -201,8 +201,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, bool remove_cycles = true) const;
 
-  /** 
-  Get a unique_lock object to control the concurrency behavior. 
+  /**
+  Get a unique_lock object to control the concurrency behavior.
   Every api call not in the thread-safe operations(https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading)
   should be protected by a lock when invoked by multiple threads concurrently.
   */

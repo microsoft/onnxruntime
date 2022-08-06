@@ -289,7 +289,7 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
 
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                                                                   const std::vector<const KernelRegistry*>& kernel_registries,
-                                                                                  const KernelTypeStrResolver& kernel_type_str_resolver) const {
+                                                                                  const IKernelTypeStrResolver& kernel_type_str_resolver) const {
   return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_registries, kernel_type_str_resolver);
 }
 // !!! This API will be deprecated soon.
@@ -345,7 +345,7 @@ std::string GetEnvironmentVar(const std::string& var_name) {
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const std::string& provider_type,
                                                    gsl::span<const KernelRegistry* const> kernel_registries,
-                                                   const KernelTypeStrResolver& kernel_type_str_resolver,
+                                                   const IKernelTypeStrResolver& kernel_type_str_resolver,
                                                    gsl::span<const NodeIndex> tentative_nodes) {
   return g_host->GetCpuPreferredNodes(graph, provider_type, kernel_registries, kernel_type_str_resolver, tentative_nodes);
 }

@@ -133,7 +133,7 @@ struct KernelCreateInfo;
 struct KernelDef;
 struct KernelDefBuilder;
 struct KernelRegistry;
-class KernelTypeStrResolver;
+class IKernelTypeStrResolver;
 struct Function;
 struct Graph;
 struct GraphViewer;
@@ -256,7 +256,7 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream);
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const std::string& provider_type,
                                                    gsl::span<const KernelRegistry* const> kernel_registries,
-                                                   const KernelTypeStrResolver& kernel_type_str_resolver,
+                                                   const IKernelTypeStrResolver& kernel_type_str_resolver,
                                                    gsl::span<const NodeIndex> tentative_nodes);
 
 std::string GetEnvironmentVar(const std::string& var_name);

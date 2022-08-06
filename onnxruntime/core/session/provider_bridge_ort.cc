@@ -218,7 +218,7 @@ struct ProviderHostImpl : ProviderHost {
   std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                      const std::string& provider_type,
                                                      gsl::span<const KernelRegistry* const> kernel_registries,
-                                                     const KernelTypeStrResolver& kernel_type_str_resolver,
+                                                     const IKernelTypeStrResolver& kernel_type_str_resolver,
                                                      gsl::span<const NodeIndex> tentative_nodes) override {
     return onnxruntime::GetCpuPreferredNodes(graph, provider_type, kernel_registries, kernel_type_str_resolver, tentative_nodes);
   }
@@ -273,7 +273,7 @@ struct ProviderHostImpl : ProviderHost {
   void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) override { return p->IExecutionProvider::InsertAllocator(allocator); }
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
                                                                                     const std::vector<const KernelRegistry*>& kernel_registries,
-                                                                                    const KernelTypeStrResolver& kernel_type_str_resolver) override {
+                                                                                    const IKernelTypeStrResolver& kernel_type_str_resolver) override {
     return p->IExecutionProvider::GetCapability(graph_viewer, kernel_registries, kernel_type_str_resolver);
   }
 
@@ -581,7 +581,7 @@ struct ProviderHostImpl : ProviderHost {
   Status KernelRegistry__Register(KernelRegistry* p, KernelCreateInfo&& create_info) override { return p->Register(std::move(create_info)); }
 
   Status KernelRegistry__TryFindKernel(const KernelRegistry* p, const Node& node, ProviderType exec_provider,
-                                       const KernelTypeStrResolver& kernel_type_str_resolver,
+                                       const IKernelTypeStrResolver& kernel_type_str_resolver,
                                        const KernelCreateInfo** out) override {
     return p->TryFindKernel(node, exec_provider, kernel_type_str_resolver, out);
   }
@@ -841,16 +841,16 @@ struct ProviderHostImpl : ProviderHost {
   const DataTransferManager& SessionState__GetDataTransferMgr(const SessionState* p) override { return p->GetDataTransferMgr(); }
 
   // Tensor (wrapped)
-  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) override { 
-    return std::make_unique<Tensor>(p_type, shape, std::move(allocator)); 
+  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) override {
+    return std::make_unique<Tensor>(p_type, shape, std::move(allocator));
   }
 
   std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset) override {
-    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset); 
+    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset);
   }
 
   std::unique_ptr<Tensor> Tensor__construct_default() override {
-    return std::make_unique<Tensor>(); 
+    return std::make_unique<Tensor>();
   }
 
   virtual void Tensor__move_assign(Tensor& lhs, Tensor&& rhs) noexcept override {

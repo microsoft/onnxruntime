@@ -29,7 +29,7 @@ AllocatorPtr IExecutionProvider::GetAllocator(int device_id, OrtMemType mem_type
 std::vector<std::unique_ptr<ComputeCapability>>
 IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                   const std::vector<const KernelRegistry*>& kernel_registries,
-                                  const KernelTypeStrResolver& kernel_type_str_resolver) const {
+                                  const IKernelTypeStrResolver& kernel_type_str_resolver) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node : graph.Nodes()) {
     for (auto registry : kernel_registries) {

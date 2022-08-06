@@ -41,7 +41,7 @@ static bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const Node
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const std::string& provider_type,
                                                    gsl::span<const KernelRegistry* const> kernel_registries,
-                                                   const KernelTypeStrResolver& kernel_type_str_resolver,
+                                                   const IKernelTypeStrResolver& kernel_type_str_resolver,
                                                    gsl::span<const NodeIndex> tentative_nodes) {
   // automatic conversion from const std::vector&
   const auto& ordered_nodes = graph.GetNodesInTopologicalOrder();

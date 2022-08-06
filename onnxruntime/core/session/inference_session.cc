@@ -604,8 +604,10 @@ common::Status InferenceSession::SaveToOrtFormat(const PathString& filepath) con
       session_state_->SaveToOrtFormat(builder, session_state));
 
   flatbuffers::Offset<fbs::KernelTypeStrResolver> kernel_type_str_resolver;
+  KernelTypeStrResolver session_kernel_type_str_resolver{};
+  // TODO populate session_kernel_type_str_resolver
   ORT_RETURN_IF_ERROR(
-      kernel_registry_manager_.GetKernelTypeStrResolver().SaveToOrtFormat(builder, kernel_type_str_resolver));
+      session_kernel_type_str_resolver.SaveToOrtFormat(builder, kernel_type_str_resolver));
 
   fbs::InferenceSessionBuilder sb(builder);
   sb.add_ort_version(ort_model_version);

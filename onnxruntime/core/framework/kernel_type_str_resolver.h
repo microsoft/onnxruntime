@@ -4,6 +4,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "gsl/gsl"
@@ -33,27 +34,22 @@ using common::Status;
 
 using ArgTypeAndIndex = std::pair<ArgType, size_t>;
 
-class KernelTypeStrResolver {
+class IKernelTypeStrResolver {
+public:
+ /**
+  * Resolves an op's kernel type string to its associated arguments.
+  * @param node The op's node.
+  * @param kernel_type_str The op kernel type string.
+  * @param[out] resolved_args The op arguments associated with kernel_type_str.
+  */
+ virtual Status ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
+                                     gsl::span<const ArgTypeAndIndex>& resolved_args) const = 0;
+};
+
+class KernelTypeStrResolver : public IKernelTypeStrResolver {
  public:
-  using KernelTypeStrToArgsMap = InlinedHashMap<std::string, InlinedVector<ArgTypeAndIndex>>;
-
-  /**
-   * Resolves an op's kernel type string to its associated arguments.
-   * @param op_id The op identifier.
-   * @param kernel_type_str The op kernel type string.
-   * @param[out] resolved_args The op arguments associated with kernel_type_str.
-   */
-  Status ResolveKernelTypeStr(const OpIdentifier& op_id,
-                              const std::string& kernel_type_str,
-                              gsl::span<const ArgTypeAndIndex>& resolved_args) const;
-
-  /**
-   * Registers an op's kernel type string to argument mapping.
-   * @param op_id The op identifier.
-   * @param kernel_type_str_args The kernel type str to argument mapping.
-   * @return True if the op's mapping was registered or false if there is already an existing mapping.
-   */
-  bool RegisterKernelTypeStrToArgsMap(OpIdentifier op_id, KernelTypeStrToArgsMap kernel_type_str_to_args);
+  Status ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
+                              gsl::span<const ArgTypeAndIndex>& resolved_args) const override;
 
 #if !defined(ORT_MINIMAL_BUILD)
   Status RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema, bool* registered = nullptr);
@@ -81,8 +77,23 @@ class KernelTypeStrResolver {
   Status LoadFromOrtFormat(const fbs::KernelTypeStrResolver& fbs_kernel_type_str_resolver);
 
  private:
+  using KernelTypeStrToArgsMap = InlinedHashMap<std::string, InlinedVector<ArgTypeAndIndex>>;
   using OpKernelTypeStrMap = InlinedHashMap<OpIdentifier, KernelTypeStrToArgsMap>;
+
   OpKernelTypeStrMap op_kernel_type_str_map_;
 };
+
+#if !defined(ORT_MINIMAL_BUILD)
+class AutoRegisteringKernelTypeStrResolver : public IKernelTypeStrResolver {
+ public:
+  Status ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
+                              gsl::span<const ArgTypeAndIndex>& resolved_args) const override;
+
+ private:
+  // used as a cache when resolving
+  // TODO thread-safety? it may change even through const functions
+  mutable KernelTypeStrResolver resolver_;
+};
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace onnxruntime

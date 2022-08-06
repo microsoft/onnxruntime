@@ -57,10 +57,6 @@ void KernelRegistryManager::RegisterKernelRegistry(std::shared_ptr<KernelRegistr
 
 Status KernelRegistryManager::SearchKernelRegistry(const Node& node,
                                                    /*out*/ const KernelCreateInfo** kernel_create_info) const {
-#if !defined(ORT_MINIMAL_BUILD)
-  ORT_THROW_IF_ERROR(EnsureKernelTypeStrResolvesForNodeOpSchema(node));
-#endif
-
   Status status;
 
   auto create_error_message = [&node, &status](const std::string& prefix) {
@@ -78,7 +74,7 @@ Status KernelRegistryManager::SearchKernelRegistry(const Node& node,
   }
 
   for (auto& registry : custom_kernel_registries_) {
-    status = registry->TryFindKernel(node, std::string(), kernel_type_str_resolver_, kernel_create_info);
+    status = registry->TryFindKernel(node, std::string(), GetKernelTypeStrResolver(), kernel_create_info);
     if (status.IsOK()) {
       return status;
     }
@@ -91,7 +87,7 @@ Status KernelRegistryManager::SearchKernelRegistry(const Node& node,
   }
 
   if (p != nullptr) {
-    status = p->TryFindKernel(node, std::string(), kernel_type_str_resolver_, kernel_create_info);
+    status = p->TryFindKernel(node, std::string(), GetKernelTypeStrResolver(), kernel_create_info);
     if (status.IsOK()) {
       return status;
     }
@@ -101,13 +97,9 @@ Status KernelRegistryManager::SearchKernelRegistry(const Node& node,
 }
 
 bool KernelRegistryManager::HasImplementationOf(const KernelRegistryManager& r, const Node& node, const std::string& provider_type) {
-#if !defined(ORT_MINIMAL_BUILD)
-  ORT_THROW_IF_ERROR(r.EnsureKernelTypeStrResolvesForNodeOpSchema(node));
-#endif
-
   std::vector<const KernelRegistry*> kernel_registries = r.GetKernelRegistriesByProviderType(provider_type);
   return std::any_of(kernel_registries.begin(), kernel_registries.end(), [&](const KernelRegistry* kernel_registry) {
-    return KernelRegistry::HasImplementationOf(*kernel_registry, node, provider_type, r.kernel_type_str_resolver_);
+    return KernelRegistry::HasImplementationOf(*kernel_registry, node, provider_type, r.GetKernelTypeStrResolver());
   });
 }
 
@@ -129,12 +121,5 @@ bool KernelRegistryManager::SearchKernelRegistriesByHash(HashValue kernel_def_ha
 
   return false;
 }
-
-#if !defined(ORT_MINIMAL_BUILD)
-Status KernelRegistryManager::EnsureKernelTypeStrResolvesForNodeOpSchema(const Node& node) const {
-  ORT_RETURN_IF_ERROR(kernel_type_str_resolver_.RegisterNodeOpSchema(node));
-  return Status::OK();
-}
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace onnxruntime

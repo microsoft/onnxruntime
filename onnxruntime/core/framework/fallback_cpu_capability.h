@@ -24,7 +24,7 @@ namespace onnxruntime {
   std::unordered_set<NodeIndex> GetCpuPreferredNodes(const GraphViewer& graph,
                                                     const std::string& provider_type,
                                                     gsl::span<const KernelRegistry* const> kernel_registries,
-                                                    const KernelTypeStrResolver& kernel_type_str_resolver,
+                                                    const IKernelTypeStrResolver& kernel_type_str_resolver,
                                                     gsl::span<const NodeIndex> tentative_nodes);
 
 }  // namespace onnxruntime

@@ -42,7 +42,7 @@ bool IsTypeProtoCompatible(gsl::span<const MLDataType> enabled_types, const ONNX
 
 bool MatchKernelDefTypes(const Node& node,
                          const KernelDef& kernel_def,
-                         const KernelTypeStrResolver& kernel_type_str_resolver,
+                         const IKernelTypeStrResolver& kernel_type_str_resolver,
                          std::string& mismatch_reason) {
   const auto actual_inputs = node.InputDefs();
   const auto actual_outputs = node.OutputDefs();
@@ -60,9 +60,8 @@ bool MatchKernelDefTypes(const Node& node,
   //   check arg type against type constraint enabled types
   const auto& kernel_type_constraints = kernel_def.EnabledTypeConstraints();
   for (const auto& [kernel_type_str, enabled_types] : kernel_type_constraints) {
-    const auto op_id = MakeOpId(node);
     gsl::span<const ArgTypeAndIndex> constraint_args{};
-    ORT_THROW_IF_ERROR(kernel_type_str_resolver.ResolveKernelTypeStr(op_id, kernel_type_str,
+    ORT_THROW_IF_ERROR(kernel_type_str_resolver.ResolveKernelTypeStr(node, kernel_type_str,
                                                                      constraint_args));
 
     for (const auto [arg_type, formal_arg_idx] : constraint_args) {
@@ -100,7 +99,7 @@ bool MatchKernelDefTypes(const Node& node,
 
 bool KernelRegistry::VerifyKernelDef(const Node& node,
                                      const KernelDef& kernel_def,
-                                     const KernelTypeStrResolver& kernel_type_str_resolver,
+                                     const IKernelTypeStrResolver& kernel_type_str_resolver,
                                      std::string& error_str) {
   // check if version matches
   int kernel_start_version;
@@ -157,7 +156,7 @@ bool KernelRegistry::VerifyKernelDef(const Node& node,
 // otherwise, kernel_def.provider must equal to node.provider. exec_provider is ignored.
 Status KernelRegistry::TryFindKernel(const Node& node,
                                      ProviderType exec_provider,
-                                     const KernelTypeStrResolver& kernel_type_str_resolver,
+                                     const IKernelTypeStrResolver& kernel_type_str_resolver,
                                      const KernelCreateInfo** out) const {
   const auto& node_provider = node.GetExecutionProviderType();
   const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);

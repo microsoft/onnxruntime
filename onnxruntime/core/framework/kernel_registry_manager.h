@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <memory>
-#include <vector>
 #include <list>
+#include <memory>
+#include <variant>
+#include <vector>
 #include <unordered_map>
 
 #include "core/common/status.h"
@@ -82,21 +83,22 @@ class KernelRegistryManager {
                       SessionState& session_state,
                       const KernelCreateInfo& kernel_create_info, std::unique_ptr<OpKernel>& out) const;
 
-  const KernelTypeStrResolver& GetKernelTypeStrResolver() const {
-    return kernel_type_str_resolver_;
+  const IKernelTypeStrResolver& GetKernelTypeStrResolver() const {
+    // TODO this doesn't work with MSVC's /external:templates-
+    // return std::visit([](auto&& r) -> const IKernelTypeStrResolver& { return r; }, kernel_type_str_resolver_variant_);
+    if (auto* p = std::get_if<KernelTypeStrResolver>(&kernel_type_str_resolver_variant_)) {
+      return *p;
+    }
+    return *std::get_if<AutoRegisteringKernelTypeStrResolver>(&kernel_type_str_resolver_variant_);
   }
 
-  void SetKernelTypeStrResolver(KernelTypeStrResolver kernel_type_str_resolver) {
-    kernel_type_str_resolver_ = std::move(kernel_type_str_resolver);
+  void SetKernelTypeStrResolver(KernelTypeStrResolver&& kernel_type_str_resolver) {
+    kernel_type_str_resolver_variant_ = std::move(kernel_type_str_resolver);
   }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelRegistryManager);
 
  private:
-#if !defined(ORT_MINIMAL_BUILD)
-  Status EnsureKernelTypeStrResolvesForNodeOpSchema(const Node& node) const;
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
   // key is provider type. Each kernel registry in this collection only belongs to one specific provider
   std::unordered_map<std::string, std::shared_ptr<KernelRegistry>> provider_type_to_registry_;
   // Each kernel registry may contain kernels from many different providers.
@@ -104,11 +106,12 @@ class KernelRegistryManager {
   std::list<std::shared_ptr<KernelRegistry>> custom_kernel_registries_;
 
   // kernel type str resolver used by kernel registries for kernel matching
+  using KernelTypeStrResolverVariant = std::variant<
 #if !defined(ORT_MINIMAL_BUILD)
-  // in a full build, this serves as a cache that is populated incrementally, so we make it `mutable`
-  // in a minimal build, it should be fully populated externally
-  mutable
+      AutoRegisteringKernelTypeStrResolver,  // the default in a full build
 #endif
-      KernelTypeStrResolver kernel_type_str_resolver_;
+      KernelTypeStrResolver  // the default in a minimal build
+      >;
+  KernelTypeStrResolverVariant kernel_type_str_resolver_variant_;
 };
 }  // namespace onnxruntime

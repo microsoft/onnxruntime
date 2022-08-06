@@ -11,9 +11,9 @@ namespace fb = flatbuffers;
 
 namespace onnxruntime {
 
-Status KernelTypeStrResolver::ResolveKernelTypeStr(
-    const OpIdentifier& op_id, const std::string& kernel_type_str,
-    gsl::span<const ArgTypeAndIndex>& resolved_args) const {
+Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
+                                                   gsl::span<const ArgTypeAndIndex>& resolved_args) const {
+  const auto op_id = MakeOpId(node);
   const auto op_it = op_kernel_type_str_map_.find(op_id);
   ORT_RETURN_IF(op_it == op_kernel_type_str_map_.end(), "Failed to find op_id: ", op_id);
   const auto& type_str_map = op_it->second;
@@ -21,11 +21,6 @@ Status KernelTypeStrResolver::ResolveKernelTypeStr(
   ORT_RETURN_IF(type_str_it == type_str_map.end(), "Failed to find args for kernel type string: ", kernel_type_str);
   resolved_args = type_str_it->second;
   return Status::OK();
-}
-
-bool KernelTypeStrResolver::RegisterKernelTypeStrToArgsMap(OpIdentifier op_id,
-                                                           KernelTypeStrToArgsMap kernel_type_str_to_args) {
-  return op_kernel_type_str_map_.try_emplace(std::move(op_id), std::move(kernel_type_str_to_args)).second;
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -71,7 +66,7 @@ Status KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& o
         // If so, their formal parameters also need to have the same type string. Otherwise, it would be ambiguous to
         // use that name as a kernel type string.
         auto formal_param_type_str = [&op_schema](const ArgTypeAndIndex& arg_type_and_idx) {
-          const auto [arg_type, idx] = arg_type_and_idx;
+          const auto& [arg_type, idx] = arg_type_and_idx;
           const auto& formal_params = arg_type == ArgType::kInput ? op_schema.inputs() : op_schema.outputs();
           return formal_params[idx].GetTypeStr();
         };
@@ -89,8 +84,9 @@ Status KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& o
   ORT_RETURN_IF_ERROR(process_formal_params(ArgType::kInput));
   ORT_RETURN_IF_ERROR(process_formal_params(ArgType::kOutput));
 
-  const bool registered = RegisterKernelTypeStrToArgsMap(std::move(op_id),
-                                                         std::move(kernel_type_str_map));
+  const bool registered = op_kernel_type_str_map_.try_emplace(std::move(op_id),
+                                                              std::move(kernel_type_str_map))
+                              .second;
   if (registered_out) *registered_out = registered;
   return Status::OK();
 }
@@ -206,5 +202,15 @@ Status KernelTypeStrResolver::LoadFromOrtFormat(const fbs::KernelTypeStrResolver
   op_kernel_type_str_map_ = std::move(op_kernel_type_str_map);
   return Status::OK();
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+Status AutoRegisteringKernelTypeStrResolver::ResolveKernelTypeStr(
+    const Node& node, std::string_view kernel_type_str,
+    gsl::span<const ArgTypeAndIndex>& resolved_args) const {
+  ORT_RETURN_IF_ERROR(resolver_.RegisterNodeOpSchema(node));
+  ORT_RETURN_IF_ERROR(resolver_.ResolveKernelTypeStr(node, kernel_type_str, resolved_args));
+  return Status::OK();
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace onnxruntime

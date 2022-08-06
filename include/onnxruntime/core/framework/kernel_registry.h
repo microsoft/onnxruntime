@@ -12,7 +12,7 @@ namespace onnxruntime {
 using KernelCreateMap = std::multimap<std::string, KernelCreateInfo>;
 using KernelDefHashes = std::vector<std::pair<std::string, HashValue>>;
 
-class KernelTypeStrResolver;
+class IKernelTypeStrResolver;
 
 /**
  * Each provider has a KernelRegistry. Often, the KernelRegistry only belongs to that specific provider.
@@ -28,12 +28,12 @@ class KernelRegistry {
 
   // Check if an execution provider can create kernel for a node and return the kernel if so
   Status TryFindKernel(const Node& node, ProviderType exec_provider,
-                       const KernelTypeStrResolver& kernel_type_str_resolver,
+                       const IKernelTypeStrResolver& kernel_type_str_resolver,
                        const KernelCreateInfo** out) const;
 
   static bool HasImplementationOf(const KernelRegistry& r, const Node& node,
                                   ProviderType exec_provider,
-                                  const KernelTypeStrResolver& kernel_type_str_resolver) {
+                                  const IKernelTypeStrResolver& kernel_type_str_resolver) {
     const KernelCreateInfo* info;
     Status st = r.TryFindKernel(node, exec_provider, kernel_type_str_resolver, &info);
     return st.IsOK();
@@ -74,7 +74,7 @@ class KernelRegistry {
   // type specification of the corresponding op, which is done before this check.
   static bool VerifyKernelDef(const Node& node,
                               const KernelDef& kernel_def,
-                              const KernelTypeStrResolver& kernel_type_str_resolver,
+                              const IKernelTypeStrResolver& kernel_type_str_resolver,
                               std::string& error_str);
 
   static std::string GetMapKey(std::string_view op_name, std::string_view domain, const std::string_view provider) {

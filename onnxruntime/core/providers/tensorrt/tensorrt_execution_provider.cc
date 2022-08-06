@@ -969,7 +969,7 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
 std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/,
-                                         const KernelTypeStrResolver& /*kernel_type_str_resolver*/) const {
+                                         const IKernelTypeStrResolver& /*kernel_type_str_resolver*/) const {
   // Get ModelPath
   const auto& path_string = graph.ModelPath().ToPathString();
 #ifdef _WIN32

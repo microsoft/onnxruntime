@@ -95,7 +95,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
 std::vector<std::unique_ptr<ComputeCapability>>
 OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/,
-                                         const KernelTypeStrResolver& /*kernel_type_str_resolver*/) const {
+                                         const IKernelTypeStrResolver& /*kernel_type_str_resolver*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   //Enable CI Logs
   if (!(GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG").empty())) {
@@ -144,7 +144,7 @@ common::Status OpenVINOExecutionProvider::Compile(
     openvino_ep::BackendManager::GetGlobalContext().use_api_2 = true;
 #else
     openvino_ep::BackendManager::GetGlobalContext().use_api_2 = false;
-#endif 
+#endif
 
     std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, graph_body_viewer, *GetLogger());
 
