@@ -249,7 +249,7 @@ def test_ort_memory(
     )
 
     def inference():
-        # Update Arena strategy so that we can measure the mininum memory required
+        # Update Arena strategy so that we can measure the minium memory required
         cuda_provider_options = {"arena_extend_strategy": "kSameAsRequested"}
         provider_options = {"CUDAExecutionProvider": cuda_provider_options}
         session = benchmark_helper.create_onnxruntime_session(
@@ -538,7 +538,7 @@ def run(args):
 
     torch.set_grad_enabled(False)
 
-    # set random seed manully to get deterministic results
+    # set random seed manually to get deterministic results
     # benchmark_helper.set_random_seed(123)
 
     # Currently, the longformer attention operator could only run in GPU (no CPU implementation yet).
@@ -559,7 +559,11 @@ def launch_test(arguments):
         return results[0]
 
 
-def test_all():
+def run_tests(use_compact_memory=True, run_torch=False, run_memory=True, use_io_binding=True, use_fp16=True):
+    compact_memory = "1" if use_compact_memory else "0"
+    os.environ["ORT_LONGFORMER_COMPACT_MEMORY"] = compact_memory
+    print("ORT_LONGFORMER_COMPACT_MEMORY=", compact_memory)
+
     torch.multiprocessing.set_start_method("spawn")
     results = []
     test_times = 100
@@ -567,60 +571,53 @@ def test_all():
     for model_name in ["longformer-base-4096"]:
         for batch_size in [1]:
             for sequence_length in sequence_lengths:
-                for global_length in [8]:
-                    engine_name = "torch"
-                    args = parse_arguments(
-                        f"-e {engine_name} -t {test_times} -b {batch_size} -s {sequence_length} -g {global_length} "
-                        f"-t {test_times} -m {model_name}".split(" ")
-                    )
-                    results += run(args)
+                for global_length in [16]:
+                    if run_torch:
+                        engine_name = "torch"
+                        args = parse_arguments(
+                            f"-e {engine_name} -t {test_times} -b {batch_size} -s {sequence_length} -g {global_length} "
+                            f"-t {test_times} -m {model_name}".split(" ")
+                        )
+                        results += run(args)
 
                     engine_name = "onnxruntime"
-                    onnx_paths = [
-                        f"{model_name}_fp32.onnx",
-                        f"{model_name}_fp16.onnx",
-                    ]  # optimized models
-                    for onnx_path in onnx_paths:
-                        if os.path.exists(onnx_path):
-                            for compact_memory in [
-                                "1",
-                                "0",
-                            ]:
-                                for use_io_binding in [True, False]:
-                                    os.environ["ORT_LONGFORMER_COMPACT_MEMORY"] = compact_memory
-                                    print("ORT_LONGFORMER_COMPACT_MEMORY=", compact_memory)
-                                    arguments = (
-                                        f"-e {engine_name} --onnx {onnx_path} "
-                                        f"-b {batch_size} -s {sequence_length} -g {global_length} -m {model_name}"
-                                    )
+                    onnx_path = f"{model_name}_fp16.onnx" if use_fp16 else f"{model_name}_fp32.onnx"
+                    if not os.path.exists(onnx_path):
+                        raise RuntimeError(f"onnx file not exists:{onnx_path}")
 
-                                    if not use_io_binding:
-                                        arguments += " --disable_io_binding"
+                    arguments = (
+                        f"-e {engine_name} --onnx {onnx_path} "
+                        f"-b {batch_size} -s {sequence_length} -g {global_length} -m {model_name}"
+                    )
 
-                                    args = parse_arguments(f"{arguments} -t 10 --memory".split(" "))
-                                    memory_results = launch_test(args)
-                                    print(memory_results)
+                    if not use_io_binding:
+                        arguments += " --disable_io_binding"
 
-                                    args = parse_arguments(f"{arguments} -t {test_times}".split(" "))
-                                    latency_results = launch_test(args)
-                                    if len(latency_results) == 1:
-                                        latency_results[0]["memory"] = memory_results["memory"]
-                                    else:
-                                        raise RuntimeError("len(latency_results) is not 1")
+                    if run_memory:
+                        args = parse_arguments(f"{arguments} -t 10 --memory".split(" "))
+                        memory_results = launch_test(args)
+                        print(memory_results)
 
-                                    print(latency_results)
+                    args = parse_arguments(f"{arguments} -t {test_times}".split(" "))
+                    latency_results = launch_test(args)
+                    if len(latency_results) == 1:
+                        latency_results[0]["memory"] = memory_results["memory"] if run_memory else "N/A"
+                    else:
+                        raise RuntimeError("len(latency_results) is not 1")
 
-                                    results += latency_results
+                    print(latency_results)
+
+                    results += latency_results
     return results
 
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         args = parse_arguments()
-        results = launch_test(args)
+        test_results = launch_test(args)
     else:
-        results = test_all()
+        test_results = run_tests()
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     csv_filename = f"benchmark_detail_{time_stamp}.csv"
-    output_details(results, csv_filename)
+    output_details(test_results, csv_filename)
