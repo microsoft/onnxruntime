@@ -37,9 +37,9 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const
       CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
     }
   } else if (src_device.Type() == OrtDevice::GPU) {
-      // copying from GPU to CPU memory, this is blocking
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyDeviceToHost));
-      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
+    // copying from GPU to CPU memory, this is blocking
+    CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyDeviceToHost));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
   } else {
     // copying between cpu memory
     memcpy(dst_data, src_data, bytes);
@@ -73,6 +73,11 @@ common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost, static_cast<cudaStream_t>(stream->handle)));
     }
   } else {
+    if (src_device.MemType() == OrtDevice::MemType::CUDA_PINNED) {
+      +  // sync the stream first to make sure the data arrived
+          +CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(stream->handle)));
+      +
+    }
     memcpy(dst_data, src_data, bytes);
   }
 
