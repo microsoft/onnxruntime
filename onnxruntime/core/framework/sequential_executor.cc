@@ -171,7 +171,7 @@ class SessionScope {
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
                                                                                  ,
-                                                                                 dump_context_(session_state_.GetGraphExecutionCounter(), program_counter_)
+                                                                                 dump_context_{session_state.GetGraphExecutionCounter(), 0}
 #endif
   {
     if (session_state_.Profiler().IsEnabled()) {
@@ -213,10 +213,6 @@ class SessionScope {
     }
 #endif
 
-#ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    size_t program_counter = 0;
-    utils::NodeDumpContext dump_context{session_state.GetGraphExecutionCounter(), program_counter};
-#endif
     if (session_state_.Profiler().IsEnabled()) {
       session_state_.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
     }
@@ -235,6 +231,11 @@ class SessionScope {
     }
 #endif
   }
+
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+  utils::NodeDumpContext& GetNodeDumpContext() { return dump_context_; }
+#endif
+
 private:
   const SessionState& session_state_;
   TimePoint session_start_;
@@ -253,7 +254,7 @@ private:
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-  size_t program_counter_{};
+  size_t program_counter_ = 0;
   utils::NodeDumpContext dump_context_;
 #endif
 };
@@ -306,7 +307,7 @@ class KernelScope {
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    session_scope_.dump_context_.program_counter = program_counter_++;
+    session_scope_.dump_context_.program_counter = session_scope.program_counter_++;
     utils::DumpNodeInputs(session_scope_.dump_context_, kernel_context_, kernel_.Node(), session_state_);
 #endif
 
@@ -379,7 +380,7 @@ class KernelScope {
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeOutputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
+    utils::DumpNodeOutputs(session_scope_.dump_context_, kernel_context_, kernel_.Node(), session_state_);
 #endif
   }  //~KernelScope
 
@@ -460,6 +461,9 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
         status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
       });
     }
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+  utils::DumpNodeOutputs(session_scope->GetNodeDumpContext(), kernel_ctx, p_kernel->Node(), ctx.GetSessionState());
+#endif
   }
   if (!status.IsOK()) {
     std::ostringstream ss;
@@ -477,9 +481,6 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
   }
   ctx.RecycleNodeInputs(idx);
   LOGS(logger, INFO) << "stream " << stream_idx << " launch kernel with idx " << idx;
-#ifdef DEBUG_NODE_INPUTS_OUTPUTS
-  utils::DumpNodeOutputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
-#endif
   return Status::OK();
 }
 
