@@ -74,9 +74,8 @@ common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
     }
   } else {
     if (src_device.MemType() == OrtDevice::MemType::CUDA_PINNED) {
-      +  // sync the stream first to make sure the data arrived
-          +CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(stream->handle)));
-      +
+      // sync the stream first to make sure the data arrived
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(stream->handle)));
     }
     memcpy(dst_data, src_data, bytes);
   }
