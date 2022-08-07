@@ -42,7 +42,13 @@ class Memcpy final : public OpKernel {
       if (!((src_device.Type() == OrtDevice::CPU && src_device.MemType() != OrtDevice::MemType::CUDA_PINNED) ||
             (dst_device.Type() == OrtDevice::CPU && dst_device.MemType() != OrtDevice::MemType::CUDA_PINNED))) {
         auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
-        return gpu_data_transfer->CopyTensorAsync(*X, *Y, ctx->GetComputeStream());
+        ORT_RETURN_IF_ERROR(gpu_data_transfer->CopyTensorAsync(*X, *Y, ctx->GetComputeStream()));
+        if (dst_device.Type() == OrtDevice::CPU && ctx->GetComputeStream()) {
+          // if the consumer is CPU, we need to sync the stream to make sure the data is arrived before ORT launch CPU kernel.
+          // TODO: this will block the future GPU kernel launch, we might want to optimize it by let the sync happned in another worker thread
+          ctx->GetComputeStream()->Flush();
+        }
+        return Status::OK();
       } else {
         return Info().GetDataTransferManager().CopyTensor(*X, *Y);
       }
