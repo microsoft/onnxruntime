@@ -115,10 +115,6 @@ to download.
 //! See the [`sample.rs`](https://github.com/nbigaouette/onnxruntime-rs/blob/main/onnxruntime/examples/sample.rs)
 //! example for more details.
 
-use std::sync::{atomic::AtomicPtr, Arc, Mutex};
-
-use lazy_static::lazy_static;
-
 use onnxruntime_sys as sys;
 
 // Make functions `extern "stdcall"` for Windows 32bit.
@@ -155,29 +151,12 @@ use sys::OnnxEnumInt;
 // Re-export ndarray as it's part of the public API anyway
 pub use ndarray;
 
-lazy_static! {
-    // static ref G_ORT: Arc<Mutex<AtomicPtr<sys::OrtApi>>> =
-    //     Arc::new(Mutex::new(AtomicPtr::new(unsafe {
-    //         sys::OrtGetApiBase().as_ref().unwrap().GetApi.unwrap()(sys::ORT_API_VERSION)
-    //     } as *mut sys::OrtApi)));
-    static ref G_ORT_API: Arc<Mutex<AtomicPtr<sys::OrtApi>>> = {
-        let base: *const sys::OrtApiBase = unsafe { sys::OrtGetApiBase() };
-        assert_ne!(base, std::ptr::null());
-        let get_api: extern_system_fn!{ unsafe fn(u32) -> *const onnxruntime_sys::OrtApi } =
-            unsafe { (*base).GetApi.unwrap() };
-        let api: *const sys::OrtApi = unsafe { get_api(sys::ORT_API_VERSION) };
-        Arc::new(Mutex::new(AtomicPtr::new(api as *mut sys::OrtApi)))
-    };
-}
-
 fn g_ort() -> sys::OrtApi {
-    let mut api_ref = G_ORT_API
-        .lock()
-        .expect("Failed to acquire lock: another thread panicked?");
-    let api_ref_mut: &mut *mut sys::OrtApi = api_ref.get_mut();
-    let api_ptr_mut: *mut sys::OrtApi = *api_ref_mut;
+    let base = unsafe { sys::OrtGetApiBase() };
 
-    assert_ne!(api_ptr_mut, std::ptr::null_mut());
+    let api_version = sys::ORT_API_VERSION;
+
+    let api_ptr_mut = unsafe { (*base).GetApi.unwrap()(api_version) };
 
     unsafe { *api_ptr_mut }
 }
