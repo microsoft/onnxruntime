@@ -52,7 +52,6 @@ class QSplit(QuantOperatorBase):
 
 
 class QDQSplit(QDQOperatorBase):
-
     def quantize(self):
         node = self.node
         assert node.op_type == "Split"
