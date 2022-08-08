@@ -148,7 +148,7 @@ impl<'a> SessionBuilder<'a> {
 
     /// Download an ONNX pre-trained model from the [ONNX Model Zoo](https://github.com/onnx/models) and commit the session
     #[cfg(feature = "model-fetching")]
-    pub fn with_model_downloaded<M>(self, model: M) -> Result<Session<'a>>
+    pub fn with_model_downloaded<M>(self, model: M) -> Result<Session>
     where
         M: Into<AvailableOnnxModel>,
     {
@@ -156,7 +156,7 @@ impl<'a> SessionBuilder<'a> {
     }
 
     #[cfg(feature = "model-fetching")]
-    fn with_model_downloaded_monomorphized(self, model: AvailableOnnxModel) -> Result<Session<'a>> {
+    fn with_model_downloaded_monomorphized(self, model: AvailableOnnxModel) -> Result<Session> {
         let download_dir = env::current_dir().map_err(OrtDownloadError::IoError)?;
         let downloaded_path = model.download_to(download_dir)?;
         self.with_model_from_file(downloaded_path)
@@ -166,7 +166,7 @@ impl<'a> SessionBuilder<'a> {
     //       See all OrtApi methods taking a `options: *mut OrtSessionOptions`.
 
     /// Load an ONNX graph from a file and commit the session
-    pub fn with_model_from_file<P>(self, model_filepath_ref: P) -> Result<Session<'a>>
+    pub fn with_model_from_file<P>(self, model_filepath_ref: P) -> Result<Session>
     where
         P: AsRef<Path> + 'a,
     {
@@ -193,12 +193,12 @@ impl<'a> SessionBuilder<'a> {
             .chain(std::iter::once(&b'\0')) // Make sure we have a null terminated string
             .map(|b| *b as std::os::raw::c_char)
             .collect();
-
-        let env_ptr: *const sys::OrtEnv = self.env.env_ptr();
+        let env = self.env.env();
+        let guard = env.lock().unwrap();
 
         let status = unsafe {
             g_ort().CreateSession.unwrap()(
-                env_ptr,
+                (*guard).env_ptr,
                 model_path.as_ptr(),
                 self.session_options_ptr,
                 &mut session_ptr,
@@ -227,7 +227,6 @@ impl<'a> SessionBuilder<'a> {
             .collect::<Result<Vec<Output>>>()?;
 
         Ok(Session {
-            env: self.env,
             session_ptr,
             allocator_ptr,
             memory_info,
@@ -237,23 +236,25 @@ impl<'a> SessionBuilder<'a> {
     }
 
     /// Load an ONNX graph from memory and commit the session
-    pub fn with_model_from_memory<B>(self, model_bytes: B) -> Result<Session<'a>>
+    pub fn with_model_from_memory<B>(self, model_bytes: B) -> Result<Session>
     where
         B: AsRef<[u8]>,
     {
         self.with_model_from_memory_monomorphized(model_bytes.as_ref())
     }
 
-    fn with_model_from_memory_monomorphized(self, model_bytes: &[u8]) -> Result<Session<'a>> {
+    fn with_model_from_memory_monomorphized(self, model_bytes: &[u8]) -> Result<Session> {
         let mut session_ptr: *mut sys::OrtSession = std::ptr::null_mut();
 
-        let env_ptr: *const sys::OrtEnv = self.env.env_ptr();
+        let env = self.env.env();
+
+        let guard = env.lock().unwrap();
 
         let status = unsafe {
             let model_data = model_bytes.as_ptr().cast::<std::ffi::c_void>();
             let model_data_length = model_bytes.len();
             g_ort().CreateSessionFromArray.unwrap()(
-                env_ptr,
+                (*guard).env_ptr,
                 model_data,
                 model_data_length,
                 self.session_options_ptr,
@@ -283,7 +284,6 @@ impl<'a> SessionBuilder<'a> {
             .collect::<Result<Vec<Output>>>()?;
 
         Ok(Session {
-            env: self.env,
             session_ptr,
             allocator_ptr,
             memory_info,
@@ -295,9 +295,7 @@ impl<'a> SessionBuilder<'a> {
 
 /// Type storing the session information, built from an [`Environment`](environment/struct.Environment.html)
 #[derive(Debug)]
-#[allow(dead_code)] // This is to fix a Clippy warning of `env` not being read.
-pub struct Session<'a> {
-    env: &'a Environment,
+pub struct Session {
     session_ptr: *mut sys::OrtSession,
     allocator_ptr: *mut sys::OrtAllocator,
     memory_info: MemoryInfo,
@@ -355,7 +353,7 @@ impl Output {
     }
 }
 
-impl<'a> Drop for Session<'a> {
+impl Drop for Session {
     #[tracing::instrument]
     fn drop(&mut self) {
         debug!("Dropping the session.");
@@ -370,13 +368,15 @@ impl<'a> Drop for Session<'a> {
     }
 }
 
-impl<'a> Session<'a> {
+unsafe impl Send for Session {}
+
+impl Session {
     /// Run the input data through the ONNX graph, performing inference.
     ///
     /// Note that ONNX models can have multiple inputs; a `Vec<_>` is thus
     /// used for the input data here.
     pub fn run<'s, 't, 'm, TIn, TOut, D>(
-        &'s mut self,
+        &'s self,
         input_arrays: Vec<Array<TIn, D>>,
     ) -> Result<Vec<OrtOwnedTensor<'t, 'm, TOut, ndarray::IxDyn>>>
     where
@@ -475,14 +475,7 @@ impl<'a> Session<'a> {
         outputs
     }
 
-    // pub fn tensor_from_array<'a, 'b, T, D>(&'a self, array: Array<T, D>) -> Tensor<'b, T, D>
-    // where
-    //     'a: 'b, // 'a outlives 'b
-    // {
-    //     Tensor::from_array(self, array)
-    // }
-
-    fn validate_input_shapes<TIn, D>(&mut self, input_arrays: &[Array<TIn, D>]) -> Result<()>
+    fn validate_input_shapes<TIn, D>(&self, input_arrays: &[Array<TIn, D>]) -> Result<()>
     where
         TIn: TypeToTensorElementDataType + Debug + Clone,
         D: ndarray::Dimension,

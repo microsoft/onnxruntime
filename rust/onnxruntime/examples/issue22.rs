@@ -20,7 +20,7 @@ fn main() {
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     let env = Environment::builder().with_name("env").build().unwrap();
-    let mut session = env
+    let session = env
         .new_session_builder()
         .unwrap()
         .with_optimization_level(GraphOptimizationLevel::Basic)

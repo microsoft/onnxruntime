@@ -31,7 +31,7 @@ fn run() -> Result<(), Error> {
         .with_log_level(LoggingLevel::Info)
         .build()?;
 
-    let mut session = environment
+    let session = environment
         .new_session_builder()?
         .with_optimization_level(GraphOptimizationLevel::Basic)?
         .with_number_threads(1)?

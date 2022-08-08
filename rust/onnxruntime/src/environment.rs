@@ -21,9 +21,9 @@ lazy_static! {
 }
 
 #[derive(Debug)]
-struct EnvironmentSingleton {
+pub(crate) struct EnvironmentSingleton {
     name: String,
-    env_ptr: *mut sys::OrtEnv,
+    pub(crate) env_ptr: *mut sys::OrtEnv,
 }
 
 unsafe impl Send for EnvironmentSingleton {}
@@ -91,8 +91,8 @@ impl Environment {
         self.env.lock().unwrap().name.to_string()
     }
 
-    pub(crate) fn env_ptr(&self) -> *const sys::OrtEnv {
-        self.env.lock().unwrap().env_ptr
+    pub(crate) fn env(&self) -> Arc<Mutex<EnvironmentSingleton>> {
+        Arc::clone(&self.env)
     }
 
     #[tracing::instrument]
@@ -326,7 +326,7 @@ mod tests {
 
         let initial_name = String::from("concurrent_environment_creation");
         let main_env = Environment::new(initial_name.clone(), LoggingLevel::Warning).unwrap();
-        let main_env_ptr = main_env.env_ptr() as usize;
+        let main_env_ptr = main_env.env().lock().unwrap().env_ptr as usize;
 
         let children: Vec<_> = (0..10)
             .map(|t| {
@@ -340,13 +340,16 @@ mod tests {
                         .unwrap();
 
                     assert_eq!(env.name(), initial_name_cloned);
-                    assert_eq!(env.env_ptr() as usize, main_env_ptr);
+                    assert_eq!(env.env().lock().unwrap().env_ptr as usize, main_env_ptr);
                 })
             })
             .collect();
 
         assert_eq!(main_env.name(), initial_name);
-        assert_eq!(main_env.env_ptr() as usize, main_env_ptr);
+        assert_eq!(
+            main_env.env().lock().unwrap().env_ptr as usize,
+            main_env_ptr
+        );
 
         let res: Vec<std::thread::Result<_>> = children
             .into_iter()
