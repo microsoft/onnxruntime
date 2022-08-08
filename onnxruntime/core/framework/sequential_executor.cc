@@ -307,7 +307,7 @@ class KernelScope {
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    session_scope_.dump_context_.program_counter = session_scope.program_counter_++;
+    session_scope_.dump_context_.program_counter++;
     utils::DumpNodeInputs(session_scope_.dump_context_, kernel_context_, kernel_.Node(), session_state_);
 #endif
 
