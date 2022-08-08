@@ -37,8 +37,6 @@ stages:
     - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
       displayName: Install coreutils and ninja
 
-    - template: "templates/use-android-ndk.yml"
-
     - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
       displayName: Setup gradle wrapper to use gradle 6.8.3
 
@@ -228,8 +226,6 @@ stages:
         displayName: Use Python $(pythonVersion)
         inputs:
           versionSpec: $(pythonVersion)
-
-      - template: "templates/use-android-ndk.yml"
 
       - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
         displayName: Setup gradle wrapper to use gradle 6.8.3
