@@ -1,15 +1,5 @@
 //! Module containing environment types
 
-use std::{
-    ffi::CString,
-    sync::{atomic::AtomicPtr, Arc, Mutex},
-};
-
-use lazy_static::lazy_static;
-use tracing::{debug, error, warn};
-
-use onnxruntime_sys as sys;
-
 use crate::{
     error::{status_to_result, OrtError, Result},
     g_ort,
@@ -17,19 +7,41 @@ use crate::{
     session::SessionBuilder,
     LoggingLevel,
 };
+use lazy_static::lazy_static;
+use onnxruntime_sys as sys;
+use std::{
+    ffi::CString,
+    sync::{Arc, Mutex},
+};
+use tracing::{debug, warn};
 
 lazy_static! {
     static ref G_ENV: Arc<Mutex<EnvironmentSingleton>> =
-        Arc::new(Mutex::new(EnvironmentSingleton {
-            name: String::from("uninitialized"),
-            env_ptr: AtomicPtr::new(std::ptr::null_mut()),
-        }));
+        Arc::new(Mutex::new(EnvironmentSingleton::default()));
 }
 
 #[derive(Debug)]
 struct EnvironmentSingleton {
     name: String,
-    env_ptr: AtomicPtr<sys::OrtEnv>,
+    env_ptr: *mut sys::OrtEnv,
+}
+
+unsafe impl Send for EnvironmentSingleton {}
+
+impl Drop for EnvironmentSingleton {
+    fn drop(&mut self) {
+        let release_env = g_ort().ReleaseEnv.unwrap();
+        unsafe { release_env(self.env_ptr) };
+    }
+}
+
+impl Default for EnvironmentSingleton {
+    fn default() -> Self {
+        EnvironmentSingleton {
+            name: String::from("uninitialized"),
+            env_ptr: std::ptr::null_mut(),
+        }
+    }
 }
 
 /// An [`Environment`](session/struct.Environment.html) is the main entry point of the ONNX Runtime.
@@ -80,7 +92,7 @@ impl Environment {
     }
 
     pub(crate) fn env_ptr(&self) -> *const sys::OrtEnv {
-        *self.env.lock().unwrap().env_ptr.get_mut()
+        self.env.lock().unwrap().env_ptr
     }
 
     #[tracing::instrument]
@@ -92,7 +104,7 @@ impl Environment {
         let mut environment_guard = G_ENV
             .lock()
             .expect("Failed to acquire lock: another thread panicked?");
-        let g_env_ptr = environment_guard.env_ptr.get_mut();
+        let g_env_ptr = &mut environment_guard.env_ptr;
         if g_env_ptr.is_null() {
             debug!("Environment not yet initialized, creating a new one.");
 
@@ -175,23 +187,12 @@ impl Drop for Environment {
         //       If there is no other environment, the strong count should be two and we
         //       can properly free the sys::OrtEnv pointer.
         if Arc::strong_count(&G_ENV) == 2 {
-            let release_env = g_ort().ReleaseEnv.unwrap();
-            let env_ptr: *mut sys::OrtEnv = *environment_guard.env_ptr.get_mut();
+            let _old = std::mem::take(&mut *environment_guard);
 
             debug!(
                 global_arc_count = Arc::strong_count(&G_ENV),
                 "Releasing the Environment.",
             );
-
-            assert_ne!(env_ptr, std::ptr::null_mut());
-            if env_ptr.is_null() {
-                error!("Environment pointer is null, not dropping!");
-            } else {
-                unsafe { release_env(env_ptr) };
-            }
-
-            environment_guard.env_ptr = AtomicPtr::new(std::ptr::null_mut());
-            environment_guard.name = String::from("uninitialized");
         }
     }
 }
@@ -253,12 +254,8 @@ mod tests {
             Arc::strong_count(self) >= 2
         }
 
-        // fn name(&self) -> String {
-        //     *self.lock().unwrap().name.clone()
-        // }
-
         fn env_ptr(&self) -> *const sys::OrtEnv {
-            *self.lock().unwrap().env_ptr.get_mut()
+            self.lock().unwrap().env_ptr
         }
     }
 
