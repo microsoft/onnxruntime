@@ -23,7 +23,7 @@ void* VulkanAllocator::Alloc(size_t size) {
 }
 
 void VulkanAllocator::Free(void* ptr) {
-  delete (VulkanMemory*)ptr;
+  delete static_cast<VulkanMemory*>(ptr);
 }
 
 // VulkanMemory methods

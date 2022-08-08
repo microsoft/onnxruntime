@@ -58,7 +58,7 @@ class VulkanMemoryPool {
   std::pair<void*, int> Alloc(const VkMemoryRequirements& requirements, VkFlags extraMask, bool seperate = false);
   void Free(std::pair<void*, int>& memory);
 
-  // Free Unuseful Memory
+  // Free Memory
   void clear();
 
   const VkDevice& GetLogicalDevice() {
