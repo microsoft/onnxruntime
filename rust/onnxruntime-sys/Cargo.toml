@@ -28,7 +28,7 @@ tar = "0.4"
 ureq = "2.1"
 
 # Used on Windows
-zip = "0.5"
+zip = "0.6"
 
 [features]
 default = []
