@@ -380,7 +380,7 @@ void Im2col<T, StorageOrder::NCHW>::operator()(
       }
     }
   };
-  ThreadPool::TryBatchParallelFor(tp, channels, channel_proc, batches);
+  ThreadPool::TryBatchParallelFor(tp, gsl::narrow<ptrdiff_t>(channels), channel_proc, gsl::narrow<ptrdiff_t>(batches));
 }
 
 template <typename T>
@@ -455,7 +455,7 @@ void Im2col<T, StorageOrder::NCHW>::operator()(
     tp = nullptr;
   }
 
-  ThreadPool::TryBatchParallelFor(tp, channels_col, channel_proc, batches);
+  ThreadPool::TryBatchParallelFor(tp, gsl::narrow<ptrdiff_t>(channels_col), channel_proc, gsl::narrow<ptrdiff_t>(batches));
 }
 
 template struct Im2col<float, StorageOrder::NCHW>;
@@ -537,7 +537,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
       }
     }
   };
-  ThreadPool::TryBatchParallelFor(tp, output_count, im2col_proc, batches);
+  ThreadPool::TryBatchParallelFor(tp, gsl::narrow<ptrdiff_t>(output_count), im2col_proc, gsl::narrow<ptrdiff_t>(batches));
 }
 
 template <typename T>
@@ -695,7 +695,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
         output_indir += kernel_w;
       }
     };
-    ThreadPool::TryBatchParallelFor(tp, output_count, im2col_proc, batches);
+    ThreadPool::TryBatchParallelFor(tp, gsl::narrow<ptrdiff_t>(output_count), im2col_proc, gsl::narrow<ptrdiff_t>(batches));
   } else {
     const auto kernel_size = std::accumulate(kernel_shape, kernel_shape + rank, 1LL, std::multiplies<int64_t>());
 
@@ -731,7 +731,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
         *data_output++ = is_padding ? padding_ptr : data_ptr;
       } while (NextPosition(rank, kernel_shape, d_kernel.data()));
     };
-    ThreadPool::TryBatchParallelFor(tp, output_count, im2col_proc, batches);
+    ThreadPool::TryBatchParallelFor(tp, gsl::narrow<ptrdiff_t>(output_count), im2col_proc, gsl::narrow<ptrdiff_t>(batches));
   }
 }
 template struct Im2col<int8_t, StorageOrder::NHWC>;
@@ -756,7 +756,7 @@ void Col2imPar<float, StorageOrder::NCHW>(const float* data_col, int64_t channel
   constexpr int64_t cost_per_batch = 6144;
   const auto data_per_channel = kernel_h * kernel_w * output_hw;  // Input. From the loops below
   const auto total_cost = data_per_channel * channels;
-  const auto batches = std::min<int64_t>((total_cost + cost_per_batch - 1) / cost_per_batch, dop);
+  const auto batches = gsl::narrow<ptrdiff_t>(std::min<int64_t>((total_cost + cost_per_batch - 1) / cost_per_batch, dop));
 
   Set<float, CPUMathUtil>(gsl::narrow<ptrdiff_t>(hwc), 0, data_im, context);
 
@@ -791,9 +791,8 @@ void Col2imPar<float, StorageOrder::NCHW>(const float* data_col, int64_t channel
           }
         }
       }
-      //}
     };
-    ThreadPool::TryBatchParallelFor(tp, channels, basic_channel_proc, batches);
+    ThreadPool::TryBatchParallelFor(tp, gsl::narrow<ptrdiff_t>(channels), basic_channel_proc, batches);
     return;
   }
 
