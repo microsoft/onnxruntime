@@ -63,6 +63,13 @@ public class SequenceInfo implements ValueInfo {
   }
 
   /**
+   * Constructs an empty sequence info. Called from JNI.
+   */
+  SequenceInfo() {
+    this(-1,OnnxJavaType.UNKNOWN);
+  }
+
+  /**
    * Is this a sequence of maps?
    *
    * @return True if it's a sequence of maps.
