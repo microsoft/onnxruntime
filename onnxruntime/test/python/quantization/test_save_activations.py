@@ -16,7 +16,7 @@ from onnx import TensorProto, helper, numpy_helper
 
 import onnxruntime
 from onnxruntime.quantization.calibrate import CalibrationDataReader
-from onnxruntime.quantization.save_activations import modify_model_output_intermediate_tensors , collect_activations
+from onnxruntime.quantization.save_activations import collect_activations, modify_model_output_intermediate_tensors
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
@@ -122,7 +122,7 @@ class TestSaveActivations(unittest.TestCase):
         construct_test_model1(test_model_path)
         data_reader = TestDataReader()
 
-        aug_model = modify_model_output_intermediate_tensors (test_model_path)
+        aug_model = modify_model_output_intermediate_tensors(test_model_path)
         augmented_model_path = str(Path(self._tmp_model_dir.name).joinpath("augmented_test_model_1.onnx"))
 
         onnx.save(

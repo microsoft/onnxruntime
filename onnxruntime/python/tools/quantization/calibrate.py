@@ -10,6 +10,7 @@ import itertools
 import uuid
 from enum import Enum
 from pathlib import Path
+from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 import onnx
@@ -50,7 +51,7 @@ class CalibraterBase:
     def __init__(
         self,
         model,
-        op_types_to_calibrate=[],
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         symmetric=False,
         use_external_data_format=False,
@@ -115,7 +116,7 @@ class CalibraterBase:
         tensor_type_to_calibrate = set([TensorProto.FLOAT, TensorProto.FLOAT16])
 
         for node in model.graph.node:
-            if len(self.op_types_to_calibrate) == 0 or node.op_type in self.op_types_to_calibrate:
+            if not self.op_types_to_calibrate or node.op_type in self.op_types_to_calibrate:
                 for tensor_name in itertools.chain(node.input, node.output):
                     if tensor_name in value_infos.keys():
                         vi = value_infos[tensor_name]
@@ -159,7 +160,7 @@ class MinMaxCalibrater(CalibraterBase):
     def __init__(
         self,
         model,
-        op_types_to_calibrate=[],
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         symmetric=False,
         use_external_data_format=False,
@@ -329,7 +330,7 @@ class HistogramCalibrater(CalibraterBase):
     def __init__(
         self,
         model,
-        op_types_to_calibrate=[],
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         use_external_data_format=False,
         method="percentile",
@@ -438,7 +439,7 @@ class EntropyCalibrater(HistogramCalibrater):
     def __init__(
         self,
         model,
-        op_types_to_calibrate=[],
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         use_external_data_format=False,
         method="entropy",
@@ -472,7 +473,7 @@ class PercentileCalibrater(HistogramCalibrater):
     def __init__(
         self,
         model,
-        op_types_to_calibrate=[],
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         use_external_data_format=False,
         method="percentile",
@@ -819,7 +820,7 @@ class HistogramCollector(CalibrationDataCollector):
 
 def create_calibrator(
     model,
-    op_types_to_calibrate=[],
+    op_types_to_calibrate: Optional[Sequence[str]] = None,
     augmented_model_path="augmented_model.onnx",
     calibrate_method=CalibrationMethod.MinMax,
     use_external_data_format=False,

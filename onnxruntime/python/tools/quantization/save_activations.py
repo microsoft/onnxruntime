@@ -56,7 +56,7 @@ _TENSOR_SAVE_POSTFIX = "_ReshapedSavedOutput"
 _TENSOR_SAVE_POSTFIX_LEN = len(_TENSOR_SAVE_POSTFIX)
 
 
-def modify_model_output_intermediate_tensors (
+def modify_model_output_intermediate_tensors(
     onnx_model: Union[str, Path, ModelProto], op_types_for_saving: Optional[Sequence[str]] = None
 ) -> ModelProto:
     """Augment a given ONNX model to save node input/output tensors.
@@ -67,8 +67,8 @@ def modify_model_output_intermediate_tensors (
     Args:
         model: An ONNX model or the path to load the model.
         op_types_for_saving: Operator types for which the
-	        input/output should be saved. By default, saving all the
-	        float32/float16 tensors.
+                input/output should be saved. By default, saving all the
+                float32/float16 tensors.
 
     Returns:
         The augmented ONNX model
@@ -141,7 +141,7 @@ def collect_activations(
     for batch in intermediate_outputs:
         for output, output_data in zip(output_info, batch):
             if output.name.endswith(_TENSOR_SAVE_POSTFIX):
-                output_name = output.name[: -_TENSOR_SAVE_POSTFIX_LEN]
+                output_name = output.name[:-_TENSOR_SAVE_POSTFIX_LEN]
                 output_dict.setdefault(output_name, []).append(output_data)
 
     return output_dict
