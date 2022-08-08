@@ -698,7 +698,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
-  bool single_stream = session_state.GetExecutionPlan()->NumberOfValidStream();
+  bool single_stream = session_state.GetExecutionPlan()->NumberOfValidStream() == 1;
   bool is_subgraph = session_state.GetGraphViewer().ParentNode() != nullptr;
   // in following two cases, we execute the workload in main thread:
   // 1. only have 1 stream, it could be the CPU sequential inference scenario, or GPU case when all the nodes are running on GPU.
