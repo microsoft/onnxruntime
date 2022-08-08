@@ -4,7 +4,11 @@
 #include "core/common/common.h"
 
 #include "hasher.h"  // NOLINT(build/include_subdir)
+#ifdef USE_TVM_HASH
+#include "hasher_impl_sha256.h"
+#else
 #include "hasher_impl.h"  // NOLINT(build/include_subdir)
+#endif
 
 
 namespace onnxruntime {
@@ -20,7 +24,12 @@ std::string Hasher::hash(const char* src, size_t size) const {
 
 std::shared_ptr<HasherImpl> Hasher::getHasherImpl(const std::string& hash_type) {
   if (hash_type == "sha256") {
+#ifdef USE_TVM_HASH
     return std::make_shared<HasherSHA256Impl>();
+#else
+    ORT_NOT_IMPLEMENTED("Handshake mechanism is tried to use without correct build of ONNX Runtime with TVM EP. ",
+        "Please use '--use_tvm_hash' key with build script");
+#endif
   } else {
     ORT_NOT_IMPLEMENTED("Hasher was not implemented for hash type: ", hash_type);
   }

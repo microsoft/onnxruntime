@@ -1,7 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "hasher_impl.h"  // NOLINT(build/include_subdir)
+#include <iomanip>
+
+#include "core/common/common.h"
+
+#include "hasher_impl_sha256.h"  // NOLINT(build/include_subdir)
+
 
 namespace onnxruntime {
 namespace tvm {
