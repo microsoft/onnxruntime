@@ -326,7 +326,7 @@ common::Status SaveInitializedTensors(
     }
 
     // 'name' is a reference to a string within the TensorProto that save_tensor_func may free
-    // so we need to output this message prior to calling save_tensor_fund
+    // so we need to output this message prior to calling save_tensor_func
     VLOGS(logger, 1) << "Adding weight with name : " << name << " with index: " << ort_value_index;
 
     // any outer scope value is shadowed by a local value and can't override it.
