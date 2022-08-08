@@ -466,7 +466,7 @@ Status Pow::ComputeInternal(OpKernelContext* context) const {
 }
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Mod, kOnnxDomain, 10, 10, kCudaExecutionProvider,
+    Mod, kOnnxDomain, 10, 12, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T",
                         BuildKernelDefConstraints<int32_t, int64_t, uint32_t, uint64_t, float, double, MLFloat16>()),
