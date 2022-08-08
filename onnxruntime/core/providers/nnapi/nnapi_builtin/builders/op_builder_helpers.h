@@ -24,6 +24,13 @@ Status AddScalarOperand(ModelBuilder& model_builder, std::vector<uint32_t>& inpu
 
 // adds ANEURALNETWORKS_TRANSPOSE operation
 Status AddNnapiTranspose(ModelBuilder& model_builder,
+                         const NodeUnit& node_unit,
+                         const std::string& data_input,
+                         const std::string& perm_input,
+                         const std::vector<int32_t>& perm,
+                         const std::string& output);
+
+Status AddNnapiTranspose(ModelBuilder& model_builder,
                          const std::string& data_input,
                          const std::string& perm_input,
                          const std::vector<int32_t>& perm,

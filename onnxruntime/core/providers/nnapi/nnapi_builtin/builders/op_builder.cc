@@ -749,7 +749,7 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
   std::string perm_name = model_builder.GetUniqueName(node_unit.Name() + input + "perm");
 
-  ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiTranspose(model_builder, input, perm_name, perm, output));
+  ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiTranspose(model_builder, node_unit, input, perm_name, perm, output));
 
   return Status::OK();
 }

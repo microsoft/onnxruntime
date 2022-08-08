@@ -18,6 +18,41 @@ namespace onnxruntime::nnapi::op_builder_helpers {
 using android::nn::wrapper::OperandType, android::nn::wrapper::Type;
 
 Status AddNnapiTranspose(ModelBuilder& model_builder,
+                         const NodeUnit& node_unit,
+                         const std::string& data_input,
+                         const std::string& perm_input, const std::vector<int32_t>& perm,
+                         const std::string& output) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(data_input));  // input
+
+  Shape perm_dimen = {SafeInt<uint32_t>(perm.size())};
+  OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(perm_input, perm.data(), perm_operand_type));
+  uint32_t perm_idx = operand_indices.at(perm_input);
+
+  input_indices.push_back(perm_idx);  // permutation
+  // ORT_RETURN_IF_ERROR(shaper.Transpose(data_input, perm, output));
+  //  Uses shape info from output node arg tensorshapeproto
+  const auto& shape_info = node_unit.Outputs()[0].node_arg.Shape();
+  const auto& shape_dims = shape_info->dim();
+  std::vector<uint32_t> output_shape(shape_info->dim_size());
+  for (int i = 0; i < shape_dims.size(); i++) {
+    auto& shape_dim = shape_dims.Get(i);
+    output_shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
+  }
+  shaper.AddShape(output, output_shape);
+  OperandType output_operand_type = operand_types.at(data_input);
+  output_operand_type.SetDimensions(output_shape);
+  LOGS_DEFAULT(VERBOSE) << "Addnnapitranspose - enter";
+  return model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output},
+                                    {output_operand_type});
+}
+
+Status AddNnapiTranspose(ModelBuilder& model_builder,
                          const std::string& data_input,
                          const std::string& perm_input, const std::vector<int32_t>& perm,
                          const std::string& output) {
