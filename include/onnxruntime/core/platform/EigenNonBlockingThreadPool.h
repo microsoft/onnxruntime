@@ -1311,7 +1311,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   // threads in the pool, and their lifetime is managed along with the
   // pool.
 
-  struct PerThread {
+#ifdef _MSC_VER
+#pragma warning(push)
+// C4324: structure was padded due to alignment specifier
+#pragma warning(disable : 4324)
+#endif // _MSC_VER
+
+  struct ORT_ALIGN_TO_AVOID_FALSE_SHARING PerThread {
     constexpr PerThread() : pool(nullptr) {
     }
     ThreadPoolTempl* pool;            // Parent pool, or null for normal threads.
@@ -1327,8 +1333,12 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // of times that the work-stealing code paths are used for
     // rebalancing.
     InlinedVector<int> preferred_workers;
-    PaddingToAvoidFalseSharing padding_2;
   };
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif // _MSC_VER
+
 
   struct WorkerData {
     constexpr WorkerData() : thread(), queue() {
