@@ -84,7 +84,7 @@ class KernelRegistryManager {
                       const KernelCreateInfo& kernel_create_info, std::unique_ptr<OpKernel>& out) const;
 
   const IKernelTypeStrResolver& GetKernelTypeStrResolver() const {
-    // TODO this doesn't work with MSVC's /external:templates-
+    // TODO this doesn't work with MSVC's /external:templates- in VS 17.2.6
     // return std::visit([](auto&& r) -> const IKernelTypeStrResolver& { return r; }, kernel_type_str_resolver_variant_);
     if (auto* p = std::get_if<KernelTypeStrResolver>(&kernel_type_str_resolver_variant_)) {
       return *p;
