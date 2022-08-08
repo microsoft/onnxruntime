@@ -19,10 +19,9 @@ name = "integration_tests"
 required-features = ["model-fetching"]
 
 [dependencies]
-onnxruntime-sys = { version = "0.0.14", path = "../onnxruntime-sys" }
-
 lazy_static = "1.4"
 ndarray = "0.15"
+onnxruntime-sys = { version = "0.0.14", path = "../onnxruntime-sys" }
 thiserror = "1.0"
 tracing = "0.1"
 
