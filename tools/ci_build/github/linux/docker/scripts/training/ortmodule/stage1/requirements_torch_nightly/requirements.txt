@@ -1,4 +1,3 @@
-torchtext==0.12.0
 sklearn
 transformers==v4.4.2
 wget
