@@ -862,13 +862,24 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
-  ORT_RETURN_IF_ERROR(shaper.Reshape(input, shape, output));
+
+  // Uses shape info from output node arg tensorshapeproto
+  const auto& shape_info = node_unit.Outputs()[0].node_arg.Shape();
+  const auto& shape_dims = shape_info->dim();
+  std::vector<uint32_t> output_shape(shape_info->dim_size());
+  for (int i = 0; i < shape_dims.size(); i++) {
+    auto& shape_dim = shape_dims.Get(i);
+    output_shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
+  }
+
+  shaper.AddShape(output, output_shape);
+
   auto input_rank = shaper[input].size();
-  auto output_rank = shaper[output].size();
+  auto output_rank = output_shape.size();
 
   // For reshape, the output type should be the same as the input type except the shape is different
   auto output_operand_type = operand_types.at(input);
-  output_operand_type.SetDimensions(shaper[output]);
+  output_operand_type.SetDimensions(output_shape);
 
   // Since Reshape is not running using hardware in NNAPI for some CPU (e.g. Qualcomm SD for now)
   // We will try to see if we the skip the Reshape to prevent context switching between
@@ -880,9 +891,8 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
     // We still need to perform a reshape here
     std::string shape_name = model_builder.GetUniqueName(node_unit.Name() + input + "newshape");
     ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiReshape(model_builder, input, shape_name, shape, output,
-                                                            &shaper[output]));
+                                                            &output_shape));
   }
-
   return Status::OK();
 }
 
@@ -2097,8 +2107,17 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
 
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
-  ORT_RETURN_IF_ERROR(shaper.Concat(input_names, axis, output));
-  OperandType output_operand_type(operand_types.at(input0).type, shaper[output], y_scale, y_zero_point);
+  // Uses shape info from output node arg tensorshapeproto
+  const auto& shape_info = node_unit.Outputs()[0].node_arg.Shape();
+  const auto& shape_dims = shape_info->dim();
+  std::vector<uint32_t> output_shape(shape_info->dim_size());
+  for (int i = 0; i < shape_dims.size(); i++) {
+    auto& shape_dim = shape_dims.Get(i);
+    output_shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
+  }
+  shaper.AddShape(output, output_shape);
+
+  OperandType output_operand_type(operand_types.at(input0).type, output_shape, y_scale, y_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CONCATENATION, input_indices,
                                                  {output}, {output_operand_type}));
   return Status::OK();
