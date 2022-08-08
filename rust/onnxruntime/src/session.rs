@@ -364,7 +364,6 @@ impl<'a> Drop for Session<'a> {
         } else {
             unsafe { g_ort().ReleaseSession.unwrap()(self.session_ptr) };
         }
-        // FIXME: There is no C function to release the allocator?
 
         self.session_ptr = std::ptr::null_mut();
         self.allocator_ptr = std::ptr::null_mut();
@@ -663,8 +662,11 @@ mod dangerous {
         status_to_result(status).map_err(OrtError::InputName)?;
         assert_not_null_pointer(name_bytes, "InputName")?;
 
-        // FIXME: Is it safe to keep ownership of the memory?
         let name = char_p_to_string(name_bytes)?;
+
+        unsafe {
+            g_ort().AllocatorFree.unwrap()(allocator_ptr, name_bytes as *mut std::ffi::c_void)
+        };
 
         Ok(name)
     }
