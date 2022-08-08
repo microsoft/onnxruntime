@@ -2246,6 +2246,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
   API_IMPL_END
 }
 
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 4702)
+#endif
 ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 #ifdef ENABLE_TRAINING_ON_DEVICE
   return OrtTrainingApis::GetTrainingApi(version);
@@ -2258,6 +2262,9 @@ ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
           "retrieve the training APIs.\n");
 
   return nullptr;
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
 }
 
 static constexpr OrtApiBase ort_api_base = {

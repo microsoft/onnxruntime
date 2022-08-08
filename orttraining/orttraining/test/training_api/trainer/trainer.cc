@@ -6,6 +6,7 @@
 
 #include "cxxopts.hpp"
 #include "core/common/path_string.h"
+#include "core/platform/path_lib.h"
 #include "../common/synthetic_data_loader.h"
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
@@ -333,8 +334,9 @@ int RunTraining(const TestRunnerParameters& params) {
 
       if ((batch_idx + 1) % params.checkpoint_interval == 0) {
         // Save trained weights
-        PathString ckpt_file = ToPathString(
-            params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx));
+        std::basic_ostringstream<PathChar> oss;
+        oss << ToPathString("/ckpt_") << ToPathString(params.model_name) << ToPathString(std::to_string(batch_idx));
+        PathString ckpt_file = ConcatPathComponent<PathChar>(params.output_dir, oss.str());
         ORT_RETURN_ON_ERROR(g_ort_training_api->SaveCheckpoint(ckpt_file.c_str(), session, true));
 
         // TODO(baiju): enable adding more properties to checkpoint
@@ -356,7 +358,9 @@ int RunTraining(const TestRunnerParameters& params) {
   }
 
   // Save trained weights
-  PathString ckpt_file = ToPathString(params.output_dir + "/ckpt_" + params.model_name);
+  std::basic_ostringstream<PathChar> oss;
+  oss << ToPathString("/ckpt_") << ToPathString(params.model_name);
+  PathString ckpt_file = ConcatPathComponent<PathChar>(params.output_dir, oss.str());
   ORT_RETURN_ON_ERROR(g_ort_training_api->SaveCheckpoint(ckpt_file.c_str(), session, true));
 
   auto end = std::chrono::high_resolution_clock::now();
