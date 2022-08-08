@@ -13,10 +13,10 @@ jobs:
 
   # Entry point for all on device training tests
   - script: |
-      docker run \
+      docker run -it \
         --gpus all \
         --rm \
-        --volume $(Build.SourcesDirectory)/orttraining/orttraining/test/python/:/onnxruntime_src \
+        --volume $(Build.SourcesDirectory)/orttraining/orttraining/test/python:/onnxruntime_src \
         --volume $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_nightly:/requirements_torch_nightly \
         ptebic.azurecr.io/internal/azureml/aifx/nightly-ubuntu2004-cu113-py38-torch1130dev \
         python3 -m pip install -r requirements_torch_nightly/requirements.txt && python3 -m pip install --no-deps torchtext==0.12.0  && python onnxruntime_src/orttraining_test_ortmodule_api.py
