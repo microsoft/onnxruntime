@@ -119,8 +119,7 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
 
 
 def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
-    """
-    Calculate the scale s and zero point z for the quantization relation
+    """Calculate the scale s and zero point z for the quantization relation
     r = s(q-z), where r are the original values and q are the corresponding
     quantized values.
 
@@ -138,6 +137,9 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
 
     """
 
+    if qmin > 0 or qmax < 0:
+        raise ValueError(f"qmin and qmax must meet requirement: qmin <= 0 <= qmax while qmin:{qmin}, qmmax:{qmax}")
+
     # Adjust rmin and rmax such that 0 is included in the range. This is
     # required to make sure zero can be represented by the quantization data
     # type (i.e. to make sure qmin <= zero_point <= qmax)
@@ -149,8 +151,12 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
         rmin = -absmax
         rmax = +absmax
 
-    scale = (rmax - rmin) / float(qmax - qmin) if rmax != rmin else 1.0
-    zero_point = round(qmin - rmin / scale)
+    scale = (rmax - rmin) / float(qmax - qmin)
+    if scale < numpy.finfo(numpy.float32).tiny:
+        scale = 1.0
+        zero_point = 0
+    else:
+        zero_point = round(qmin - rmin / scale)
 
     return [zero_point, scale]
 
