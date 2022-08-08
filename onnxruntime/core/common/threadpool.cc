@@ -490,7 +490,15 @@ std::string ThreadPool::StopProfiling() {
 }
 
 namespace {
+#ifdef _MSC_VER
+#pragma warning(push)
+// C4324: structure was padded due to alignment specifier
+#pragma warning(disable : 4324)
+#endif  // _MSC_VER
 thread_local std::optional<ThreadPoolParallelSection> current_parallel_section;
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif  // _MSC_VER
 }
 
 ThreadPool::ParallelSection::ParallelSection(ThreadPool* tp) {
