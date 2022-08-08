@@ -209,16 +209,9 @@ class ThreadPool {
     // deleter here so that the definition of
     // ThreadPoolParallelSection does not need to be available at this
     // point to avoid a dependence on the Eigen headers.
-    std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)>
-      ps_{nullptr, [](ThreadPoolParallelSection*){}};
+    ThreadPoolParallelSection* ps_{nullptr};
     ThreadPool *tp_;
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelSection);
-
-    // Non-owning reference to the current thread's paralel section
-    // (or nullptr outside parallel sections).
-    static thread_local ParallelSection *current_parallel_section;
-    static_assert(std::is_trivially_destructible<decltype(current_parallel_section)>::value,
-                  "Per-thread state should be trivially destructible");
   };
 
   // The below API allows to disable spinning
