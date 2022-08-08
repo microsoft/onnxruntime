@@ -48,7 +48,7 @@ def _get_cuda_extra_build_params():
 
         if int(bare_metal_major) >= 11 and int(bare_metal_minor) >= 2:
             # If number is 0, the number of threads used is the number of CPUs on the machine.
-            nvcc_extra_args += ["--threads", "0"]
+            nvcc_extra_args += ["--threads", "32"]
 
     os.environ["ONNXRUNTIME_CUDA_NVCC_EXTRA_ARGS"] = ",".join(nvcc_extra_args)
 
@@ -69,7 +69,8 @@ def build_torch_cpp_extensions():
         ortmodule.ONNXRUNTIME_ROCM_VERSION if ortmodule.ONNXRUNTIME_ROCM_VERSION is not None else ""
     )
 
-    _get_cuda_extra_build_params()
+    if torch.version.cuda is not None and ortmodule.ONNXRUNTIME_CUDA_VERSION is not None:
+        _get_cuda_extra_build_params()
 
     ############################################################################
     # Pytorch CPP Extensions that DO require CUDA/ROCM
