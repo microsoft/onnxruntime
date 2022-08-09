@@ -147,7 +147,6 @@ struct ReplaceWithNewFixed : public ReplaceWithNew {
         value_moves_{std::move(value_moves)} {
   }
 
-
  protected:
   std::string OpType(const RuntimeState&) const override { return op_type_; }
 
