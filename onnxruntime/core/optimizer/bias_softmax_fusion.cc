@@ -108,6 +108,12 @@ bool TryBiasSoftmaxSubgraphMatch(Graph& graph, Node& start, Node*& add, Node*& s
  *
  * In the BERT case scores shape = [batch_size, num_heads, seq_length, seq_length]
  *       and sequence mask shape = [batch_size,     1,         1,      seq_length]
+ *
+ * NOTE that the axis attribute for Softmax in OpSet-11 and OpSet-13 are different. For OpSet-11, dim ak to dim a(N-1)
+ * are in same batch. But since OpSet-13, only ak is in a batch. Above fusion logic is for OpSet-11 or before.
+ * Since OpSet-13, to compute Softmax, we will first transpose the axis dim to the last dim before the real Softmax
+ * computation if axis is not the last dim. Fusing Add+Softmax to BiasSoftmax would require extra transpose for bias,
+ * and bring complex checking condition. So since OpSet-13, we will apply the fusion only when axis is the last dim.
  */
 bool TrySelectInputAndBiasWithAlignment(Node& add_node, Node& softmax_node, NodeArg*& input, NodeArg*& mask,
                                         int& new_axis, bool& is_inner_broadcast) {
@@ -115,7 +121,8 @@ bool TrySelectInputAndBiasWithAlignment(Node& add_node, Node& softmax_node, Node
   NodeArg* input2 = add_node.MutableInputDefs()[1];
 
   // default axis = -1 if opset >= 13
-  int axis = graph_utils::MatchesOpSinceVersion(softmax_node, {1, 11}) ? 1 : -1;
+  bool is_since_opset_13 = !graph_utils::MatchesOpSinceVersion(softmax_node, {1, 11});
+  int axis = is_since_opset_13 ? -1 : 1;
   auto& softmax_attr = softmax_node.GetAttributes();
   if (softmax_attr.find("axis") != softmax_attr.end()) {
     auto& axis_attr = softmax_attr.at("axis");
@@ -124,9 +131,13 @@ bool TrySelectInputAndBiasWithAlignment(Node& add_node, Node& softmax_node, Node
 
   int N1 = input1->Shape()->dim_size();
   int N2 = input2->Shape()->dim_size();
-  new_axis = (int)HandleNegativeAxis(axis, std::max({N1, N2}));
-  int singlebatch_rank = std::max({N1 - new_axis, N2 - new_axis});
+  int rank = std::max({N1, N2});
+  new_axis = (int)HandleNegativeAxis(axis, rank);
 
+  // The axis attribute for Softmax in OpSet-11 and OpSet-13 are different.
+  if (is_since_opset_13 && new_axis != rank - 1) return false;
+
+  int singlebatch_rank = rank - new_axis;
   if (singlebatch_rank > N1 || singlebatch_rank > N2) {
     return false;
   }
