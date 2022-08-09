@@ -23,7 +23,7 @@ There are 2 steps to build ONNX Runtime Web:
 * TOC placeholder
 {:toc}
 
-## Build ONNX Runtime for WebAssembly
+## Build ONNX Runtime Webassembly artifacts
 
 ### Prerequisites
 
@@ -127,7 +127,10 @@ Q: I have a C++ project for web scenario, which runs a ML model using ONNX Runti
 
 > One important note is that ONNX Runtime has dependencies on lots of 3rd party libraries such as protobuf, onnx, and others. You may need copy necessary header files to your project. You also take care of cases of library version conflicts or emsdk version conflicts between ONNX Runtime and your project.
 
-## Build onnxruntime-web (NPM package)
+## Build onnxruntime-web - NPM package
+
+The following sections are a step by step installation guide for onnxruntime-web NPM packages.
+This is the last stage in the build process, please follow the sections in a sequential order. 
 
 ### Prerequisites
 
@@ -137,15 +140,15 @@ Q: I have a C++ project for web scenario, which runs a ML model using ONNX Runti
 
 - Chrome or Edge browser for running tests.
 
-### Build Instructions
 
-#### Install NPM packages
+### Install NPM packages
 
    1. in `<ORT_ROOT>/js/`, run `npm ci`.
    2. in `<ORT_ROOT>/js/common/`, run `npm ci`.
    3. in `<ORT_ROOT>/js/web/`, run `npm ci`.
 
-#### Prepare ONNX Runtime WebAssembly artifacts
+
+### Prepare ONNX Runtime WebAssembly artifacts
 
    You can either use the prebuilt artifacts or build it by yourself.
 
