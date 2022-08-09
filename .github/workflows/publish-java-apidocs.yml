@@ -38,7 +38,7 @@ jobs:
         run: |
           rm -rf docs/api/java
           pwd
-          ls java
+          ls java/build
           mv onnxruntime/java/build/docs/javadoc docs/api/java
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v3
