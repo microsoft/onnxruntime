@@ -21,6 +21,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
+          build-root-directory: java
           arguments: javadoc
       - name: Set commit ID
         id: vars
