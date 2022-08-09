@@ -2,9 +2,11 @@
 # Licensed under the MIT License.
 # debug_options.py
 import tempfile
+
 import torch
-from ... import ORTModule
+
 from .... import ortmodule
+from ... import ORTModule
 from ...debug_options import DebugOptions
 
 # nn.Module's in this set are considered exportable to ONNX.
@@ -52,12 +54,14 @@ class HierarchicalORTModule(torch.nn.Module):
     """
 
     def __init__(self, module, debug_options=None):
+        # print("HierarchicalORTModule __init")
         self._initialized = False
         super(HierarchicalORTModule, self).__init__()
         self._original_module = module
         self._debug_options = debug_options if debug_options else DebugOptions()
 
     def _initialize(self, *args, **kwargs):
+        # print("HierarchicalORTModule _initialize")
         handle_pool = []
         module_arg_pool = {}
 
@@ -181,6 +185,11 @@ class HierarchicalORTModule(torch.nn.Module):
         def is_supported(module):
             return module in exportable_list and exportable_list[module]
 
+        # drop_path gives type mismatch error
+        error_exclusion_list = set(["qkv", "proj", "fc1", "fc2", "wg", "linear1", "linear2", "drop_path", "mlp"])
+        self.total_module = 0
+        self.converted_module = 0
+
         # Top-down wrapper to replace nn.Module's with ORTModule.
         # Note that using bottom-up wrapper may lead to much
         # ORTModule instances and each ORTModule owns a much smaller graph.
@@ -191,20 +200,33 @@ class HierarchicalORTModule(torch.nn.Module):
                     # We encounter a list of sub-modules.
                     # Let's wrap them one-by-one.
                     for name1, sub1 in sub._modules.items():
-                        if is_supported(sub1):
+                        self.total_module += 1
+                        if name1 in error_exclusion_list:
+                            print(f"Module list {name1} is on exclusion list")
+                        elif is_supported(sub1):
                             sub._modules[name1] = ORTModule(sub1, debug_options=self._debug_options)
+                            print(f"Module list {name1} is supported")
+                            self.converted_module += 1
                         else:
+                            print(f"Module list {name1} is NOT supported, recursing submodule")
                             recursive_wrap(sub1)
                 else:
-                    if is_supported(sub):
+                    self.total_module += 1
+                    if name in error_exclusion_list:
+                        print(f"Module {name} is on exclusion list")
+                    elif is_supported(sub):
+                        self.converted_module += 1
                         # Just wrap it as ORTModule when possible.
                         sub_dict[name] = ORTModule(sub, debug_options=self._debug_options)
+                        print(f"Module {name} is supported")
                     else:
                         # This sub-module is not exportable to ONNX
                         # Let's check its sub-modules.
                         recursive_wrap(sub)
-
+                        print(f"Module {name} is NOT supported, recursing submodule")
         recursive_wrap(self._original_module)
+        print(f"after recursive_wrap, self._original_module={self._original_module}")
+        print(f"{self.converted_module} out of {self.total_module} are converted")
         self._initialized = True
 
     def forward(self, *inputs, **kwargs):
