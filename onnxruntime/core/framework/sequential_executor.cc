@@ -171,7 +171,7 @@ class SessionScope {
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
                                                                                  ,
-                                                                                 dump_context_{session_state_.GetGraphExecutionCounter(), 0}
+                                                                                 dump_context_ {session_state_.GetGraphExecutionCounter(), 0}
 #endif
   {
     if (session_state_.Profiler().IsEnabled()) {
@@ -277,7 +277,7 @@ class KernelScope {
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
                                         ,
-                                        kernel_dump_context_{session_scope_.dump_context_.iteration, kernel_.Node().Index()}
+                                        dump_context_ {session_scope_.dump_context_.iteration, kernel_.Node().Index()}
 #endif
   {
 #ifdef CONCURRENCY_VISUALIZER
@@ -305,7 +305,7 @@ class KernelScope {
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeInputs(kernel_dump_context_, kernel_context_, kernel_.Node(), session_state_);
+    utils::DumpNodeInputs(dump_context_, kernel_context_, kernel_.Node(), session_state_);
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -377,7 +377,7 @@ class KernelScope {
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeOutputs(kernel_dump_context_, kernel_context_, kernel_.Node(), session_state_);
+    utils::DumpNodeOutputs(dump_context_, kernel_context_, kernel_.Node(), session_state_);
 #endif
   }  //~KernelScope
 
@@ -404,7 +404,7 @@ class KernelScope {
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-  utils::NodeDumpContext kernel_dump_context_;
+  utils::NodeDumpContext dump_context_;
 #endif
 };
 
