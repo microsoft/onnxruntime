@@ -12,10 +12,10 @@ import unittest
 
 import numpy as np
 import onnx
-from onnx import parser
 from helper import get_name
+from onnx import parser
 
-sys.path.append("c:/LiqunWA/ort/onnxruntime/build/Windows/RelWithDebInfo/RelWithDebInfo")
+sys.path.append("c:/LiqunWA/ort/onnxruntime/build/Windows/Debug/Debug")
 import onnxruntime as onnxrt
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
 
@@ -162,7 +162,7 @@ class TestInferenceSession(unittest.TestCase):
 
             """
             int8_use_native_calibration_table = "false"
-            option['trt_int8_use_native_calibration_table'] = int8_use_native_calibration_table 
+            option['trt_int8_use_native_calibration_table'] = int8_use_native_calibration_table
             int8_enable = "true"
             option['trt_int8_enable'] = int8_enable
             calib_table_name = '/home/onnxruntime/table.flatbuffers' # this file is not existed
@@ -642,6 +642,36 @@ class TestInferenceSession(unittest.TestCase):
             res = sess.run([], {"input:0": a})
 
         self.assertTrue("Model requires 2 inputs" in str(context.exception))
+
+    def testModelScriptMatMulWithOptionalInputs(self):
+        model_script = '''
+            <
+            ir_version: 7,
+            opset_import: [ "" : 13 ]
+            >
+            MatMul (float[2] X, float[2,3] W, bool b, float[3] Bias) => (float[3] Z)
+            {
+            Z = If (b) <
+                then_branch = g1 () => (float[3] z_then) {
+                    tmp = MatMul(X, W)
+                    z_then = Add(tmp, Bias)
+                    },
+                else_branch = g2 () => (float[3] z_else) { z_else = MatMul(X, W) }
+                >
+            }
+           '''
+        model = onnx.parser.parse_model(model_script)
+        print(model)
+
+        x = np.random.rand(2).astype(np.float32)
+        w = np.random.rand(2, 3).astype(np.float32)
+        bias = np.random.rand(3).astype(np.float32)
+        b = np.array([0]).astype(bool)
+
+        sess = onnxrt.InferenceSession(model.SerializeToString(), providers=onnxrt.get_available_providers())
+
+        res = sess.run([], {"X": x, "W": w, "Bias": bias, "b": b})
+
 
     def testModelScriptWithOptionalInputs(self):
         model_script = '''
