@@ -130,3 +130,18 @@ stages:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         # Liqun is fixing them
         RunStaticCodeAnalysis: true
+
+- stage: training_x64_debug_on_device_training
+  dependsOn: []
+  jobs:
+    - template: templates/win-cpu-ci.yml
+      parameters:
+        BuildConfig: 'Debug'
+        EnvSetupScript: setup_env.bat
+        buildArch: x64
+        additionalBuildFlags: --enable_training --enable_training_on_device --build_wheel
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: training_x64_debug
+        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        RunStaticCodeAnalysis: false
