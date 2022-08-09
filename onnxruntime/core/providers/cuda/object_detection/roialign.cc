@@ -40,7 +40,7 @@ Status RoiAlign<T>::ComputeInternal(OpKernelContext* context) const {
     return status;
   }
 
-  auto& Y = *context->Output(0, {num_rois, x_dims[1], this->output_height_, this->output_width_});
+  Tensor& Y = *context->Output(0, {num_rois, x_dims[1], this->output_height_, this->output_width_});
   int64_t output_size = Y.Shape().Size();
 
   if (output_size > 0) {
