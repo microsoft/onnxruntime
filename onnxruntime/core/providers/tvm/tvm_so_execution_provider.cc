@@ -133,8 +133,7 @@ common::Status TvmSoExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     // Handshake mechanism stage 2
     if (options_.check_hash && !hash_match) {
       ORT_ENFORCE(onnx_model_hash == TVM_VM_GetHash(*mod),
-        "Hash check shows that used tuning files were not obtained for the given onnx-model"
-      );
+        "Hash check shows that used tuning files were not obtained for the given onnx-model");
     }
 
     std::vector<DLTensor> output_tensors(graph_body_viewer.GetOutputs().size());

@@ -5,7 +5,7 @@
 
 #include "hasher.h"  // NOLINT(build/include_subdir)
 #ifdef USE_TVM_HASH
-#include "hasher_impl_sha256.h"
+#include "hasher_impl_sha256.h"  // NOLINT(build/include_subdir)
 #else
 #include "hasher_impl.h"  // NOLINT(build/include_subdir)
 #endif
