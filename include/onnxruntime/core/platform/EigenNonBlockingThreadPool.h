@@ -175,6 +175,11 @@ enum class PushResult {
 // - The __x86_64__ value is twice the line size (64 bytes).  This
 //   accounts for 2-line prefetch behavior on some cores.
 //
+// - Ideally, ORT_ALIGN_TO_AVOID_FALSE_SHARING is used.  However, the
+//   definition of ThreadPoolParallelSection uses naive padding
+//   because C++11 does not support alignment constraints on
+//   allocation or expose stdlib.h aligned_alloc.  C++17 introduces
+//   support for aligned allocation which we could use here.
 
 #if defined(__x86_64__)
 #define ORT_FALSE_SHARING_BYTES 128
@@ -183,6 +188,10 @@ enum class PushResult {
 #endif
 
 #define ORT_ALIGN_TO_AVOID_FALSE_SHARING alignas(ORT_FALSE_SHARING_BYTES)
+
+struct PaddingToAvoidFalseSharing {
+  char padding[ORT_FALSE_SHARING_BYTES];
+};
 
 /* Usage:
 1. In executor, call Start() before profiling and Stop() to get profiled numbers;
@@ -217,7 +226,6 @@ class ThreadPoolProfiler {
   std::string DumpChildThreadStat() { return {}; }
 };
 #else
-
 class ThreadPoolProfiler {
  public:
   enum ThreadPoolEvent {
@@ -260,24 +268,16 @@ class ThreadPoolProfiler {
   bool enabled_ = false;
   MainThreadStat& GetMainThreadStat();  //return thread local stat
   int num_threads_;
-#ifdef _MSC_VER
-#pragma warning(push)
-// C4324: structure was padded due to alignment specifier
-#pragma warning(disable : 4324)
-#endif  // _MSC_VER
-  struct ORT_ALIGN_TO_AVOID_FALSE_SHARING ChildThreadStat {
+  struct ChildThreadStat {
     std::thread::id thread_id_;
     uint64_t num_run_ = 0;
     onnxruntime::TimePoint last_logged_point_ = Clock::now();
     int32_t core_ = -1;                   //core that the child thread is running on
+    PaddingToAvoidFalseSharing padding_;  //to prevent false sharing
   };
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif  // _MSC_VER
   std::vector<ChildThreadStat> child_thread_stats_;
   std::string thread_pool_name_;
 };
-
 #endif
 
 // Extended Eigen thread pool interface, avoiding the need to modify
@@ -308,7 +308,7 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
 
   // Special case alternative to RunInParallelSection for use without
   // an existing parallel section.  Ideally we would use a single
-  // implementation and a stack-allocated ThreadPoolParallelSection.
+  // iplemenation and a stack-allocated ThreadPoolParallelSection.
   //
   // However, on the BM_ThreadPoolParallelFor microbenchmark I saw
   // ~20% overhead on the resulting single-loop parallel sections.
@@ -326,11 +326,6 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   virtual std::string StopProfiling() = 0;
 };
 
-#ifdef _MSC_VER
-#pragma warning(push)
-// C4324: structure was padded due to alignment specifier
-#pragma warning(disable : 4324)
-#endif  // _MSC_VER
 class ThreadPoolParallelSection {
  public:
   // State accessed only by the main thread
@@ -359,7 +354,9 @@ class ThreadPoolParallelSection {
   // tasks may be running currently, or may be present in work queues,
   // or may have been removed from the queues by
   // RunQueue::RevokeWithTag.
-  std::atomic<unsigned> ORT_ALIGN_TO_AVOID_FALSE_SHARING tasks_finished{0};
+  PaddingToAvoidFalseSharing padding_1;
+  std::atomic<unsigned> tasks_finished{0};
+  PaddingToAvoidFalseSharing padding_2;
 
   // If non-null, the current loop that tasks should be executing.  We
   // need to be careful on access to the contents of current_loop
@@ -370,20 +367,16 @@ class ThreadPoolParallelSection {
   //
   // - Writers wishing to deallocate *current_loop must first clear
   //   current_loop and then wait for workers_in_loop==0
-  std::atomic<ThreadPoolLoop*> ORT_ALIGN_TO_AVOID_FALSE_SHARING current_loop{nullptr};
-  std::atomic<unsigned> ORT_ALIGN_TO_AVOID_FALSE_SHARING workers_in_loop{0};
+  std::atomic<ThreadPoolLoop*> current_loop{nullptr};
+  std::atomic<unsigned> workers_in_loop{0};
 
   // Members to track asynchronous dispatching
   int dispatch_q_idx = -1;      // index of thread that dispatch work to all other threads
   unsigned dispatch_w_idx = 0;  // index of enqueued work
-  std::atomic<bool> ORT_ALIGN_TO_AVOID_FALSE_SHARING dispatch_started{false};
-  std::atomic<bool> ORT_ALIGN_TO_AVOID_FALSE_SHARING dispatch_done{false};
-  std::atomic<bool> ORT_ALIGN_TO_AVOID_FALSE_SHARING work_done{false};
+  std::atomic<bool> dispatch_started{false};
+  std::atomic<bool> dispatch_done{false};
+  std::atomic<bool> work_done{false};
 };
-
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif  // _MSC_VER
 
 class ThreadPoolLoop {
  public:
