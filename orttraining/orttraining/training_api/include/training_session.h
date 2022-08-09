@@ -30,9 +30,13 @@ class TrainingSession {
                   const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
                   const ModelIdentifiers& model_identifiers);
 
-  size_t GetTrainModeOutputCount() const noexcept;
+  size_t GetTrainModelOutputCount() const noexcept;
 
-  size_t GetEvalModeOutputCount() const noexcept;
+  size_t GetEvalModelOutputCount() const noexcept;
+
+  void GetTrainModelOutputName(size_t& index, std::string& name) const noexcept;
+
+  void GetEvalModelOutputName(size_t& index, std::string& name) const noexcept;
 
   Status TrainStep(const RunOptions& run_options,
                    const std::vector<OrtValue>& inputs,

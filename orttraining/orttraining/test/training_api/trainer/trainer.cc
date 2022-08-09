@@ -211,10 +211,10 @@ int RunTraining(const TestRunnerParameters& params) {
       &session));
 
   size_t train_mode_output_count, eval_mode_output_count = 0;
-  ORT_RETURN_ON_ERROR(g_ort_training_api->TrainingSessionGetTrainModeOutputCount(session, &train_mode_output_count));
+  ORT_RETURN_ON_ERROR(g_ort_training_api->TrainingSessionGetTrainModelOutputCount(session, &train_mode_output_count));
 
   if (do_eval) {
-    ORT_RETURN_ON_ERROR(g_ort_training_api->TrainingSessionGetEvalModeOutputCount(session, &eval_mode_output_count));
+    ORT_RETURN_ON_ERROR(g_ort_training_api->TrainingSessionGetEvalModelOutputCount(session, &eval_mode_output_count));
   }
 
   int64_t sample_batch_count_per_epoch = 4;
@@ -305,8 +305,8 @@ int RunTraining(const TestRunnerParameters& params) {
 
       if ((batch_idx + 1) % params.checkpoint_interval == 0) {
         // Save trained weights
-        PathString ckpt_file = ToPathString(
-            params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx));
+        PathString ckpt_file =
+            params.output_dir + ToPathString("/ckpt_" + params.model_name + std::to_string(batch_idx));
         ORT_RETURN_ON_ERROR(g_ort_training_api->SaveCheckpoint(ckpt_file.c_str(), session, true));
 
         // TODO(baiju): enable adding more properties to checkpoint
@@ -328,7 +328,7 @@ int RunTraining(const TestRunnerParameters& params) {
   }
 
   // Save trained weights
-  PathString ckpt_file = ToPathString(params.output_dir + "/ckpt_" + params.model_name);
+  PathString ckpt_file = params.output_dir + ToPathString("/ckpt_" + params.model_name);
   ORT_RETURN_ON_ERROR(g_ort_training_api->SaveCheckpoint(ckpt_file.c_str(), session, true));
 
   auto end = std::chrono::high_resolution_clock::now();

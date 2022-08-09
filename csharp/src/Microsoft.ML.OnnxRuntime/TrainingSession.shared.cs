@@ -11,13 +11,13 @@ using System.Buffers;
 
 namespace Microsoft.ML.OnnxRuntime
 {
-     /// <summary>
-    /// Represents an Inference Session on an ONNX Model.
+    /// <summary>
+    /// Represents a Training Session on an ONNX Model.
     /// This is a IDisposable class and it must be disposed of
     /// using either a explicit call to Dispose() method or
     /// a pattern of using() block. If this is a member of another
     /// class that class must also become IDisposable and it must
-    /// dispose of InferfenceSession in its Dispose() method.
+    /// dispose of TrainingSession in its Dispose() method.
     /// </summary>
     public class TrainingSession : IDisposable
     {
@@ -26,8 +26,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         private IntPtr _nativeHandle;
 
-        private UIntPtr _trainOutputCount = UIntPtr.Zero;
-        private UIntPtr _evalOutputCount = UIntPtr.Zero;
+        private ulong _trainOutputCount;
+        private ulong _evalOutputCount;
+        private List<string> _trainOutputNames;
+        private List<string> _evalOutputNames;
 
         private SessionOptions _builtInSessionOptions = null;
         private RunOptions _builtInRunOptions = null;
@@ -55,7 +57,7 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         /// <summary>
-        /// Constructs an InferenceSession from a model file
+        /// Constructs an TrainingSession from a model file
         /// </summary>
         /// <param name="modelPath"></param>
         public TrainingSession(SessionOptions options, CheckpointState state, string trainModelPath, string evalModelPath, string optimizerModelPath)
@@ -75,7 +77,7 @@ namespace Microsoft.ML.OnnxRuntime
             IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
             IReadOnlyCollection<FixedBufferOnnxValue> outputValues)
         {
-            if (_trainOutputCount.ToUInt32() != (uint)outputValues.Count())
+            if (_trainOutputCount!= (ulong)outputValues.Count())
             {
                 throw new ArgumentException($"Length of {nameof(outputValues)} ({outputValues.Count}) must match that of train model ({_trainOutputCount}).");
             }
@@ -84,6 +86,51 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr[] outputValuesArray = GetOrtValuesHandles(outputValues, false); /* pointers to Pre-allocated OrtValue instances */
             NativeApiStatus.VerifySuccess(NativeMethods.OrtTrainStep(_nativeHandle, options.Handle, (UIntPtr)inputValues.Count,
                 inputValuesArray, (UIntPtr)outputValues.Count, outputValuesArray));
+        }
+
+        /// <summary>
+        /// Runs the loaded model for the given inputs, and fetches the specified outputs in <paramref name="outputNames"/>. Uses the given RunOptions for this run.
+        /// </summary>
+        /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
+        /// <param name="outputNames">Specify a collection of string that indicates the output names to fetch.</param>
+        /// <param name="options"></param>
+        /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
+        public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> TrainStep(
+            RunOptions options,
+            IReadOnlyCollection<FixedBufferOnnxValue> inputValues)
+        {
+            using (var cleanupList = new DisposableList<IDisposable>())
+            {
+                IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
+
+                var ortValues = new DisposableList<OrtValue>((int)_trainOutputCount);
+                cleanupList.Add(ortValues);
+
+                IntPtr[] outputValuesArray = new IntPtr[(int)_trainOutputCount];
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtTrainStep(_nativeHandle, options.Handle, (UIntPtr)inputValues.Count,
+                    inputValuesArray, (UIntPtr)_trainOutputCount, outputValuesArray));
+                foreach (var v in outputValuesArray)
+                {
+                    ortValues.Add(new OrtValue(v));
+                }
+
+                var result = new DisposableList<DisposableNamedOnnxValue>(_trainOutputNames.Count);
+                try
+                {
+                    for (int i = 0; i < ortValues.Count; i++)
+                    {
+                        var ortValue = ortValues[i];
+                        result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(_trainOutputNames[i], ortValue));
+                    }
+                }
+                catch (OnnxRuntimeException)
+                {
+                    result.Dispose();
+                    throw;
+                }
+                return result;
+            }
         }
 
         public void ResetGrad()
@@ -139,13 +186,55 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateTrainingSession(envHandle, options.Handle, state.Handle, trainModelPath,
                                                                                  evalModelPath, optimizerModelPath, out _nativeHandle));
 
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTrainModeOutputCount(_nativeHandle, out _trainOutputCount));
+            UIntPtr outputCount = UIntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTrainModelOutputCount(_nativeHandle, out outputCount));
+            _trainOutputCount = outputCount.ToUInt64();
+
+            // get all the output names and metadata
+            for (ulong i = 0; i < _trainOutputCount; i++)
+            {
+                _trainOutputNames.Add(GetOutputName(i, true));
+            }
+
             if (evalModelPath != null)
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTrainModeOutputCount(_nativeHandle, out _evalOutputCount));
+                outputCount = UIntPtr.Zero;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetEvalModelOutputCount(_nativeHandle, out outputCount));
+                _evalOutputCount = outputCount.ToUInt64();
+                for (ulong i = 0; i < _evalOutputCount; i++)
+                {
+                    _evalOutputNames.Add(GetOutputName(i, false));
+                }
             }
 
             _builtInRunOptions = new RunOptions();  // create a default built-in run option, and avoid creating a new one every run() call
+        }
+
+        private string GetOutputName(ulong index, bool training)
+        {
+            var allocator = OrtAllocator.DefaultInstance;
+            IntPtr nameHandle = IntPtr.Zero;
+            string str = null;
+            if (training)
+            { NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTrainModelOutputName(
+                                           _nativeHandle,
+                                           (UIntPtr)index,
+                                           allocator.Pointer,
+                                           out nameHandle));
+            } else
+            { NativeApiStatus.VerifySuccess(NativeMethods.OrtGetEvalModelOutputName(
+                                           _nativeHandle,
+                                           (UIntPtr)index,
+                                           allocator.Pointer,
+                                           out nameHandle));
+            }
+
+            using (var ortAllocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
+            {
+                str = NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
+            }
+
+            return str;
         }
 
         private IntPtr[] GetOrtValuesHandles(IReadOnlyCollection<FixedBufferOnnxValue> values, bool input)

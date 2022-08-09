@@ -76,7 +76,7 @@ struct OrtTrainingApi {
   * \snippet{doc} snippets.dox OrtStatus Return Value
   *
   */
-  ORT_API2_STATUS(TrainingSessionGetTrainModeOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
+  ORT_API2_STATUS(TrainingSessionGetTrainModelOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
 
   /** \brief Retrieves the number of user outputs in the eval model.
   *
@@ -89,7 +89,11 @@ struct OrtTrainingApi {
   * \snippet{doc} snippets.dox OrtStatus Return Value
   *
   */
-  ORT_API2_STATUS(TrainingSessionGetEvalModeOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
+  ORT_API2_STATUS(TrainingSessionGetEvalModelOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
+
+  ORT_API2_STATUS(TrainingSessionGetTrainModelOutputName, _In_ const OrtSession* sess, size_t index, _Inout_ OrtAllocator* allocator, _Outptr_ char** output);
+
+  ORT_API2_STATUS(TrainingSessionGetEvalModelOutputName, _In_ const OrtSession* sess, size_t index, _Inout_ OrtAllocator* allocator, _Outptr_ char** output);
 
   /** \brief Reset the training model gradients to zero lazily.
   *

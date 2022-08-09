@@ -22,6 +22,13 @@ std::vector<std::shared_ptr<onnxruntime::IExecutionProvider>> CreateProviders(
   return execution_providers;
 }
 
+static char* StrDup(const std::string& str, _Inout_ OrtAllocator* allocator) {
+  char* output_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
+  memcpy(output_string, str.c_str(), str.size());
+  output_string[str.size()] = '\0';
+  return output_string;
+}
+
 }  // namespace
 
 ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSession, _In_ const OrtEnv* env,
@@ -60,20 +67,42 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSession, _In_ const OrtEnv* e
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetTrainModeOutputCount, _In_ const OrtTrainingSession* sess,
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetTrainModelOutputCount, _In_ const OrtTrainingSession* sess,
                     _Out_ size_t* out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
-  *out = session->GetTrainModeOutputCount();
+  *out = session->GetTrainModelOutputCount();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModeOutputCount, _In_ const OrtTrainingSession* sess,
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelOutputCount, _In_ const OrtTrainingSession* sess,
                     _Out_ size_t* out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
-  *out = session->GetEvalModeOutputCount();
+  *out = session->GetEvalModelOutputCount();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetTrainModelOutputName, _In_ const OrtSession* sess, size_t index,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** output) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  std::string name;
+  session->GetTrainModelOutputName(index, name);
+  *output = StrDup(name, allocator);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelOutputName, _In_ const OrtSession* sess, size_t index,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** output) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  std::string name;
+  session->GetEvalModelOutputName(index, name);
+  *output = StrDup(name, allocator);
   return nullptr;
   API_IMPL_END
 }
@@ -235,8 +264,10 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::LoadCheckpoint,
     &OrtTrainingApis::SaveCheckpoint,
     &OrtTrainingApis::CreateTrainingSession,
-    &OrtTrainingApis::TrainingSessionGetTrainModeOutputCount,
-    &OrtTrainingApis::TrainingSessionGetEvalModeOutputCount,
+    &OrtTrainingApis::TrainingSessionGetTrainModelOutputCount,
+    &OrtTrainingApis::TrainingSessionGetEvalModelOutputCount,
+    &OrtTrainingApis::TrainingSessionGetTrainModelOutputName,
+    &OrtTrainingApis::TrainingSessionGetEvalModelOutputName,
     &OrtTrainingApis::ResetGrad,
     &OrtTrainingApis::TrainStep,
     &OrtTrainingApis::EvalStep,

@@ -21,12 +21,20 @@ TrainingSession::TrainingSession(const Environment& session_env,
                            session_options, session_env, providers)
                      : std::unique_ptr<Optimizer>()} {}
 
-size_t TrainingSession::GetTrainModeOutputCount() const noexcept {
-  return module_->GetTrainModeOutputCount();
+size_t TrainingSession::GetTrainModelOutputCount() const noexcept {
+  return module_->GetTrainModelOutputCount();
 }
 
-size_t TrainingSession::GetEvalModeOutputCount() const noexcept {
-  return module_->GetEvalModeOutputCount();
+size_t TrainingSession::GetEvalModelOutputCount() const noexcept {
+  return module_->GetEvalModelOutputCount();
+}
+
+void TrainingSession::GetTrainModelOutputName(size_t& index, std::string& name) const noexcept {
+  return module_->GetTrainModelOutputName(index, name);
+}
+
+void TrainingSession::GetEvalModelOutputName(size_t& index, std::string& name) const noexcept {
+  return module_->GetEvalModelOutputName(index, name);
 }
 
 Status TrainingSession::TrainStep(const RunOptions&,

@@ -11,9 +11,15 @@ ORT_API_STATUS_IMPL(CreateTrainingSession, _In_ const OrtEnv* env, _In_ const Or
                     _Outptr_ OrtTrainingSession** out);
 ORT_API(void, ReleaseTrainingSession, _Frees_ptr_opt_ OrtTrainingSession* session);
 
-ORT_API_STATUS_IMPL(TrainingSessionGetTrainModeOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
+ORT_API_STATUS_IMPL(TrainingSessionGetTrainModelOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
 
-ORT_API_STATUS_IMPL(TrainingSessionGetEvalModeOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
+ORT_API_STATUS_IMPL(TrainingSessionGetEvalModelOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
+
+ORT_API_STATUS_IMPL(TrainingSessionGetTrainModelOutputName, _In_ const OrtSession* sess, size_t index,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** output);
+
+ORT_API_STATUS_IMPL(TrainingSessionGetEvalModelOutputName, _In_ const OrtSession* sess, size_t index,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** output);
 
 ORT_API_STATUS_IMPL(ResetGrad, _Inout_ OrtTrainingSession* session);
 

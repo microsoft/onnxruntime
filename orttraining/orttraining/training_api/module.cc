@@ -187,12 +187,22 @@ Module::Module(const std::string& train_model_path_or_bytes,
   }
 }
 
-size_t Module::GetTrainModeOutputCount() const noexcept {
+size_t Module::GetTrainModelOutputCount() const noexcept {
   return train_output_names_.size();
 }
 
-size_t Module::GetEvalModeOutputCount() const noexcept {
+size_t Module::GetEvalModelOutputCount() const noexcept {
   return eval_output_names_.size();
+}
+
+void Module::GetTrainModelOutputName(size_t& index, std::string& name) const {
+  ORT_ENFORCE(index < train_output_names_.size(), "Train output name index out of range");
+  name = train_output_names_.at(index);
+}
+
+void Module::GetEvalModelOutputName(size_t& index, std::string& name) const {
+  ORT_ENFORCE(index < train_output_names_.size(), "Train output name index out of range");
+  name = eval_output_names_.at(index);
 }
 
 std::vector<std::shared_ptr<Parameter>> Module::Parameters() const {

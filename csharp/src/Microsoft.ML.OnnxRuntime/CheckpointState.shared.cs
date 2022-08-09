@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
-    ///  Sets various runtime options. 
+    ///  Holds the Checkpoint State as generated/consumed by on-device training APIs
     /// </summary>
     public class CheckpointState : SafeHandle
     {
@@ -19,7 +19,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Default __ctor. Creates default RuntimeOptions
+        /// Default __ctor. Creates default CheckpointState
         /// </summary>
         public CheckpointState()
             : base(IntPtr.Zero, true)
@@ -33,6 +33,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <value>returns true if handle is equal to Zero</value>
         public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
+        /// <summary>
+        /// Loads Checkpoint state from path
+        /// </summary>
+        /// <param name="checkpointPath"> absolute path to checkpoint</param>
         public void LoadCheckpoint(string checkpointPath)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtLoadCheckpoint(NativeMethods.GetPlatformSerializedString(checkpointPath), out handle));
@@ -41,7 +45,7 @@ namespace Microsoft.ML.OnnxRuntime
         #region SafeHandle
         /// <summary>
         /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
-        /// the native instance of RunOptions
+        /// the native instance of CheckpointState
         /// </summary>
         /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
