@@ -4,6 +4,8 @@
  */
 package ai.onnxruntime;
 
+import ai.onnxruntime.TensorInfo.OnnxTensorType;
+
 /** Describes an {@link OnnxSequence}, including it's element type if known. */
 public class SequenceInfo implements ValueInfo {
 
@@ -36,6 +38,22 @@ public class SequenceInfo implements ValueInfo {
   }
 
   /**
+   * Construct a sequence of known length, with the specified type. This sequence does not contain
+   * maps.
+   *
+   * <p>
+   * Called from JNI.
+   * @param length The length of the sequence.
+   * @param sequenceTypeInt The element type int of the sequence mapped from {@link OnnxTensorType}.
+   */
+  SequenceInfo(int length, int sequenceTypeInt) {
+    this.length = length;
+    this.sequenceType = OnnxJavaType.mapFromOnnxTensorType(OnnxTensorType.mapFromInt(sequenceTypeInt));
+    this.sequenceOfMaps = false;
+    this.mapInfo = null;
+  }
+
+  /**
    * Construct a sequence of known length containing maps.
    *
    * @param length The length of the sequence.
@@ -60,13 +78,6 @@ public class SequenceInfo implements ValueInfo {
     this.sequenceType = OnnxJavaType.UNKNOWN;
     this.sequenceOfMaps = true;
     this.mapInfo = new MapInfo(keyType, valueType);
-  }
-
-  /**
-   * Constructs an empty sequence info. Called from JNI.
-   */
-  SequenceInfo() {
-    this(-1,OnnxJavaType.UNKNOWN);
   }
 
   /**
