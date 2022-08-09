@@ -207,10 +207,18 @@ a.link:active .link-arrow{
     height: 55px;
 }
 .customer-logo img{
-   max-width: 100%;
-   padding-right:20px;
-   padding-left:20px;
-}
+    max-width: 100%;
+    padding-right:10px;
+    padding-left:10px;
+    padding-top:20px;
+    padding-bottom:20px;
+ }
+
+ .ms-logo img{
+    max-width: 100%;
+    padding-right:20px;
+    padding-left:20px;
+ }
 
 
  div.customer-logo:hover{
