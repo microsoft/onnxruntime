@@ -3453,7 +3453,7 @@ struct OrtApi {
    *   GPU_FLOAT16 => zdl::DlSystem::Runtime_t::GPU_FLOAT16;
    *   DSP, DSP_FIXED8_TF => zdl::DlSystem::Runtime_t::DSP.
    *   AIP_FIXED_TF, AIP_FIXED8_TF => zdl::DlSystem::Runtime_t::AIP_FIXED_TF.
-   *   SNPE Runtime_t refers to https://developer.qualcomm.com/docs/snpe/group__c__plus__plus__apis.html
+   *   SNPE Runtime_t, see the Qualcomm SNPE C++ API for more information
    *   "priority": execution priority, options: "low", "normal".
    *   "buffer_type": ITensor or user buffers, options: "ITENSOR", user buffer with different types - "TF8", "TF16", "UINT8", "FLOAT".
    *   "ITENSOR" -- default, ITensor which is float only.
