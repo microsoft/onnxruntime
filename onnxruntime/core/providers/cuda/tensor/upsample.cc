@@ -155,8 +155,8 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
     return BaseCompute(context, roi, scales_, output_dims);
   }
 
-  const auto* scales = context->Input<Tensor>(scales_input_idx_);
-  const auto* sizes = context->Input<Tensor>(sizes_input_idx_);
+  const Tensor* scales = context->Input<Tensor>(scales_input_idx_);
+  const Tensor* sizes = context->Input<Tensor>(sizes_input_idx_);
 
   if (scales_cached_) {
     ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");

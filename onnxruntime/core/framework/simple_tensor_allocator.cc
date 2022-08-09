@@ -9,12 +9,12 @@ common::Status SimpleTensorAllocator::Trace(int /*id*/, const ONNX_NAMESPACE::Te
   return Status::OK();
 }
 
-common::Status SimpleTensorAllocator::GetPreallocatedBuffer(int ort_value_index, const char* /*name*/,
+common::Status SimpleTensorAllocator::GetPreallocatedBuffer(int ort_value_index, const std::string& /*name*/,
                                                             std::optional<MemBuffer>& /*buf_out*/,
                                                             AllocatorPtr& alloc_out) {
   const struct OrtMemoryInfo& location = seq_plan_.GetLocation(ort_value_index);
-    // just return allocator and let others handle it.
-    alloc_out = GetAllocator(location);
-    return Status::OK();
+  // just return allocator and let others handle it.
+  alloc_out = GetAllocator(location);
+  return Status::OK();
 }
 }  // namespace onnxruntime
