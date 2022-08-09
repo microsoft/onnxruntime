@@ -85,7 +85,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(BuildGlobalIndex(
       device_prop,
       stream,
-      global_mask->template Data<int>(),
+      global_mask->Data<int>(),
       batch_size,
       sequence_length,
       global_index_buffer.get(),
@@ -123,17 +123,17 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int m = batch_size * sequence_length;
   int n = use_merged_qkv_weights ? 3 * hidden_size : hidden_size;
   int k = hidden_size;
-  const CudaT* input_data = reinterpret_cast<const CudaT*>(input->template Data<T>());
+  const CudaT* input_data = reinterpret_cast<const CudaT*>(input->Data<T>());
 
   if (use_merged_qkv_weights) {
     // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 0 x B.
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-        reinterpret_cast<const CudaT*>(weights->template Data<T>()), n,
+        reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
         input_data, k,
         &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
   } else {
-    const CudaT* q_weight = reinterpret_cast<const CudaT*>(weights->template Data<T>());
+    const CudaT* q_weight = reinterpret_cast<const CudaT*>(weights->Data<T>());
     CudaT* q_data = reinterpret_cast<CudaT*>(gemm_buffer.get());
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
@@ -186,11 +186,11 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
     if (use_merged_qkv_weights) {
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-          reinterpret_cast<const CudaT*>(global_weights->template Data<T>()), n,
+          reinterpret_cast<const CudaT*>(global_weights->Data<T>()), n,
           input_data, k,
           &zero, global_gemm_buffer, n, device_prop));
     } else {
-      const CudaT* global_q_weight = reinterpret_cast<const CudaT*>(global_weights->template Data<T>());
+      const CudaT* global_q_weight = reinterpret_cast<const CudaT*>(global_weights->Data<T>());
       CudaT* global_q = global_gemm_buffer;
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
@@ -230,16 +230,16 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           cublas,
           stream,
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
-          reinterpret_cast<const CudaT*>(bias->template Data<T>()),
-          reinterpret_cast<const CudaT*>(mask->template Data<T>()),
+          reinterpret_cast<const CudaT*>(bias->Data<T>()),
+          reinterpret_cast<const CudaT*>(mask->Data<T>()),
           reinterpret_cast<const CudaT*>(global_gemm_buffer),
-          reinterpret_cast<const CudaT*>(global_bias->template Data<T>()),
-          global_mask->template Data<int>(),
+          reinterpret_cast<const CudaT*>(global_bias->Data<T>()),
+          global_mask->Data<int>(),
           global_index_buffer.get(),
           batch_global_num_buffer.get(),
           pinned_buffer.get(),
           workspace_buffer.get(),
-          output->template MutableData<T>(),
+          output->MutableData<T>(),
           batch_size,
           sequence_length,
           num_heads_,

@@ -1451,9 +1451,9 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   const auto& initializer_allocation_order = p_seq_exec_plan_->initializer_allocation_order;
 
   // move initializers from TensorProto instances in Graph to OrtValue instances in SessionState
-  session_state_utils::MemoryProfileFunction memory_propfile_func = nullptr;
+  session_state_utils::MemoryProfileFunction memory_profile_func = nullptr;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  memory_propfile_func = [this](ITensorAllocator& planner) {
+  memory_profile_func = [this](ITensorAllocator& planner) {
     GetMemoryProfiler()->GetMemoryInfo().RecordPatternInfo(
         planner.GetMemPatterns(), MemoryInfo::MapType::Initializer);
     GetMemoryProfiler()->CreateEvents(
@@ -1468,10 +1468,15 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
           Env::Default(), graph_location, *graph_viewer_,
           execution_providers_.GetDefaultCpuAllocator(),
           ort_value_name_idx_map_, initializer_allocation_order, *tensor_allocator,
-          [this](int idx, const OrtValue& value, const OrtCallback& d, bool constant, bool sparse) -> Status {
-            return AddInitializedTensor(idx, value, &d, constant, sparse);
+          [this, remove_initializers](const std::string& name, int idx, const OrtValue& value, const OrtCallback& d,
+                                      bool constant, bool sparse) -> Status {
+            ORT_RETURN_IF_ERROR(AddInitializedTensor(idx, value, &d, constant, sparse));
+            if (remove_initializers) {
+              graph_.RemoveInitializedTensor(name);
+            }
+            return Status::OK();
           },
-          logger_, data_transfer_mgr_, *p_seq_exec_plan_, session_options, memory_propfile_func));
+          logger_, data_transfer_mgr_, *p_seq_exec_plan_, session_options, memory_profile_func));
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Record Weight allocation info on device

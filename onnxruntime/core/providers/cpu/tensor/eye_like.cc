@@ -40,7 +40,7 @@ struct ComputeDispatchTarget {
   void operator()(const int64_t k, Tensor& output) {
     const auto& output_shape = output.Shape();
     auto output_mat = EigenMatrixMapRowMajor<T>(
-        output.template MutableData<T>(),
+        output.MutableData<T>(),
         output_shape[0],
         output_shape[1]);
 

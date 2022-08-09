@@ -330,9 +330,9 @@ std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const gsl::span<const int6
   // and it will de-allocate the memory for this intermediate tensor when it goes out of scope
   std::unique_ptr<Tensor> output = std::make_unique<Tensor>(input_1.DataType(), output_dims, allocator);
 
-  const T* input_1_data = input_1.template Data<T>();
-  const T* input_2_data = input_2.template Data<T>();
-  T* output_data = output->template MutableData<T>();
+  const T* input_1_data = input_1.Data<T>();
+  const T* input_2_data = input_2.Data<T>();
+  T* output_data = output->MutableData<T>();
 
   auto status = device_matmul_func(input_1_data, input_2_data, output_data,
                                    left_offset, right_offset, output_offset, batches, M, K, N, tp, einsum_cuda_assets);
@@ -468,4 +468,3 @@ template std::unique_ptr<Tensor> ReduceSum<MLFloat16>(
 
 }  // namespace EinsumOp
 }  // namespace onnxruntime
-

@@ -54,11 +54,11 @@ Status ImageScaler<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   ImageScalerImpl<CudaT>(
       Stream(),
-      reinterpret_cast<const CudaT*>(X->template Data<T>()),
+      reinterpret_cast<const CudaT*>(X->Data<T>()),
       scale_,
       b_data_.get(),
       dims.data(),
-      reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+      reinterpret_cast<CudaT*>(Y->MutableData<T>()),
       X->Shape().Size());
 
   return Status::OK();

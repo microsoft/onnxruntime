@@ -30,6 +30,7 @@ limitations under the License.
 #include "longformer_attention_impl.h"
 #include "attention_impl.h"
 #include "longformer_attention_softmax.h"
+#include "core/common/safeint.h"
 #include "add_bias_transpose.h"
 
 using namespace onnxruntime::cuda;
@@ -64,7 +65,7 @@ namespace cuda {
 //    [scratch1: BxNxSxS] [scratch2: BxNxSxS]
 
 size_t GetScratch1Size(size_t element_size, int batch_size, int num_heads, int sequence_length, int window) {
-  return (5 * sequence_length - 3 * window) * window * num_heads * batch_size * element_size;
+  return SafeInt<size_t>(5 * sequence_length - 3 * window) * window * num_heads * batch_size * element_size;
 }
 
 constexpr size_t GetScratch2Size() {
@@ -83,7 +84,7 @@ size_t GetLongformerSoftmaxWorkspaceSize(
     size_t scratch2_size = GetScratch2Size();
     return scratch1_size + scratch2_size;
   } else {
-    return 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, sequence_length);
+    return SafeInt<size_t>(2) * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, sequence_length);
   }
 }
 
@@ -102,7 +103,7 @@ size_t GetLongformerAttentionWorkspaceSize(
                                                           sequence_length,
                                                           window,
                                                           disable_compact_memory);
-  size_t qkv_size = 3 * batch_size * sequence_length * num_heads * head_size * element_size;
+  size_t qkv_size = SafeInt<size_t>(3) * batch_size * sequence_length * num_heads * head_size * element_size;
   size_t global_qkv_size = max_num_global > 0 ? qkv_size : 0;
   return softmax_size + qkv_size + global_qkv_size;
 }
