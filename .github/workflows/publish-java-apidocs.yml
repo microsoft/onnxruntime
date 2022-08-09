@@ -37,8 +37,6 @@ jobs:
       - name: Move API docs into target area
         run: |
           rm -rf docs/api/java
-          pwd
-          ls java/build/docs/javadoc
           mv java/build/docs/javadoc docs/api/java
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v3
@@ -47,4 +45,4 @@ jobs:
           base: gh-pages
           title: '[Automated]: Update Java API docs'
           commit-message: 'Update Java API docs to commit ${{ steps.vars.outputs.sha_short }}'
-          add-paths: docs/api/c
+          add-paths: docs/api/java
