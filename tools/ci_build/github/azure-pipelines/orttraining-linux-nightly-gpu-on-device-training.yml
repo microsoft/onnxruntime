@@ -13,7 +13,7 @@ jobs:
 
   # Entry point for all on device training tests
   - script: |
-      docker run -it \
+      docker run \
         --gpus all \
         --rm \
         --volume $(Build.SourcesDirectory)/orttraining/orttraining/test/python:/onnxruntime_src \
