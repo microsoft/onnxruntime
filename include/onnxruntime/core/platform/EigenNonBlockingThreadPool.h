@@ -268,13 +268,20 @@ class ThreadPoolProfiler {
   bool enabled_ = false;
   MainThreadStat& GetMainThreadStat();  //return thread local stat
   int num_threads_;
-  struct ChildThreadStat {
+#ifdef _MSC_VER
+#pragma warning(push)
+// C4324: structure was padded due to alignment specifier
+#pragma warning(disable : 4324)
+#endif  // _MSC_VER
+  struct ORT_ALIGN_TO_AVOID_FALSE_SHARING ChildThreadStat {
     std::thread::id thread_id_;
     uint64_t num_run_ = 0;
     onnxruntime::TimePoint last_logged_point_ = Clock::now();
     int32_t core_ = -1;                   //core that the child thread is running on
-    PaddingToAvoidFalseSharing padding_;  //to prevent false sharing
   };
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif  // _MSC_VER
   std::vector<ChildThreadStat> child_thread_stats_;
   std::string thread_pool_name_;
 };
@@ -308,9 +315,9 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
 
   // Special case alternative to RunInParallelSection for use without
   // an existing parallel section.  Ideally we would use a single
-  // iplemenation and a stack-allocated ThreadPoolParallelSection.
+  // implementation and a stack-allocated ThreadPoolParallelSection.
   //
-  // However, on the BM_ThreadPoolParallelFor microbenchmark I saw
+  // However, on the BM_ThreadPoolParallelFor micro-benchmark I saw
   // ~20% overhead on the resulting single-loop parallel sections.
   // There are some additional costs (~5%) for additional invocations
   // through lambda functions on loop entry.  Most significantly, on
