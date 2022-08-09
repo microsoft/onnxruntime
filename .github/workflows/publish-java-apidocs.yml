@@ -37,7 +37,7 @@ jobs:
       - name: Move API docs into target area
         run: |
           rm -rf docs/api/java
-          ls onnxruntime/java/build
+          ls onnxruntime/java
           mv onnxruntime/java/build/docs/javadoc docs/api/java
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v3
