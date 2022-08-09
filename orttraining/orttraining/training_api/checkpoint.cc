@@ -531,9 +531,11 @@ Status OrtLoadCustomPropertyInternal(const PathString& property_folder_path,
 }
 
 Status OrtLoadInternal(const PathString& checkpoint_path,
-                       std::vector<ONNX_NAMESPACE::TensorProto>& param_tensor_protos) {
+                       ONNX_NAMESPACE::ModelProto& model_proto) {
   // Find tensor proto files.
-  std::vector<PathString> tensor_proto_filenames;
+  InlinedHashMap<std::string, ONNX_NAMESPACE::TensorProto> param_tensor_protos;
+  InlinedVector<PathString> tensor_proto_filenames;
+
   FilterFilesFromDirectory(
       checkpoint_path,
       [&tensor_proto_filenames](const PathChar* filename) -> bool {
@@ -550,10 +552,21 @@ Status OrtLoadInternal(const PathString& checkpoint_path,
     const auto tensor_file_full_path = ConcatPathComponent<PathChar>(checkpoint_path, tensor_file_path);
     LoadTensorProtoFromFile(tensor_file_full_path, tensor_protos, "[params]");
 
-    for (const auto& tensor_proto : tensor_protos) {
-      param_tensor_protos.push_back(tensor_proto);
+    for (auto& tensor_proto : tensor_protos) {
+      auto tensor_proto_name = tensor_proto.name();
+      param_tensor_protos.emplace(std::make_pair(tensor_proto_name, std::move(tensor_proto)));
     }
   }
+
+  // Load imported initializers into the Model
+  for (auto& init : *(model_proto.mutable_graph()->mutable_initializer())) {
+    ORT_ENFORCE(init.has_name(), "An initializer should have a name.");
+    auto it = param_tensor_protos.find(init.name());
+    ORT_ENFORCE(it != param_tensor_protos.end(),
+                "The initializer name was not found in the checkpoint file loaded.");
+    init = it->second;
+  }
+
   return Status::OK();
 }
 
@@ -581,9 +594,9 @@ Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointState& checkp
   return OrtLoadInternal(checkpoint_path, checkpoint_states);
 }
 
-Status LoadCheckpoint(const PathString& checkpoint_path,
-                      std::vector<ONNX_NAMESPACE::TensorProto>& param_tensor_protos) {
-  return OrtLoadInternal(checkpoint_path, param_tensor_protos);
+Status LoadCheckpointToModel(const PathString& checkpoint_path,
+                             ONNX_NAMESPACE::ModelProto& model_proto) {
+  return OrtLoadInternal(checkpoint_path, model_proto);
 }
 
 }  // namespace api
