@@ -164,7 +164,7 @@ This is the last stage in the build process, please follow the sections in a seq
 
      1. Build ONNX Runtime WebAssembly
 
-        Follow [instructions above](#build-onnx-runtime-for-webassembly) for building ONNX Runtime WebAssembly.
+        Follow [instructions above](#build-onnx-runtime-webassembly-artifacts) for building ONNX Runtime WebAssembly.
 
      2. Copy following files from build output folder to `<ORT_ROOT>/js/web/dist/` (create the folder if it does not exist):
 
