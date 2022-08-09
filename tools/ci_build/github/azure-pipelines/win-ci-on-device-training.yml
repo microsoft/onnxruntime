@@ -6,7 +6,6 @@ parameters:
 
 stages:
 - stage: training_x64_debug
-  dependsOn: []
   jobs:
     - template: templates/win-cpu-ci.yml
       parameters:
