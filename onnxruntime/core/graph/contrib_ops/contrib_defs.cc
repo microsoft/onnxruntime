@@ -1031,7 +1031,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Col2Im, 1,
                                 "The value represent the number of pixels added to the beginning "
                                 "and end part of the corresponding axis. `pads` format should be as follow "
                                 "[x1_begin, x2_begin...x1_end, x2_end,...], where xi_begin is the number of pixels "
-                                "added at the beginning of axis `i` and xi_end is the number of pixels added at the end of axis `i`. "
+                                "added at the beginning of axis `i` and xi_end the same for the end of axis `i`. "
                                 "If not present, the padding defaults to 0 along start and end of each spatial axis.",
                                 AttributeProto::INTS,
                                 OPTIONAL_VALUE)
@@ -1056,7 +1056,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Col2Im, 1,
                                 1,
                                 "image_shape",
                                 "The shape of the spatial dimensions of the image after rearranging the column blocks."
-                                "This is a 1-dimensional tensor with size of at least 2, containing the value [H_img, W_img] "
+                                "This is a 1-dim tensor with size of at least 2, containing the value [H_img, W_img] "
                                 " for a 2-D image or [dim_i1, dim_i2, ..., dim_iN] for a N-D image.",
                                 "tensor(int64)",
                                 OpSchema::Single,
@@ -1067,8 +1067,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Col2Im, 1,
                                 2,
                                 "block_shape",
                                 "The shape of the block to apply on the input."
-                                "This is a 1-dimensional tensor of size of at least 2, containing the value [H_block, W_block] "
-                                " for a 2-D image or [dim_b1, dim_b2, ..., dim_bN] for a N-D block.",
+                                "This is a 1-dim tensor of size of at least 2, containing the value [H_block, W_block] "
+                                " for a 2-D image or [dim_b1, dim_b2, ..., dim_bN] for a N-D block."
+                                "Dilations, pads and strides are applied to block_shape under the hood.",
                                 "tensor(int64)",
                                 OpSchema::Single,
                                 true,

@@ -12,7 +12,7 @@ from onnx_contrib_ops_helper import expect
 
 class ONNXReferenceImplementationTest(unittest.TestCase):
     def test_col2im(self) -> None:
-        input = np.array(
+        inputs = np.array(
             [
                 [
                     [1.0, 6.0, 11.0, 16.0, 21.0],  # (1, 5, 5)
@@ -45,7 +45,7 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
 
         expect(
             node,
-            inputs=[input, image_shape, block_shape],
+            inputs=[inputs, image_shape, block_shape],
             outputs=[col2im_reference_implementation],
             name="test_col2im",
         )
