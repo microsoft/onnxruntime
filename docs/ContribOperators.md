@@ -516,10 +516,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>broadcast_axis</tt> : int</dt>
-<dd>broadcast bias across input for dimensions broadcast_axis to softmax_axis-1</dd>
-<dt><tt>softmax_axis</tt> : int</dt>
-<dd>apply softmax to elements for dimensions softmax_axis or higher</dd>
+<dt><tt>axis</tt> : int</dt>
+<dd>apply softmax to elements for dimensions axis or higher</dd>
+<dt><tt>is_inner_broadcast</tt> : int (required)</dt>
+<dd>true if broadcast bias across input for dimensions broadcast_axis to axis-1, otherwise broadcast bias across input for dimensions 0 to broadcast_axis - 1</dd>
 </dl>
 
 #### Inputs

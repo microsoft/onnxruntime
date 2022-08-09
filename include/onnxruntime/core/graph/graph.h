@@ -1428,23 +1428,33 @@ class Graph {
   // or a subgraph, so that the various operations that are part of the Resolve can work iteratively or
   // recursively as needed.
   struct ResolveContext {
-    ResolveContext() = default;
+    ResolveContext(const Graph& owning_graph) : graph{owning_graph} {
+    }
 
-    std::unordered_map<std::string, std::pair<Node*, int>> output_args;
-    std::unordered_set<std::string> inputs_and_initializers;
-    std::unordered_set<std::string> outer_scope_node_args;
-    std::unordered_map<std::string, NodeIndex> node_name_to_index;
+    std::unordered_map<std::string_view, std::pair<Node*, int>> output_args;
+    std::unordered_set<std::string_view> inputs_and_initializers;
+    std::unordered_map<std::string_view, NodeIndex> node_name_to_index;
     std::unordered_set<Node*> nodes_with_subgraphs;
+
+    // check if the provided name is an input/initialize/node output of this Graph instance during Graph::Resolve.
+    // Graph::node_args_ can have stale entries so we can't rely on that.
+    bool IsLocalValue(const std::string& name) const;
+
+    // check if an ancestor graph has a valid value with the provided name during Graph::Resolve.
+    // Once Graph::Resolve completes Graph::IsOuterScopeValue can be used and is more efficient.
+    bool IsOuterScopeValue(const std::string& name) const;
 
     void Clear() {
       output_args.clear();
       inputs_and_initializers.clear();
-      outer_scope_node_args.clear();
       node_name_to_index.clear();
       nodes_with_subgraphs.clear();
     }
 
    private:
+    bool IsInputInitializerOrOutput(const std::string& name, bool check_ancestors) const;
+
+    const Graph& graph;
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ResolveContext);
   };
 
@@ -1491,6 +1501,7 @@ class Graph {
 
   // Infer and set type information across <*this> graph if needed, and verify type/attribute
   // information matches between node and op.
+
   common::Status VerifyNodeAndOpMatch(const ResolveOptions& options);
 
   // Set graph inputs/outputs when resolving a graph..
@@ -1661,7 +1672,7 @@ class Graph {
   // Model IR version.
   Version ir_version_{ONNX_NAMESPACE::Version::IR_VERSION};
 
-  ResolveContext resolve_context_;
+  ResolveContext resolve_context_{*this};
 
   // the parent graph if this is a subgraph.
   Graph* parent_graph_;

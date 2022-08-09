@@ -7,7 +7,7 @@ ORTMODULE_BUILD=false
 TARGET_ROCM=false
 CU_VER="11.1"
 ROCM_VER="5.1.1"
-TORCH_VERSION='1.10.0'
+TORCH_VERSION='1.11.0'
 USE_CONDA=false
 
 while getopts p:h:d:v:tmurc parameter_Option
