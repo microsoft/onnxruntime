@@ -72,6 +72,8 @@ jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
 
 jobject createJavaMapFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* map);
 
+jobject createMapInfoFromValue(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator * allocator, const OrtValue * map);
+
 jobject convertOrtValueToONNXValue(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* onnxValue);
 
 jint throwOrtException(JNIEnv *env, int messageId, const char *message);
