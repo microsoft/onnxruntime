@@ -18,7 +18,7 @@ namespace onnxruntime {
 template<typename T>
 struct VectorAddParams : OpParams {
   VectorAddParams(hipStream_t stream, const T* x, const T* y, T* z, int n) :
-    x(x), y(y), z(z), n(n), OpParams(stream) {}
+    OpParams(stream), x(x), y(y), z(z), n(n) {}
 
   std::string signature() const {
     return std::to_string(n);
@@ -66,7 +66,7 @@ class VectorAddTunableOp : public TunableOp {
   }
 
  private:
-  virtual bool Condition(const OpParams* op_params) {
+  virtual bool Condition(const OpParams* /*op_params*/) {
     return true;
   }
 };

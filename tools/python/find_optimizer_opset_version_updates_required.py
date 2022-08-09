@@ -7,6 +7,7 @@ import glob
 import logging
 import os
 import re
+import typing
 
 logging.basicConfig(format="[%(levelname)s] - %(message)s", level=logging.DEBUG)
 log = logging.getLogger()
@@ -29,14 +30,17 @@ def parse_args():
     return args
 
 
-def get_call_args_from_file(filename, function_or_declaration):
-    """Search a file for all function calls or declarations that match the provided name.
-    Currently requires both the opening '(' and closing ')' to be on the same line."""
+def get_call_args_from_file(filename: str, function_or_declaration: str) -> typing.List[str]:
+    """
+    Search a file for all function calls or declarations that match the provided name.
+    Requires both the opening '(' and closing ')' to be on the same line.
+    Handles multiple calls being on the same line.
+    """
 
     results = []
     with open(filename) as f:
         line_num = 0
-        for line in f.readlines():
+        for line in f:
             for match in re.finditer(function_or_declaration, line):
                 # check we have both the opening and closing brackets for the function call/declaration.
                 # if we do we have all the arguments
@@ -59,18 +63,51 @@ def get_call_args_from_file(filename, function_or_declaration):
     return results
 
 
+def get_multiline_call_args_from_file(filename: str, function_or_declaration: str) -> typing.List[str]:
+    """
+    Search a file for all function calls or declarations that match the provided name.
+    Allows the opening '(' and closing ')' to be split across multiple lines.
+    Supports a single call per line.
+    """
+
+    results = []
+    with open(filename) as f:
+        function_and_args = None
+
+        for line in f:
+            if not function_and_args:
+                # look for new match
+                start = line.find(function_or_declaration)
+                if start != -1:
+                    function_and_args = line[start:].strip()
+            else:
+                # append to existing line and look for closing ')'
+                start = len(function_and_args)
+                function_and_args += line.strip()
+
+            if function_and_args:
+                end = function_and_args.find(")", start)
+
+                if end != -1:
+                    start_args = function_and_args.find("(")
+                    results.append(function_and_args[start_args + 1 : end])
+                    function_and_args = None
+
+    return results
+
+
 def get_latest_op_versions(root_dir):
     """Find the entries for the latest opset for each operator."""
 
     op_to_opset = {}
     files = [
         os.path.join(root_dir, "onnxruntime/core/providers/cpu/cpu_execution_provider.cc"),
-        os.path.join(root_dir, "onnxruntime/contrib_ops/cpu_contrib_kernels.cc"),
+        os.path.join(root_dir, "onnxruntime/contrib_ops/cpu/cpu_contrib_kernels.cc"),
     ]
 
     for file in files:
         # e.g. class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 11, Clip);
-        calls = get_call_args_from_file(file, "ONNX_OPERATOR_KERNEL_CLASS_NAME")
+        calls = get_multiline_call_args_from_file(file, "ONNX_OPERATOR_KERNEL_CLASS_NAME")
         for call in calls:
             args = call.split(",")
             domain = args[1].strip()
@@ -79,7 +116,7 @@ def get_latest_op_versions(root_dir):
             op_to_opset[domain + "." + op] = opset
 
         # e.g. class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 11, float, ArgMax);
-        calls = get_call_args_from_file(file, "ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME")
+        calls = get_multiline_call_args_from_file(file, "ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME")
         for call in calls:
             args = call.split(",")
             domain = args[1].strip()
