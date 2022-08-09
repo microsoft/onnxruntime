@@ -275,6 +275,10 @@ class KernelScope {
                                                                        ")"),
                                                             profile::Color::Yellow)
 #endif
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+                                        ,
+                                        kernel_dump_context_{session_scope_.dump_context_.iteration, kernel_.Node().Index()}
+#endif
   {
 #ifdef CONCURRENCY_VISUALIZER
     session_scope_.series_.write_flag(kernel_.Node().Name().c_str());
@@ -301,8 +305,7 @@ class KernelScope {
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    session_scope_.dump_context_.program_counter++;
-    utils::DumpNodeInputs(session_scope_.dump_context_, kernel_context_, kernel_.Node(), session_state_);
+    utils::DumpNodeInputs(kernel_dump_context_, kernel_context_, kernel_.Node(), session_state_);
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -374,7 +377,7 @@ class KernelScope {
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeOutputs(session_scope_.dump_context_, kernel_context_, kernel_.Node(), session_state_);
+    utils::DumpNodeOutputs(kernel_dump_context_, kernel_context_, kernel_.Node(), session_state_);
 #endif
   }  //~KernelScope
 
