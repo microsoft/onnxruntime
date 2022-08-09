@@ -1,4 +1,4 @@
-name: Java API Docs
+name: Update Java API Docs
 on:
   push:
     branches:
@@ -37,6 +37,7 @@ jobs:
       - name: Move API docs into target area
         run: |
           rm -rf docs/api/java
+          ls onnxruntime/java/build
           mv onnxruntime/java/build/docs/javadoc docs/api/java
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v3
