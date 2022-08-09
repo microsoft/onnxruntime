@@ -83,6 +83,8 @@ class FusionQOrderedGelu(Fusion):
             name=self.model.create_node_name("QOrderedGelu", name_prefix="QOrderedGelu"),
         )
 
+        ordered_gelu_node.domain = "com.microsoft"
+
         # TODO 3: More attributes
         self.nodes_to_add.append(ordered_gelu_node)
         self.node_name_to_graph_name[ordered_gelu_node.name] = self.this_graph_name

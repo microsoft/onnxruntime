@@ -27,12 +27,12 @@ class FusionQOrderedMatMul(Fusion):
         bias_add_node = matmul_children[0]
 
         # Atleast one of the inputs to Bias Add node must be a constant
-        biad_add_node_index = 0     
+        bias_add_node_index = 0     
         if self.model.get_constant_value(bias_add_node.input[0]) is None and self.model.get_constant_value(bias_add_node.input[1]) is None:
             return
 
         if self.model.get_constant_value(bias_add_node.input[0]) is None:
-            biad_add_node_index = 1
+            bias_add_node_index = 1
 
         bias_add_children = self.model.get_children(bias_add_node, input_name_to_nodes)
 
@@ -84,11 +84,13 @@ class FusionQOrderedMatMul(Fusion):
         )
 
         # TODO: Adjust this once QOrderedAttention is ready
+        reshape_node_0 = None
+        transpose_node_0 = None
         if first_path_id < 0:
             first_path_id, first_input_parent_nodes, _ = self.model.match_parent_paths(
                 node,
                 [
-                    (["Reshape", "Transpose", "DequantizeLinear"], [0, 0, 0])
+                    (["Reshape", "Transpose", "DequantizeLinear", "QuantizeLinear"], [0, 0, 0, 0])
                 ],
                 output_name_to_node,
             )
@@ -96,7 +98,9 @@ class FusionQOrderedMatMul(Fusion):
             if first_path_id < 0:
                 return
             
-            dequantize_node_0 = first_input_parent_nodes[2]
+            reshape_node_0 = first_input_parent_nodes[0]
+            transpose_node_0 = first_input_parent_nodes[1]
+            dequantize_node_0 = first_input_parent_nodes[2]               
         else:
             dequantize_node_0 = first_input_parent_nodes[0]
 
@@ -179,12 +183,16 @@ class FusionQOrderedMatMul(Fusion):
             logger.debug(f"It is not safe to fuse QOrderedMatMul node. Skip")
             return     
 
+        # TODO: Adjust after QOrderedAttention
+        if transpose_node_0 is not None:
+            self.model.replace_node_input(transpose_node_0, transpose_node_0.input[0], dequantize_node_0.input[0])
 
         # Make inputs
-        fused_node_inputs=[dequantize_node_0.input[0], dequantize_node_0.input[1], 
+        fused_node_inputs=[reshape_node_0.output[0] if reshape_node_0 is not None else dequantize_node_0.input[0], 
+                dequantize_node_0.input[1], 
                 dequantize_node_1.input[0], dequantize_node_1.input[1], 
                 downstream_quantize_node.input[1], 
-                bias_add_node.input[biad_add_node_index]]
+                bias_add_node.input[bias_add_node_index]]
         
         if has_residual_add:
             fused_node_inputs.append(residual_add_dequantize_node.input[0])
@@ -196,6 +204,8 @@ class FusionQOrderedMatMul(Fusion):
             outputs=[downstream_quantize_node.output[0]],
             name=self.model.create_node_name("QOrderedMatMul", name_prefix="QOrderedMatMul"),
         )
+
+        fused_node.domain = "com.microsoft"
 
         # TODO 3: More attributes
         self.nodes_to_remove.extend(subgraph_nodes)
