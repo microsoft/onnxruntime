@@ -122,8 +122,9 @@ public class TensorInfo implements ValueInfo {
 
   /**
    * Constructs a TensorInfo with the specified shape and native type int.
-   * <p>
-   * Called from JNI.
+   *
+   * <p>Called from JNI.
+   *
    * @param shape The tensor shape.
    * @param typeInt The native type int.
    */

@@ -549,12 +549,12 @@ int64_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxT
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: { // stored as a uint16_t
             jfloat *floatArr = malloc(sizeof(jfloat) * outputLength);
-            if(floatArr == NULL) {
+            if (floatArr == NULL) {
                 throwOrtException(jniEnv, 1, "Not enough memory");
                 return -1;
             }
             uint16_t *halfArr = (uint16_t *) tensor;
-            for (uint32_t i = 0; i < outputLength; i++) {
+            for (int32_t i = 0; i < outputLength; i++) {
                 floatArr[i] = convertHalfToFloat(halfArr[i]);
             }
             jfloatArray typedArr = (jfloatArray) output;
@@ -660,153 +660,215 @@ jobject createStringFromStringTensor(JNIEnv *jniEnv, const OrtApi * api, OrtAllo
   return tempString;
 }
 
-void copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor, size_t length, jobjectArray outputArray) {
-    // Get the buffer size needed
-    size_t totalStringLength;
-    checkOrtStatus(jniEnv,api,api->GetStringTensorDataLength(tensor,&totalStringLength));
-
-    // Create the character and offset buffers
-    char * characterBuffer;
-    checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(char)*(totalStringLength+length),(void**)&characterBuffer));
-    // length + 1 as we need to write out the final offset
-    size_t * offsets;
-    checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(size_t)*(length+1),(void**)&offsets));
-
-    // Get a view on the String data
-    checkOrtStatus(jniEnv,api,api->GetStringTensorContent(tensor,characterBuffer,totalStringLength,offsets,length));
-
-    // Get the final offset, write to the end of the array.
-    checkOrtStatus(jniEnv,api,api->GetStringTensorDataLength(tensor,offsets+length));
-
+OrtErrorCode copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor, size_t length, jobjectArray outputArray) {
     char * tempBuffer = NULL;
-    size_t bufferSize = 0;
-    for (size_t i = 0; i < length; i++) {
-        size_t curSize = (offsets[i+1] - offsets[i]) + 1;
-        if (curSize > bufferSize) {
-            checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,tempBuffer));
-            checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,curSize,(void**)&tempBuffer));
-            bufferSize = curSize;
-        }
-        if (tempBuffer == NULL) {
-            throwOrtException(jniEnv, 1, "Not enough memory");
-            return;
-        }
-        memcpy(tempBuffer,characterBuffer+offsets[i],curSize);
-        tempBuffer[curSize-1] = '\0';
-        jobject tempString = (*jniEnv)->NewStringUTF(jniEnv,tempBuffer);
-        (*jniEnv)->SetObjectArrayElement(jniEnv,outputArray,safecast_size_t_to_jsize(i),tempString);
+    // Get the buffer size needed
+    size_t totalStringLength = 0;
+    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetStringTensorDataLength(tensor, &totalStringLength));
+    if (code != ORT_OK) {
+        return code;
     }
 
+    // Create the character and offset buffers
+    char * characterBuffer = NULL;
+    code = checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator, sizeof(char)*(totalStringLength+length), (void**)&characterBuffer));
+    if (code != ORT_OK) {
+        return code;
+    }
+    // length + 1 as we need to write out the final offset
+    size_t * offsets = NULL;
+    code = checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator, sizeof(size_t)*(length+1), (void**)&offsets));
+    if (code != ORT_OK) {
+        checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,characterBuffer));
+        return code;
+    }
+
+    // Get a view on the String data
+    code = checkOrtStatus(jniEnv, api, api->GetStringTensorContent(tensor, characterBuffer, totalStringLength, offsets, length));
+    if (code == ORT_OK) {
+        // Get the final offset, write to the end of the array.
+        code = checkOrtStatus(jniEnv, api, api->GetStringTensorDataLength(tensor, offsets+length));
+        if (code == ORT_OK) {
+            size_t bufferSize = 0;
+            for (size_t i = 0; i < length; i++) {
+                size_t curSize = (offsets[i+1] - offsets[i]) + 1;
+                if (curSize > bufferSize) {
+                    code = checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, tempBuffer));
+                    if (code != ORT_OK) {
+                        goto string_tensor_cleanup;
+                    }
+                    code = checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator, curSize, (void**)&tempBuffer));
+                    bufferSize = curSize;
+                }
+                if (tempBuffer == NULL) {
+                    throwOrtException(jniEnv, 1, "Not enough memory");
+                    goto string_tensor_cleanup;
+                } else if (code != ORT_OK) {
+                    goto string_tensor_cleanup;
+                }
+                memcpy(tempBuffer,characterBuffer+offsets[i],curSize);
+                tempBuffer[curSize-1] = '\0';
+                jobject tempString = (*jniEnv)->NewStringUTF(jniEnv,tempBuffer);
+                (*jniEnv)->SetObjectArrayElement(jniEnv,outputArray,safecast_size_t_to_jsize(i),tempString);
+            }
+        }
+    }
+
+string_tensor_cleanup:
     if (tempBuffer != NULL) {
         checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,tempBuffer));
     }
-    checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,characterBuffer));
     checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,offsets));
+    checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,characterBuffer));
+    return code;
 }
 
 jobjectArray createStringArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor) {
     // Extract tensor info
-    OrtTensorTypeAndShapeInfo* tensorInfo;
-    checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor,&tensorInfo));
+    OrtTensorTypeAndShapeInfo* tensorInfo = NULL;
+    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorTypeAndShape(tensor, &tensorInfo));
+    if (code != ORT_OK) {
+        return NULL;
+    }
 
     // Get the element count of this tensor
-    size_t length;
-    checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo,&length));
+    size_t length = 0;
+    code = checkOrtStatus(jniEnv, api, api->GetTensorShapeElementCount(tensorInfo, &length));
     api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
+    if (code != ORT_OK) {
+        return NULL;
+    }
 
     // Create the java array
-    jclass stringClazz = (*jniEnv)->FindClass(jniEnv,"java/lang/String");
-    jobjectArray outputArray = (*jniEnv)->NewObjectArray(jniEnv,safecast_size_t_to_jsize(length),stringClazz, NULL);
+    jclass stringClazz = (*jniEnv)->FindClass(jniEnv, "java/lang/String");
+    jobjectArray outputArray = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(length), stringClazz, NULL);
 
-    copyStringTensorToArray(jniEnv, api, allocator, tensor, length, outputArray);
+    code = copyStringTensorToArray(jniEnv, api, allocator, tensor, length, outputArray);
+    if (code != ORT_OK) {
+        outputArray = NULL;
+    }
 
     return outputArray;
 }
 
 jlongArray createLongArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor) {
-    // Extract tensor type
-    OrtTensorTypeAndShapeInfo* tensorInfo;
-    checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor,&tensorInfo));
-    ONNXTensorElementDataType value;
-    checkOrtStatus(jniEnv,api,api->GetTensorElementType(tensorInfo,&value));
-
-    // Get the element count of this tensor
-    size_t length;
-    checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo,&length));
+  jlongArray outputArray = NULL;
+  // Extract tensor type
+  OrtTensorTypeAndShapeInfo* tensorInfo = NULL;
+  OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor, &tensorInfo));
+  if (code == ORT_OK) {
+    ONNXTensorElementDataType value = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+    code = checkOrtStatus(jniEnv,api,api->GetTensorElementType(tensorInfo, &value));
+    if ((code == ORT_OK) && ((value == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) || (value == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64))) {
+        // Get the element count of this tensor
+        size_t length = 0;
+        code = checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo, &length));
+        if (code == ORT_OK) {
+            // Extract the values
+            uint8_t* arr = NULL;
+            code = checkOrtStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)tensor, (void**)&arr));
+            if (code == ORT_OK) {
+                // Create the java array and copy to it.
+                outputArray = (*jniEnv)->NewLongArray(jniEnv, safecast_size_t_to_jsize(length));
+                int64_t consumed = copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
+                if (consumed == -1) {
+                    outputArray = NULL;
+                }
+            }
+        }
+    }
     api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
-
-    // Extract the values
-    uint8_t* arr;
-    checkOrtStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)tensor,(void**)&arr));
-
-    // Create the java array and copy to it.
-    jlongArray outputArray = (*jniEnv)->NewLongArray(jniEnv,safecast_size_t_to_jsize(length));
-    copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
-    return outputArray;
+  }
+  return outputArray;
 }
 
 jfloatArray createFloatArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor) {
-    // Extract tensor type
-    OrtTensorTypeAndShapeInfo* tensorInfo;
-    checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor,&tensorInfo));
-    ONNXTensorElementDataType value;
-    checkOrtStatus(jniEnv,api,api->GetTensorElementType(tensorInfo,&value));
-
-    // Get the element count of this tensor
-    size_t length;
-    checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo,&length));
+  jfloatArray outputArray = NULL;
+  // Extract tensor type
+  OrtTensorTypeAndShapeInfo* tensorInfo = NULL;
+  OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor, &tensorInfo));
+  if (code == ORT_OK) {
+    ONNXTensorElementDataType value = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+    code = checkOrtStatus(jniEnv,api,api->GetTensorElementType(tensorInfo, &value));
+    if ((code == ORT_OK) && (value == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)) {
+        // Get the element count of this tensor
+        size_t length = 0;
+        code = checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo, &length));
+        if (code == ORT_OK) {
+            // Extract the values
+            uint8_t* arr = NULL;
+            code = checkOrtStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)tensor, (void**)&arr));
+            if (code == ORT_OK) {
+                // Create the java array and copy to it.
+                outputArray = (*jniEnv)->NewFloatArray(jniEnv, safecast_size_t_to_jsize(length));
+                int64_t consumed = copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
+                if (consumed == -1) {
+                    outputArray = NULL;
+                }
+            }
+        }
+    }
     api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
-
-    // Extract the values
-    uint8_t* arr;
-    checkOrtStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)tensor,(void**)&arr));
-
-    // Create the java array and copy to it.
-    jfloatArray outputArray = (*jniEnv)->NewFloatArray(jniEnv,safecast_size_t_to_jsize(length));
-    copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
-    return outputArray;
+  }
+  return outputArray;
 }
 
 jdoubleArray createDoubleArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor) {
-    // Extract tensor type
-    OrtTensorTypeAndShapeInfo* tensorInfo;
-    checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor,&tensorInfo));
-    ONNXTensorElementDataType value;
-    checkOrtStatus(jniEnv,api,api->GetTensorElementType(tensorInfo,&value));
-
-    // Get the element count of this tensor
-    size_t length;
-    checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo,&length));
+  jdoubleArray outputArray = NULL;
+  // Extract tensor type
+  OrtTensorTypeAndShapeInfo* tensorInfo = NULL;
+  OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor, &tensorInfo));
+  if (code == ORT_OK) {
+    ONNXTensorElementDataType value = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+    code = checkOrtStatus(jniEnv,api,api->GetTensorElementType(tensorInfo, &value));
+    if ((code == ORT_OK) && (value == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE)) {
+        // Get the element count of this tensor
+        size_t length = 0;
+        code = checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo, &length));
+        if (code == ORT_OK) {
+            // Extract the values
+            uint8_t* arr = NULL;
+            code = checkOrtStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)tensor, (void**)&arr));
+            if (code == ORT_OK) {
+                // Create the java array and copy to it.
+                outputArray = (*jniEnv)->NewDoubleArray(jniEnv, safecast_size_t_to_jsize(length));
+                int64_t consumed = copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
+                if (consumed == -1) {
+                    outputArray = NULL;
+                }
+            }
+        }
+    }
     api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
-
-    // Extract the values
-    uint8_t* arr;
-    checkOrtStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)tensor,(void**)&arr));
-
-    // Create the java array and copy to it.
-    jdoubleArray outputArray = (*jniEnv)->NewDoubleArray(jniEnv,safecast_size_t_to_jsize(length));
-    copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
-    return outputArray;
+  }
+  return outputArray;
 }
 
 jobject createJavaTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor) {
-    // Extract the type information
-    OrtTensorTypeAndShapeInfo* info;
-    checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor, &info));
+  // Extract the type information
+  OrtTensorTypeAndShapeInfo* info;
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorTypeAndShape(tensor, &info));
+  if (code != ORT_OK) {
+    return NULL;
+  }
 
-    // Construct the TensorInfo object
-    jobject tensorInfo = convertToTensorInfo(jniEnv, api, info);
-
-    // Release the info object
+  // Construct the TensorInfo object
+  jobject tensorInfo = convertToTensorInfo(jniEnv, api, info);
+  if (tensorInfo == NULL) {
     api->ReleaseTensorTypeAndShapeInfo(info);
+    return NULL;
+  }
 
-    // Construct the ONNXTensor object
-    char *tensorClassName = "ai/onnxruntime/OnnxTensor";
-    jclass clazz = (*jniEnv)->FindClass(jniEnv, tensorClassName);
-    jmethodID tensorConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz, "<init>", "(JJLai/onnxruntime/TensorInfo;)V");
-    jobject javaTensor = (*jniEnv)->NewObject(jniEnv, clazz, tensorConstructor, (jlong) tensor, (jlong) allocator, tensorInfo);
+  // Release the info object
+  api->ReleaseTensorTypeAndShapeInfo(info);
 
-    return javaTensor;
+  // Construct the ONNXTensor object
+  char *tensorClassName = "ai/onnxruntime/OnnxTensor";
+  jclass clazz = (*jniEnv)->FindClass(jniEnv, tensorClassName);
+  jmethodID tensorConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz, "<init>", "(JJLai/onnxruntime/TensorInfo;)V");
+  jobject javaTensor = (*jniEnv)->NewObject(jniEnv, clazz, tensorConstructor, (jlong) tensor, (jlong) allocator, tensorInfo);
+
+  return javaTensor;
 }
 
 jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* sequence) {

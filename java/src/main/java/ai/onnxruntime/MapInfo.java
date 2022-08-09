@@ -46,8 +46,9 @@ public class MapInfo implements ValueInfo {
 
   /**
    * Construct a MapInfo with the specified size, key type and value type.
-   * <p>
-   * Called from JNI.
+   *
+   * <p>Called from JNI.
+   *
    * @param size The size.
    * @param keyTypeInt The int representing the {@link OnnxTensorType} of the keys.
    * @param valueTypeInt The int representing the {@link OnnxTensorType} of the values.
