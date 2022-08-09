@@ -121,7 +121,7 @@ struct NodeDumpContext {
   // which execution pass are we on?
   size_t iteration;
   // which node are we on?
-  std::atomic_int program_counter;
+  size_t program_counter;
 };
 
 // gets NodeDumpOptions instance configured from environment variable values

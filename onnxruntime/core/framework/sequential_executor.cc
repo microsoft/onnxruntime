@@ -171,7 +171,7 @@ class SessionScope {
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
                                                                                  ,
-                                                                                 dump_context_{session_state.GetGraphExecutionCounter(), 0}
+                                                                                 dump_context_{session_state_.GetGraphExecutionCounter(), 0}
 #endif
   {
     if (session_state_.Profiler().IsEnabled()) {
@@ -231,11 +231,6 @@ class SessionScope {
     }
 #endif
   }
-
-#ifdef DEBUG_NODE_INPUTS_OUTPUTS
-  utils::NodeDumpContext& GetNodeDumpContext() { return dump_context_; }
-#endif
-
 private:
   const SessionState& session_state_;
   TimePoint session_start_;
@@ -254,7 +249,6 @@ private:
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-  size_t program_counter_ = 0;
   utils::NodeDumpContext dump_context_;
 #endif
 };
@@ -405,6 +399,10 @@ class KernelScope {
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator node_compute_range_;
 #endif
+
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+  utils::NodeDumpContext kernel_dump_context_;
+#endif
 };
 
 onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t stream_idx) {
@@ -461,9 +459,6 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
         status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
       });
     }
-#ifdef DEBUG_NODE_INPUTS_OUTPUTS
-  utils::DumpNodeOutputs(session_scope->GetNodeDumpContext(), kernel_ctx, p_kernel->Node(), ctx.GetSessionState());
-#endif
   }
   if (!status.IsOK()) {
     std::ostringstream ss;
