@@ -1471,6 +1471,11 @@ if (onnxruntime_USE_TVM)
       "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.h"
       "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.cc"
     )
+    list(APPEND onnxruntime_providers_tvm_cc_srcs
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/hash_alg/hasher.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/hash_alg/hasher.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/hash_alg/hasher_impl.h"
+    )
   endif()
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_tvm_cc_srcs})
