@@ -108,6 +108,24 @@ class OrtOpTests(unittest.TestCase):
         assert torch.allclose(cpu_min, ort_min.cpu())
         assert cpu_min.dim() == ort_min.dim()
 
+    def test_cat(self):
+        device = self.get_device()
+        cpu_out_tensor = torch.tensor([])
+        ort_out_tensor = cpu_out_tensor.to(device)
+        x = torch.randn((128, 64))
+        y = torch.randn((128, 64))
+        z = torch.randn((128, 64))
+        cpu_ans_0 = torch.cat((x, y, z), 0, out=cpu_out_tensor)
+        cpu_ans_1 = torch.cat((x, y, z), 1)
+        ort_x = x.to(device)
+        ort_y = y.to(device)
+        ort_z = z.to(device)
+        ort_ans_0 = torch.cat((ort_x, ort_y, ort_z), 0, out=ort_out_tensor)
+        ort_ans_1 = torch.cat((ort_x, ort_y, ort_z), 1)
+        assert torch.allclose(cpu_ans_0, ort_ans_0.cpu())
+        assert torch.allclose(cpu_ans_1, ort_ans_1.cpu())
+        assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
+
     def test_equal(self):
         device = self.get_device()
         cpu_a = torch.Tensor([1.0, 1.5])
