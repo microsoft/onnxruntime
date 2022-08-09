@@ -133,7 +133,7 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
 
   const auto& location = external_data_info->GetRelPath();
 
-  if (location == onnxruntime::utils::kMemoryAddressTag) {
+  if (location == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
     external_file_path = location;
   } else {
     if (tensor_proto_dir != nullptr) {
@@ -603,7 +603,7 @@ Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
   ORT_RETURN_IF_ERROR(GetExternalDataInfo(tensor_proto, t_prot_dir_s, external_data_file_path, file_offset,
                                           raw_data_safe_len));
 
-  if (external_data_file_path == onnxruntime::utils::kMemoryAddressTag) {
+  if (external_data_file_path == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
     // the value in location is the memory address of the data
     ext_data_buf = reinterpret_cast<void*>(file_offset);
     ext_data_len = raw_data_safe_len;

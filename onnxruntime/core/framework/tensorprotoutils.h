@@ -81,7 +81,7 @@ Special marker used to indicate an existing memory buffer contains the TensorPro
 If the 'location' field of the external data info is set to this marker, the 'offset' field should contain the
 address of the memory containing the data.
 */
-constexpr const ORTCHAR_T* kMemoryAddressTag = ORT_TSTR("*/_ORT_MEM_ADDR_/*");
+constexpr const ORTCHAR_T* kTensorProtoMemoryAddressTag = ORT_TSTR("*/_ORT_MEM_ADDR_/*");
 
 // Given a tensor proto with external data obtain a pointer to the data and its length.
 // The ext_data_deleter argument is updated with a callback that owns/releases the data.
