@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <unordered_set>
+#include <unordered_map>
 #include "core/providers/rocm/nn/conv.h"
 #include "core/providers/rocm/rocm_common.h"
 
@@ -32,6 +33,91 @@ miopenStatus_t _miopenAddTensor(
 
 }
 
+template<uint32_t BASIS = 0x811C9DC5, uint32_t PRIME = 0x01000193>
+struct FNVHash {
+  uint32_t GetValue() const { return value_; }
+
+  void Hash(const void* in_ptr, size_t nbytes) {
+    auto ptr = reinterpret_cast<const uint8_t*>(in_ptr);
+    for (size_t i = 0; i < nbytes; ++i) {
+      value_ ^= ptr[i];
+      value_ *= PRIME;
+    }
+  }
+
+  template <typename T, typename std::enable_if<std::is_trivially_copyable<T>::value, size_t>::type = 0>
+  FNVHash& operator<<(const T& pod) {
+    Hash(&pod, sizeof(pod));
+    return *this;
+  }
+
+  template <typename T>
+  FNVHash& operator<<(const std::vector<T>& pod_array) {
+    for (const auto& pod : pod_array) {
+      (*this) << pod;
+    }
+    return *this;
+  }
+
+  void HashTensor(miopenTensorDescriptor_t tdesc) {
+    int size = 0;
+    miopenGetTensorDescriptorSize(tdesc, &size);
+    (*this) << size;
+    std::vector<int> dims(size);
+    std::vector<int> strides(size);
+    miopenDataType_t dtype;
+    miopenGetTensorDescriptor(tdesc, &dtype, dims.data(), strides.data());
+    (*this) << dtype;
+    (*this) << dims;
+    (*this) << strides;
+  }
+
+  void HashConvolutionDescriptor(miopenConvolutionDescriptor_t cdesc) {
+    int spatial_dim = 1;
+    // Current MIOpen doesn't provide API to probe the dimension of a
+    // miopenConvolutionDescriptor_t, so we have to guess.
+    // This algorithm is based on a specific behavior of miopenGetConvolutionNdDescriptor,
+    //  which fails when requestedSpatialDim > the convolution's spatial dimension
+    std::vector<int> spatial_dims;
+    std::vector<int> pads;
+    std::vector<int> strides;
+    std::vector<int> dilations;
+    miopenConvolutionMode_t mode;
+    while (true) {
+      spatial_dims.resize(spatial_dim);
+      pads.resize(spatial_dim);
+      strides.resize(spatial_dim);
+      dilations.resize(spatial_dim);
+
+      if (miopenStatusSuccess != miopenGetConvolutionNdDescriptor(cdesc,
+                                                                  spatial_dim,
+                                                                  spatial_dims.data(),
+                                                                  pads.data(),
+                                                                  strides.data(),
+                                                                  dilations.data(),
+                                                                  &mode)) {
+        // Remove the extra dimension
+        spatial_dims.resize(spatial_dim - 1);
+        pads.resize(spatial_dim - 1);
+        strides.resize(spatial_dim - 1);
+        dilations.resize(spatial_dim - 1);
+        (*this) << spatial_dim;
+        (*this) << spatial_dims;
+        (*this) << pads;
+        (*this) << strides;
+        (*this) << dilations;
+        break;
+      }
+      spatial_dim += 1;
+      ORT_ENFORCE(spatial_dim < 10,
+                  "miopenGetConvolutionNdDescriptor is supposed to fail before spatial_dim gets to ",
+                  spatial_dim);
+    }
+  }
+ private:
+  uint32_t value_ = BASIS;
+};
+
 template <typename T>
 class FusedConv : public onnxruntime::rocm::Conv<T> {
  public:
@@ -61,17 +147,6 @@ class FusedConv : public onnxruntime::rocm::Conv<T> {
     MIOPEN_RETURN_IF_ERROR(status_);
     std::lock_guard<OrtMutex> lock(Base::s_.mutex);
 
-    // Detect if the dimesion changed
-    const Tensor* X = context->Input<Tensor>(0);
-    const TensorShape& x_shape = X->Shape();
-    const auto x_dims = x_shape.GetDims();
-    bool input_dims_changed = (Base::s_.last_x_dims.GetDims() != x_dims);
-
-    const Tensor* W = context->Input<Tensor>(1);
-    const TensorShape& w_shape = W->Shape();
-    auto w_dims = w_shape.AsShapeVector();
-    bool w_dims_changed = (Base::s_.last_w_dims.GetDims() != gsl::make_span(w_dims));
-
     ORT_RETURN_IF_ERROR(Base::UpdateState(context, true));
     if (Base::s_.Y->Shape().Size() == 0) {
       return Status::OK();
@@ -79,53 +154,44 @@ class FusedConv : public onnxruntime::rocm::Conv<T> {
 
     bool has_z = nullptr != Base::s_.z_data;
     bool has_b = nullptr != Base::s_.b_data;
-
-    // TODO: Can be removed once MIOpen supports multiple Bias operators in
-    //       single Fusion plan.
-    bool should_try_fusion_api = true;
-    if (has_z && has_b && this->unsupported_fusion_both_z_b_) {
-      should_try_fusion_api = false;
-    }
-
-    if (should_try_fusion_api) {
-      // Create new Fusion descriptor when dims changed
-      if (input_dims_changed || w_dims_changed || !fusion_.plan)  {
-        if (Status::OK() != CreateFusionDesc() && has_z && has_b) {
-          this->unsupported_fusion_both_z_b_.store(true);
-        }
-      }
-    }
+    auto factory = [this](FusedConvFusionData& fusion) {
+      return this->DoCreateFusionDesc(fusion);
+    };
+    auto& cached_item = plan_cache_.FindOrCreateFusionPlanCache(Hash(),
+                                                                factory);
+    bool should_try_fusion_api = cached_item.Validate(Base::MiopenHandle());
 
     typedef typename onnxruntime::rocm::ToHipType<T>::MappedType HipT;
     const auto alpha = onnxruntime::rocm::Consts<HipT>::One;
     const auto beta = onnxruntime::rocm::Consts<HipT>::Zero;
     IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace();
+    miopenStatus_t fusion_status = miopenStatusNotInitialized;
 
-    auto fusion_status = CompileOnCurrentHandle();
-    if (fusion_.plan && fusion_.fusion_args && miopenStatusSuccess == fusion_status) {
-      MIOPEN_RETURN_IF_ERROR(miopenSetOpArgsConvForward(fusion_.fusion_args,
-                                                        fusion_.conv_op,
+    if (should_try_fusion_api) {
+      auto& fusion_info = *cached_item.fusion;
+      MIOPEN_RETURN_IF_ERROR(miopenSetOpArgsConvForward(fusion_info.fusion_args,
+                                                        fusion_info.conv_op,
                                                         &alpha,
                                                         &beta,
                                                         Base::s_.w_data));
       if (has_z) {
-        MIOPEN_RETURN_IF_ERROR(miopenSetOpArgsBiasForward(fusion_.fusion_args,
-                                                          fusion_.bias_z_op,
+        MIOPEN_RETURN_IF_ERROR(miopenSetOpArgsBiasForward(fusion_info.fusion_args,
+                                                          fusion_info.bias_z_op,
                                                           &alpha,
                                                           &beta,
                                                           Base::s_.z_data));
       }
       if (has_b) {
-        MIOPEN_RETURN_IF_ERROR(miopenSetOpArgsBiasForward(fusion_.fusion_args,
-                                                          fusion_.bias_b_op,
+        MIOPEN_RETURN_IF_ERROR(miopenSetOpArgsBiasForward(fusion_info.fusion_args,
+                                                          fusion_info.bias_b_op,
                                                           &alpha,
                                                           &beta,
                                                           Base::s_.b_data));
       }
       if (activation_desc_) {
         const float relu_notused = 0.0;
-        MIOPEN_RETURN_IF_ERROR(miopenSetOpArgsActivForward(fusion_.fusion_args,
-                                                           fusion_.act_op,
+        MIOPEN_RETURN_IF_ERROR(miopenSetOpArgsActivForward(fusion_info.fusion_args,
+                                                           fusion_info.act_op,
                                                            &alpha,
                                                            &beta,
                                                            relu_notused,
@@ -133,14 +199,13 @@ class FusedConv : public onnxruntime::rocm::Conv<T> {
                                                            relu_notused));
       }
       fusion_status = miopenExecuteFusionPlan(Base::MiopenHandle(),
-                                              fusion_.plan,
+                                              fusion_info.plan,
                                               Base::s_.x_tensor,
                                               Base::s_.x_data,
                                               Base::s_.y_tensor,
                                               Base::s_.y_data,
-                                              fusion_.fusion_args);
+                                              fusion_info.fusion_args);
     }
-    // MIOPEN_RETURN_IF_ERROR(fusion_status); // Debug
     if (miopenStatusSuccess != fusion_status) {
       MIOPEN_RETURN_IF_ERROR(miopenConvolutionForward(Base::MiopenHandle(),
                              &alpha,
@@ -253,11 +318,73 @@ class FusedConv : public onnxruntime::rocm::Conv<T> {
       }
     }
   };
-  mutable FusedConvFusionData fusion_;
-  static std::atomic_bool unsupported_fusion_both_z_b_;
 
-  Status CreateFusionDesc() const {
-    FusedConvFusionData fusion;
+  struct FusionPlanCacheItem {
+    std::unique_ptr<FusedConvFusionData> fusion;
+    Status creation_result;
+    // TODO: Add a timestamp for eviction
+    // std::chrono::time_point<std::chrono::high_resolution_clock> last_access;
+
+    FusionPlanCacheItem() {
+    }
+
+    miopenStatus_t CompileOnHandle(miopenHandle_t handle) const {
+      if (!fusion->plan) {
+        return miopenStatusNotInitialized;
+      }
+      auto iter = fusion->compiled_on.find(handle);
+      if (iter != fusion->compiled_on.end()) {
+        return miopenStatusSuccess;
+      }
+      auto ret = miopenCompileFusionPlan(handle, fusion->plan);
+      if (miopenStatusSuccess == ret) {
+        fusion->compiled_on.insert(handle);
+      }
+      return miopenStatusSuccess;
+    }
+
+    bool Validate(miopenHandle_t handle) const {
+      if (Status::OK() != creation_result) {
+        return false;
+      }
+      if (!fusion || !fusion->plan || !fusion->fusion_args) {
+        return false;
+      }
+      auto compiling_status = CompileOnHandle(handle);
+      if (miopenStatusSuccess != compiling_status) {
+        return false;
+      }
+
+      return true;
+    }
+  };
+
+  struct FusionPlanCache {
+    mutable OrtMutex mutex;
+    using HashKey = uint32_t;
+    std::unordered_map<HashKey, FusionPlanCacheItem> cache_directory_;
+
+    FusionPlanCache() {
+    }
+
+    FusionPlanCacheItem& FindOrCreateFusionPlanCache(HashKey key,
+                                                     std::function<Status(FusedConvFusionData& fusion)> factory) {
+      std::lock_guard<OrtMutex> lock(mutex);
+      auto iter = cache_directory_.find(key);
+      if (iter == cache_directory_.end()) {
+        cache_directory_[key].fusion = std::make_unique<FusedConvFusionData>();
+        cache_directory_[key].creation_result = factory(*cache_directory_[key].fusion);
+        if (Status::OK() != cache_directory_[key].creation_result) {
+          cache_directory_[key].fusion.reset();
+        }
+      }
+      return cache_directory_[key];
+    }
+  };
+
+  static FusionPlanCache plan_cache_;
+
+  Status DoCreateFusionDesc(FusedConvFusionData& fusion) const {
     bool has_z = nullptr != Base::s_.z_data;
     bool has_b = nullptr != Base::s_.b_data;
     MIOPEN_RETURN_IF_ERROR(miopenCreateFusionPlan(&fusion.plan,
@@ -283,29 +410,32 @@ class FusedConv : public onnxruntime::rocm::Conv<T> {
                                                              &fusion.act_op,
                                                              activation_mode_));
     }
-    fusion_ = std::move(fusion);
     return Status::OK();
   }
 
-  miopenStatus_t CompileOnCurrentHandle() const {
-    if (!fusion_.plan) {
-      return miopenStatusNotInitialized;
+  uint32_t Hash() const {
+    FNVHash hash;
+    bool has_z = nullptr != Base::s_.z_data;
+    bool has_b = nullptr != Base::s_.b_data;
+    hash.HashTensor(Base::s_.x_tensor);
+    hash.HashConvolutionDescriptor(Base::s_.conv_desc);
+    hash.HashTensor(Base::s_.w_desc);
+    if (has_z) {
+      hash.HashTensor(Base::s_.z_tensor);
     }
-    auto handle = Base::MiopenHandle();
-    auto iter = fusion_.compiled_on.find(handle);
-    if (iter != fusion_.compiled_on.end()) {
-      return miopenStatusSuccess;
+    if (has_b) {
+      hash.HashTensor(Base::s_.b_tensor);
     }
-    auto ret = miopenCompileFusionPlan(handle, fusion_.plan);
-    if (miopenStatusSuccess == ret) {
-      fusion_.compiled_on.insert(handle);
+    if (activation_desc_) {
+      hash << static_cast<int32_t>(activation_mode_);
     }
-    return miopenStatusSuccess;
+    return hash.GetValue();
   }
+
 };
 
 template <typename T>
-std::atomic_bool FusedConv<T>::unsupported_fusion_both_z_b_(false);
+typename FusedConv<T>::FusionPlanCache FusedConv<T>::plan_cache_;
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     FusedConv,
