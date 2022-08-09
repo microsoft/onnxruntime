@@ -155,7 +155,7 @@ void InitSyntheticDataLoader(
     std::vector<int64_t> input1_shape{params.train_batch_size, 784};
     std::vector<int64_t> target_shape{params.train_batch_size};
     for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
-      auto sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
+      onnxruntime::training::test::training_api::SyntheticSampleBatch&& sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
       sample.AddFloatInput(input1_shape);
       sample.AddInt32Input(target_shape, 0, 1);
       data_loader.AddSyntheticSampleBatch(sample);
@@ -166,7 +166,7 @@ void InitSyntheticDataLoader(
     std::vector<int64_t> attention_mask_shape{params.train_batch_size, sequence_length};
     std::vector<int64_t> target_shape{params.train_batch_size};
     for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
-      auto sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
+      auto&& sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
       sample.AddInt64Input(input_ids_shape, 0, 250002 - 1);
       sample.AddInt64Input(attention_mask_shape, 0, 1);
       sample.AddInt32Input(target_shape, 0, 1);
@@ -179,7 +179,7 @@ void InitSyntheticDataLoader(
     std::vector<int64_t> target1_shape{params.train_batch_size};
     std::vector<int64_t> target2_shape{params.train_batch_size, 81};
     for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
-      auto sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
+      auto&& sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
       sample.AddInt64Input(input_ids_shape, 0, 250002 - 1);
       sample.AddInt64Input(attention_mask_shape, 0, 1);
       sample.AddInt32Input(target1_shape, 0, 1);
@@ -192,7 +192,7 @@ void InitSyntheticDataLoader(
     std::vector<int64_t> attention_mask_shape{params.train_batch_size, sequence_length};
     std::vector<int64_t> labels_shape{params.train_batch_size, 81};
     for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
-      auto sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
+      auto&& sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
       sample.AddInt64Input(input_ids_shape, 0, 250002 - 1);
       sample.AddInt64Input(attention_mask_shape, 0, 1);
       sample.AddInt32Input(labels_shape, 0, 1);
@@ -206,7 +206,7 @@ void InitSyntheticDataLoader(
     std::vector<int64_t> attention_mask_shape{params.train_batch_size, section, sequence_length};
     std::vector<int64_t> labels_shape{params.train_batch_size};
     for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
-      auto sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
+      auto&& sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
       sample.AddInt64Input(input_ids_shape, 0, 250002 - 1);
       sample.AddBoolInput(mask_clss_shape);
       sample.AddInt64Input(attention_mask_shape, 0, 1);

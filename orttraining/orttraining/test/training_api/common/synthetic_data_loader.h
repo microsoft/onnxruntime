@@ -11,6 +11,8 @@
 
 #pragma once
 
+#include "gsl/gsl-lite.hpp"
+
 #include <onnxruntime_cxx_api.h>
 
 #include <memory>
@@ -23,8 +25,8 @@ namespace training {
 namespace test {
 namespace training_api {
 
-typedef std::variant<std::vector<int32_t>, std::vector<int64_t>, std::vector<float>, std::vector<uint8_t>>
-    SyntheticDataVector;
+using SyntheticDataVector = std::variant<std::vector<int32_t>, std::vector<int64_t>, std::vector<float>,
+                                         std::vector<uint8_t>>;
 
 struct SyntheticInput {
   explicit SyntheticInput(const std::vector<int64_t>& shape) : shape_(shape) {
@@ -33,11 +35,11 @@ struct SyntheticInput {
     }
   }
 
-  size_t NumOfElements() {
+  size_t NumOfElements() const {
     return num_of_elements_;
   }
 
-  std::vector<int64_t> ShapeVector() const {
+  const std::vector<int64_t>& ShapeVector() const {
     return shape_;
   }
 
@@ -52,39 +54,32 @@ struct SyntheticInput {
 };
 
 struct SyntheticSampleBatch {
-  SyntheticSampleBatch() {}
+  SyntheticSampleBatch() = default;
 
   void AddInt32Input(const std::vector<int64_t>& shape, int32_t low, int32_t high);
   void AddInt64Input(const std::vector<int64_t>& shape, int64_t low, int64_t high);
   void AddFloatInput(const std::vector<int64_t>& shape);
   void AddBoolInput(const std::vector<int64_t>& shape);
 
-  size_t NumOfInput() {
-    return input_count_;
-  }
-
-  SyntheticInput& GetInputAtIndex(size_t index) {
-    return data_vector_[index];
-  }
+  bool GetBatch(std::vector<OrtValue*>& batches);
 
  private:
   template <typename T>
   void AddIntInput(const std::vector<int64_t>& shape, T low, T high);
 
   std::vector<SyntheticInput> data_vector_;
-  size_t input_count_{0};
 };
 
 struct SyntheticDataLoader {
-  SyntheticDataLoader() {}
+  SyntheticDataLoader() = default;
 
-  void AddSyntheticSampleBatch(SyntheticSampleBatch& samples) {
+  void AddSyntheticSampleBatch(const SyntheticSampleBatch& samples) {
     sample_batch_collections_.emplace_back(samples);
   }
 
   bool GetNextSampleBatch(std::vector<OrtValue*>& batches);
 
-  size_t NumOfSampleBatches() {
+  size_t NumOfSampleBatches() const {
     return sample_batch_collections_.size();
   }
 

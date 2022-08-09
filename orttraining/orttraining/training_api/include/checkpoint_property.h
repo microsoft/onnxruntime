@@ -14,7 +14,7 @@ namespace onnxruntime {
 namespace training {
 namespace api {
 
-typedef std::variant<int64_t, float, std::string> PropertyDataType;
+using PropertyDataType = std::variant<int64_t, float, std::string>;
 
 /**
  * @brief Collection of user defined properties.
@@ -22,7 +22,7 @@ typedef std::variant<int64_t, float, std::string> PropertyDataType;
  */
 struct PropertyBag {
  public:
-  PropertyBag() {}
+  PropertyBag() = default;
 
   void AddProperty(const std::string& name, const PropertyDataType& val) {
     ORT_ENFORCE(named_properties_.find(name) == named_properties_.end(),
