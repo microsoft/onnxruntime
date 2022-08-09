@@ -937,6 +937,10 @@ at::Tensor& cat_out(
       &at::native::cpu_fallback,
       ATEN_OP(cat_out)>::call(tensors, dim, out);
   }
+  int64_t ndim = tensors[0].dim();
+  assert(ndim != 0);
+  dim = at::maybe_wrap_dim(dim, ndim);
+
   auto& invoker = GetORTInvoker(tensors[0].device());
 
   // IntArrayRef isn't writeable, convert to vector.
