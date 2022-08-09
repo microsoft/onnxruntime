@@ -29,7 +29,7 @@ using SyntheticDataVector = std::variant<std::vector<int32_t>, std::vector<int64
                                          std::vector<uint8_t>>;
 
 struct SyntheticInput {
-  explicit SyntheticInput(const std::vector<int64_t>& shape) : shape_(shape) {
+  explicit SyntheticInput(gsl::span<const int64_t> shape) : shape_(shape) {
     for (auto d : shape) {
       num_of_elements_ *= d;
     }
@@ -39,7 +39,7 @@ struct SyntheticInput {
     return num_of_elements_;
   }
 
-  const std::vector<int64_t>& ShapeVector() const {
+  gsl::span<const int64_t> ShapeVector() const {
     return shape_;
   }
 
@@ -48,7 +48,7 @@ struct SyntheticInput {
   }
 
  private:
-  std::vector<int64_t> shape_;
+  gsl::span<const int64_t> shape_;
   size_t num_of_elements_{1};
   SyntheticDataVector data_;
 };
@@ -56,16 +56,16 @@ struct SyntheticInput {
 struct SyntheticSampleBatch {
   SyntheticSampleBatch() = default;
 
-  void AddInt32Input(const std::vector<int64_t>& shape, int32_t low, int32_t high);
-  void AddInt64Input(const std::vector<int64_t>& shape, int64_t low, int64_t high);
-  void AddFloatInput(const std::vector<int64_t>& shape);
-  void AddBoolInput(const std::vector<int64_t>& shape);
+  void AddInt32Input(gsl::span<const int64_t> shape, int32_t low, int32_t high);
+  void AddInt64Input(gsl::span<const int64_t> shape, int64_t low, int64_t high);
+  void AddFloatInput(gsl::span<const int64_t> shape);
+  void AddBoolInput(gsl::span<const int64_t> shape);
 
   bool GetBatch(std::vector<OrtValue*>& batches);
 
  private:
   template <typename T>
-  void AddIntInput(const std::vector<int64_t>& shape, T low, T high);
+  void AddIntInput(gsl::span<const int64_t> shape, T low, T high);
 
   std::vector<SyntheticInput> data_vector_;
 };

@@ -43,7 +43,7 @@ void RandomInts(std::vector<IntType>& rets, size_t num_element, IntType low, Int
 }  // namespace
 
 template <typename T>
-void SyntheticSampleBatch::AddIntInput(const std::vector<int64_t>& shape, T low, T high) {
+void SyntheticSampleBatch::AddIntInput(gsl::span<const int64_t> shape, T low, T high) {
   data_vector_.push_back(SyntheticInput(shape));
 
   std::vector<T> values;
@@ -55,21 +55,21 @@ void SyntheticSampleBatch::AddIntInput(const std::vector<int64_t>& shape, T low,
   data = values;
 }
 
-void SyntheticSampleBatch::AddInt64Input(const std::vector<int64_t>& shape, int64_t low, int64_t high) {
+void SyntheticSampleBatch::AddInt64Input(gsl::span<const int64_t> shape, int64_t low, int64_t high) {
   AddIntInput(shape, low, high);
 }
 
-void SyntheticSampleBatch::AddInt32Input(const std::vector<int64_t>& shape, int32_t low, int32_t high) {
+void SyntheticSampleBatch::AddInt32Input(gsl::span<const int64_t> shape, int32_t low, int32_t high) {
   AddIntInput(shape, low, high);
 }
 
-void SyntheticSampleBatch::AddBoolInput(const std::vector<int64_t>& shape) {
+void SyntheticSampleBatch::AddBoolInput(gsl::span<const int64_t> shape) {
   // Use uint8_t to store the bool value by intention, because vector<bool> is specialized, we can not create a
   // Tensor leveraging C APIs to reuse the data buffer.
   AddIntInput(shape, static_cast<uint8_t>(0), static_cast<uint8_t>(1));
 }
 
-void SyntheticSampleBatch::AddFloatInput(const std::vector<int64_t>& shape) {
+void SyntheticSampleBatch::AddFloatInput(gsl::span<const int64_t> shape) {
   data_vector_.push_back(SyntheticInput(shape));
 
   std::vector<float> values;

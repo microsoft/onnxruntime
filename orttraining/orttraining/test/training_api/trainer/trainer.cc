@@ -167,9 +167,9 @@ void InitSyntheticDataLoader(
     std::vector<int64_t> target_shape{params.train_batch_size};
     for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
       auto&& sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
-      sample.AddInt64Input(input_ids_shape, 0, 250002 - 1);
-      sample.AddInt64Input(attention_mask_shape, 0, 1);
-      sample.AddInt32Input(target_shape, 0, 1);
+      sample.AddInt64Input(gsl::make_span(input_ids_shape), 0, 250002 - 1);
+      sample.AddInt64Input(gsl::make_span(attention_mask_shape), 0, 1);
+      sample.AddInt32Input(gsl::make_span(target_shape), 0, 1);
       data_loader.AddSyntheticSampleBatch(sample);
     }
   } else if (params.synthetic_input_type == "U") {
@@ -180,10 +180,10 @@ void InitSyntheticDataLoader(
     std::vector<int64_t> target2_shape{params.train_batch_size, 81};
     for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
       auto&& sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
-      sample.AddInt64Input(input_ids_shape, 0, 250002 - 1);
-      sample.AddInt64Input(attention_mask_shape, 0, 1);
-      sample.AddInt32Input(target1_shape, 0, 1);
-      sample.AddInt32Input(target2_shape, 0, 1);
+      sample.AddInt64Input(gsl::make_span(input_ids_shape), 0, 250002 - 1);
+      sample.AddInt64Input(gsl::make_span(attention_mask_shape), 0, 1);
+      sample.AddInt32Input(gsl::make_span(target1_shape), 0, 1);
+      sample.AddInt32Input(gsl::make_span(target2_shape), 0, 1);
       data_loader.AddSyntheticSampleBatch(sample);
     }
   } else if (params.synthetic_input_type == "R") {
@@ -193,9 +193,9 @@ void InitSyntheticDataLoader(
     std::vector<int64_t> labels_shape{params.train_batch_size, 81};
     for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
       auto&& sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
-      sample.AddInt64Input(input_ids_shape, 0, 250002 - 1);
-      sample.AddInt64Input(attention_mask_shape, 0, 1);
-      sample.AddInt32Input(labels_shape, 0, 1);
+      sample.AddInt64Input(gsl::make_span(input_ids_shape), 0, 250002 - 1);
+      sample.AddInt64Input(gsl::make_span(attention_mask_shape), 0, 1);
+      sample.AddInt32Input(gsl::make_span(labels_shape), 0, 1);
       data_loader.AddSyntheticSampleBatch(sample);
     }
   } else if (params.synthetic_input_type == "C") {
@@ -207,10 +207,10 @@ void InitSyntheticDataLoader(
     std::vector<int64_t> labels_shape{params.train_batch_size};
     for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
       auto&& sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
-      sample.AddInt64Input(input_ids_shape, 0, 250002 - 1);
-      sample.AddBoolInput(mask_clss_shape);
-      sample.AddInt64Input(attention_mask_shape, 0, 1);
-      sample.AddInt32Input(labels_shape, 0, 1);
+      sample.AddInt64Input(gsl::make_span(input_ids_shape), 0, 250002 - 1);
+      sample.AddBoolInput(gsl::make_span(mask_clss_shape));
+      sample.AddInt64Input(gsl::make_span(attention_mask_shape), 0, 1);
+      sample.AddInt32Input(gsl::make_span(labels_shape), 0, 1);
       data_loader.AddSyntheticSampleBatch(sample);
     }
   } else {
