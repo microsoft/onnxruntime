@@ -171,7 +171,7 @@ class SessionScope {
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
                                                                                  ,
-                                                                                 dump_context_(session_state_.GetGraphExecutionCounter(), program_counter_)
+                                                                                 dump_context_ {session_state_.GetGraphExecutionCounter(), 0}
 #endif
   {
     if (session_state_.Profiler().IsEnabled()) {
@@ -213,10 +213,6 @@ class SessionScope {
     }
 #endif
 
-#ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    size_t program_counter = 0;
-    utils::NodeDumpContext dump_context{session_state.GetGraphExecutionCounter(), program_counter};
-#endif
     if (session_state_.Profiler().IsEnabled()) {
       session_state_.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
     }
@@ -253,7 +249,6 @@ private:
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-  size_t program_counter_{};
   utils::NodeDumpContext dump_context_;
 #endif
 };
@@ -279,6 +274,10 @@ class KernelScope {
                                                                        kernel_.Node().Name(),
                                                                        ")"),
                                                             profile::Color::Yellow)
+#endif
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+                                        ,
+                                        dump_context_ {session_scope_.dump_context_.iteration, kernel_.Node().Index()}
 #endif
   {
 #ifdef CONCURRENCY_VISUALIZER
@@ -306,8 +305,7 @@ class KernelScope {
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    session_scope_.dump_context_.program_counter = program_counter_++;
-    utils::DumpNodeInputs(session_scope_.dump_context_, kernel_context_, kernel_.Node(), session_state_);
+    utils::DumpNodeInputs(dump_context_, kernel_context_, kernel_.Node(), session_state_);
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -379,7 +377,7 @@ class KernelScope {
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeOutputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
+    utils::DumpNodeOutputs(dump_context_, kernel_context_, kernel_.Node(), session_state_);
 #endif
   }  //~KernelScope
 
@@ -403,6 +401,10 @@ class KernelScope {
 
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator node_compute_range_;
+#endif
+
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+  utils::NodeDumpContext dump_context_;
 #endif
 };
 
@@ -477,9 +479,6 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
   }
   ctx.RecycleNodeInputs(idx);
   LOGS(logger, INFO) << "stream " << stream_idx << " launch kernel with idx " << idx;
-#ifdef DEBUG_NODE_INPUTS_OUTPUTS
-  utils::DumpNodeOutputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
-#endif
   return Status::OK();
 }
 
