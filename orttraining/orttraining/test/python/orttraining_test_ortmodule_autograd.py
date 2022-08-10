@@ -1,6 +1,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+# pylint: disable=missing-docstring
+# pylint: disable=C0103
+
 from distutils.version import LooseVersion
 
 import pytest
@@ -34,7 +37,7 @@ def run_before_test_session(request):
     request.addfinalizer(remove_disable_fallback_from_env)
 
 
-def test_GeLU():
+def test_gelu():
     @torch.jit.script
     def bias_gelu(bias, y):
         x = bias + y
