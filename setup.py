@@ -674,7 +674,7 @@ if enable_training:
 
         content = content.replace(
             f"toggle_custom_autograd_support({not enable_training_torch_interop})",
-            "toggle_custom_autograd_support({enable_training_torch_interop})",
+            f"toggle_custom_autograd_support({enable_training_torch_interop})",
         )
 
         with open(training_torch_interop_enabler_path, "w") as f:
