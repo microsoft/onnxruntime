@@ -663,20 +663,28 @@ at::Tensor& copy_(
   auto& invoker = GetORTInvoker(self.device().type() == at::kORT ? self.device() : src.device());
   const auto ort_src = create_ort_value(invoker, src);
   auto ort_self = create_ort_value(invoker, self);
+
   if (self.scalar_type() != src.scalar_type()) {
-    // invoke cast first
-    std::vector<OrtValue> ort_cast_output(1);
-    onnxruntime::NodeAttributes attrs(1);
-    attrs["to"] = create_ort_attribute(
-        "to", (int64_t)GetONNXTensorProtoDataType(self.scalar_type()), at::kLong);
+    if(src.device().type() != at::kORT)
+    {
+      // invoke cast first and then copy for non-ORT device types
+      auto val = at::native::to(src, self.scalar_type());
+      const auto ort_val = create_ort_value(invoker, val);
+      copy(invoker, ort_val, ort_self);
+    }else{
+      // For ORT device type, the cast operation will perform the copy as well
+      std::vector<OrtValue> ort_cast_output(1);
+      ort_cast_output[0] = ort_self;
+      onnxruntime::NodeAttributes attrs(1);
+      attrs["to"] = create_ort_attribute(
+          "to", (int64_t)GetONNXTensorProtoDataType(self.scalar_type()), at::kLong);
 
-    auto status = invoker.Invoke("Cast",
-                                 {std::move(ort_src)},
-                                 ort_cast_output, &attrs);
+      auto status = invoker.Invoke("Cast",
+                                  {std::move(ort_src)},
+                                  ort_cast_output, &attrs);
 
-    CHECK_STATUS(status);
-
-    copy(invoker, ort_cast_output[0], ort_self);
+      CHECK_STATUS(status);
+    }
   } else {
     copy(invoker, ort_src, ort_self);
   }
@@ -912,6 +920,59 @@ const at::Tensor& resize_(
   return self;
 }
 
+// aten::cat.out(Tensor[] tensors, int dim=0, *, Tensor(a!) out) -> Tensor(a!)
+at::Tensor& cat_out(
+  at::TensorList tensors,
+  int64_t dim,
+  // *,
+  at::Tensor& out) {
+  ORT_LOG_FN(tensors, dim, out);
+
+  assert(tensors.size() > 0);
+  if (
+      std::vector<at::ScalarType> supportedTypes =
+        {at::kBFloat16, at::kBool, at::kByte, at::kDouble, at::kFloat, at::kHalf, at::kInt, at::kLong, at::kShort};
+      !IsSupportedType(tensors, supportedTypes)) {
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(cat_out)>::call(tensors, dim, out);
+  }
+  int64_t ndim = tensors[0].dim();
+  assert(ndim != 0);
+  dim = at::maybe_wrap_dim(dim, ndim);
+
+  auto& invoker = GetORTInvoker(tensors[0].device());
+
+  // IntArrayRef isn't writeable, convert to vector.
+  std::vector<int64_t> sizes;
+  for (auto s : tensors[0].sizes())
+    sizes.push_back(s);
+
+  // Calculate the new size of the dimension being concatenated.
+  sizes[dim] = 0;
+  for (auto t : tensors)
+    sizes[dim] += t.size(dim);
+
+  resize_output(invoker, dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()), at::IntArrayRef(sizes));
+  auto ort_input_out = create_ort_value(invoker, out);
+
+  auto ort_input_0_tensors = create_ort_value(invoker, tensors);
+
+  NodeAttributes attrs_0(1);
+  attrs_0["axis"] = create_ort_attribute(
+    "axis", dim, at::ScalarType::Int);
+
+  std::vector<OrtValue> ort_outputs_0_Concat(1);
+  ort_outputs_0_Concat[0] = ort_input_out;
+
+  auto status = invoker.Invoke("Concat", {
+    std::move(ort_input_0_tensors),
+  }, ort_outputs_0_Concat, &attrs_0);
+  CHECK_STATUS(status);
+
+  return out;
+}
+
 // aten::fill_.Scalar(Tensor(a!) self, Scalar value) -> Tensor(a!)
 at::Tensor& fill__Scalar(
     at::Tensor& self,
@@ -1111,6 +1172,36 @@ at::Tensor& mm_out(
   CHECK_STATUS(status);
 
   return out;
+}
+
+// aten::squeeze(Tensor(a) self) -> Tensor(a)
+at::Tensor squeeze(
+  const at::Tensor& self) {
+  ORT_LOG_FN(self);
+
+  if (
+       std::vector<at::ScalarType> supportedTypes =
+          {at::kBFloat16, at::kBool, at::kByte, at::kDouble, at::kFloat, at::kHalf, at::kInt, at::kLong, at::kShort};
+      !IsSupportedType(self, supportedTypes))
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(squeeze)>::call(self);
+
+  auto& invoker = GetORTInvoker(self.device());
+
+  auto ort_input_0_self = create_ort_value(invoker, self);
+
+  std::vector<OrtValue> ort_outputs_0_Squeeze(1);
+
+  auto status = invoker.Invoke("Squeeze", {
+    std::move(ort_input_0_self),
+  }, ort_outputs_0_Squeeze, nullptr);
+  CHECK_STATUS(status);
+
+  at::TensorOptions tensor_options = self.options();
+  return aten_tensor_from_ort(
+    std::move(ort_outputs_0_Squeeze[0]),
+    tensor_options);
 }
 
 }  // namespace aten

@@ -214,6 +214,18 @@ class PRelu final : public BinaryElementwise<ShouldBroadcast> {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+class Mod final : public BinaryElementwise<ShouldBroadcast> {
+ public:
+  Mod(const OpKernelInfo& info) : BinaryElementwise(info) {
+    int64_t fmod = info.GetAttrOrDefault<int64_t>("fmod", 0LL);
+    fmod_ = fmod != 0;
+  }
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  bool fmod_{false};
+};
+
 template <typename T, typename CudaT>
 class CompareFunction : public BinaryElementwise<ShouldBroadcast> {
  public:

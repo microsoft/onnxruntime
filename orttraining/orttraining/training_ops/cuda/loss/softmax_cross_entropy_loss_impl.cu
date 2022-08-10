@@ -2,242 +2,161 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cu_inc/elementwise_impl.cuh"
 
 namespace onnxruntime {
 namespace cuda {
 
+template <typename T, typename Tin, bool IsWeighted>
+struct OpSoftmaxCrossEntropyWeights {
+  OpSoftmaxCrossEntropyWeights(const Tin* label_data, const T* weight_data, Tin C, Tin ignore_index)
+      : label_data_(label_data), weight_data_(weight_data), C_(C), ignore_index_(ignore_index) {}
+
+  __device__ __inline__ T operator()(CUDA_LONG idx) const {
+    if (label_data_[idx] != ignore_index_) {
+      if (IsWeighted) {
+        CUDA_KERNEL_ASSERT(label_data_[idx] >= 0 && label_data_[idx] < C_);
+        return weight_data_[label_data_[idx]];
+      }
+      return T(1.f);
+    }
+    return T(0.f);
+  }
+
+  const Tin* label_data_;
+  const T* weight_data_;
+  Tin C_;
+  Tin ignore_index_;
+};
+
 template <typename T, typename Tin>
-__global__ void _ComputeWeightsSoftmaxCrossEntropy(
-    T* weight_data_nd,
-    const Tin* label_data,
-    const T* weight_data,
-    CUDA_LONG N_D,
-    CUDA_LONG C,
-    CUDA_LONG ignore_index) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N_D);
-  const T ONE_T = 1;
-  if (label_data[i] != ignore_index) {
-    CUDA_KERNEL_ASSERT(label_data[i] >= 0 && label_data[i] < C);
-    weight_data_nd[i] = weight_data != nullptr ? weight_data[label_data[i]] : ONE_T;
-  }
-}
-
-template <typename T, typename Tin>
-void ComputeWeightsSoftmaxCrossEntropyImpl(
-    cudaStream_t stream,
-    const Tin* label,
-    const T* weight,
-    size_t count,
-    size_t label_depth,
-    int64_t ignore_index,
-    T* weight_data_nd) {
-  int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
-  CUDA_LONG N_D = static_cast<CUDA_LONG>(count);
-  CUDA_LONG C = static_cast<CUDA_LONG>(label_depth);
-  CUDA_LONG II = static_cast<CUDA_LONG>(ignore_index);
-  _ComputeWeightsSoftmaxCrossEntropy<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-      weight_data_nd,
-      label,
-      weight,
-      N_D,
-      C,
-      II);
-}
-
-template <typename T, typename TAcc, typename Tin>
-__global__ void _WeightedSoftmaxCrossEntropyLoss(
-    const T* log_prob_data,
-    const Tin* label_data,
-    const T* weight_data,
-    const TAcc* normalize_factor_data,
-    T* output_data,
-    CUDA_LONG N_D,
-    CUDA_LONG C,
-    CUDA_LONG II) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N_D);
-  if (II == label_data[i]) {
-    output_data[i] = 0;
+void ComputeSoftmaxCrossEntropyWeightsImpl(cudaStream_t stream, const Tin* label, const T* weight, size_t count,
+                                           size_t label_depth, int64_t ignore_index, T* weight_data_nd) {
+  if (weight) {
+    OpSoftmaxCrossEntropyWeights<T, Tin, true> op(label, weight, static_cast<Tin>(label_depth),
+                                                  static_cast<Tin>(ignore_index));
+    LaunchElementwiseKernel<T, decltype(op)>(stream, weight_data_nd, op, count);
   } else {
-    CUDA_KERNEL_ASSERT(label_data[i] >= 0 && label_data[i] < C);
-    output_data[i] = static_cast<T>(static_cast<TAcc>(-log_prob_data[i * C + label_data[i]] * weight_data[i]) /
-                                    *normalize_factor_data);
+    OpSoftmaxCrossEntropyWeights<T, Tin, false> op(label, nullptr, static_cast<Tin>(label_depth),
+                                                   static_cast<Tin>(ignore_index));
+    LaunchElementwiseKernel<T, decltype(op)>(stream, weight_data_nd, op, count);
   }
 }
 
+#define INSTANTIATE_COMPUTE_SCE_WEIGHTS_IMPL(T, Tin)                                                          \
+  template void ComputeSoftmaxCrossEntropyWeightsImpl(cudaStream_t stream, const Tin* label, const T* weight, \
+                                                      size_t count, size_t label_depth, int64_t ignore_index, \
+                                                      T* weight_data_nd)
+
+INSTANTIATE_COMPUTE_SCE_WEIGHTS_IMPL(float, int32_t);
+INSTANTIATE_COMPUTE_SCE_WEIGHTS_IMPL(float, int64_t);
+INSTANTIATE_COMPUTE_SCE_WEIGHTS_IMPL(half, int64_t);
+INSTANTIATE_COMPUTE_SCE_WEIGHTS_IMPL(BFloat16, int64_t);
+
+#undef INSTANTIATE_COMPUTE_SCE_WEIGHTS_IMPL
+
 template <typename T, typename TAcc, typename Tin>
-void SoftmaxCrossEntropyLossImpl(
-    cudaStream_t stream,
-    const T* log_prob,
-    const Tin* label,
-    const T* weight,
-    const TAcc* normalize_factor,
-    size_t count,
-    size_t label_depth,
-    int64_t ignore_index,
-    T* output_data) {
-  int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
-  CUDA_LONG N_D = static_cast<CUDA_LONG>(count);
-  CUDA_LONG C = static_cast<CUDA_LONG>(label_depth);
-  CUDA_LONG II = static_cast<CUDA_LONG>(ignore_index);
-  _WeightedSoftmaxCrossEntropyLoss<T, TAcc, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-      log_prob,
-      label,
-      weight,
-      normalize_factor,
-      output_data,
-      N_D,
-      C,
-      II);
+struct OpWeightedSoftmaxCrossEntropyLoss {
+  OpWeightedSoftmaxCrossEntropyLoss(const T* log_prob_data, const Tin* label_data, const T* weight_data,
+                                    const TAcc* normalize_factor_data, Tin C, Tin ignore_index)
+      : log_prob_data_(log_prob_data),
+        label_data_(label_data),
+        weight_data_(weight_data),
+        normalize_factor_data_(normalize_factor_data),
+        C_(C),
+        ignore_index_(ignore_index) {}
+
+  __device__ __inline__ T operator()(CUDA_LONG idx) const {
+    if (label_data_[idx] != ignore_index_) {
+      CUDA_KERNEL_ASSERT(label_data_[idx] >= 0 && label_data_[idx] < C_);
+      return static_cast<T>(static_cast<TAcc>(-log_prob_data_[idx * C_ + label_data_[idx]] * weight_data_[idx]) /
+                            (*normalize_factor_data_));
+    }
+    return T(0.f);
+  }
+
+  const T* log_prob_data_;
+  const Tin* label_data_;
+  const T* weight_data_;
+  const TAcc* normalize_factor_data_;
+  Tin C_;
+  Tin ignore_index_;
+};
+
+template <typename T, typename TAcc, typename Tin>
+void SoftmaxCrossEntropyLossImpl(cudaStream_t stream, const T* log_prob, const Tin* label, const T* weight,
+                                 const TAcc* normalize_factor, size_t count, size_t label_depth, int64_t ignore_index,
+                                 T* output_data) {
+  OpWeightedSoftmaxCrossEntropyLoss<T, TAcc, Tin> op(log_prob, label, weight, normalize_factor,
+                                                     static_cast<Tin>(label_depth), static_cast<Tin>(ignore_index));
+  LaunchElementwiseKernel<T, decltype(op)>(stream, output_data, op, count);
 }
 
-#define INSTANTIATE_IMPL_SoftMaxEntropyLossImpl(T, TAcc, Tin) \
-  template void SoftmaxCrossEntropyLossImpl(                  \
-      cudaStream_t stream,                                    \
-      const T* log_prob,                                      \
-      const Tin* label,                                       \
-      const T* weight,                                        \
-      const TAcc* normalize_factor,                           \
-      size_t count,                                           \
-      size_t label_depth,                                     \
-      int64_t ignore_index,                                   \
-      T* output_data);
+template <typename T, typename TAcc, typename Tin, bool IsReductionNone>
+struct OpWeightedSoftmaxCrossEntropyLossGrad {
+  OpWeightedSoftmaxCrossEntropyLossGrad(const T* dY_data, const T* log_prob_data, const Tin* label_data,
+                                        const T* weight_data, const TAcc* normalize_factor_data, Tin C)
+      : dY_data_(dY_data),
+        log_prob_data_(log_prob_data),
+        label_data_(label_data),
+        weight_data_(weight_data),
+        normalize_factor_data_(normalize_factor_data),
+        C_(C) {
+    C_fdm_ = fast_divmod(static_cast<int>(C));
+  }
 
-INSTANTIATE_IMPL_SoftMaxEntropyLossImpl(float, float, int32_t)
-INSTANTIATE_IMPL_SoftMaxEntropyLossImpl(float, float, int64_t)
-INSTANTIATE_IMPL_SoftMaxEntropyLossImpl(half, float, int64_t)
-INSTANTIATE_IMPL_SoftMaxEntropyLossImpl(BFloat16, float, int64_t)
-
-template <typename T, typename TAcc, typename Tin>
-__global__ void _WeightedSoftmaxCrossEntropyLossGrad(
-    const T* dY,
-    const T* log_prob,
-    const Tin* label,
-    const T* weight,
-    const TAcc* normalize_factor,
-    T* output_data,
-    CUDA_LONG N_D,
-    CUDA_LONG C) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N_D * C);
-
-  int row = i / C;
-  int d = i % C;
-  const T ZERO_T = 0;
-  const TAcc ZERO_TAcc = 0;
-  const TAcc ONE_TAcc = 1;
-  CUDA_KERNEL_ASSERT(weight[row] == ZERO_T || (label[row] >= 0 && label[row] < C));
-  if (ZERO_TAcc == *normalize_factor) {
-    // normalize_factor is sum of labels' weights. Because zero
-    // sum implies all weights are 0, the loss function should
+  __device__ __inline__ T operator()(CUDA_LONG idx) const {
+    // normalize_factor is sum of labels' weights. Because zero sum implies all weights are 0, the loss function should
     // be constant 0 and its corresponding gradient should be 0 as well.
-    output_data[i] = ZERO_T;
-  } else {
-    output_data[i] = static_cast<T>(static_cast<TAcc>((*dY) * weight[row]) *
-                                    (_Exp(static_cast<TAcc>(log_prob[i])) - ONE_TAcc * (TAcc)(d == label[row])) /
-                                    (*normalize_factor));
+    if (*normalize_factor_data_ != TAcc(0.f)) {
+      int row, d;
+      C_fdm_.divmod(idx, row, d);
+      CUDA_KERNEL_ASSERT(weight_data_[row] == T(0.f) || (label_data_[row] >= 0 && label_data_[row] < C_));
+      return static_cast<T>(static_cast<TAcc>((IsReductionNone ? dY_data_[row] : *dY_data_) * weight_data_[row]) *
+                            (_Exp(static_cast<TAcc>(log_prob_data_[idx])) - (TAcc)(d == label_data_[row])) /
+                            (*normalize_factor_data_));
+    }
+    return T(0.f);
   }
-}
+
+  const T* dY_data_;
+  const T* log_prob_data_;
+  const Tin* label_data_;
+  const T* weight_data_;
+  const TAcc* normalize_factor_data_;
+  Tin C_;
+  fast_divmod C_fdm_;
+};
 
 template <typename T, typename TAcc, typename Tin>
-__global__ void _WeightedReductionNoneSoftmaxCrossEntropyLossGrad(
-    const T* dY,
-    const T* log_prob,
-    const Tin* label,
-    const T* weight,
-    const TAcc* normalize_factor,
-    T* output_data,
-    CUDA_LONG N_D,
-    CUDA_LONG C) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N_D * C);
-
-  int row = i / C;
-  int d = i % C;
-  const T ZERO_T = 0;
-  const TAcc ZERO_TAcc = 0;
-  const TAcc ONE_TAcc = 1;
-  CUDA_KERNEL_ASSERT(weight[row] == ZERO_T || (label[row] >= 0 && label[row] < C));
-  if (ZERO_TAcc == *normalize_factor) {
-    // normalize_factor is sum of labels' weights. Because zero
-    // sum implies all weights are 0, the loss function should
-    // be constant 0 and its corresponding gradient should be 0 as well.
-    output_data[i] = ZERO_T;
-  } else {
-    output_data[i] = static_cast<T>(static_cast<TAcc>(dY[row] * weight[row]) *
-                                    (_Exp(static_cast<TAcc>(log_prob[i])) - ONE_TAcc * (TAcc)(d == label[row])) /
-                                    (*normalize_factor));
-  }
-}
-
-template <typename T, typename TAcc, typename Tin>
-void SoftmaxCrossEntropyLossGradImpl(
-    cudaStream_t stream,
-    const T* dY,
-    const T* log_prob,
-    const Tin* label,
-    const T* weight,
-    const TAcc* normalize_factor,
-    size_t count,
-    size_t label_depth,
-    bool reduction_none,
-    T* output_data) {
-  CUDA_LONG N_D = static_cast<CUDA_LONG>(count);
-  CUDA_LONG C = static_cast<CUDA_LONG>(label_depth);
-  int blocksPerGrid = (int)(ceil(static_cast<float>(N_D * C) / GridDim::maxThreadsPerBlock));
+void SoftmaxCrossEntropyLossGradImpl(cudaStream_t stream, const T* dY, const T* log_prob, const Tin* label,
+                                     const T* weight, const TAcc* normalize_factor, size_t count, size_t label_depth,
+                                     bool reduction_none, T* output_data) {
   if (reduction_none) {
-    _WeightedReductionNoneSoftmaxCrossEntropyLossGrad<T, TAcc, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-        dY,
-        log_prob,
-        label,
-        weight,
-        normalize_factor,
-        output_data,
-        N_D,
-        C);
+    OpWeightedSoftmaxCrossEntropyLossGrad<T, TAcc, Tin, true> op(dY, log_prob, label, weight, normalize_factor,
+                                                                 static_cast<Tin>(label_depth));
+    LaunchElementwiseKernel<T, decltype(op)>(stream, output_data, op, count * label_depth);
   } else {
-    _WeightedSoftmaxCrossEntropyLossGrad<T, TAcc, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-        dY,
-        log_prob,
-        label,
-        weight,
-        normalize_factor,
-        output_data,
-        N_D,
-        C);
+    OpWeightedSoftmaxCrossEntropyLossGrad<T, TAcc, Tin, false> op(dY, log_prob, label, weight, normalize_factor,
+                                                                  static_cast<Tin>(label_depth));
+    LaunchElementwiseKernel<T, decltype(op)>(stream, output_data, op, count * label_depth);
   }
 }
 
-#define INSTANTIATE_IMPL_SoftMaxEntropyLossGradImpl(T, TAcc, Tin) \
-  template void SoftmaxCrossEntropyLossGradImpl(                  \
-      cudaStream_t stream,                                        \
-      const T* dY,                                                \
-      const T* log_prob,                                          \
-      const Tin* label,                                           \
-      const T* weight,                                            \
-      const TAcc* normalize_factor,                               \
-      size_t count,                                               \
-      size_t label_depth,                                         \
-      bool reducation_none,                                       \
-      T* output_data);
+#define INSTANTIATE_SCE_LOSS_IMPL(T, TAcc, Tin)                                                                        \
+  template void SoftmaxCrossEntropyLossImpl(cudaStream_t stream, const T* log_prob, const Tin* label, const T* weight, \
+                                            const TAcc* normalize_factor, size_t count, size_t label_depth,            \
+                                            int64_t ignore_index, T* output_data);                                     \
+  template void SoftmaxCrossEntropyLossGradImpl(cudaStream_t stream, const T* dY, const T* log_prob, const Tin* label, \
+                                                const T* weight, const TAcc* normalize_factor, size_t count,           \
+                                                size_t label_depth, bool reducation_none, T* output_data)
 
-INSTANTIATE_IMPL_SoftMaxEntropyLossGradImpl(float, float, int32_t)
-INSTANTIATE_IMPL_SoftMaxEntropyLossGradImpl(float, float, int64_t)
-INSTANTIATE_IMPL_SoftMaxEntropyLossGradImpl(half, float, int64_t)
-INSTANTIATE_IMPL_SoftMaxEntropyLossGradImpl(BFloat16, float, int64_t)
+INSTANTIATE_SCE_LOSS_IMPL(float, float, int32_t);
+INSTANTIATE_SCE_LOSS_IMPL(float, float, int64_t);
+INSTANTIATE_SCE_LOSS_IMPL(half, float, int64_t);
+INSTANTIATE_SCE_LOSS_IMPL(BFloat16, float, int64_t);
 
-#define INSTANTIATE_IMPL_ComputeWeightsSoftmaxCrossEntropyImpl(T, Tin) \
-  template void ComputeWeightsSoftmaxCrossEntropyImpl(                 \
-      cudaStream_t stream,                                             \
-      const Tin* label,                                                \
-      const T* weight,                                                 \
-      size_t count,                                                    \
-      size_t label_depth,                                              \
-      int64_t ignore_index,                                            \
-      T* weight_data_nd);
-
-INSTANTIATE_IMPL_ComputeWeightsSoftmaxCrossEntropyImpl(float, int32_t)
-INSTANTIATE_IMPL_ComputeWeightsSoftmaxCrossEntropyImpl(float, int64_t)
-INSTANTIATE_IMPL_ComputeWeightsSoftmaxCrossEntropyImpl(half, int64_t)
-INSTANTIATE_IMPL_ComputeWeightsSoftmaxCrossEntropyImpl(BFloat16, int64_t)
+#undef INSTANTIATE_SCE_LOSS_IMPL
 
 }  // namespace cuda
 }  // namespace onnxruntime

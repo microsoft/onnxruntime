@@ -30,7 +30,7 @@ class InferenceSessionProtectedLoadAccessor : public onnxruntime::InferenceSessi
  public:
   onnxruntime::common::Status
   Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto) {
-    return onnxruntime::InferenceSession::Load(std::move(p_model_proto));
+    return onnxruntime::InferenceSession::LoadOnnxModel(std::move(p_model_proto));
   }
   const onnxruntime::SessionState& GetSessionState() {
     return onnxruntime::InferenceSession::GetSessionState();

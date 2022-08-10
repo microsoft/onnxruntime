@@ -1387,6 +1387,36 @@ void RegisterTrainingOpSchemas() {
         }
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(InplaceClipGradNorm)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "InplaceClipGradNorm operator, taking multiple gradients as inputs (seq<tensor>). "
+          "InplaceClipGradNorm should be used in conjunction with optimizers that accept seq<tensor> "
+          "gradients as input, since this op takes a sequence of tensors as input and outputs a sequence of tensors "
+          "there by avoiding the need for SequenceConstruct (and making any unnecessary copy)."
+          "Please note that the gradient clipping happens inplace.")
+      .Input(0, "gradients", "Sequence of gradients computed in this iteration.", "S_GRAD")
+      .Output(0, "clipped_gradients", "Gradients after being clipped as per given inputs and attributes.", "S_GRAD")
+      .Attr(
+          "max_norm",
+          "Coefficient of previously accumulated gradient in running average.",
+          AttributeProto::FLOAT,
+          1.0f)
+      .Attr(
+          "norm_type",
+          "Type of normalization to perform during execution of clip grad norm."
+          "Currently, the only norm supported is the frobenius norm (which is also the default).",
+          AttributeProto::STRING,
+          std::string("fro"))
+      .TypeConstraint(
+          "S_GRAD",
+          {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
+          "Constrain gradients' types.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(LambOptimizer, RegisterLambOpSchema);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(InPlaceAccumulator)

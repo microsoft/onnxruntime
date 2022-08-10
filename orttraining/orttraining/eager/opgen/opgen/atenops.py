@@ -153,6 +153,7 @@ hand_implemented = {
     "aten::gelu": Gelu("self"),
     "aten::max": ReduceMax("self", keepdims=0),
     "aten::min": ReduceMin("self", keepdims=0),
+    "aten::cat.out": SignatureOnly(),
     "aten::fill_.Scalar": SignatureOnly(),
     "aten::ne.Scalar_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
     "aten::ne.Tensor_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
@@ -178,6 +179,9 @@ hand_implemented = {
     "aten::nll_loss_forward.output": MakeTorchFallback(),
     "aten::nll_loss_backward.grad_input": MakeTorchFallback(),
     "aten::_log_softmax_backward_data.out": MakeTorchFallback(),
+    "aten::squeeze.dim": Squeeze("self", "dim"),
+    "aten::squeeze": SignatureOnly(),
+    "aten::unsqueeze": Unsqueeze(data="self", axes="dim"),
 }
 
 # If the aten op expects a specific output type that differs from self
