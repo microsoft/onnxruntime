@@ -60,7 +60,7 @@ def toggle_custom_autograd_support(flag):
         enable_custom_autograd_support()
 
 
-# Be noted, setup.py will replace below with "enable_custom_autograd_support(True|False)" at the end of the file if
+# Be noted, setup.py will replace below with "toggle_custom_autograd_support(True|False)" at the end of the file if
 # enable_training_torch_interop is toggled during build.
 
 toggle_custom_autograd_support(False)
