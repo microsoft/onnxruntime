@@ -223,7 +223,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     for (int i = 0; i < batch_beam_size; i++) {
       gsl::span<const T> source(current_logits, vocab_size);
       gsl::span<T> target = next_token_logits.subspan(SafeInt<gsl::index>(i) * vocab_size, static_cast<gsl::index>(vocab_size));
-      gsl::copy(source, target);
+      gsl::copy(source, target); // TODO: This copy might not be required for step > 1
       current_logits += input_length * vocab_size;
     }
   }
