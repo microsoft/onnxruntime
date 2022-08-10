@@ -17,6 +17,7 @@ class NGramRepeatBlock final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* ctx) const override;
  private:
   int64_t ngram_size_;
+  int64_t banned_no_further_than_;
 };
 
 }  // namespace cuda

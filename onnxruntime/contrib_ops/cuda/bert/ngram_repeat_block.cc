@@ -23,7 +23,9 @@ using namespace ONNX_NAMESPACE;
 
 NGramRepeatBlock::NGramRepeatBlock(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(info.GetAttr<int64_t>("ngram_size", &ngram_size_).IsOK());
+  ORT_ENFORCE(info.GetAttr<int64_t>("banned_no_further_than", &banned_no_further_than_).IsOK());
   ORT_ENFORCE(ngram_size_ > 0);
+  ORT_ENFORCE(banned_no_further_than_ >= 0);
 }
 
 Status NGramRepeatBlock::ComputeInternal(OpKernelContext* context) const {
@@ -62,6 +64,7 @@ Status NGramRepeatBlock::ComputeInternal(OpKernelContext* context) const {
       gsl::narrow_cast<int>(vocab_size),
       gsl::narrow_cast<int>(1),
       gsl::narrow_cast<int>(ngram_size_));
+      gsl::narrow_cast<int>(banned_no_further_than_));
 
   return Status::OK();
 }

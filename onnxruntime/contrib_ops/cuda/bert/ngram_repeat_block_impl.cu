@@ -20,10 +20,15 @@ using namespace onnxruntime::cuda;
 __global__ void banRepeatedTokens(const int64_t* __restrict__ tokens,
                                   float* __restrict__ lprobs,
                                   int max_predict_len, int vocab_size,
+                                  int banned_no_further_than,
                                   int no_repeat_ngram_size) {
   auto row = blockIdx.x;
   auto col = threadIdx.x;
   auto start = row * (max_predict_len) + col;
+  auto cur_len = (row + 1) * (max_predict_len);
+  if (banned_no_further_than > 0 && cur_len > banned_no_further_than_){
+    start = cur_len - banned_no_further_than_;
+  }
   // Each thread compares ngram starting from
   // thread index with final ngram starting from
   // step - no_repeat_ngram_size +2
@@ -64,6 +69,7 @@ void NGramRepeatBlockImpl(
     int max_predict_len,
     int vocab_size,
     int beam_size,
+    int banned_no_further_than,
     int no_repeat_ngram_size) {
   int threads = step - no_repeat_ngram_size + 2;
   if (threads <= 0) return;
@@ -76,7 +82,7 @@ void NGramRepeatBlockImpl(
   // each token will be accessed N times to compare with current Ngram where
   // N is Ngram size.
   banRepeatedTokens<<<blocks, threads, shared_mem_size, stream>>>(
-      tokens_ptr, scores_ptr, max_predict_len, vocab_size, no_repeat_ngram_size);
+      tokens_ptr, scores_ptr, max_predict_len, vocab_size, banned_no_further_than, no_repeat_ngram_size);
 }
 
 }  // namespace cuda

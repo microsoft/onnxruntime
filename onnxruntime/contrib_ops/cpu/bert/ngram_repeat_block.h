@@ -13,7 +13,9 @@ class NGramRepeatBlock : public OpKernel {
  public:
   explicit NGramRepeatBlock(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("ngram_size", &ngram_size_).IsOK());
+    ORT_ENFORCE(info.GetAttr<int64_t>("banned_no_further_than", &banned_no_further_than_).IsOK());
     ORT_ENFORCE(ngram_size_ > 0);
+    ORT_ENFORCE(banned_no_further_than_ >= 0);
   }
 
   Status Compute(OpKernelContext* context) const override {
@@ -43,7 +45,11 @@ class NGramRepeatBlock : public OpKernel {
     const auto* input_ids_data = static_cast<const int64_t*>(input_ids->DataRaw(input_ids->DataType()));
 
     auto lambda = [&](int64_t b) {
-      for (int64_t i = 0; i < cur_len; ++i) {
+      int start_pos = 0;
+      if (banned_no_further_than_ > 0 && cur_len > banned_no_further_than_) {
+        start_pos = cur_len - banned_no_further_than_;
+      }
+      for (int64_t i = start_pos; i < cur_len; ++i) {
         if (i + ngram_size_ > cur_len) {
           break;
         }
@@ -80,6 +86,7 @@ class NGramRepeatBlock : public OpKernel {
   }
  private:
   int64_t ngram_size_;
+  int64_t banned_no_further_than_;
 };
 }  // namespace contrib
 }  // namespace onnxruntime
