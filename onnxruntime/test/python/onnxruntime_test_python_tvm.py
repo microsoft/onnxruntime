@@ -194,13 +194,12 @@ def serialize_virtual_machine(vm_exec: tvm.runtime.vm.Executable, use_hash: bool
     return temp_directory
 
 
-class TestTVMBase(unittest.TestCase):
+class TestTVMBase:
     """
     Base unit tests for TVM EP
     """
-    __test__ = False
 
-    def get_onnx_model_path_or_str(self, onnx_model: ModelProto, so_folder: str = None):
+    def get_onnx_model_path_or_str(self, onnx_model: ModelProto):
         raise NotImplementedError("Must be overrided in child classes")
 
     def test_accuracy_for_model_with_dynamic_shapes(self):
@@ -208,6 +207,7 @@ class TestTVMBase(unittest.TestCase):
         Accuracy test for model with dynamic shapes
         """
         onnx_model = get_model_with_dynamic_shapes()
+        onnx_model_path_or_str = self.get_onnx_model_path_or_str(onnx_model)
         data = get_input_data_for_model_with_dynamic_shapes()
 
         cpu_output = get_cpu_output(onnx_model, data)
@@ -217,7 +217,6 @@ class TestTVMBase(unittest.TestCase):
             input_names=" ".join(names),
             input_shapes=" ".join(shapes),
         )
-        onnx_model_path_or_str = self.get_onnx_model_path_or_str(onnx_model)
         tvm_output = get_tvm_output(onnx_model_path_or_str, data, provider_options)
 
         assert_almost_equal(cpu_output, tvm_output, decimal=5)
@@ -227,6 +226,7 @@ class TestTVMBase(unittest.TestCase):
         Accuracy test for TVMso Ep
         """
         onnx_model = get_model_with_fixed_shapes()
+        onnx_model_path_or_str = self.get_onnx_model_path_or_str(onnx_model)
         data = get_input_data_for_model_with_fixed_shapes(onnx_model)
 
         cpu_output = get_cpu_output(onnx_model, data)
@@ -237,75 +237,74 @@ class TestTVMBase(unittest.TestCase):
             target="llvm",
             so_folder=so_folder,
         )
-        onnx_model_path_or_str = self.get_onnx_model_path_or_str(onnx_model, so_folder)
         tvm_output = get_tvm_output(onnx_model_path_or_str, data, provider_options)
 
         assert_almost_equal(cpu_output, tvm_output, decimal=5)
 
-    def test_handshake_mechanism_for_tvm_so(self):
+    def test_handshake_mechanism_check_hash_obtained_from_compiled_vm(self):
         """
-        Handshake mechanism tests for TVMso Ep
+        Handshake mechanism scenario #1: Check hash obtained from compiled VM (there is no file with hash)
         """
-        print("Handshake mechanism scenario #1: Check hash obtained from compiled VM (there is no file with hash)")
-        onnx_model = get_model_with_fixed_shapes()
-        data = get_input_data_for_model_with_fixed_shapes(onnx_model)
+        self.check_handshake_mechanism(save_hash_in_default_file=False, specify_hash_file_path=False)
 
+    def test_handshake_mechanism_check_hash_obtained_from_default_file(self):
+        """
+        Handshake mechanism scenario #2: Check hash obtained from default file in so_folder
+        """
+        self.check_handshake_mechanism(save_hash_in_default_file=True, specify_hash_file_path=False)
+
+    def test_handshake_mechanism_check_hash_obtained_from_client_file(self):
+        """
+        Handshake mechanism scenario #3: Check hash obtained from client file
+        """
+        self.check_handshake_mechanism(save_hash_in_default_file=True, specify_hash_file_path=True)
+
+    def check_handshake_mechanism(self, save_hash_in_default_file: bool, specify_hash_file_path: bool):
+        onnx_model = get_model_with_fixed_shapes()
+        onnx_model_path_or_str = self.get_onnx_model_path_or_str(onnx_model)
+        data = get_input_data_for_model_with_fixed_shapes(onnx_model)
         compiled_vm_exec = compile_virtual_machine(onnx_model, target_str="llvm", use_hash=True)
 
-        so_folder = serialize_virtual_machine(compiled_vm_exec)
-        onnx_model_path_or_str = self.get_onnx_model_path_or_str(onnx_model, so_folder)
+        so_folder = serialize_virtual_machine(compiled_vm_exec, use_hash=save_hash_in_default_file)
         provider_options = dict(
             target="llvm",
             so_folder=so_folder,
             check_hash=True,
-        )
-        get_tvm_output(onnx_model_path_or_str, data, provider_options)
-
-        print("Handshake mechanism scenario #2: Check hash obtained from default file in so_folder")
-        so_folder = serialize_virtual_machine(compiled_vm_exec, use_hash=True)
-        onnx_model_path_or_str = self.get_onnx_model_path_or_str(onnx_model, so_folder)
-
-        get_tvm_output(onnx_model_path_or_str, data, provider_options)
-
-        print("Handshake mechanism scenario #3: Check hash obtained from client file")
-
-        provider_options = dict(
-            target="llvm",
-            so_folder=so_folder,
-            check_hash=True,
-            hash_file_path=str(os.path.join(so_folder, "hash.txt")),
+            hash_file_path="" if not specify_hash_file_path else os.path.join(so_folder, "hash.txt"),
         )
         get_tvm_output(onnx_model_path_or_str, data, provider_options)
 
 
-class TestTVMFromPath(TestTVMBase):
+class TestTVMFromPath(TestTVMBase, unittest.TestCase):
     """
     Unit tests for TVM EP. ONNX model is extracted from path
     """
 
-    __test__ = True
-
-    def get_onnx_model_path_or_str(self, onnx_model: ModelProto, so_folder: str = None):
-        if not so_folder:
-            so_folder = tempfile.mkdtemp()
-        onnx_path = os.path.join(so_folder, "onnx_model.onnx")
+    def get_onnx_model_path_or_str(self, onnx_model: ModelProto):
+        onnx_path = tempfile.mktemp()
         save_model(onnx_model, onnx_path)
         return onnx_path
 
 
-class TestTVMFromString(TestTVMBase):
+class TestTVMFromString(TestTVMBase, unittest.TestCase):
     """
     Unit tests for TVM EP. ONNX model is extracted from serialized string
     """
 
-    __test__ = True
-
-    def get_onnx_model_path_or_str(self, onnx_model: ModelProto, so_folder: str = None):
+    def get_onnx_model_path_or_str(self, onnx_model: ModelProto):
         return onnx_model.SerializeToString()
 
     @unittest.skip("Skip handshake mechanism test for onnx model extracted from string")
-    def test_handshake_mechanism_for_tvm_so(self):
-        print("Skip base test for a moment")
+    def test_handshake_mechanism_check_hash_obtained_from_compiled_vm(self):
+        pass
+
+    @unittest.skip("Skip handshake mechanism test for onnx model extracted from string")
+    def test_handshake_mechanism_check_hash_obtained_from_default_file(self):
+        pass
+
+    @unittest.skip("Skip handshake mechanism test for onnx model extracted from string")
+    def test_handshake_mechanism_check_hash_obtained_from_client_file(self):
+        pass
 
 
 if __name__ == "__main__":
