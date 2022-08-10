@@ -47,7 +47,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSIntern
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, int8_t, QLinearConv);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearAveragePool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider,
-                                      kMSInternalNHWCDomain, 1, QLinearSoftmax);
+                                      kMSDomain, 1, QLinearSoftmax);
 
 std::unique_ptr<KernelRegistry> RegisterKernels() {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
@@ -68,7 +68,8 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO_TYPED(10, uint8_t, QLinearConv),
       KERNEL_CREATE_INFO_TYPED(10, int8_t, QLinearConv),
       KERNEL_CREATE_INFO(1, QLinearAveragePool),
-      KERNEL_CREATE_INFO(1, QLinearSoftmax),
+      BuildKernelCreateInfo<
+      ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSDomain, 1, QLinearSoftmax)>,
   };
 
   for (auto& function_table_entry : function_table) {

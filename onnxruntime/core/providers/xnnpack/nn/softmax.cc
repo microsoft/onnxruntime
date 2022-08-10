@@ -231,7 +231,7 @@ ONNX_OPERATOR_KERNEL_EX(Softmax, kOnnxDomain, 13, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         Softmax);
 
-ONNX_OPERATOR_KERNEL_EX(QLinearSoftmax, kMSInternalNHWCDomain, 1, kXnnpackExecutionProvider,
+ONNX_OPERATOR_KERNEL_EX(QLinearSoftmax, kMSDomain, 1, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
                         Softmax);
 

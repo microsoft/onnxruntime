@@ -12,7 +12,6 @@
 namespace onnxruntime {
 namespace contrib {
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearAveragePool);
-class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearSoftmax);
 }
 namespace internal_nhwc_onnx {
 
@@ -79,7 +78,6 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, AveragePool, 11);
   REGISTER_NHWC_SCHEMA(fn, QLinearConv, 10);
   REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearAveragePool, 1);
-  REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearSoftmax, 1);
 
   // TODO: Add other layout sensitive ops when needed. Those are:
   //   QLinearConv,
