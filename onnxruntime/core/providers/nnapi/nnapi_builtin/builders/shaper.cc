@@ -238,38 +238,6 @@ Status Shaper::SqueezeImpl(const std::string& input_name,
   return Status::OK();
 }
 
-/* Status Shaper::ResizeUsingScalesImpl(const std::string& input_name,
-                                     const float scale_h, const float scale_w,
-                                     bool nchw,
-                                     const std::string& output_name) {
-  Shape output_dimen = shape_map_.at(input_name);
-  if (nchw) {
-    output_dimen[2] = static_cast<uint32_t>(output_dimen[2] * scale_h);
-    output_dimen[3] = static_cast<uint32_t>(output_dimen[3] * scale_w);
-  } else {  // nhwc
-    output_dimen[1] = static_cast<uint32_t>(output_dimen[1] * scale_h);
-    output_dimen[2] = static_cast<uint32_t>(output_dimen[2] * scale_w);
-  }
-  shape_map_[output_name] = output_dimen;
-  return Status::OK();
-}
-
-Status Shaper::ResizeUsingOutputSizesImpl(const std::string& input_name,
-                                          const uint32_t output_h, const uint32_t output_w,
-                                          bool nchw,
-                                          const std::string& output_name) {
-  Shape output_dimen = shape_map_.at(input_name);
-  if (nchw) {
-    output_dimen[2] = output_h;
-    output_dimen[3] = output_w;
-  } else {  // nhwc
-    output_dimen[1] = output_h;
-    output_dimen[2] = output_w;
-  }
-  shape_map_[output_name] = output_dimen;
-  return Status::OK();
-} */
-
 void Shaper::AddShape(const std::string& name, const Shape& shape) {
   shape_map_[name] = shape;
 }
