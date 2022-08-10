@@ -529,7 +529,10 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 
   for (size_t i = 0; i < execution_plan->execution_plan.size(); ++i) {
     if (execution_plan->execution_plan[i]->steps_.empty()) {
-      ctx.CompleteStream(i);
+      // execution context is initialized with number of valid streams
+      // for invalid stream (0 steps), it doesn't count in number of tasks
+      // so don't need to invoke CompleteTask here
+      //ctx.CompleteTask();
     } else {
       concurrency::ThreadPool::Schedule(tp, [i, &ctx]() {
         RunSince(i, ctx, 0);
