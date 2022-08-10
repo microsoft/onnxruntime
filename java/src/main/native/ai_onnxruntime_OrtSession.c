@@ -4,6 +4,7 @@
  */
 #include <jni.h>
 #include <string.h>
+#include <stdlib.h>
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "OrtJniUtil.h"
 #include "ai_onnxruntime_OrtSession.h"
@@ -88,7 +89,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getInputNames(JNIE
   OrtSession* session = (OrtSession*)sessionHandle;
 
   // Setup
-  char* stringClassName = "java/lang/String";
+  static const char* stringClassName = "java/lang/String";
   jclass stringClazz = (*jniEnv)->FindClass(jniEnv, stringClassName);
 
   // Get the number of inputs
@@ -100,7 +101,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getInputNames(JNIE
 
   // Allocate the return array
   jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(numInputs), stringClazz, NULL);
-  for (uint32_t i = 0; i < numInputs; i++) {
+  for (size_t i = 0; i < numInputs; i++) {
     // Read out the input name and convert it to a java.lang.String
     char* inputName = NULL;
     code = checkOrtStatus(jniEnv, api, api->SessionGetInputName(session, i, allocator, &inputName));
@@ -145,7 +146,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getOutputNames(JNI
   OrtAllocator* allocator = (OrtAllocator*)allocatorHandle;
 
   // Setup
-  char* stringClassName = "java/lang/String";
+  static const char* stringClassName = "java/lang/String";
   jclass stringClazz = (*jniEnv)->FindClass(jniEnv, stringClassName);
 
   // Get the number of outputs
@@ -189,7 +190,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getInputInfo(JNIEn
   OrtAllocator* allocator = (OrtAllocator*)allocatorHandle;
 
   // Setup
-  char* nodeInfoClassName = "ai/onnxruntime/NodeInfo";
+  static const char* nodeInfoClassName = "ai/onnxruntime/NodeInfo";
   jclass nodeInfoClazz = (*jniEnv)->FindClass(jniEnv, nodeInfoClassName);
   jmethodID nodeInfoConstructor = (*jniEnv)->GetMethodID(jniEnv, nodeInfoClazz, "<init>",
                                                          "(Ljava/lang/String;Lai/onnxruntime/ValueInfo;)V");
@@ -248,7 +249,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getOutputInfo(JNIE
   OrtAllocator* allocator = (OrtAllocator*)allocatorHandle;
 
   // Setup
-  char* nodeInfoClassName = "ai/onnxruntime/NodeInfo";
+  static const char* nodeInfoClassName = "ai/onnxruntime/NodeInfo";
   jclass nodeInfoClazz = (*jniEnv)->FindClass(jniEnv, nodeInfoClassName);
   jmethodID nodeInfoConstructor = (*jniEnv)->GetMethodID(jniEnv, nodeInfoClazz, "<init>",
                                                          "(Ljava/lang/String;Lai/onnxruntime/ValueInfo;)V");
@@ -316,35 +317,29 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run(JNIEnv* jniEnv
   jobjectArray outputArray = NULL;
 
   // Create the buffers for the Java input & output strings, and the input pointers
-  const char** inputNames = NULL;
-  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator, sizeof(char*) * numInputs, (void**)&inputNames));
-  if (code != ORT_OK) {
+  const char** inputNames = malloc(sizeof(char*) * numInputs);
+  if (inputNames == NULL) {
     // Nothing to cleanup, return and throw exception
     return outputArray;
   }
-  const char** outputNames = NULL;
-  code = checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator, sizeof(char*) * numOutputs, (void**)&outputNames));
-  if (code != ORT_OK) {
+  const char** outputNames = malloc(sizeof(char*) * numOutputs);
+  if (outputNames == NULL) {
     goto cleanup_input_names;
   }
-  jobject* javaInputStrings = NULL;
-  code = checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator, sizeof(jobject) * numInputs, (void**)&javaInputStrings));
-  if (code != ORT_OK) {
+  jobject* javaInputStrings = malloc(sizeof(jobject) * numInputs);
+  if (javaInputStrings == NULL) {
     goto cleanup_output_names;
   }
-  jobject* javaOutputStrings = NULL;
-  code = checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator, sizeof(jobject) * numOutputs, (void**)&javaOutputStrings));
-  if (code != ORT_OK) {
+  jobject* javaOutputStrings = malloc(sizeof(jobject) * numOutputs);
+  if (javaOutputStrings == NULL) {
     goto cleanup_java_input_strings;
   }
-  const OrtValue** inputValues = NULL;
-  code = checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator, sizeof(OrtValue*) * numInputs, (void**)&inputValues));
-  if (code != ORT_OK) {
+  const OrtValue** inputValues = malloc(sizeof(OrtValue*) * numInputs);
+  if (inputValues == NULL) {
     goto cleanup_java_output_strings;
   }
-  OrtValue** outputValues = NULL;
-  code = checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator, sizeof(OrtValue*) * numOutputs, (void**)&outputValues));
-  if (code != ORT_OK) {
+  OrtValue** outputValues = malloc(sizeof(OrtValue*) * numOutputs);
+  if (outputValues == NULL) {
     goto cleanup_input_values;
   }
 
@@ -381,7 +376,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run(JNIEnv* jniEnv
   }
 
   // Construct the output array of ONNXValues
-  char* onnxValueClassName = "ai/onnxruntime/OnnxValue";
+  static const char* onnxValueClassName = "ai/onnxruntime/OnnxValue";
   jclass onnxValueClass = (*jniEnv)->FindClass(jniEnv, onnxValueClassName);
   outputArray = (*jniEnv)->NewObjectArray(jniEnv, safecast_int64_to_jsize(numOutputs), onnxValueClass, NULL);
 
@@ -399,7 +394,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run(JNIEnv* jniEnv
   // Note these gotos are in a specific order so they mirror the allocation pattern above.
   // They must be changed if the allocation code is rearranged.
 cleanup_output_values:
-  checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, outputValues));
+  free(outputValues);
 
   // Release the Java output strings
   for (int i = 0; i < numOutputs; i++) {
@@ -413,15 +408,15 @@ cleanup_output_values:
 
   // Release the buffers
 cleanup_input_values:
-  checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)inputValues));
+  free(inputValues);
 cleanup_java_output_strings:
-  checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, javaOutputStrings));
+  free(javaOutputStrings);
 cleanup_java_input_strings:
-  checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, javaInputStrings));
+  free(javaInputStrings);
 cleanup_output_names:
-  checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)outputNames));
+  free(outputNames);
 cleanup_input_names:
-  checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)inputNames));
+  free(inputNames);
 
   return outputArray;
 }
@@ -502,9 +497,9 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_constructMetadata(JNIEn
   }
 
   // Setup
-  char* stringClassName = "java/lang/String";
+  static const char* stringClassName = "java/lang/String";
   jclass stringClazz = (*jniEnv)->FindClass(jniEnv, stringClassName);
-  char* metadataClassName = "ai/onnxruntime/OnnxModelMetadata";
+  static const char* metadataClassName = "ai/onnxruntime/OnnxModelMetadata";
   jclass metadataClazz = (*jniEnv)->FindClass(jniEnv, metadataClassName);
   // OnnxModelMetadata(String producerName, String graphName, String domain, String description,
   //                   long version, String[] customMetadataArray)
