@@ -583,7 +583,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
 
   DeviceStreamCollection device_stream_collection(execution_plan->execution_plan.size());
 
-  bool single_stream = session_state.GetExecutionPlan()->NumberOfValidStream();
+  bool single_stream = session_state.GetExecutionPlan()->NumberOfValidStream() == 1;
   bool is_subgraph = session_state.GetGraphViewer().ParentNode() != nullptr;
   // in following two cases, we execute the workload in main thread:
   // 1. only have 1 stream, it could be the CPU sequential inference scenario, or GPU case when all the nodes are running on GPU.

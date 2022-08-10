@@ -196,8 +196,10 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
   size_t end = logic_stream->steps_.size();
 #ifdef ENABLE_TRAINING
   auto* range = ctx.GetCurrentRange();
-  if (range)
+  if (range) {
+    since = std::max(since, range->stream_pc_range[stream_idx].first);
     end = std::min(end, range->stream_pc_range[stream_idx].second);
+  }
 #endif
 
   while (since < end) {
