@@ -340,7 +340,10 @@ class QDQQuantizer(ONNXQuantizer):
                 if initializer:
                     self._add_qdq_pair_for_weight(initializer, tensor_info.axis)
                 else:
-                    data_found, scale_name, zp_name, _, _ = self._get_quantization_params(tensor_name)
+                    used_scale, used_zp = self.find_quant_scale_zp(tensor_name)
+                    data_found, scale_name, zp_name, _, _ = self._get_quantization_params(
+                        tensor_name, used_scale, used_zp
+                    )
 
                     if not data_found:
                         raise ValueError(
