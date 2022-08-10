@@ -399,8 +399,8 @@ class ONNXModel:
         return False
 
     def is_graph_input(self, tensor_name: str) -> bool:
-        for output in self.model.graph.output:
-            if output.name == tensor_name:
+        for input in self.model.graph.input:
+            if input.name == tensor_name:
                 return True
         return False
 
