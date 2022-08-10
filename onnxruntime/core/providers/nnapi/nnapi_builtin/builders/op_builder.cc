@@ -2943,11 +2943,22 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
 
   const auto& output = outputs[0].node_arg.Name();
 
-  ORT_RETURN_IF_ERROR(shaper.Pad(data, converted_pads_data, output));
+  // ORT_RETURN_IF_ERROR(shaper.Pad(data, converted_pads_data, output));
+  // const OperandType output_operand_type{operand_types.at(data).type, shaper[output]};
 
-  const OperandType output_operand_type{operand_types.at(data).type, shaper[output]};
+  // Uses shape info from output node arg tensorshapeproto
+  const auto& shape_info = node_unit.Outputs()[0].node_arg.Shape();
+  const auto& shape_dims = shape_info->dim();
+  std::vector<uint32_t> output_shape(shape_info->dim_size());
+  for (int i = 0; i < shape_dims.size(); i++) {
+    auto& shape_dim = shape_dims.Get(i);
+    output_shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
+  }
+  shaper.AddShape(output, output_shape);
+
+  //const OperandType output_operand_type{operand_types.at(data).type, shaper[output]};
+  const OperandType output_operand_type{operand_types.at(data).type, output_shape};
   const auto op_code = ANEURALNETWORKS_PAD_V2;
-
   return model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type});
 }
 

@@ -35,7 +35,6 @@ Status AddNnapiTranspose(ModelBuilder& model_builder,
   uint32_t perm_idx = operand_indices.at(perm_input);
 
   input_indices.push_back(perm_idx);  // permutation
-  // ORT_RETURN_IF_ERROR(shaper.Transpose(data_input, perm, output));
   //  Uses shape info from output node arg tensorshapeproto
   const auto& shape_info = node_unit.Outputs()[0].node_arg.Shape();
   const auto& shape_dims = shape_info->dim();
@@ -47,7 +46,6 @@ Status AddNnapiTranspose(ModelBuilder& model_builder,
   shaper.AddShape(output, output_shape);
   OperandType output_operand_type = operand_types.at(data_input);
   output_operand_type.SetDimensions(output_shape);
-  LOGS_DEFAULT(VERBOSE) << "Addnnapitranspose - enter";
   return model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output},
                                     {output_operand_type});
 }
