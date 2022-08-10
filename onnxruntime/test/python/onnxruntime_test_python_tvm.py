@@ -16,7 +16,7 @@ from typing import Any, AnyStr, Dict, List, Tuple
 import numpy
 import tvm
 from numpy.testing import assert_almost_equal
-from onnx import ModelProto, TensorProto, mapping
+from onnx import ModelProto, TensorProto, mapping, save_model
 from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
 
 import onnxruntime
@@ -139,7 +139,7 @@ def get_cpu_output(onnx_model: ModelProto, data: Dict[AnyStr, numpy.ndarray]) ->
 
 
 def get_tvm_output(
-    onnx_model: ModelProto, data: Dict[AnyStr, numpy.ndarray], provider_options: Dict[AnyStr, Any]
+    onnx_model_path_or_str: str, data: Dict[AnyStr, numpy.ndarray], provider_options: Dict[AnyStr, Any]
 ) -> List[numpy.ndarray]:
     """
     Run inference with TVMExecutionProvider
@@ -151,7 +151,7 @@ def get_tvm_output(
     session_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
 
     sess = onnxruntime.InferenceSession(
-        onnx_model.SerializeToString(),
+        onnx_model_path_or_str,
         session_options,
         providers=["TvmExecutionProvider"],
         provider_options=[provider_options],
@@ -194,13 +194,16 @@ def serialize_virtual_machine(vm_exec: tvm.runtime.vm.Executable, use_hash: bool
     return temp_directory
 
 
-class TestTVM(unittest.TestCase):
+class TestTVMBase(unittest.TestCase):
     """
-    Unit tests for TVM EP
+    Base unit tests for TVM EP
     """
+    __test__ = False
 
-    @staticmethod
-    def test_accuracy_for_model_with_dynamic_shapes():
+    def get_onnx_model_path_or_str(self, onnx_model: ModelProto, so_folder: str = None):
+        raise NotImplementedError("Must be overrided in child classes")
+
+    def test_accuracy_for_model_with_dynamic_shapes(self):
         """
         Accuracy test for model with dynamic shapes
         """
@@ -214,12 +217,12 @@ class TestTVM(unittest.TestCase):
             input_names=" ".join(names),
             input_shapes=" ".join(shapes),
         )
-        tvm_output = get_tvm_output(onnx_model, data, provider_options)
+        onnx_model_path_or_str = self.get_onnx_model_path_or_str(onnx_model)
+        tvm_output = get_tvm_output(onnx_model_path_or_str, data, provider_options)
 
         assert_almost_equal(cpu_output, tvm_output, decimal=5)
 
-    @staticmethod
-    def test_accuracy_for_tvm_so():
+    def test_accuracy_for_tvm_so(self):
         """
         Accuracy test for TVMso Ep
         """
@@ -234,68 +237,75 @@ class TestTVM(unittest.TestCase):
             target="llvm",
             so_folder=so_folder,
         )
-        tvm_output = get_tvm_output(onnx_model, data, provider_options)
+        onnx_model_path_or_str = self.get_onnx_model_path_or_str(onnx_model, so_folder)
+        tvm_output = get_tvm_output(onnx_model_path_or_str, data, provider_options)
 
         assert_almost_equal(cpu_output, tvm_output, decimal=5)
 
-    @staticmethod
-    def test_handshake_mechanism_for_tvm_so_1():
+    def test_handshake_mechanism_for_tvm_so(self):
         """
-        Handshake mechanism test for TVMso Ep, Scenario #1:
-        Check hash obtained from compiled VM (there is no file with hash)
+        Handshake mechanism tests for TVMso Ep
         """
-        print("Handshake mechanism scenario #1")
+        print("Handshake mechanism scenario #1: Check hash obtained from compiled VM (there is no file with hash)")
         onnx_model = get_model_with_fixed_shapes()
         data = get_input_data_for_model_with_fixed_shapes(onnx_model)
 
         compiled_vm_exec = compile_virtual_machine(onnx_model, target_str="llvm", use_hash=True)
 
         so_folder = serialize_virtual_machine(compiled_vm_exec)
+        onnx_model_path_or_str = self.get_onnx_model_path_or_str(onnx_model, so_folder)
         provider_options = dict(
             target="llvm",
             so_folder=so_folder,
             check_hash=True,
         )
-        get_tvm_output(onnx_model, data, provider_options)
+        get_tvm_output(onnx_model_path_or_str, data, provider_options)
 
-    @staticmethod
-    def test_handshake_mechanism_for_tvm_so_2():
-        """
-        Handshake mechanism test for TVMso Ep, Scenario #2:
-        Check hash obtained from default file in so_folder
-        """
-        print("Handshake mechanism scenario #2")
-        onnx_model = get_model_with_fixed_shapes()
-        data = get_input_data_for_model_with_fixed_shapes(onnx_model)
-
-        compiled_vm_exec = compile_virtual_machine(onnx_model, target_str="llvm", use_hash=True)
+        print("Handshake mechanism scenario #2: Check hash obtained from default file in so_folder")
         so_folder = serialize_virtual_machine(compiled_vm_exec, use_hash=True)
-        provider_options = dict(
-            target="llvm",
-            so_folder=so_folder,
-            check_hash=True,
-        )
-        get_tvm_output(onnx_model, data, provider_options)
+        onnx_model_path_or_str = self.get_onnx_model_path_or_str(onnx_model, so_folder)
 
-    @staticmethod
-    def test_handshake_mechanism_for_tvm_so_3():
-        """
-        Handshake mechanism test for TVMso Ep, Scenario #3:
-        Check hash obtained from client file
-        """
-        print("Handshake mechanism scenario #3")
-        onnx_model = get_model_with_fixed_shapes()
-        data = get_input_data_for_model_with_fixed_shapes(onnx_model)
+        get_tvm_output(onnx_model_path_or_str, data, provider_options)
 
-        compiled_vm_exec = compile_virtual_machine(onnx_model, target_str="llvm", use_hash=True)
-        so_folder = serialize_virtual_machine(compiled_vm_exec, use_hash=True)
+        print("Handshake mechanism scenario #3: Check hash obtained from client file")
+
         provider_options = dict(
             target="llvm",
             so_folder=so_folder,
             check_hash=True,
             hash_file_path=str(os.path.join(so_folder, "hash.txt")),
         )
-        get_tvm_output(onnx_model, data, provider_options)
+        get_tvm_output(onnx_model_path_or_str, data, provider_options)
+
+
+class TestTVMFromPath(TestTVMBase):
+    """
+    Unit tests for TVM EP. ONNX model is extracted from path
+    """
+
+    __test__ = True
+
+    def get_onnx_model_path_or_str(self, onnx_model: ModelProto, so_folder: str = None):
+        if not so_folder:
+            so_folder = tempfile.mkdtemp()
+        onnx_path = os.path.join(so_folder, "onnx_model.onnx")
+        save_model(onnx_model, onnx_path)
+        return onnx_path
+
+
+class TestTVMFromString(TestTVMBase):
+    """
+    Unit tests for TVM EP. ONNX model is extracted from serialized string
+    """
+
+    __test__ = True
+
+    def get_onnx_model_path_or_str(self, onnx_model: ModelProto, so_folder: str = None):
+        return onnx_model.SerializeToString()
+
+    @unittest.skip("Skip handshake mechanism test for onnx model extracted from string")
+    def test_handshake_mechanism_for_tvm_so(self):
+        print("Skip base test for a moment")
 
 
 if __name__ == "__main__":
