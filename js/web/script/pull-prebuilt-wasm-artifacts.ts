@@ -84,7 +84,7 @@ downloadJson(
     data => {
       const buildId = data.value[0].id;
 
-      console.log(`=== Found latest main branch build : ${buildId} ===`);
+      console.log(`=== Found latest build on main branch: ${buildId} ===`);
 
       // API reference: https://docs.microsoft.com/en-us/rest/api/azure/devops/build/artifacts/get%20artifact
       downloadJson(
