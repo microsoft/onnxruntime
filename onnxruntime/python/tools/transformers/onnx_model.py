@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
-from onnx import AttributeProto, GraphProto, ModelProto, NodeProto, TensorProto, helper, numpy_helper, save_model
+from onnx import AttributeProto, GraphProto, ModelProto, NodeProto, TensorProto, helper, numpy_helper, save_model, onnx_pb as onnx_proto
 from shape_infer_helper import SymbolicShapeInferenceHelper
 
 logger = logging.getLogger(__name__)
@@ -410,6 +410,23 @@ class OnnxModel:
             return numpy_helper.to_array(initializer)
 
         return None
+
+    def transpose_2d_tensor(self, tensor):
+        if not isinstance(tensor, onnx_proto.TensorProto):
+            raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
+
+        if len(tensor.dims) != 2 or tensor.data_type != onnx_proto.TensorProto.INT8:
+            raise ValueError("Only INT8 2-D tensors can be transposed")
+
+        if tensor.raw_data:
+            int32_data = np.reshape(np.frombuffer(tensor.raw_data, dtype="int8"), tensor.dims)
+            int32_transposed_data = np.transpose(int32_data, [1,0])
+            tensor.raw_data = int32_transposed_data.tobytes()
+
+        else:
+            raise ValueError("only raw buffer supported")
+
+        return tensor
 
     def get_constant_input(self, node):
         for i, input in enumerate(node.input):

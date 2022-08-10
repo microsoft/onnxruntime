@@ -198,6 +198,10 @@ class FusionQOrderedMatMul(Fusion):
             fused_node_inputs.append(residual_add_dequantize_node.input[0])
             fused_node_inputs.append(residual_add_dequantize_node.input[1])
 
+        # Transpose weight 'B' from ROW to COL
+        weight_tensor = self.model.get_initializer(dequantize_node_1.input[0])
+        self.model.transpose_2d_tensor(weight_tensor)
+        
         fused_node = helper.make_node(
             "QOrderedMatMul",
             inputs=fused_node_inputs,
@@ -205,9 +209,9 @@ class FusionQOrderedMatMul(Fusion):
             name=self.model.create_node_name("QOrderedMatMul", name_prefix="QOrderedMatMul"),
         )
 
+        fused_node.attribute.extend([helper.make_attribute("order_B", 0)])
         fused_node.domain = "com.microsoft"
 
-        # TODO 3: More attributes
         self.nodes_to_remove.extend(subgraph_nodes)
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
