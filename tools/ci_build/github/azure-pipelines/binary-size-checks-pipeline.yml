@@ -61,8 +61,8 @@ jobs:
 
   - task: AzureCLI@2
     displayName: 1a. Publish binary size data
-    # only publish size data for CI builds on master
-    condition: and(succeededOrFailed(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+    # only publish size data for CI builds on main
+    condition: and(succeededOrFailed(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
     inputs:
       azureSubscription: AIInfraBuild
       scriptLocation: inlineScript
