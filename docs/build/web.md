@@ -179,6 +179,8 @@ This is the last stage in the build process, please follow the sections in a seq
          * ort-wasm-threaded.js (build with flag '--enable_wasm_threads')
          * ort-wasm-threaded.worker.js (build with flag '--enable_wasm_threads')
 
+### Finalizing onnxruntime build
+
 Use following command in folder `<ORT_ROOT>/js/web` to build:
    ```
    npm run build
