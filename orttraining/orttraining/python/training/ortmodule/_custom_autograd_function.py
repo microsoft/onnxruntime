@@ -46,7 +46,6 @@ def enable_custom_autograd_support(enable=True):
     from ._custom_autograd_function_exporter import _export
     from ._custom_autograd_function_runner import call_python_backward_function, call_python_forward_function
 
-
     if enable is True:
         if custom_autograd_function_enabler.already_enabled is False:
             # Initialize static objects needed to run custom autograd.Function's.
@@ -81,8 +80,6 @@ def enable_custom_autograd_support(enable=True):
                 unregister_custom_op_symbolic("::prim_PythonOp", 1)
 
         custom_autograd_function_enabler.state = False
-
-
 
 
 # Be noted, setup.py will replace below with "enable_custom_autograd_support(True|False)" at the end of the file if
