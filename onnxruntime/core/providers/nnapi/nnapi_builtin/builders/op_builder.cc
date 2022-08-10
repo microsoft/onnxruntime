@@ -723,14 +723,16 @@ bool TransposeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
 }
 
 Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  auto& shaper(model_builder.GetShaper());
   const auto& initializers(model_builder.GetInitializerTensors());
 
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
   NodeAttrHelper helper(node_unit);
   std::vector<int32_t> perm = helper.Get("perm", std::vector<int32_t>());
-  auto input_dims = static_cast<int32_t>(shaper[input].size());
+  const auto& graph_viewer = model_builder.GetGraphViewer();
+  const auto* input_node_arg = graph_viewer.GetNodeArg(input);
+  const auto* shape_proto = input_node_arg->Shape();
+  auto input_dims = static_cast<int32_t>(shape_proto->dim_size());
   if (perm.empty()) {
     for (int32_t i = input_dims - 1; i >= 0; i--)
       perm.push_back(i);
@@ -1885,8 +1887,20 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   int32_t fuse_code = model_builder.FindActivation(node_unit);
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
-  ORT_RETURN_IF_ERROR(shaper.FC(input1, input2, output));
-  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output], y_scale, y_zero_point);
+  /*  ORT_RETURN_IF_ERROR(shaper.FC(input1, input2, output));
+   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output], y_scale, y_zero_point); */
+
+  // Uses shape info from output node arg tensorshapeproto
+  const auto& shape_info = node_unit.Outputs()[0].node_arg.Shape();
+  const auto& shape_dims = shape_info->dim();
+  std::vector<uint32_t> output_shape(shape_info->dim_size());
+  for (int i = 0; i < shape_dims.size(); i++) {
+    auto& shape_dim = shape_dims.Get(i);
+    output_shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
+  }
+  shaper.AddShape(output, output_shape);
+
+  const OperandType output_operand_type(operand_types.at(input1).type, output_shape, y_scale, y_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_FULLY_CONNECTED, input_indices,
                                                  {output}, {output_operand_type}));
   return Status::OK();
