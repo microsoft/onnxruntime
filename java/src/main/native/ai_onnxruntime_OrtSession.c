@@ -368,7 +368,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run(JNIEnv* jniEnv
   // ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess, _In_ OrtRunOptions* run_options,
   // _In_ const char* const* input_names, _In_ const OrtValue* const* input, size_t input_len,
   // _In_ const char* const* output_names, size_t output_names_len, _Out_ OrtValue** output);
-  code = checkOrtStatus(jniEnv, api, api->Run(session, runOptions, (const char* const*)inputNames,
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->Run(session, runOptions, (const char* const*)inputNames,
                                               (const OrtValue* const*)inputValues, numInputs,
                                               (const char* const*)outputNames, numOutputs, outputValues));
   if (code != ORT_OK) {
