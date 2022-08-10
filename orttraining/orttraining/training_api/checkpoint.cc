@@ -182,11 +182,11 @@ Status OrtSaveInternal(
     const std::vector<ONNX_NAMESPACE::TensorProto>& non_trainable_tensor_protos,
     const PathString& checkpoint_path) {
   // Make sure name unique across trainable and non-trainable lists.
-  std::unordered_set<std::string> trainable_unique_names;
-  std::unordered_set<std::string> non_trainable_unique_names;
+  std::set<std::string> trainable_unique_names;
+  std::set<std::string> non_trainable_unique_names;
   std::vector<std::string> inter_sec;
   auto check_unique = [](const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
-                         std::unordered_set<std::string>& unique_names) {
+                         std::set<std::string>& unique_names) {
     for (auto& tensor_proto : tensor_protos) {
       ORT_ENFORCE(unique_names.find(tensor_proto.name()) == unique_names.end(),
                   "Duplicated tensor proto named ", tensor_proto.name());
