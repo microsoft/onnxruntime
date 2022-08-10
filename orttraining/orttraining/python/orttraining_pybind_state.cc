@@ -841,24 +841,18 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(trainable_tensor_protos,
                                                                         non_trainable_tensor_protos, checkpoint_path));
         });
-  m.def("load_checkpoint",
-        [](const std::string& checkpoint_path) {
-          std::vector<TensorProto> tensor_protos;
-          ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpoint(checkpoint_path, tensor_protos));
-          std::vector<py::bytes> tensor_protos_pybytes(tensor_protos.size());
+  m.def("get_model_after_loading_checkpoint",
+        [](const std::string& checkpoint_path, const py::bytes& serialized_model) {
+          ONNX_NAMESPACE::ModelProto model_proto;
 
-          const auto parse_tensor_proto_to_pybytes =
-              [](std::vector<py::bytes>& tensor_protos_pybytes, const std::vector<TensorProto>& tensor_protos) {
-                for (size_t i = 0; i < tensor_protos.size(); ++i) {
-                  std::string tensor_proto_str;
-                  tensor_protos[i].SerializeToString(&tensor_proto_str);
-                  tensor_protos_pybytes[i] = tensor_proto_str;
-                }
-              };
+          std::istringstream buffer(serialized_model);
+          ORT_THROW_IF_ERROR(Model::Load(buffer, &model_proto));
+          ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpointToModel(checkpoint_path, model_proto));
 
-          parse_tensor_proto_to_pybytes(tensor_protos_pybytes, tensor_protos);
+          std::string model_proto_str;
+          ORT_ENFORCE(model_proto.SerializeToString(&model_proto_str), "Serializing Model failed.");
 
-          return tensor_protos_pybytes;
+          return py::bytes(model_proto_str);
         });
 
   m.def("get_optimized_model",

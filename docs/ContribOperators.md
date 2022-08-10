@@ -55,6 +55,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.QLinearMul">com.microsoft.QLinearMul</a>
   * <a href="#com.microsoft.QLinearReduceMean">com.microsoft.QLinearReduceMean</a>
   * <a href="#com.microsoft.QLinearSigmoid">com.microsoft.QLinearSigmoid</a>
+  * <a href="#com.microsoft.QLinearSoftmax">com.microsoft.QLinearSoftmax</a>
   * <a href="#com.microsoft.QuantizeLinear">com.microsoft.QuantizeLinear</a>
   * <a href="#com.microsoft.Range">com.microsoft.Range</a>
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
@@ -2771,7 +2772,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.QLinearSigmoid"></a><a name="com.microsoft.qlinearsigmoid">**com.microsoft.QLinearSigmoid**</a>
 
-  QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data 
+  QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data
   (Tensor<T>) where the function `f(x) = quantize(Sigmoid(dequantize(x)))`, is applied to the data tensor elementwise.
   Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` 
 
@@ -2806,6 +2807,58 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(uint8), tensor(int8)</dt>
 <dd>Constrain input and output types to 8 bit tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.QLinearSoftmax"></a><a name="com.microsoft.qlinearsoftmax">**com.microsoft.QLinearSoftmax**</a>
+
+  QLinearSoftmax computes the normalized exponential values for the given input:
+  Softmax(input, axis) = Exp(input) / ReduceSum(Exp(input), axis=axis, keepdims=1)
+  The input does not need to explicitly be a 2D vector. The "axis" attribute
+  indicates the dimension along which QLinearSoftmax will be performed for onnx v.13+.
+  or the dimension coerced to NxD Matrix for onnx v.12-.
+  The output tensor has the same shape.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>axis</tt> : int</dt>
+<dd>apply softmax to elements for dimensions axis,or all dims along with axis according to op-version</dd>
+<dt><tt>opset</tt> : int (required)</dt>
+<dd>opset version of corresponding SoftMax.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>The input tensor</dd>
+<dt><tt>X_scale</tt> : tensor(float)</dt>
+<dd>Scale of quantized input 'X'. It must be a scalar.</dd>
+<dt><tt>x_zero_point</tt> (optional) : T</dt>
+<dd>Zero point tensor for input 'X'.It must be a scalar.</dd>
+<dt><tt>y_scale</tt> : tensor(float)</dt>
+<dd>Scale of quantized output 'Y'. It must be a scalar.</dd>
+<dt><tt>y_zero_point</tt> : T</dt>
+<dd>Zero point tensor for output 'Y'. It must be a scalar.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output data tensor from pooling across the input tensor. The output tensor has the same rank as the input. </dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(uint8), tensor(int8)</dt>
+<dd>Constrain input and output types to singed/unsigned int8 tensors.</dd>
 </dl>
 
 

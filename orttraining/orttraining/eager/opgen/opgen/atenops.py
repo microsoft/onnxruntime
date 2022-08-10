@@ -153,6 +153,7 @@ hand_implemented = {
     "aten::gelu": Gelu("self"),
     "aten::max": ReduceMax("self", keepdims=0),
     "aten::min": ReduceMin("self", keepdims=0),
+    "aten::cat.out": SignatureOnly(),
     "aten::fill_.Scalar": SignatureOnly(),
     "aten::ne.Scalar_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),
     "aten::ne.Tensor_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),

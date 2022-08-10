@@ -161,6 +161,36 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
 }
 
 /**
+ * Load ONNX model with parameters set to 0 from file path, Load Checkpoint weights into the Model,
+ * Then compare the new weights to 0 to make sure they were changed after loading checkpoint to model.
+ */
+TEST(CheckpointApiTest, LoadCheckpointToModel) {
+  // Phase 1: Load a Model with weights set to zero.
+  auto model_uri = MODEL_FOLDER "training_api/zero_model.onnx";
+  ONNX_NAMESPACE::ModelProto p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model));
+  // Phase 2: Load the checkpoint weights into the Model.
+  // Call Load APIs
+  PathString checkpoint_path = ORT_TSTR("testdata/training_api/load_checkpoint");
+  ASSERT_STATUS_OK(LoadCheckpointToModel(checkpoint_path, p_model));
+
+  // Phase 3: Make sure the Model's weights are not equal to zero after loading the new ones.
+  // Load imported initializers into the Model
+  for (auto& init : p_model.graph().initializer()) {
+    // Convert the tensor bytes to a float vector to compare.
+    ASSERT_TRUE(init.has_raw_data());
+    size_t len = init.raw_data().size() / sizeof(float);
+    InlinedVector<float> float_values(len);
+    std::copy(init.raw_data().data(), init.raw_data().data() + init.raw_data().size(), reinterpret_cast<char*>(&float_values.front()));
+
+    // Make sure the weights are no longer a zero.
+    for (size_t i = 0; i < len; i++) {
+      ASSERT_NE(float_values[i], 0.0f);
+    }
+  }
+}
+
+/**
  * Create Module with sets of parameters,
  * Create Optimizer passing in Module's parameters.
  * Save Optimizer states into ORT checkpoint files,
