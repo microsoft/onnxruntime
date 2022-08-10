@@ -42,20 +42,24 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
-  const Tensor* mask = context->Input<Tensor>(3);
+  const Tensor* attention_mask = context->Input<Tensor>(3);
   const Tensor* global_weights = context->Input<Tensor>(4);
   const Tensor* global_bias = context->Input<Tensor>(5);
-  const Tensor* global_mask = context->Input<Tensor>(6);
-  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask->Shape(),
-                                  global_weights->Shape(), global_bias->Shape(), global_mask->Shape()));
+  const Tensor* global_attention_mask = context->Input<Tensor>(6);
+  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), attention_mask->Shape(),
+                                  global_weights->Shape(), global_bias->Shape(), global_attention_mask->Shape()));
   // Input shapes:
-  //   input          : (batch_size, sequence_length, hidden_size)
-  //   weights        : (hidden_size, 3 * hidden_size) or (3, hidden_size, hidden_size)
-  //   bias           : (3 * hidden_size)
-  //   mask           : (batch_size, sequence_length)
-  //   global_weights : (hidden_size, 3 * hidden_size) or (3, hidden_size, hidden_size)
-  //   global_bias    : (3 * hidden_size)
-  //   global_mask    : (batch_size, sequence_length)
+  //   input                 : (batch_size, sequence_length, hidden_size)
+  //   weights               : (hidden_size, 3 * hidden_size) -- format 1
+  //                           (3, hidden_size, hidden_size)  -- format 0
+  //   bias                  : (3 * hidden_size)              -- format 1 (bias for Q, K, V)
+  //                           (5 * hidden_size)              -- format 0 (bias for Q, K, V, Global_K, Global_V)
+  //   attention_mask        : (batch_size, sequence_length)
+  //   global_weights        : (hidden_size, 3 * hidden_size) -- format 1
+  //                           (3, hidden_size, hidden_size)  -- format 0
+  //   global_bias           : (3 * hidden_size)              -- format 1 (bias for Global_Q, Global_K, Global_V)
+  //                           (1 * hidden_size)              -- format 0 (bias for Global_Q)
+  //   global_attention_mask : (batch_size, sequence_length)
   // Output shapes:
   //   output         : (batch_size, sequence_length, hidden_size)
 
@@ -85,7 +89,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(BuildGlobalIndex(
       device_prop,
       stream,
-      global_mask->Data<int>(),
+      global_attention_mask->Data<int>(),
       batch_size,
       sequence_length,
       global_index_buffer.get(),
@@ -110,30 +114,32 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&is_copy_done, cudaEventDisableTiming));
   CUDA_RETURN_IF_ERROR(cudaEventRecord(is_copy_done, stream));
 
-  // Use GEMM for fully connection.
   size_t qkv_size = batch_size * sequence_length * 3 * hidden_size * element_size;
+  // Buffer for GEMM outputs of q, k, v, global_q, global_k and global_v
   auto gemm_buffer = GetScratchBuffer<void>(qkv_size + qkv_size);
-
-  typedef typename ToCudaType<T>::MappedType CudaT;
-  CudaT one = ToCudaType<T>::FromFloat(1.0f);
-  CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
   bool use_merged_qkv_weights = (weights->Shape().NumDimensions() == 2);
 
   int m = batch_size * sequence_length;
   int n = use_merged_qkv_weights ? 3 * hidden_size : hidden_size;
   int k = hidden_size;
+  typedef typename ToCudaType<T>::MappedType CudaT;
   const CudaT* input_data = reinterpret_cast<const CudaT*>(input->Data<T>());
+  const CudaT* weights_data = reinterpret_cast<const CudaT*>(weights->Data<T>());
+  const CudaT* global_weights_data = reinterpret_cast<const CudaT*>(global_weights->Data<T>());
 
+  float one = 1.0f;
+  float zero = 0.0f;
   if (use_merged_qkv_weights) {
     // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 0 x B.
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-        reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
+        weights_data, n,
         input_data, k,
         &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
   } else {
-    const CudaT* q_weight = reinterpret_cast<const CudaT*>(weights->Data<T>());
+    // q
+    const CudaT* q_weight = weights_data;
     CudaT* q_data = reinterpret_cast<CudaT*>(gemm_buffer.get());
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
@@ -141,6 +147,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         input_data, k,
         &zero, q_data, n, device_prop));
 
+    // k
     const CudaT* k_weight = q_weight + hidden_size * hidden_size;
     CudaT* k_data = q_data + batch_size * sequence_length * hidden_size;
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -149,6 +156,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         input_data, k,
         &zero, k_data, n, device_prop));
 
+    // v
     const CudaT* v_weight = k_weight + hidden_size * hidden_size;
     CudaT* v_data = k_data + batch_size * sequence_length * hidden_size;
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -169,7 +177,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-  // Do not use compact kernel in the following situations:
+  // Do not use compact memory kernel in the following situations:
   // (1) global tokens > windows size, compact memory kernel cannot be used due to its assumptions.
   // (2) sequence_length == 2 * attention_window, compact memory kernel has parity issue.
   // (3) user sets environment variable ORT_LONGFORMER_COMPACT_MEMORY=0
@@ -190,24 +198,48 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           input_data, k,
           &zero, global_gemm_buffer, n, device_prop));
     } else {
-      const CudaT* global_q_weight = reinterpret_cast<const CudaT*>(global_weights->Data<T>());
-      CudaT* global_q = global_gemm_buffer;
+      // global q
+      const CudaT* global_q_weight = global_weights_data;
+      CudaT* global_q = global_gemm_buffer + 2 * batch_size * sequence_length * hidden_size;
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
           global_q_weight, n,
           input_data, k,
           &zero, global_q, n, device_prop));
+      /*
+      CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(cublas,
+                                                            CUBLAS_OP_N,
+                                                            CUBLAS_OP_N,
+                                                            hidden_size,                    // m
+                                                            max_num_global,                 // n
+                                                            hidden_size,                    // k
+                                                            &one,                           // alpha
+                                                            global_q_weight,                // A
+                                                            hidden_size,                    // lda
+                                                            0,                              // strideA
+                                                            input_data,                     // B
+                                                            hidden_size,                    // ldb
+                                                            sequence_length * hidden_size,  // strideB
+                                                            &zero,                          // beta
+                                                            global_q,                       // C
+                                                            hidden_size,                    // ldc
+                                                            max_num_global * hidden_size,   // strideC
+                                                            batch_size,                     // batch count
+                                                            device_prop));
+      */
 
-      const CudaT* global_k_weight = global_q_weight + hidden_size * hidden_size;
-      CudaT* global_k = global_q + batch_size * sequence_length * hidden_size;
+      // global k
+      const CudaT* global_k_weight = global_weights_data + hidden_size * hidden_size;
+      CudaT* global_k = global_gemm_buffer;
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
           global_k_weight, n,
           input_data, k,
           &zero, global_k, n, device_prop));
 
+      // global v
       const CudaT* global_v_weight = global_k_weight + hidden_size * hidden_size;
-      CudaT* global_v = global_k + batch_size * sequence_length * hidden_size;
+      CudaT* global_v = global_gemm_buffer + batch_size * sequence_length * hidden_size;
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
           global_v_weight, n,
@@ -231,10 +263,10 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           stream,
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
           reinterpret_cast<const CudaT*>(bias->Data<T>()),
-          reinterpret_cast<const CudaT*>(mask->Data<T>()),
+          reinterpret_cast<const CudaT*>(attention_mask->Data<T>()),
           reinterpret_cast<const CudaT*>(global_gemm_buffer),
           reinterpret_cast<const CudaT*>(global_bias->Data<T>()),
-          global_mask->Data<int>(),
+          global_attention_mask->Data<int>(),
           global_index_buffer.get(),
           batch_global_num_buffer.get(),
           pinned_buffer.get(),
@@ -254,7 +286,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
 
-  // Defer release of pinnned memory since cudaStreamSynchronize is not used here and kernel need access the buffer.
+  // Defer release of pinned memory since cudaStreamSynchronize is not used here and kernel need access the buffer.
   this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
 
   return Status::OK();

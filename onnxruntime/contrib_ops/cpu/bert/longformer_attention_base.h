@@ -14,10 +14,10 @@ class LongformerAttentionBase {
   Status CheckInputs(const TensorShape& input_shape,
                      const TensorShape& weights_shape,
                      const TensorShape& bias_shape,
-                     const TensorShape& mask_shape,
+                     const TensorShape& attention_mask_shape,
                      const TensorShape& global_weights_shape,
                      const TensorShape& global_bias_shape,
-                     const TensorShape& global_mask_shape) const;
+                     const TensorShape& global_attention_mask_shape) const;
 
  protected:
   LongformerAttentionBase(const OpKernelInfo& info) {

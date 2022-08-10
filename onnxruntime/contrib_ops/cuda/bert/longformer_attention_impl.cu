@@ -33,6 +33,7 @@ limitations under the License.
 #include "core/common/safeint.h"
 #include "add_bias_transpose.h"
 
+
 using namespace onnxruntime::cuda;
 using namespace cub;
 
@@ -380,6 +381,7 @@ bool LaunchLongformerSoftmaxKernel(
     const int* global_attention,  // global attention flags with shape (B, S), with value 0 for local and 1 for global.
     const int* global_index,      // Global index with shape (B, S)
     const int* batch_global_num,  // Number of global tokens per batch with shape (B, 1)
+    int max_num_global,           // maximum number of global tokens
     void* pinned_buffer,          // Pinned memory in CPU with 2 parts: global tokens per batch, and data for scratch2
     void* output,                 // output with shape (B, N, S, H)
     float scaler,                 // scalar
@@ -619,10 +621,11 @@ bool LaunchLongformerSoftmaxKernel(
                                        resultType,
                                        algo));
 
-      // TODO(tianleiwu): Use compact format for Global_Q with shape BxNxGxH to save space:
-      // global_q_elements_per_batch = num_heads * max_num_global * head_size; strideB = max_num_global * head_size
+      //TODO(tianleiwu): const int global_q_per_batch = num_heads * max_num_global * head_size;
+      //                 strideB = max_num_global * head_size
 
-      const void* global_q_batch = reinterpret_cast<const char*>(global_q) + (i * elements_per_batch) * element_size;
+      const int global_q_per_batch = elements_per_batch;
+      const void* global_q_batch = reinterpret_cast<const char*>(global_q) + (i * global_q_per_batch) * element_size;
       const void* global_k_batch = reinterpret_cast<const char*>(global_k) + (i * elements_per_batch) * element_size;
       qk_batch = reinterpret_cast<char*>(buffer_pointers[4]) + (i * buffer_sizes[4] * num_heads) * element_size;
 
@@ -852,17 +855,27 @@ bool LongformerQkvToContext(
 
   // Number of elements in Q, K, V, Global_Q, Global_K or Global_V are same: BxNxSxH
   const int elements = batch_size * num_heads * sequence_length * head_size;
-  T* global_qkv = qkv + 3 * elements;
 
   const int max_threads_per_block(device_prop.maxThreadsPerBlock);
 
   const int format = static_cast<int>(use_merged_qkv_weights);
-  LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size, sequence_length, num_heads, head_size,
-                         input, bias, qkv);
-
-  if (max_num_global > 0 && nullptr != global_input) {
+  // The order of qkv space:
+  //  Q, K, V, Global_K, Global_V, Global_Q (format 0)
+  //  Q, K, V, Global_Q, Global_K, Global_V (format 1)
+  if (format == 1 || max_num_global == 0 || nullptr == global_input) {
     LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size, sequence_length, num_heads, head_size,
-                           global_input, global_bias, global_qkv);
+                           input, bias, qkv);
+
+    if (max_num_global > 0 && nullptr != global_input) {
+      LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size, sequence_length, num_heads, head_size,
+                             global_input, global_bias, qkv + 3 * elements);
+    }
+  } else {
+      LaunchAddBiasTranspose(stream, 5, format, max_threads_per_block, batch_size, sequence_length, num_heads, head_size,
+                            input, bias, qkv);
+      //LaunchAddBiasTranspose(stream, 1, format, max_threads_per_block, batch_size, max_num_global, num_heads, head_size,
+      LaunchAddBiasTranspose(stream, 1, format, max_threads_per_block, batch_size, sequence_length, num_heads, head_size,
+                            global_input + 2 * elements, global_bias, qkv + 5 * elements);
   }
 
   if (!CUDA_CALL(cudaPeekAtLastError())) {
@@ -874,9 +887,9 @@ bool LongformerQkvToContext(
   const T* k = q + elements;
   const T* v = k + elements;
 
-  const T* global_q = global_qkv;
-  const T* global_k = global_q + elements;
-  const T* global_v = global_k + elements;
+  const T* global_q = (format == 1 ? v + elements : qkv + 5 * elements);
+  const T* global_k = (format == 1 ? global_q + elements : qkv + 3 * elements);
+  const T* global_v = (format == 1 ? global_k + elements : qkv + 4 * elements);
 
   // Q*K' are scaled by 1/sqrt(H)
   const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(head_size));
@@ -910,7 +923,7 @@ bool LongformerQkvToContext(
       return false;
     }
   } else {
-    assert(max_num_global <= window);
+    ORT_ENFORCE(max_num_global <= window);
 
     if (!LaunchLongformerSoftmaxKernel(
             stream,
@@ -926,6 +939,7 @@ bool LongformerQkvToContext(
             global_attention,  // Global attention flags with shape B x S
             global_index,      // Global index with shape B x S
             batch_global_num,  // Number of global token per batch with shape B x 1
+            max_num_global,    // Maximum number of global tokens
             pinned_buffer,     // Pinned Memory Buffer
             temp_output,       // Output with shape B x N x S x H
             rsqrt_head_size,   // Scaler

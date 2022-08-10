@@ -14,10 +14,14 @@
 # It is tested in Ubuntu 18.04 with python 3.8, onnxruntime-gpu 1.11.0, PyTorch 1.9.0, transformers 4.18.0.
 # Warning: Using  PyTorch 1.10 or newer version might encounter issue in exporting, but they are fine for benchmarking.
 #
-# Example commands for exporting longformer base model in Linux:
-#   pip install torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio==0.9.0 -f https://download.pytorch.org/whl/torch_stable.html
-#   pip install transformers==4.18.0 onnxruntime-gpu coloredlogs onnx
+# Example commands to export longformer base model in Linux:
+#   conda create -n longformer python=3.8
+#   conda activate longformer
+#   python3 -m pip install torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio==0.9.0 -f https://download.pytorch.org/whl/torch_stable.html
+#   python3 -m pip install coloredlogs flatbuffers numpy packaging sympy protobuf==3.20.1 onnx==1.12.0 transformers==4.18.0
+#   python3 -m pip install -i https://test.pypi.org/simple/ ort-nightly-gpu
 #   cd ./torch_extensions
+#   rm -rf build
 #   python setup.py install
 #   cd ..
 #   python convert_to_onnx.py --model longformer-base-4096 --precision fp16 --optimize_onnx
@@ -42,7 +46,8 @@ from torch.onnx.symbolic_helper import parse_args
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from torch_onnx_export_helper import torch_onnx_export
 
-stack_qkv_weight_dim = 0
+# Supports format 0 or 1
+weight_bias_format = 0
 
 
 @parse_args("v", "v", "v", "v", "v", "v", "v", "i", "i")
@@ -191,15 +196,12 @@ def my_longformer_self_attention_forward_4(
             self.key.weight.transpose(0, 1),
             self.value.weight.transpose(0, 1),
         ),
-        dim=stack_qkv_weight_dim,
+        dim=weight_bias_format,
     )
 
-    if stack_qkv_weight_dim == 1:
-        # shape is (hidden_size, 3*hidden_size) for merged qkv, otherwise (3, hidden_size, hidden_size) by default
+    if weight_bias_format == 1:
+        # shape is (hidden_size, 3*hidden_size) for format 1, otherwise (3, hidden_size, hidden_size) by default
         weight = weight.reshape(self.embed_dim, 3 * self.embed_dim)
-
-    bias = torch.stack((self.query.bias, self.key.bias, self.value.bias), dim=0)
-    bias = bias.reshape(3 * self.embed_dim)
 
     global_weight = torch.stack(
         (
@@ -207,14 +209,24 @@ def my_longformer_self_attention_forward_4(
             self.key_global.weight.transpose(0, 1),
             self.value_global.weight.transpose(0, 1),
         ),
-        dim=stack_qkv_weight_dim,
+        dim=weight_bias_format,
     )
 
-    if stack_qkv_weight_dim == 1:
+    if weight_bias_format == 1:
         global_weight = global_weight.reshape(self.embed_dim, 3 * self.embed_dim)
 
-    global_bias = torch.stack((self.query_global.bias, self.key_global.bias, self.value_global.bias), dim=0)
-    global_bias = global_bias.reshape(3 * self.embed_dim)
+    if weight_bias_format == 1:
+        bias = torch.stack((self.query.bias, self.key.bias, self.value.bias), dim=0)
+        bias = bias.reshape(3 * self.embed_dim)
+        global_bias = torch.stack((self.query_global.bias, self.key_global.bias, self.value_global.bias), dim=0)
+        global_bias = global_bias.reshape(3 * self.embed_dim)
+    else:
+        bias = torch.stack(
+            (self.query.bias, self.key.bias, self.value.bias, self.key_global.bias, self.value_global.bias), dim=0
+        )
+        bias = bias.reshape(5 * self.embed_dim)
+        global_bias = self.query_global.bias
+        global_bias = global_bias.reshape(1 * self.embed_dim)
 
     attn_output = torch.ops.onnxruntime.LongformerAttention(
         hidden_states,
@@ -283,7 +295,7 @@ def export_longformer(model, onnx_model_path, export_padding):
         model.config, export_padding, device=torch.device("cpu")
     )
 
-    example_outputs = model(
+    _ = model(
         input_ids,
         attention_mask=attention_mask,
         global_attention_mask=global_attention_mask,
@@ -368,8 +380,8 @@ def main(args):
     model_name = args.model
     onnx_model_path = model_name + ".onnx"
 
-    global stack_qkv_weight_dim
-    stack_qkv_weight_dim = 1 if args.merge_qkv else 0
+    global weight_bias_format
+    weight_bias_format = 1 if args.merge_qkv else 0
 
     from transformers import LongformerModel
 
