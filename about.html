@@ -71,10 +71,17 @@
                                     <p class="mb-2">
                                         ONNX Runtime is an open source project that is designed to accelerate machine learning across a wide range of frameworks, operating systems, and hardware platforms. It enables acceleration of machine learning inferencing across all of your deployment targets using a single set of <abbr title="Application Program Interface">API</abbr>. ONNX Runtime automatically parses through your model to identify optimization opportunities and provides access to the best hardware acceleration available.
                                     </p>
-                                    <p class="mb-3">
+                                    <p class="mb-2">
                                         ONNX Runtime also offers training acceleration, which incorporates innovations from Microsoft Research and is proven across production workloads like Office 365, Bing and Visual Studio.
                                     </p>
                                     <a href="https://github.com/microsoft/onnxruntime" target="_blank" class="link ft-20"><span class="link-content">Join us on Github</span><span class="link-arrow fa fa-angle-right"></span></a>
+                                    <br/> <br/>
+                                    <p class="mb-2">
+                                       At Microsoft, ONNX Runtime is used as the primary Machine Learning inferencing solution for products groups. ONNX Runtime serves over 1 trillion daily inferences across over 150 production models covering all task domains.
+                                    </p>
+                        
+                                    <a href="ort-at-microsoft.html" target="_blank" class="link ft-20"><span class="link-content">Learn more about ONNX Runtime at Microsoft</span><span class="link-arrow fa fa-angle-right"></span></a>
+
                                 </div>
                                 <div class="col-12 col-md-3 d-none d-md-block">
                                     <img src="./images/ONNX-Icon.png" alt="ONNX Runtime Logo Icon" class="img-fluid">
@@ -128,7 +135,7 @@
                                 <div class="col-12">
                                     <h2 class="mt-3 mt-md-0">Design principles</h2>
                                     <p class="mb-md-0 pr-0 pr-md-5">
-                                        ONNX Runtime abstracts custom accelerators and runtimes to maximize their benefits across an ONNX model. To do this, ONNX Runtime partitions the ONNX model graph into subgraphs that align with available custom accelerators and runtimes. When operators are not supported by custom accelerators or runtimes, ONNX Runtime provides a default runtime that is used as the fallback execution &mdash; ensuring that any model will run.
+                                        ONNX Runtime abstracts custom accelerators and runtimes to maximize their benefits across an ONNX model. To do this, ONNX Runtime partitions the ONNX model graph into subgraphs that align with available custom accelerators and runtimes. When operators are not supported by custom accelerators or runtimes, ONNX Runtime provides a default runtime that is used as the fallback execution &mdash; ensuring that any model will run. <a href="docs/reference/high-level-design.html" target="_blank" class="link">Learn more</a>.
                                     </p>
                                 </div>
                             </div>

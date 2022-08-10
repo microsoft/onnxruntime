@@ -166,12 +166,9 @@ Currently, there are no special provisions to employ mimalloc on Linux. It is re
 
 ### Thread management
 
-* If ORT is built with OpenMP, use the OpenMP environment variable to control the number of intra op num threads.
-* If ORT is not built with OpenMP, use the appropriate ORT API to control intra op num threads.
-* Inter op num threads (used only when parallel execution is enabled) is not affected by OpenMP settings and should
-always be set using the ORT APIs.
+* Use the appropriate ORT API to set intra and inter op num threads. Inter op num threads is only used when parallel execution is enabled.
 
-### Custom threading callbacks
+#### Custom threading callbacks
 
 Occasionally, customers might prefer to use their own fine-tuned threads for multithreading,
 hence ORT offers thread creation and joining callbacks in the [C++ API](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h):
@@ -514,13 +511,8 @@ Will be supported in future releases
 
 ## Troubleshooting performance issues
 
-The answers below are troubleshooting suggestions based on common previous user-filed issues and questions. This list is by no means exhaustive and there is a lot of case-by-case fluctuation depending on the model and specific usage scenario. Please use this information to guide your troubleshooting, search through previously filed issues for related topics, and/or file a new issue if your problem is still not resolved.
+Here is a list of things to check when assessing performance issues:
 
-### Performance Troubleshooting Checklist
-
-Here is a list of things to check when assessing performance issues.
-
-* Are you using OpenMP? OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.
 * Have you enabled all [graph optimizations](graph-optimizations.md)? The official published packages do enable all by default but when building from source, check that these are enabled in your build.
 * Have you searched through prior-filed [GitHub issues](https://github.com/microsoft/onnxruntime/issues) to see if your problem has been discussed previously? Please do this before filing new issues.
 * If using CUDA or TensorRT, do you have the right versions of the dependent libraries installed? 
@@ -543,7 +535,7 @@ NCHW and NHWC are two different memory layout for 4-D tensors.
 
 Most TensorFlow operations used by a CNN support both NHWC and NCHW data format. The TensorFlow team suggests that on GPUs NCHW is faster but on CPUs NHWC is sometimes faster in TensorFlow. However, ONNX only supports NCHW. As a result, if the original model is in NHWC format, extra transposes may be added when the model is converted. The [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx) converter does remove many of these transposes, but if this doesn't help sufficiently, consider retraining the model in the NCHW format.
 
-### Mitigate high latency variance
+### I am seeing high latency variance
 
 On some platforms, onnxruntime may exhibit high latency variance during inferencing. This is caused by the constant cost model that onnxruntime uses to parallelize tasks in the thread pool.
 For each task, the constant cost model will calculate a granularity for parallelization among threads, which stays constant to the end of the task execution. This approach can bring imbalanced load sometimes, causing high latency variance.
