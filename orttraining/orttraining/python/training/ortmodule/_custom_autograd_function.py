@@ -23,16 +23,19 @@ custom_autograd_function_enabler = Enabler()
 def enable_custom_autograd_support():
     # Initialize static objects needed to run custom autograd.Function's.
 
+    import atexit
+
+    from torch.onnx import register_custom_op_symbolic
+
     from onnxruntime.capi._pybind_state import (
-        register_forward_runner,
         register_backward_runner,
+        register_forward_runner,
         unregister_python_functions,
     )
-    from torch.onnx import register_custom_op_symbolic
-    from ._custom_autograd_function_exporter import _export
-    from ._custom_autograd_function_runner import call_python_forward_function, call_python_backward_function
     from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils
-    import atexit
+
+    from ._custom_autograd_function_exporter import _export
+    from ._custom_autograd_function_runner import call_python_backward_function, call_python_forward_function
 
     register_forward_runner(call_python_forward_function)
     register_backward_runner(call_python_backward_function)
@@ -51,4 +54,12 @@ def enable_custom_autograd_support():
         # This applies to Pytorch 1.9 and 1.9.1.
         register_custom_op_symbolic("::prim_PythonOp", _export, 1)
 
-    custom_autograd_function_enabler.state = True
+
+def toggle_custom_autograd_support(flag):
+    if flag is True:
+        enable_custom_autograd_support()
+
+# Be noted, setup.py will replace below with "enable_custom_autograd_support(True|False)" at the end of the file if
+# enable_training_torch_interop is toggled during build.
+
+toggle_custom_autograd_support(False)

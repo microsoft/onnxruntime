@@ -448,6 +448,7 @@ requirements_file = "requirements.txt"
 local_version = None
 enable_training = parse_arg_remove_boolean(sys.argv, "--enable_training")
 enable_training_on_device = parse_arg_remove_boolean(sys.argv, "--enable_training_on_device")
+enable_training_torch_interop = parse_arg_remove_boolean(sys.argv, "--enable_training_torch_interop")
 disable_auditwheel_repair = parse_arg_remove_boolean(sys.argv, "--disable_auditwheel_repair")
 default_training_package_device = parse_arg_remove_boolean(sys.argv, "--default_training_package_device")
 
@@ -661,6 +662,25 @@ if enable_training:
                 f.write("rocm_version = '{}'\n".format(rocm_version))
 
     save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
+
+    def set_training_torch_interop_enabler():
+        training_torch_interop_enabler_path = path.join(
+            "onnxruntime", "training", "ortmodule", "_custom_autograd_function.py"
+        )
+
+        content = None
+        with open(training_torch_interop_enabler_path, "r") as f:
+            content = f.read()
+
+        content = content.replace(
+            f"toggle_custom_autograd_support({not enable_training_torch_interop})",
+            "toggle_custom_autograd_support({enable_training_torch_interop})",
+        )
+
+        with open(training_torch_interop_enabler_path, "w") as f:
+            f.write(content)
+
+    set_training_torch_interop_enabler()
 
 # Setup
 setup(
