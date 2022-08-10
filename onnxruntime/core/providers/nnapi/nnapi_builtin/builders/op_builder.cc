@@ -2417,25 +2417,16 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   int h_idx = use_nchw ? 2 : 1;
   int w_idx = use_nchw ? 3 : 2;
 
-  if (inputs.size() == 3) {  // we are using scales
-    const auto& scales_name = inputs[2].node_arg.Name();
-    const auto& scales_tensor = *initializers.at(scales_name);
-    std::vector<uint8_t> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scales_tensor, unpacked_tensor));
-    const float* scales_data = reinterpret_cast<const float*>(unpacked_tensor.data());
-    ORT_RETURN_IF_ERROR(
-        shaper.ResizeUsingScales(input, scales_data[h_idx], scales_data[w_idx], use_nchw, output));
-  } else {  // we are using sizes
-    const auto& sizes_name = inputs[3].node_arg.Name();
-    const auto& sizes_tensor = *initializers.at(sizes_name);
-    std::vector<uint8_t> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(sizes_tensor, unpacked_tensor));
-    const int64_t* sizes_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
-    ORT_RETURN_IF_ERROR(
-        shaper.ResizeUsingOutputSizes(input, SafeInt<uint32_t>(sizes_data[h_idx]), SafeInt<uint32_t>(sizes_data[w_idx]), use_nchw, output));
+  // Uses shape info from output node arg tensorshapeproto
+  const auto& shape_info = node_unit.Outputs()[0].node_arg.Shape();
+  const auto& shape_dims = shape_info->dim();
+  std::vector<uint32_t> output_shape(shape_info->dim_size());
+  for (int i = 0; i < shape_dims.size(); i++) {
+    auto& shape_dim = shape_dims.Get(i);
+    output_shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
   }
+  shaper.AddShape(output, output_shape);
 
-  const auto& output_shape = shaper[output];
   int32_t output_h = output_shape[h_idx];
   int32_t output_w = output_shape[w_idx];
 
@@ -2943,9 +2934,6 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
 
   const auto& output = outputs[0].node_arg.Name();
 
-  // ORT_RETURN_IF_ERROR(shaper.Pad(data, converted_pads_data, output));
-  // const OperandType output_operand_type{operand_types.at(data).type, shaper[output]};
-
   // Uses shape info from output node arg tensorshapeproto
   const auto& shape_info = node_unit.Outputs()[0].node_arg.Shape();
   const auto& shape_dims = shape_info->dim();
@@ -2956,7 +2944,6 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   }
   shaper.AddShape(output, output_shape);
 
-  //const OperandType output_operand_type{operand_types.at(data).type, shaper[output]};
   const OperandType output_operand_type{operand_types.at(data).type, output_shape};
   const auto op_code = ANEURALNETWORKS_PAD_V2;
   return model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type});

@@ -38,15 +38,6 @@ class Shaper {
 
   common::Status Squeeze(const std::string& input_name, const std::vector<int32_t>& axes, const std::string& output_name);
 
-  common::Status ResizeUsingScales(const std::string& input_name,
-                                   const float scale_h, const float scale_w,
-                                   bool nchw,
-                                   const std::string& output_name);
-  common::Status ResizeUsingOutputSizes(const std::string& input_name,
-                                        const uint32_t output_h, const uint32_t output_w,
-                                        bool nchw,
-                                        const std::string& output_name);
-
   // If the shape of certain input is dynamic
   // Use the following 2 functions to update the particular shape
   // and calculate the new output shape
@@ -65,14 +56,6 @@ class Shaper {
   common::Status ConcatImpl(const std::vector<std::string>& input_names, const int32_t axis, const std::string& output_name);
   common::Status SplitImpl(const std::string& input_name, int32_t axis, const std::vector<std::string>& output_names);
   common::Status SqueezeImpl(const std::string& input_names, const std::vector<int32_t>& axes, const std::string& output_name);
-  common::Status ResizeUsingScalesImpl(const std::string& input_name,
-                                       const float scale_h, const float scale_w,
-                                       bool nchw,
-                                       const std::string& output_name);
-  common::Status ResizeUsingOutputSizesImpl(const std::string& input_name,
-                                            const uint32_t output_h, const uint32_t output_w,
-                                            bool nchw,
-                                            const std::string& output_name);
 
   std::unordered_map<std::string, Shape> shape_map_;
   std::vector<std::function<common::Status(Shaper&)>> shape_ops_;

@@ -63,20 +63,6 @@ Status Shaper::Squeeze(const std::string& input_name,
   SHAPER_FUNC(Squeeze, input_name, axes, output_name);
 }
 
-Status Shaper::ResizeUsingScales(const std::string& input_name,
-                                 const float scale_h, const float scale_w,
-                                 bool nchw,
-                                 const std::string& output_name) {
-  SHAPER_FUNC(ResizeUsingScales, input_name, scale_h, scale_w, nchw, output_name);
-}
-
-Status Shaper::ResizeUsingOutputSizes(const std::string& input_name,
-                                      const uint32_t output_h, const uint32_t output_w,
-                                      bool nchw,
-                                      const std::string& output_name) {
-  SHAPER_FUNC(ResizeUsingOutputSizes, input_name, output_h, output_w, nchw, output_name);
-}
-
 #undef SHAPER_FUNC
 
 Status Shaper::ReshapeImpl(const std::string& input_name,
@@ -252,7 +238,7 @@ Status Shaper::SqueezeImpl(const std::string& input_name,
   return Status::OK();
 }
 
-Status Shaper::ResizeUsingScalesImpl(const std::string& input_name,
+/* Status Shaper::ResizeUsingScalesImpl(const std::string& input_name,
                                      const float scale_h, const float scale_w,
                                      bool nchw,
                                      const std::string& output_name) {
@@ -282,7 +268,7 @@ Status Shaper::ResizeUsingOutputSizesImpl(const std::string& input_name,
   }
   shape_map_[output_name] = output_dimen;
   return Status::OK();
-}
+} */
 
 void Shaper::AddShape(const std::string& name, const Shape& shape) {
   shape_map_[name] = shape;
