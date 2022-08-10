@@ -4,7 +4,7 @@
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_actions.h"
 
 #include "core/optimizer/qdq_transformer/qdq_util.h"
-
+#include "core/graph/node_attr_utils.h"
 namespace onnxruntime {
 namespace QDQ {
 
@@ -193,6 +193,15 @@ Status QDQReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& select
 
 UnaryReplaceWithQLinear::UnaryReplaceWithQLinear(std::string domain)
     : ReplaceWithQLinear(std::move(domain), UnaryMoves()) {
+}
+
+NodeAttributes UnaryReplaceWithQLinear::ExtraAttributes(const RuntimeState& state) const {
+  const auto& target = state.selected_nodes.Target();
+  NodeAttributes attr;
+  if (target.OpType() == "Softmax") {
+    attr["opset"] = utils::MakeAttribute(std::string("opset"), int64_t(target.SinceVersion()));
+  }
+  return attr;
 }
 
 BinaryReplaceWithQLinear::BinaryReplaceWithQLinear(std::string domain)
