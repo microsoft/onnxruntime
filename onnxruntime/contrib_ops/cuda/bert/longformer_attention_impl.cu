@@ -370,13 +370,14 @@ bool LaunchLongformerSoftmaxKernel(
     const void* k,                // transposed K with shape (B, N, S, H)
     const void* v,                // transposed V with shape (B, N, S, H)
     const void* attention_mask,   // attention mask with shape (B, S), with value 0 not masked and -10000 masked.
+    int max_num_global,           // maximum number of global tokens (G)
+    const bool compact_global_q,  // whether global_q has shape (B, N, G, H) instead of (B, N, S, H)
     const void* global_q,         // Q for global tokens with shape (B, N, S, H).
     const void* global_k,         // K for global tokens with shape (B, N, S, H)
     const void* global_v,         // V for global tokens with shape (B, N, S, H)
     const int* global_attention,  // global attention flags with shape (B, S), with value 0 for local and 1 for global.
     const int* global_index,      // Global index with shape (B, S)
     const int* batch_global_num,  // Number of global tokens per batch with shape (B, 1)
-    int max_num_global,           // maximum number of global tokens
     void* pinned_buffer,          // Pinned memory in CPU with 2 parts: global tokens per batch, and data for scratch2
     void* output,                 // output with shape (B, N, S, H)
     float scaler,                 // scalar
@@ -615,9 +616,9 @@ bool LaunchLongformerSoftmaxKernel(
                                        num_heads,            // batch count
                                        resultType,
                                        algo));
-      // TODO(tianleiwu): const int global_q_per_batch = num_heads * max_num_global * head_size;
-      //                  strideB = max_num_global * head_size
-      const int global_q_per_batch = elements_per_batch;
+
+      const int global_q_per_batch = (compact_global_q ? num_heads * max_num_global * head_size : elements_per_batch);
+      const int global_q_stride = (compact_global_q ? max_num_global * head_size : stride_per_head);
       const void* global_q_batch = reinterpret_cast<const char*>(global_q) + (i * global_q_per_batch) * element_size;
       const void* global_k_batch = reinterpret_cast<const char*>(global_k) + (i * elements_per_batch) * element_size;
       qk_batch = reinterpret_cast<char*>(buffer_pointers[4]) + (i * buffer_sizes[4] * num_heads) * element_size;
@@ -638,7 +639,7 @@ bool LaunchLongformerSoftmaxKernel(
                                        global_q_batch,   // B
                                        Btype,            // B type
                                        head_size,        // ldb
-                                       stride_per_head,  // strideB.
+                                       global_q_stride,  // strideB.
                                        beta_0,           // beta
                                        qk_batch,         // C
                                        Ctype,            // C type
@@ -849,7 +850,7 @@ bool LongformerQkvToContext(
     const int* global_attention,  // global attention flags with shape (B, S), with value 0 for local and 1 for global.
     const int* global_index,      // Global index with shape (B, S)
     const int* batch_global_num,  // Number of global tokens per batch with shape (B, 1)
-    const int max_num_global,     // Maximum number of global tokens
+    const int max_num_global,     // Maximum number of global tokens (G)
     void* pinned_buffer,          // Pinned memory in CPU. Number of global tokens per batch with shape (B, 1)
     T* workspace,                 // Softmax space
     T* output,                    // output
@@ -864,22 +865,28 @@ bool LongformerQkvToContext(
   const int max_threads_per_block(device_prop.maxThreadsPerBlock);
 
   const int format = static_cast<int>(use_merged_qkv_weights);
+  bool compact_global_q = false;
   // The order of qkv space:
   //  Q, K, V, Global_K, Global_V, Global_Q (format 0)
   //  Q, K, V, Global_Q, Global_K, Global_V (format 1)
   if (format == 1 || max_num_global == 0 || nullptr == global_input) {
-    LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size, sequence_length, num_heads, head_size,
+    LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
+                           sequence_length, num_heads, head_size,
                            input, bias, qkv);
 
     if (max_num_global > 0 && nullptr != global_input) {
-      LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size, sequence_length, num_heads, head_size,
+      LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
+                             sequence_length, num_heads, head_size,
                              global_input, global_bias, qkv + 3 * elements);
     }
   } else {
-    LaunchAddBiasTranspose(stream, 5, format, max_threads_per_block, batch_size, sequence_length, num_heads, head_size,
+    LaunchAddBiasTranspose(stream, 5, format, max_threads_per_block, batch_size,
+                           sequence_length, num_heads, head_size,
                            input, bias, qkv);
-    // LaunchAddBiasTranspose(stream, 1, format, max_threads_per_block, batch_size, max_num_global, num_heads, head_size,
-    LaunchAddBiasTranspose(stream, 1, format, max_threads_per_block, batch_size, sequence_length, num_heads, head_size,
+
+    compact_global_q = (disable_compact_memory == false);
+    LaunchAddBiasTranspose(stream, 1, format, max_threads_per_block, batch_size,
+                           compact_global_q ? max_num_global : sequence_length, num_heads, head_size,
                            global_input + 2 * elements, global_bias, qkv + 5 * elements);
   }
   if (!CUDA_CALL(cudaPeekAtLastError())) {
@@ -891,8 +898,8 @@ bool LongformerQkvToContext(
   const T* k = q + elements;
   const T* v = k + elements;
 
-  // Transposed global Q, K, V with shape (B, N, S, H) for format 1.
-  // For format 0, Global Q has shape (B, N, G, H) where G is max_num_global.
+  // Transposed global Q, K, V with shape (B, N, S, H).
+  // When compact_global_q is true, Global Q has actual shape (B, N, G, H) although we allocated space of (B, N, S, H)
   // When max_num_global == 0, these pointers are not used in GEMM so the value does not matter.
   const T* global_q = (format == 1 ? v + elements : qkv + 5 * elements);
   const T* global_k = (format == 1 ? global_q + elements : qkv + 3 * elements);
@@ -940,13 +947,14 @@ bool LongformerQkvToContext(
             k,
             v,
             attention_mask,
+            max_num_global,
+            compact_global_q,
             global_q,
             global_k,
             global_v,
             global_attention,
             global_index,
             batch_global_num,
-            max_num_global,
             pinned_buffer,
             temp_output,
             rsqrt_head_size,

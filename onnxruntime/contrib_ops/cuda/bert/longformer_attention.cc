@@ -116,6 +116,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   size_t qkv_size = batch_size * sequence_length * 3 * hidden_size * element_size;
   // Buffer for GEMM outputs of q, k, v, global_q, global_k and global_v
+  // TODO: compact global_q only need batch_size * window * hidden_size * element_size buffer size.
   auto gemm_buffer = GetScratchBuffer<void>(qkv_size + qkv_size);
 
   bool use_merged_qkv_weights = (weights->Shape().NumDimensions() == 2);
@@ -201,33 +202,33 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
       // global q
       const CudaT* global_q_weight = global_weights_data;
       CudaT* global_q = global_gemm_buffer + 2 * batch_size * sequence_length * hidden_size;
-      CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-          cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-          global_q_weight, n,
-          input_data, k,
-          &zero, global_q, n, device_prop));
-      /*
-      CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(cublas,
-                                                            CUBLAS_OP_N,
-                                                            CUBLAS_OP_N,
-                                                            hidden_size,                    // m
-                                                            max_num_global,                 // n
-                                                            hidden_size,                    // k
-                                                            &one,                           // alpha
-                                                            global_q_weight,                // A
-                                                            hidden_size,                    // lda
-                                                            0,                              // strideA
-                                                            input_data,                     // B
-                                                            hidden_size,                    // ldb
-                                                            sequence_length * hidden_size,  // strideB
-                                                            &zero,                          // beta
-                                                            global_q,                       // C
-                                                            hidden_size,                    // ldc
-                                                            max_num_global * hidden_size,   // strideC
-                                                            batch_size,                     // batch count
-                                                            device_prop));
-      */
-
+      if (disable_compact_memory) {
+        CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+            cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
+            global_q_weight, n,
+            input_data, k,
+            &zero, global_q, n, device_prop));
+      } else {
+        CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(cublas,
+                                                              CUBLAS_OP_N,
+                                                              CUBLAS_OP_N,
+                                                              hidden_size,                    // m
+                                                              max_num_global,                 // n
+                                                              hidden_size,                    // k
+                                                              &one,                           // alpha
+                                                              global_q_weight,                // A
+                                                              hidden_size,                    // lda
+                                                              0,                              // strideA
+                                                              input_data,                     // B
+                                                              hidden_size,                    // ldb
+                                                              sequence_length * hidden_size,  // strideB
+                                                              &zero,                          // beta
+                                                              global_q,                       // C
+                                                              hidden_size,                    // ldc
+                                                              max_num_global * hidden_size,   // strideC
+                                                              batch_size,                     // batch count
+                                                              device_prop));
+      }
       // global k
       const CudaT* global_k_weight = global_weights_data + hidden_size * hidden_size;
       CudaT* global_k = global_gemm_buffer;
