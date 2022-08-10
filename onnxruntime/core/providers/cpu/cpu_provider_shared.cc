@@ -32,6 +32,7 @@
 #include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
 #include "contrib_ops/cpu/bert/longformer_attention_base.h"
 #include "contrib_ops/cpu/transformers/beam_search.h"
+#include "contrib_ops/cpu/transformers/greedy_search.h"
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op.h"
 #endif
@@ -44,12 +45,13 @@
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
 #include "orttraining/training_ops/cpu/tensor/split.h"
+#include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
 #endif
 
 #include "cpu_provider_shared.h"
 
 namespace onnxruntime {
-//The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
+// The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26436)
@@ -80,7 +82,8 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
 
   // From cpu/tensor/concatbase.h (direct)
   Status ConcatBase__PrepareForCompute(const ConcatBase* p, OpKernelContext* ctx, const ConcatBase_InlinedTensorsVector& input_tensors, Prepare& prepare) override {
-    return p->ConcatBase::PrepareForCompute(ctx, reinterpret_cast<const ConcatBase::InlinedTensorsVector&>(input_tensors), prepare); }
+    return p->ConcatBase::PrepareForCompute(ctx, reinterpret_cast<const ConcatBase::InlinedTensorsVector&>(input_tensors), prepare);
+  }
 
   // GatherElements (direct)
   Status GatherElements__ValidateInputShapes(const TensorShape& input_data_shape, const TensorShape& indices_shape, int64_t axis) override { return GatherElements::ValidateInputShapes(input_data_shape, indices_shape, axis); }
@@ -176,6 +179,10 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   virtual Status BeamSearch__Compute(const contrib::transformers::BeamSearch* p, OpKernelContext* ctx) { return p->contrib::transformers::BeamSearch::Compute(ctx); }
   virtual Status BeamSearch__SetupSubgraphExecutionInfo(contrib::transformers::BeamSearch* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override { return p->contrib::transformers::BeamSearch::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state); }
 
+  void GreedySearch__Init(contrib::transformers::GreedySearch* p, const OpKernelInfo& info) override { p->contrib::transformers::GreedySearch::Init(info); }
+  virtual Status GreedySearch__Compute(const contrib::transformers::GreedySearch* p, OpKernelContext* ctx) { return p->contrib::transformers::GreedySearch::Compute(ctx); }
+  virtual Status GreedySearch__SetupSubgraphExecutionInfo(contrib::transformers::GreedySearch* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override { return p->contrib::transformers::GreedySearch::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state); }
+
 #ifdef ENABLE_ATEN
   Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) override { return p->ATen::Compute(p_ctx); }
 #endif
@@ -191,10 +198,27 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   void contrib__GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, TensorShapeVector& new_shape, std::vector<size_t>& permutations) override { contrib::GetPermutationAndShape(ncd_to_ndc, tensor_shape, new_shape, permutations); }
   Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) override { return contrib::PrepareForTrainingCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
   Status contrib__YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) override { return p->YieldOp::Compute(context); }
+  // From cpu/optimizer/adamwbase.h (direct)
+  Status contrib__AdamWOptimizerBase__PrepareForCompute(const contrib::AdamWOptimizerBase* p, OpKernelContext* ctx,
+                                                        contrib__AdamWOptimizerBase__Prepare& prepare) override {
+    return p->AdamWOptimizerBase::PrepareForCompute(ctx,
+                                                    reinterpret_cast<contrib::AdamWOptimizerBase::Prepare&>(prepare));
+  }
+
+  Status contrib__AdamWOptimizerBase__GenerateOutputs(const contrib::AdamWOptimizerBase* p, OpKernelContext* ctx,
+                                                      size_t number_of_values,
+                                                      const TensorSeq* values, TensorSeq* updated_values) override {
+    return p->AdamWOptimizerBase::GenerateOutputs(ctx, number_of_values, values, updated_values);
+  }
 
   // From aten_op.h (direct)
-  bool contrib__IsATenOperatorExecutorInitialized() override { return contrib::IsATenOperatorExecutorInitialized(); }
-  Status contrib__ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) override { return contrib::ExecuteReduceSumATen(p_ctx, axes, keepdims); }
+  bool contrib__IsATenOperatorExecutorInitialized() override {
+    return contrib::IsATenOperatorExecutorInitialized();
+  }
+  Status contrib__ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims)
+      override {
+    return contrib::ExecuteReduceSumATen(p_ctx, axes, keepdims);
+  }
 #endif
 #endif
 };
@@ -202,7 +226,7 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
 #pragma warning(pop)
 #endif
 
-//We don't new this type on heap, so it's ok to not have a virtual destructor.
+// We don't new this type on heap, so it's ok to not have a virtual destructor.
 ProviderHostCPUImpl provider_host_cpu_;
 ProviderHostCPU& GetProviderHostCPU() { return provider_host_cpu_; }
 

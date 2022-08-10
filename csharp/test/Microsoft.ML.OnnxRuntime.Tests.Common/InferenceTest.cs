@@ -27,7 +27,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact(DisplayName = "TestSessionOptions")]
         public void TestSessionOptions()
         {
-            // get instance to setup logging 
+            // get instance to setup logging
             var ortEnvInstance = OrtEnv.Instance();
 
             using (SessionOptions opt = new SessionOptions())
@@ -1938,7 +1938,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var session = (deviceId.HasValue)
                     ? new InferenceSession(model, option)
                     : new InferenceSession(model);
-                float[] inputData = TestDataLoader.LoadTensorFromEmbeddedResource("bench.in"); 
+                float[] inputData = TestDataLoader.LoadTensorFromEmbeddedResource("bench.in");
                 float[] expectedOutput = TestDataLoader.LoadTensorFromEmbeddedResource("bench.expected_out");
                 var inputMeta = session.InputMetadata;
                 var tensor = new DenseTensor<float>(inputData, inputMeta["data_0"].Dimensions);
@@ -1956,6 +1956,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 return Math.Abs(x - y) <= (atol + rtol * Math.Abs(y));
             }
             public int GetHashCode(float x)
+            {
+                return x.GetHashCode();
+            }
+        }
+
+        internal class DoubleComparer : IEqualityComparer<double>
+        {
+            private double atol = 1e-3;
+            private double rtol = 1.7e-2;
+
+            public bool Equals(double x, double y)
+            {
+                return Math.Abs(x - y) <= (atol + rtol * Math.Abs(y));
+            }
+            public int GetHashCode(double x)
             {
                 return x.GetHashCode();
             }

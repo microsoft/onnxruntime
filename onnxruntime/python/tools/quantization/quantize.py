@@ -4,28 +4,13 @@
 # license information.
 # --------------------------------------------------------------------------
 import logging
+import tempfile
 from pathlib import Path
 
-from onnx import onnx_pb as onnx_proto
-
 from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator
-from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
-from .quant_utils import (
-    QuantFormat,
-    QuantizationMode,
-    QuantizedInitializer,
-    QuantizedValue,
-    QuantizedValueType,
-    QuantType,
-    attribute_to_kwarg,
-    find_by_name,
-    generate_identified_filename,
-    get_elem_index,
-    get_mul_node,
-    load_model,
-)
+from .quant_utils import QuantFormat, QuantizationMode, QuantType, load_model
 from .registry import IntegerOpsRegistry, QLinearOpsRegistry
 
 
@@ -142,15 +127,18 @@ def quantize_static(
     calib_extra_options = {
         key: extra_options.get(name) for (name, key) in calib_extra_options_keys if name in extra_options
     }
-    calibrator = create_calibrator(
-        model,
-        op_types_to_quantize,
-        calibrate_method=calibrate_method,
-        use_external_data_format=use_external_data_format,
-        extra_options=calib_extra_options,
-    )
-    calibrator.collect_data(calibration_data_reader)
-    tensors_range = calibrator.compute_range()
+
+    with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
+        calibrator = create_calibrator(
+            model,
+            op_types_to_quantize,
+            augmented_model_path=Path(quant_tmp_dir).joinpath("augmented_model.onnx").as_posix(),
+            calibrate_method=calibrate_method,
+            use_external_data_format=use_external_data_format,
+            extra_options=calib_extra_options,
+        )
+        calibrator.collect_data(calibration_data_reader)
+        tensors_range = calibrator.compute_range()
 
     check_static_quant_arguments(quant_format, activation_type, weight_type)
 

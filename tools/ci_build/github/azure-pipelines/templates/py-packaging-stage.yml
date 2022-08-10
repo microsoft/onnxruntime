@@ -20,15 +20,10 @@ parameters:
   type: boolean
   default: true
 
-- name: enable_linux_gpu_training_cu102
-  displayName: 'Whether Linux GPU Cuda 10.2 package is built.'
+- name: enable_linux_gpu_tests
+  displayName: 'Whether to run tests when building the Linux GPU package.'
   type: boolean
-  default: false
-
-- name: enable_linux_gpu_training_cu111
-  displayName: 'Whether Linux GPU Cuda 11.1 package is built.'
-  type: boolean
-  default: false
+  default: true
 
 - name: enable_windows_cpu
   displayName: 'Whether Windows CPU package is built.'
@@ -57,6 +52,7 @@ parameters:
 
 stages:
 - stage: Python_Packaging
+  dependsOn: []
 
   jobs:
   - ${{ if eq(parameters.enable_ubuntu_cpu, true) }}:
@@ -352,34 +348,35 @@ stages:
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
           workingDirectory: $(Build.SourcesDirectory)
 
-      - task: CmdLine@2
-        displayName: 'Running tests'
-        condition: and(succeeded(), eq(variables['PythonVersion'], '3.8'))
-        inputs:
-          script: |
-            set -e -x
-            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
-            sudo rm -f /build /onnxruntime_src
-            sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
-            python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
-            cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
-            # Test ORT with the latest ONNX release.
-            sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/" $(Build.BinariesDirectory)/requirements.txt
-            python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
-            python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
-            cd $(Build.BinariesDirectory)/Release
-            ls $(Build.BinariesDirectory)/models
-            rmdir $(Build.BinariesDirectory)/models
-            ln -sf /data/models $(Build.BinariesDirectory)
-            python3 /onnxruntime_src/tools/ci_build/build.py \
-                  --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja \
-                  --config Release --test \
-                  --skip_submodule_sync \
-                  --parallel \
-                  --build_wheel \
-                  --enable_onnx_tests --use_tensorrt --cuda_version=11.4 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.4 --cudnn_home=/usr/local/cuda-11.4 \
-                  ${{ parameters.build_py_parameters }} --ctest_path '' \
-                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
+      - ${{ if parameters.enable_linux_gpu_tests }}:
+        - task: CmdLine@2
+          displayName: 'Running tests'
+          condition: and(succeeded(), eq(variables['PythonVersion'], '3.8'))
+          inputs:
+            script: |
+              set -e -x
+              rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
+              sudo rm -f /build /onnxruntime_src
+              sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
+              python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
+              cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
+              # Test ORT with the latest ONNX release.
+              sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/" $(Build.BinariesDirectory)/requirements.txt
+              python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
+              python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
+              cd $(Build.BinariesDirectory)/Release
+              ls $(Build.BinariesDirectory)/models
+              rmdir $(Build.BinariesDirectory)/models
+              ln -sf /data/models $(Build.BinariesDirectory)
+              python3 /onnxruntime_src/tools/ci_build/build.py \
+                    --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja \
+                    --config Release --test \
+                    --skip_submodule_sync \
+                    --parallel \
+                    --build_wheel \
+                    --enable_onnx_tests --use_tensorrt --cuda_version=11.4 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.4 --cudnn_home=/usr/local/cuda-11.4 \
+                    ${{ parameters.build_py_parameters }} --ctest_path '' \
+                    --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
@@ -587,7 +584,7 @@ stages:
 
       - task: TSAUpload@2
         displayName: 'TSA upload'
-        condition: and(and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.7'))), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+        condition: and(and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.7'))), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         inputs:
           GdnPublishTsaOnboard: false
           GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
@@ -791,7 +788,7 @@ stages:
 
       - task: TSAUpload@2
         displayName: 'TSA upload'
-        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         inputs:
           GdnPublishTsaOnboard: false
           GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'

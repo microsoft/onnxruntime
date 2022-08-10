@@ -52,6 +52,7 @@ jobs:
     OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
     OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
     OnnxruntimeNodejsBindingArch: 'x64'
+    PoolName: 'Linux-CPU'
 
 - template: c-api-linux-cpu.yml
   parameters:        
@@ -61,6 +62,7 @@ jobs:
     OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
     OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
     OnnxruntimeNodejsBindingArch: 'arm64'
+    PoolName: 'aiinfra-linux-ARM64-CPU-2019'
 
 - job: MacOS_C_API_Packaging_CPU_x64
   workspace:
@@ -423,18 +425,18 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Create models link'
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 5.7.0
+    displayName: Use Nuget 6.2.1
     inputs:
-      versionSpec: 5.7.0
+      versionSpec: 6.2.1
 
   - task: PowerShell@2
     displayName: Install .NET 6 workloads
     inputs:
       targetType: 'inline'
       script: |
-        dotnet workload install android ios maccatalyst macos
+        dotnet workload install android ios macos
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
-    
+  
   - task: PowerShell@2  
     displayName: Build Microsoft.ML.OnnxRuntime .NET 6 targets using dotnet
     inputs:
@@ -475,7 +477,7 @@ jobs:
       DoEsrp: ${{ parameters.DoEsrp }}
 
   - task: MSBuild@1
-    displayName: Update projects.assets.json will combined list of all target frameworks
+    displayName: Update projects.assets.json with combined list of all target frameworks
     inputs:
       solution: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj'
       platform: 'Any CPU'
@@ -843,7 +845,7 @@ jobs:
   - name: GDN_CODESIGN_TARGETDIRECTORY
     value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
   pool: 'Win-CPU-2021'
-  condition: and (succeeded(), and (${{ parameters.PublishingNuget }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
+  condition: and (succeeded(), and (${{ parameters.PublishingNuget }}, eq(variables['Build.SourceBranch'], 'refs/heads/main')))
   dependsOn:
   - NuGet_Test_Win_CPU
   - NuGet_Test_Linux_CPU

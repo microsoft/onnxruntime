@@ -6,7 +6,8 @@
 #include "core/common/inlined_containers.h"
 #include "contrib_ops/cpu/transformers/sequences.h"
 #include "contrib_ops/cpu/transformers/beam_search_parameters.h"
-#include "contrib_ops/cpu/transformers/beam_search_shared.h"
+#include "contrib_ops/cpu/transformers/greedy_search_parameters.h"
+#include "contrib_ops/cpu/transformers/generation_shared.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -99,9 +100,50 @@ class LogitsProcessorList : public ILogitsProcessorList {
  public:
   LogitsProcessorList() = default;
   void Init(const BeamSearchParameters& parameters);
+  void Init(const GreedySearchParameters& parameters);
   void Process(const ISequences* sequences, gsl::span<float>& next_token_scores, int step);
 
  private:
+  template<typename GenerationParametersT>
+  void LogitsProcessorInitImpl(const GenerationParametersT& parameters) {
+    processor_list_.clear();
+
+    if (parameters.repetition_penalty != 1.0f) {  // 1.0 means no penalty
+      repetition_penalty_processor_ = std::make_unique<RepetitionPenaltyLogitsProcessor<float>>(
+          parameters.repetition_penalty);
+      processor_list_.push_back(repetition_penalty_processor_.get());
+    }
+
+    if (parameters.no_repeat_ngram_size > 0) {
+      no_repeat_ngram_processor_ = std::make_unique<
+                                     NoRepeatNGramLogitsProcessor<float>
+                                   >(parameters.no_repeat_ngram_size);
+      processor_list_.push_back(no_repeat_ngram_processor_.get());
+    }
+
+    if (!parameters.vocab_mask.empty()) {
+      vocab_mask_processor_ = std::make_unique<VocabMaskLogitsProcessor<float>>(parameters.vocab_mask);
+      processor_list_.push_back(vocab_mask_processor_.get());
+    }
+
+    if (!parameters.prefix_vocab_mask.empty()) {
+      prefix_vocab_mask_processor_ = std::make_unique<
+                                       PrefixVocabMaskLogitsProcessor<float>
+                                     >(parameters.prefix_vocab_mask,
+                                       parameters.batch_size);
+      processor_list_.push_back(prefix_vocab_mask_processor_.get());
+    }
+
+    if (parameters.min_length > 0) {
+      min_length_processor_ = std::make_unique<MinLengthLogitsProcessor<float>>(parameters.min_length,
+                                                                                parameters.eos_token_id);
+      processor_list_.push_back(min_length_processor_.get());
+    }
+
+    batch_beam_size_ = parameters.BatchBeamSize();
+    vocab_size_ = parameters.vocab_size;
+  }
+
   int batch_beam_size_;
   int vocab_size_;
   InlinedVector<ILogitsProcessor<float>*> processor_list_;

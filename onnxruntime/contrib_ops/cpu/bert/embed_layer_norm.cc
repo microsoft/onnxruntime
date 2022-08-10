@@ -70,16 +70,16 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
   int position_embedding_length = static_cast<int>(position_embedding->Shape()[0]);
   int segment_embedding_length = (nullptr == segment_embedding) ? 0 : static_cast<int>(segment_embedding->Shape()[0]);
 
-  const int32_t* input_ids_data = input_ids->template Data<int32_t>();
-  const int32_t* segment_ids_data = (nullptr == segment_ids) ? nullptr : segment_ids->template Data<int32_t>();
-  const T* word_embedding_data = word_embedding->template Data<T>();
-  const T* position_embedding_data = position_embedding->template Data<T>();
-  const T* segment_embedding_data = (nullptr == segment_embedding) ? nullptr : segment_embedding->template Data<T>();
-  const T* gamma_data = gamma->template Data<T>();
-  const T* beta_data = beta->template Data<T>();
-  const int32_t* position_ids_data = (nullptr == position_ids) ? nullptr : position_ids->template Data<int32_t>();
-  T* output_data = output->template MutableData<T>();
-  T* embedding_sum_data = (embedding_sum != nullptr) ? embedding_sum->template MutableData<T>() : nullptr;
+  const int32_t* input_ids_data = input_ids->Data<int32_t>();
+  const int32_t* segment_ids_data = (nullptr == segment_ids) ? nullptr : segment_ids->Data<int32_t>();
+  const T* word_embedding_data = word_embedding->Data<T>();
+  const T* position_embedding_data = position_embedding->Data<T>();
+  const T* segment_embedding_data = (nullptr == segment_embedding) ? nullptr : segment_embedding->Data<T>();
+  const T* gamma_data = gamma->Data<T>();
+  const T* beta_data = beta->Data<T>();
+  const int32_t* position_ids_data = (nullptr == position_ids) ? nullptr : position_ids->Data<int32_t>();
+  T* output_data = output->MutableData<T>();
+  T* embedding_sum_data = (embedding_sum != nullptr) ? embedding_sum->MutableData<T>() : nullptr;
 
   // Calculate output
   {
@@ -146,8 +146,8 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
 
   // Calculate mask
   if (nullptr != mask) {
-    const int32_t* mask_data = mask->template Data<int32_t>();
-    int32_t* mask_index_data = mask_index->template MutableData<int32_t>();
+    const int32_t* mask_data = mask->Data<int32_t>();
+    int32_t* mask_index_data = mask_index->MutableData<int32_t>();
     for (int b = 0; b < batch_size; b++) {
       int32_t cur_sum = 0;
       const int32_t* cur_mask_data = mask_data + (static_cast<int64_t>(b) * sequence_length);
@@ -159,7 +159,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
       mask_index_data[b] = cur_sum;
     }
   } else {
-    memset(mask_index->template MutableData<int32_t>(), 0, batch_size * sizeof(int32_t));
+    memset(mask_index->MutableData<int32_t>(), 0, batch_size * sizeof(int32_t));
   }
 
   return Status::OK();

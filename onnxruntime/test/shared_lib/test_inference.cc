@@ -182,6 +182,7 @@ static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/f
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_bar_1.onnx");
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_bar_2.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_WITH_ATTRIBUTES_URI = TSTR("testdata/foo_bar_3.onnx");
+static constexpr PATH_TYPE OPTIONAL_TYPE_GH_11717_MODEL = TSTR("testdata/gh_issue_11717.onnx");
 #if !defined(DISABLE_SPARSE_TENSORS)
 static constexpr PATH_TYPE SPARSE_OUTPUT_MODEL_URI = TSTR("testdata/sparse_initializer_as_output.onnx");
 #ifndef DISABLE_CONTRIB_OPS
@@ -408,7 +409,7 @@ TEST(CApiTest, custom_op_handler) {
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(REDUCED_OPS_BUILD)
 // disable test in reduced-op-build since TOPK and GRU are excluded there
-TEST(CApiTest, instant_op_handler) {
+TEST(CApiTest, standalone_op_handler) {
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
   input.name = "X";
@@ -418,12 +419,20 @@ TEST(CApiTest, instant_op_handler) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
-  InstantCustomOp instant_op{onnxruntime::kCpuExecutionProvider, nullptr};
-  Ort::CustomOpDomain custom_op_domain("");
-  custom_op_domain.Add(&instant_op);
+#ifdef USE_CUDA
+  StandaloneCustomOp standalone_op{onnxruntime::kCudaExecutionProvider, nullptr};
+#else
+  StandaloneCustomOp standalone_op{onnxruntime::kCpuExecutionProvider, nullptr};
+#endif
 
-  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
-                       custom_op_domain, nullptr);
+  Ort::CustomOpDomain custom_op_domain("");
+  custom_op_domain.Add(&standalone_op);
+
+#ifdef USE_CUDA
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr);
+#else
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
+#endif
 }
 #endif
 
@@ -1422,9 +1431,10 @@ TEST(CApiTest, override_initializer) {
   size_t init_count = session.GetOverridableInitializerCount();
   ASSERT_EQ(init_count, 1U);
 
-  char* f1_init_name = session.GetOverridableInitializerName(0, allocator.get());
-  ASSERT_TRUE(strcmp("F1", f1_init_name) == 0);
-  allocator->Free(f1_init_name);
+  {
+    auto f1_init_name = session.GetOverridableInitializerNameAllocated(0, allocator.get());
+    ASSERT_TRUE(strcmp("F1", f1_init_name.get()) == 0);
+  }
 
   Ort::TypeInfo init_type_info = session.GetOverridableInitializerTypeInfo(0);
   ASSERT_EQ(ONNX_TYPE_TENSOR, init_type_info.GetONNXType());
@@ -1466,10 +1476,10 @@ TEST(CApiTest, end_profiling) {
   session_options_1.EnableProfiling("profile_prefix");
 #endif
   Ort::Session session_1(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options_1);
-  char* profile_file = session_1.EndProfiling(allocator.get());
-
-  ASSERT_TRUE(std::string(profile_file).find("profile_prefix") != std::string::npos);
-  allocator->Free(profile_file);
+  {
+    auto profile_file = session_1.EndProfilingAllocated(allocator.get());
+    ASSERT_TRUE(std::string(profile_file.get()).find("profile_prefix") != std::string::npos);
+  }
   // Create session with profiling disabled
   Ort::SessionOptions session_options_2;
 #ifdef _WIN32
@@ -1478,9 +1488,10 @@ TEST(CApiTest, end_profiling) {
   session_options_2.DisableProfiling();
 #endif
   Ort::Session session_2(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options_2);
-  profile_file = session_2.EndProfiling(allocator.get());
-  ASSERT_TRUE(std::string(profile_file) == std::string());
-  allocator->Free(profile_file);
+  {
+    auto profile_file = session_2.EndProfilingAllocated(allocator.get());
+    ASSERT_TRUE(std::string(profile_file.get()) == std::string());
+  }
 }
 
 TEST(CApiTest, get_profiling_start_time) {
@@ -1518,50 +1529,49 @@ TEST(CApiTest, model_metadata) {
     // Fetch model metadata
     auto model_metadata = session.GetModelMetadata();
 
-    char* producer_name = model_metadata.GetProducerName(allocator.get());
-    ASSERT_TRUE(strcmp("Hari", producer_name) == 0);
-    allocator.get()->Free(producer_name);
+    {
+      auto producer_name = model_metadata.GetProducerNameAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("Hari", producer_name.get()) == 0);
+    }
 
-    char* graph_name = model_metadata.GetGraphName(allocator.get());
-    ASSERT_TRUE(strcmp("matmul test", graph_name) == 0);
-    allocator.get()->Free(graph_name);
+    {
+      auto graph_name = model_metadata.GetGraphNameAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("matmul test", graph_name.get()) == 0);
+    }
 
-    char* domain = model_metadata.GetDomain(allocator.get());
-    ASSERT_TRUE(strcmp("", domain) == 0);
-    allocator.get()->Free(domain);
+    {
+      auto domain = model_metadata.GetDomainAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("", domain.get()) == 0);
+    }
 
-    char* description = model_metadata.GetDescription(allocator.get());
-    ASSERT_TRUE(strcmp("This is a test model with a valid ORT config Json", description) == 0);
-    allocator.get()->Free(description);
+    {
+      auto description = model_metadata.GetDescriptionAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("This is a test model with a valid ORT config Json", description.get()) == 0);
+    }
 
-    char* graph_description = model_metadata.GetGraphDescription(allocator.get());
-    ASSERT_TRUE(strcmp("graph description", graph_description) == 0);
-    allocator.get()->Free(graph_description);
+    {
+      auto graph_description = model_metadata.GetGraphDescriptionAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("graph description", graph_description.get()) == 0);
+    }
 
     int64_t version = model_metadata.GetVersion();
     ASSERT_TRUE(version == 1);
 
-    int64_t num_keys_in_custom_metadata_map;
-    char** custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeys(allocator.get(),
-                                                                              num_keys_in_custom_metadata_map);
-    ASSERT_TRUE(num_keys_in_custom_metadata_map == 2);
+    {
+      auto custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeysAllocated(allocator.get());
+      ASSERT_EQ(custom_metadata_map_keys.size(), 2U);
+    }
 
-    allocator.get()->Free(custom_metadata_map_keys[0]);
-    allocator.get()->Free(custom_metadata_map_keys[1]);
-    allocator.get()->Free(custom_metadata_map_keys);
-
-    char* lookup_value_1 = model_metadata.LookupCustomMetadataMap("ort_config", allocator.get());
-    ASSERT_TRUE(strcmp(lookup_value_1,
+    auto lookup_value_1 = model_metadata.LookupCustomMetadataMapAllocated("ort_config", allocator.get());
+    ASSERT_TRUE(strcmp(lookup_value_1.get(),
                        "{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, "
                        "\"graph_optimization_level\": 99, \"enable_profiling\": 1}}") == 0);
-    allocator.get()->Free(lookup_value_1);
 
-    char* lookup_value_2 = model_metadata.LookupCustomMetadataMap("dummy_key", allocator.get());
-    ASSERT_TRUE(strcmp(lookup_value_2, "dummy_value") == 0);
-    allocator.get()->Free(lookup_value_2);
+    auto lookup_value_2 = model_metadata.LookupCustomMetadataMapAllocated("dummy_key", allocator.get());
+    ASSERT_TRUE(strcmp(lookup_value_2.get(), "dummy_value") == 0);
 
     // key doesn't exist in custom metadata map
-    char* lookup_value_3 = model_metadata.LookupCustomMetadataMap("key_doesnt_exist", allocator.get());
+    auto lookup_value_3 = model_metadata.LookupCustomMetadataMapAllocated("key_doesnt_exist", allocator.get());
     ASSERT_TRUE(lookup_value_3 == nullptr);
   }
 
@@ -1575,21 +1585,20 @@ TEST(CApiTest, model_metadata) {
     auto model_metadata = session.GetModelMetadata();
 
     // Model description is empty
-    char* description = model_metadata.GetDescription(allocator.get());
-    ASSERT_TRUE(strcmp("", description) == 0);
-    allocator.get()->Free(description);
+    {
+      auto description = model_metadata.GetDescriptionAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("", description.get()) == 0);
+    }
 
     // Graph description is empty
-    char* graph_description = model_metadata.GetGraphDescription(allocator.get());
-    ASSERT_TRUE(strcmp("", graph_description) == 0);
-    allocator.get()->Free(graph_description);
+    {
+      auto graph_description = model_metadata.GetGraphDescriptionAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("", graph_description.get()) == 0);
+    }
 
     // Model does not contain custom metadata map
-    int64_t num_keys_in_custom_metadata_map;
-    char** custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeys(allocator.get(),
-                                                                              num_keys_in_custom_metadata_map);
-    ASSERT_TRUE(num_keys_in_custom_metadata_map == 0);
-    ASSERT_TRUE(custom_metadata_map_keys == nullptr);
+    auto custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeysAllocated(allocator.get());
+    ASSERT_TRUE(custom_metadata_map_keys.empty());
   }
 }
 
@@ -1772,7 +1781,7 @@ TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {
 
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
-  // create session 1
+  // create session 1 (using model path)
   Ort::Session session1(*ort_env, MATMUL_MODEL_URI, session_options, prepacked_weights_container);
   RunSession<float>(default_allocator.get(),
                     session1,
@@ -1782,8 +1791,18 @@ TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {
                     expected_values_y,
                     nullptr);
 
-  // create session 2
-  Ort::Session session2(*ort_env, MATMUL_MODEL_URI, session_options, prepacked_weights_container);
+  // create session 2 (using model bytes)
+  std::ifstream model_file_stream(MATMUL_MODEL_URI, std::ios::in | std::ios::binary);
+  ASSERT_TRUE(model_file_stream.good());
+
+  model_file_stream.seekg(0, std::ios::end);
+  size_t size = model_file_stream.tellg();
+  model_file_stream.seekg(0, std::ios::beg);
+  std::vector<char> file_contents(size, 0);
+  model_file_stream.read(&file_contents[0], size);
+  model_file_stream.close();
+
+  Ort::Session session2(*ort_env, file_contents.data(), size, session_options, prepacked_weights_container);
   RunSession<float>(default_allocator.get(),
                     session2,
                     inputs,
@@ -2155,4 +2174,15 @@ TEST(CApiTest, TestCudaMemcpyToHostWithSequenceTensors) {
   // model runs without crashing
 }
 
+#endif
+
+// Reduced Ops build doesn't support OptionalHasElement (16) yet
+#if !defined(REDUCED_OPS_BUILD) && !defined(DISABLE_OPTIONAL_TYPE)
+TEST(CApiTest, GH_11717) {
+  const auto* model_path = OPTIONAL_TYPE_GH_11717_MODEL;
+  Ort::SessionOptions session_options{};
+  // Just check if the model loads fine without a segmentation fault
+  // in the default CPU EP
+  EXPECT_NO_THROW(Ort::Session session(*ort_env, model_path, session_options));
+}
 #endif

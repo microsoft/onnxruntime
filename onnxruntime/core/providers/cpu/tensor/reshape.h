@@ -24,7 +24,7 @@ class Reshape final : public OpKernel {
     ORT_ENFORCE(shapeTensor->Shape().NumDimensions() == 1,
                 "A shape tensor must be a vector tensor.");
     auto nDims = static_cast<size_t>(shapeTensor->Shape()[0]);
-    const auto* data = shapeTensor->template Data<int64_t>();
+    const auto* data = shapeTensor->Data<int64_t>();
     TensorShapeVector shape(data, data + nDims);
 
     const auto* X = context->Input<Tensor>(0);

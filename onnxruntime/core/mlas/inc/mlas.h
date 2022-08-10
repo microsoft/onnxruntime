@@ -114,6 +114,22 @@ MlasGetPreferredBufferAlignment(
     void
     );
 
+#ifdef MLAS_TARGET_AMD64_IX86
+
+/**
+ * @brief Return whether the current CPU has over saturation problem
+ *        when computing u8s8 matrix multiplication
+ * https://www.intel.com/content/www/us/en/develop/documentation/onednn-developer-guide-and-reference/top/advanced-topics/nuances-of-int8-computations.html
+*/
+bool
+MLASCALL
+MlasPlatformU8S8Overflow(
+    void
+    );
+
+#endif
+
+
 //
 // Activation routines.
 //

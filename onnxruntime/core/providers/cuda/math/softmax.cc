@@ -161,12 +161,12 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   const TensorShape* compute_input_shape = nullptr;
 
   if (is_transpose_required) {  // use intermediate buffers to compute the softmax values
-    X_data = transposed_input->template Data<T>();
-    Y_data = intermediate_output->template MutableData<T>();
+    X_data = transposed_input->Data<T>();
+    Y_data = intermediate_output->MutableData<T>();
     compute_input_shape = &transposed_input->Shape();
   } else {  // use the node input/output directly
-    X_data = X->template Data<T>();
-    Y_data = Y->template MutableData<T>();
+    X_data = X->Data<T>();
+    Y_data = Y->MutableData<T>();
     compute_input_shape = &input_shape;
   }
 

@@ -3,6 +3,7 @@
 
 package ai.onnxruntime.reactnative;
 
+import ai.onnxruntime.OnnxJavaType;
 import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OnnxValue;
 import ai.onnxruntime.OrtEnvironment;
@@ -34,6 +35,7 @@ public class TensorHelper {
    */
   public static final String JsTensorTypeBool = "bool";
   public static final String JsTensorTypeByte = "int8";
+  public static final String JsTensorTypeUnsignedByte = "uint8";
   public static final String JsTensorTypeShort = "int16";
   public static final String JsTensorTypeInt = "int32";
   public static final String JsTensorTypeLong = "int64";
@@ -157,9 +159,13 @@ public class TensorHelper {
       tensor = OnnxTensor.createTensor(ortEnvironment, buffer, dims);
       break;
     }
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
+      ByteBuffer buffer = values;
+      tensor = OnnxTensor.createTensor(ortEnvironment, buffer, dims, OnnxJavaType.UINT8);
+      break;
+    }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
@@ -204,9 +210,13 @@ public class TensorHelper {
       buffer.asDoubleBuffer().put(onnxTensor.getDoubleBuffer());
       break;
     }
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
+      buffer = ByteBuffer.allocate(capacity).order(ByteOrder.nativeOrder());
+      buffer.put(onnxTensor.getByteBuffer());
+      break;
+    }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
@@ -223,6 +233,7 @@ public class TensorHelper {
           .of(new Object[][] {
               {JsTensorTypeFloat, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT},
               {JsTensorTypeByte, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8},
+              {JsTensorTypeUnsignedByte, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8},
               {JsTensorTypeShort, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16},
               {JsTensorTypeInt, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32},
               {JsTensorTypeLong, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64},
@@ -245,6 +256,7 @@ public class TensorHelper {
           .of(new Object[][] {
               {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, JsTensorTypeFloat},
               {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, JsTensorTypeByte},
+              {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, JsTensorTypeUnsignedByte},
               {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16, JsTensorTypeShort},
               {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, JsTensorTypeInt},
               {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, JsTensorTypeLong},

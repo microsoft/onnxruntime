@@ -9,7 +9,7 @@
 #include "gsl/gsl"
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 #include "contrib_ops/cpu/transformers/dump_tensor.h"
-#include "contrib_ops/cpu/transformers/beam_search_device_helper.h"
+#include "contrib_ops/cpu/transformers/generation_device_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -120,10 +120,10 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     const std::vector<OrtValue>& encoder_feeds,
     const std::vector<OrtValue>& encoder_fetches,
     std::vector<OrtValue>& decoder_feeds,
-    const BeamSearchDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
-    const BeamSearchDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
-    const BeamSearchDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
-    const BeamSearchDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
+    const GenerationDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
+    const GenerationDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
+    const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
+    const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
     int num_beam,
     void* stream) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");

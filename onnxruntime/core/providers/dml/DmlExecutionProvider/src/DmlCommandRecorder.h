@@ -61,6 +61,12 @@ namespace Dml
             return m_operationsRecordedInCurrentCommandList || !m_pendingCommandLists.empty();
         }
 
+        // Forces the descriptor heap to be reset to D3D before executing future operations
+        void InvalidateDescriptorHeap()
+        {
+            m_currentDescriptorHeap = nullptr;
+        }
+
     private:
 
         std::shared_ptr<CommandQueue> m_queue;

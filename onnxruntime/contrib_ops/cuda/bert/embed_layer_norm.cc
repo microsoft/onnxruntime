@@ -63,23 +63,23 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (!LaunchEmbedLayerNormKernel(
           Stream(),
-          output->template MutableData<T>(),
-          mask_index->template MutableData<int32_t>(),
-          input_ids->template Data<int32_t>(),
-          nullptr == segment_ids ? nullptr : segment_ids->template Data<int32_t>(),
-          nullptr == mask ? nullptr : mask->template Data<int32_t>(),
-          gamma->template Data<T>(),
-          beta->template Data<T>(),
-          word_embedding->template Data<T>(),
-          position_embedding->template Data<T>(),
-          nullptr == segment_embedding ? nullptr : segment_embedding->template Data<T>(),
+          output->MutableData<T>(),
+          mask_index->MutableData<int32_t>(),
+          input_ids->Data<int32_t>(),
+          nullptr == segment_ids ? nullptr : segment_ids->Data<int32_t>(),
+          nullptr == mask ? nullptr : mask->Data<int32_t>(),
+          gamma->Data<T>(),
+          beta->Data<T>(),
+          word_embedding->Data<T>(),
+          position_embedding->Data<T>(),
+          nullptr == segment_embedding ? nullptr : segment_embedding->Data<T>(),
           epsilon_,
           static_cast<int>(hidden_size),
           batch_size,
           sequence_length,
           element_size,
-          embedding_sum == nullptr ? nullptr : embedding_sum->template MutableData<T>(),
-          position_ids == nullptr ? nullptr : position_ids->template Data<int32_t>())) {
+          embedding_sum == nullptr ? nullptr : embedding_sum->MutableData<T>(),
+          position_ids == nullptr ? nullptr : position_ids->Data<int32_t>())) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);

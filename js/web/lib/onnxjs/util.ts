@@ -791,7 +791,7 @@ export class ShapeUtil {
 
     // set all axes indices to 1 in outputDims and check for duplicates
     for (let i = 0; i < axes.length; i++) {
-      const axis = ShapeUtil.normalizeAxis(axes[i], dims.length);
+      const axis = ShapeUtil.normalizeAxis(axes[i], outputDims.length);
       if (axis >= outputDims.length) {
         throw new Error('\'axes\' has an out of range axis');
       }
