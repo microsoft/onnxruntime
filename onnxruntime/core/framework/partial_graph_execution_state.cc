@@ -65,7 +65,9 @@ ExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::span<cons
         execution_plan->num_barriers,
         sess_logger,
         device_streams_map,
-        terminate_flag);
+        terminate_flag,
+        // partial executor in training can only be run with single thread
+        true);
   } else {
     execution_context_->GetExecutionFrame()->UpdateFeeds(feed_mlvalue_idxs, feeds);
     execution_context_->GetExecutionFrame()->UpdateFetches(fetch_mlvalue_idxs, fetches, session_state.GetInitializedTensors());
