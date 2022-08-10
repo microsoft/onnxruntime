@@ -54,6 +54,8 @@ def enable_custom_autograd_support():
         # This applies to Pytorch 1.9 and 1.9.1.
         register_custom_op_symbolic("::prim_PythonOp", _export, 1)
 
+    custom_autograd_function_enabler.state = True
+
 
 def toggle_custom_autograd_support(flag):
     if flag is True:
