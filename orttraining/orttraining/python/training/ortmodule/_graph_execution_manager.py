@@ -146,6 +146,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # PyTorch custom Autograd function support
         from ._custom_autograd_function import custom_autograd_function_enabler
+
         self._enable_custom_autograd_function = custom_autograd_function_enabler.state
 
         self._input_info = None
@@ -437,8 +438,8 @@ class GraphExecutionManager(GraphExecutionInterface):
             )
         exported_model = onnx.load_model_from_string(f.getvalue())
 
-
         from ._custom_autograd_function_exporter import _post_process_after_export
+
         exported_model = _post_process_after_export(
             exported_model, self._enable_custom_autograd_function, self._debug_options.logging.log_level
         )
