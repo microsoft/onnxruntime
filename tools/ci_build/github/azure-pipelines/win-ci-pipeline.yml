@@ -132,6 +132,7 @@ stages:
         RunStaticCodeAnalysis: true
 
 - stage: training_on_device_x64_release
+  dependsOn: []
   jobs:
     - template: templates/win-cpu-ci.yml
       parameters:
