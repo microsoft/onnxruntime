@@ -29,8 +29,8 @@ ORT_API_STATUS_IMPL(SetLearningRate, _Inout_ OrtTrainingSession* sess, _In_ floa
 
 ORT_API_STATUS_IMPL(OptimizerStep, _Inout_ OrtTrainingSession* session, _In_opt_ const OrtRunOptions* run_options);
 
-ORT_API_STATUS_IMPL(RegisterLinearLRScheduler, _Inout_ OrtTrainingSession* sess, _In_ int64_t warmup_step_count,
-                    _In_ int64_t total_step_count);
+ORT_API_STATUS_IMPL(RegisterLRScheduler, _Inout_ OrtTrainingSession* sess, _In_ void* lr_scheduler_parameters,
+                    _In_ enum OrtLRSchedulerType lr_scheduler_type, _In_opt_ const float* initial_lr);
 
 ORT_API_STATUS_IMPL(SchedulerStep, _Inout_ OrtTrainingSession* sess);
 

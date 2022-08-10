@@ -258,7 +258,13 @@ int RunTraining(const TestRunnerParameters& params) {
 
   const int64_t total_step_count = params.num_train_epochs * num_of_batches_per_epoch;
   const int64_t warmup_step_count = total_step_count / 3;
-  ORT_RETURN_ON_ERROR(g_ort_training_api->RegisterLinearLRScheduler(session, warmup_step_count, total_step_count));
+  auto lr_scheduler_parameters = std::make_unique<OrtLinearLRSchedulerParameters>(
+    OrtLinearLRSchedulerParameters{
+    .warmup_step_count = warmup_step_count,
+    .total_step_count = total_step_count
+    }).get();
+  ORT_RETURN_ON_ERROR(g_ort_training_api->RegisterLRScheduler(
+    session, reinterpret_cast<void*>(lr_scheduler_parameters), OrtLRSchedulerType::LinearLRScheduler, nullptr));
 
   std::cout << "Initialization completed. Now starting training loop." << std::endl;
   const int64_t stabilized_perf_start_step = 0;

@@ -9,6 +9,15 @@
 ORT_RUNTIME_CLASS(TrainingSession);  /// Type that enables performing training for the given user models.
 ORT_RUNTIME_CLASS(CheckpointState);  /// Type that holds the training states for the training session.
 
+typedef enum OrtLRSchedulerType {
+  LinearLRScheduler
+} OrtLRSchedulerType;
+
+typedef struct OrtLinearLRSchedulerParameters {
+  int64_t warmup_step_count;
+  int64_t total_step_count;
+} OrtLinearLRSchedulerParameters;
+
 struct OrtTrainingApi {
   /** \brief Load a checkpoint state from directory on disk into checkpoint_state.
   *
@@ -144,7 +153,7 @@ struct OrtTrainingApi {
                   size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs,
                   size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
 
-  /** \brief Set the learning rate for this training session.
+  /** \brief Sets the learning rate for this training session.
   *
   * This function allows users to set the learning rate for the training session. The training
   * session by default starts with a learning rate of 0.001. It can be overwritten by invoking
@@ -175,22 +184,21 @@ struct OrtTrainingApi {
   ORT_API2_STATUS(OptimizerStep, _Inout_ OrtTrainingSession* sess,
                   _In_opt_ const OrtRunOptions* run_options);
 
-  /** \brief Registers the use of a linear learning rate scheduler for the training session.
+  /** \brief Registers the use of the given learning rate scheduler for the training session.
   *
-  * Register a linear learning rate scheduler that decays the learning rate by linearly updated
-  * multiplicative factor from the initial learning rate set on the training session to 0. The decay
-  * is performed after the initial warm up phase where the learning rate is linearly incremented
-  * from 0 to the initial learning rate set on the training session.
+  * Register a learning rate scheduler identified by the given enum with the given
+  * learning rate scheduler parameters. Optionally specify the initial learning rate
+  * that should be used with this training session.
   *
   * \param[in] sess The training session that should use the linear learning rate scheduler.
-  * \param[in] warmup_step_count The number of steps in the warm up phase.
-  * \param[in] total_step_count The total number of training steps.
+  * \param[in] lr_scheduler_parameters Learning rate scheduler parameters struct.
+  * \param[in] initial_lr The initial learning rate to be used by the training session.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   *
   */
-  ORT_API2_STATUS(RegisterLinearLRScheduler, _Inout_ OrtTrainingSession* sess, _In_ int64_t warmup_step_count,
-                  _In_ int64_t total_step_count);
+  ORT_API2_STATUS(RegisterLRScheduler, _Inout_ OrtTrainingSession* sess, _In_ void* lr_scheduler_parameters,
+                  _In_ enum OrtLRSchedulerType lr_scheduler_type, _In_opt_ const float* initial_lr);
 
   /** \brief Update the learning rate based on the registered learing rate scheduler.
   *

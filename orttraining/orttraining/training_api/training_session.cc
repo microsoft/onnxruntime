@@ -21,8 +21,8 @@ TrainingSession::TrainingSession(const Environment& session_env,
                            session_options, session_env, providers)
                      : std::unique_ptr<Optimizer>()} {}
 
-Status TrainingSession::RegisterScheduler(const std::function<
-                                          std::unique_ptr<LRSchedulerBase>(std::shared_ptr<Optimizer>)>& get_scheduler) {
+Status TrainingSession::RegisterScheduler(
+    const std::function<std::unique_ptr<LRSchedulerBase>(std::shared_ptr<Optimizer>)>& get_scheduler) {
   scheduler_ = std::move(get_scheduler(optimizer_));
   ORT_ENFORCE(scheduler_, "The provided instance of the learning rate scheduler is a nullptr.");
 
