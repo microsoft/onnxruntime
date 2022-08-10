@@ -3,11 +3,11 @@
 
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/platform/env_var_utils.h"
-#include "longformer_attention.h"
-#include "longformer_global_impl.h"
-#include "longformer_attention_impl.h"
-#include "transformer_cuda_common.h"
-#include "transformer_common.h"
+#include "contrib_ops/cuda/bert/longformer_global_impl.h"
+#include "contrib_ops/cuda/bert/longformer_attention_impl.h"
+#include "contrib_ops/cuda/bert/transformer_cuda_common.h"
+#include "contrib_ops/cuda/bert/transformer_common.h"
+#include "contrib_ops/cuda/bert/longformer_attention.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
