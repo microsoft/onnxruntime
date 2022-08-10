@@ -131,17 +131,17 @@ stages:
         # Liqun is fixing them
         RunStaticCodeAnalysis: true
 
-- stage: training_x64_debug_on_device_training
-  dependsOn: []
+- stage: training_on_device_x64_release
   jobs:
     - template: templates/win-cpu-ci.yml
       parameters:
-        BuildConfig: 'Debug'
+        BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
         buildArch: x64
-        additionalBuildFlags: --enable_training --enable_training_on_device --build_wheel
+        additionalBuildFlags: --enable_training --enable_training_on_device
         msbuildPlatform: x64
         isX86: false
-        job_name_suffix: training_x64_debug
+        job_name_suffix: training_on_device_x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
+        RunStaticCodeAnalysis: true
+        EnablePython: false
