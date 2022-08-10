@@ -512,7 +512,8 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                        execution_plan->num_barriers,
                        logger,
                        device_streams,
-                       terminate_flag);
+                       terminate_flag,
+                       single_thread_mode);
 #ifdef ENABLE_TRAINING
   if (only_execute_path_to_fetches) {
     auto* range = session_state.GetToBeExecutedRange(fetch_mlvalue_idxs);
@@ -528,17 +529,16 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
   auto* tp = single_thread_mode ? nullptr : session_state.GetInterOpThreadPool();
 
   for (size_t i = 0; i < execution_plan->execution_plan.size(); ++i) {
-    if (!execution_plan->execution_plan[i]->steps_.empty()) {
+    if (execution_plan->execution_plan[i]->steps_.empty()) {
+      ctx.CompleteStream(i);
+    } else {
       concurrency::ThreadPool::Schedule(tp, [i, &ctx]() {
         RunSince(i, ctx, 0);
       });
     }
   }
 
-  if (!single_thread_mode) {
-    ctx.WaitAll();
-  }
-
+  ctx.WaitAll();
   ORT_RETURN_IF_ERROR(ctx.TaskStatus());
   ORT_RETURN_IF_ERROR(ctx.GetExecutionFrame()->GetOutputs(fetches));
   if (ctx.GetExecutionFrame()->HasMemoryPatternPlanner()) {
@@ -556,6 +556,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
       ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(feeds, std::move(mem_patterns)));
     }
   }
+
   return Status::OK();
 }
 

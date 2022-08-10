@@ -80,22 +80,24 @@ size_t DeviceStreamCollection::NumStreams() const {
   return impl_->NumStreams();
 }
 
-
 ExecutionContext::ExecutionContext(const SessionState& sess_state,
-                int32_t num_streams,
-                std::vector<size_t> notification_owners,
-                gsl::span<const int>& feed_mlvalue_idxs,
-                gsl::span<const OrtValue>& feeds, gsl::span<const int>& fetch_mlvalue_idxs,
-                std::vector<OrtValue>& fetches,
-                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                size_t num_barriers,
-                const logging::Logger& sess_logger,
-                const DeviceStreamCollection& device_streams_map,
-                const bool& terminate_flag) : session_state(&sess_state),
-                                                logger(&sess_logger),
-                                                device_stream_map_(device_streams_map),
-                                                count_down_barriers_(num_barriers),
-                                                terminate_flag_(terminate_flag) {
+                                   int32_t num_streams,
+                                   std::vector<size_t> notification_owners,
+                                   gsl::span<const int>& feed_mlvalue_idxs,
+                                   gsl::span<const OrtValue>& feeds, gsl::span<const int>& fetch_mlvalue_idxs,
+                                   std::vector<OrtValue>& fetches,
+                                   const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                   size_t num_barriers,
+                                   const logging::Logger& sess_logger,
+                                   const DeviceStreamCollection& device_streams_map,
+                                   const bool& terminate_flag,
+                                   bool single_thread_mode) : session_state(&sess_state),
+                                                              logger(&sess_logger),
+                                                              device_stream_map_(device_streams_map),
+                                                              count_down_barriers_(num_barriers),
+                                                              terminate_flag_(terminate_flag),
+                                                              stream_completion_map_(num_streams, false),
+                                                              single_thread_mode_(single_thread_mode) {
   auto& device_streams = device_stream_map_.GetStreams();
 
   for (size_t i = 0; i < notification_owners.size(); ++i) {
@@ -145,13 +147,17 @@ const Status& ExecutionContext::TaskStatus() const {
   return task_status_;
 }
 
-void ExecutionContext::CompleteTask() {
-  remain_tasks_.Dec();
+void ExecutionContext::CompleteStream(size_t stream_id) {
+  stream_completion_map_[stream_id] = true;
 }
 
 void ExecutionContext::WaitAll() {
-  while (task_status_.IsOK() && remain_tasks_.Get()) {
-    onnxruntime::concurrency::SpinPause();
+  for (const auto& iter: stream_completion_map_) {
+    while (!iter) {
+       //TODO: this is unsafe to exist on status!!!
+       if (!task_status_.IsOK()) return;
+       onnxruntime::concurrency::SpinPause();
+    }
   }
 }
 
@@ -178,11 +184,13 @@ void ExecutionContext::RecycleNodeInputs(onnxruntime::NodeIndex node_index) {
 }
 
 void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
+
   if (!ctx.TaskStatus().IsOK()) {
     // already in bad status, terminate it
-    ctx.CompleteTask();
+    ctx.CompleteStream(stream_idx);
     return;
   }
+
   // get logic stream
   auto& execution_plan = ctx.GetSessionState().GetExecutionPlan()->execution_plan;
   auto& logic_stream = execution_plan[stream_idx];
@@ -194,6 +202,10 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
 #endif
 
   while (since < end) {
+    if (!ctx.TaskStatus().IsOK()) {
+      ctx.CompleteStream(stream_idx);
+      return;
+    }
     if (ctx.TerminateFlag()) {
       Status status_made = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
       ctx.SetStatus(status_made);
@@ -212,7 +224,7 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
     if (!status.IsOK()) {
       //terminate it
       ctx.SetStatus(status);
-      ctx.CompleteTask();
+      ctx.CompleteStream(stream_idx);
       return;
     }
     if (!continue_flag) {
@@ -221,7 +233,8 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
     }
     since++;
   }
-  ctx.CompleteTask();
+  ORT_ENFORCE(since == end);
+  ctx.CompleteStream(stream_idx);
   return;
 }
 

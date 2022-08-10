@@ -263,7 +263,7 @@ class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
                                                                 notification_idx(notification_index),
                                                                 func_([](NotificationIndex notification_index, void* ctx, size_t /*stream_idx*/, bool& continue_flag) {
                                                                   ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
-                                                                  ScheduleDownstream(*execution_context, notification_index, /*single thread mode*/ false);
+                                                                  ScheduleDownstream(*execution_context, notification_index, execution_context->SingleThreadMode());
                                                                   continue_flag = true;
                                                                   return Status::OK();
                                                                 }) {
