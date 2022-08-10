@@ -490,7 +490,7 @@ Status Mod::ComputeInternal(OpKernelContext* context) const {
 #define CASE_MOD_ELEMENT_TYPE(name, onnx_type, data_type)                                                           \
   case onnx_type: {                                                                                                 \
     Impl_##name<typename ToCudaType<data_type>::MappedType>(                                                        \
-        Stream(), prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides,                             \
+        Stream(context), prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides,                      \
         reinterpret_cast<const typename ToCudaType<data_type>::MappedType*>(prepare.lhs_tensor->Data<data_type>()), \
         &prepare.rhs_padded_strides,                                                                                \
         reinterpret_cast<const typename ToCudaType<data_type>::MappedType*>(prepare.rhs_tensor->Data<data_type>()), \
