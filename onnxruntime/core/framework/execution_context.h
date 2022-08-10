@@ -76,7 +76,8 @@ public:
                    size_t num_barriers,
                    const logging::Logger& sess_logger,
                    const DeviceStreamCollection& device_streams_map,
-                   const bool& terminate_flag);
+                   const bool& terminate_flag,
+                   bool single_thread_mode);
 
   const SessionState& GetSessionState() const;
 
@@ -92,9 +93,11 @@ public:
 
   bool DecCountDownBarrier(size_t barrier_id);
 
+  bool SingleThreadMode() const { return single_thread_mode_;}
+
   Stream* GetDeviceStream(size_t idx);
 
-  void CompleteTask();
+  void CompleteStream(size_t stream_id);
 
   void WaitAll();
 
@@ -148,6 +151,8 @@ public:
   const ProgramRegion* program_range_{nullptr};
   OrtValueCachePtr cache_{nullptr};
 #endif
+  std::vector<bool> stream_completion_map_;
+  const bool single_thread_mode_;
 };
 
 using NotificationIndex = size_t;
