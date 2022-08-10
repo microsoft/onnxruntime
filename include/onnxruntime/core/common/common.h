@@ -278,8 +278,6 @@ inline std::wstring ToWideString(const std::wstring& s) { return s; }
 inline std::string ToWideString(const std::string& s) { return s; }
 #endif
 
-#define ORT_IF_CONSTEXPR if constexpr
-
 constexpr size_t kMaxStrLen = 2048;
 
 // Returns whether `key` is in `container`.
