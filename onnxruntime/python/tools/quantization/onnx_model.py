@@ -398,6 +398,12 @@ class ONNXModel:
                 return True
         return False
 
+    def is_graph_input(self, tensor_name: str) -> bool:
+        for output in self.model.graph.output:
+            if output.name == tensor_name:
+                return True
+        return False
+
     # TODO:use OnnxModel.graph_topological_sort(self.model.graph) from transformers.onnx_model
     # Currently it breaks Openvino/Linux training gpu pipeline so hold off for 1.8 release
     def topological_sort(self):
