@@ -155,10 +155,10 @@ void InitSyntheticDataLoader(
     std::vector<int64_t> input1_shape{params.train_batch_size, 784};
     std::vector<int64_t> target_shape{params.train_batch_size};
     for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
-      onnxruntime::training::test::training_api::SyntheticSampleBatch&& sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
+      auto sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
       sample.AddFloatInput(input1_shape);
       sample.AddInt32Input(target_shape, 0, 1);
-      data_loader.AddSyntheticSampleBatch(sample);
+      data_loader.AddSyntheticSampleBatch(std::move(sample));
     }
   } else if (params.synthetic_input_type == "S") {
     int64_t sequence_length = 128;
@@ -166,11 +166,11 @@ void InitSyntheticDataLoader(
     std::vector<int64_t> attention_mask_shape{params.train_batch_size, sequence_length};
     std::vector<int64_t> target_shape{params.train_batch_size};
     for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
-      auto&& sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
+      auto sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
       sample.AddInt64Input(gsl::make_span(input_ids_shape), 0, 250002 - 1);
       sample.AddInt64Input(gsl::make_span(attention_mask_shape), 0, 1);
       sample.AddInt32Input(gsl::make_span(target_shape), 0, 1);
-      data_loader.AddSyntheticSampleBatch(sample);
+      data_loader.AddSyntheticSampleBatch(std::move(sample));
     }
   } else if (params.synthetic_input_type == "U") {
     int64_t sequence_length = 128;
@@ -179,12 +179,12 @@ void InitSyntheticDataLoader(
     std::vector<int64_t> target1_shape{params.train_batch_size};
     std::vector<int64_t> target2_shape{params.train_batch_size, 81};
     for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
-      auto&& sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
+      auto sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
       sample.AddInt64Input(gsl::make_span(input_ids_shape), 0, 250002 - 1);
       sample.AddInt64Input(gsl::make_span(attention_mask_shape), 0, 1);
       sample.AddInt32Input(gsl::make_span(target1_shape), 0, 1);
       sample.AddInt32Input(gsl::make_span(target2_shape), 0, 1);
-      data_loader.AddSyntheticSampleBatch(sample);
+      data_loader.AddSyntheticSampleBatch(std::move(sample));
     }
   } else if (params.synthetic_input_type == "R") {
     int64_t sequence_length = 128;
@@ -192,11 +192,11 @@ void InitSyntheticDataLoader(
     std::vector<int64_t> attention_mask_shape{params.train_batch_size, sequence_length};
     std::vector<int64_t> labels_shape{params.train_batch_size, 81};
     for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
-      auto&& sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
+      auto sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
       sample.AddInt64Input(gsl::make_span(input_ids_shape), 0, 250002 - 1);
       sample.AddInt64Input(gsl::make_span(attention_mask_shape), 0, 1);
       sample.AddInt32Input(gsl::make_span(labels_shape), 0, 1);
-      data_loader.AddSyntheticSampleBatch(sample);
+      data_loader.AddSyntheticSampleBatch(std::move(sample));
     }
   } else if (params.synthetic_input_type == "C") {
     int64_t section = 16;
@@ -206,12 +206,12 @@ void InitSyntheticDataLoader(
     std::vector<int64_t> attention_mask_shape{params.train_batch_size, section, sequence_length};
     std::vector<int64_t> labels_shape{params.train_batch_size};
     for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
-      auto&& sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
+      auto sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
       sample.AddInt64Input(gsl::make_span(input_ids_shape), 0, 250002 - 1);
       sample.AddBoolInput(gsl::make_span(mask_clss_shape));
       sample.AddInt64Input(gsl::make_span(attention_mask_shape), 0, 1);
       sample.AddInt32Input(gsl::make_span(labels_shape), 0, 1);
-      data_loader.AddSyntheticSampleBatch(sample);
+      data_loader.AddSyntheticSampleBatch(std::move(sample));
     }
   } else {
     std::runtime_error("unknown synthetic_input_type: " + params.synthetic_input_type);

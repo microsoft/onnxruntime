@@ -104,19 +104,18 @@ bool SyntheticSampleBatch::GetBatch(std::vector<OrtValue*>& batches) {
     std::visit([&batches, &input, &ort_api, &memory_info](auto&& arg) -> bool {
       ONNXTensorElementDataType elem_data_type;
       using T = std::decay_t<decltype(arg)>;
-      if constexpr (std::is_same_v<T, std::vector<uint8_t>>) {
-        elem_data_type = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
+      if constexpr (std::is_same_v<typename T::value_type, uint8_t>) {
+        elem_data_type = Ort::TypeToTensorType<bool>::type;
       } else {
-        elem_data_type = Ort::TypeToTensorType<int32_t>::type;
+        elem_data_type = Ort::TypeToTensorType<typename T::value_type>::type;
       }
 
-      void* p_data = arg.data();
       OrtValue* value = nullptr;
       const auto& shape_vector = input.ShapeVector();
       // Be noted: the created OrtValue won't clean the raw data after its lifetime ended.
       ORT_RETURN_ON_ERROR(ort_api->CreateTensorWithDataAsOrtValue(
           memory_info,
-          p_data, (input.NumOfElements() * sizeof(T)),
+          arg.data(), (input.NumOfElements() * sizeof(typename T::value_type)),
           shape_vector.data(), shape_vector.size(),
           elem_data_type,
           &value));

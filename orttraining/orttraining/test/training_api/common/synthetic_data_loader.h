@@ -29,7 +29,7 @@ using SyntheticDataVector = std::variant<std::vector<int32_t>, std::vector<int64
                                          std::vector<uint8_t>>;
 
 struct SyntheticInput {
-  explicit SyntheticInput(gsl::span<const int64_t> shape) : shape_(shape) {
+  explicit SyntheticInput(gsl::span<const int64_t> shape) : shape_(shape.begin(), shape.end()) {
     for (auto d : shape) {
       num_of_elements_ *= d;
     }
@@ -48,7 +48,7 @@ struct SyntheticInput {
   }
 
  private:
-  gsl::span<const int64_t> shape_;
+  std::vector<int64_t> shape_;
   size_t num_of_elements_{1};
   SyntheticDataVector data_;
 };
@@ -73,7 +73,7 @@ struct SyntheticSampleBatch {
 struct SyntheticDataLoader {
   SyntheticDataLoader() = default;
 
-  void AddSyntheticSampleBatch(const SyntheticSampleBatch& samples) {
+  void AddSyntheticSampleBatch(SyntheticSampleBatch&& samples) {
     sample_batch_collections_.emplace_back(samples);
   }
 
