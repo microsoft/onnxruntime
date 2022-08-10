@@ -260,7 +260,11 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
       use_ep_level_unified_stream_ = true;
     }
     else {
-      stream_ = nullptr;
+      // current cuda graph implementation only works with single stream
+      // use EP level unified stream for all the reqeust
+      CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
+      use_ep_level_unified_stream_ = true;
+      //stream_ = nullptr;
     }
   }
 
