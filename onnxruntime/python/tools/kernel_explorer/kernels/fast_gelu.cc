@@ -23,8 +23,7 @@ class FastGelu: public Operator {
     bias_(reinterpret_cast<T*>(bias.ptr())),
     output_(reinterpret_cast<T*>(output.ptr())),
     input_length_(input_length),
-    bias_length_(bias_length),
-    Operator() {}
+    bias_length_(bias_length) {}
 
   void Run() {
     LaunchFastGelu<T, ThreadsPerBlock, VecSize>(stream_, input_, bias_, output_, input_length_, bias_length_);
@@ -46,8 +45,7 @@ class FastGeluTunable: public Operator {
     bias_(reinterpret_cast<T*>(bias.ptr())),
     output_(reinterpret_cast<T*>(output.ptr())),
     input_length_(input_length),
-    bias_length_(bias_length),
-    Operator() {
+    bias_length_(bias_length) {
     op_.EnableTuning();
   }
 

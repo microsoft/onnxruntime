@@ -230,11 +230,13 @@ common::Status SaveInitializedTensors(
   };
 
   // 1. first plan the memory
-  const onnxruntime::InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+  const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
   InlinedHashMap<int, const ONNX_NAMESPACE::TensorProto*> id_to_initialized_tensor;
-  id_to_initialized_tensor.reserve(initialized_tensor_set.size());
   InlinedHashSet<int> user_supplied_initializer_ids;  // set containing the ort value ids of all user supplied initializers
+
+  id_to_initialized_tensor.reserve(initialized_tensor_set.size());
   user_supplied_initializer_ids.reserve(initialized_tensor_set.size());
+
   for (const auto& entry : initialized_tensor_set) {
     int ort_value_index;
     ORT_RETURN_IF_ERROR(ort_value_name_idx_map.GetIdx(entry.first, ort_value_index));
@@ -291,7 +293,13 @@ common::Status SaveInitializedTensors(
   // 3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
     int ort_value_index = entry.first;
-    const char* name = (entry.second->name().empty()) ? "" : entry.second->name().c_str();
+    const std::string& name = entry.second->name();
+
+    if (name.empty()) {
+      LOGS(logger, INFO) << "Skipping entry for missing optional value at idx " << ort_value_index;
+      continue;
+    }
+
     OrtValue ort_value;
 
     if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
@@ -317,17 +325,19 @@ common::Status SaveInitializedTensors(
       }
     }
 
+    // 'name' is a reference to a string within the TensorProto that save_tensor_func may free
+    // so we need to output this message prior to calling save_tensor_func
+    VLOGS(logger, 1) << "Adding weight with name : " << name << " with index: " << ort_value_index;
+
     // any outer scope value is shadowed by a local value and can't override it.
     // due to that check_outer_scope is false
     const bool constant = graph.IsConstantInitializer(name, /* check_outer_scope */ false);
 #if !defined(DISABLE_SPARSE_TENSORS)
     const bool sparse = graph.GetGraph().IsSparseInitializer(name);
-    ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant, sparse));
+    ORT_RETURN_IF_ERROR(save_tensor_func(name, ort_value_index, ort_value, deleter, constant, sparse));
 #else
-    ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant, false));
+    ORT_RETURN_IF_ERROR(save_tensor_func(name, ort_value_index, ort_value, deleter, constant, false));
 #endif
-
-    VLOGS(logger, 1) << "Added weight with name : " << name << " with index: " << ort_value_index;
   }
 
   LOGS(logger, INFO) << "Done saving initialized tensors";

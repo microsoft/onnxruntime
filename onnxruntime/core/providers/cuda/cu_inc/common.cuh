@@ -359,6 +359,41 @@ __device__ __inline__ T _Gelu(T a) {
   return a * _Normcdf(a);
 }
 
+template <typename T>
+__device__ __inline__ T _Mod(T a, T b) {
+  T r = a % b;
+  T zero = T(0);
+  if ((r > zero && b < zero) || (r < zero && b > zero)) {
+    r += b;
+  }
+  return r;
+}
+
+template <typename T>
+__device__ __inline__ T _Fmod(T a, T b) {
+  return a % b;
+}
+
+template <>
+__device__ __inline__ float _Fmod(float a, float b) {
+  return fmodf(a, b);
+}
+
+template <>
+__device__ __inline__ double _Fmod(double a, double b) {
+  return fmod(a, b);
+}
+
+template <>
+__device__ __inline__ half _Fmod(half a, half b) {
+  return fmodf((float)a, (float)b);
+}
+
+template <>
+__device__ __inline__ BFloat16 _Fmod(BFloat16 a, BFloat16 b) {
+  return fmodf((float)a, (float)b);
+}
+
 // We would like to use 64-bit integer to support large matrices. However, CUDA seems to support only 32-bit integer
 // For now, use int32_t to ensure that both Linux and Windows see this as 32 bit integer type.
 #ifndef CUDA_LONG
