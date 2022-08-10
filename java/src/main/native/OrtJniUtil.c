@@ -293,7 +293,7 @@ jobject convertToTensorInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTensorT
   dimensions = NULL;
 
   // Create the TensorInfo object
-  char *tensorInfoClassName = "ai/onnxruntime/TensorInfo";
+  static const char *tensorInfoClassName = "ai/onnxruntime/TensorInfo";
   jclass clazz = (*jniEnv)->FindClass(jniEnv, tensorInfoClassName);
   jmethodID tensorInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz, "<init>", "([JI)V");
   //printf("TensorInfo class %p, methodID %p\n",clazz,tensorInfoConstructor);
@@ -338,7 +338,7 @@ jobject convertToMapInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtMapTypeInf
   jint onnxTypeValue = convertFromONNXDataFormat(valueType);
 
   // Get the map info class
-  char *mapInfoClassName = "ai/onnxruntime/MapInfo";
+  static const char *mapInfoClassName = "ai/onnxruntime/MapInfo";
   jclass mapInfoClazz = (*jniEnv)->FindClass(jniEnv, mapInfoClassName);
   jmethodID mapInfoConstructor = (*jniEnv)->GetMethodID(jniEnv, mapInfoClazz, "<init>", "(III)V");
 
@@ -350,7 +350,7 @@ jobject convertToMapInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtMapTypeInf
 
 jobject convertToSequenceInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtSequenceTypeInfo * info) {
   // Get the sequence info class
-  char *sequenceInfoClassName = "ai/onnxruntime/SequenceInfo";
+  static const char *sequenceInfoClassName = "ai/onnxruntime/SequenceInfo";
   jclass sequenceInfoClazz = (*jniEnv)->FindClass(jniEnv, sequenceInfoClassName);
 
   // according to include/onnxruntime/core/framework/data_types.h the following values are supported.
@@ -863,7 +863,7 @@ jobject createJavaTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocato
   api->ReleaseTensorTypeAndShapeInfo(info);
 
   // Construct the ONNXTensor object
-  char *tensorClassName = "ai/onnxruntime/OnnxTensor";
+  static const char *tensorClassName = "ai/onnxruntime/OnnxTensor";
   jclass clazz = (*jniEnv)->FindClass(jniEnv, tensorClassName);
   jmethodID tensorConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz, "<init>", "(JJLai/onnxruntime/TensorInfo;)V");
   jobject javaTensor = (*jniEnv)->NewObject(jniEnv, clazz, tensorConstructor, (jlong) tensor, (jlong) allocator, tensorInfo);
@@ -873,7 +873,7 @@ jobject createJavaTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocato
 
 jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* sequence) {
   // Get the sequence info class
-  char *sequenceInfoClassName = "ai/onnxruntime/SequenceInfo";
+  static const char *sequenceInfoClassName = "ai/onnxruntime/SequenceInfo";
   jclass sequenceInfoClazz = (*jniEnv)->FindClass(jniEnv, sequenceInfoClassName);
 
   // setup return value
@@ -942,7 +942,7 @@ jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
   jobject javaSequence = NULL;
   if (sequenceInfo != NULL) {
     // Construct the ONNXSequence object
-    char *sequenceClassName = "ai/onnxruntime/OnnxSequence";
+    static const char *sequenceClassName = "ai/onnxruntime/OnnxSequence";
     jclass sequenceClazz = (*jniEnv)->FindClass(jniEnv, sequenceClassName);
     jmethodID sequenceConstructor = (*jniEnv)->GetMethodID(jniEnv, sequenceClazz, "<init>", "(JJLai/onnxruntime/SequenceInfo;)V");
     javaSequence = (*jniEnv)->NewObject(jniEnv, sequenceClazz, sequenceConstructor, (jlong)sequence, (jlong)allocator, sequenceInfo);
@@ -958,7 +958,7 @@ jobject createJavaMapFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* 
   }
 
   // Get the map class & constructor
-  char *mapClassName = "ai/onnxruntime/OnnxMap";
+  static const char *mapClassName = "ai/onnxruntime/OnnxMap";
   jclass mapClazz = (*jniEnv)->FindClass(jniEnv, mapClassName);
   jmethodID mapConstructor = (*jniEnv)->GetMethodID(jniEnv, mapClazz, "<init>", "(JJLai/onnxruntime/MapInfo;)V");
 
@@ -1010,7 +1010,7 @@ jobject createMapInfoFromValue(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator 
   jint onnxTypeValue = convertFromONNXDataFormat(valueInfo.onnxTypeEnum);
 
   // Get the map info class & constructor
-  char *mapInfoClassName = "ai/onnxruntime/MapInfo";
+  static const char *mapInfoClassName = "ai/onnxruntime/MapInfo";
   jclass mapInfoClazz = (*jniEnv)->FindClass(jniEnv, mapInfoClassName);
   jmethodID mapInfoConstructor = (*jniEnv)->GetMethodID(jniEnv, mapInfoClazz, "<init>", "(III)V");
 
@@ -1049,7 +1049,7 @@ jobject convertOrtValueToONNXValue(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
 jint throwOrtException(JNIEnv *jniEnv, int messageId, const char *message) {
   jstring messageStr = (*jniEnv)->NewStringUTF(jniEnv, message);
 
-  char *className = "ai/onnxruntime/OrtException";
+  static const char *className = "ai/onnxruntime/OrtException";
   jclass exClazz = (*jniEnv)->FindClass(jniEnv, className);
   jmethodID exConstructor = (*jniEnv)->GetMethodID(jniEnv, exClazz, "<init>", "(ILjava/lang/String;)V");
   jobject javaException = (*jniEnv)->NewObject(jniEnv, exClazz, exConstructor, messageId, messageStr);
