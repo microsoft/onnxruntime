@@ -23,16 +23,6 @@ jobs:
     inputs:
       versionSpec: '12.16.3'
 
-  - script: |
-      set -ex
-      pushd $(pwd)
-      ls
-      cd onnxruntime/js/node
-      npm install typescript -g
-      npm run test
-      popd
-    displayName: ONNX Spec Test
-
   - task: UsePythonVersion@0
     inputs:
       versionSpec: '3.8'
@@ -70,6 +60,16 @@ jobs:
               --enable_transformers_tool_test \
               --build_java --build_nodejs --update --build --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON
       workingDirectory: $(Build.SourcesDirectory)
+
+  - script: |
+      set -ex
+      pushd $(pwd)
+      ls
+      cd js/node
+      npm install typescript -g
+      npm run test
+      popd
+    displayName: ONNX Spec Test
 
   - task: CmdLine@2
     displayName: 'Install python deps and run java tests'
