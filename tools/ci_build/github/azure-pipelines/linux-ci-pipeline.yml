@@ -63,6 +63,7 @@ jobs:
 
   - script: |
       set -ex
+      npm ci
       npm test
     workingDirectory: $(Build.SourcesDirectory)/js/web
     displayName: ONNX Spec Test
