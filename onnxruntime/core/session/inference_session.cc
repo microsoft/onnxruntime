@@ -25,6 +25,7 @@
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_type_str_resolver_utils.h"
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/session_state_flatbuffers_utils.h"
 #include "core/framework/TensorSeq.h"
@@ -595,25 +596,29 @@ common::Status InferenceSession::SaveToOrtFormat(const PathString& filepath) con
   flatbuffers::FlatBufferBuilder builder(fbs_buffer_size);
 
   auto ort_model_version = builder.CreateString(kOrtModelVersion);
-  flatbuffers::Offset<fbs::Model> model;
+  flatbuffers::Offset<fbs::Model> fbs_model;
   ORT_RETURN_IF_ERROR(
-      model_->SaveToOrtFormat(builder, model));
+      model_->SaveToOrtFormat(builder, fbs_model));
 
-  flatbuffers::Offset<fbs::SessionState> session_state;
+  flatbuffers::Offset<fbs::SessionState> fbs_session_state;
   ORT_RETURN_IF_ERROR(
-      session_state_->SaveToOrtFormat(builder, session_state));
+      session_state_->SaveToOrtFormat(builder, fbs_session_state));
 
-  flatbuffers::Offset<fbs::KernelTypeStrResolver> kernel_type_str_resolver;
-  KernelTypeStrResolver session_kernel_type_str_resolver{};
-  // TODO populate session_kernel_type_str_resolver
+  flatbuffers::Offset<fbs::KernelTypeStrResolver> fbs_kernel_type_str_resolver;
+  KernelTypeStrResolver kernel_type_str_resolver{};
+  ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterGraphNodeOpSchemas(model_->MainGraph()));
+  for (const auto* op_schema : saved_runtime_optimization_produced_node_op_schemas_) {
+    ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterOpSchema(*op_schema));
+  }
+
   ORT_RETURN_IF_ERROR(
-      session_kernel_type_str_resolver.SaveToOrtFormat(builder, kernel_type_str_resolver));
+      kernel_type_str_resolver.SaveToOrtFormat(builder, fbs_kernel_type_str_resolver));
 
   fbs::InferenceSessionBuilder sb(builder);
   sb.add_ort_version(ort_model_version);
-  sb.add_model(model);
-  sb.add_session_state(session_state);
-  sb.add_kernel_type_str_resolver(kernel_type_str_resolver);
+  sb.add_model(fbs_model);
+  sb.add_session_state(fbs_session_state);
+  sb.add_kernel_type_str_resolver(fbs_kernel_type_str_resolver);
   auto session = sb.Finish();
   builder.Finish(session, fbs::InferenceSessionIdentifier());
 
@@ -1046,12 +1051,13 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   model_ = std::move(tmp_model);
 
   // TODO should kernel_type_str_resolver be required in the model?
+  KernelTypeStrResolver kernel_type_str_resolver{};
   if (const auto* fbs_kernel_type_str_resolver = fbs_session->kernel_type_str_resolver();
       fbs_kernel_type_str_resolver != nullptr) {
-    KernelTypeStrResolver kernel_type_str_resolver{};
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.LoadFromOrtFormat(*fbs_kernel_type_str_resolver));
-    kernel_registry_manager_.SetKernelTypeStrResolver(std::move(kernel_type_str_resolver));
   }
+  ORT_RETURN_IF_ERROR(utils::AddOptimizationOpsToKernelTypeStrResolver(kernel_type_str_resolver));
+  kernel_registry_manager_.SetKernelTypeStrResolver(std::move(kernel_type_str_resolver));
 
   is_model_loaded_ = true;
 
@@ -2316,7 +2322,7 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
 common::Status InferenceSession::AddPredefinedTransformers(
     GraphTransformerManager& transformer_manager,
     TransformerLevel graph_optimization_level,
-    MinimalBuildOptimizationHandling minimal_build_optimization_handling) const {
+    MinimalBuildOptimizationHandling minimal_build_optimization_handling) {
   const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
@@ -2333,8 +2339,13 @@ common::Status InferenceSession::AddPredefinedTransformers(
         } else {
           const auto sat_context =
               minimal_build_optimization_handling ==
-                      MinimalBuildOptimizationHandling::SaveMinimalBuildRuntimeOptimizations
-                  ? SatApplyContextVariant{SatRuntimeOptimizationSaveContext{}}
+              MinimalBuildOptimizationHandling::SaveMinimalBuildRuntimeOptimizations
+                  ? SatApplyContextVariant{
+                        SatRuntimeOptimizationSaveContext{
+                            [this](const ONNX_NAMESPACE::OpSchema* op_schema) mutable {
+                               saved_runtime_optimization_produced_node_op_schemas_.insert(op_schema);
+                               return Status::OK();
+                            }}}
                   : SatApplyContextVariant{SatDirectApplicationContext{}};
           return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
                                                                       optimizers_to_disable_);

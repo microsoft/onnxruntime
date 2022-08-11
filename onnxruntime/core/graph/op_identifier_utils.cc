@@ -10,7 +10,8 @@ namespace onnxruntime {
 
 static constexpr auto kOpIdComponentDelimiter = ':';
 
-OpIdentifier MakeOpId(std::string_view domain, std::string_view op_type, ONNX_NAMESPACE::OperatorSetVersion since_version) {
+OpIdentifier MakeOpId(std::string_view domain, std::string_view op_type,
+                      ONNX_NAMESPACE::OperatorSetVersion since_version) {
   return MakeString(domain, kOpIdComponentDelimiter, op_type, kOpIdComponentDelimiter, since_version);
 }
 

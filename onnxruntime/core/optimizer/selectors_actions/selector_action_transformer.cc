@@ -151,6 +151,13 @@ static Status MatchAndProcess(
           RuntimeOptimizationRecord{selector_action_entry.name,
                                     node_selection,
                                     action_saved_state.produced_nodes});
+
+      for (const auto* op_schema : action_saved_state.produced_node_op_schemas) {
+        status = save_context->record_produced_node_op_schema(op_schema);
+        if (!status.IsOK()) {
+          break;
+        }
+      }
     } else {
       status = action.Run(graph, node_group);
       if (!status.IsOK()) {

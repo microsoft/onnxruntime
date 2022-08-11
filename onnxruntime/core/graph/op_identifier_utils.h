@@ -14,7 +14,8 @@ namespace onnxruntime {
 
 class Node;
 
-OpIdentifier MakeOpId(std::string_view domain, std::string_view op_type, ONNX_NAMESPACE::OperatorSetVersion since_version);
+OpIdentifier MakeOpId(std::string_view domain, std::string_view op_type,
+                      ONNX_NAMESPACE::OperatorSetVersion since_version);
 
 inline OpIdentifier MakeOpId(const ONNX_NAMESPACE::OpSchema& op_schema) {
   return MakeOpId(op_schema.domain(), op_schema.Name(), op_schema.SinceVersion());

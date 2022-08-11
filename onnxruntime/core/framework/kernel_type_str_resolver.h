@@ -76,10 +76,11 @@ class KernelTypeStrResolver : public IKernelTypeStrResolver {
 
   Status LoadFromOrtFormat(const fbs::KernelTypeStrResolver& fbs_kernel_type_str_resolver);
 
+  void Merge(KernelTypeStrResolver& src);
+
  private:
   using KernelTypeStrToArgsMap = InlinedHashMap<std::string, InlinedVector<ArgTypeAndIndex>>;
   using OpKernelTypeStrMap = InlinedHashMap<OpIdentifier, KernelTypeStrToArgsMap>;
-
   OpKernelTypeStrMap op_kernel_type_str_map_;
 };
 

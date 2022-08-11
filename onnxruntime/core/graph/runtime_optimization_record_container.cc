@@ -147,7 +147,7 @@ static Status LoadRuntimeOptimizationRecordFromOrtFormat(
 
       runtime_optimization_record.produced_nodes.push_back(
           OpIdAndEpType{fbs_produced_node_info->op_id()->str(),
-                           fbs_produced_node_info->execution_provider_type()->str()});
+                        fbs_produced_node_info->execution_provider_type()->str()});
     }
   }
 

@@ -87,7 +87,9 @@ Status KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& o
   const bool registered = op_kernel_type_str_map_.try_emplace(std::move(op_id),
                                                               std::move(kernel_type_str_map))
                               .second;
-  if (registered_out) *registered_out = registered;
+  if (registered_out) {
+    *registered_out = registered;
+  }
   return Status::OK();
 }
 
@@ -201,6 +203,10 @@ Status KernelTypeStrResolver::LoadFromOrtFormat(const fbs::KernelTypeStrResolver
 
   op_kernel_type_str_map_ = std::move(op_kernel_type_str_map);
   return Status::OK();
+}
+
+void KernelTypeStrResolver::Merge(KernelTypeStrResolver& src) {
+  op_kernel_type_str_map_.merge(src.op_kernel_type_str_map_);
 }
 
 #if !defined(ORT_MINIMAL_BUILD)

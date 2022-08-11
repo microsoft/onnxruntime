@@ -126,9 +126,9 @@ Status ReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_
                                             /* only_update_dest_definitions */ true, &replacement));
 
   ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(*replacement), "Failed to set node op schema.");
-
   saved_state.produced_nodes.push_back(OpIdAndEpType{MakeOpId(*replacement),
-                                                        replacement->GetExecutionProviderType()});
+                                                     replacement->GetExecutionProviderType()});
+  saved_state.produced_node_op_schemas.push_back(replacement->Op());
 
   ORT_RETURN_IF_NOT(graph.RemoveNode(replacement->Index()), "Failed to remove node.");
 

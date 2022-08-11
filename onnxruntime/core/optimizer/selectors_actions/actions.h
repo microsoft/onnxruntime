@@ -11,6 +11,12 @@
 #include "core/optimizer/selectors_actions/helpers.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 
+#if !defined(ORT_MINIMAL_BUILD)
+namespace ONNX_NAMESPACE {
+class OpSchema;
+}  // namespace ONNX_NAMESPACE
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 namespace onnxruntime {
 
 class Graph;
@@ -25,7 +31,8 @@ struct Action {
 #if !defined(ORT_MINIMAL_BUILD)
   // per-action saved state
   struct SavedState {
-    std::vector<OpIdAndEpType> produced_nodes;
+    std::vector<OpIdAndEpType> produced_nodes;  // TODO do we need this?
+    std::vector<const ONNX_NAMESPACE::OpSchema*> produced_node_op_schemas;
   };
 
   // saving interface
