@@ -157,8 +157,9 @@ class CudaKernel : public OpKernel {
     return provider_->template GetConstOnes<T>(count, stream);
   }
 
-  inline Status CopyTensor(const Tensor& src, Tensor& dst) const {
-    return Info().GetDataTransferManager().CopyTensor(src, dst);
+  inline Status CopyTensor(const Tensor& src, Tensor& dst, onnxruntime::Stream* stream) const {
+    auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(src.Location().device, dst.Location().device);
+    return gpu_data_transfer->CopyTensorAsync(src, dst, stream);
   }
 
   inline int GetDeviceId() const { return provider_->GetDeviceId(); }
