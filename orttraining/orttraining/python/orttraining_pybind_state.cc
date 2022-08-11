@@ -488,6 +488,13 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
     pool.UnRegisterFunctions();
 #endif
   });
+  m.def("is_torch_interop_default_on", []() -> bool {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    return true;
+#else
+        return false;
+#endif
+  });
 
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
   config_result.def(py::init())
@@ -841,7 +848,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           parse_pybytes_to_tensor_proto(non_trainable_tensor_protos_pybytes, non_trainable_tensor_protos);
 
           ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(trainable_tensor_protos,
-                                                                        non_trainable_tensor_protos, checkpoint_path));
+                                                                        non_trainable_tensor_protos,
+                                                                        ToPathString(checkpoint_path)));
         });
   m.def("get_model_after_loading_checkpoint",
         [](const std::string& checkpoint_path, const py::bytes& serialized_model) {
@@ -849,7 +857,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
           std::istringstream buffer(serialized_model);
           ORT_THROW_IF_ERROR(Model::Load(buffer, &model_proto));
-          ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpointToModel(checkpoint_path, model_proto));
+          ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpointToModel(ToPathString(checkpoint_path), model_proto));
 
           std::string model_proto_str;
           ORT_ENFORCE(model_proto.SerializeToString(&model_proto_str), "Serializing Model failed.");

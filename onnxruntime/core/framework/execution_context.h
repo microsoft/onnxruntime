@@ -53,6 +53,10 @@ class CountDownBarrier {
 
   int32_t Get() { return v_.load(std::memory_order_relaxed); }
 
+  void Inc() {
+    ++v_;
+  }
+
  private:
   std::atomic_int_fast32_t v_;
 };
@@ -97,7 +101,9 @@ public:
 
   Stream* GetDeviceStream(size_t idx);
 
-  void CompleteStream(size_t stream_id);
+  void CompleteTask();
+
+  void AddTask();
 
   void WaitAll();
 
@@ -151,7 +157,6 @@ public:
   const ProgramRegion* program_range_{nullptr};
   OrtValueCachePtr cache_{nullptr};
 #endif
-  std::vector<bool> stream_completion_map_;
   const bool single_thread_mode_;
 };
 

@@ -74,6 +74,8 @@ def check_model_correctness(testcase, model_path_origin, model_path_to_check, in
         model_path_origin, sess_options=sess_options, providers=["CPUExecutionProvider"]
     )
     origin_results = origin_sess.run([], inputs)
+    # enable QDQ transformers
+    # sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
     target_sess = onnxruntime.InferenceSession(
         model_path_to_check,
         sess_options=sess_options,
