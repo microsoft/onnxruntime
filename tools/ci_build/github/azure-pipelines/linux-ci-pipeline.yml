@@ -28,6 +28,7 @@ jobs:
       pushd $(pwd)
       ls
       cd onnxruntime/js/node
+      npm install typescript -g
       npm run test
       popd
     displayName: ONNX Spec Test
