@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -35,77 +36,63 @@ struct DataTypeAdaptor<half> {
   using type = ck::half_t;
 };
 
+}  // namespace
+
 using Row = ck::tensor_layout::gemm::RowMajor;
 using Col = ck::tensor_layout::gemm::ColumnMajor;
 
-}  // namespace
+using Nop = ck::tensor_operation::element_wise::PassThrough;
 
-template <typename T>
-class CKGemm : public GemmBase<T> {
+// to be moved to onnxruntime once we have a monolithicly tunable gemm wrapper and it is enabled for onnxruntime
+template <typename T, typename ALayout, typename BLayout>
+class CKGemmOp {
+  using OpType = CKGemmOp<T, ALayout, BLayout>;
+
   using CKDataType = typename DataTypeAdaptor<T>::type;
 
-  template <typename ALayout, typename BLayout>
   using DeviceGemm = ck::tensor_operation::device::DeviceGemm<
       ALayout, BLayout, Row,
       CKDataType, CKDataType, CKDataType,
-      ck::tensor_operation::element_wise::PassThrough,
-      ck::tensor_operation::element_wise::PassThrough,
-      ck::tensor_operation::element_wise::PassThrough>;
+      Nop, Nop, Nop>;
 
-  template <typename Op>
-  using CKGemmInstanceFactory = ck::tensor_operation::device::instance::DeviceOperationInstanceFactory<Op>;
+  using InstanceFactory = ck::tensor_operation::device::instance::DeviceOperationInstanceFactory<DeviceGemm>;
 
-  // composable kernel's GetInstances() returns a collection of <std::unique_ptr<DeviceGemm<...>>>. We need to manually
-  // cast them to std::unique_ptr<BaseOperator>> to avoid type problem.
-  template <typename Op>
-  static std::vector<std::unique_ptr<ck::tensor_operation::device::BaseOperator>> GetInstances() {
-    auto ptrs = CKGemmInstanceFactory<Op>::GetInstances();
-    std::vector<std::unique_ptr<ck::tensor_operation::device::BaseOperator>> results;
-    for (auto&& ptr : ptrs) {
-      results.emplace_back(std::move(ptr));
+ public:
+  static std::vector<OpType> GetInstances() {
+    std::vector<OpType> ret;
+    for (auto&& impl : InstanceFactory::GetInstances()) {
+      ret.emplace_back(CKGemmOp{std::move(impl)});
     }
-    return results;
+    return ret;
   }
 
-  bool UpdateArgumentAndInvoker() {
-    auto nop = ck::tensor_operation::element_wise::PassThrough{};
-    if (this->opa_ == BlasOp::N && this->opb_ == BlasOp::N) {
-      using DeviceOp = DeviceGemm<Row, Row>;
-      auto typed_impl = static_cast<DeviceOp*>(impls_[selected_impl_].get());
-      arg_ = typed_impl->MakeArgumentPointer(this->a_, this->b_, this->c_,
-                                             this->m_, this->n_, this->k_,
-                                             this->lda_, this->ldb_, this->ldc_,
-                                             nop, nop, nop);
-      invoker_ = typed_impl->MakeInvokerPointer();
-    } else if (this->opa_ == BlasOp::T && this->opb_ == BlasOp::N) {
-      using DeviceOp = DeviceGemm<Col, Row>;
-      auto typed_impl = static_cast<DeviceOp*>(impls_[selected_impl_].get());
-      arg_ = typed_impl->MakeArgumentPointer(this->a_, this->b_, this->c_,
-                                             this->m_, this->n_, this->k_,
-                                             this->lda_, this->ldb_, this->ldc_,
-                                             nop, nop, nop);
-      invoker_ = typed_impl->MakeInvokerPointer();
-    } else if (this->opa_ == BlasOp::N && this->opb_ == BlasOp::T) {
-      using DeviceOp = DeviceGemm<Row, Col>;
-      auto typed_impl = static_cast<DeviceOp*>(impls_[selected_impl_].get());
-      arg_ = typed_impl->MakeArgumentPointer(this->a_, this->b_, this->c_,
-                                             this->m_, this->n_, this->k_,
-                                             this->lda_, this->ldb_, this->ldc_,
-                                             nop, nop, nop);
-      invoker_ = typed_impl->MakeInvokerPointer();
-    } else if (this->opa_ == BlasOp::T && this->opb_ == BlasOp::T) {
-      using DeviceOp = DeviceGemm<Col, Col>;
-      auto typed_impl = static_cast<DeviceOp*>(impls_[selected_impl_].get());
-      arg_ = typed_impl->MakeArgumentPointer(this->a_, this->b_, this->c_,
-                                             this->m_, this->n_, this->k_,
-                                             this->lda_, this->ldb_, this->ldc_,
-                                             nop, nop, nop);
-      invoker_ = typed_impl->MakeInvokerPointer();
-    }
+  explicit CKGemmOp(std::unique_ptr<DeviceGemm>&& device_instance)
+      : impl_{std::move(device_instance)},
+        invoker_{impl_->MakeInvokerPointer()} {}
 
-    return impls_[selected_impl_]->IsSupportedArgument(arg_.get());
+  Status operator()(const GemmParams<T>* params) {
+    auto nop = Nop{};
+    auto arg = impl_->MakeArgumentPointer(params->a, params->b, params->c,
+                                          params->m, params->n, params->k,
+                                          params->lda, params->ldb, params->ldc,
+                                          nop, nop, nop);
+    ORT_RETURN_IF(!impl_->IsSupportedArgument(arg.get()),
+                  TUNABLE_OP_MAKE_UNSUPPOTED_ARGUMENT_STATUS(
+                      impl_->GetTypeString(), " does not support ", params->Signature()));
+    invoker_->Run(arg.get(), StreamConfig{params->stream});
+    return Status::OK();
   }
 
+  std::string GetTypeString() const {
+    return impl_->GetTypeString();
+  }
+
+  std::unique_ptr<DeviceGemm> impl_;
+  std::unique_ptr<ck::tensor_operation::device::BaseInvoker> invoker_;
+};
+
+template <typename T, typename ALayout, typename BLayout>
+class CKGemm : public IKernelExplorer {
  public:
   CKGemm(BlasOp opa, BlasOp opb,
          int64_t m, int64_t n, int64_t k,
@@ -114,74 +101,84 @@ class CKGemm : public GemmBase<T> {
          DeviceArray& b, int64_t ldb,
          double beta,
          DeviceArray& c, int64_t ldc)
-      : GemmBase<T>(opa, opb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc) {
-    ORT_ENFORCE(alpha == 1.0);
-    ORT_ENFORCE(beta == 0.0);
-
-    if (opa == BlasOp::N && opb == BlasOp::N) {
-      impls_ = this->GetInstances<DeviceGemm<Row, Row>>();
-    } else if (opa == BlasOp::T && opb == BlasOp::N) {
-      impls_ = this->GetInstances<DeviceGemm<Col, Row>>();
-    } else if (opa == BlasOp::N && opb == BlasOp::T) {
-      impls_ = this->GetInstances<DeviceGemm<Row, Col>>();
-    } else if (opa == BlasOp::T && opb == BlasOp::T) {
-      impls_ = this->GetInstances<DeviceGemm<Col, Col>>();
-    }
-
+      : params_{},
+        impls_{CKGemmOp<T, ALayout, BLayout>::GetInstances()} {
+    auto supports_a = opa == BlasOp::N ? std::is_same_v<ALayout, Row> : std::is_same_v<ALayout, Col>;
+    auto supports_b = opb == BlasOp::N ? std::is_same_v<BLayout, Row> : std::is_same_v<BLayout, Col>;
     ORT_ENFORCE(!impls_.empty());
-    selected_impl_ = 0;
-    UpdateArgumentAndInvoker();
+    ORT_ENFORCE(supports_a && supports_b);
+
+    // rocblas handle is not used for ck
+    params_.handle = nullptr;
+    params_.opa = opa;
+    params_.opb = opb;
+    params_.m = m;
+    params_.n = n;
+    params_.k = k;
+    params_.alpha = alpha;
+    params_.a = static_cast<T*>(a.ptr());
+    params_.lda = lda;
+    params_.b = static_cast<T*>(b.ptr());
+    params_.ldb = ldb;
+    params_.beta = beta;
+    params_.c = static_cast<T*>(c.ptr());
+    params_.ldc = ldc;
   }
 
-  std::vector<std::string> ListImpls() const override {
+  void Run() override {
+    ORT_THROW_IF_ERROR(impls_[selected_impl_](&params_));
+  }
+
+  std::vector<std::string> ListImpls() const {
     std::vector<std::string> results;
     std::transform(impls_.cbegin(), impls_.cend(), std::back_inserter(results),
-                   [](const auto& it) { return it->GetTypeString(); });
+                   [](const auto& it) { return it.GetTypeString(); });
     return results;
   }
 
-  bool SelectImpl(const std::string& name) override {
+  bool SelectImpl(const std::string& name) {
     for (size_t i = 0; i < impls_.size(); i++) {
-      if (impls_[i]->GetTypeString() == name) {
+      if (impls_[i].GetTypeString() == name) {
         selected_impl_ = i;
-        return UpdateArgumentAndInvoker();
+        Status status = impls_[i](&params_);
+        return status.IsOK();
       }
     }
 
     ORT_THROW("Cannot find implementation ", name);
   }
 
-  void Run() override {
-    invoker_->Run(arg_.get());
-  }
-
  private:
-  std::vector<std::unique_ptr<ck::tensor_operation::device::BaseOperator>> impls_;
+  using ParamsT = GemmParams<T>;
+  ParamsT params_;
+
+  std::vector<CKGemmOp<T, ALayout, BLayout>> impls_;
   size_t selected_impl_{};
-  std::unique_ptr<ck::tensor_operation::device::BaseArgument> arg_;
-  std::unique_ptr<ck::tensor_operation::device::BaseInvoker> invoker_;
 };
 
-void InitComposableKernelGemm(py::module mod) {
-  // float
-  py::class_<CKGemm<float>>(mod, "CKGemm_float")
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double,
-                    DeviceArray&, int64_t, DeviceArray&, int64_t, double, DeviceArray&, int64_t>())
-      .def("SetRepeats", &CKGemm<float>::SetRepeats)
-      .def("Profile", &CKGemm<float>::Profile)
-      .def("Run", &CKGemm<float>::Run)
-      .def("ListImpls", &CKGemm<float>::ListImpls)
-      .def("SelectImpl", &CKGemm<float>::SelectImpl);
+#define REGISTER_OP(type, alayout, blayout, layout_string)                         \
+  py::class_<CKGemm<type, alayout, blayout>>(m, "CKGemm_" #type "_" layout_string) \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                     \
+                    double,                                                        \
+                    DeviceArray&, int64_t,                                         \
+                    DeviceArray&, int64_t,                                         \
+                    double,                                                        \
+                    DeviceArray&, int64_t>())                                      \
+      .def("SetRepeats", &CKGemm<type, alayout, blayout>::SetRepeats)              \
+      .def("Profile", &CKGemm<type, alayout, blayout>::Profile)                    \
+      .def("Run", &CKGemm<type, alayout, blayout>::Run)                            \
+      .def("ListImpls", &CKGemm<type, alayout, blayout>::ListImpls)                \
+      .def("SelectImpl", &CKGemm<type, alayout, blayout>::SelectImpl);
 
-  // half
-  py::class_<CKGemm<half>>(mod, "CKGemm_half")
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, double,
-                    DeviceArray&, int64_t, DeviceArray&, int64_t, double, DeviceArray&, int64_t>())
-      .def("SetRepeats", &CKGemm<half>::SetRepeats)
-      .def("Profile", &CKGemm<half>::Profile)
-      .def("Run", &CKGemm<half>::Run)
-      .def("ListImpls", &CKGemm<half>::ListImpls)
-      .def("SelectImpl", &CKGemm<half>::SelectImpl);
+#define REGISTER_OP_FOR_ALL_TRANSAB(type) \
+  REGISTER_OP(type, Row, Row, "NN");      \
+  REGISTER_OP(type, Row, Col, "NT");      \
+  REGISTER_OP(type, Col, Row, "TN");      \
+  REGISTER_OP(type, Col, Col, "TT");
+
+void InitComposableKernelGemm(py::module m) {
+  REGISTER_OP_FOR_ALL_TRANSAB(float);
+  REGISTER_OP_FOR_ALL_TRANSAB(half);
 }
 
 }  // namespace onnxruntime
