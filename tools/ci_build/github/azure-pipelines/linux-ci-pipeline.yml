@@ -26,6 +26,7 @@ jobs:
   - script: |
       set -ex
       pushd $(pwd)
+      ls
       cd js/node
       npm run test
       popd
