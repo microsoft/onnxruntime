@@ -22,8 +22,12 @@ LightInitializer::LightInitializer(const ONNX_NAMESPACE::TensorProto& tensor_pro
   status_ = Status::OK();
   if (!utils::HasDataType(tensor_proto)) {
     status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Initializer must have a datatype");
+    return;
   }
   if (utils::HasExternalData(tensor_proto)) {
+    status_ = ORT_MAKE_STATUS(
+        ONNXRUNTIME, FAIL,
+        "don't support externalData in this helper class, please use class `Initializer` ");
     has_external_data_ = false;
     return;
   }
