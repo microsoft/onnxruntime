@@ -22,12 +22,6 @@ std::vector<std::shared_ptr<onnxruntime::IExecutionProvider>> CreateProviders(
   return execution_providers;
 }
 
-Status SetLearningRateImpl(onnxruntime::training::api::TrainingSession* training_session, float learning_rate) {
-  ORT_ENFORCE(training_session, "The provided instance of the training session is a nullptr.");
-
-  return training_session->SetLearningRate(learning_rate);
-}
-
 }  // namespace
 
 ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSession, _In_ const OrtEnv* env,
@@ -195,7 +189,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::SetLearningRate, _Inout_ OrtTrainingSession
   API_IMPL_BEGIN
 
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(SetLearningRateImpl(session, learning_rate));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->SetLearningRate(learning_rate));
 
   return nullptr;
   API_IMPL_END
@@ -224,17 +218,20 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::RegisterLRScheduler, _Inout_ OrtTrainingSes
   OrtStatus* status = nullptr;
 
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
+
+  if (!lr_scheduler_parameters) {
+    return OrtApis::CreateStatus(ORT_FAIL, "The provided learning rate scheduler parameters is a nullptr.");
+  }
+
   switch (lr_scheduler_type) {
     case OrtLRSchedulerType::LinearLRScheduler: {
       auto parameters = reinterpret_cast<OrtLinearLRSchedulerParameters*>(lr_scheduler_parameters);
-      ORT_API_RETURN_IF_STATUS_NOT_OK(session->RegisterScheduler([&parameters](auto optimizer) {
-        return std::make_unique<onnxruntime::training::api::LinearLRScheduler>(
-            optimizer, parameters->warmup_step_count, parameters->total_step_count);
-      }));
-
-      if (initial_lr) {
-        ORT_API_RETURN_IF_STATUS_NOT_OK(SetLearningRateImpl(session, *initial_lr));
-      }
+      ORT_API_RETURN_IF_STATUS_NOT_OK(
+          session->RegisterScheduler([&parameters](auto optimizer) {
+            return std::make_unique<onnxruntime::training::api::LinearLRScheduler>(
+                optimizer, parameters->warmup_step_count, parameters->total_step_count);
+          },
+                                     initial_lr ? std::optional<float>(*initial_lr) : std::nullopt));
       break;
     }
     default: {

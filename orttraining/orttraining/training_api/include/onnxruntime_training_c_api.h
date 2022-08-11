@@ -155,9 +155,12 @@ struct OrtTrainingApi {
 
   /** \brief Sets the learning rate for this training session.
   *
-  * This function allows users to set the learning rate for the training session. The training
-  * session by default starts with a learning rate of 0.001. It can be overwritten by invoking
+  * This function allows users to set the learning rate for the training session. The current
+  * learning rate is maintained by the training session and can be overwritten by invoking
   * this function with the desired learning rate.
+  * Please note that this function does not set the initial learning rate that may be needed
+  * by the predefined learning rate schedulers. To set the initial learning rate for learning
+  * rate schedulers, please look at the function `RegisterLRScheduler`.
   *
   * \param[in] sess The training session on which the learning rate needs to be set.
   * \param[in] learning_rate Desired learning rate to set.
@@ -188,7 +191,7 @@ struct OrtTrainingApi {
   *
   * Register a learning rate scheduler identified by the given enum with the given
   * learning rate scheduler parameters. Optionally specify the initial learning rate
-  * that should be used with this training session.
+  * that should be used with this learning rate scheduler and training session.
   *
   * \param[in] sess The training session that should use the linear learning rate scheduler.
   * \param[in] lr_scheduler_parameters Learning rate scheduler parameters struct.

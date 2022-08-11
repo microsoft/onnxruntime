@@ -256,13 +256,9 @@ int RunTraining(const TestRunnerParameters& params) {
   onnxruntime::training::test::training_api::SyntheticDataLoader data_loader;
   InitSyntheticDataLoader(data_loader, params, num_of_batches_per_epoch);
 
-  const int64_t total_step_count = params.num_train_epochs * num_of_batches_per_epoch;
-  const int64_t warmup_step_count = total_step_count / 3;
-  auto lr_scheduler_parameters = std::make_unique<OrtLinearLRSchedulerParameters>(
-    OrtLinearLRSchedulerParameters{
-    .warmup_step_count = warmup_step_count,
-    .total_step_count = total_step_count
-    }).get();
+  auto lr_scheduler_parameters = std::make_unique<OrtLinearLRSchedulerParameters>().get();
+  lr_scheduler_parameters->total_step_count = params.num_train_epochs * num_of_batches_per_epoch;
+  lr_scheduler_parameters->warmup_step_count = lr_scheduler_parameters->total_step_count / 3;
   ORT_RETURN_ON_ERROR(g_ort_training_api->RegisterLRScheduler(
     session, reinterpret_cast<void*>(lr_scheduler_parameters), OrtLRSchedulerType::LinearLRScheduler, nullptr));
 

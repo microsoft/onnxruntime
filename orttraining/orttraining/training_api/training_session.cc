@@ -22,9 +22,14 @@ TrainingSession::TrainingSession(const Environment& session_env,
                      : std::unique_ptr<Optimizer>()} {}
 
 Status TrainingSession::RegisterScheduler(
-    const std::function<std::unique_ptr<LRSchedulerBase>(std::shared_ptr<Optimizer>)>& get_scheduler) {
+    const std::function<std::unique_ptr<LRSchedulerBase>(std::shared_ptr<Optimizer>)>& get_scheduler,
+    std::optional<float> initial_lr) {
   scheduler_ = std::move(get_scheduler(optimizer_));
   ORT_ENFORCE(scheduler_, "The provided instance of the learning rate scheduler is a nullptr.");
+
+  if (initial_lr.has_value()) {
+    ORT_RETURN_IF_ERROR(optimizer_->SetInitialLearningRate(initial_lr.value()));
+  }
 
   return Status::OK();
 }

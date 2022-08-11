@@ -32,7 +32,8 @@ class TrainingSession {
                   const ModelIdentifiers& model_identifiers);
 
   Status RegisterScheduler(const std::function<
-                           std::unique_ptr<LRSchedulerBase>(std::shared_ptr<Optimizer>)>& get_scheduler);
+                               std::unique_ptr<LRSchedulerBase>(std::shared_ptr<Optimizer>)>& get_scheduler,
+                           std::optional<float> initial_lr);
 
   size_t GetTrainModeOutputCount() const noexcept;
 
