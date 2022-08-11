@@ -162,10 +162,10 @@ def _add_pre_post_qdq_pair(
         qdq_cmp[activation_name]["post_qdq"] = post_qdq_tensors
 
 
-def activation_compare(
+def create_activation_matching(
     qdq_activations: Dict[str, Sequence[numpy.ndarray]],
     float_activations: Optional[Dict[str, Sequence[numpy.ndarray]]] = None,
-) -> Dict[str, Dict[str, List[numpy.ndarray]]]:
+) -> Dict[str, Dict[str, Sequence[numpy.ndarray]]]:
     """Comparing activation values to help debugging accuracy loss due to quantization.
 
     This functions takes saved activations from the QDQ model and (optionally) the
@@ -216,7 +216,7 @@ def activation_compare(
     if not float_activations:
         return qdq_cmp
 
-    for act_name in qdq_cmp:
+    for act_name, _ in qdq_cmp.items():
         float_acts = float_activations.get(act_name)
         if float_acts:
             qdq_cmp[act_name]["float"] = float_acts

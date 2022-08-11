@@ -19,7 +19,7 @@ import onnxruntime
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 from onnxruntime.quantization.calibrate import CalibrationDataReader
 from onnxruntime.quantization.qdq_loss_debug import (
-    activation_compare,
+    create_activation_matching,
     collect_activations,
     modify_model_output_intermediate_tensors,
 )
@@ -173,7 +173,7 @@ class TestSaveActivations(unittest.TestCase):
                 act = actual.reshape(-1)
                 np.testing.assert_equal(exp, act)
 
-    def test_activation_compare_present(self):
+    def test_create_activation_matching_present(self):
         float_model_path = str(Path(self._tmp_model_dir.name) / "float_model2.onnx")
         construct_test_model1(float_model_path, activations_as_outputs=False)
         data_reader = TestDataReader()
@@ -198,7 +198,7 @@ class TestSaveActivations(unittest.TestCase):
         augmented_qdq_model_path = str(Path(self._tmp_model_dir.name).joinpath("augmented_qdq_model2.onnx"))
         qdq_activations = augment_model_collect_activations(qdq_model_path, augmented_qdq_model_path, data_reader)
 
-        compare_dict = activation_compare(qdq_activations, float_activations)
+        compare_dict = create_activation_matching(qdq_activations, float_activations)
 
         # 'Conv1Out' is combined with 'Relu2Out'
         tensor_names = [
