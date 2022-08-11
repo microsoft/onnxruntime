@@ -185,7 +185,7 @@ Status OrtSaveInternal(
   // Make sure name unique across trainable and non-trainable lists.
   std::set<std::string> trainable_unique_names;
   std::set<std::string> non_trainable_unique_names;
-  std::InlinedVector<std::string> inter_sec;
+  InlinedVector<std::string> inter_sec;
   auto check_unique = [](const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
                          std::set<std::string>& unique_names) {
     for (auto& tensor_proto : tensor_protos) {

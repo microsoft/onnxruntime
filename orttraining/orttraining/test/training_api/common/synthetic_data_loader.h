@@ -11,7 +11,7 @@
 
 #pragma once
 
-#include "gsl/gsl-lite.hpp"
+#include "gsl/gsl"
 
 #include <onnxruntime_cxx_api.h>
 

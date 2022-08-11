@@ -214,10 +214,10 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
 
   onnxruntime::training::test::training_api::SyntheticDataLoader data_loader;
   auto sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
-  sample.AddFloatInput(gsl::make_span(fc1_weight_shape));
-  sample.AddFloatInput(gsl::make_span(fc1_bias_shape));
-  sample.AddFloatInput(gsl::make_span(fc2_weight_shape));
-  sample.AddFloatInput(gsl::make_span(fc2_bias_shape));
+  sample.AddFloatInput(fc1_weight_shape);
+  sample.AddFloatInput(fc1_bias_shape);
+  sample.AddFloatInput(fc2_weight_shape);
+  sample.AddFloatInput(fc2_bias_shape);
   data_loader.AddSyntheticSampleBatch(std::move(sample));
 
   std::vector<OrtValue*> all_weights_values;
