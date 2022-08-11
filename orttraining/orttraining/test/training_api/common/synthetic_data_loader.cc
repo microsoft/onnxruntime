@@ -66,7 +66,18 @@ void SyntheticSampleBatch::AddInt32Input(gsl::span<const int64_t> shape, int32_t
 void SyntheticSampleBatch::AddBoolInput(gsl::span<const int64_t> shape) {
   // Use uint8_t to store the bool value by intention, because vector<bool> is specialized, we can not create a
   // Tensor leveraging C APIs to reuse the data buffer.
-  AddIntInput(shape, static_cast<uint8_t>(0), static_cast<uint8_t>(1));
+  data_vector_.push_back(SyntheticInput(shape));
+
+  std::vector<int32_t> values;
+  auto num_of_element = data_vector_.back().NumOfElements();
+  values.reserve(num_of_element);
+
+  // Need random with int32_t first because MSVC compiler complains uint8_t usage for uniform_int_distribution.
+  RandomInts(values, num_of_element, static_cast<int32_t>(0), static_cast<int32_t>(1));
+
+  SyntheticDataVector& data = data_vector_.back().GetData();
+  std::transform(values.begin(), values.end(), std::back_inserter(data),
+                 [](int32_t x) { return static_cast<uint8_t>(x); });
 }
 
 void SyntheticSampleBatch::AddFloatInput(gsl::span<const int64_t> shape) {
