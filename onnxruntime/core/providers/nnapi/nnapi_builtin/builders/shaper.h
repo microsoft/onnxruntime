@@ -28,8 +28,6 @@ class Shaper {
 
   common::Status Eltwise(const std::string& input1_name, const std::string& input2_name, const std::string& output_name);
 
-  common::Status Identity(const std::string& input_name, const std::string& output_name);
-
   common::Status FC(const std::string& input1_name, const std::string& input2_name, const std::string& output_name);
 
   common::Status Concat(const std::vector<std::string>& input_names, const int32_t axis, const std::string& output_name);
@@ -51,7 +49,6 @@ class Shaper {
   common::Status ReshapeImpl(const std::string& input_name, const std::vector<int32_t>& shape, const std::string& output_name);
   common::Status TransposeImpl(const std::string& input_name, const std::vector<int32_t>& perm, const std::string& output_name);
   common::Status EltwiseImpl(const std::string& input1_name, const std::string& input2_name, const std::string& output_name);
-  common::Status IdentityImpl(const std::string& input_name, const std::string& output_name);
   common::Status FCImpl(const std::string& input1_name, const std::string& input2_name, const std::string& output_name);
   common::Status ConcatImpl(const std::vector<std::string>& input_names, const int32_t axis, const std::string& output_name);
   common::Status SplitImpl(const std::string& input_name, int32_t axis, const std::vector<std::string>& output_names);

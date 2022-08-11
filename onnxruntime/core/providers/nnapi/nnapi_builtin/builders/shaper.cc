@@ -36,11 +36,6 @@ Status Shaper::Eltwise(const std::string& input1_name,
   SHAPER_FUNC(Eltwise, input1_name, input2_name, output_name);
 }
 
-Status Shaper::Identity(const std::string& input_name,
-                        const std::string& output_name) {
-  SHAPER_FUNC(Identity, input_name, output_name);
-}
-
 Status Shaper::FC(const std::string& input1_name, const std::string& input2_name,
                   const std::string& output_name) {
   SHAPER_FUNC(FC, input1_name, input2_name, output_name);
@@ -147,12 +142,6 @@ Status Shaper::EltwiseImpl(const std::string& input1_name,
   }
 
   shape_map_[output_name] = max_shape;
-  return Status::OK();
-}
-
-Status Shaper::IdentityImpl(const std::string& input_name,
-                            const std::string& output_name) {
-  shape_map_[output_name] = shape_map_.at(input_name);
   return Status::OK();
 }
 
