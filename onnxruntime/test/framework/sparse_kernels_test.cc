@@ -698,7 +698,7 @@ struct InsertIndices {
     std::vector<int8_t> indices_data;
     insert_indices_data(indices_1D, values_size, shape_size, indices_data, indices_tp);
     indices_tp.set_data_type(utils::ToTensorProtoElementType<T>());
-    ORT_IF_CONSTEXPR(sizeof(T) == sizeof(int8_t)) {
+    if constexpr(sizeof(T) == sizeof(int8_t)) {
       indices_tp.mutable_raw_data()->assign(reinterpret_cast<const char*>(indices_data.data()), indices_data.size());
     }
     else {

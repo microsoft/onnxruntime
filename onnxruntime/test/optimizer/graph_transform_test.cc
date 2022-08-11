@@ -3674,7 +3674,7 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OuterBroadcast) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+    TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
                          pre_graph_checker, post_graph_checker);
   }
 
@@ -3691,9 +3691,35 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OuterBroadcast) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+    TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
                          pre_graph_checker, post_graph_checker);
   }
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OpSet13InValidAxis) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3, 2, 3, 3, 3}});
+    auto* bias_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+    auto* add_out = builder.MakeIntermediate();
+    auto* softmax_out = builder.MakeOutput();
+
+    builder.AddNode("Add", {input_arg, bias_arg}, {add_out});
+    builder.AddNode("Softmax", {add_out}, {softmax_out}).AddAttribute("axis", static_cast<int64_t>(6));
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    for (auto& node : graph.Nodes()) node.SetExecutionProviderType(kCudaExecutionProvider);
+    ASSERT_EQ(CountOpsInGraph(graph)["Softmax"], 1);
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    ASSERT_EQ(CountOpsInGraph(graph)["Softmax"], 1);
+    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.BiasSoftmax"], 0);
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
+  TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                       pre_graph_checker, post_graph_checker);
 }
 
 static void TestBiasDropoutFusion(const PathString& file_path, const logging::Logger& logger, const int add_count = 0) {

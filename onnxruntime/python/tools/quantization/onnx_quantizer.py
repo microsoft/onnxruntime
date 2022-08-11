@@ -132,6 +132,8 @@ class ONNXQuantizer:
         # some output from nodes will be quantized, yet itself should be treat as existing so
         # no dequantized will be applied when needed later
         self.generated_value_names = self.model.get_non_initializer_inputs()
+        # to store specified scale and zeropoint instead of calculated value, tensor_name->(scale, zeropoint)
+        self.used_scale_zp_map = {}
 
     # routines for subgraph support
     def quantize_subgraph(self, subgraph, graph_key):
@@ -624,6 +626,18 @@ class ONNXQuantizer:
 
         self.quantized_value_map[input_name] = QuantizedValue(input_name, output_name, scale_name, zp_name, qType)
         return nodes + [qlinear_node]
+
+    def set_quant_scale_zp(self, tensor_name, value):
+        assert isinstance(value, tuple) and len(value) == 2, "value must be scale(float) and zeropoint"
+        assert tensor_name not in self.used_scale_zp_map, f"{tensor_name} has been setted before"
+        self.used_scale_zp_map[tensor_name] = value
+
+    def find_quant_scale_zp(self, input_name):
+        if input_name in self.used_scale_zp_map:
+            return self.used_scale_zp_map[input_name]
+        if self.parent is not None:
+            return self.parent.find_quantized_value(input_name)
+        return (None, None)
 
     def find_quantized_value(self, input_name):
         if input_name in self.quantized_value_map:
