@@ -28,7 +28,14 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
   const auto* col_input = context->Input<Tensor>(0);
   const auto* image_shape = context->Input<Tensor>(1);
   const auto* kernel_shape = context->Input<Tensor>(2);
+
+  // TODO(rama): Kernel with dilation
+  TensorShapeVector dilated_kernel_shape_dims;
   std::cout << "Status Col2Im<T>::Compute(OpKernelContext* context)" << std::endl;
+  for (auto i=0; i < kernel_shape->Shape().Size(); ++i) {
+    dilated_kernel_shape_dims[i] = col2im_attrs_.dilations[i] * (kernel_shape->Data<int64_t>()[i] - 1) + 1;
+  }
+  TensorShape dilated_kernel_shape(dilated_kernel_shape_dims);
 
   const T* col_input_data = col_input->template Data<T>();
   TensorShape col_input_shape = col_input->Shape();
@@ -40,7 +47,7 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
   for (auto i=0; i < image_shape->Shape().Size(); ++i) {
     ++kernel_shape_rank;
     image_shape_size *=  image_shape->Data<int64_t>()[i];
-    kernel_shape_size *=  kernel_shape->Data<int64_t>()[i];
+    kernel_shape_size *=  dilated_kernel_shape_dims[i];
   }
   const int64_t C = col_input_shape[1] / kernel_shape_size;
   const int64_t col_output_stride = col_input_shape.SizeFromDimension(1);
@@ -54,9 +61,6 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
   TensorShape Yshape(Y_dims);
   Tensor* Y = context->Output(0, Yshape);
   T* Ydata = Y->template MutableData<T>();
-  for (auto i=0; i < Yshape.Size(); ++i)
-    Ydata[i] = -1;  // just for debug (to know what has been written to Ydata in the end)
-  // const int64_t Y_offset = Yshape.Size() / Yshape[0];
 
   std::cout << "\n\tInput 0: col_input = ("; for (auto i=0; i < Yshape.Size(); ++i) std::cout <<
     col_input_data[i] << ", "; std::cout << ") with shape "<< col_input_shape << std::endl;
@@ -73,9 +77,10 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
 
   std::cout << "\tVariable C: " << C << std::endl;
   std::cout << "\tVariable col_input_N = " << col_input_N << std::endl;
-  std::cout <<  "\tVariable image_shape_size: " << image_shape_size << std::endl;
-  std::cout <<  "\tVariable kernel_shape_size: " << kernel_shape_size << std::endl;
-
+  std::cout << "\tVariable image_shape_size: " << image_shape_size << std::endl;
+  std::cout << "\tVariable kernel_shape_size: " << kernel_shape_size << std::endl;
+  std::cout << "\tVariable: dilated_kernel_shape = ("; for (auto i=0; i < dilated_kernel_shape.Size(); ++i) std::cout <<
+    dilated_kernel_shape[i] << ", "; std::cout << ")" << std::endl;
   std::cout << "\n\tStatus Col2Im<T>::Compute() --> math::Col2imNd<>()" << std::endl;
 
   assert(image_shape_size == Y_offset);  // just for temp debug
@@ -123,11 +128,11 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
         //           2.20182e+24, 4, -2.56655e+29, 5.08551e+31, -1.05888e+29, 1.51107e+29, 5, 10, 15, 20, 7.2793e+31}
         //    that is very similar to input, but with some rounded numbers and corrupted "25" value
         image_shape_size,                                 // int64_t img_size,
-        kernel_shape->Data<int64_t>(),                    // const int64_t* kernel_shape,
+        dilated_kernel_shape_dims.data(),                    // const int64_t* kernel_shape,
         col2im_attrs_.strides.data(),                     // const int64_t* stride,
         col2im_attrs_.dilations.data(),                   // const int64_t* dilation,
         col2im_attrs_.pads.data(),                        // const int64_t* pad,
-        kernel_shape->Shape().Size(),                     // ptrdiff_t N, --> #spatial_dims?
+        dilated_kernel_shape.Size(),                     // ptrdiff_t N, --> #spatial_dims?
         Ydata + image_id * col_input_stride,              // T* data_img,
         &CPUMathUtil::Instance());                        // Provider* provider
     }
