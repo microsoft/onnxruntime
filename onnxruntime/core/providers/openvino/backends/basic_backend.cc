@@ -29,13 +29,13 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   std::string model_blob_name;
   std::string ov_compiled_blobs_dir = "";
 
-  if(hw_target == "MYRIAD")
+  if (hw_target == "MYRIAD")
     vpu_status = true;
   if (!ImportBlob(hw_target, vpu_status)) {
-
   #if defined (OPENVINO_2021_4)
     ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
-    SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
+    SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_,
+              global_context_.device_type);
   #else
     ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
   #endif
@@ -134,7 +134,6 @@ void BasicBackend::PopulateCompiledDirectory(std::string hw_target, std::string&
 }
 
 bool BasicBackend::ImportBlob(std::string hw_target, bool vpu_status) {
-
   const std::string compiled_blob_path = onnxruntime::GetEnvironmentVar("OV_BLOB_PATH");
   if (vpu_status == true && openvino_ep::backend_utils::UseCompiledNetwork() && !compiled_blob_path.empty() &&
     openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph) {
@@ -259,7 +258,6 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* 
 #ifdef IO_BUFFER_ENABLED
 //Wait for Remote Aynchronous inference completion
 void BasicBackend::StartRemoteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, OVInferRequestPtr infer_request) {
-
   #if defined (OV_API_20)
   auto graph_input_info = exe_network_.Get().inputs();
   int input_idx = 0;
@@ -373,7 +371,6 @@ void BasicBackend::StartRemoteAsyncInference(Ort::CustomOpApi& ort, OrtKernelCon
 
   // Start Async inference
   infer_request->StartAsync();
-
 }
 #endif
 

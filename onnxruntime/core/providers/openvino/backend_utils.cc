@@ -75,7 +75,7 @@ bool IsDirExists(const std::string& pathname) {
 void CreateDirectory(const std::string& ov_compiled_blobs_dir) {
   LOGS_DEFAULT(INFO) << log_tag << "'ov_compiled_blobs' directory doesn't exist at the executable path, so creating one";
 #if defined(_WIN32)
-  if (_mkdir(ov_compiled_blobs_dir.c_str()) == 0) { // Creating a directory
+  if (_mkdir(ov_compiled_blobs_dir.c_str()) == 0) {  // Creating a directory
 	  LOGS_DEFAULT(INFO) << log_tag << "created a directory named 'ov_compiled_blobs' at the executable path";
   } else {
     LOGS_DEFAULT(INFO) << log_tag << "Error creating a directory named 'ov_compiled_blobs' at the executable path";
@@ -98,7 +98,6 @@ struct static_cast_int64 {
 
 std::shared_ptr<InferenceEngine::CNNNetwork>
 CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
-
   if(IsCILogEnabled()) {
     std::cout << "CreateNgraphFunc" << std::endl;
   }
@@ -158,7 +157,6 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
 #if defined (OV_API_20)
 std::shared_ptr<OVNetwork>
 CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
-
   if(IsCILogEnabled()) {
     std::cout << "CreateNgraphFunc" << std::endl;
   }

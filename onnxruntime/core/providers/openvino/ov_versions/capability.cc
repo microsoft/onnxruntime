@@ -24,7 +24,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-//Constructor
+// Constructor
 GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string device_type_param,
                              const std::string version_param):
                 graph_viewer_(graph_viewer_param), device_type_(device_type_param){
@@ -226,4 +226,4 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 }
 
 }
-}
+}  // namespace onnxruntime

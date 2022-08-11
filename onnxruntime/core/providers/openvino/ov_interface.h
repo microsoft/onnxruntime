@@ -4,6 +4,7 @@
 #pragma once
 
 #include <inference_engine.hpp>
+#include <vector>
 #if defined (OPENVINO_2022_1) || (OPENVINO_2022_2)
 #define OV_API_20
 #include "openvino/openvino.hpp"
@@ -122,4 +123,4 @@ class OVExeNetwork;
     #endif
     };
    }
-}
+}  // namespace onnxruntime
