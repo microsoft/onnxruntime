@@ -9,6 +9,11 @@
 #include "OrtJniUtil.h"
 #include "ai_onnxruntime_OrtSession.h"
 
+const char * const ORTJNI_StringClassName = "java/lang/String";
+const char * const ORTJNI_OnnxValueClassName = "ai/onnxruntime/OnnxValue";
+const char * const ORTJNI_NodeInfoClassName = "ai/onnxruntime/NodeInfo";
+const char * const ORTJNI_MetadataClassName = "ai/onnxruntime/OnnxModelMetadata";
+
 /*
  * Class:     ai_onnxruntime_OrtSession
  * Method:    createSession

@@ -11,11 +11,6 @@
 extern "C" {
 #endif
 
-static const char * const ORTJNI_StringClassName = "java/lang/String";
-static const char * const ORTJNI_OnnxValueClassName = "ai/onnxruntime/OnnxValue";
-static const char * const ORTJNI_NodeInfoClassName = "ai/onnxruntime/NodeInfo";
-static const char * const ORTJNI_MetadataClassName = "ai/onnxruntime/OnnxModelMetadata";
-
 typedef struct {
   /* The number of dimensions in the Tensor */
   size_t dimensions;
