@@ -27,7 +27,7 @@ jobs:
       set -ex
       pushd $(pwd)
       ls
-      cd js/node
+      cd onnxruntime/js/node
       npm run test
       popd
     displayName: ONNX Spec Test
