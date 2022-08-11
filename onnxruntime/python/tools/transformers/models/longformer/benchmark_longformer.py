@@ -137,7 +137,8 @@ def test_ort_latency(
     disable_io_binding=False,
     verbose=True,
     use_compact_memory=False,
-    enable_experiment=False,
+    use_half2_float2=False,
+    use_half4_float4=False,
 ):
     results = []
     for batch_size in batch_sizes:
@@ -185,7 +186,8 @@ def test_ort_latency(
                     "diff_95_percentile": None,
                     "diff_99_percentile": None,
                     "use_compact_memory": use_compact_memory,
-                    "enable_experiment": enable_experiment,
+                    "use_half2_float2": use_half2_float2,
+                    "use_half4_float4": use_half4_float4,
                 }
 
                 if not disable_io_binding:
@@ -353,12 +355,15 @@ def test_ort(args, device):
         raise RuntimeError(f"Failed to create ORT session from ONNX file {onnx_model_path}")
 
     use_compact_memory = os.environ.get("ORT_LONGFORMER_COMPACT_MEMORY", "0") == "1"
-    enable_experiment = os.environ.get("ORT_TRANSFORMER_OPTIONS", "0") == "8"
     description = onnx_model_path
+    if onnx_model_path.endswith("_f1_fp16.onnx") or onnx_model_path.endswith("_f1_fp32.onnx"):
+        description += "[merged_weights]"
     if use_compact_memory:
         description += "[compact_memory]"
-    if enable_experiment:
-        description += "[experiment]"
+    if args.use_half4_float4:
+        description += "[half4]" if precision == "fp16" else "[float4]"
+    elif args.use_half2_float2:
+        description += "[half2]" if precision == "fp16" else "[float2]"
 
     return test_ort_latency(
         device,
@@ -376,6 +381,8 @@ def test_ort(args, device):
         args.disable_io_binding,
         args.verbose,
         use_compact_memory,
+        args.use_half2_float2,
+        args.use_half4_float4,
     )
 
 
@@ -485,6 +492,13 @@ def parse_arguments(argv=None):
     )
 
     parser.add_argument("--verbose", required=False, action="store_true", help="Print more information.")
+    parser.set_defaults(verbose=False)
+
+    parser.add_argument("--use_half2_float2", required=False, action="store_true", help="Print more information.")
+    parser.set_defaults(use_half2_float2=False)
+
+    parser.add_argument("--use_half4_float4", required=False, action="store_true", help="Print more information.")
+    parser.set_defaults(use_half4_float4=False)
 
     args = parser.parse_args(argv)
 
@@ -515,7 +529,8 @@ def output_details(results, csv_filename):
             "sequence_length",
             "global_length",
             "use_compact_memory",
-            "enable_experiment",
+            "use_half2_float2",
+            "use_half4_float4",
             "diff_max",
             "diff_90_percentile",
             "diff_95_percentile",
@@ -570,16 +585,17 @@ def run_tests(
     run_memory=True,
     use_io_binding=True,
     use_fp16=True,
-    enable_experiment=False,
     use_merged_qkv_weights=True,
+    use_half2_float2=True,
+    use_half4_float4=False,
 ):
     compact_memory = "1" if use_compact_memory else "0"
     os.environ["ORT_LONGFORMER_COMPACT_MEMORY"] = compact_memory
     print("ORT_LONGFORMER_COMPACT_MEMORY=", compact_memory)
 
-    experiment = "8" if enable_experiment else "0"
-    os.environ["ORT_TRANSFORMER_OPTIONS"] = experiment
-    print("ORT_TRANSFORMER_OPTIONS=", experiment)
+    option_value = (4 if use_half2_float2 else 0) + (8 if use_half4_float4 else 0)
+    os.environ["ORT_TRANSFORMER_OPTIONS"] = str(option_value)
+    print("ORT_TRANSFORMER_OPTIONS=", option_value)
 
     results = []
     test_times = 100
@@ -614,6 +630,12 @@ def run_tests(
                     if not use_io_binding:
                         arguments += " --disable_io_binding"
 
+                    if use_half2_float2:
+                        arguments += " --use_half2_float2"
+
+                    if use_half4_float4:
+                        arguments += " --use_half4_float4"
+
                     if run_memory:
                         args = parse_arguments(f"{arguments} -t 10 --memory".split(" "))
                         memory_results = launch_test(args)
@@ -639,14 +661,48 @@ if __name__ == "__main__":
         args = parse_arguments()
         test_results = launch_test(args)
     else:
-        test_results = run_tests(use_fp16=True, enable_experiment=False, use_merged_qkv_weights=True)
-        test_results += run_tests(use_fp16=True, enable_experiment=True, use_merged_qkv_weights=True)
-        test_results += run_tests(use_fp16=False, enable_experiment=False, use_merged_qkv_weights=True)
-        test_results += run_tests(use_fp16=False, enable_experiment=True, use_merged_qkv_weights=True)
-        test_results += run_tests(use_fp16=True, enable_experiment=False, use_merged_qkv_weights=False)
-        test_results += run_tests(use_fp16=True, enable_experiment=True, use_merged_qkv_weights=False)
-        test_results += run_tests(use_fp16=False, enable_experiment=False, use_merged_qkv_weights=False)
-        test_results += run_tests(use_fp16=False, enable_experiment=True, use_merged_qkv_weights=False)
+        # FP16 model
+        test_results = run_tests(
+            use_fp16=True, use_merged_qkv_weights=True, use_half2_float2=False, use_half4_float4=False
+        )
+        test_results += run_tests(
+            use_fp16=True, use_merged_qkv_weights=True, use_half2_float2=True, use_half4_float4=False
+        )
+        test_results += run_tests(
+            use_fp16=True, use_merged_qkv_weights=True, use_half2_float2=True, use_half4_float4=True
+        )
+
+        test_results += run_tests(
+            use_fp16=True, use_merged_qkv_weights=False, use_half2_float2=False, use_half4_float4=False
+        )
+        test_results += run_tests(
+            use_fp16=True, use_merged_qkv_weights=False, use_half2_float2=True, use_half4_float4=False
+        )
+        test_results += run_tests(
+            use_fp16=True, use_merged_qkv_weights=False, use_half2_float2=True, use_half4_float4=True
+        )
+
+        # FP32 model
+        test_results = run_tests(
+            use_fp16=False, use_merged_qkv_weights=True, use_half2_float2=False, use_half4_float4=False
+        )
+        test_results += run_tests(
+            use_fp16=False, use_merged_qkv_weights=True, use_half2_float2=True, use_half4_float4=False
+        )
+        test_results += run_tests(
+            use_fp16=False, use_merged_qkv_weights=True, use_half2_float2=True, use_half4_float4=True
+        )
+
+        test_results += run_tests(
+            use_fp16=False, use_merged_qkv_weights=False, use_half2_float2=False, use_half4_float4=False
+        )
+        test_results += run_tests(
+            use_fp16=False, use_merged_qkv_weights=False, use_half2_float2=True, use_half4_float4=False
+        )
+        test_results += run_tests(
+            use_fp16=False, use_merged_qkv_weights=False, use_half2_float2=True, use_half4_float4=True
+        )
+
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     csv_filename = f"benchmark_detail_{time_stamp}.csv"
     output_details(test_results, csv_filename)

@@ -38,6 +38,7 @@ LongformerAttention<T>::LongformerAttention(const OpKernelInfo& info)
 
   const TransformerOptions* options = TransformerOptions::GetInstance();
   enable_experiment_ = options->EnableExperiment();
+  disable_half2_ = options->DisableHalf2();
 }
 
 template <typename T>
@@ -261,6 +262,8 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                              window_,
                                                              disable_compact_memory);
   auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize);
+  bool enable_half2_float2 = !disable_half2_;
+  bool enable_half4_float4 = enable_experiment_;
   if (!LaunchLongformerAttentionKernel(
           device_prop,
           cublas,
@@ -285,7 +288,8 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           element_size,
           disable_compact_memory,
           use_merged_qkv_weights,
-          enable_experiment_)) {
+          enable_half2_float2,
+          enable_half4_float4)) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
