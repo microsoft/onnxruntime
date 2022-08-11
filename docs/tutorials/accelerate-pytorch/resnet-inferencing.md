@@ -18,10 +18,10 @@ This tutorial demonstrates how to run an ONNX model on CPU, GPU, and OpenVINO ha
 
 ## Setup
 
-- **OS Prerequisities:** Your environment should have [curl](https://curl.se/download.html) installed. 
-- **Device Prerequisites** : The onnxruntime-gpu library needs access to a [NVIDIA CUDA](https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.html#:~:text=You%20can%20verify%20that%20you,that%20GPU%20is%20CUDA%2Dcapable.) accelerator in your device or compute cluster, but running on just CPU works for the CPU and OpenVINO-CPU demos.
-- **Inference Prerequisites:** Ensure that you have an image to inference on. For this tutorial, we have a "cat.jpg" image located in the same directory as the Notebook files.
-- **Environment Prerequisites:** In Azure Notebook Terminal or AnaConda prompt window, run the following commands to create your 3 environments for CPU, GPU, and/or OpenVINO (differences are bolded).
+**OS Prerequisities:** Your environment should have [curl](https://curl.se/download.html) installed. 
+**Device Prerequisites** : The onnxruntime-gpu library needs access to a [NVIDIA CUDA](https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.html#:~:text=You%20can%20verify%20that%20you,that%20GPU%20is%20CUDA%2Dcapable.) accelerator in your device or compute cluster, but running on just CPU works for the CPU and OpenVINO-CPU demos.
+**Inference Prerequisites:** Ensure that you have an image to inference on. For this tutorial, we have a "cat.jpg" image located in the same directory as the Notebook files.
+**Environment Prerequisites:** In Azure Notebook Terminal or AnaConda prompt window, run the following commands to create your 3 environments for CPU, GPU, and/or OpenVINO (differences are bolded).
 
 *CPU*
 ```python
