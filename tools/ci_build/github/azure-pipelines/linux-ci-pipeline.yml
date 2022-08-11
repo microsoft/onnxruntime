@@ -63,12 +63,8 @@ jobs:
 
   - script: |
       set -ex
-      pushd $(pwd)
-      ls
-      cd js/node
-      npm install typescript -g
-      npm run test
-      popd
+      npm test
+    workingDirectory: $(Build.SourcesDirectory)/js/web
     displayName: ONNX Spec Test
 
   - task: CmdLine@2
