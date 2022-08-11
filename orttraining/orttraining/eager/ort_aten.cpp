@@ -592,6 +592,7 @@ Status ComputeOutputShape(
   return Status::OK();
 }
 
+// Note in the below the user needs to pass in out_shape so they own the memory as IntArrayRef is just a view into it.
 at::IntArrayRef BroadcastShape(
     const std::string& node_name,
     OrtValue lhs,
@@ -1300,7 +1301,7 @@ at::Tensor& add_out(
   resize_output(
       invoker,
       dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()),
-      BroadcastShape("add_out", ort_input_1_self, ort_input_0_other, out_shape));
+      BroadcastShape(__func__, ort_input_1_self, ort_outputs_0_Mul[0], out_shape));
 
   auto ort_input_out = create_ort_value(invoker, out);
 
@@ -1370,7 +1371,7 @@ at::Tensor& sub_out(
   resize_output(
       invoker,
       dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()),
-      BroadcastShape("add_out", ort_input_1_self, ort_input_0_other, out_shape));
+      BroadcastShape(__func__, ort_input_1_self, ort_outputs_0_Mul[0], out_shape));
 
   auto ort_input_out = create_ort_value(invoker, out);
 
@@ -1426,7 +1427,7 @@ at::Tensor& mul_out(
   resize_output(
       invoker,
       dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()),
-      BroadcastShape("add_out", ort_input_0_self, ort_input_0_other, out_shape));
+      BroadcastShape(__func__, ort_input_0_self, ort_input_0_other, out_shape));
 
   auto ort_input_out = create_ort_value(invoker, out);
 
@@ -1482,7 +1483,7 @@ at::Tensor& div_out(
   resize_output(
       invoker,
       dynamic_cast<ORTTensorImpl*>(out.unsafeGetTensorImpl()),
-      BroadcastShape("add_out", ort_input_0_self, ort_input_0_other, out_shape));
+      BroadcastShape(__func__, ort_input_0_self, ort_input_0_other, out_shape));
 
   auto ort_input_out = create_ort_value(invoker, out);
 
