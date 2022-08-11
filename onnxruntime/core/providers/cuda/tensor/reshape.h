@@ -35,7 +35,8 @@ class Reshape final : public CudaKernel {
     void* target = Y->MutableDataRaw();
     //If source and target pointers are not equal (non-inplace operation), we need to copy the data.
     if (target != source) {
-      ORT_RETURN_IF_ERROR(CopyTensor(*X, *Y));
+      auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
+      ORT_RETURN_IF_ERROR(gpu_data_transfer->CopyTensorAsync(*X, *Y, context->GetComputeStream()));
     }
 
     return Status::OK();
