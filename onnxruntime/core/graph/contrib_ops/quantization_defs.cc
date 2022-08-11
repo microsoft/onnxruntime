@@ -1222,34 +1222,46 @@ Current version does not support past/present, extra_add and qkv_hidden_sizes.
 TODO: Support them if needed in the future.
 )DOC";
 
-  ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedAttention, 1, OpSchema()
-      .SetDoc(Attention_QOrdered_doc)
-      .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
-      .Attr("unidirectional",
-            "Whether every token can only attend to previous tokens. Default value is 0.",
-            AttributeProto::INT,
-            static_cast<int64_t>(0))
-      .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
-      .Attr("order_weight", "cublasLt order of weight matrix", AttributeProto::INT)
-      .Attr("order_bias", "cublasLt order of bias, (TODO: remove not used)", AttributeProto::INT)
-      .Attr("order_output", "cublasLt order of global bias", AttributeProto::INT)
-      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, input_hidden_size)", "Q")
-      .Input(1, "scale_input", "scale of the input", "S")
-      .Input(2, "weight", "2D input tensor with shape (input_hidden_size, 3 * hidden_size), where hidden_size = num_heads * head_size", "Q")
-      .Input(3, "scale_weight", "scale of the weight", "S")
-      .Input(4, "bias", "1D input tensor with shape (3 * hidden_size)", "S")
-      .Input(5, "scale_bias", "scale of the bias, (TODO: remove)", "S")
-      .Input(6, "scale_gemm", "scale of the gemm", "S")
-      .Input(7, "mask_index",
-             "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)"
-             "or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).",
-             "G", OpSchema::Optional)
-      .Input(8, "scale_output", "scale of the output", "S")
-      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "Q")
-      .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
-      .TypeConstraint("S", {"tensor(float)"}, "Constrain scales to float32 tensors.")
-      .TypeConstraint("G", {"tensor(int32)"}, "Constrain to integer types")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+  ONNX_MS_OPERATOR_SET_SCHEMA(
+      QOrderedAttention,
+      1,
+      OpSchema()
+          .SetDoc(Attention_QOrdered_doc)
+          .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+          .Attr("unidirectional", "Whether every token can only attend to previous tokens. Default value is 0.", AttributeProto::INT, static_cast<int64_t>(0))
+          .Attr("qkv_hidden_sizes", "Hidden layer sizes of Q, K, V paths in Attention", AttributeProto::INTS, OPTIONAL_VALUE)
+          .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
+          .Attr("order_weight", "cublasLt order of weight matrix", AttributeProto::INT)
+          .Attr("order_bias", "cublasLt order of bias, (TODO: remove not used)", AttributeProto::INT)
+          .Attr("order_output", "cublasLt order of global bias", AttributeProto::INT)
+          .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, input_hidden_size)", "Q")
+          .Input(1, "scale_input", "scale of the input, scalar value (per tensor) currently.", "S")
+          .Input(2, "scale_Q_gemm", "scale of the gemm - scalar (per-tensor quantization)", "S")
+          .Input(3, "scale_K_gemm", "scale of the gemm - scalar (per-tensor quantization)", "S")
+          .Input(4, "scale_V_gemm", "scale of the gemm - scalar (per-tensor quantization)", "S")
+          .Input(5, "Q_weight", "2D input tensor with shape (input_hidden_size, hidden_size), where hidden_size = num_heads * head_size", "Q")
+          .Input(6, "K_weight", "2D input tensor with shape (input_hidden_size, hidden_size), where hidden_size = num_heads * head_size", "Q")
+          .Input(7, "V_weight", "2D input tensor with shape (input_hidden_size, hidden_size), where hidden_size = num_heads * head_size", "Q")
+          .Input(8, "scale_Q_weight", "scale of the weight (scalar for per-tensor quantization or 1-D of dims [hidden_size] for per-channel quantization)", "S")
+          .Input(9, "scale_K_weight", "scale of the weight (scalar for per-tensor quantization or 1-D of dims [hidden_size] for per-channel quantization)", "S")
+          .Input(10, "scale_V_weight", "scale of the weight (scalar for per-tensor quantization or 1-D of dims [hidden_size] for per-channel quantization)", "S")
+          .Input(11, "Q_bias", "1D input tensor with shape (hidden_size)", "S")
+          .Input(12, "K_bias", "1D input tensor with shape (hidden_size)", "S")
+          .Input(13, "V_bias", "1D input tensor with shape (hidden_size)", "S")
+          .Input(14, "scale_QKT_gemm", "scale of the gemm - scalar (per-tensor quantization)", "S", OpSchema::Optional)
+          .Input(15, "scale_QKT_softmax", "scale of the softmax result - scalar (per-tensor quantization)", "S", OpSchema::Optional)
+          .Input(16, "scale_values_gemm", "scale of the gemm - scalar (per-tensor quantization). Also this is the output scale for the operator.", "S")
+          .Input(17, "mask_index",
+                 "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)"
+                 "or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).",
+                 "G", OpSchema::Optional)
+          .Input(18, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
+          .Input(19, "extra_add", "additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).", "S", OpSchema::Optional)
+          .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "Q")
+          .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
+          .TypeConstraint("S", {"tensor(float)"}, "Constrain scales to float32 tensors.")
+          .TypeConstraint("G", {"tensor(int32)"}, "Constrain to integer types")
+          .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
   // TODO: quantize the gamma and beta or not
   ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedLayerNormalization, 1, OpSchema()

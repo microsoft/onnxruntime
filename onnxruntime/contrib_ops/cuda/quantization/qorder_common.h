@@ -91,16 +91,18 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, co
                        const float* bias, const float* beta,
                        const int8_t* C, int batchC,
                        int8_t* D,
-                       cublasLtOrder_t order_weight);
+                       cublasLtOrder_t order_weight,
+                       cublasLtPointerMode_t pointer_mode = CUBLASLT_POINTER_MODE_HOST);
 
 inline Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, const cudaDeviceProp& device_prop,
                               int32_t batchCount, int64_t m, int64_t n, int64_t k,
                               const float* alpha, const int8_t* A, const int8_t* B,
                               const float* bias, int8_t* D,
-                              cublasLtOrder_t order_weight) {
+                              cublasLtOrder_t order_weight,
+                              cublasLtPointerMode_t pointer_mode = CUBLASLT_POINTER_MODE_HOST) { // OR BETA ZERO
   return QOrdered_MatMul(cublasLt_handle, stream, device_prop, batchCount, m, n, k,
                          alpha, A, B, 1, bias, (const float*)nullptr, nullptr, 1,
-                         D, order_weight);
+                         D, order_weight, pointer_mode);
 }
 
 // using the following issue to locate error by reporting errors in the operator with error.

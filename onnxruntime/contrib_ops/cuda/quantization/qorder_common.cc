@@ -182,7 +182,8 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, [[
                        const float* bias, const float* beta,
                        const int8_t* C, int32_t batchC,
                        int8_t* D,
-                       cublasLtOrder_t order_weight) {
+                       cublasLtOrder_t order_weight,
+                       cublasLtPointerMode_t pointer_mode) {
   const cublasOperation_t transpose_op = CUBLAS_OP_T;
   cublasLtMatmulDesc_t matmul_desc = nullptr;
   auto clean_matmul_desc = gsl::finally([&matmul_desc]() {if (matmul_desc) cublasLtMatmulDescDestroy(matmul_desc); });
@@ -199,6 +200,7 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, [[
   beta = (C == nullptr ? &beta_zero : beta);
 
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescCreate(&matmul_desc, CUBLAS_COMPUTE_32I, CUDA_R_32F));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc, CUBLASLT_MATMUL_DESC_POINTER_MODE, &pointer_mode, sizeof(pointer_mode)));
   const bool BtXAt = order_weight == CUBLASLT_ORDER_COL;
   if (!BtXAt) {
     // TODO: bias handling is not correct here.
