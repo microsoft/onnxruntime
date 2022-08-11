@@ -1135,6 +1135,20 @@ const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypes() {
   return all_tensor_and_sequence_types;
 }
 
+const std::vector<MLDataType>& DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypes() {
+  static std::vector<MLDataType> all_optional_and_tensor_and_sequence_types =
+      []() {
+        auto temp = AllOptionalTypes();
+        const auto tensor = AllTensorTypes();
+        temp.insert(temp.end(), tensor.begin(), tensor.end());
+        const auto& seq = AllSequenceTensorTypes();
+        temp.insert(temp.end(), seq.begin(), seq.end());
+        return temp;
+      }();
+
+  return all_optional_and_tensor_and_sequence_types;
+}
+
 const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypes() {
   static std::vector<MLDataType> all_optional_types =
       []() {
