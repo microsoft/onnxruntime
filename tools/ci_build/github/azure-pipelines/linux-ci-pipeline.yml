@@ -24,8 +24,9 @@ jobs:
       versionSpec: '12.16.3'
 
   - script: |
+      set -ex
       pushd $(pwd)
-      cd ./js/node/
+      cd js/node
       npm run test
       popd
     displayName: ONNX Spec Test
