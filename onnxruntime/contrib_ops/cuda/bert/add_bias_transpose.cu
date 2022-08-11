@@ -3,7 +3,7 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "add_bias_transpose.h"
+#include "contrib_ops/cuda/bert/add_bias_transpose.h"
 
 using namespace onnxruntime::cuda;
 
@@ -67,7 +67,6 @@ __global__ void AddBiasTransposeQKVLarge(const int head_size, const T* input, co
   }
 }
 
-
 template <typename T>
 __global__ void AddBiasTranspose(const T* input, const T* biases, T* output) {
   // Input:  MxBxSxNxH (Format 0)
@@ -89,7 +88,7 @@ __global__ void AddBiasTranspose(const T* input, const T* biases, T* output) {
   const int NHS = NH * sequence_length;
 
   int in_offset = n * H + s * NH + (b + m * batch_size) * NHS;
-  const int out_offset = s * H + n * sequence_length * H + (b  + m * batch_size) * NHS;
+  const int out_offset = s * H + n * sequence_length * H + (b + m * batch_size) * NHS;
 
   const int h = threadIdx.x;
   if (h < head_size) {
@@ -115,7 +114,7 @@ __global__ void AddBiasTransposeLarge(const int head_size, const T* input, const
   const int NHS = NH * sequence_length;
 
   int in_offset = n * H + s * NH + (b + m * batch_size) * NHS;
-  const int out_offset = (s + n * sequence_length) * H + (b  + m * batch_size) * NHS;
+  const int out_offset = (s + n * sequence_length) * H + (b + m * batch_size) * NHS;
 
   int h = threadIdx.x;
   while (h < H) {
@@ -125,7 +124,7 @@ __global__ void AddBiasTransposeLarge(const int head_size, const T* input, const
 }
 
 template <typename T>
-void LaunchAddBiasTranspose(
+void InvokeAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
     const T* input, const T* biases, T* output) {
@@ -134,30 +133,62 @@ void LaunchAddBiasTranspose(
     const dim3 block(head_size, num_heads, 1);
     if (format == 1) {
       AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(input, biases, output);
-    }
-    else {
+    } else {
       AddBiasTranspose<T><<<grid, block, 0, stream>>>(input, biases, output);
     }
   } else {
     const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
     if (format == 1) {
       AddBiasTransposeQKVLarge<T><<<grid, block, 0, stream>>>(head_size, input, biases, output);
-    }
-    else{
+    } else {
       AddBiasTransposeLarge<T><<<grid, block, 0, stream>>>(head_size, input, biases, output);
     }
   }
 }
 
-template void LaunchAddBiasTranspose(
-    cudaStream_t stream, const int num_matrices,const int format, const int max_threads_per_block,
-    const int batch_size, const int sequence_length, const int num_heads, const int head_size,
-    const float* input, const float* biases, float* output);
-
-template void LaunchAddBiasTranspose(
+template <>
+void LaunchAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
-    const half* input, const half* biases, half* output);
+    const half* input, const half* biases, half* output) {
+  if (0 == (head_size & 1)) {
+    const int H = head_size / 2;
+    const half2* input2 = reinterpret_cast<const half2*>(input);
+    const half2* biases2 = reinterpret_cast<const half2*>(biases);
+    half2* output2 = reinterpret_cast<half2*>(output);
+    InvokeAddBiasTranspose<half2>(stream, num_matrices, format, max_threads_per_block,
+                                  batch_size, sequence_length, num_heads, H, input2, biases2, output2);
+  } else {
+    InvokeAddBiasTranspose<half>(stream, num_matrices, format, max_threads_per_block,
+                                 batch_size, sequence_length, num_heads, head_size, input, biases, output);
+  }
+}
+
+template <>
+void LaunchAddBiasTranspose(
+    cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
+    const int batch_size, const int sequence_length, const int num_heads, const int head_size,
+    const float* input, const float* biases, float* output) {
+  if (0 == (head_size % 4)) {
+    const int H = head_size / 4;
+    const float4* input2 = reinterpret_cast<const float4*>(input);
+    const float4* biases2 = reinterpret_cast<const float4*>(biases);
+    float4* output2 = reinterpret_cast<float4*>(output);
+    InvokeAddBiasTranspose<float4>(stream, num_matrices, format, max_threads_per_block,
+                                   batch_size, sequence_length, num_heads, H, input2, biases2, output2);
+  } else if (0 == (head_size & 1)) {
+    const int H = head_size / 2;
+    const float2* input2 = reinterpret_cast<const float2*>(input);
+    const float2* biases2 = reinterpret_cast<const float2*>(biases);
+    float2* output2 = reinterpret_cast<float2*>(output);
+
+    InvokeAddBiasTranspose<float2>(stream, num_matrices, format, max_threads_per_block,
+                                   batch_size, sequence_length, num_heads, H, input2, biases2, output2);
+  } else {
+    InvokeAddBiasTranspose<float>(stream, num_matrices, format, max_threads_per_block,
+                                  batch_size, sequence_length, num_heads, head_size, input, biases, output);
+  }
+}
 
 }  // namespace cuda
 }  // namespace contrib
