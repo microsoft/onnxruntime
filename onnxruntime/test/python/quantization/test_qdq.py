@@ -13,7 +13,13 @@ from pathlib import Path
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_op_type_order
+from op_test_utils import (
+    TestDataFeeds,
+    check_model_correctness,
+    check_op_type_count,
+    check_op_type_order,
+    create_clip_node,
+)
 
 from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantizationMode, QuantType, quantize_static
 
@@ -348,14 +354,7 @@ class TestQDQFormatConvClip(TestQDQFormat):
         conv_node = onnx.helper.make_node("Conv", conv_inputs, conv_outputs, name=conv_name)
 
         # make Clip node
-        clip_min_name = "clip_min"
-        clip_max_name = "clip_max"
-        clip_inputs = [conv_outputs[0], clip_min_name, clip_max_name]
-        clip_outputs = ["clip_output"]
-        clip_name = "clip_node"
-        initializers.append(onnx.numpy_helper.from_array(np.array(-1.0, dtype=np.float32), name=clip_min_name))
-        initializers.append(onnx.numpy_helper.from_array(np.array(1.0, dtype=np.float32), name=clip_max_name))
-        clip_node = onnx.helper.make_node("Clip", clip_inputs, clip_outputs, name=clip_name)
+        clip_node = create_clip_node(conv_outputs[0], "clip_output", "clip_node", initializers)
 
         # make Identity node
         reshape_name = "reshape_node"
@@ -530,13 +529,13 @@ class TestQDQFormatConvRelu(TestQDQFormat):
         initializers.append(onnx.numpy_helper.from_array(conv_weight_data, name=weight_name))
         conv_node = onnx.helper.make_node("Conv", conv_inputs, conv_outputs, name=conv_name)
 
-        # make Clip node
+        # make Relu node
         relu_node = onnx.helper.make_node("Relu", conv_outputs, [output_name], name="Relu")
 
         # make graph
         input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, input_shape)
         output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, output_shape)
-        graph_name = "QDQ_Test_Conv_clip"
+        graph_name = "QDQ_Test_Conv_Relu"
         graph = helper.make_graph(
             [conv_node, relu_node],
             graph_name,
@@ -621,6 +620,62 @@ class TestQDQFormatConvRelu(TestQDQFormat):
             activation_type=QuantType.QInt8,
             weight_type=QuantType.QInt8,
         )
+
+
+class TestQDQRemovableActivation(TestQDQFormat):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="ort.quant.activation")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp_model_dir.cleanup()
+
+    def construct_model_clip_relu(self, output_model_path, input_shape, output_shape):
+        #    (input)
+        #      |
+        #     Clip
+        #      |
+        #     Relu
+        #      |
+        #    (output)
+        input_name = "input"
+        output_name = "output"
+        initializers = []
+
+        # make Clip node
+        clip_output_name = "clip_output"
+        clip_node = create_clip_node(input_name, clip_output_name, "clip_node", initializers)
+
+        # make Relu node
+        relu_node = onnx.helper.make_node("Relu", [clip_output_name], [output_name], name="Relu")
+
+        # make graph
+        input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, input_shape)
+        output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, output_shape)
+        graph_name = "QDQ_Test_Clip_Relu"
+        graph = helper.make_graph(
+            [clip_node, relu_node],
+            graph_name,
+            [input_tensor],
+            [output_tensor],
+            initializer=initializers,
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        model.ir_version = 7  # use stable onnx ir version
+
+        onnx.save(model, output_model_path)
+
+    def test_activation_only(self):
+        float_model_path = str(Path(self._tmp_model_dir.name) / "float_relu_convs_model.onnx")
+        self.construct_model_clip_relu(float_model_path, [1, 3, 1, 3], [1, 3, 1, 3])
+        data_reader = self.input_feeds(2, {"input": [1, 3, 1, 3]})
+
+        qdq_model_path = str(Path(self._tmp_model_dir.name) / "qdq_relu_convs_model.onnx")
+        quantize_static(float_model_path, qdq_model_path, data_reader)
+
+        qop_nodes = {"Clip": 1, "Relu": 1, "QuantizeLinear": 0, "DequantizeLinear": 0}
+        check_op_type_count(self, qdq_model_path, **qop_nodes)
 
 
 if __name__ == "__main__":

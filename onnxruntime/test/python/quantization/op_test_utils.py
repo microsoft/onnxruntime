@@ -1,3 +1,4 @@
+import uuid
 from pathlib import Path
 
 import numpy as np
@@ -118,3 +119,14 @@ def check_qtype_by_node_type(testcase, model_to_check, check_list):
                 else:  # if (tensor_name in initializers):
                     init = initializers[tensor_name]
                     testcase.assertTrue(init.data_type == check_item[2])
+
+
+def create_clip_node(input_name, output_name, node_name, initializers, min_value=-1.0, max_value=1.0):
+    clip_min_name = str(uuid.uuid4())
+    clip_max_name = str(uuid.uuid4())
+    clip_inputs = [input_name, clip_min_name, clip_max_name]
+    clip_outputs = [output_name]
+    clip_name = node_name
+    initializers.append(onnx.numpy_helper.from_array(np.array(min_value, dtype=np.float32), name=clip_min_name))
+    initializers.append(onnx.numpy_helper.from_array(np.array(max_value, dtype=np.float32), name=clip_max_name))
+    return onnx.helper.make_node("Clip", clip_inputs, clip_outputs, name=clip_name)
