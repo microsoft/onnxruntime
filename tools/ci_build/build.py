@@ -1762,7 +1762,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             dll_path_list.append(os.path.join(args.tensorrt_home, "lib"))
         if args.use_tvm and args.use_tvm_hash:
             dll_path_list.append(
-                os.path.join(build_dir, config, "_deps", "ipp_crypto-build", ".build", config.upper(), "lib")
+                os.path.abspath(
+                    os.path.join(build_dir, config, "_deps", "ipp_crypto-build", ".build", config.upper(), "lib"),
+                )
             )
         # Adding the torch lib path for loading DLLs for onnxruntime in eager mode
         # This works for Python 3.7 and below, and doesn't work for Python 3.8+
