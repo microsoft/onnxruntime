@@ -76,8 +76,10 @@ void SyntheticSampleBatch::AddBoolInput(gsl::span<const int64_t> shape) {
   RandomInts(values, num_of_element, static_cast<int32_t>(0), static_cast<int32_t>(1));
 
   SyntheticDataVector& data = data_vector_.back().GetData();
-  std::transform(values.begin(), values.end(), std::back_inserter(data),
+  std::vector<uint8_t> uint8_values;
+  std::transform(values.begin(), values.end(), std::back_inserter(uint8_values),
                  [](int32_t x) { return static_cast<uint8_t>(x); });
+  data = uint8_values;
 }
 
 void SyntheticSampleBatch::AddFloatInput(gsl::span<const int64_t> shape) {
