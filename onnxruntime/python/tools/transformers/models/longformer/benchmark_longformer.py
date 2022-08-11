@@ -588,6 +588,7 @@ def run_tests(
     use_merged_qkv_weights=True,
     use_half2_float2=True,
     use_half4_float4=False,
+    is_a100=True,
 ):
     compact_memory = "1" if use_compact_memory else "0"
     os.environ["ORT_LONGFORMER_COMPACT_MEMORY"] = compact_memory
@@ -600,8 +601,9 @@ def run_tests(
     results = []
     test_times = 100
     sequence_lengths = [512, 1024, 2048, 4096]
+    batch_sizes = [1, 4, 8, 16, 32, 64] if is_a100 else [1]
     for model_name in ["longformer-base-4096"]:
-        for batch_size in [1]:
+        for batch_size in batch_sizes:
             for sequence_length in sequence_lengths:
                 for global_length in [16]:
                     if run_torch:
@@ -683,7 +685,7 @@ if __name__ == "__main__":
         )
 
         # FP32 model
-        test_results = run_tests(
+        test_results += run_tests(
             use_fp16=False, use_merged_qkv_weights=True, use_half2_float2=False, use_half4_float4=False
         )
         test_results += run_tests(
