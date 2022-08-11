@@ -24,7 +24,7 @@ This tutorial demonstrates how to run an ONNX model on CPU, GPU, and OpenVINO ha
 **Environment Prerequisites:** In Azure Notebook Terminal or AnaConda prompt window, run the following commands to create your 3 environments for CPU, GPU, and/or OpenVINO (differences are bolded).
 
 *CPU*
-```python
+```console
 conda create -n cpu_env_demo python=3.8
 conda activate cpu_env_demo
 conda install -c anaconda ipykernel
@@ -44,7 +44,7 @@ jupyter notebook
 ```
 
 *OpenVINO*
-```python
+```console
 conda create -n openvino_env_demo python=3.8
 conda activate openvino_env_demo 
 conda install -c anaconda ipykernel
@@ -57,7 +57,7 @@ pip install openvino
 - **Library Requirements:** In the first code cell, install the necessary libraries with the following code snippets (differences are bolded).
 
 *CPU + GPU*
-```python
+```console
 import sys
 
 if sys.platform in ['linux', 'win32']: # Linux or Windows
@@ -69,7 +69,7 @@ else: # Mac
 ```
 
 *OpenVINO*
-```python
+```console
 import sys
 
 if sys.platform in ['linux', 'win32']: # Linux or Windows
