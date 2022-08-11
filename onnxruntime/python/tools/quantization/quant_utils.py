@@ -17,7 +17,7 @@ ms_domain = "com.microsoft"
 QUANT_OP_NAME = "QuantizeLinear"
 QUANT_INPUT_SUFFIX = "_QuantizeLinear_Input"
 DEQUANT_OP_NAME = "DequantizeLinear"
-DEQUANT_OUTPUT_SUFFIX ="_DequantizeLinear_Output"
+DEQUANT_OUTPUT_SUFFIX = "_DequantizeLinear_Output"
 
 
 type_to_name = {

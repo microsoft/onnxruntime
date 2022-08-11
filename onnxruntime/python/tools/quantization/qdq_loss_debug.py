@@ -216,9 +216,9 @@ def create_activation_matching(
     if not float_activations:
         return qdq_cmp
 
-    for act_name, _ in qdq_cmp.items():
+    for act_name, act_values in qdq_cmp.items():
         float_acts = float_activations.get(act_name)
         if float_acts:
-            qdq_cmp[act_name]["float"] = float_acts
+            act_values["float"] = float_acts
 
     return qdq_cmp
