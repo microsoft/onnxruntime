@@ -34,15 +34,10 @@ struct Col2ImAttributes {
 
   explicit Col2ImAttributes(const OpKernelInfo& info) {
     auto status = info.GetAttrs("strides", strides);
-    // ORT_ENFORCE(status.IsOK());
-
     gsl::span<const int64_t> pads_span;
     status = info.GetAttrsAsSpan("pads", pads_span);
-    // ORT_ENFORCE(status.IsOK());
     pads.assign(pads_span.cbegin(), pads_span.cend());
-
     status = info.GetAttrs("dilations", dilations);
-    // ORT_ENFORCE(status.IsOK());
   }
 
   ~Col2ImAttributes() = default;
