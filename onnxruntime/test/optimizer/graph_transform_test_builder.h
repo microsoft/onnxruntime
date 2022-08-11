@@ -85,6 +85,30 @@ class ModelTestBuilder {
     return &graph_.GetOrCreateNodeArg(name, &type_proto);
   }
 
+  template <typename T>
+  NodeArg* MakeSymbolicInput(const std::vector<std::variant<int64_t, std::string>>& shape) {
+    ONNX_NAMESPACE::TypeProto type_proto;
+    type_proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
+    type_proto.mutable_tensor_type()->mutable_shape();
+    for (auto& d : shape) {
+      auto dim = type_proto.mutable_tensor_type()->mutable_shape()->add_dim();
+      std::visit([&dim](auto&& arg) -> void {
+        using V = std::decay_t<decltype(arg)>;
+        if constexpr (std::is_same_v<V, int64_t>) {
+          if (arg != -1) {
+            dim->set_dim_value(arg);
+          }
+        } else {
+          dim->set_dim_param(arg);
+        }
+      },
+                 d);
+    }
+
+    std::string name = graph_.GenerateNodeArgName("symbolic_input");
+    return &graph_.GetOrCreateNodeArg(name, &type_proto);
+  }
+
   NodeArg* MakeOutput() {
     std::string name = graph_.GenerateNodeArgName("output");
     output_names_.push_back(name);
@@ -118,9 +142,34 @@ class ModelTestBuilder {
     return MakeInitializer<T>(shape, rand_gen_.Uniform<T>(shape, min, max));
   }
 
+  NodeArg* MakeBoolInitializer(const std::vector<int64_t>& shape, const std::vector<uint8_t>& data) {
+    std::string name = graph_.GenerateNodeArgName("constant");
+    ONNX_NAMESPACE::TensorProto tensor_proto;
+    tensor_proto.set_name(name);
+    tensor_proto.set_data_type(utils::ToTensorProtoElementType<bool>());
+    tensor_proto.set_raw_data(data.data(), data.size() * sizeof(uint8_t));
+
+    for (auto& dim : shape) {
+      tensor_proto.add_dims(dim);
+    }
+
+    graph_.AddInitializedTensor(tensor_proto);
+
+    return &graph_.GetOrCreateNodeArg(name, nullptr);
+  }
+
+  NodeArg* MakeBoolInitializer(const std::vector<int64_t>& shape) {
+    const std::vector<uint8_t> data = rand_gen_.Uniform<uint8_t>(shape, 0, 1);
+    return MakeBoolInitializer(shape, data);
+  }
+
   template <typename T>
   NodeArg* MakeScalarInitializer(T data) {
     return MakeInitializer({}, std::vector<T>{data});
+  }
+
+  NodeArg* MakeBoolScalarInitializer(bool data) {
+    return MakeBoolInitializer({}, std::vector<uint8_t>{static_cast<uint8_t>(data)});
   }
 
   template <typename T>

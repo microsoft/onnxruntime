@@ -161,7 +161,8 @@ bool IsAttributeWithExpectedValues(const Node& node, const std::string& attr_nam
   return true;
 }
 
-bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, InlinedVector<int64_t>& data, bool require_constant) {
+bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, InlinedVector<int64_t>& data,
+                                 bool require_constant) {
   if (require_constant && !graph_utils::IsConstantInitializer(graph, input_arg.Name(), true)) {
     return false;
   }
@@ -272,10 +273,14 @@ int32_t IndexOfNodeOutput(const Node& node, const NodeArg& node_arg) {
 // We could also allow other known domains (kMSDomain, kMSNchwcDomain, kMSFeaturizersDomain),
 // as long as we verify which of their operations are non-deterministic and add them in the map below.
 constexpr std::array kOnnxDomainNonDeterministicOps{"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"};
+constexpr std::array kMSDomainDeterministicOps{"ConcatTraining"};
 bool IsOperationDeterministic(const std::string& domain, const std::string& op) {
   if (domain.compare(kOnnxDomain) == 0) {
     auto iter = std::find(kOnnxDomainNonDeterministicOps.begin(), kOnnxDomainNonDeterministicOps.end(), op);
     return iter == kOnnxDomainNonDeterministicOps.end();
+  } else if (domain.compare(kMSDomain) == 0) {
+    auto iter = std::find(kMSDomainDeterministicOps.begin(), kMSDomainDeterministicOps.end(), op);
+    return iter != kMSDomainDeterministicOps.end();
   }
   // Unknown domain. Assume the op is not deterministic.
   return false;

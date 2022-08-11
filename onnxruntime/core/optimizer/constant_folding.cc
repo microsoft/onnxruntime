@@ -3,6 +3,7 @@
 
 #include <limits>
 
+#include "core/common/inlined_containers.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/utils.h"
 #include "core/graph/graph_utils.h"
@@ -24,70 +25,185 @@ ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
       execution_provider_(execution_provider) {
 }
 
+namespace {
+
+void CreateInitializerFromShapeVector(Graph& graph,
+                                      Node& node,
+                                      const TensorShapeVector& dim_values,
+                                      int64_t start,
+                                      int64_t length,
+                                      bool create_scalar_for_single_value = false) {
+  bool is_scalar = length == 1 && create_scalar_for_single_value;
+  ONNX_NAMESPACE::TensorProto shape_constant;
+  auto* constant_arg_out = node.MutableOutputDefs()[0];
+  shape_constant.set_name(constant_arg_out->Name());
+  shape_constant.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  if (!is_scalar) {
+    shape_constant.add_dims(length);
+  }
+  shape_constant.set_raw_data(dim_values.data() + start,
+                              length * sizeof(int64_t));
+  ONNX_NAMESPACE::TensorShapeProto result_shape;
+  if (!is_scalar) {
+    result_shape.add_dim()->set_dim_value(length);
+  }
+  constant_arg_out->SetShape(result_shape);
+  graph.AddInitializedTensor(shape_constant);
+}
+
+// We ascertain the "true" starts/ends (if they were provided)
+// Opset-15 Shape op supports slicing shape values
+// start: starting index
+// end: ending index (exclusive)
+size_t HandleSliceOrShape15Indices(int64_t& start, int64_t& end, size_t data_rank) {
+  // Deal with negatives and clamp
+  int64_t rank = static_cast<int64_t>(data_rank);
+  start = start < 0 ? start + rank : start;
+  start = start < 0 ? 0 : ((start > rank) ? rank : start);
+
+  end = end < 0 ? end + rank : end;
+  end = end < 0 ? 0 : ((end > rank) ? rank : end);
+
+  int64_t slice_length = end - start;
+  size_t clamped_slice_length = slice_length < 0 ? 0 : static_cast<size_t>(slice_length);
+  return clamped_slice_length;
+}
+
 // We need to handle a Shape node separately as the input doesn't need to be a constant initializer for
 // Shape to be able to be constant folded.
-static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
-  // Opset-15 Shape supports slicing using a 'start' and 'end' attribute
-  const auto& shape_attributes = node.GetAttributes();
-
-  int64_t start = 0;
-  int64_t end = std::numeric_limits<int64_t>::max();
-
-  for (const auto& attr : shape_attributes) {
-    if (attr.first == "start") {
-      start = attr.second.i();
-    } else if (attr.first == "end") {
-      end = attr.second.i();
-    }
-  }
-
+bool ConstantFoldShapeNode(Graph& graph, Node& node, InlinedVector<Node*>& nodes_to_remove) {
   auto shape = node.MutableInputDefs()[0]->Shape();
   bool is_concrete_shape = true;
-  std::vector<int64_t> dim_values;
+  TensorShapeVector dim_values;
+
   if (shape != nullptr) {
+    dim_values.reserve(shape->dim_size());
     for (int dim_index = 0; dim_index < shape->dim_size(); dim_index++) {
       auto dim = shape->dim(dim_index);
-      if (!utils::HasDimValue(dim)) {
+      if (utils::HasDimValue(dim)) {
+        dim_values.push_back(dim.dim_value());
+      } else {
         is_concrete_shape = false;
-        break;
+        // Fill with -1 for symbolic dimension.
+        dim_values.push_back(-1);
       }
-      dim_values.push_back(dim.dim_value());
     }
   } else {
     is_concrete_shape = false;
   }
 
   if (is_concrete_shape) {
-    int64_t rank = static_cast<int64_t>(dim_values.size());
+    int64_t start = 0;
+    int64_t end = std::numeric_limits<int64_t>::max();
 
-    // We ascertain the "true" starts/ends (if they were provided)
-    // Opset-15 Shape op supports slicing shape values
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Shape", {15})) {
+      // Opset-15 Shape supports slicing using a 'start' and 'end' attribute
+      const auto& shape_attributes = node.GetAttributes();
+      for (const auto& attr : shape_attributes) {
+        if (attr.first == "start") {
+          start = attr.second.i();
+        } else if (attr.first == "end") {
+          end = attr.second.i();
+        }
+      }
+    }
+    size_t clamped_slice_length = HandleSliceOrShape15Indices(start, end, dim_values.size());
+    CreateInitializerFromShapeVector(graph, node, dim_values, start, clamped_slice_length);
+    nodes_to_remove.push_back(&node);
+  } else if (shape != nullptr) {
+    // Check consumer Slice/Gather nodes to see any opportunities for constant folding.
+    auto p_ip_node = node.OutputNodesBegin();
+    const auto p_ip_node_end = node.OutputNodesEnd();
+    InlinedHashSet<const Node*> visited_nodes;
+    while (p_ip_node != p_ip_node_end) {
+      if (visited_nodes.find(&(*p_ip_node)) != visited_nodes.end()) {
+        // Already handled, skip the node.
+        ++p_ip_node;
+        continue;
+      }
 
-    // Deal with negatives and clamp
-    start = start < 0 ? start + rank : start;
-    start = start < 0 ? 0 : ((start > rank) ? rank : start);
+      auto& output_node = const_cast<Node&>(*p_ip_node);
+      visited_nodes.insert(&output_node);
+      ++p_ip_node;
 
-    end = end < 0 ? end + rank : end;
-    end = end < 0 ? 0 : ((end > rank) ? rank : end);
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(output_node, "Slice", {10, 11, 13})) {
+        NodeArg* starts_input = output_node.MutableInputDefs()[1];
+        NodeArg* ends_input = output_node.MutableInputDefs()[2];
+        NodeArg* axes_input = output_node.MutableInputDefs()[3];
+        NodeArg* steps_input = output_node.MutableInputDefs().size() > 4 ? output_node.MutableInputDefs()[4] : nullptr;
+        InlinedVector<int64_t> steps_values;
+        if (steps_input && !(optimizer_utils::AppendTensorFromInitializer(graph, *steps_input, steps_values, true) &&
+                             steps_values.size() == 0 && steps_values[0] == 1)) {
+          continue;
+        }
 
-    int64_t slice_length = end - start;
-    size_t clamped_slice_length = slice_length < 0 ? 0 : static_cast<size_t>(slice_length);
+        InlinedVector<int64_t> starts_values, ends_values, axes_values;
+        // Try to parse int32/int64 type constant initializers.
+        if (!(optimizer_utils::AppendTensorFromInitializer(graph, *starts_input, starts_values, true) &&
+              optimizer_utils::AppendTensorFromInitializer(graph, *ends_input, ends_values, true) &&
+              optimizer_utils::AppendTensorFromInitializer(graph, *axes_input, axes_values, true))) {
+          continue;
+        }
 
-    ONNX_NAMESPACE::TensorProto shape_constant;
-    auto* constant_arg_out = node.MutableOutputDefs()[0];
-    shape_constant.set_name(constant_arg_out->Name());
-    shape_constant.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-    shape_constant.add_dims(clamped_slice_length);
-    shape_constant.set_raw_data(dim_values.data() + start,
-                                clamped_slice_length * sizeof(int64_t));
-    ONNX_NAMESPACE::TensorShapeProto result_shape;
-    result_shape.add_dim()->set_dim_value(clamped_slice_length);
-    constant_arg_out->SetShape(result_shape);
-    graph.AddInitializedTensor(shape_constant);
+        // We only support 1D slices currently, can be extended further to support other cases.
+        if (!(starts_values.size() == 1 && ends_values.size() == 1 && axes_values.size() == 1 && axes_values[0] == 0)) {
+          continue;
+        }
+
+        int64_t start = starts_values[0];
+        int64_t end = ends_values[0];
+        size_t clamped_slice_length = HandleSliceOrShape15Indices(start, end, dim_values.size());
+
+        // If requested shape is missing, then we can't do anything.
+        if (dim_values[start] < 0) {
+          continue;
+        }
+
+        CreateInitializerFromShapeVector(graph, output_node, dim_values, start, clamped_slice_length);
+        nodes_to_remove.push_back(&output_node);
+
+      } else if (graph_utils::IsSupportedOptypeVersionAndDomain(output_node, "Gather", {11, 13})) {
+        NodeArg* indices_input = output_node.MutableInputDefs()[1];
+        auto indices_shape = indices_input->Shape();
+        if (!indices_shape || indices_shape->dim_size() > 1) {
+          // If the indices did not contain one single element, then skip it.
+          continue;
+        }
+
+        // Try to parse int64 type constant initializers.
+        InlinedVector<int64_t> indices_values;
+        if (!optimizer_utils::AppendTensorFromInitializer(graph, *indices_input, indices_values, true)) {
+          continue;
+        }
+
+        const ONNX_NAMESPACE::AttributeProto* axis_attr;
+        if ((axis_attr = graph_utils::GetNodeAttribute(output_node, "axis")) &&
+            static_cast<int>(axis_attr->i()) != 0) {
+          continue;
+        }
+
+        // We only support 1D slices currently, can be extended further to support other cases.
+        if (!(indices_values.size() == 1 && dim_values[indices_values[0]] > 0)) {
+          continue;
+        }
+
+        int64_t start = indices_values[0];
+        int64_t rank = static_cast<int64_t>(dim_values.size());
+        start = start < 0 ? start + rank : start;
+        size_t clamped_slice_length = 1;
+
+        int gather_output_rank = 1 /* gather input data is a 1-D tensor representing a shape */ +
+                                 indices_shape->dim_size() - 1;
+        CreateInitializerFromShapeVector(graph, output_node, dim_values, start, clamped_slice_length,
+                                         gather_output_rank == 0);
+        nodes_to_remove.push_back(&output_node);
+      }
+    }
   }
-
-  return is_concrete_shape;  // convert to constant if this is true
+  return is_concrete_shape               // all dimensions are concrete values.
+         || nodes_to_remove.size() > 0;  // OR concrete dim values usage can be constant folded.
 }
+}  // namespace
 
 Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   bool have_updated_nodes = false;
@@ -122,8 +238,9 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
 
     bool converted_to_constant = false;
+    InlinedVector<Node*> nodes_to_remove;
     if (node->OpType().compare("Shape") == 0) {
-      converted_to_constant = ConstantFoldShapeNode(graph, *node);
+      converted_to_constant = ConstantFoldShapeNode(graph, *node, nodes_to_remove);
     } else {
       InitializedTensorSet constant_inputs;
 
@@ -144,7 +261,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           // constant folding does not support executing a node that includes subgraphs (control flow operators,
           // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
           // by the Recurse call above
-          node->ContainsSubgraph() || !graph_utils::AllNodeInputsAreConstant(graph, *node, constant_inputs, excluded_initializers_)) {
+          node->ContainsSubgraph() ||
+          !graph_utils::AllNodeInputsAreConstant(graph, *node, constant_inputs, excluded_initializers_)) {
         continue;
       }
 
@@ -212,7 +330,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
           auto* constant_arg_out = node->MutableOutputDefs()[fetch_idx];
           const Tensor& out_tensor = ort_value.Get<Tensor>();
-          ONNX_NAMESPACE::TensorProto out_tensorproto = utils::TensorToTensorProto(out_tensor, constant_arg_out->Name());
+          ONNX_NAMESPACE::TensorProto out_tensorproto =
+              utils::TensorToTensorProto(out_tensor, constant_arg_out->Name());
 
           ONNX_NAMESPACE::TensorShapeProto result_shape;
           for (auto& dim : out_tensor.Shape().GetDims()) {
@@ -222,26 +341,31 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           constant_arg_out->SetShape(result_shape);
           graph.AddInitializedTensor(out_tensorproto);
         }
+
+        nodes_to_remove.push_back(node);
       }
     }
 
     if (converted_to_constant) {
-      // Remove single-output node chain for inputs of the node
-      auto p_ip_node = node->InputNodesBegin();
-      const auto p_ip_node_end = node->InputNodesEnd();
-      while (p_ip_node != p_ip_node_end) {
-        const auto& input_node = *p_ip_node;
-        // Update the node iterator before removing the corresponding node because removing
-        // the node will invalidate the node iterator
-        ++p_ip_node;
-        graph_utils::RemoveNodesWithOneOutputBottomUp(graph, input_node);
-      }
+      for (Node* node_to_remove : nodes_to_remove) {
+        // Remove single-output node chain for inputs of the node
+        auto p_ip_node = node_to_remove->InputNodesBegin();
+        const auto p_ip_node_end = node_to_remove->InputNodesEnd();
+        while (p_ip_node != p_ip_node_end) {
+          const auto& input_node = *p_ip_node;
+          // Update the node iterator before removing the corresponding node because removing
+          // the node will invalidate the node iterator
+          ++p_ip_node;
+          graph_utils::RemoveNodesWithOneOutputBottomUp(graph, input_node);
+        }
 
-      // Remove the output edges of the constant node and then remove the node itself.
-      graph_utils::RemoveNodeOutputEdges(graph, *node);
-      graph.RemoveNode(node->Index());
-      modified = true;
-      have_updated_nodes = true;
+        // Remove the output edges of the constant node and then remove the node itself.
+        graph_utils::RemoveNodeOutputEdges(graph, *node_to_remove);
+        std::cout << "Removing Node named " << node_to_remove->Name() << node_to_remove->OpType() << std::endl;
+        graph.RemoveNode(node_to_remove->Index());
+        modified = true;
+        have_updated_nodes = true;
+      }
     }
   }
 
