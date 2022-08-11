@@ -44,7 +44,8 @@ bool LaunchLongformerAttentionKernel(
     int max_num_global,                 // Maximum number of global tokens (G)
     const size_t element_size,          // Element size of input tensor,
     bool disable_compact_memory,        // Disable compact memory kernel
-    bool use_merged_qkv_weights
+    bool use_merged_qkv_weights,
+    bool enable_experiment
 );
 
 }  // namespace cuda

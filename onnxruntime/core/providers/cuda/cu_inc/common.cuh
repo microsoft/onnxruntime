@@ -81,6 +81,37 @@ __device__ __forceinline__ half2 operator*(const half2& lh, const half2& rh) { h
 __device__ __forceinline__ half2 operator/(const half2& lh, const half2& rh) { half2 r; r.x = lh.x / rh.x; r.y = lh.y / rh.y; return r; }
 #endif
 
+/// Arithmetic for half4
+struct __align__(8) Half4
+{
+  half2 x;
+  half2 y;
+};
+
+__forceinline__ __host__ __device__ Half4 make_Half4(const half2 x, const half2 y)
+{
+  Half4 r;
+  r.x = x;
+  r.y = y;
+  return r;
+}
+
+__device__ __forceinline__ Half4 operator+(const Half4& a, const Half4& b) {
+  return make_Half4(a.x + b.x, a.y + b.y);
+}
+
+__device__ __forceinline__ Half4 operator-(const Half4& a, const Half4& b) {
+  return make_Half4(a.x - b.x, a.y - b.y);
+}
+
+__device__ __forceinline__ Half4 operator*(const Half4& a, const Half4& b) {
+  return make_Half4(a.x * b.x, a.y * b.y);
+}
+
+__device__ __forceinline__ Half4 operator/(const Half4& a, const Half4& b) {
+  return make_Half4(a.x / b.x, a.y / b.y);
+}
+
 /// Arithmetic for float2
 
 __device__ __forceinline__ float2 operator+(const float2& a, const float2& b) {

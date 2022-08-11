@@ -137,6 +137,7 @@ def test_ort_latency(
     disable_io_binding=False,
     verbose=True,
     use_compact_memory=False,
+    enable_experiment=False,
 ):
     results = []
     for batch_size in batch_sizes:
@@ -184,6 +185,7 @@ def test_ort_latency(
                     "diff_95_percentile": None,
                     "diff_99_percentile": None,
                     "use_compact_memory": use_compact_memory,
+                    "enable_experiment": enable_experiment,
                 }
 
                 if not disable_io_binding:
@@ -249,7 +251,7 @@ def test_ort_memory(
     )
 
     def inference():
-        # Update Arena strategy so that we can measure the minium memory required
+        # Update Arena strategy so that we can measure the minimum memory required
         cuda_provider_options = {"arena_extend_strategy": "kSameAsRequested"}
         provider_options = {"CUDAExecutionProvider": cuda_provider_options}
         session = benchmark_helper.create_onnxruntime_session(
@@ -351,10 +353,12 @@ def test_ort(args, device):
         raise RuntimeError(f"Failed to create ORT session from ONNX file {onnx_model_path}")
 
     use_compact_memory = os.environ.get("ORT_LONGFORMER_COMPACT_MEMORY", "0") == "1"
-
+    enable_experiment = os.environ.get("ORT_TRANSFORMER_OPTIONS", "0") == "8"
     description = onnx_model_path
     if use_compact_memory:
         description += "[compact_memory]"
+    if enable_experiment:
+        description += "[experiment]"
 
     return test_ort_latency(
         device,
@@ -511,6 +515,7 @@ def output_details(results, csv_filename):
             "sequence_length",
             "global_length",
             "use_compact_memory",
+            "enable_experiment",
             "diff_max",
             "diff_90_percentile",
             "diff_95_percentile",
@@ -539,7 +544,7 @@ def run(args):
     torch.set_grad_enabled(False)
 
     # set random seed manually to get deterministic results
-    # benchmark_helper.set_random_seed(123)
+    benchmark_helper.set_random_seed(123)
 
     # Currently, the longformer attention operator could only run in GPU (no CPU implementation yet).
     device = torch.device("cuda:0")
@@ -559,12 +564,23 @@ def launch_test(arguments):
         return results[0]
 
 
-def run_tests(use_compact_memory=True, run_torch=False, run_memory=True, use_io_binding=True, use_fp16=True):
+def run_tests(
+    use_compact_memory=True,
+    run_torch=False,
+    run_memory=True,
+    use_io_binding=True,
+    use_fp16=True,
+    enable_experiment=False,
+    use_merged_qkv_weights=True,
+):
     compact_memory = "1" if use_compact_memory else "0"
     os.environ["ORT_LONGFORMER_COMPACT_MEMORY"] = compact_memory
     print("ORT_LONGFORMER_COMPACT_MEMORY=", compact_memory)
 
-    torch.multiprocessing.set_start_method("spawn")
+    experiment = "8" if enable_experiment else "0"
+    os.environ["ORT_TRANSFORMER_OPTIONS"] = experiment
+    print("ORT_TRANSFORMER_OPTIONS=", experiment)
+
     results = []
     test_times = 100
     sequence_lengths = [512, 1024, 2048, 4096]
@@ -581,7 +597,12 @@ def run_tests(use_compact_memory=True, run_torch=False, run_memory=True, use_io_
                         results += run(args)
 
                     engine_name = "onnxruntime"
-                    onnx_path = f"{model_name}_fp16.onnx" if use_fp16 else f"{model_name}_fp32.onnx"
+                    file_format = 1 if use_merged_qkv_weights else 0
+                    onnx_path = (
+                        f"{model_name}_f{file_format}_fp16.onnx"
+                        if use_fp16
+                        else f"{model_name}_f{file_format}_fp32.onnx"
+                    )
                     if not os.path.exists(onnx_path):
                         raise RuntimeError(f"onnx file not exists:{onnx_path}")
 
@@ -612,12 +633,20 @@ def run_tests(use_compact_memory=True, run_torch=False, run_memory=True, use_io_
 
 
 if __name__ == "__main__":
+    torch.multiprocessing.set_start_method("spawn")
+
     if len(sys.argv) > 1:
         args = parse_arguments()
         test_results = launch_test(args)
     else:
-        test_results = run_tests()
-
+        test_results = run_tests(use_fp16=True, enable_experiment=False, use_merged_qkv_weights=True)
+        test_results += run_tests(use_fp16=True, enable_experiment=True, use_merged_qkv_weights=True)
+        test_results += run_tests(use_fp16=False, enable_experiment=False, use_merged_qkv_weights=True)
+        test_results += run_tests(use_fp16=False, enable_experiment=True, use_merged_qkv_weights=True)
+        test_results += run_tests(use_fp16=True, enable_experiment=False, use_merged_qkv_weights=False)
+        test_results += run_tests(use_fp16=True, enable_experiment=True, use_merged_qkv_weights=False)
+        test_results += run_tests(use_fp16=False, enable_experiment=False, use_merged_qkv_weights=False)
+        test_results += run_tests(use_fp16=False, enable_experiment=True, use_merged_qkv_weights=False)
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     csv_filename = f"benchmark_detail_{time_stamp}.csv"
     output_details(test_results, csv_filename)

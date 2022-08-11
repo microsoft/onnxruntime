@@ -35,6 +35,9 @@ template <typename T>
 LongformerAttention<T>::LongformerAttention(const OpKernelInfo& info)
     : CudaKernel(info), LongformerAttentionBase(info) {
   use_compact_memory_ = ParseEnvironmentVariableWithDefault<bool>(longformer::kUseCompactMemory, true);
+
+  const TransformerOptions* options = TransformerOptions::GetInstance();
+  enable_experiment_ = options->EnableExperiment();
 }
 
 template <typename T>
@@ -281,7 +284,8 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           max_num_global,
           element_size,
           disable_compact_memory,
-          use_merged_qkv_weights)) {
+          use_merged_qkv_weights,
+          enable_experiment_)) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
