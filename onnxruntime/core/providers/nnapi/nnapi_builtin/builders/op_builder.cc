@@ -144,6 +144,20 @@ static Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const N
   return Status::OK();
 }
 
+std::vector<uint32_t> GetShapeInfoFromNodeArg(ModelBuilder& model_builder, const std::string& name) {
+  // can be applied to both input and output
+  const auto& graph_viewer = model_builder.GetGraphViewer();
+  const auto* node_arg = graph_viewer.GetNodeArg(name);
+  const auto* shape_proto = node_arg->Shape();
+  const auto& shape_dims = shape_proto->dim();
+  std::vector<uint32_t> shape(shape_proto->dim_size());
+  for (int i = 0; i < shape_dims.size(); i++) {
+    auto& shape_dim = shape_dims.Get(i);
+    shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
+  }
+  return shape;
+}
+
 // This is primarily used for adding the weight (an initializer) of Conv/QlinearConv
 // And perform layout change from ONNX -> NNAPI
 // If is_per_tensor_u8s8 is true, the QlinearConv is per-tensor u8s8 (input X is unsigned int8
@@ -151,11 +165,12 @@ static Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const N
 // since NNAPI requires X and W to be same type for per-tensor quantization,
 // the initializer tensor W will be converted from int8 to uint8 by flip each byte by XOR 0x80
 // byte ^ 0x80 == byte + 128
-static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
-                                        const std::string& name,
-                                        const OperandType& source_operand_type,
-                                        DataLayout new_layout,
-                                        bool is_per_tensor_u8s8) {
+static Status
+AddInitializerInNewLayout(ModelBuilder& model_builder,
+                          const std::string& name,
+                          const OperandType& source_operand_type,
+                          DataLayout new_layout,
+                          bool is_per_tensor_u8s8) {
   const auto& tensor = *model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
   ORT_RETURN_IF_NOT(shape.size() == 4,
@@ -865,18 +880,11 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
-  // Uses shape info from output node arg tensorshapeproto
-  const auto& shape_info = node_unit.Outputs()[0].node_arg.Shape();
-  const auto& shape_dims = shape_info->dim();
-  std::vector<uint32_t> output_shape(shape_info->dim_size());
-  for (int i = 0; i < shape_dims.size(); i++) {
-    auto& shape_dim = shape_dims.Get(i);
-    output_shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
-  }
-
+  const auto& input_shape = GetShapeInfoFromNodeArg(model_builder, input);
+  const auto& output_shape = GetShapeInfoFromNodeArg(model_builder, output);
   shaper.AddShape(output, output_shape);
 
-  auto input_rank = shaper[input].size();
+  auto input_rank = input_shape.size();
   auto output_rank = output_shape.size();
 
   // For reshape, the output type should be the same as the input type except the shape is different
@@ -1220,15 +1228,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
 
-  const auto& shape_info = node_unit.Outputs()[0].node_arg.Shape();
-  const auto& shape_dims = shape_info->dim();
-
-  // Uses shape info from output node arg tensorshapeproto
-  std::vector<uint32_t> output_shape(shape_info->dim_size());
-  for (int i = 0; i < shape_dims.size(); i++) {
-    auto& shape_dim = shape_dims.Get(i);
-    output_shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
-  }
+  const auto& output_shape = GetShapeInfoFromNodeArg(model_builder, output);
   shaper.AddShape(output, output_shape);
 
   const OperandType output_operand_type(operand_types.at(input).type, output_shape, y_scale, y_zero_point);
@@ -1421,7 +1421,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
   bool use_auto_pad = false;
   int32_t nnapi_padding_code = ANEURALNETWORKS_PADDING_SAME;
-  const auto& input_shape = shaper[input];
+  const auto& input_shape = GetShapeInfoFromNodeArg(model_builder, input);
   const auto& kernel_shape = shaper[weight];
   const auto weight_size_y = kernel_shape[1];
   const auto weight_size_x = kernel_shape[2];
@@ -1483,15 +1483,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     operationCode = ANEURALNETWORKS_DEPTHWISE_CONV_2D;
   }
 
-  // Uses shape info from output node arg tensorshapeproto
-  const auto& shape_info = node_unit.Outputs()[0].node_arg.Shape();
-  const auto& shape_dims = shape_info->dim();
-  std::vector<uint32_t> output_shape(shape_info->dim_size());
-  for (int i = 0; i < shape_dims.size(); i++) {
-    auto& shape_dim = shape_dims.Get(i);
-    output_shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
-  }
-
+  const auto& output_shape = GetShapeInfoFromNodeArg(model_builder, output);
   shaper.AddShape(output, output_shape);
 
   const OperandType output_operand_type(operand_types.at(input).type, output_shape, y_scale, y_zero_point);
@@ -1571,15 +1563,7 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
 
-  // Uses shape info from output node arg tensorshapeproto
-  const auto& shape_info = node_unit.Outputs()[0].node_arg.Shape();
-  const auto& shape_dims = shape_info->dim();
-  std::vector<uint32_t> output_shape(shape_info->dim_size());
-  for (int i = 0; i < shape_dims.size(); i++) {
-    auto& shape_dim = shape_dims.Get(i);
-    output_shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
-  }
-
+  const auto& output_shape = GetShapeInfoFromNodeArg(model_builder, output);
   shaper.AddShape(output, output_shape);
   const OperandType output_operand_type(operand_types.at(input).type, output_shape);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_DEPTH_TO_SPACE, input_indices, {output},
@@ -1887,17 +1871,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   int32_t fuse_code = model_builder.FindActivation(node_unit);
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
-  /*  ORT_RETURN_IF_ERROR(shaper.FC(input1, input2, output));
-   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output], y_scale, y_zero_point); */
-
-  // Uses shape info from output node arg tensorshapeproto
-  const auto& shape_info = node_unit.Outputs()[0].node_arg.Shape();
-  const auto& shape_dims = shape_info->dim();
-  std::vector<uint32_t> output_shape(shape_info->dim_size());
-  for (int i = 0; i < shape_dims.size(); i++) {
-    auto& shape_dim = shape_dims.Get(i);
-    output_shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
-  }
+  const auto& output_shape = GetShapeInfoFromNodeArg(model_builder, output);
   shaper.AddShape(output, output_shape);
 
   const OperandType output_operand_type(operand_types.at(input1).type, output_shape, y_scale, y_zero_point);
@@ -2121,14 +2095,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
 
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
-  // Uses shape info from output node arg tensorshapeproto
-  const auto& shape_info = node_unit.Outputs()[0].node_arg.Shape();
-  const auto& shape_dims = shape_info->dim();
-  std::vector<uint32_t> output_shape(shape_info->dim_size());
-  for (int i = 0; i < shape_dims.size(); i++) {
-    auto& shape_dim = shape_dims.Get(i);
-    output_shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
-  }
+  const auto& output_shape = GetShapeInfoFromNodeArg(model_builder, output);
   shaper.AddShape(output, output_shape);
 
   OperandType output_operand_type(operand_types.at(input0).type, output_shape, y_scale, y_zero_point);
@@ -2431,14 +2398,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   int h_idx = use_nchw ? 2 : 1;
   int w_idx = use_nchw ? 3 : 2;
 
-  // Uses shape info from output node arg tensorshapeproto
-  const auto& shape_info = node_unit.Outputs()[0].node_arg.Shape();
-  const auto& shape_dims = shape_info->dim();
-  std::vector<uint32_t> output_shape(shape_info->dim_size());
-  for (int i = 0; i < shape_dims.size(); i++) {
-    auto& shape_dim = shape_dims.Get(i);
-    output_shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
-  }
+  const auto& output_shape = GetShapeInfoFromNodeArg(model_builder, output);
   shaper.AddShape(output, output_shape);
 
   int32_t output_h = output_shape[h_idx];
@@ -2580,14 +2540,7 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   }
   input_indices.push_back(operand_indices.at(input2));
 
-  // Uses shape info from output node arg tensorshapeproto
-  const auto& shape_info = node_unit.Outputs()[0].node_arg.Shape();
-  const auto& shape_dims = shape_info->dim();
-  std::vector<uint32_t> output_shape(shape_info->dim_size());
-  for (int i = 0; i < shape_dims.size(); i++) {
-    auto& shape_dim = shape_dims.Get(i);
-    output_shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
-  }
+  const auto& output_shape = GetShapeInfoFromNodeArg(model_builder, output);
   shaper.AddShape(output, output_shape);
 
   const OperandType output_operand_type(operand_types.at(input1).type, output_shape);
@@ -2947,15 +2900,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   ADD_SCALAR_OPERAND(model_builder, input_indices, pad_value);
 
   const auto& output = outputs[0].node_arg.Name();
-
-  // Uses shape info from output node arg tensorshapeproto
-  const auto& shape_info = node_unit.Outputs()[0].node_arg.Shape();
-  const auto& shape_dims = shape_info->dim();
-  std::vector<uint32_t> output_shape(shape_info->dim_size());
-  for (int i = 0; i < shape_dims.size(); i++) {
-    auto& shape_dim = shape_dims.Get(i);
-    output_shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
-  }
+  const auto& output_shape = GetShapeInfoFromNodeArg(model_builder, output);
   shaper.AddShape(output, output_shape);
 
   const OperandType output_operand_type{operand_types.at(data).type, output_shape};
