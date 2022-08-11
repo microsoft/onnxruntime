@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "core/common/common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/node_attr_utils.h"
@@ -16,6 +17,37 @@
 #include "core/optimizer/initializer.h"
 namespace onnxruntime {
 namespace xnnpack {
+
+LightInitializer::LightInitializer(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  status_ = Status::OK();
+  if (!utils::HasDataType(tensor_proto)) {
+    status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Initializer must have a datatype");
+  }
+  if (utils::HasExternalData(tensor_proto)) {
+    has_external_data_ = false;
+    return;
+  }
+
+  auto proto_data_type = tensor_proto.data_type();
+  auto proto_dims = utils::GetTensorShapeFromTensorProto(tensor_proto);
+  shape_ = TensorShape(proto_dims);
+
+  // This must be pre-allocated
+  type_ = DataTypeImpl::TensorTypeFromONNXEnum(proto_data_type)->GetElementType();
+
+  const char* raw_data = static_cast<const char*>(tensor_proto.raw_data().data());
+
+  if (nullptr != raw_data && utils::IsPrimitiveDataType<std::string>(type_)) {
+    status_ = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not have raw data");
+    return;
+  }
+
+  Path external_path;
+  status_ = utils::UnpackInitializerData(tensor_proto, external_path, unpacked_tensor_);
+  if (!status_.IsOK()) {
+    return;
+  }
+}
 
 const char* OpTypeToString(OpComputeType opCtype) {
   switch (opCtype) {
@@ -160,7 +192,7 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
     def.inputs.push_back(y_quant_param.scale.Name());
     def.inputs.push_back(y_quant_param.zero_point ? y_quant_param.zero_point->Name() : "");
     if (qtype == QuantizedOpType::QDQSoftmax) {
-      def.domain = kMSDomain; // reuse Qlinearsoftmax in kMSDomain, we need to define our own schema
+      def.domain = kMSDomain;  // reuse Qlinearsoftmax in kMSDomain, we need to define our own schema
       def.attributes.emplace("opset", utils::MakeAttribute(std::string("opset"), int64_t(node_unit.SinceVersion())));
     }
   } else if (qtype == QuantizedOpType::QDQMaxPool) {
@@ -260,20 +292,6 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& node_un
   return metadef;
 }
 
-const onnx::TensorProto* GetQuantizationScale(const InitializedTensorSet& initializers,
-                                              const NodeUnitIODef& io_def) {
-  if (io_def.quant_param.has_value() == false) {
-    return nullptr;
-  }
-
-  const auto scale_name = io_def.quant_param->scale.Name();
-  auto it = initializers.find(scale_name);
-  if (it == initializers.cend()) {
-    return nullptr;
-  }
-  return it->second;
-}
-
 std::pair<const onnx::TensorProto*, const onnx::TensorProto*>
 GetQuantizationZeroPointAndScale(const GraphViewer& graphview,
                                  const NodeUnitIODef& io_def) {
@@ -318,7 +336,6 @@ TensorQuantType GetTensorQuantType(const NodeUnit& node_unit, int32_t io_index,
     return TensorTypeInvalid;
   }
 
-  std::vector<uint8_t> unpacked_tensor;
   // we have processed float-type in the beginning
   // we do not handle u8s8
   switch (input_type) {
@@ -347,14 +364,14 @@ TensorQuantType GetTensorQuantType(const NodeUnit& node_unit, int32_t io_index,
       } else if (scales_dim == tensor_shape[0]) {
         // default 0 for zero-point if zero_dim == 0
         if (zero_tensor != nullptr) {
-          auto status = utils::UnpackInitializerData(*zero_tensor, node_unit.ModelPath(), unpacked_tensor);
-          if (!status.IsOK()) {
+          LightInitializer zp_val(*zero_tensor);
+          if (!zp_val.IsOK()) {
             LOGS_DEFAULT(ERROR) << "error when unpack zero tensor: "
-                                << ", error msg: " << status.ErrorMessage();
+                                << ", error msg: " << zp_val.GetStatus().ErrorMessage();
             break;
           }
-          const int8_t* zero_points = reinterpret_cast<const int8_t*>(unpacked_tensor.data());
-          for (size_t i = 0; i < unpacked_tensor.size(); i++) {
+          auto zero_points = zp_val.DataSpan<int8_t>();
+          for (size_t i = 0; i < zero_points.size(); i++) {
             if (zero_points[i] != 0) {
               LOGS_DEFAULT(VERBOSE) << "only support 0 as zero point for per-channel quantization, "
                                     << "zero_points[" << i << "] has value: " << zero_points[i];
