@@ -195,7 +195,7 @@ def activation_compare(
         ```
     """
 
-    qdq_cmp: Dict[str, Dict[str, List[numpy.ndarray]]] = {}
+    qdq_cmp: Dict[str, Dict[str, Sequence[numpy.ndarray]]] = {}
     for tensor_name, tensors in qdq_activations.items():
         if tensor_name.endswith(QUANT_INPUT_SUFFIX):
             pre_name = tensor_name[: -len(QUANT_INPUT_SUFFIX)]
