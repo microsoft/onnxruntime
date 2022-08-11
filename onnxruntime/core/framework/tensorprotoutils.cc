@@ -779,7 +779,7 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
 
 ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name) {
   // Given we are using the raw_data field in the protobuf, this will work only for little-endian format.
-  ORT_IF_CONSTEXPR(endian::native != endian::little) {
+  if constexpr(endian::native != endian::little) {
     ORT_THROW("Big endian not supported");
   }
 
@@ -1127,7 +1127,7 @@ static void SetIndices(gsl::span<int64_t> gathered_indices,
   auto* ind_dest = reinterpret_cast<T*>(raw_indices.data());
   size_t dest_index = 0;
   for (auto src_index : gathered_indices) {
-    ORT_IF_CONSTEXPR(sizeof(T) == sizeof(int8_t)) {
+    if constexpr(sizeof(T) == sizeof(int8_t)) {
       ind_dest[dest_index] = static_cast<T>(src_index);
     }
     else {
