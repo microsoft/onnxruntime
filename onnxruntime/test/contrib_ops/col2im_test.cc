@@ -74,6 +74,45 @@ TEST(Col2ImContribOpTest, with2Images3channelsNonSquare4dNCHW) {
   test.Run();
 }
 
+TEST(Col2ImContribOpTest, with2Images2channelsNonSquareDilationPadStride4dNCHW) {
+  OpTester test("Col2Im", 1, kMSDomain);
+
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{2, 2, 2, 2});
+
+  std::vector<float> input{ 0., 0., 0., 0., 0., 1., 3., 5., 0., 11., 13., 15., 0., 0., 0., 0.,
+                            0., 0., 0., 0., 1., 3., 5., 0., 11., 13., 15., 0., 0., 0., 0., 0.,
+                            0., 0., 0., 0., 0., 21., 23., 25., 0., 31., 33., 35., 0., 0., 0., 0.,
+                            0., 0., 0., 0., 21., 23., 25., 0., 31., 33., 35., 0., 0., 0., 0., 0.,
+                            0., 0., 0., 0., 0., 41., 43., 45., 0., 51., 53., 55., 0., 0., 0., 0.,
+                            0., 0., 0., 0., 41., 43., 45., 0., 51., 53., 55., 0., 0., 0., 0., 0.,
+                            0., 0., 0., 0., 0., 61., 63., 65., 0., 71., 73., 75., 0., 0., 0., 0.,
+                            0., 0., 0., 0., 61., 63., 65., 0., 71., 73., 75., 0., 0., 0., 0., 0.};
+  std::vector<float> output { 2., 0., 6., 0., 10.,
+                              0., 0., 0., 0., 0.,
+                              22., 0., 26., 0., 30.,
+                              0., 0., 0., 0., 0.,
+                              42., 0., 46., 0., 50.,
+                              0., 0., 0., 0., 0.,
+                              62., 0., 66., 0., 70.,
+                              0., 0., 0., 0., 0.,
+                              82., 0., 86., 0., 90.,
+                              0., 0., 0., 0., 0.,
+                              102., 0., 106., 0., 110.,
+                              0., 0., 0., 0., 0.,
+                              122., 0., 126., 0., 130.,
+                              0., 0., 0., 0., 0.,
+                              142., 0., 146., 0., 150.,
+                              0., 0., 0., 0., 0.};
+  test.AddInput<float>("input", {2, 4, 16},  input);
+  test.AddInput<int64_t>("image_shape", {2},  std::vector<int64_t>{4, 5});
+  test.AddInput<int64_t>("block_shape", {2},  std::vector<int64_t>{1, 2});
+
+  test.AddOutput<float>("output", {2, 2, 4, 5}, output);
+  test.Run();
+}
+
 TEST(Col2ImContribOpTest, with3channels4dNCHW) {
   OpTester test("Col2Im", 1, kMSDomain);
 
