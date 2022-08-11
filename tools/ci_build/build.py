@@ -1760,6 +1760,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             dll_path_list.append(os.path.join(build_dir, "_deps", "tvm-build"))
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, "lib"))
+        if args.use_tvm and args.use_tvm_hash:
+            dll_path_list.append(
+                os.path.join(build_dir, config, "_deps", "ipp_crypto-build", ".build", config.upper(), "lib")
+            )
         # Adding the torch lib path for loading DLLs for onnxruntime in eager mode
         # This works for Python 3.7 and below, and doesn't work for Python 3.8+
         # User will need to import torch before onnxruntime and it will work for all versions
@@ -1973,14 +1977,20 @@ def nuphar_run_python_tests(build_dir, configs):
         run_subprocess([sys.executable, "onnxruntime_test_python_nuphar.py"], cwd=cwd, dll_path=dll_path)
 
 
-def tvm_run_python_tests(build_dir, configs):
+def tvm_run_python_tests(args, build_dir, configs):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
             cwd = os.path.join(cwd, config)
         python_path = os.path.join(build_dir, config, "_deps", "tvm-src", "python")
+        dll_path = ""
+        if args.use_tvm_hash:
+            dll_path = os.path.join(build_dir, config, "_deps", "ipp_crypto-build", ".build", config.upper(), "lib")
         run_subprocess(
-            [sys.executable, "onnxruntime_test_python_tvm.py"], cwd=cwd, python_path=os.path.abspath(python_path)
+            [sys.executable, "onnxruntime_test_python_tvm.py"],
+            cwd=cwd,
+            dll_path=os.path.abspath(dll_path),
+            python_path=os.path.abspath(python_path),
         )
 
 
@@ -2686,7 +2696,7 @@ def main():
             nuphar_run_python_tests(build_dir, configs)
 
         if args.enable_pybind and args.use_tvm:
-            tvm_run_python_tests(build_dir, configs)
+            tvm_run_python_tests(args, build_dir, configs)
 
         # run node.js binding tests
         if args.build_nodejs and not args.skip_nodejs_tests:
