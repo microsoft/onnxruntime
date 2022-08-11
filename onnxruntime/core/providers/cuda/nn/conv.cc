@@ -257,7 +257,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 
     if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
       // set math type to tensor core before algorithm search
-      ORT_IF_CONSTEXPR(std::is_same<T, MLFloat16>::value)
+      if constexpr(std::is_same<T, MLFloat16>::value)
         CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
 
       cudnnConvolutionFwdAlgoPerf_t perf;

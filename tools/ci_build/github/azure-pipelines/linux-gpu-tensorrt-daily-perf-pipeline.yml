@@ -120,7 +120,7 @@ jobs:
           project: 'Lotus'
           preferTriggeringPipeline: true 
           pipeline: '841'
-          runBranch: 'ref/heads/master'
+          runBranch: 'ref/heads/main'
           buildVersionToDownload: 'latest'
           allowPartiallySucceededBuilds: false
           artifact: 'onnxruntime_gpu'
