@@ -23,7 +23,7 @@ jobs:
     inputs:
       versionSpec: '12.16.3'
 
-  - scripts: |
+  - script: |
       pushd $(pwd)
       cd ./js/node/
       npm run test
