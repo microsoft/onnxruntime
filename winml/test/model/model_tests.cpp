@@ -227,6 +227,7 @@ static std::vector<ITestCase*> GetAllTestCases() {
   };
   allDisabledTests.insert(std::begin(x86DisabledTests), std::end(x86DisabledTests));
 #endif
+// Bad onnx test output caused by previously wrong SAME_UPPER/SAME_LOWER for ConvTranspose
 allDisabledTests.insert(ORT_TSTR("cntk_simple_seg"));
 
   
