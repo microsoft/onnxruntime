@@ -54,8 +54,8 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
 
  private:
 
-  std::unordered_map<std::string, WaitNotificationFn> notification_wait_map_;
-  std::unordered_map<std::string, CreateStreamFn> create_stream_map_;
+  InlinedHashMap<std::string, WaitNotificationFn> notification_wait_map_;
+  InlinedHashMap<std::string, CreateStreamFn> create_stream_map_;
 };
 
 SessionState::SessionState(Graph& graph,
@@ -302,9 +302,9 @@ Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& o
   return Status::OK();
 }
 
-const std::unordered_map<int, OrtValue>& SessionState::GetInitializedTensors() const { return initialized_tensors_; }
+const InlinedHashMap<int, OrtValue>& SessionState::GetInitializedTensors() const { return initialized_tensors_; }
 
-const std::unordered_map<int, OrtValue>& SessionState::GetConstantInitializedTensors() const {
+const InlinedHashMap<int, OrtValue>& SessionState::GetConstantInitializedTensors() const {
   return constant_initialized_tensors_;
 }
 
@@ -404,7 +404,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
           do {
             int ort_value_idx;
             if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
-              std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
+              InlinedHashMap<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
 
               if (constant_initialized_tensors.count(ort_value_idx)) {
                 bool is_packed = false;
@@ -742,7 +742,7 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
     //if the value consumed by multiple stream, we can't pre-release it statically.
     if (action.ref_count != 1)
         continue;
-        
+
     auto ml_value_idx = action.value_index;
     const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
     if (!ml_type->IsTensorType())
@@ -1005,7 +1005,7 @@ void SessionState::UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_id
 
   //global start, end doesn't matters
   ProgramRegion range;
-  
+
   auto* plan = GetExecutionPlan();
   for (auto& stream : plan->execution_plan) {
     size_t cur = 0;
