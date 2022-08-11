@@ -770,7 +770,25 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
   std::string perm_name = model_builder.GetUniqueName(node_unit.Name() + input + "perm");
 
-  ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiTranspose(model_builder, node_unit, input, perm_name, perm, output));
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));  // input
+
+  Shape perm_dimen = {SafeInt<uint32_t>(perm.size())};
+  OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), perm_operand_type));
+  uint32_t perm_idx = operand_indices.at(perm_name);
+
+  input_indices.push_back(perm_idx);  // permutation
+  const auto& output_shape = GetShapeInfoFromNodeArg(model_builder, output);
+  shaper.AddShape(output, output_shape);
+  OperandType output_operand_type = operand_types.at(input);
+  output_operand_type.SetDimensions(output_shape);
+  return model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output},
+                                    {output_operand_type});
 
   return Status::OK();
 }
