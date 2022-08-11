@@ -32,7 +32,7 @@ class OrtValueNameIdxMap;
 using KernelCreateInfoMap = std::unordered_map<onnxruntime::NodeIndex, gsl::not_null<const KernelCreateInfo*>>;
 using SubgraphsKernelCreateInfoMaps = std::unordered_map<std::string, KernelCreateInfoMap>;
 // Specify how many logic streams for each provider type
-using ProviderStreamMap = std::unordered_map<std::string, int>;
+using ProviderStreamMap = InlinedHashMap<std::string, int>;
 // Each set contains ops which should be grouped in an independent logic stream
 using OpStreamMap = std::vector<std::vector<std::string>>;
 
@@ -94,7 +94,7 @@ class INodePartitioner {
 
  protected:
   static std::vector<std::string> Split(const std::string& line, char splitor);
-  static std::unordered_map<std::string, NodePartitionerType> name_type_map;
+  static InlinedHashMap<std::string, NodePartitionerType> name_type_map;
   INodePartitioner(const logging::Logger& logger, const std::string& configuration_file) : logger_(logger), configuration_file_(configuration_file) {}
   const logging::Logger& logger_;
   std::string configuration_file_{};

@@ -3,7 +3,6 @@
 
 #include "core/framework/allocation_planner.h"
 #include <list>
-#include <unordered_map>
 #include <algorithm>
 #include <sstream>
 #include <ctime>
@@ -335,8 +334,8 @@ class PlannerImpl {
   // upstream_node_0 and upstream_node_1 are the immmediate upstream nodes of downstream_node
   // upstream_node_2 is the immediate nodes ahead of downstream_node is the same logic stream
   InlinedHashMap<onnxruntime::NodeIndex, InlinedHashSet<onnxruntime::NodeIndex>> dependence_graph_;
-  std::unordered_map<onnxruntime::OrtValueIndex, std::unordered_set<onnxruntime::NodeIndex>> value_consumer_map_;
-  std::unordered_map<onnxruntime::OrtValueIndex, onnxruntime::NodeIndex> value_node_map_;
+  InlinedHashMap<onnxruntime::OrtValueIndex, InlinedHashSet<onnxruntime::NodeIndex>> value_consumer_map_;
+  InlinedHashMap<onnxruntime::OrtValueIndex, onnxruntime::NodeIndex> value_node_map_;
 
   // OrtValueInfo: Auxiliary information about an OrtValue used only during plan-generation:
   struct OrtValueInfo {
@@ -1456,7 +1455,7 @@ class PlannerImpl {
     };  // TryReuseOutput
 
     // topological traverse of the dependency graph
-    std::unordered_set<NodeIndex> visited;
+    InlinedHashSet<NodeIndex> visited;
     while (!que.empty()) {
       NodeIndex node_index = que.front();
       visited.insert(node_index);
@@ -1917,7 +1916,7 @@ class PlannerImpl {
     }
     // 2. for each node, if any of its consumer partitioned to another stream, generate a notification
     size_t num_notifications = 0;
-    std::unordered_map<NodeIndex, NotificationIndex> node_to_notification;
+    InlinedHashMap<NodeIndex, NotificationIndex> node_to_notification;
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
@@ -2058,7 +2057,7 @@ class PlannerImpl {
   // For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   void AdjustInplaceLifeIntervals() {
-    std::unordered_map<OrtValueIndex, std::vector<OrtValueIndex>> inplace_reuse_buffer;
+    InlinedHashMap<OrtValueIndex, std::vector<OrtValueIndex>> inplace_reuse_buffer;
     for (size_t i = 0; i < ort_value_info_.size(); ++i) {
       if (AllocPlan(OrtValueIndex(i)).inplace_reuse != OrtValueIndex(i)) {
         inplace_reuse_buffer[ort_value_info_[i].inplace_reused_buffer_index].push_back(OrtValueIndex(i));
@@ -2177,7 +2176,7 @@ Status SequentialPlanner::CreatePlan(
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-std::unordered_map<std::string, INodePartitioner::NodePartitionerType> INodePartitioner::name_type_map = {{std::string{"DummyPartition"}, NodePartitionerType::DummyPartition}};
+InlinedHashMap<std::string, INodePartitioner::NodePartitionerType> INodePartitioner::name_type_map = {{std::string{"DummyPartition"}, NodePartitionerType::DummyPartition}};
 
 // INodePartitioner::INodePartitioner(const std::string& configuration_file, const logging::Logger& logger) : configuration_file_(configuration_file, logger) {}
 
@@ -2301,12 +2300,12 @@ void DummyPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_view
     return;  // input configuration has errors, do nothing
   }
 
-  std::unordered_map<std::string, int> op_type_counter;
+  InlinedHashMap<std::string, int> op_type_counter;
   auto& p_graph_nodes = graph_viewer.GetNodesInTopologicalOrder();
 
   if (max_streams_.empty() && node_names_by_stream_.empty()) {  // input configure empty, do it from scratch
     // partition by ep, each has one stream
-    std::unordered_map<std::string, int> ep_to_stream;
+    InlinedHashMap<std::string, int> ep_to_stream;
     for (auto node_index : p_graph_nodes) {
       const auto* node = graph_viewer.GetNode(node_index);
       const auto& op_type = node->OpType();
@@ -2328,7 +2327,7 @@ void DummyPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_view
       }
     }
   }
-  std::unordered_map<std::string, size_t> node_stream_map;
+  InlinedHashMap<std::string, size_t> node_stream_map;
   for (size_t i = 0; i < node_names_by_stream_.size(); ++i) {
     for (const auto& node_name : node_names_by_stream_[i]) {
       node_stream_map[node_name] = i;
