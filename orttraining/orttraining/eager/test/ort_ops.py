@@ -670,7 +670,7 @@ class OrtOpTests(unittest.TestCase):
     @parameterized.expand(binary_ops, name_func=rename_func)
     def test_op_binary_tensor(self, binary_op, op_sign, alpha_supported):
         device = self.get_device()
-        cpu_input = torch.rand(3, 3)
+        cpu_input = torch.rand(3, 1)  # use broadcasting in the second dim.
         ort_input = cpu_input.to(device)
         cpu_other = torch.rand(3, 3)
         ort_other = cpu_other.to(device)
