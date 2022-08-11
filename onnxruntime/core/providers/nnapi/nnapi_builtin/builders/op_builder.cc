@@ -34,6 +34,23 @@ struct OpBuilderRegistrations {
   ORT_RETURN_IF_ERROR(onnxruntime::nnapi::op_builder_helpers::AddScalarOperand( \
       model_builder, input_indices, scalar_value))
 
+std::vector<uint32_t> GetShapeInfoFromNodeArg(ModelBuilder& model_builder, const std::string& name) {
+  // can be applied to both input and output
+  const auto& graph_viewer = model_builder.GetGraphViewer();
+  const auto* node_arg = graph_viewer.GetNodeArg(name);
+  const auto* shape_proto = node_arg->Shape();
+  const auto& shape_dims = shape_proto->dim();
+  std::vector<uint32_t> shape(shape_proto->dim_size());
+  for (int i = 0; i < shape_dims.size(); i++) {
+    auto& shape_dim = shape_dims.Get(i);
+    shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
+  }
+  if (shape_proto->dim_size() == 0) {
+    shape.push_back(1);
+  }
+  return shape;
+}
+
 static Status AddBinaryOperator(int32_t op_type,
                                 ModelBuilder& model_builder,
                                 const std::string& input1,
@@ -61,23 +78,6 @@ static Status AddBinaryOperator(int32_t op_type,
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_type, input_indices,
                                                  {output}, {output_operand_type}));
   return Status::OK();
-}
-
-std::vector<uint32_t> GetShapeInfoFromNodeArg(ModelBuilder& model_builder, const std::string& name) {
-  // can be applied to both input and output
-  const auto& graph_viewer = model_builder.GetGraphViewer();
-  const auto* node_arg = graph_viewer.GetNodeArg(name);
-  const auto* shape_proto = node_arg->Shape();
-  const auto& shape_dims = shape_proto->dim();
-  std::vector<uint32_t> shape(shape_proto->dim_size());
-  for (int i = 0; i < shape_dims.size(); i++) {
-    auto& shape_dim = shape_dims.Get(i);
-    shape[i] = SafeInt<uint32_t>(shape_dim.dim_value());
-  }
-  if (shape_proto->dim_size() == 0) {
-    shape.push_back(1);
-  }
-  return shape;
 }
 
 static Status AddSqueezeOp(ModelBuilder& model_builder,
@@ -2606,8 +2606,10 @@ class MinMaxOpBuilder : public BaseOpBuilder {
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input1));  // input 1
   input_indices.push_back(operand_indices.at(input2));  // input 2
-  ORT_RETURN_IF_ERROR(shaper.Eltwise(input1, input2, output));
-  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
+
+  const auto& output_shape = GetShapeInfoFromNodeArg(model_builder, output);
+  shaper.AddShape(output, output_shape);
+  const OperandType output_operand_type(operand_types.at(input1).type, output_shape);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
                                                  {output}, {output_operand_type}));
 
