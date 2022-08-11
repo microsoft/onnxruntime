@@ -2015,7 +2015,6 @@ def build_python_wheel(
     use_ninja=False,
     build_eager_mode=False,
     enable_training_on_device=False,
-    enable_training_torch_interop=False,
 ):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -2035,8 +2034,6 @@ def build_python_wheel(
             args.append("--enable_training")
         if enable_training_on_device:
             args.append("--enable_training_on_device")
-        if enable_training_torch_interop:
-            args.append("--enable_training_torch_interop")
         if build_eager_mode:
             args.append("--disable_auditwheel_repair")
 
@@ -2731,7 +2728,6 @@ def main():
                 use_ninja=(args.cmake_generator == "Ninja"),
                 build_eager_mode=args.build_eager_mode,
                 enable_training_on_device=args.enable_training_on_device,
-                enable_training_torch_interop=args.enable_training_torch_interop,
             )
         if args.build_nuget:
             build_nuget_package(

@@ -82,7 +82,7 @@ def enable_custom_autograd_support(enable=True):
         custom_autograd_function_enabler.state = False
 
 
-# Be noted, setup.py will replace below with "enable_custom_autograd_support(True|False)" at the end of the file if
-# enable_training_torch_interop is provided or not.
+from onnxruntime.capi._pybind_state import is_torch_interop_default_on
 
-enable_custom_autograd_support(False)
+# Enable the custom autograd by default when PythonOp backend support is enabled during build.
+enable_custom_autograd_support(is_torch_interop_default_on())

@@ -486,6 +486,13 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
     pool.UnRegisterFunctions();
 #endif
   });
+  m.def("is_torch_interop_default_on", []() -> bool {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    return true;
+#else
+        return false;
+#endif
+  });
 
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
   config_result.def(py::init())
