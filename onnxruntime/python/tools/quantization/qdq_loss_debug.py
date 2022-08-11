@@ -153,8 +153,8 @@ _POST_QDQ_POSTFIX1 = DEQUANT_OUTPUT_SUFFIX + "_1"
 def _add_pre_post_qdq_pair(
     qdq_cmp: Dict[str, Dict[str, Sequence[numpy.ndarray]]],
     activation_name: str,
-    pre_qdq_tensors: Sequence[numpy.ndarray],
-    post_qdq_tensors: Sequence[numpy.ndarray],
+    pre_qdq_tensors: Optional[Sequence[numpy.ndarray]],
+    post_qdq_tensors: Optional[Sequence[numpy.ndarray]],
 ) -> None:
     if post_qdq_tensors and pre_qdq_tensors:
         qdq_cmp[activation_name] = {}
