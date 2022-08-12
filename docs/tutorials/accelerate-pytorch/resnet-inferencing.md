@@ -7,7 +7,7 @@ nav_order: 1
 ---
 
 
-# Optimal Inferencing on Flexible Hardware with ONNX Runtime
+# Inference PyTorch models on different hardware targets with ONNX Runtime
 {: .no_toc }
 
 As a developer who wants to deploy a PyTorch or ONNX model and maximize performance and hardware flexibility, you can leverage ONNX Runtime to optimally execute your model on your hardware platform.
@@ -24,12 +24,24 @@ This tutorial demonstrates how to run an ONNX model on CPU, GPU, and OpenVINO ha
 
 ## Setup
 
-**OS Prerequisities:** Your environment should have [curl](https://curl.se/download.html) installed. 
-**Device Prerequisites** : The onnxruntime-gpu library needs access to a [NVIDIA CUDA](https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.html#:~:text=You%20can%20verify%20that%20you,that%20GPU%20is%20CUDA%2Dcapable.) accelerator in your device or compute cluster, but running on just CPU works for the CPU and OpenVINO-CPU demos.
-**Inference Prerequisites:** Ensure that you have an image to inference on. For this tutorial, we have a "cat.jpg" image located in the same directory as the Notebook files.
-**Environment Prerequisites:** In Azure Notebook Terminal or AnaConda prompt window, run the following commands to create your 3 environments for CPU, GPU, and/or OpenVINO (differences are bolded).
+### OS Prerequisities
+
+Your environment should have [curl](https://curl.se/download.html) installed. 
+
+### Device Prerequisites
+
+The onnxruntime-gpu library needs access to a [NVIDIA CUDA](https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.html#:~:text=You%20can%20verify%20that%20you,that%20GPU%20is%20CUDA%2Dcapable.) accelerator in your device or compute cluster, but running on just CPU works for the CPU and OpenVINO-CPU demos.
+
+### Inference Prerequisites
+
+Ensure that you have an image to inference on. For this tutorial, we have a "cat.jpg" image located in the same directory as the Notebook files.
+
+### Environment Prerequisites
+
+In Azure Notebook Terminal or AnaConda prompt window, run the following commands to create your 3 environments for CPU, GPU, and/or OpenVINO (differences are bolded).
 
 *CPU*
+
 ```console
 conda create -n cpu_env_demo python=3.8
 conda activate cpu_env_demo
@@ -40,6 +52,7 @@ jupyter notebook
 ```
 
 *GPU*
+
 ```console
 conda create -n gpu_env_demo python=3.8
 conda activate gpu_env_demo 
@@ -50,6 +63,7 @@ jupyter notebook
 ```
 
 *OpenVINO*
+
 ```console
 conda create -n openvino_env_demo python=3.8
 conda activate openvino_env_demo 
@@ -60,9 +74,11 @@ python -m pip install --upgrade pip
 pip install openvino
 ```
 
-- **Library Requirements:** In the first code cell, install the necessary libraries with the following code snippets (differences are bolded).
+### Library Requirements
 
-  *CPU + GPU*
+In the first code cell, install the necessary libraries with the following code snippets (differences are bolded).
+
+*CPU + GPU*
 
 ```python
 import sys
@@ -75,8 +91,7 @@ else: # Mac
 !{sys.executable} -m pip install onnxruntime-gpu onnx onnxconverter_common==1.8.1 pillow
 ```
 
-  *OpenVINO*
-
+*OpenVINO*
 
 ```python
 import sys
@@ -94,7 +109,9 @@ utils.add_openvino_libs_to_path()
 
 ## ResNet-50 Demo
 
-- **Environment Setup** : Import necessary libraries to get models and run inferencing.
+### Environment Setup
+
+Import necessary libraries to get models and run inference.
 
 ```python
 from torchvision import models, datasets, transforms as T
@@ -102,7 +119,10 @@ import torch
 from PIL import Image
 import numpy as np
 ```
-- **Load and Export Pre-trained ResNet-50 model to ONNX**: Download a pretrained ResNet-50 model from PyTorch and export to ONNX format.
+
+### Load and Export Pre-trained ResNet-50 model to ONNX
+
+Download a pretrained ResNet-50 model from PyTorch and export to ONNX format.
 
 ```python
 resnet50 = models.resnet50(pretrained=True)
@@ -131,13 +151,16 @@ torch.onnx.export(resnet50,                     # model being run
 ```
 
 Sample Output:
+
 ```console
 % Total % Received % Xferd Average Speed Time Time Time Current
 Dload Upload Total Spent Left Speed
 100 10472 100 10472 0 0 50581 0 --:--:-- --:--:-- --:--:-- 50834
 ```
 
-- **Set up Pre-Processing for Inferencing**: Create preprocessing for the image (ex. cat.jpg) you want to use the model to inference on.
+### Set up Pre-Processing for Inference
+
+Create preprocessing for the image (ex. cat.jpg) you want to use the model to inference on.
 
 ```python
 # Pre-processing for ResNet-50 Inferencing, from https://pytorch.org/hub/pytorch_vision_resnet/
@@ -160,12 +183,16 @@ if torch.cuda.is_available():
     input_batch = input_batch.to('cuda')
     resnet50.to('cuda')
 ```
+
 Sample Output:
+
 ```console
 GPU Availability: False
 ```
 
--  **Inference ResNet-50 ONNX Model with ONNX Runtime**: Inference the model with ONNX Runtime by selecting the appropriate Execution Provider for the environment. If your environment uses CPU, uncomment CPUExecutionProvider, if the environment uses NVIDIA CUDA, uncomment CUDAExecutionProvider, and if the environment uses OpenVINOExecutionProvider, uncomment OpenVINOExecutionProvider – commenting out the other "onnxruntime.InferenceSession" lines of code.
+### Inference ResNet-50 ONNX Model with ONNX Runtime
+
+Inference the model with ONNX Runtime by selecting the appropriate Execution Provider for the environment. If your environment uses CPU, uncomment CPUExecutionProvider, if the environment uses NVIDIA CUDA, uncomment CUDAExecutionProvider, and if the environment uses OpenVINOExecutionProvider, uncomment OpenVINOExecutionProvider – commenting out the other `onnxruntime.InferenceSession` lines of code.
 
 ```python
 # Inference with ONNX Runtime
@@ -198,7 +225,9 @@ def run_sample(session, image_file, categories, inputs):
 ort_output = run_sample(session_fp32, 'cat.jpg', categories, input_batch)
 print("ONNX Runtime CPU/GPU/OpenVINO Inference time = {} ms".format(format(sum(latency) * 1000 / len(latency), '.2f')))
 ```
+
 Sample output:
+
 ```console
 Egyptian cat 0.78605634
 tabby 0.117310025
@@ -208,7 +237,9 @@ plastic bag 0.0052174763
 ONNX Runtime CPU Inference time = 32.34 ms
 ```
 
-- **Comparison with PyTorch:** Use PyTorch inferencing to benchmark with ONNX Runtime CPU and GPU inferencing accuracy and runtime.
+### Comparison with PyTorch
+
+Use PyTorch to benchmark against ONNX Runtime CPU and GPU accuracy and latency.
 
 ```python
 # Inference with OpenVINO
@@ -251,7 +282,9 @@ PyTorch and ONNX Runtime output 0 are close: True
 PyTorch and ONNX Runtime output 1 are close: True
 ```
 
-- **Comparison with OpenVINO:** Use OpenVINO inferencing to benchmark with ONNX Runtime OpenVINO inferencing accuracy and runtime.
+### Comparison with OpenVINO
+
+Use OpenVINO to benchmark against ONNX Runtime OpenVINO accuracy and latency.
 
 ```python
 # Inference with OpenVINO
@@ -281,7 +314,9 @@ print("***** Verifying correctness *****")
 for i in range(2):
     print('OpenVINO and ONNX Runtime output {} are close:'.format(i), np.allclose(ort_output, outputs, rtol=1e-05, atol=1e-04))
 ```
+
 Sample output:
+
 ```console
 Egyptian cat 0.7820879
 tabby 0.113261245
