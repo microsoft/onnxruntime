@@ -45,6 +45,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().CublasHandle();
   }
 
+  cublasLtHandle_t PerThreadCublasLtHandle() {
+    return GetPerThreadContext().CublasLtHandle();
+  }
+
   cudnnHandle_t PerThreadCudnnHandle() {
     return GetPerThreadContext().CudnnHandle();
   }
@@ -130,6 +134,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
       return cudnn_handle_;
     }
 
+    cublasLtHandle_t CublasLtHandle() const {
+      return cublas_lt_handle_;
+    }
+
     cudaEvent_t& GetCurrentDeferredReleaseEvent() {
       return current_deferred_release_event_;
     }
@@ -166,18 +174,19 @@ class CUDAExecutionProvider : public IExecutionProvider {
     }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  bool IsGraphCaptureAllowed() const;
-  void CaptureBegin();
-  void CaptureEnd();
-  bool IsGraphCaptured() const;
-  Status ReplayGraph();
-  void IncrementRegularRunCountBeforeGraphCapture();
+    bool IsGraphCaptureAllowed() const;
+    void CaptureBegin();
+    void CaptureEnd();
+    bool IsGraphCaptured() const;
+    Status ReplayGraph();
+    void IncrementRegularRunCountBeforeGraphCapture();
 #endif
 
    private:
     cudaStream_t stream_ = nullptr;
     cublasHandle_t cublas_handle_ = nullptr;
     cudnnHandle_t cudnn_handle_ = nullptr;
+    cublasLtHandle_t cublas_lt_handle_ = nullptr;
 
     // deferred release for temporary CPU pinned memory used in cudaMemcpyAsync
     // note that cudaEvent will be assigned at OnRunEnd() when PerThreadContext destory
@@ -197,10 +206,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
     CUDAGraph cuda_graph_;
     bool is_graph_captured_ = false;
     int regular_run_count_before_graph_capture_ = 0;
-    const int min_num_runs_before_cuda_graph_capture_ = 1; // required min regular runs before graph capture for the necessary memory allocations.
+    const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
 
 #endif
-
   };
 
   using PerThreadContextMap = std::unordered_map<const CUDAExecutionProvider*, std::weak_ptr<PerThreadContext>>;

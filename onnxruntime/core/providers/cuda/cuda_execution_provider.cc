@@ -150,6 +150,9 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   stream_ = stream;
 
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  CUBLAS_CALL_THROW(cublasLtCreate(&cublas_lt_handle_));
+#endif
   CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
 
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
@@ -172,6 +175,14 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cublasDestroy threw:" << ex.what();
   }
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  try {
+    CUBLAS_CALL(cublasLtDestroy(cublas_lt_handle_));
+  } catch (const std::exception& ex) {
+    LOGS_DEFAULT(ERROR) << "cublasLtDestroy threw:" << ex.what();
+  }
+#endif
 
   try {
     CUDNN_CALL(cudnnDestroy(cudnn_handle_));
