@@ -108,9 +108,14 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getInputNames(JNIE
     return NULL;
   }
 
+  int32_t numInputsInt = (int32_t) numInputs;
+  if (numInputs != numInputsInt) {
+    throwOrtException(jniEnv, 1, "Too many intputs, expected less than 2^31");
+  }
+
   // Allocate the return array
-  jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(numInputs), stringClazz, NULL);
-  for (size_t i = 0; i < numInputs; i++) {
+  jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv, numInputsInt, stringClazz, NULL);
+  for (int32_t i = 0; i < numInputs; i++) {
     // Read out the input name and convert it to a java.lang.String
     char* inputName = NULL;
     code = checkOrtStatus(jniEnv, api, api->SessionGetInputName(session, i, allocator, &inputName));
@@ -164,9 +169,14 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getOutputNames(JNI
     return NULL;
   }
 
+  int32_t numOutputsInt = (int32_t) numOutputs;
+  if (numOutputs != (numOutputsInt) {
+    throwOrtException(jniEnv, 1, "Too many outputs, expected less than 2^31");
+  }
+
   // Allocate the return array
-  jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(numOutputs), stringClazz, NULL);
-  for (uint32_t i = 0; i < numOutputs; i++) {
+  jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv, numOutputsInt, stringClazz, NULL);
+  for (int32_t i = 0; i < numOutputsInt; i++) {
     // Read out the output name and convert it to a java.lang.String
     char* outputName = NULL;
     code = checkOrtStatus(jniEnv, api, api->SessionGetOutputName(session, i, allocator, &outputName));
