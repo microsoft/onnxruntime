@@ -68,6 +68,7 @@ else: # Mac
 
      *OpenVINO*
 
+
 ```console
 import sys
 
