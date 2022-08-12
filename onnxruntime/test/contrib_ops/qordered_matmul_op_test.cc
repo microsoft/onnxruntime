@@ -3,8 +3,6 @@
 
 #include "qordered_test_utils.h"
 
-#include <numeric>
-
 namespace onnxruntime {
 namespace test {
 
