@@ -36,19 +36,17 @@ RawDataInitializer::RawDataInitializer(const ONNX_NAMESPACE::TensorProto& tensor
   auto proto_dims = utils::GetTensorShapeFromTensorProto(tensor_proto);
   shape_ = TensorShape(proto_dims);
 
-  // This must be pre-allocated
   type_ = DataTypeImpl::TensorTypeFromONNXEnum(proto_data_type)->GetElementType();
-
-  const char* raw_data = static_cast<const char*>(tensor_proto.raw_data().data());
-
-  if (nullptr != raw_data && utils::IsPrimitiveDataType<std::string>(type_)) {
-    status_ = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not have raw data");
-    return;
-  }
 
   Path external_path;
   status_ = utils::UnpackInitializerData(tensor_proto, external_path, unpacked_tensor_);
   if (!status_.IsOK()) {
+    return;
+  }
+
+  const char* raw_data = static_cast<const char*>(tensor_proto.raw_data().data());
+  if (nullptr != raw_data && utils::IsPrimitiveDataType<std::string>(type_)) {
+    status_ = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not have raw data");
     return;
   }
 }

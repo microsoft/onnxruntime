@@ -68,6 +68,10 @@ class RawDataInitializer {
     return shape_;
   }
 
+  const DataTypeImpl* Type() {
+    return type_;
+  }
+
   const void* raw_data() {
     return unpacked_tensor_.data();
   }
