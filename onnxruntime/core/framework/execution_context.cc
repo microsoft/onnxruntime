@@ -86,7 +86,7 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
                                    gsl::span<const int>& feed_mlvalue_idxs,
                                    gsl::span<const OrtValue>& feeds, gsl::span<const int>& fetch_mlvalue_idxs,
                                    std::vector<OrtValue>& fetches,
-                                   const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                   const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                    size_t num_barriers,
                                    const logging::Logger& sess_logger,
                                    const DeviceStreamCollection& device_streams_map,
@@ -96,7 +96,6 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
                                                               device_stream_map_(device_streams_map),
                                                               count_down_barriers_(num_barriers),
                                                               terminate_flag_(terminate_flag),
-                                                              stream_completion_map_(num_streams, false),
                                                               single_thread_mode_(single_thread_mode) {
   auto& device_streams = device_stream_map_.GetStreams();
 
@@ -114,6 +113,7 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
   for (size_t i = 0; i < num_barriers; ++i) {
     count_down_barriers_[i].Set(2);
   }
+  // init remain task to number of streams
   remain_tasks_.Set(num_streams);
   // generate release plan (the ref counts)
   auto& release_actions = session_state->GetExecutionPlan()->release_actions;
@@ -147,18 +147,17 @@ const Status& ExecutionContext::TaskStatus() const {
   return task_status_;
 }
 
-void ExecutionContext::CompleteStream(size_t stream_id) {
-  stream_completion_map_[stream_id] = true;
+void ExecutionContext::CompleteTask() {
+  remain_tasks_.Dec();
+}
+
+void ExecutionContext::AddTask() {
+  remain_tasks_.Inc();
 }
 
 void ExecutionContext::WaitAll() {
-  for (const auto& iter: stream_completion_map_) {
-    while (!iter) {
-       //TODO: this is unsafe to exist on status!!!
-       if (!task_status_.IsOK()) return;
-       onnxruntime::concurrency::SpinPause();
-    }
-  }
+  while (remain_tasks_.Get())
+   onnxruntime::concurrency::SpinPause();
 }
 
 void ExecutionContext::SetStatus(Status& status) {
@@ -187,7 +186,7 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
 
   if (!ctx.TaskStatus().IsOK()) {
     // already in bad status, terminate it
-    ctx.CompleteStream(stream_idx);
+    ctx.CompleteTask();
     return;
   }
 
@@ -203,12 +202,13 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
 
   while (since < end) {
     if (!ctx.TaskStatus().IsOK()) {
-      ctx.CompleteStream(stream_idx);
+      ctx.CompleteTask();
       return;
     }
     if (ctx.TerminateFlag()) {
       Status status_made = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
       ctx.SetStatus(status_made);
+      ctx.CompleteTask();
       return;
     }
     bool continue_flag = true;
@@ -224,17 +224,18 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
     if (!status.IsOK()) {
       //terminate it
       ctx.SetStatus(status);
-      ctx.CompleteStream(stream_idx);
+      ctx.CompleteTask();
       return;
     }
     if (!continue_flag) {
       //break but not terminate
+      ctx.CompleteTask();
       return;
     }
     since++;
   }
   ORT_ENFORCE(since == end);
-  ctx.CompleteStream(stream_idx);
+  ctx.CompleteTask();
   return;
 }
 
@@ -248,6 +249,8 @@ void ScheduleDownstream(ExecutionContext& ctx,
   auto it = downstream_map.find(notification_index);
   if (it != downstream_map.end()) {
     for (auto downstream : it->second) {
+      // increase the task count before schedule down-stream
+      ctx.AddTask();
       concurrency::ThreadPool::Schedule(tp,
           [ctx_ptr, downstream]() {
         RunSince(downstream.first, *ctx_ptr, downstream.second);

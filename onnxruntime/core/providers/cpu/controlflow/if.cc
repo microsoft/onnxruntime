@@ -375,7 +375,7 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
   }
 
   std::vector<OrtValue> fetches;
-  std::unordered_map<size_t, IExecutor::CustomAllocator> fetch_allocators;
+  InlinedHashMap<size_t, IExecutor::CustomAllocator> fetch_allocators;
 
   fetches.reserve(info_.num_outputs);
   for (int i = 0; i < info_.num_outputs; ++i) {

@@ -485,7 +485,7 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
 onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
                                    gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                    std::vector<OrtValue>& fetches,
-                                   const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                   const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger,
                                    const DeviceStreamCollection& device_streams,
                                    const bool& terminate_flag,
@@ -529,7 +529,10 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 
   for (size_t i = 0; i < execution_plan->execution_plan.size(); ++i) {
     if (execution_plan->execution_plan[i]->steps_.empty()) {
-      ctx.CompleteStream(i);
+      // execution context is initialized with number of valid streams
+      // for invalid stream (0 steps), it doesn't count in number of tasks
+      // so don't need to invoke CompleteTask here
+      //ctx.CompleteTask();
     } else {
       concurrency::ThreadPool::Schedule(tp, [i, &ctx]() {
         RunSince(i, ctx, 0);
@@ -598,7 +601,7 @@ onnxruntime::Status BindToDeviceStream(Stream* parent_stream,
 onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
                                           gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                           std::vector<OrtValue>& fetches,
-                                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                          const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                           const logging::Logger& logger,
                                           const DeviceStreamCollection& device_streams,
                                           const bool& terminate_flag,
