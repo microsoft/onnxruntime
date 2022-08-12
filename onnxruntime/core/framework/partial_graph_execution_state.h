@@ -11,7 +11,7 @@
 
 namespace onnxruntime {
 
-typedef std::unordered_map<std::string, OrtValue> OrtValueCache;
+typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
 typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
 class ExecutionContext;
 class DeviceStreamCollection;
