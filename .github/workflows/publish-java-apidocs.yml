@@ -2,7 +2,7 @@ name: Update Java API Docs
 on:
   push:
     branches:
-      - master
+      - main
   workflow_dispatch:
 
 jobs:
