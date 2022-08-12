@@ -1880,6 +1880,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             }
             break;
           }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
+            auto output_tensor_ptr = ort.GetTensorMutableData<uint8_t>(output_tensor[i]);
+            if (output_tensor_ptr == nullptr) {
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(uint8_t)));
+              buffers[binding_index] = scratch_buffers.back().get();
+            } else {
+              buffers[binding_index] = output_tensor_ptr;
+            }
+            break;
+          }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
             auto output_tensor_ptr = ort.GetTensorMutableData<int32_t>(output_tensor[i]);
             if (output_tensor_ptr == nullptr) {
