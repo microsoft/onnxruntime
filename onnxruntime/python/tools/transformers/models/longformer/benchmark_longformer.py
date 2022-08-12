@@ -588,71 +588,67 @@ def run_tests(
     use_merged_qkv_weights=True,
     use_half2_float2=True,
     use_half4_float4=False,
-    is_a100=True,
+    batch_size=1,
+    model_name="longformer-base-4096",
 ):
     compact_memory = "1" if use_compact_memory else "0"
     os.environ["ORT_LONGFORMER_COMPACT_MEMORY"] = compact_memory
     print("ORT_LONGFORMER_COMPACT_MEMORY=", compact_memory)
 
-    option_value = (4 if use_half2_float2 else 0) + (8 if use_half4_float4 else 0)
+    option_value = (0 if use_half2_float2 else 4) + (8 if use_half4_float4 else 0)
     os.environ["ORT_TRANSFORMER_OPTIONS"] = str(option_value)
     print("ORT_TRANSFORMER_OPTIONS=", option_value)
 
     results = []
     test_times = 100
     sequence_lengths = [512, 1024, 2048, 4096]
-    batch_sizes = [1, 4, 8, 16, 32, 64] if is_a100 else [1]
-    for model_name in ["longformer-base-4096"]:
-        for batch_size in batch_sizes:
-            for sequence_length in sequence_lengths:
-                for global_length in [16]:
-                    if run_torch:
-                        engine_name = "torch"
-                        args = parse_arguments(
-                            f"-e {engine_name} -t {test_times} -b {batch_size} -s {sequence_length} -g {global_length} "
-                            f"-t {test_times} -m {model_name}".split(" ")
-                        )
-                        results += run(args)
+    for sequence_length in sequence_lengths:
+        for global_length in [16]:
+            if run_torch:
+                engine_name = "torch"
+                args = parse_arguments(
+                    f"-e {engine_name} -t {test_times} -b {batch_size} -s {sequence_length} -g {global_length} "
+                    f"-t {test_times} -m {model_name}".split(" ")
+                )
+                results += run(args)
 
-                    engine_name = "onnxruntime"
-                    file_format = 1 if use_merged_qkv_weights else 0
-                    onnx_path = (
-                        f"{model_name}_f{file_format}_fp16.onnx"
-                        if use_fp16
-                        else f"{model_name}_f{file_format}_fp32.onnx"
-                    )
-                    if not os.path.exists(onnx_path):
-                        raise RuntimeError(f"onnx file not exists:{onnx_path}")
+            engine_name = "onnxruntime"
+            file_format = 1 if use_merged_qkv_weights else 0
+            onnx_path = (
+                f"{model_name}_f{file_format}_fp16.onnx" if use_fp16 else f"{model_name}_f{file_format}_fp32.onnx"
+            )
+            if not os.path.exists(onnx_path):
+                raise RuntimeError(f"onnx file not exists:{onnx_path}")
 
-                    arguments = (
-                        f"-e {engine_name} --onnx {onnx_path} "
-                        f"-b {batch_size} -s {sequence_length} -g {global_length} -m {model_name}"
-                    )
+            arguments = (
+                f"-e {engine_name} --onnx {onnx_path} "
+                f"-b {batch_size} -s {sequence_length} -g {global_length} -m {model_name}"
+            )
 
-                    if not use_io_binding:
-                        arguments += " --disable_io_binding"
+            if not use_io_binding:
+                arguments += " --disable_io_binding"
 
-                    if use_half2_float2:
-                        arguments += " --use_half2_float2"
+            if use_half2_float2:
+                arguments += " --use_half2_float2"
 
-                    if use_half4_float4:
-                        arguments += " --use_half4_float4"
+            if use_half4_float4:
+                arguments += " --use_half4_float4"
 
-                    if run_memory:
-                        args = parse_arguments(f"{arguments} -t 10 --memory".split(" "))
-                        memory_results = launch_test(args)
-                        print(memory_results)
+            if run_memory:
+                args = parse_arguments(f"{arguments} -t 10 --memory".split(" "))
+                memory_results = launch_test(args)
+                print(memory_results)
 
-                    args = parse_arguments(f"{arguments} -t {test_times}".split(" "))
-                    latency_results = launch_test(args)
-                    if len(latency_results) == 1:
-                        latency_results[0]["memory"] = memory_results["memory"] if run_memory else "N/A"
-                    else:
-                        raise RuntimeError("len(latency_results) is not 1")
+            args = parse_arguments(f"{arguments} -t {test_times}".split(" "))
+            latency_results = launch_test(args)
+            if len(latency_results) == 1:
+                latency_results[0]["memory"] = memory_results["memory"] if run_memory else "N/A"
+            else:
+                raise RuntimeError("len(latency_results) is not 1")
 
-                    print(latency_results)
+            print(latency_results)
 
-                    results += latency_results
+            results += latency_results
     return results
 
 
@@ -662,49 +658,103 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         args = parse_arguments()
         test_results = launch_test(args)
-    else:
-        # FP16 model
-        test_results = run_tests(
-            use_fp16=True, use_merged_qkv_weights=True, use_half2_float2=False, use_half4_float4=False
-        )
-        test_results += run_tests(
-            use_fp16=True, use_merged_qkv_weights=True, use_half2_float2=True, use_half4_float4=False
-        )
-        test_results += run_tests(
-            use_fp16=True, use_merged_qkv_weights=True, use_half2_float2=True, use_half4_float4=True
-        )
 
-        test_results += run_tests(
-            use_fp16=True, use_merged_qkv_weights=False, use_half2_float2=False, use_half4_float4=False
-        )
-        test_results += run_tests(
-            use_fp16=True, use_merged_qkv_weights=False, use_half2_float2=True, use_half4_float4=False
-        )
-        test_results += run_tests(
-            use_fp16=True, use_merged_qkv_weights=False, use_half2_float2=True, use_half4_float4=True
-        )
+        time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        csv_filename = f"benchmark_detail_{time_stamp}.csv"
+        output_details(test_results, csv_filename)
 
-        # FP32 model
-        test_results += run_tests(
-            use_fp16=False, use_merged_qkv_weights=True, use_half2_float2=False, use_half4_float4=False
-        )
-        test_results += run_tests(
-            use_fp16=False, use_merged_qkv_weights=True, use_half2_float2=True, use_half4_float4=False
-        )
-        test_results += run_tests(
-            use_fp16=False, use_merged_qkv_weights=True, use_half2_float2=True, use_half4_float4=True
-        )
+    for _ in range(5):
+        for batch_size in [1, 2, 4, 8]:
+            # FP16 model
+            test_results = run_tests(
+                use_fp16=True,
+                use_merged_qkv_weights=True,
+                use_half2_float2=False,
+                use_half4_float4=False,
+                batch_size=batch_size,
+            )
+            test_results += run_tests(
+                use_fp16=True,
+                use_merged_qkv_weights=True,
+                use_half2_float2=True,
+                use_half4_float4=False,
+                batch_size=batch_size,
+            )
+            test_results += run_tests(
+                use_fp16=True,
+                use_merged_qkv_weights=True,
+                use_half2_float2=True,
+                use_half4_float4=True,
+                batch_size=batch_size,
+            )
 
-        test_results += run_tests(
-            use_fp16=False, use_merged_qkv_weights=False, use_half2_float2=False, use_half4_float4=False
-        )
-        test_results += run_tests(
-            use_fp16=False, use_merged_qkv_weights=False, use_half2_float2=True, use_half4_float4=False
-        )
-        test_results += run_tests(
-            use_fp16=False, use_merged_qkv_weights=False, use_half2_float2=True, use_half4_float4=True
-        )
+            test_results += run_tests(
+                use_fp16=True,
+                use_merged_qkv_weights=False,
+                use_half2_float2=False,
+                use_half4_float4=False,
+                batch_size=batch_size,
+            )
+            test_results += run_tests(
+                use_fp16=True,
+                use_merged_qkv_weights=False,
+                use_half2_float2=True,
+                use_half4_float4=False,
+                batch_size=batch_size,
+            )
+            test_results += run_tests(
+                use_fp16=True,
+                use_merged_qkv_weights=False,
+                use_half2_float2=True,
+                use_half4_float4=True,
+                batch_size=batch_size,
+            )
+            output_details(test_results, f"longformer_base_fp16.csv")
 
-    time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    csv_filename = f"benchmark_detail_{time_stamp}.csv"
-    output_details(test_results, csv_filename)
+    for _ in range(5):
+        for batch_size in [1, 2, 4, 8]:
+            # FP32 model
+            test_results = run_tests(
+                use_fp16=False,
+                use_merged_qkv_weights=True,
+                use_half2_float2=False,
+                use_half4_float4=False,
+                batch_size=batch_size,
+            )
+            test_results += run_tests(
+                use_fp16=False,
+                use_merged_qkv_weights=True,
+                use_half2_float2=True,
+                use_half4_float4=False,
+                batch_size=batch_size,
+            )
+            test_results += run_tests(
+                use_fp16=False,
+                use_merged_qkv_weights=True,
+                use_half2_float2=True,
+                use_half4_float4=True,
+                batch_size=batch_size,
+            )
+
+            test_results += run_tests(
+                use_fp16=False,
+                use_merged_qkv_weights=False,
+                use_half2_float2=False,
+                use_half4_float4=False,
+                batch_size=batch_size,
+            )
+            test_results += run_tests(
+                use_fp16=False,
+                use_merged_qkv_weights=False,
+                use_half2_float2=True,
+                use_half4_float4=False,
+                batch_size=batch_size,
+            )
+            test_results += run_tests(
+                use_fp16=False,
+                use_merged_qkv_weights=False,
+                use_half2_float2=True,
+                use_half4_float4=True,
+                batch_size=batch_size,
+            )
+            output_details(test_results, f"longformer_base_fp32.csv")

@@ -25,6 +25,7 @@
 #   python setup.py install
 #   cd ..
 #   python convert_to_onnx.py --model longformer-base-4096 --precision fp16 --optimize_onnx
+#   python convert_to_onnx.py --model longformer-base-4096 --precision fp16 --optimize_onnx --merge_qkv
 #
 # GPU is not needed for this script. You can run it in CPU. For --optimize_onnx, you can use either onnxruntime or onnxruntime-gpu package.
 #
@@ -390,8 +391,8 @@ def main(args):
     export_longformer(model, onnx_model_path, args.export_padding)
 
     if args.optimize_onnx or args.precision != "fp32":
-        fp32_model_path = model_name + "_fp32.onnx"
-        fp16_model_path = model_name + "_fp16.onnx" if args.precision == "fp16" else None
+        fp32_model_path = model_name + f"_f{weight_bias_format}" + "_fp32.onnx"
+        fp16_model_path = model_name + f"_f{weight_bias_format}" + "_fp16.onnx" if args.precision == "fp16" else None
         optimize_longformer(onnx_model_path, fp32_model_path, fp16_model_path)
 
 
