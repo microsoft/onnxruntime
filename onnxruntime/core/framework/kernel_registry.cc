@@ -32,9 +32,9 @@ bool TraverseFormalParametersWithTypeProto(const Node& node,
                                            TraverseFn traverse_fn) {
   const ONNX_NAMESPACE::OpSchema& op_schema = *node.Op();
 
-  // was the param name matched in either inputs, outputs or type constraints. 
+  // was the param name matched in either inputs, outputs or type constraints.
   // this validates the name was valid and that the type involved will be returned if available.
-  // if the name is invalid we do not return a type, and any applicable type constraint can not be applied 
+  // if the name is invalid we do not return a type, and any applicable type constraint can not be applied
   // in VerifyKernelDef.
   bool matched = false;
 
@@ -254,7 +254,7 @@ bool KernelRegistry::VerifyKernelDef(const Node& node,
 
 Status KernelRegistry::TryCreateKernel(const Node& node,
                                        const IExecutionProvider& execution_provider,
-                                       const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
+                                       const InlinedHashMap<int, OrtValue>& constant_initialized_tensors,
                                        const OrtValueNameIdxMap& ort_value_name_idx_map,
                                        FuncManager& funcs_mgr,
                                        const DataTransferManager& data_transfer_mgr,

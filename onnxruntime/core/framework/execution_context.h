@@ -62,7 +62,7 @@ class CountDownBarrier {
 };
 
 class SessionScope;
-typedef std::unordered_map<std::string, OrtValue> OrtValueCache;
+typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
 typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
 
 // execution context that support to execute a command on stream.
@@ -76,7 +76,7 @@ public:
                    gsl::span<const int>& feed_mlvalue_idxs,
                    gsl::span<const OrtValue>& feeds, gsl::span<const int>& fetch_mlvalue_idxs,
                    std::vector<OrtValue>& fetches,
-                   const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                   const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                    size_t num_barriers,
                    const logging::Logger& sess_logger,
                    const DeviceStreamCollection& device_streams_map,

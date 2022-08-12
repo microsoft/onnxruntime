@@ -4,7 +4,6 @@
 #pragma once
 
 #include <vector>
-#include <unordered_map>
 #include "core/common/common.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
@@ -34,7 +33,7 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
 onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
                                    gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                    std::vector<OrtValue>& fetches,
-                                   const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                   const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger,
                                    const DeviceStreamCollection& device_streams,
                                    const bool& terminate_flag,
@@ -45,7 +44,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
                                           gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                           std::vector<OrtValue>& fetches,
-                                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                          const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                           const logging::Logger& logger,
                                           const DeviceStreamCollection& device_streams,
                                           const bool& terminate_flag,

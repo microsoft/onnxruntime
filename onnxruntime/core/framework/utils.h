@@ -32,7 +32,7 @@ class Tensor;
 struct KernelCreateInfo;
 #ifdef ENABLE_TRAINING
 struct PartialGraphExecutionState;
-typedef std::unordered_map<std::string, OrtValue> OrtValueCache;
+typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
 typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
 #endif
 
@@ -99,7 +99,7 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                                    gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
-                                   const OrtValueCachePtr& cache, 
+                                   const OrtValueCachePtr& cache,
                                    //TODO: merge the change in https://github.com/microsoft/onnxruntime/commit/34ebf7d3dd32e14295a409db08a667d6d236aeb6
                                    const bool& terminate_flag,
                                    int32_t partial_graph_index,
@@ -110,7 +110,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
 // See IControlFlowNode::SetupSubgraphExecutionInfo usage in the control flow kernels.
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-                               const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                               const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
                                Stream* parent_stream);
 

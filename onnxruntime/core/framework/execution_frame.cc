@@ -80,7 +80,7 @@ void IExecutionFrame::UpdateFeeds(gsl::span<const int> feed_mlvalue_idxs, gsl::s
 }
 
 void IExecutionFrame::UpdateFetches(gsl::span<const int> fetch_mlvalue_idxs,
-                                    gsl::span<const OrtValue> fetches, const std::unordered_map<int, OrtValue>& initializers) {
+                                    gsl::span<const OrtValue> fetches, const InlinedHashMap<int, OrtValue>& initializers) {
   ORT_ENFORCE(fetch_mlvalue_idxs.size() == fetches.size());
 
   if (!fetches.empty()) {
@@ -219,7 +219,7 @@ int IExecutionFrame::GetNodeIdxToMLValueIdx(int index) const {
 }
 
 void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds,
-                           const std::unordered_map<int, OrtValue>& initializers,
+                           const InlinedHashMap<int, OrtValue>& initializers,
                            const std::function<bool(const std::string& name)>& is_initializer_sparse_func,
                            gsl::span<const OrtValue> fetches) {
   ORT_ENFORCE(feeds.size() == feed_mlvalue_idxs.size());
@@ -338,7 +338,7 @@ bool IExecutionFrame::IsOutput(int ort_value_idx) const {
 
 ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds,
                                gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
-                               const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                               const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                const SessionState& session_state,
                                const std::vector<Stream*>* device_streams)
     : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs),
