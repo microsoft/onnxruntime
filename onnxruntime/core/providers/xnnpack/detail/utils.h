@@ -57,9 +57,9 @@ enum class QuantizedOpType : uint8_t {
   Unknown,
 };
 
-class RawDataInitializer {
+class InternalDataInitializer {
  public:
-  RawDataInitializer(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+  InternalDataInitializer(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
   bool HasExternalData() {
     return has_external_data_;
