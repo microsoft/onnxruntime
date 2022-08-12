@@ -1,3 +1,12 @@
+---
+title: Inference on multiple targets
+description: Maximize performance on different hardware targets
+parent: Accelerate PyTorch
+grand_parent: Tutorials
+nav_order: 1
+---
+
+
 # Optimal Inferencing on Flexible Hardware with ONNX Runtime
 {: .no_toc }
 
