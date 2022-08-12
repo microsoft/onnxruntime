@@ -287,7 +287,7 @@ PyTorch and ONNX Runtime output 1 are close: True
 
 ## Conclusion
 
-We've demonstrated that ONNX Runtime is an effective way to run your PyTorch or ONNX model on CPU, NVIDIA CUDA (GPU), and Intel OpenVINO (Mobile). ONNX Runtime enables deployment to more types of hardware that can be found on [Execution Providers](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html). As you try ONNX Runtime, feel free to leverage the onnxruntime.ai [documentation and tutorials](https://onnxruntime.ai/docs/), and we'd love to hear your feedback by participating in our ONNX Runtime [Github repo](https://github.com/microsoft/onnxruntime).
+We've demonstrated that ONNX Runtime is an effective way to run your PyTorch or ONNX model on CPU, NVIDIA CUDA (GPU), and Intel OpenVINO (Mobile). ONNX Runtime enables deployment to more types of hardware that can be found on [Execution Providers](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html). We'd love to hear your feedback by participating in our ONNX Runtime [Github repo](https://github.com/microsoft/onnxruntime).
 
 ## Video Demonstration
 
