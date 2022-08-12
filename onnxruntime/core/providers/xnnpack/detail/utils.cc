@@ -18,7 +18,7 @@
 namespace onnxruntime {
 namespace xnnpack {
 
-LightInitializer::LightInitializer(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+RawDataInitializer::RawDataInitializer(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   status_ = Status::OK();
   if (!utils::HasDataType(tensor_proto)) {
     status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Initializer must have a datatype");
@@ -368,7 +368,7 @@ TensorQuantType GetTensorQuantType(const NodeUnit& node_unit, int32_t io_index,
       } else if (scales_dim == tensor_shape[0]) {
         // default 0 for zero-point if zero_dim == 0
         if (zero_tensor != nullptr) {
-          LightInitializer zp_val(*zero_tensor);
+          RawDataInitializer zp_val(*zero_tensor);
           if (!zp_val.IsOK()) {
             LOGS_DEFAULT(ERROR) << "error when unpack zero tensor: "
                                 << ", error msg: " << zp_val.GetStatus().ErrorMessage();
