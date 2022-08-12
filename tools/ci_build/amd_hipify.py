@@ -123,7 +123,6 @@ provider_excluded_files = [
     "rnn/rnn_impl.h",
     "shared_inc/cuda_call.h",
     "shared_inc/fpgeneric.h",
-    "shared_inc/softmax.h",
     "cuda_allocator.cc",
     "cuda_allocator.h",
     "cuda_call.cc",
@@ -150,6 +149,7 @@ provider_excluded_files = [
     "gpu_data_transfer.cc",
     "gpu_data_transfer.h",
     "integer_gemm.cc",
+    "softmax.cc",
     "symbols.txt",
 ]
 
@@ -158,8 +158,6 @@ training_ops_excluded_files = [
     "collective/adasum_kernels.cc",
     "collective/adasum_kernels.h",
     "math/div_grad.cc",  # miopen API differs from cudnn, no double type support
-    "math/softmax_grad_impl.cu",  # warp size differences
-    "math/softmax_grad.cc",  # miopen API differs from cudnn, no double type support
     "nn/batch_norm_grad.cc",  # no double type support
     "nn/batch_norm_grad.h",  # miopen API differs from cudnn
     "nn/batch_norm_internal.cc",  # miopen API differs from cudnn, no double type support
