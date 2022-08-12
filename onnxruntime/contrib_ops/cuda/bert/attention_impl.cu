@@ -25,9 +25,9 @@ limitations under the License.
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
-#include "attention_impl.h"
-#include "attention_softmax.h"
-#include "transformer_common.h"
+#include "contrib_ops/cuda/bert/attention_impl.h"
+#include "contrib_ops/cuda/bert/attention_softmax.h"
+#include "contrib_ops/cuda/bert/transformer_common.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
