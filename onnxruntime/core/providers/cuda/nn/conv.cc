@@ -241,7 +241,21 @@ Status Conv<T>::UpdateState(OpKernelContext* context) const {
         b_dims[1] = b_shape[0];
         ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
       } else {
-        ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_shape.GetDims(), CudnnTensor::GetDataType<CudaT>()));
+        const auto& y_rank = y_dims_cudnn.size();
+        const auto& b_rank = b_shape.GetDims().size();
+        ORT_ENFORCE(b_rank <= y_rank, "rank of B must not be bigger than that of Y");
+        if (b_rank == y_rank) {
+          ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_shape.GetDims(), CudnnTensor::GetDataType<CudaT>()));
+        } else {
+          TensorShapeVector b_extended_dims{
+              b_shape.GetDims().begin(),
+              b_shape.GetDims().end()};
+          for (auto i = b_rank; i < y_rank; ++i) {
+            ORT_ENFORCE(y_dims_cudnn[i] == 1, "Cannot append non-one dim to B");
+            b_extended_dims.push_back(1);
+          }
+          ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_extended_dims, CudnnTensor::GetDataType<CudaT>()));
+        }
       }
     }
 
@@ -250,16 +264,17 @@ Status Conv<T>::UpdateState(OpKernelContext* context) const {
       const auto& z_shape = Z->Shape();
       const auto& z_rank = z_shape.GetDims().size();
       const auto& y_rank = y_dims_cudnn.size();
-      ORT_ENFORCE(z_rank <= y_rank, "rank of Z must not be bigger than that of X");
+      ORT_ENFORCE(z_rank <= y_rank, "rank of Z must not be bigger than that of Y");
       if (z_rank == y_rank) {
         ORT_RETURN_IF_ERROR(s_.z_tensor.Set(z_shape.GetDims(), CudnnTensor::GetDataType<CudaT>()));
       } else {
         TensorShapeVector z_extended_dims{
             z_shape.GetDims().begin(),
-            z_shape.GetDims().end()
-        };
-        TensorShapeVector gaps(y_rank - z_rank, 1);
-        z_extended_dims.insert(z_extended_dims.end(), gaps.begin(), gaps.end());
+            z_shape.GetDims().end()};
+        for (auto i = z_rank; i < y_rank; ++i) {
+          ORT_ENFORCE(y_dims_cudnn[i] == 1, "Cannot append non-one dim to Z");
+          z_extended_dims.push_back(1);
+        }
         ORT_RETURN_IF_ERROR(s_.z_tensor.Set(z_extended_dims, CudnnTensor::GetDataType<CudaT>()));
       }
     }

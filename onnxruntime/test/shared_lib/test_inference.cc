@@ -183,6 +183,8 @@ static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("tes
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_bar_2.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_WITH_ATTRIBUTES_URI = TSTR("testdata/foo_bar_3.onnx");
 static constexpr PATH_TYPE OPTIONAL_TYPE_GH_11717_MODEL = TSTR("testdata/gh_issue_11717.onnx");
+static constexpr PATH_TYPE FUSE_CONV_NO_BIAS_MODEL_URI = TSTR("testdata/fuse_conv_no_bias.onnx");
+
 #if !defined(DISABLE_SPARSE_TENSORS)
 static constexpr PATH_TYPE SPARSE_OUTPUT_MODEL_URI = TSTR("testdata/sparse_initializer_as_output.onnx");
 #ifndef DISABLE_CONTRIB_OPS
@@ -2184,5 +2186,48 @@ TEST(CApiTest, GH_11717) {
   // Just check if the model loads fine without a segmentation fault
   // in the default CPU EP
   EXPECT_NO_THROW(Ort::Session session(*ort_env, model_path, session_options));
+}
+#endif
+
+#ifdef USE_CUDA
+TEST(CApiTest, TestFuseConvNoBiasZeroCudnnErr) {
+  Ort::SessionOptions session_options{};
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  Ort::Session session{*ort_env, FUSE_CONV_NO_BIAS_MODEL_URI, session_options};
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names{"X", "W", "Z"};
+
+  size_t X_count = 1 * 3 * 32 * 32;
+  std::vector<float> X_data(X_count, 1.f);
+  std::vector<int64_t> X_shape{1, 3, 32, 32};
+
+  size_t W_count = 1 * 3 * 5 * 32;
+  std::vector<float> W_data(W_count, 2.f);
+  std::vector<int64_t> W_shape{1, 3, 5, 32};
+
+  size_t Z_count = 1 * 1 * 28;
+  std::vector<float> Z_data(1 * 1 * 28, 1.f);
+  std::vector<int64_t> Z_shape{1, 1, 28};
+
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(info, X_data.data(), X_count, X_shape.data(), 4));
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(info, W_data.data(), W_count, W_shape.data(), 4));
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(info, Z_data.data(), Z_count, Z_shape.data(), 3));
+
+  const char* output_names[] = {"R"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(),
+                                                    ort_inputs.data(), ort_inputs.size(),
+                                                    output_names, countof(output_names));
+
+  ASSERT_EQ(ort_outputs.size(), 1U);
+  const auto& output_0 = ort_outputs[0];
+  ASSERT_TRUE(output_0.IsTensor());
+
+  std::vector<int64_t> output_shape{1, 1, 28, 1};
+  auto output_type_shape = output_0.GetTensorTypeAndShapeInfo();
+  ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, output_type_shape.GetElementType());
+  ASSERT_EQ(output_shape, output_type_shape.GetShape());
 }
 #endif
