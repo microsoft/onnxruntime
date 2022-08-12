@@ -39,7 +39,6 @@ void QlinearBuildLookupTableUint32(gsl::span<QLinearSoftmax::EXP_OUT_DTYPE> tabl
     // else [0 1 2 3 4 ..... 256]
     uint8_t index = static_cast<uint8_t>(is_signed ? i - 128 : i);
     table[index] = static_cast<QLinearSoftmax::EXP_OUT_DTYPE>(std::nearbyint(scaled_exp_xi));
-
   }
 }
 
@@ -106,7 +105,7 @@ Status QLinearSoftmax::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
-  const size_t D = opset_ < OPSET13 ? X_shape.SizeFromDimension(axis_): X_shape[axis_];
+  const size_t D = opset_ < OPSET13 ? X_shape.SizeFromDimension(axis_) : X_shape[axis_];
   EXP_OUT_DTYPE tmp_lookup_table[256];
   gsl::span<const EXP_OUT_DTYPE> lookup_table = GetLookupTable(ctx, tmp_lookup_table, D);
 
@@ -249,9 +248,10 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
   return Status::OK();
 }
 
-gsl::span<const QLinearSoftmax::EXP_OUT_DTYPE> QLinearSoftmax::GetLookupTable(OpKernelContext* context,
-                                                                              gsl::span<EXP_OUT_DTYPE> lookup_table_span,
-                                                                              size_t reduce_len) const {
+gsl::span<const QLinearSoftmax::EXP_OUT_DTYPE> QLinearSoftmax::GetLookupTable(
+    OpKernelContext* context,
+    gsl::span<EXP_OUT_DTYPE> lookup_table_span,
+    size_t reduce_len) const {
   gsl::span<const EXP_OUT_DTYPE> lookup_table = fixed_lookup_table_;
   if (fixed_lookup_table_.size() == 0) {
     lookup_table = lookup_table_span;
