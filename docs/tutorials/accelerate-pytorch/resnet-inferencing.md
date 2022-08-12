@@ -1,7 +1,4 @@
----
-
 # Optimal Inferencing on Flexible Hardware with ONNX Runtime
----
 {: .no_toc }
 
 As a developer who wants to deploy a PyTorch or ONNX model and maximize performance and hardware flexibility, you can leverage ONNX Runtime to optimally execute your model on your hardware platform.
