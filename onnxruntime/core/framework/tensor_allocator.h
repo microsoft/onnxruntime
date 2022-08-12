@@ -41,14 +41,14 @@ class ITensorAllocator {
    * or, in the case of not reserved tensor, returns an allocator so that
    * the caller can take care of the dynamic buffer allocation.
    * buf_out and alloc_out, one and only one can be non-null
-   * 
-   * @param ort_value_index [In]   int id of the tensor 
+   *
+   * @param ort_value_index [In]   int id of the tensor
    * @param name            [In]   name of the tensor
    * @param buf_out         [Out]  pre reserved buffer, if not null
    * @param alloc_out       [Out]  allocator based on tensor's location, if not null
-   * @return 
-  */
-  virtual common::Status GetPreallocatedBuffer(int ort_value_index, const char* name,
+   * @return
+   */
+  virtual common::Status GetPreallocatedBuffer(int ort_value_index, const std::string& name,
                                                std::optional<MemBuffer>& buf_out,
                                                AllocatorPtr& alloc_out) = 0;
 

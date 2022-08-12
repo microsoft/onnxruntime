@@ -18,7 +18,7 @@ limitations under the License.
 */
 
 #include "core/providers/cuda/cuda_common.h"
-#include "attention_impl.h"
+#include "contrib_ops/cuda/bert/attention_impl.h"
 
 using namespace onnxruntime::cuda;
 

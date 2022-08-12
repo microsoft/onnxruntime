@@ -74,7 +74,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
     return Status::OK();
   }
 
-  common::Status GetPreallocatedBuffer(int ort_value_index, const char* name,
+  common::Status GetPreallocatedBuffer(int ort_value_index, const std::string& name,
                                        std::optional<MemBuffer>& buf_out, AllocatorPtr& alloc_out) override {
     if (!is_sealed_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error.");

@@ -1857,6 +1857,67 @@ TEST(QDQTransformerTests, Concat) {
   test_case({{1, 6, 36}, {1, 6, 8}, {1, 6, 2}}, 2, false, false, true);
 }
 
+template <typename InputType, typename OutputType>
+void QDQTransformerSoftmaxTests() {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, int64_t axis) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>(input_shape, -5.f, 5.f);
+      auto* output_arg = builder.MakeOutput();
+      // add QDQ + Softmax
+      auto* dq_output = AddQDQNodePair<InputType>(builder, input_arg, .105f,
+                        (std::numeric_limits<OutputType>::max() / 255 * 255) / 2);
+      auto* softmax_output = builder.MakeIntermediate();
+      auto& softmax_node = builder.AddNode("Softmax", {dq_output}, {softmax_output});
+      softmax_node.AddAttribute("axis", axis);
+      // add QDQ output
+      auto* q_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<OutputType>(softmax_output,
+                                                1.0f / (std::numeric_limits<OutputType>::max() + 1),
+                                                0,
+                                                q_output);
+      builder.AddDequantizeLinearNode<OutputType>(q_output,
+                                                  1.0f / (std::numeric_limits<OutputType>::max() + 1),
+                                                  0,
+                                                  output_arg);
+    };
+
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      if constexpr (std::is_same<InputType, OutputType>::value) {
+        EXPECT_EQ(op_to_count["com.microsoft.QLinearSoftmax"], 1);
+        EXPECT_EQ(op_to_count["Softmax"], 0);
+        EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+        EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+      } else {
+        EXPECT_EQ(op_to_count["com.microsoft.QLinearSoftmax"], 0);
+        EXPECT_EQ(op_to_count["Softmax"], 1);
+        EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
+        EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
+      }
+    };
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      0.01 /*per_sample_tolerance*/,
+                      0.01 /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+  };
+
+  test_case({1, 12, 37}, -1);
+  test_case({1, 23, 13, 13}, -2);
+}
+
+TEST(QDQTransformerTests, Softmax_S8S8) {
+  QDQTransformerSoftmaxTests<int8_t, int8_t>();
+}
+
+TEST(QDQTransformerTests, Softmax_U8U8) {
+  QDQTransformerSoftmaxTests<uint8_t, uint8_t>();
+}
+
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
 TEST(QDQTransformerTests, QDQPropagation_QBackward) {
