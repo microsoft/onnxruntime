@@ -14,7 +14,7 @@
 namespace onnxruntime {
 #ifdef ENABLE_TRAINING
 struct PartialGraphExecutionState;
-typedef std::unordered_map<std::string, OrtValue> OrtValueCache;
+typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
 typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
 #endif
 
