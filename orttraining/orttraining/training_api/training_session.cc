@@ -25,7 +25,7 @@ Status TrainingSession::RegisterScheduler(
     const std::function<std::unique_ptr<LRSchedulerBase>(std::shared_ptr<Optimizer>)>& get_scheduler,
     std::optional<float> initial_lr) {
   scheduler_ = std::move(get_scheduler(optimizer_));
-  ORT_ENFORCE(scheduler_, "The provided instance of the learning rate scheduler is a nullptr.");
+  ORT_RETURN_IF_NOT(scheduler_, "The provided instance of the learning rate scheduler is a nullptr.");
 
   if (initial_lr.has_value()) {
     ORT_RETURN_IF_ERROR(optimizer_->SetInitialLearningRate(initial_lr.value()));
@@ -78,6 +78,7 @@ Status TrainingSession::SetLearningRate(float learning_rate) noexcept {
 }
 
 Status TrainingSession::SchedulerStep() noexcept {
+  ORT_RETURN_IF_NOT(scheduler_, "No learning rate schedler was registered. Please register a valid learning rate scheduler");
   return scheduler_->Step();
 }
 

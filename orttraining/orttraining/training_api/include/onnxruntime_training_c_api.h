@@ -157,7 +157,10 @@ struct OrtTrainingApi {
   *
   * This function allows users to set the learning rate for the training session. The current
   * learning rate is maintained by the training session and can be overwritten by invoking
-  * this function with the desired learning rate.
+  * this function with the desired learning rate. This function should not be used when a valid
+  * learning rate scheduler is registered. It should be used either to set the learning rate
+  * derived from a custom learning rate scheduler or to set the learning rate constant to be used
+  * throughout the training session.
   * Please note that this function does not set the initial learning rate that may be needed
   * by the predefined learning rate schedulers. To set the initial learning rate for learning
   * rate schedulers, please look at the function `RegisterLRScheduler`.
@@ -208,6 +211,8 @@ struct OrtTrainingApi {
   * Takes a scheduler step that updates the learning rate that is being used by the training session.
   * This function should typically be called before invoking the optimizer step for each round,
   * or as determined necessary to update the learning rate being used by the training session.
+  * Please note that a valid predefined learning rate scheduler must be first registered to invoke this
+  * function.
   *
   * \param[in] sess The training session that has the registered learning rate scheduler.
   *
