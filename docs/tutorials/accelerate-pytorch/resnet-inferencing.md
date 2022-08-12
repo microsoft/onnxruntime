@@ -1,6 +1,6 @@
 ---
 title: Inference on multiple targets
-description: Maximize performance on different hardware targets
+description: Maximize performance on CPU, GPU and 
 parent: Accelerate PyTorch
 grand_parent: Tutorials
 nav_order: 1
@@ -14,13 +14,13 @@ As a developer who wants to deploy a PyTorch or ONNX model and maximize performa
 
 In this tutorial, you'll learn:
 
-1. how to use the [PyTorch](https://pytorch.org/vision/stable/models.html) ResNet-50 modelfor image classification
+1. how to use the [PyTorch](https://pytorch.org/vision/stable/models.html) ResNet-50 model for image classification
 2. convert to ONNX, and
 3. deploy to the default CPU, NVIDIA CUDA (GPU), and Intel OpenVINO with ONNX Runtime -- using the same application code to load and execute the inference across hardware platforms.
 
-[ONNX](https://onnx.ai/) was developed as the open-sourced ML model format by Microsoft, Meta, Amazon, and other tech companies to standardize and make it easy to deploy Machine Learning models on various types of hardware.[ONNX Runtime](https://onnxruntime.ai/) was contributed and is maintained by Microsoft to optimize ONNX model performance over frameworks like PyTorch, Tensorflow, and more. The ResNet-50 model is a commonly used model for image classification that is pretrained on ImageNet.
+[ONNX](https://onnx.ai/) was developed as the open-sourced ML model format by Microsoft, Meta, Amazon, and other tech companies to standardize and make it easy to deploy Machine Learning models on various types of hardware. [ONNX Runtime](https://onnxruntime.ai/) was contributed and is maintained by Microsoft to optimize ONNX model performance over frameworks like PyTorch, Tensorflow, and more. When trained with the ImageNet dataset, the ResNet-50 model is commonly used for image classification.
 
-This tutorial demonstrates how to run an ONNX model on CPU, GPU, and OpenVINO hardware with ONNX Runtime, using [Microsoft Azure Machine Learning](https://azure.microsoft.com/en-us/services/machine-learning/).
+This tutorial demonstrates how to run an ONNX model on CPU, GPU, and Intel hardware with OpenVINO and ONNX Runtime, using [Microsoft Azure Machine Learning](https://azure.microsoft.com/en-us/services/machine-learning/).
 
 ## Setup
 
