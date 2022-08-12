@@ -131,23 +131,12 @@ class ConvAddRelu : public NodeSelector {
       return std::nullopt;
     }
 
-    //return std::nullopt;
-    //if (!ConvFusionDataTypeCheck(node) || node.InputDefs().size() < 3) {
-    //  return std::nullopt;
-    //}
-
     const auto* add_node = GetLoneConsumerNode(graph_viewer, node);
     if (!add_node ||
         !graph_utils::IsSupportedOptypeVersionAndDomain(*add_node, "Add", {6, 7, 13, 14}) ||
         add_node->GetExecutionProviderType() != node_ep) {
       return std::nullopt;
     }
-
-    //const auto add_input_idx = 1 - node.OutputEdgesBegin()->GetDstArgIndex();
-    //auto* add_input_shape = const_cast<onnxruntime::Node*>(add_node)->InputDefs()[add_input_idx]->Shape();
-    //if (!add_input_shape || add_input_shape->dim_size() != 1) {
-    //  return std::nullopt;
-    //}
 
     const auto* relu_node = GetLoneConsumerNode(graph_viewer, *add_node);
     if (!relu_node ||
