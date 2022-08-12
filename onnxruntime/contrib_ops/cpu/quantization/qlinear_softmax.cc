@@ -38,7 +38,7 @@ void QlinearBuildLookupTableUint32(gsl::span<QLinearSoftmax::EXP_OUT_DTYPE> tabl
     // if is_signed index = [1 2 3 ......126 127 -128 -127 ..... -3 -2 -1]
     // else [0 1 2 3 4 ..... 256]
     uint8_t index = static_cast<uint8_t>(is_signed ? i - 128 : i);
-    table[index] = static_cast<QLinearSoftmax::EXP_OUT_DTYPE>(std::nearbyintf(scaled_exp_xi));
+    table[index] = static_cast<QLinearSoftmax::EXP_OUT_DTYPE>(std::nearbyint(scaled_exp_xi));
 
   }
 }
@@ -180,7 +180,7 @@ common::Status QlinearSoftmaxCPU<uint8_t>(size_t N,
             const size_t vx = *x_t_cur++;
             const QLinearSoftmax::EXP_OUT_DTYPE vt = shifted_lookuptable[vx];
             // simulate round function, and re-quant to uint8
-            const uint32_t vq = ((vt * c_y_scale) + vrounding) / vsum + c_y_zp;
+            const uint32_t vq = static_cast<uint32_t>(((vt * c_y_scale) + vrounding) / vsum) + c_y_zp;
             const uint8_t vy = vq > 255 ? static_cast<uint8_t>(255) : static_cast<uint8_t>(vq);
             *y_t++ = vy;
           } while (--elements_n != 0);
