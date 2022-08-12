@@ -123,7 +123,7 @@ common::Status QlinearSoftmaxCPU(size_t N,
                                  const T* x_data,
                                  T* y_data,
                                  const QLinearSoftmax::EXP_OUT_DTYPE* lookup_table,
-                                 float y_scale,
+                                 QLinearSoftmax::EXP_OUT_DTYPE y_scale,
                                  T yzp,
                                  onnxruntime::concurrency::ThreadPool* thread_pool);
 
@@ -133,7 +133,7 @@ common::Status QlinearSoftmaxCPU<uint8_t>(size_t N,
                                           const uint8_t* x_data,
                                           uint8_t* y_data,
                                           const QLinearSoftmax::EXP_OUT_DTYPE* lookup_table,
-                                          float y_scale,
+                                          QLinearSoftmax::EXP_OUT_DTYPE y_scale,
                                           uint8_t yzp,
                                           onnxruntime::concurrency::ThreadPool* thread_pool) {
   using onnxruntime::TensorOpCost;
@@ -197,7 +197,7 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
                                          const int8_t* x_data,
                                          int8_t* y_data,
                                          const QLinearSoftmax::EXP_OUT_DTYPE* lookup_table,
-                                         float y_scale,
+                                         QLinearSoftmax::EXP_OUT_DTYPE y_scale,
                                          int8_t yzp,
                                          onnxruntime::concurrency::ThreadPool* thread_pool) {
   using onnxruntime::TensorOpCost;
@@ -267,7 +267,7 @@ Status QLinearSoftmax::ComputeInternal(OpKernelContext* context, const Tensor& i
                                        concurrency::ThreadPool* thread_pool) const {
   const auto* Y_scale_tensor = context->Input<Tensor>(3);
   const auto* Y_zp_tensor = context->Input<Tensor>(4);
-  const auto Y_scale = std::floor(1.0F / (*(Y_scale_tensor->Data<float>())));
+  const QLinearSoftmax::EXP_OUT_DTYPE Y_scale = std::floor(1.0F / (*(Y_scale_tensor->Data<float>())));
   const auto& X_shape = input.Shape();
   const size_t N = X_shape.SizeToDimension(axis);
   const size_t D = X_shape.SizeFromDimension(axis);
