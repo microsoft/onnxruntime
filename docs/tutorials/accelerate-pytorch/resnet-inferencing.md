@@ -56,7 +56,8 @@ pip install openvino
 
 - **Library Requirements:** In the first code cell, install the necessary libraries with the following code snippets (differences are bolded).
 
-    *CPU + GPU*
+     *CPU + GPU*
+
 ```console
 import sys
 
@@ -68,7 +69,8 @@ else: # Mac
 !{sys.executable} -m pip install onnxruntime-gpu onnx onnxconverter_common==1.8.1 pillow
 ```
 
-    *OpenVINO*
+     *OpenVINO*
+
 ```console
 import sys
 
