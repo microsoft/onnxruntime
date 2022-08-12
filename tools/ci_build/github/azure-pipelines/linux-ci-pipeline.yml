@@ -63,7 +63,7 @@ jobs:
 
   - script: |
       set -ex
-      npm ci
+      npm install typescript -g
       npm test
     workingDirectory: $(Build.SourcesDirectory)/js/web
     displayName: ONNX Spec Test
