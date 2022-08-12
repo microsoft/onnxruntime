@@ -330,6 +330,7 @@ class PlannerImpl {
   size_t num_logic_streams_{0};
   std::vector<std::vector<NodeIndex>> stream_nodes_;
   std::vector<size_t> node_stream_map_;
+
   // dependence_graph_ keeps the dependencies combining model graph and logic streams
   // e.g. dependence_graph_[downstream_node] = [upstream_node_0, upstream_node_1, upstream_node_2 ...]
   // upstream_node_0 and upstream_node_1 are the immmediate upstream nodes of downstream_node
@@ -1654,10 +1655,11 @@ class PlannerImpl {
     return Status::OK();
   }
 
+#ifdef ENABLE_TRAINING
   Status CalculateProgramCounter() {
     ClearUseCount();
     ORT_RETURN_IF_ERROR(ComputeReuseCount());
-    auto& execution_plan = graph_viewer_.GetNodesInTopologicalOrder();
+    auto& execution_plan = plan_.node_execution_order_in_training;
     for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
       auto node_index = execution_plan[program_counter];
       // the node (aka operator) which carries the considered program (aka computation).
@@ -1699,6 +1701,7 @@ class PlannerImpl {
 
     return Status::OK();
   }
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   void CalculateLifetime(const std::vector<int>& ort_value_usecount) {
@@ -2037,6 +2040,96 @@ class PlannerImpl {
         value_node_map_[output_idx_global] = node_index;
       }
     }
+#ifdef ENABLE_TRAINING
+    //6. build the node_execution_order_in_training
+    // the training memory optmization rely on a stable order how kernel get launched to calculate memory pattern
+    // so we limit training scenario to run with single stream and single thread mode
+    // the code below will simulate the execution and get the stable execution order
+    InlinedVector<int> execution_offsets(num_logic_streams_, -1);
+    InlinedHashSet<OrtValueIndex> produced_values;
+
+    for (auto graph_input : graph_viewer_.GetInputs()) {
+      OrtValueIndex index = Index(graph_input->Name());
+      produced_values.insert(index);
+    }
+
+    for (auto out_scope_arg : graph_viewer_.GetOuterScopeNodeArgNames()) {
+      OrtValueIndex index = Index(out_scope_arg);
+      produced_values.insert(index);
+    }
+
+    for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
+      const auto& initializer_name = pair.first;
+      OrtValueIndex index = Index(initializer_name);
+      produced_values.insert(index);
+    }
+
+    InlinedHashSet<OrtValueIndex> producable_values;
+    for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
+      auto* node = graph_viewer_.GetNode(node_index);
+      // add the output to produce nodes list
+      for (auto* output_def : node->OutputDefs()) {
+        if (!output_def->Exists())
+          continue;
+        OrtValueIndex index = Index(output_def->Name());
+        producable_values.insert(index);
+      }
+    }
+
+    std::function<void(size_t, int)> process_stream;
+    process_stream = [&](size_t i, int node_offset) {
+      if (node_offset > execution_offsets[i])
+        return;
+      while (execution_offsets[i] < static_cast<int>(stream_nodes_[i].size())) {
+        if (execution_offsets[i] == -1) {
+          execution_offsets[i]++;
+          continue;
+        }
+        NodeIndex node_index = stream_nodes_[i][execution_offsets[i]];
+        auto* node = graph_viewer_.GetNode(node_index);
+        // check whether the node is ready:
+        bool input_ready = true;
+        for (auto* input_def : node->InputDefs()) {
+          if (!input_def->Exists())
+            continue;
+          OrtValueIndex index = Index(input_def->Name());
+          if (produced_values.find(index) == produced_values.end() && 
+              producable_values.find(index) != producable_values.end()) {
+            input_ready = false;
+            break;
+          }
+        }
+        if (!input_ready)
+          break;
+        // trace the execution of this node
+        plan_.node_execution_order_in_training.push_back(node_index);
+        // add the output to produce nodes list
+        for (auto* output_def : node->OutputDefs()) {
+          if (!output_def->Exists())
+            continue;
+          OrtValueIndex index = Index(output_def->Name());
+          produced_values.insert(index);
+        }
+        // trigger downstream
+        for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+          auto stream_idx = node_stream_map_[it->Index()];
+          if (stream_idx != i) {
+            auto node_it = std::find(stream_nodes_[stream_idx].begin(), stream_nodes_[stream_idx].end(), it->Index());
+            int node_offset = static_cast<int>(std::distance(stream_nodes_[stream_idx].begin(), node_it)); 
+            process_stream(stream_idx, node_offset);
+          }
+        }
+        //move_to_next
+        execution_offsets[i]++;
+      }
+    };
+
+    for (size_t i = 0; i < stream_nodes_.size(); ++i) {
+      process_stream(i, -1);
+    }
+    auto num_of_nodes = graph_viewer_.GetNodesInTopologicalOrder().size();
+    ORT_ENFORCE(plan_.node_execution_order_in_training.size() == num_of_nodes);
+#endif
 
     return Status::OK();
   }
@@ -2133,8 +2226,9 @@ Status PlannerImpl::CreatePlan(const ExecutionProviders& execution_providers,
   ORT_RETURN_IF_ERROR(GenerateDeallocationPlan());
 
   // generate program counter
-  // TODO: it seems only training build need this?
+#ifdef ENABLE_TRAINING
   ORT_RETURN_IF_ERROR(CalculateProgramCounter());
+#endif
 
   // Ensure Memory-Time schedule is valid. This should be called at the end because memory start/end timestamps
   // are updated until GenerateDeallocationPlan is finished.
