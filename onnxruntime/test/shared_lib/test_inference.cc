@@ -183,7 +183,9 @@ static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("tes
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_bar_2.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_WITH_ATTRIBUTES_URI = TSTR("testdata/foo_bar_3.onnx");
 static constexpr PATH_TYPE OPTIONAL_TYPE_GH_11717_MODEL = TSTR("testdata/gh_issue_11717.onnx");
+#ifdef USE_CUDA
 static constexpr PATH_TYPE FUSE_CONV_NO_BIAS_MODEL_URI = TSTR("testdata/fuse_conv_no_bias.onnx");
+#endif
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 static constexpr PATH_TYPE SPARSE_OUTPUT_MODEL_URI = TSTR("testdata/sparse_initializer_as_output.onnx");
