@@ -7,10 +7,12 @@
 
 namespace onnxruntime {
 
+class VulkanCommandPool;
+
 class VulkanCommandBuffer {
  public:
-  VulkanCommandBuffer(const VkDevice& vulkan_logical_device,
-                      VulkanCommandPool& vulkan_command_pool);
+  VulkanCommandBuffer(const VkDevice& logical_device,
+                      VulkanCommandPool& command_pool);
 
   virtual ~VulkanCommandBuffer();
 
@@ -29,34 +31,40 @@ class VulkanCommandBuffer {
 
   void BarrierSource(VkBuffer source, size_t start, size_t end, BarrierType type = READ_WRITE) const;
 
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanCommandBuffer);
+
  private:
-  const VkDevice& vulkan_logical_device_;
+  const VkDevice& logical_device_;
+  VulkanCommandPool& command_pool_;
   VkCommandBuffer buffer_;
-  VulkanCommandPool& vulkan_command_pool_;
 };
 
 class VulkanCommandPool {
  public:
-  VulkanCommandPool(const VkDevice& vulkan_logical_device, uint32_t vulkan_queue_family_index);
+  VulkanCommandPool(const VkDevice& logical_device, uint32_t queue_family_index);
 
   virtual ~VulkanCommandPool();
 
   VulkanCommandBuffer* AllocBuffer();
 
   VkCommandPool Get() const {
-    return vulkan_command_pool_;
+    return command_pool_;
   }
 
-  void SubmitAndWait(VkCommandBuffer buffer, VkQueue vulkan_queue) const;
+  std::vector<VkCommandBuffer>& GetFreeCommandBuffers() {
+    return free_command_buffers_;
+  }
+
+  void SubmitAndWait(VkCommandBuffer buffer, VkQueue queue) const;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanCommandPool);
 
   friend class VulkanCommandBuffer;
 
  private:
-  const VkDevice& vulkan_logical_device_;
-  VkCommandPool vulkan_command_pool_;
-  uint32_t vulkan_queue_family_index_;
-  std::vector<VkCommandBuffer> free_vulkan_command_buffers_;
+  const VkDevice& logical_device_;
+  uint32_t queue_family_index_;
+  VkCommandPool command_pool_;
+  std::vector<VkCommandBuffer> free_command_buffers_;
 };
 }  // namespace onnxruntime

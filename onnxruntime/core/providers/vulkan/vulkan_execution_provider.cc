@@ -79,7 +79,6 @@ VulkanExecutionProvider::VulkanExecutionProvider() : IExecutionProvider{onnxrunt
 
   // Poll the physical device to see if it contains a compute queue family
   uint32_t total_queue_families = 0;
-  uint32_t queueFamilyIndex = 0;
 
   VK_CALL_RETURNS_VOID(vkGetPhysicalDeviceQueueFamilyProperties(vulkan_physical_device_, &total_queue_families, nullptr));
 

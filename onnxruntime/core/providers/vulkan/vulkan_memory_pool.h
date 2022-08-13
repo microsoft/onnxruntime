@@ -3,14 +3,17 @@
 
 #pragma once
 
+#include <memory>
+
 #include "vulkan_common.h"
+
 #include "core/framework/allocator.h"
 
 namespace onnxruntime {
 
 class VulkanAllocator : IAllocator {
  public:
-  VulkanAllocator(const VkDevice& vulkan_logical_device, int vulkan_memory_type_index);
+  VulkanAllocator(const VkDevice& logical_device, size_t memory_type_index);
 
   void* Alloc(size_t size) override;
 
@@ -19,17 +22,17 @@ class VulkanAllocator : IAllocator {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanAllocator);
 
  private:
-  const VkDevice& vulkan_logical_device_;
-  int vulkan_memory_type_index_;
+  const VkDevice& logical_device_;
+  size_t memory_type_index_;
 };
 
 class VulkanMemory {
  public:
-  VulkanMemory(const VkDevice& vulkan_logical_device, const VkMemoryAllocateInfo& info);
+  VulkanMemory(const VkDevice& logical_device, const VkMemoryAllocateInfo& info);
   virtual ~VulkanMemory();
 
   VkDeviceMemory Get() const {
-    return vulkan_memory_;
+    return memory_;
   }
 
   uint32_t Type() const {
@@ -43,45 +46,46 @@ class VulkanMemory {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanMemory);
 
  private:
-  const VkDevice& vulkan_logical_device_;
-  VkDeviceMemory vulkan_memory_;
+  const VkDevice& logical_device_;
+  VkDeviceMemory memory_;
   uint32_t type_index_;
   VkDeviceSize size_;
 };
 
 class VulkanMemoryPool {
  public:
-  VulkanMemoryPool(const VkDevice& vulkan_logical_device);
-  virtual ~VulkanMemoryPool();
+  VulkanMemoryPool(const VkDevice& logical_device,
+                   VkPhysicalDeviceMemoryProperties physical_device_memory_props,
+                   uint32_t queue_family_index_);
 
-  // VulkanMemory* , offset
-  std::pair<void*, int> Alloc(const VkMemoryRequirements& requirements, VkFlags extraMask, bool seperate = false);
-  void Free(std::pair<void*, int>& memory);
-
-  // Free Memory
-  void clear();
+  virtual ~VulkanMemoryPool() = default;
 
   const VkDevice& GetLogicalDevice() {
-    return vulkan_logical_device;
+    return logical_device_;
   }
 
-  // Return MB
-  float computeSize() const;
+  // <VulkanMemory* , offset>
+  std::pair<void*, int> Alloc(const VkMemoryRequirements& requirements, VkFlags alloc_flags);
 
-  // For buffer fast alloc
-  VkBuffer allocBuffer(size_t size, VkBufferUsageFlags flags, VkSharingMode shared);
-  void returnBuffer(VkBuffer buffer, size_t size, VkBufferUsageFlags flags, VkSharingMode shared);
+  void Free(std::pair<void*, int>& memory);
 
-  // For image fast alloc
-  VkImage allocImage(const std::tuple<VkImageType, uint32_t, uint32_t, uint32_t, VkFormat>& info);
-  void returnImage(VkImage dst, std::tuple<VkImageType, uint32_t, uint32_t, uint32_t, VkFormat>&& info);
+  // Allocate and free VkBuffer
+  VkBuffer AllocVkBuffer(size_t size, VkBufferUsageFlags flags, VkSharingMode shared);
+
+  void FreeVkBuffer(VkBuffer buffer);
+
+  // Allocate and free VkImage
+  VkImage AllocVkImage(const std::tuple<VkImageType, int64_t, int64_t, int64_t, VkFormat>& image_info);
+
+  void FreeVkImage(VkImage image);
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanMemoryPool);
 
  private:
-  // MemoryTypeIndex, Size, Memory
-  std::vector<std::shared_ptr<BufferAllocator>> mAllocators;
+  std::vector<std::unique_ptr<VulkanAllocator>> allocators_;
 
-  const VkDevice& vulkan_logical_device;
+  const VkDevice& logical_device_;
+  VkPhysicalDeviceMemoryProperties physical_device_memory_props_;
+  uint32_t queue_family_index_;
 };
 }  // namespace onnxruntime

@@ -5,91 +5,122 @@
 
 namespace onnxruntime {
 
-VulkanImage::VulkanImage(VulkanMemoryPool& vulkan_memory_pool, bool seperate, const std::vector<int64_t>& vulkan_image_dims, MLDataType data_type)
-    : vulkan_logical_device_(vulkan_memory_pool.GetLogicalDevice()), vulkan_memory_pool_(vulkan_memory_pool) {
+static VkResult CreateImageView(const VkDevice& logical_device, VkImageView& image_view, const VkImage& image, const VkImageViewType& view_type,
+                                const VkFormat& format) {
+  VkImageViewCreateInfo info = {};
+  info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+  info.image = image;
+  info.viewType = view_type;
+  info.format = format;
+  info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  info.subresourceRange.baseMipLevel = 0;
+  info.subresourceRange.levelCount = 1;
+  info.subresourceRange.baseArrayLayer = 0;
+  info.subresourceRange.layerCount = 1;
+
+  return vkCreateImageView(logical_device, &info, nullptr, &image_view);
+}
+
+VulkanImage::VulkanImage(VulkanMemoryPool& memory_pool, const std::vector<int64_t>& image_dims,
+                         MLDataType data_type)
+    : logical_device_(memory_pool.GetLogicalDevice()), memory_pool_(memory_pool) {
   if (data_type != DataTypeImpl::GetTensorType<float>()) {
     ORT_THROW("Only creating float Vulkan images is currently supported");
   }
 
-  auto vulkan_image_dims_size = vulkan_image_dims.size();
+  size_t image_dims_size = image_dims.size();
 
-  if (!(vulkan_image_dims_size >= 1 && vulkan_image_dims_size <= 3)) {
+  if (!(image_dims_size >= 1 && image_dims_size <= 3)) {
     ORT_THROW("Only 1D, 2D, or 3D Vulkan images are supported for now");
   }
 
-  auto image_type = VK_IMAGE_TYPE_1D;
-  auto view_type = VK_IMAGE_VIEW_TYPE_1D;
+  // Identify VkImage metadata 
+  VkImageType image_type = VK_IMAGE_TYPE_1D;
+  VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_1D;
 
-  vulkan_image_dims_ = vulkan_image_dims;
+  image_dims_ = image_dims;
 
-  auto image_width = vulkan_image_dims_[0];
-  auto image_height = 1;
-  auto image_depth = 1;
+  int64_t image_width = image_dims_[0];
+  int64_t image_height = 1;
+  int64_t image_depth = 1;
 
-  if (vulkan_image_dims_size > 1) {
-    image_height = vulkan_image_dims_[1];
+  if (image_dims_size > 1) {
+    image_height = image_dims_[1];
     image_type = VK_IMAGE_TYPE_2D;
     view_type = VK_IMAGE_VIEW_TYPE_2D;
   }
 
-  if (vulkan_image_dims_size > 2) {
-    image_depth = vulkan_image_dims_[2];
+  if (image_dims_size > 2) {
+    image_depth = image_dims_[2];
     image_type = VK_IMAGE_TYPE_3D;
     view_type = VK_IMAGE_VIEW_TYPE_3D;
   }
 
-  auto image_format = VK_FORMAT_R32G32B32A32_SFLOAT;
+  VkFormat image_format = VK_FORMAT_R32G32B32A32_SFLOAT;
 
-  vulkan_image_info_ = std::make_tuple(image_type, image_width, image_height, image_depth, image_format);
+  image_info_ = std::make_tuple(image_type, image_width, image_height, image_depth, image_format);
 
-  vulkan_image_and_view_.first = vulkan_memory_pool_.allocImage(vulkan_image_info_);
+  // Allocate VkImage
+  image_and_view_.first = memory_pool_.AllocVkImage(image_info_);
 
-  vulkan_image_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
-  vulkan_image_access_flags_ = VK_ACCESS_SHADER_READ_BIT;
+  image_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
+  image_access_flags_ = VK_ACCESS_SHADER_READ_BIT;
 
+  // Identify VkImage memory requirements
   VkMemoryRequirements image_memory_requirements;
 
-  mDevice.getImageMemoryRequirements(vulkan_image_and_view_.first, image_memory_requirements);
+  VK_CALL_RETURNS_VOID(vkGetImageMemoryRequirements(logical_device_, image_and_view_.first, &image_memory_requirements));
 
-  vulkan_image_memory_ = vulkan_memory_pool_.Alloc(image_memory_requirements, 0, seperate);
+  // Allocate the necessary memory
+  image_memory_ = memory_pool_.Alloc(image_memory_requirements, 0);
 
-  auto realMem = static_cast<VulkanMemory*>(vulkan_image_memory_.first);
+  auto* vulkan_memory = static_cast<VulkanMemory*>(image_memory_.first);
 
-  mDevice.bindImageMemory(mImage.first, realMem->get(), mMemory.second);
+  // Bind device memory to VkImage
+  VK_CALL(vkBindImageMemory(logical_device_, image_and_view_.first, vulkan_memory->Get(), image_memory_.second));
 
-  CALL_VK(mDevice.createImageView(mImage.second, mImage.first, viewType, format));
+  // Create VkImageView
+  VK_CALL(CreateImageView(logical_device_, image_and_view_.second, image_and_view_.first, view_type, image_format));
 }
 
 VulkanImage::~VulkanImage() {
-  mDevice.destroyImageView(mImage.second, nullptr);
-  vulkan_memory_pool_.returnImage(std::move(vulkan_image_and_view_.first), std::move(vulkan_image_info_));
-  if (nullptr != vulkan_image_memory_.first) {
-    vulkan_memory_pool_.Free(vulkan_image_memory_);
+    // Free VkImageView first
+  VK_CALL_RETURNS_VOID(vkDestroyImageView(logical_device_, image_and_view_.second, nullptr));
+
+  // Free the VkImage via the memory pool
+  memory_pool_.FreeVkImage(std::move(image_and_view_.first));
+
+  // Free the actual device memory backing the VkImage
+  if (nullptr != image_memory_.first) {
+    memory_pool_.Free(image_memory_);
   }
 }
 
-void VulkanImage::Release() {    
-  if (nullptr == vulkan_image_memory_.first) {
+void VulkanImage::Release() {
+  if (nullptr == image_memory_.first) {
     return;
   }
 
-  vulkan_memory_pool_.Free(vulkan_image_memory_);
+  // Free the image
+  memory_pool_.Free(image_memory_);
 
-  vulkan_image_memory_.first = nullptr;
+  image_memory_.first = nullptr;
+
+  // TODO: Should the image view be cleaned up too ?
 }
 
-void VulkanImage::BarrierWrite(VkCommandBuffer buffer) const {
+void VulkanImage::BarrierWrite(VkCommandBuffer buffer) {
   VkImageMemoryBarrier barrier;
   ::memset(&barrier, 0, sizeof(VkImageMemoryBarrier));
 
   barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
   barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
   barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.srcAccessMask = vulkan_image_access_flags_;
+  barrier.srcAccessMask = image_access_flags_;
   barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-  barrier.image = vulkan_image_and_view_.first;
+  barrier.image = image_and_view_.first;
   barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-  barrier.oldLayout = vulkan_image_layout_;
+  barrier.oldLayout = image_layout_;
   barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
   barrier.subresourceRange.levelCount = 1;
   barrier.subresourceRange.layerCount = 1;
@@ -97,12 +128,12 @@ void VulkanImage::BarrierWrite(VkCommandBuffer buffer) const {
   VK_CALL_RETURNS_VOID(vkCmdPipelineBarrier(buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0,
                                             nullptr, 0, nullptr, 1, &barrier));
 
-  vulkan_image_layout_ = VK_IMAGE_LAYOUT_GENERAL;
-  vulkan_image_access_flags_ = VK_ACCESS_SHADER_WRITE_BIT;
+  image_layout_ = VK_IMAGE_LAYOUT_GENERAL;
+  image_access_flags_ = VK_ACCESS_SHADER_WRITE_BIT;
 }
 
-void VulkanImage::BarrierRead(VkCommandBuffer buffer) const {
-  if (vulkan_image_access_flags_ == VK_ACCESS_SHADER_READ_BIT && vulkan_image_layout_ == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+void VulkanImage::BarrierRead(VkCommandBuffer buffer) {
+  if (image_access_flags_ == VK_ACCESS_SHADER_READ_BIT && image_layout_ == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
     return;
   }
 
@@ -112,18 +143,20 @@ void VulkanImage::BarrierRead(VkCommandBuffer buffer) const {
   barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
   barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
   barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.srcAccessMask = vulkan_image_access_flags_;
+  barrier.srcAccessMask = image_access_flags_;
   barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-  barrier.image = vulkan_image_and_view_.first;
+  barrier.image = image_and_view_.first;
   barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-  barrier.oldLayout = vulkan_image_layout_;
+  barrier.oldLayout = image_layout_;
   barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
   barrier.subresourceRange.levelCount = 1;
   barrier.subresourceRange.layerCount = 1;
-  vkCmdPipelineBarrier(buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0,
-                       nullptr, 0, nullptr, 1, &barrier);
-  vulkan_image_layout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-  vulkan_image_access_flags_ = VK_ACCESS_SHADER_READ_BIT;
+
+  VK_CALL_RETURNS_VOID(vkCmdPipelineBarrier(buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0,
+                                            nullptr, 0, nullptr, 1, &barrier));
+
+  image_layout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  image_access_flags_ = VK_ACCESS_SHADER_READ_BIT;
 }
 
 }  // namespace onnxruntime

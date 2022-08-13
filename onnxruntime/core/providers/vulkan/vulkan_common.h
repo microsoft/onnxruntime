@@ -7,7 +7,7 @@
 
 #include "core/common/common.h"
 
-// Something like CUDA_CALL
+// Call into the Vulkan library (Something like CUDA_CALL)
 #define VK_CALL(func)                                \
   {                                                  \
     auto status = (func);                            \

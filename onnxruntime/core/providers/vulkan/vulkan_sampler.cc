@@ -5,30 +5,30 @@
 
 namespace onnxruntime {
 
-VulkanSampler::VulkanSampler(const VkDevice& vulkan_logical_device, VkFilter filter, VkSamplerAddressMode mode) : vulkan_logical_device_(vulkan_logical_device) {
-  VkSamplerCreateInfo samplerInfo;
-  ::memset(&samplerInfo, 0, sizeof(samplerInfo));
+VulkanSampler::VulkanSampler(const VkDevice& logical_device, VkFilter filter, VkSamplerAddressMode mode) : logical_device_(logical_device) {
+  VkSamplerCreateInfo sampler_info;
+  ::memset(&sampler_info, 0, sizeof(sampler_info));
 
-  samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-  samplerInfo.magFilter = filter;
-  samplerInfo.minFilter = filter;
-  samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-  samplerInfo.addressModeU = mode;
-  samplerInfo.addressModeV = mode;
-  samplerInfo.addressModeW = mode;
-  samplerInfo.mipLodBias = 0.0f;
-  samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
-  samplerInfo.anisotropyEnable = VK_FALSE;
-  samplerInfo.maxAnisotropy = 1.0f;
-  samplerInfo.compareEnable = VK_FALSE;
-  samplerInfo.minLod = 0.0f;
-  samplerInfo.maxLod = 0.0f;
+  sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+  sampler_info.magFilter = filter;
+  sampler_info.minFilter = filter;
+  sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+  sampler_info.addressModeU = mode;
+  sampler_info.addressModeV = mode;
+  sampler_info.addressModeW = mode;
+  sampler_info.mipLodBias = 0.0f;
+  sampler_info.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+  sampler_info.anisotropyEnable = VK_FALSE;
+  sampler_info.maxAnisotropy = 1.0f;
+  sampler_info.compareEnable = VK_FALSE;
+  sampler_info.minLod = 0.0f;
+  sampler_info.maxLod = 0.0f;
 
-  VK_CALL(vkCreateSampler(vulkan_logical_device_, &samplerInfo, nullptr, &sampler_));
+  VK_CALL(vkCreateSampler(logical_device_, &sampler_info, nullptr, &sampler_));
 }
 
 VulkanSampler::~VulkanSampler() {
-  VK_CALL_RETURNS_VOID(vkDestroySampler(vulkan_logical_device_, sampler_, nullptr));
+  VK_CALL_RETURNS_VOID(vkDestroySampler(logical_device_, sampler_, nullptr));
 }
 
 }  // namespace onnxruntime

@@ -11,66 +11,71 @@ namespace onnxruntime {
 
 class VulkanImage {
  public:
-  VulkanImage(VulkanMemoryPool& pool, bool seperate, const std::vector<int64_t>& dims,
+  VulkanImage(VulkanMemoryPool& memory_pool, const std::vector<int64_t>& dims,
               MLDataType data_type);
 
-  VulkanImage(VulkanMemoryPool& pool, bool seperate, int w, int h, MLDataType data_type)
-      : VulkanImage(vulkan_memory_pool_, seperate, std::vector<int64_t>{w, h}, data_type) {
+  VulkanImage(VulkanMemoryPool& memory_pool, int w, int h, MLDataType data_type)
+      : VulkanImage(memory_pool, std::vector<int64_t>{w, h}, data_type) {
   }
 
   virtual ~VulkanImage();
 
-  inline int GetWidth() const {
-    return std::get<1>(vulkan_image_info_);
+  inline int64_t GetWidth() const {
+    return std::get<1>(image_info_);
   }
 
-  inline int GetHeight() const {
-    return std::get<2>(vulkan_image_info_);
+  inline int64_t GetHeight() const {
+    return std::get<2>(image_info_);
   }
 
-  inline int GetDepth() const {
-    return std::get<3>(vulkan_image_info_);
+  inline int64_t GetDepth() const {
+    return std::get<3>(image_info_);
   }
 
   inline std::vector<int64_t> GetDims() const {
-    return vulkan_image_dims_;
+    return image_dims_;
   }
 
   inline VkImage GetImage() const {
-    return vulkan_image_and_view_.first;
+    return image_and_view_.first;
   }
 
   inline VkImageView GetView() const {
-    return vulkan_image_and_view_.second;
+    return image_and_view_.second;
   }
 
   inline VkFormat GetImageFormat() const {
-    return std::get<4>(vulkan_image_info_);
+    return std::get<4>(image_info_);
   }
 
   void Release();
 
   void ResetBarrier() {
-    vulkan_image_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
+    image_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
   }
 
   VkImageLayout GetLayout() const {
-    return vulkan_image_layout_;
+    return image_layout_;
   }
 
-  void BarrierWrite(VkCommandBuffer buffer) const;
+  void BarrierWrite(VkCommandBuffer buffer);
 
-  void BarrierRead(VkCommandBuffer buffer) const;
+  void BarrierRead(VkCommandBuffer buffer);
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanImage);
 
  private:
-  std::tuple<VkImageType, uint32_t, uint32_t, uint32_t, VkFormat> vulkan_image_info_;
-  std::pair<VkImage, VkImageView> vulkan_image_and_view_;
-  const VkDevice& vulkan_logical_device_;
-  std::vector<int64_t> vulkan_image_dims_;
-  VulkanMemoryPool& vulkan_memory_pool_;
-  std::pair<void*, int> vulkan_image_memory_;
-  mutable VkImageLayout vulkan_image_layout_;
-  mutable VkAccessFlagBits vulkan_image_access_flags_;
+  const VkDevice& logical_device_;
+  VulkanMemoryPool& memory_pool_;
+
+  std::tuple<VkImageType, int64_t, int64_t, int64_t, VkFormat> image_info_;
+  std::pair<VkImage, VkImageView> image_and_view_;
+
+  std::vector<int64_t> image_dims_;
+  std::pair<void*, int> image_memory_;
+
+  VkImageLayout image_layout_;
+  VkAccessFlagBits image_access_flags_;
 };
 
 }  // namespace onnxruntime

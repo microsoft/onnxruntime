@@ -9,7 +9,7 @@ namespace onnxruntime {
 
 class VulkanSampler {
  public:
-  VulkanSampler(const VkDevice& vulkan_logical_device, VkFilter filter = VK_FILTER_NEAREST,
+  VulkanSampler(const VkDevice& logical_device, VkFilter filter = VK_FILTER_NEAREST,
                 VkSamplerAddressMode mode = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER);
 
   virtual ~VulkanSampler();
@@ -22,7 +22,7 @@ class VulkanSampler {
 
  private:
   VkSampler sampler_;
-  const VkDevice& vulkan_logical_device_;
+  const VkDevice& logical_device_;
 };
 
 }  // namespace onnxruntime
