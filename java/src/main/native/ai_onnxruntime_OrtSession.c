@@ -425,15 +425,15 @@ cleanup_output_values:
 
   // Release the buffers
 cleanup_input_values:
-  free(inputValuePtrs);
+  free((void*)inputValuePtrs);
 cleanup_java_output_strings:
   free(javaOutputStrings);
 cleanup_java_input_strings:
   free(javaInputStrings);
 cleanup_output_names:
-  free(outputNames);
+  free((void*)outputNames);
 cleanup_input_names:
-  free(inputNames);
+  free((void*)inputNames);
 
   return outputArray;
 }
