@@ -422,7 +422,7 @@ fn prepare_libort_dir() -> PathBuf {
         strategy.as_ref().map_or_else(|_| "unknown", String::as_str)
     );
     match strategy.as_ref().map(String::as_str) {
-        Ok("download") | Err(_) => prepare_libort_dir_prebuilt(),
+        Ok("download") => prepare_libort_dir_prebuilt(),
         Ok("system") => PathBuf::from(match env::var(ORT_RUST_ENV_SYSTEM_LIB_LOCATION) {
             Ok(p) => p,
             Err(e) => {
@@ -432,7 +432,7 @@ fn prepare_libort_dir() -> PathBuf {
                 );
             }
         }),
-        Ok("compile") => prepare_libort_dir_compiled(),
+        Ok("compile") | Err(_) => prepare_libort_dir_compiled(),
         _ => panic!("Unknown value for {:?}", ORT_RUST_ENV_STRATEGY),
     }
 }
