@@ -1,7 +1,7 @@
 #pragma once
 
 #include <functional>
-#include "core/common/inlined_containers.h"
+#include <unordered_map>
 
 namespace onnxruntime {
 class IExecutionProvider;
@@ -23,7 +23,7 @@ struct Stream {
   const IExecutionProvider* provider;
   uint64_t timestamp{0};
   // TODO: do we really need it to be a dynamic map?
-  InlinedHashMap<Stream*, uint64_t> other_stream_clock;
+  std::unordered_map<Stream*, uint64_t> other_stream_clock;
 
   Stream(StreamHandle h, const IExecutionProvider* p) : handle(h), provider(p) {}
 
@@ -31,7 +31,7 @@ struct Stream {
     return ++timestamp;
   }
 
-  void UpdateStreamClock(const InlinedHashMap<Stream*, uint64_t>& clock) {
+  void UpdateStreamClock(const std::unordered_map<Stream*, uint64_t>& clock) {
     for (auto& kv : clock) {
       auto it = other_stream_clock.find(kv.first);
       if (it == other_stream_clock.end())
@@ -52,7 +52,7 @@ namespace synchronize {
 struct Notification {
   // which stream create this notificaiton.
   Stream* stream;
-  InlinedHashMap<Stream*, uint64_t> stream_clock_;
+  std::unordered_map<Stream*, uint64_t> stream_clock_;
 
   Notification(Stream* s) : stream(s) {}
   virtual ~Notification() {}
