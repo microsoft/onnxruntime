@@ -61,12 +61,15 @@ struct ExtDataValueDeleter {
   OrtCallback ext_delete_cb;
   Tensor* p_tensor;
   void operator()(void*) noexcept {
-    ext_delete_cb.f(ext_delete_cb.param);
+    if (ext_delete_cb.f) {
+      ext_delete_cb.f(ext_delete_cb.param);
+    }
+
     delete p_tensor;
   }
 };
 
-// given a tensor proto with externdal data return an OrtValue with a tensor for
+// given a tensor proto with external data return an OrtValue with a tensor for
 // that data; the pointers for the tensor data and the tensor itself are owned
 // by the OrtValue's deleter
 static inline common::Status ExtDataTensorProtoToTensor(const Env& env,
@@ -74,7 +77,6 @@ static inline common::Status ExtDataTensorProtoToTensor(const Env& env,
                                                         const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                         Tensor& tensor, OrtCallback& ext_data_deleter) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
-  ORT_ENFORCE(!proto_path.empty());
 
   void* ext_data_buf = nullptr;
   SafeInt<size_t> ext_data_len = 0;
@@ -88,8 +90,7 @@ static inline common::Status ExtDataTensorProtoToTensor(const Env& env,
   std::vector<int64_t> tensor_shape_vec = utils::GetTensorShapeFromTensorProto(tensor_proto);
   TensorShape tensor_shape{tensor_shape_vec};
 
-  tensor = Tensor(type, tensor_shape, ext_data_buf, OrtMemoryInfo(CPU,
-                                           OrtAllocatorType::OrtDeviceAllocator));
+  tensor = Tensor(type, tensor_shape, ext_data_buf, OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
 
   return common::Status::OK();
 }
