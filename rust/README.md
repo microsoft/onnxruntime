@@ -3,7 +3,7 @@
 These are Rust bindings to
 [Microsoft's ONNX Runtime](https://github.com/microsoft/onnxruntime).
 
-This project consist of two crates:
+This project consists of two crates:
 
 * [`onnxruntime-sys`](onnxruntime-sys): Low-level binding to the C API;
 * [`onnxruntime`](onnxruntime): High-level and safe API.
@@ -42,21 +42,21 @@ Three different strategy to obtain the ONNX Runtime are supported by the `build.
 2. Point to a local version already installed;
 3. Compile from source.
 
-To select which strategy to use, set the `ORT_STRATEGY` environment variable to:
+To select which strategy to use, set the `ORT_RUST_STRATEGY` environment variable to:
 
-1. `download`: This is the default if `ORT_STRATEGY` is not set;
-2. `system`: To use a locally installed version (use `ORT_LIB_LOCATION` environment variable to point to the install path)
+1. `download`: This is the default if `ORT_RUST_STRATEGY` is not set;
+2. `system`: To use a locally installed version (use `ORT_RUST_LIB_LOCATION` environment variable to point to the install path)
 3. `compile`: To compile the library
 
 The `download` strategy supports downloading a version of ONNX that supports CUDA. To use this, set the
-environment variable `ORT_USE_CUDA=1` (only supports Linux or Windows).
+environment variable `ORT_RUST_USE_CUDA=1` (only supports Linux or Windows).
 
 Until the build script allow compilation of the runtime, see the [compilation notes](ONNX_Compilation_Notes.md)
 for some details on the process.
 
-### Note on 'ORT_STRATEGY=system'
+### Note on 'ORT_RUST_STRATEGY=system'
 
-When using `ORT_STRATEGY=system`, executing a built crate binary (for example the tests) might fail, at least on macOS,
+When using `ORT_RUST_STRATEGY=system`, executing a built crate binary (for example the tests) might fail, at least on macOS,
 if the library is not installed in a system path. An error similar to the following happens:
 
 ```text

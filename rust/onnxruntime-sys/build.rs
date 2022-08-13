@@ -23,13 +23,13 @@ const ORT_RELEASE_BASE_URL: &str = "https://github.com/microsoft/onnxruntime/rel
 /// * "download": Download a pre-built library. This is the default if `ORT_STRATEGY` is not set.
 /// * "system": Use installed library. Use `ORT_LIB_LOCATION` to point to proper location.
 /// * "compile": Download source and compile (TODO).
-const ORT_ENV_STRATEGY: &str = "ORT_STRATEGY";
+const ORT_RUST_ENV_STRATEGY: &str = "ORT_RUST_STRATEGY";
 
 /// Name of environment variable that, if present, contains the location of a pre-built library.
 /// Only used if `ORT_STRATEGY=system`.
-const ORT_ENV_SYSTEM_LIB_LOCATION: &str = "ORT_LIB_LOCATION";
+const ORT_RUST_ENV_SYSTEM_LIB_LOCATION: &str = "ORT_RUST_LIB_LOCATION";
 /// Name of environment variable that, if present, controls wether to use CUDA or not.
-const ORT_ENV_GPU: &str = "ORT_USE_CUDA";
+const ORT_RUST_ENV_GPU: &str = "ORT_RUST_USE_CUDA";
 
 /// Subdirectory (of the 'target' directory) into which to extract the prebuilt library.
 const ORT_PREBUILT_EXTRACT_DIR: &str = "onnxruntime";
@@ -53,9 +53,12 @@ fn main() {
     println!("cargo:rustc-link-lib=onnxruntime");
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
 
-    println!("cargo:rerun-if-env-changed={}", ORT_ENV_STRATEGY);
-    println!("cargo:rerun-if-env-changed={}", ORT_ENV_GPU);
-    println!("cargo:rerun-if-env-changed={}", ORT_ENV_SYSTEM_LIB_LOCATION);
+    println!("cargo:rerun-if-env-changed={}", ORT_RUST_ENV_STRATEGY);
+    println!("cargo:rerun-if-env-changed={}", ORT_RUST_ENV_GPU);
+    println!(
+        "cargo:rerun-if-env-changed={}",
+        ORT_RUST_ENV_SYSTEM_LIB_LOCATION
+    );
 
     generate_bindings(&include_dir);
 }
@@ -346,7 +349,7 @@ impl OnnxPrebuiltArchive for Triplet {
             _ => {
                 panic!(
                     "Unsupported prebuilt triplet: {:?}, {:?}, {:?}. Please use {}=system and {}=/path/to/onnxruntime",
-                    self.os, self.arch, self.accelerator, ORT_ENV_STRATEGY, ORT_ENV_SYSTEM_LIB_LOCATION
+                    self.os, self.arch, self.accelerator, ORT_RUST_ENV_STRATEGY, ORT_RUST_ENV_SYSTEM_LIB_LOCATION
                 );
             }
         }
@@ -363,7 +366,10 @@ fn prebuilt_archive_url() -> (PathBuf, String) {
             .expect("Unable to get TARGET_ARCH")
             .parse()
             .unwrap(),
-        accelerator: env::var(ORT_ENV_GPU).unwrap_or_default().parse().unwrap(),
+        accelerator: env::var(ORT_RUST_ENV_GPU)
+            .unwrap_or_default()
+            .parse()
+            .unwrap(),
     };
 
     let prebuilt_archive = format!(
@@ -410,24 +416,24 @@ fn prepare_libort_dir_prebuilt() -> PathBuf {
 }
 
 fn prepare_libort_dir() -> PathBuf {
-    let strategy = env::var(ORT_ENV_STRATEGY);
+    let strategy = env::var(ORT_RUST_ENV_STRATEGY);
     println!(
         "strategy: {:?}",
         strategy.as_ref().map_or_else(|_| "unknown", String::as_str)
     );
     match strategy.as_ref().map(String::as_str) {
         Ok("download") | Err(_) => prepare_libort_dir_prebuilt(),
-        Ok("system") => PathBuf::from(match env::var(ORT_ENV_SYSTEM_LIB_LOCATION) {
+        Ok("system") => PathBuf::from(match env::var(ORT_RUST_ENV_SYSTEM_LIB_LOCATION) {
             Ok(p) => p,
             Err(e) => {
                 panic!(
                     "Could not get value of environment variable {:?}: {:?}",
-                    ORT_ENV_SYSTEM_LIB_LOCATION, e
+                    ORT_RUST_ENV_SYSTEM_LIB_LOCATION, e
                 );
             }
         }),
         Ok("compile") => prepare_libort_dir_compiled(),
-        _ => panic!("Unknown value for {:?}", ORT_ENV_STRATEGY),
+        _ => panic!("Unknown value for {:?}", ORT_RUST_ENV_STRATEGY),
     }
 }
 
@@ -436,7 +442,7 @@ fn prepare_libort_dir_compiled() -> PathBuf {
 
     config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
 
-    if env::var(ORT_ENV_GPU).unwrap_or_default().parse() == Ok(Accelerator::Gpu) {
+    if env::var(ORT_RUST_ENV_GPU).unwrap_or_default().parse() == Ok(Accelerator::Gpu) {
         config.define("onnxruntime_USE_CUDA", "ON");
     }
 
