@@ -436,7 +436,6 @@ bool LaunchLongformerSoftmaxKernel(
   //    qk = q * k^T
   // Shapes: q and k = B x N x S x H, qk = B x N x S x S
   // Convert col-major to row-major by swapping q and k in Gemm
-  // Use size_t for elements_per_batch, otherwise i * elements_per_batch will overflow
   size_t elements_per_batch = num_heads * sequence_length * head_size;
   int stride_per_head = sequence_length * head_size;  // stride for Q, K, V and output
 
@@ -622,7 +621,7 @@ bool LaunchLongformerSoftmaxKernel(
                                        resultType,
                                        algo));
 
-      const size_t global_q_per_batch = (compact_global_q ? num_heads * max_num_global * head_size : elements_per_batch);
+      const size_t global_q_per_batch = compact_global_q ? num_heads * max_num_global * head_size : elements_per_batch;
       const int global_q_stride = (compact_global_q ? max_num_global * head_size : stride_per_head);
       const void* global_q_batch = reinterpret_cast<const char*>(global_q) + (i * global_q_per_batch) * element_size;
       const void* global_k_batch = reinterpret_cast<const char*>(global_k) + (i * elements_per_batch) * element_size;
