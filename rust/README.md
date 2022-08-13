@@ -44,15 +44,12 @@ Three different strategy to obtain the ONNX Runtime are supported by the `build.
 
 To select which strategy to use, set the `ORT_RUST_STRATEGY` environment variable to:
 
-1. `download`: This is the default if `ORT_RUST_STRATEGY` is not set;
+1. `download`: Download prebuilt onnxruntime;
 2. `system`: To use a locally installed version (use `ORT_RUST_LIB_LOCATION` environment variable to point to the install path)
-3. `compile`: To compile the library
+3. `compile`: To compile the library. This is the default.
 
 The `download` strategy supports downloading a version of ONNX that supports CUDA. To use this, set the
 environment variable `ORT_RUST_USE_CUDA=1` (only supports Linux or Windows).
-
-Until the build script allow compilation of the runtime, see the [compilation notes](ONNX_Compilation_Notes.md)
-for some details on the process.
 
 ### Note on 'ORT_RUST_STRATEGY=system'
 
@@ -186,59 +183,6 @@ Dropping the environment.
 
 See also the integration tests ([`onnxruntime/tests/integration_tests.rs`](onnxruntime/tests/integration_tests.rs))
 that performs simple model download and inference, validating the results.
-
-## Bindings Generation
-
-Bindings (the basis of `onnxruntime-sys`) are committed to the git repository. This means `bindgen` is not
-a dependency anymore on every build (it was made optional) and thus build times are better.
-
-To generate new bindings (for example if they don't exists for your platform or if a version bump occurred), build the crate with the `generate-bindings` feature.
-
-NOTE: Make sure to have the `rustfmt` rustup component present so that bindings are formatted:
-
-```sh
-rustup component add rustfmt
-```
-
-Then on each platform build with the proper feature flag:
-
-```sh
-❯ cd onnxruntime-sys
-❯ cargo build --features generate-bindings
-```
-
-### Generating Bindings for Linux With Docker
-
-Prepare the container:
-
-```sh
-❯ docker run -it --rm --name rustbuilder -v "$PWD":/usr/src/myapp -w /usr/src/myapp rust:1.50.0 /bin/bash
-❯ apt-get update
-❯ apt-get install clang
-❯ rustup component add rustfmt
-```
-
-Generate the bindings:
-
-```sh
-❯ docker exec -it --user "$(id -u)":"$(id -g)" rustbuilder /bin/bash
-❯ cd onnxruntime-sys
-❯ cargo build --features generate-bindings
-```
-
-### Generating Bindings for Windows With Vagrant
-
-You can use [nbigaouette/windows_vagrant_rust](https://github.com/nbigaouette/windows_vagrant_rust)
-to provision a Windows VM that can build the project and generate the bindings.
-
-Windows can build both x86 and x86_64 bindings:
-
-```sh
-❯ rustup target add i686-pc-windows-msvc x86_64-pc-windows-msvc
-❯ cd onnxruntime-sys
-❯ cargo build --features generate-bindings --target i686-pc-windows-msvc
-❯ cargo build --features generate-bindings --target x86_64-pc-windows-msvc
-```
 
 ## License
 

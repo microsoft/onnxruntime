@@ -19,7 +19,7 @@ keywords = ["neuralnetworks", "onnx", "bindings"]
 [dependencies]
 
 [build-dependencies]
-bindgen = { version = "0.60", optional = true }
+bindgen = "0.60"
 cmake = "0.1"
 
 # Used on unix
@@ -32,13 +32,3 @@ zip = "0.6"
 
 [features]
 default = []
-
-# Disable build script, used to prevent issues with docs.rs
-disable-sys-build-script = []
-# Use bindgen to generate bindings in build.rs
-generate-bindings = ["bindgen"]
-
-[package.metadata.docs.rs]
-# Disable the build.rs on https://docs.rs since it can cause
-# issue there and it's not needed.
-features = ["disable-sys-build-script"]

@@ -34,12 +34,6 @@ const ORT_RUST_ENV_GPU: &str = "ORT_RUST_USE_CUDA";
 /// Subdirectory (of the 'target' directory) into which to extract the prebuilt library.
 const ORT_PREBUILT_EXTRACT_DIR: &str = "onnxruntime";
 
-#[cfg(feature = "disable-sys-build-script")]
-fn main() {
-    println!("Build script disabled!");
-}
-
-#[cfg(not(feature = "disable-sys-build-script"))]
 fn main() {
     let libort_install_dir = prepare_libort_dir();
 
@@ -63,23 +57,6 @@ fn main() {
     generate_bindings(&include_dir);
 }
 
-#[cfg(not(feature = "generate-bindings"))]
-fn generate_bindings(_include_dir: &Path) {
-    println!("Bindings not generated automatically, using committed files instead.");
-    println!("Enable with the 'generate-bindings' cargo feature.");
-
-    // NOTE: If bindings could not be be generated for Apple Sillicon M1, please uncomment the following
-    // let os = env::var("CARGO_CFG_TARGET_OS").expect("Unable to get TARGET_OS");
-    // let arch = env::var("CARGO_CFG_TARGET_ARCH").expect("Unable to get TARGET_ARCH");
-    // if os == "macos" && arch == "aarch64" {
-    //     panic!(
-    //         "OnnxRuntime {} bindings for Apple M1 are not available",
-    //         ORT_VERSION
-    //     );
-    // }
-}
-
-#[cfg(feature = "generate-bindings")]
 fn generate_bindings(include_dir: &Path) {
     let clang_args = &[
         format!("-I{}", include_dir.display()),
@@ -95,7 +72,6 @@ fn generate_bindings(include_dir: &Path) {
 
     // Tell cargo to invalidate the built crate whenever the wrapper changes
     println!("cargo:rerun-if-changed=wrapper.h");
-    println!("cargo:rerun-if-changed=src/generated/bindings.rs");
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
@@ -119,13 +95,7 @@ fn generate_bindings(include_dir: &Path) {
         // Unwrap the Result and panic on failure.
         .expect("Unable to generate bindings");
 
-    // Write the bindings to (source controlled) src/generated/<os>/<arch>/bindings.rs
-    let generated_file = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
-        .join("src")
-        .join("generated")
-        .join(env::var("CARGO_CFG_TARGET_OS").unwrap())
-        .join(env::var("CARGO_CFG_TARGET_ARCH").unwrap())
-        .join("bindings.rs");
+    let generated_file = PathBuf::from(env::var("OUT_DIR").unwrap()).join("bindings.rs");
     println!("cargo:rerun-if-changed={:?}", generated_file);
     bindings
         .write_to_file(&generated_file)

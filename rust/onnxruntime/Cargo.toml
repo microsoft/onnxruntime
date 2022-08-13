@@ -37,9 +37,6 @@ ureq = "2.1"
 [features]
 # Fetch model from ONNX Model Zoo (https://github.com/onnx/models)
 model-fetching = ["ureq"]
-# Disable build script; used for https://docs.rs
-disable-sys-build-script = ["onnxruntime-sys/disable-sys-build-script"]
-generate-bindings = ["onnxruntime-sys/generate-bindings"]
 
 [package.metadata.docs.rs]
-features = ["disable-sys-build-script", "model-fetching"]
+features = ["model-fetching"]
