@@ -139,6 +139,7 @@ def test_ort_latency(
     use_compact_memory=False,
     use_half2_float2=False,
     use_half4_float4=False,
+    disable_parity=False,
 ):
     results = []
     for batch_size in batch_sizes:
@@ -216,23 +217,24 @@ def test_ort_latency(
                     )
 
                 # measure result difference between PyTorch and OnnxRuntime
-                diff_results = [
-                    test_parity(
-                        device,
-                        model,
-                        ort_session,
-                        batch_size,
-                        sequence_length,
-                        global_length,
-                        verbose,
-                    )
-                    for _ in range(test_times)
-                ]
+                if not disable_parity:
+                    diff_results = [
+                        test_parity(
+                            device,
+                            model,
+                            ort_session,
+                            batch_size,
+                            sequence_length,
+                            global_length,
+                            verbose,
+                        )
+                        for _ in range(test_times)
+                    ]
 
-                result["diff_max"] = max(diff_results)
-                result["diff_90_percentile"] = np.percentile(diff_results, 90)
-                result["diff_95_percentile"] = np.percentile(diff_results, 95)
-                result["diff_99_percentile"] = np.percentile(diff_results, 99)
+                    result["diff_max"] = max(diff_results)
+                    result["diff_90_percentile"] = np.percentile(diff_results, 90)
+                    result["diff_95_percentile"] = np.percentile(diff_results, 95)
+                    result["diff_99_percentile"] = np.percentile(diff_results, 99)
 
                 results.append(result)
     return results
@@ -345,11 +347,14 @@ def test_ort(args, device):
 
     num_threads = args.num_threads
 
+    cuda_provider_options = {"arena_extend_strategy": "kSameAsRequested"}
+    provider_options = {"CUDAExecutionProvider": cuda_provider_options}
     session = benchmark_helper.create_onnxruntime_session(
         onnx_model_path,
         use_gpu=True,
         enable_all_optimization=True,
         num_threads=num_threads,
+        provider_options=provider_options,
     )
     if session is None:
         raise RuntimeError(f"Failed to create ORT session from ONNX file {onnx_model_path}")
@@ -383,6 +388,7 @@ def test_ort(args, device):
         use_compact_memory,
         args.use_half2_float2,
         args.use_half4_float4,
+        args.disable_parity,
     )
 
 
@@ -494,11 +500,14 @@ def parse_arguments(argv=None):
     parser.add_argument("--verbose", required=False, action="store_true", help="Print more information.")
     parser.set_defaults(verbose=False)
 
-    parser.add_argument("--use_half2_float2", required=False, action="store_true", help="Print more information.")
+    parser.add_argument("--use_half2_float2", required=False, action="store_true", help="Use half2 or float2 kernel.")
     parser.set_defaults(use_half2_float2=False)
 
-    parser.add_argument("--use_half4_float4", required=False, action="store_true", help="Print more information.")
+    parser.add_argument("--use_half4_float4", required=False, action="store_true", help="Use half4 or float4 kernel.")
     parser.set_defaults(use_half4_float4=False)
+
+    parser.add_argument("--disable_parity", required=False, action="store_true", help="Do not run parity test.")
+    parser.set_defaults(disable_parity=False)
 
     args = parser.parse_args(argv)
 
@@ -549,6 +558,9 @@ def output_details(results, csv_filename):
         for result in latency_results:
             print(result)
             csv_writer.writerow(result)
+
+        csv_file.flush()
+
     print(f"Detail results are saved to csv file: {csv_filename}")
 
 
@@ -589,7 +601,6 @@ def run_tests(
     use_half2_float2=True,
     use_half4_float4=False,
     batch_size=1,
-    model_name="longformer-base-4096",
 ):
     compact_memory = "1" if use_compact_memory else "0"
     os.environ["ORT_LONGFORMER_COMPACT_MEMORY"] = compact_memory
@@ -601,58 +612,190 @@ def run_tests(
 
     results = []
     test_times = 100
-    sequence_lengths = [512, 1024, 2048, 4096]
-    for sequence_length in sequence_lengths:
-        for global_length in [16]:
-            if run_torch:
-                engine_name = "torch"
-                args = parse_arguments(
-                    f"-e {engine_name} -t {test_times} -b {batch_size} -s {sequence_length} -g {global_length} "
-                    f"-t {test_times} -m {model_name}".split(" ")
-                )
-                results += run(args)
+    sequence_lengths = [4096, 2048, 1024, 512]
+    batch_sizes = [batch_size]
+    for model_name in ["longformer-base-4096"]:
+        for batch_size in batch_sizes:
+            for sequence_length in sequence_lengths:
+                for global_length in [16]:
+                    if run_torch:
+                        engine_name = "torch"
+                        args = parse_arguments(
+                            f"-e {engine_name} -t {test_times} -b {batch_size} -s {sequence_length} -g {global_length} "
+                            f"-t {test_times} -m {model_name}".split(" ")
+                        )
+                        results += run(args)
 
-            engine_name = "onnxruntime"
-            file_format = 1 if use_merged_qkv_weights else 0
-            onnx_path = (
-                f"{model_name}_f{file_format}_fp16.onnx" if use_fp16 else f"{model_name}_f{file_format}_fp32.onnx"
-            )
-            if not os.path.exists(onnx_path):
-                raise RuntimeError(f"onnx file not exists:{onnx_path}")
+                    engine_name = "onnxruntime"
+                    file_format = 1 if use_merged_qkv_weights else 0
+                    onnx_path = (
+                        f"{model_name}_f{file_format}_fp16.onnx"
+                        if use_fp16
+                        else f"{model_name}_f{file_format}_fp32.onnx"
+                    )
+                    if not os.path.exists(onnx_path):
+                        raise RuntimeError(f"onnx file not exists:{onnx_path}")
 
-            arguments = (
-                f"-e {engine_name} --onnx {onnx_path} "
-                f"-b {batch_size} -s {sequence_length} -g {global_length} -m {model_name}"
-            )
+                    arguments = (
+                        f"-e {engine_name} --onnx {onnx_path} "
+                        f"-b {batch_size} -s {sequence_length} -g {global_length} -m {model_name}"
+                    )
 
-            if not use_io_binding:
-                arguments += " --disable_io_binding"
+                    if not use_io_binding:
+                        arguments += " --disable_io_binding"
 
-            if use_half2_float2:
-                arguments += " --use_half2_float2"
+                    if use_half2_float2:
+                        arguments += " --use_half2_float2"
 
-            if use_half4_float4:
-                arguments += " --use_half4_float4"
+                    if use_half4_float4:
+                        arguments += " --use_half4_float4"
 
-            if run_memory:
-                args = parse_arguments(f"{arguments} -t 10 --memory".split(" "))
-                memory_results = launch_test(args)
-                print(memory_results)
+                    # Disable parity test to avoid out of memory for large batch size
+                    if batch_size >= 4:
+                        arguments += " --disable_parity"
 
-            args = parse_arguments(f"{arguments} -t {test_times}".split(" "))
-            latency_results = launch_test(args)
-            if len(latency_results) == 1:
-                latency_results[0]["memory"] = memory_results["memory"] if run_memory else "N/A"
-            else:
-                raise RuntimeError("len(latency_results) is not 1")
+                    if run_memory:
+                        args = parse_arguments(f"{arguments} -t 10 --memory".split(" "))
+                        memory_results = launch_test(args)
+                        print(memory_results)
 
-            print(latency_results)
+                    args = parse_arguments(f"{arguments} -t {test_times}".split(" "))
+                    latency_results = launch_test(args)
+                    if len(latency_results) == 1:
+                        latency_results[0]["memory"] = memory_results["memory"] if run_memory else "N/A"
+                    else:
+                        raise RuntimeError("len(latency_results) is not 1")
 
-            results += latency_results
+                    print(latency_results)
+
+                    results += latency_results
     return results
 
 
-if __name__ == "__main__":
+def output_summary(results, csv_filename, data_field="average_latency_ms"):
+    with open(csv_filename, mode="a", newline="") as csv_file:
+        header_names = [
+            "model_name",
+            "precision",
+            "engine",
+            "version",
+            "global_length",
+            "use_compact_memory",
+            "use_half2_float2",
+            "use_half4_float4",
+            "description",
+        ]
+
+        description_list = list(set([result["description"] for result in results]))
+        description_list.sort()
+
+        batch_sizes = list(set([result["batch_size"] for result in results]))
+        batch_sizes.sort()
+
+        sequence_lengths = list(set([result["sequence_length"] for result in results]))
+        sequence_lengths.sort()
+
+        data_names = []
+        for batch_size in batch_sizes:
+            for sequence_length in sequence_lengths:
+                data_names.append(f"b{batch_size}_s{sequence_length}")
+
+        csv_writer = csv.DictWriter(csv_file, fieldnames=header_names + data_names)
+        csv_writer.writeheader()
+
+        for description in description_list:
+            row = {}
+
+            sum_latency = {}
+            sum_latency.update({k: 0 for k in data_names})
+
+            count_latency = {}
+            count_latency.update({k: 0 for k in data_names})
+
+            for result in results:
+                if result["description"] == description and result[data_field]:
+                    headers = {k: v for k, v in result.items() if k in header_names}
+                    if not row:
+                        row.update(headers)
+                    else:
+                        for k in header_names:
+                            assert row[k] == headers[k]
+
+                    batch_size = result["batch_size"]
+                    sequence_length = result["sequence_length"]
+                    key = f"b{batch_size}_s{sequence_length}"
+
+                    try:
+                        latency = float(result[data_field])
+                    except ValueError:
+                        continue
+
+                    sum_latency[key] += latency
+                    count_latency[key] += 1
+
+            if row:
+                for key in data_names:
+                    row[key] = (sum_latency[key] / count_latency[key]) if key in count_latency else ""
+
+                csv_writer.writerow(row)
+
+        csv_file.flush()
+
+
+def run_experiments(use_fp16, batch_size):
+    """Run experiments to compare different algorithms on one batch size"""
+    test_results = run_tests(
+        use_fp16=use_fp16,
+        use_merged_qkv_weights=True,
+        use_half2_float2=True,
+        use_half4_float4=True,
+        batch_size=batch_size,
+    )
+
+    test_results += run_tests(
+        use_fp16=use_fp16,
+        use_merged_qkv_weights=True,
+        use_half2_float2=True,
+        use_half4_float4=False,
+        batch_size=batch_size,
+    )
+
+    test_results += run_tests(
+        use_fp16=use_fp16,
+        use_merged_qkv_weights=True,
+        use_half2_float2=False,
+        use_half4_float4=False,
+        batch_size=batch_size,
+    )
+
+    test_results += run_tests(
+        use_fp16=use_fp16,
+        use_merged_qkv_weights=False,
+        use_half2_float2=True,
+        use_half4_float4=False,
+        batch_size=batch_size,
+    )
+
+    test_results += run_tests(
+        use_fp16=use_fp16,
+        use_merged_qkv_weights=False,
+        use_half2_float2=True,
+        use_half4_float4=True,
+        batch_size=batch_size,
+    )
+
+    test_results += run_tests(
+        use_fp16=use_fp16,
+        use_merged_qkv_weights=False,
+        use_half2_float2=False,
+        use_half4_float4=False,
+        batch_size=batch_size,
+    )
+
+    return test_results
+
+
+def main():
     torch.multiprocessing.set_start_method("spawn")
 
     if len(sys.argv) > 1:
@@ -662,99 +805,32 @@ if __name__ == "__main__":
         time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         csv_filename = f"benchmark_detail_{time_stamp}.csv"
         output_details(test_results, csv_filename)
+        return
 
-    for _ in range(5):
-        for batch_size in [1, 2, 4, 8]:
-            # FP16 model
-            test_results = run_tests(
-                use_fp16=True,
-                use_merged_qkv_weights=True,
-                use_half2_float2=False,
-                use_half4_float4=False,
-                batch_size=batch_size,
-            )
-            test_results += run_tests(
-                use_fp16=True,
-                use_merged_qkv_weights=True,
-                use_half2_float2=True,
-                use_half4_float4=False,
-                batch_size=batch_size,
-            )
-            test_results += run_tests(
-                use_fp16=True,
-                use_merged_qkv_weights=True,
-                use_half2_float2=True,
-                use_half4_float4=True,
-                batch_size=batch_size,
-            )
+    gpu_list = benchmark_helper.get_gpu_info()
+    print("GPU info:", gpu_list)
+    fp16_batch_sizes = [16, 8, 4, 2, 1]
+    fp32_batch_sizes = [8, 4, 2, 1]
+    if gpu_list and gpu_list[0]["total"] >= 32 * 1024 * 1024 * 1024:  # 32 GB
+        fp16_batch_sizes = [64, 32, 16, 8, 4, 2, 1]
+        fp32_batch_sizes = [32, 16, 8, 4, 2, 1]
 
-            test_results += run_tests(
-                use_fp16=True,
-                use_merged_qkv_weights=False,
-                use_half2_float2=False,
-                use_half4_float4=False,
-                batch_size=batch_size,
-            )
-            test_results += run_tests(
-                use_fp16=True,
-                use_merged_qkv_weights=False,
-                use_half2_float2=True,
-                use_half4_float4=False,
-                batch_size=batch_size,
-            )
-            test_results += run_tests(
-                use_fp16=True,
-                use_merged_qkv_weights=False,
-                use_half2_float2=True,
-                use_half4_float4=True,
-                batch_size=batch_size,
-            )
-            output_details(test_results, f"longformer_base_fp16.csv")
+    total_runs = 5
+    all_results = []
+    for _ in range(total_runs):
+        for batch_size in fp16_batch_sizes:
+            fp16_results = run_experiments(use_fp16=True, batch_size=batch_size)
+            output_details(fp16_results, "longformer_base_fp16.csv")
+            all_results += fp16_results
 
-    for _ in range(5):
-        for batch_size in [1, 2, 4, 8]:
-            # FP32 model
-            test_results = run_tests(
-                use_fp16=False,
-                use_merged_qkv_weights=True,
-                use_half2_float2=False,
-                use_half4_float4=False,
-                batch_size=batch_size,
-            )
-            test_results += run_tests(
-                use_fp16=False,
-                use_merged_qkv_weights=True,
-                use_half2_float2=True,
-                use_half4_float4=False,
-                batch_size=batch_size,
-            )
-            test_results += run_tests(
-                use_fp16=False,
-                use_merged_qkv_weights=True,
-                use_half2_float2=True,
-                use_half4_float4=True,
-                batch_size=batch_size,
-            )
+        for batch_size in fp32_batch_sizes:
+            fp32_results = run_experiments(use_fp16=False, batch_size=batch_size)
+            output_details(fp32_results, "longformer_base_fp32.csv")
+            all_results += fp32_results
 
-            test_results += run_tests(
-                use_fp16=False,
-                use_merged_qkv_weights=False,
-                use_half2_float2=False,
-                use_half4_float4=False,
-                batch_size=batch_size,
-            )
-            test_results += run_tests(
-                use_fp16=False,
-                use_merged_qkv_weights=False,
-                use_half2_float2=True,
-                use_half4_float4=False,
-                batch_size=batch_size,
-            )
-            test_results += run_tests(
-                use_fp16=False,
-                use_merged_qkv_weights=False,
-                use_half2_float2=True,
-                use_half4_float4=True,
-                batch_size=batch_size,
-            )
-            output_details(test_results, f"longformer_base_fp32.csv")
+    for metric_name in ["average_latency_ms", "QPS", "memory", "diff_90_percentile"]:
+        output_summary(all_results, f"longformer_base_{metric_name}.csv", metric_name)
+
+
+if __name__ == "__main__":
+    main()

@@ -398,6 +398,39 @@ def set_random_seed(seed=123):
     # torch.backends.cudnn.deterministic = True
 
 
+def get_gpu_info():
+    from py3nvml.py3nvml import (
+        NVMLError,
+        nvmlDeviceGetCount,
+        nvmlDeviceGetHandleByIndex,
+        nvmlDeviceGetMemoryInfo,
+        nvmlDeviceGetName,
+        nvmlInit,
+        nvmlShutdown,
+    )
+
+    try:
+        nvmlInit()
+        result = []
+        device_count = nvmlDeviceGetCount()
+        for i in range(device_count):
+            info = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(i))
+            result.append(
+                {
+                    "id": i,
+                    "name": nvmlDeviceGetName(nvmlDeviceGetHandleByIndex(i)),
+                    "total": info.total,
+                    "free": info.free,
+                    "used": info.used,
+                }
+            )
+        nvmlShutdown()
+        return result
+    except NVMLError as error:
+        print("Error fetching GPU information using nvml: %s", error)
+        return None
+
+
 def measure_memory(is_gpu, func):
     import os
     from time import sleep
@@ -432,11 +465,11 @@ def measure_memory(is_gpu, func):
             gpu_name = []
             try:
                 nvmlInit()
-                deviceCount = nvmlDeviceGetCount()
-                max_gpu_usage = [0 for i in range(deviceCount)]
-                gpu_name = [nvmlDeviceGetName(nvmlDeviceGetHandleByIndex(i)) for i in range(deviceCount)]
+                device_count = nvmlDeviceGetCount()
+                max_gpu_usage = [0 for i in range(device_count)]
+                gpu_name = [nvmlDeviceGetName(nvmlDeviceGetHandleByIndex(i)) for i in range(device_count)]
                 while True:
-                    for i in range(deviceCount):
+                    for i in range(device_count):
                         info = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(i))
                         max_gpu_usage[i] = max(max_gpu_usage[i], info.used / 1024**2)
                     sleep(0.005)  # 5ms
@@ -449,11 +482,10 @@ def measure_memory(is_gpu, func):
                         "name": gpu_name[i],
                         "max_used_MB": max_gpu_usage[i],
                     }
-                    for i in range(deviceCount)
+                    for i in range(device_count)
                 ]
             except NVMLError as error:
-                if not self.silent:
-                    self.logger.error("Error fetching GPU information using nvml: %s", error)
+                print("Error fetching GPU information using nvml: %s", error)
                 return None
 
     monitor = MemoryMonitor(False)
@@ -475,9 +507,15 @@ def measure_memory(is_gpu, func):
         if is_gpu:
             print(f"GPU memory usage: before={memory_before_test}  peak={max_usage}")
             if len(memory_before_test) >= 1 and len(max_usage) >= 1:
-                before = memory_before_test[0]["max_used_MB"]
-                after = max_usage[0]["max_used_MB"]
-                return after - before
+                assert len(memory_before_test) == len(max_usage)
+                # When there are multiple GPUs, we will check the one with maximum usage.
+                max_used = 0
+                for i in range(len(memory_before_test)):
+                    before = memory_before_test[i]["max_used_MB"]
+                    after = max_usage[i]["max_used_MB"]
+                    used = after - before
+                    max_used = max(max_used, used)
+                return max_used
             else:
                 return None
         else:
