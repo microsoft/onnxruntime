@@ -270,8 +270,9 @@ bool LaunchLongformerSoftmaxSimpleKernel(
   // The results are stored in scratch1.
 
   int w = attention_window;
-  int x_offset = num_heads * sequence_length * head_size;
-  int y_offset = num_heads * sequence_length * sequence_length;
+  size_t x_offset = static_cast<size_t>(num_heads) * sequence_length * head_size;
+  // Use size_t to avoid integer overflow since B x N x S x S is 12G for B=64, N=12, S=4096
+  size_t y_offset = static_cast<size_t>(num_heads) * sequence_length * sequence_length;
   int last_block = (sequence_length / w) - 1;
   int strideA = sequence_length * head_size;
   int strideB = sequence_length * head_size;

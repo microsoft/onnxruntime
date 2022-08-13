@@ -9,16 +9,16 @@ namespace contrib {
 namespace cuda {
 
 size_t GetPinnedBufferSize(
-    int batch_size);
+    size_t batch_size);
 
 size_t GetLongformerAttentionWorkspaceSize(
     size_t element_size,
-    int batch_size,
-    int num_heads,
-    int head_size,
-    int sequence_length,
-    int max_num_global,
-    int window,
+    size_t batch_size,
+    size_t num_heads,
+    size_t head_size,
+    size_t sequence_length,
+    size_t max_num_global,
+    size_t window,
     bool disable_compact_memory);
 
 bool LaunchLongformerAttentionKernel(

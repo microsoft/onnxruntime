@@ -8,15 +8,21 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-size_t GetAttentionScratchSize(size_t element_size, int batch_size, int num_heads, int sequence_length, int all_sequence_length);
+
+size_t GetAttentionScratchSize(
+    size_t element_size,
+    size_t batch_size,
+    size_t num_heads,
+    size_t sequence_length,
+    size_t all_sequence_length);
 
 size_t GetAttentionWorkspaceSize(
     size_t element_size,
-    int batchsize,
-    int num_heads,
-    int head_size,
-    int sequence_length,
-    int past_sequence_length);
+    size_t batchsize,
+    size_t num_heads,
+    size_t head_size,
+    size_t sequence_length,
+    size_t past_sequence_length);
 
 bool LaunchAttentionKernel(
     const cudaDeviceProp& prop,                   // Device Properties

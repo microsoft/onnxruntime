@@ -26,7 +26,6 @@ limitations under the License.
 #include <library_types.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
-#include "core/common/safeint.h"
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/longformer_attention_softmax.h"
@@ -67,8 +66,8 @@ static size_t Align(size_t a) {
   return CeilDiv(a, alignment) * alignment;
 }
 
-size_t GetScratch1Size(size_t element_size, int batch_size, int num_heads, int sequence_length, int window) {
-  size_t bytes = SafeInt<size_t>(5 * sequence_length - 3 * window) * window * num_heads * batch_size * element_size;
+size_t GetScratch1Size(size_t element_size, size_t batch_size, size_t num_heads, size_t sequence_length, size_t window) {
+  size_t bytes = (5 * sequence_length - 3 * window) * window * num_heads * batch_size * element_size;
   return Align(bytes);
 }
 
@@ -78,28 +77,28 @@ constexpr size_t GetScratch2Size() {
 
 size_t GetLongformerSoftmaxWorkspaceSize(
     size_t element_size,
-    int batch_size,
-    int num_heads,
-    int sequence_length,
-    int window,
+    size_t batch_size,
+    size_t num_heads,
+    size_t sequence_length,
+    size_t window,
     bool disable_compact_memory) {
   if (!disable_compact_memory) {
     size_t scratch1_size = GetScratch1Size(element_size, batch_size, num_heads, sequence_length, window);
     size_t scratch2_size = GetScratch2Size();
     return Align(scratch1_size + scratch2_size);
   } else {
-    return SafeInt<size_t>(2) * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, sequence_length);
+    return static_cast<size_t>(2) * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, sequence_length);
   }
 }
 
 size_t GetLongformerAttentionWorkspaceSize(
     size_t element_size,
-    int batch_size,
-    int num_heads,
-    int head_size,
-    int sequence_length,
-    int max_num_global,
-    int window,
+    size_t batch_size,
+    size_t num_heads,
+    size_t head_size,
+    size_t sequence_length,
+    size_t max_num_global,
+    size_t window,
     bool disable_compact_memory) {
   size_t softmax_size = GetLongformerSoftmaxWorkspaceSize(element_size,
                                                           batch_size,
@@ -107,14 +106,14 @@ size_t GetLongformerAttentionWorkspaceSize(
                                                           sequence_length,
                                                           window,
                                                           disable_compact_memory);
-  size_t qkv_size = SafeInt<size_t>(3) * batch_size * sequence_length * num_heads * head_size * element_size;
+  size_t qkv_size = static_cast<size_t>(3) * batch_size * sequence_length * num_heads * head_size * element_size;
   size_t global_qkv_size = max_num_global > 0 ? qkv_size : 0;
   return softmax_size + qkv_size + global_qkv_size;
 }
 
 // Size of buffer of pinned memory in CPU. The buffer is used to copy memory between CPU and GPU.
 // The buffer includes two parts: [global_count (copy of batch_global_num): int Bx1] [copy of scratch2]
-size_t GetPinnedBufferSize(int batch_size) {
+size_t GetPinnedBufferSize(size_t batch_size) {
   return sizeof(int) * batch_size + GetScratch2Size();
 }
 
@@ -437,7 +436,8 @@ bool LaunchLongformerSoftmaxKernel(
   //    qk = q * k^T
   // Shapes: q and k = B x N x S x H, qk = B x N x S x S
   // Convert col-major to row-major by swapping q and k in Gemm
-  int elements_per_batch = num_heads * sequence_length * head_size;
+  // Use size_t for elements_per_batch, otherwise i * elements_per_batch will overflow
+  size_t elements_per_batch = num_heads * sequence_length * head_size;
   int stride_per_head = sequence_length * head_size;  // stride for Q, K, V and output
 
   // Local attention part
@@ -533,7 +533,7 @@ bool LaunchLongformerSoftmaxKernel(
           const void* k_head = reinterpret_cast<const char*>(k) +
                                (i * elements_per_batch + j * sequence_length * head_size) * element_size;
           void* qk_head = reinterpret_cast<char*>(buffer_pointers[1]) +
-                          (i * num_heads + j) * buffer_sizes[1] * element_size;
+                          static_cast<size_t>(i * num_heads + j) * buffer_sizes[1] * element_size;
           CHECK(cublasGemmStridedBatchedEx(cublas,
                                            CUBLAS_OP_T,
                                            CUBLAS_OP_N,
@@ -622,7 +622,7 @@ bool LaunchLongformerSoftmaxKernel(
                                        resultType,
                                        algo));
 
-      const int global_q_per_batch = (compact_global_q ? num_heads * max_num_global * head_size : elements_per_batch);
+      const size_t global_q_per_batch = (compact_global_q ? num_heads * max_num_global * head_size : elements_per_batch);
       const int global_q_stride = (compact_global_q ? max_num_global * head_size : stride_per_head);
       const void* global_q_batch = reinterpret_cast<const char*>(global_q) + (i * global_q_per_batch) * element_size;
       const void* global_k_batch = reinterpret_cast<const char*>(global_k) + (i * elements_per_batch) * element_size;
