@@ -4,6 +4,7 @@
 #include "core/framework/iexecutor.h"
 #include "core/framework/stream_handles.h"
 #include "core/graph/basic_types.h"
+#include "core/common/inlined_containers.h"
 #ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"
 #endif
