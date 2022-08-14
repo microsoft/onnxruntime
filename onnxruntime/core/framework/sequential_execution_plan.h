@@ -140,6 +140,10 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
   size_t num_barriers{0};
 
+#ifdef ENABLE_TRAINING
+  std::vector<NodeIndex> node_execution_order_in_training;
+#endif
+
   const std::vector<AllocPlanPerValue>& GetAllocationPlan() const {
     return allocation_plan;
   }

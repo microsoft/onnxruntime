@@ -628,7 +628,8 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
 
   // Try to resolve shapes for activations.
   auto& node_index_info = GetNodeIndexInfo();
-  for (auto& node_idx : graph_viewer_->GetNodesInTopologicalOrder()) {
+  auto& execution_order = exe_plan->node_execution_order_in_training;
+  for (auto& node_idx : execution_order) {
     int node_index = node_index_info.GetNodeOffset(node_idx);
     auto* node = graph_viewer_->GetNode(node_idx);
     int output_start = node_index + static_cast<int>(node->InputDefs().size()) +
@@ -692,7 +693,7 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
   }
   // TODO: add check for single stream
   // Allocate all other activations.
-  for (auto& step_index : graph_viewer_->GetNodesInTopologicalOrder()) {
+  for (auto& step_index : execution_order) {
     int node_index = node_index_info.GetNodeOffset(step_index);
     auto* node = graph_viewer_->GetNode(step_index);
     int output_start = node_index + static_cast<int>(node->InputDefs().size()) +
