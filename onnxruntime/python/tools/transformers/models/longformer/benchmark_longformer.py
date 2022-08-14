@@ -735,7 +735,10 @@ def output_summary(results, csv_filename, data_field="average_latency_ms"):
 
             if row:
                 for key in data_names:
-                    row[key] = (sum_latency[key] / count_latency[key]) if key in count_latency else ""
+                    if key in count_latency and count_latency[key] > 0:
+                        row[key] = sum_latency[key] / count_latency[key]
+                    else:
+                        row[key] = ""
 
                 csv_writer.writerow(row)
 
@@ -810,10 +813,10 @@ def main():
     gpu_list = benchmark_helper.get_gpu_info()
     print("GPU info:", gpu_list)
     fp16_batch_sizes = [16, 8, 4, 2, 1]
-    fp32_batch_sizes = [8, 4, 2, 1]
+    fp32_batch_sizes = [4, 2, 1]
     if gpu_list and gpu_list[0]["total"] >= 32 * 1024 * 1024 * 1024:  # 32 GB
         fp16_batch_sizes = [64, 32, 16, 8, 4, 2, 1]
-        fp32_batch_sizes = [32, 16, 8, 4, 2, 1]
+        fp32_batch_sizes = [16, 8, 4, 2, 1]
 
     total_runs = 5
     all_results = []
@@ -822,14 +825,17 @@ def main():
             fp16_results = run_experiments(use_fp16=True, batch_size=batch_size)
             output_details(fp16_results, "longformer_base_fp16.csv")
             all_results += fp16_results
+    for metric_name in ["average_latency_ms", "QPS", "memory", "diff_90_percentile"]:
+        output_summary(all_results, f"longformer_base_fp16_{metric_name}.csv", metric_name)
 
+    all_results = []
+    for _ in range(total_runs):
         for batch_size in fp32_batch_sizes:
             fp32_results = run_experiments(use_fp16=False, batch_size=batch_size)
             output_details(fp32_results, "longformer_base_fp32.csv")
             all_results += fp32_results
-
     for metric_name in ["average_latency_ms", "QPS", "memory", "diff_90_percentile"]:
-        output_summary(all_results, f"longformer_base_{metric_name}.csv", metric_name)
+        output_summary(all_results, f"longformer_base_fp32_{metric_name}.csv", metric_name)
 
 
 if __name__ == "__main__":
