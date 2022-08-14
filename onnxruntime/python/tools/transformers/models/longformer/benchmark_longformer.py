@@ -611,7 +611,7 @@ def run_tests(
     print("ORT_TRANSFORMER_OPTIONS=", option_value)
 
     results = []
-    test_times = 100
+    test_times = 1000
     sequence_lengths = [4096, 2048, 1024, 512]
     batch_sizes = [batch_size]
     for model_name in ["longformer-base-4096"]:
@@ -818,7 +818,7 @@ def main():
         fp16_batch_sizes = [64, 32, 16, 8, 4, 2, 1]
         fp32_batch_sizes = [16, 8, 4, 2, 1]
 
-    total_runs = 5
+    total_runs = 1
     all_results = []
     for _ in range(total_runs):
         for batch_size in fp16_batch_sizes:
