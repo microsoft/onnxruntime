@@ -26,7 +26,6 @@ const TransformerOptions* TransformerOptions::GetInstance() {
       std::cout << "ORT_TRANSFORMER_OPTIONS: IsPrecisionMode=" << instance.IsPrecisionMode()
                 << ",DisablePersistentSoftmax=" << instance.DisablePersistentSoftmax()
                 << ",DisableHalf2=" << instance.DisableHalf2()
-                << ",EnableExperiment=" << instance.EnableExperiment()
                 << std::endl;
   }
 

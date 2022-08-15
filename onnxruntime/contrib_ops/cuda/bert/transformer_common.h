@@ -19,14 +19,10 @@ class TransformerOptions {
 
   bool DisableHalf2() const { return disable_half2_; }
 
-  bool EnableExperiment() const { return enable_experiment_; }
-
   void Initialize(int value) {
     is_precision_mode_ = (value & 0x01) > 0;
     disable_persistent_softmax_ = (value & 0x02) > 0;
     disable_half2_ = (value & 0x04) > 0;
-    enable_experiment_ = (value & 0x08) > 0;
-
     initialized_ = true;
   }
 
@@ -41,8 +37,6 @@ class TransformerOptions {
   bool disable_half2_{false};
 
   bool initialized_{false};
-
-  bool enable_experiment_{false};
 
   static TransformerOptions instance;
 };
