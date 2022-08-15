@@ -807,6 +807,15 @@ if (onnxruntime_USE_TVM)
           --target_file $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/_ld_preload.py
   )
 
+  if (onnxruntime_TVM_USE_HASH)
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+      ${IPP_CRYPTO_LIB_DIR}/${IPP_CRYPTO_DLL_NAME}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    )
+  endif()
+
 endif()
 
 if (onnxruntime_USE_DML)

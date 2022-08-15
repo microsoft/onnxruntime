@@ -323,6 +323,8 @@ if platform.system() == "Linux":
     libs.append(providers_tensorrt_or_migraphx)
     # Nuphar Libs
     libs.extend(["libtvm.so.0.5.1"])
+    # TVM Libs
+    libs.extend(["libippcp.so"])
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.so"])
 elif platform.system() == "Darwin":
@@ -346,6 +348,8 @@ else:
     libs.extend(["DirectML.dll"])
     # Nuphar Libs
     libs.extend(["tvm.dll"])
+    # TVM Libs
+    libs.extend(["ippcp.dll"])
     if nightly_build:
         libs.extend(["onnxruntime_pywrapper.dll"])
 
