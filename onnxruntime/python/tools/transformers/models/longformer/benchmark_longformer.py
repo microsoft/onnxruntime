@@ -14,7 +14,7 @@
 #   pip3 install onnx transformers onnxruntime-gpu numpy sympy coloredlogs psutil py3nvml
 #   python benchmark_longformer.py
 #
-# When there is no parameter, all avaiable tests will run on the longformer-base-4096 pretrained model.
+# When there is no parameter, all available tests will run on the longformer-base-4096 pretrained model.
 
 # Benchmark the latency:
 #   python benchmark_longformer.py --model longformer-base-4096 --batch_sizes 1 --sequence_lengths 512 1024 2048 4096 \
@@ -28,12 +28,13 @@
 #   python benchmark_longformer.py --model longformer-base-4096 --batch_sizes 1 --sequence_lengths 4096 \
 #          --global_lengths 8 --onnx ./longformer-base-4096_fp32.onnx --memory -t 10 --engine onnxruntime
 #
-# By default, compact memory kernel is enabled. To enable it, set environment variable ORT_LONGFORMER_COMPACT_MEMORY=0.
+# By default, compact memory kernel is enabled. To disable it, set environment variable ORT_LONGFORMER_COMPACT_MEMORY=0.
 
 import argparse
 import csv
 import math
 import os
+import re
 import sys
 import timeit
 from datetime import datetime
@@ -359,16 +360,17 @@ def test_ort(args, device):
     if session is None:
         raise RuntimeError(f"Failed to create ORT session from ONNX file {onnx_model_path}")
 
-    use_compact_memory = os.environ.get("ORT_LONGFORMER_COMPACT_MEMORY", "0") == "1"
+    use_compact_memory = os.environ.get("ORT_LONGFORMER_COMPACT_MEMORY", "1") == "1"
     description = onnx_model_path
-    if onnx_model_path.endswith("_f1_fp16.onnx") or onnx_model_path.endswith("_f1_fp32.onnx"):
-        description += "[merged_weights]"
-    if use_compact_memory:
-        description += "[compact_memory]"
+    if not use_compact_memory:
+        description += "[non_compact_memory]"
+
     if args.use_half4_float4:
         description += "[half4]" if precision == "fp16" else "[float4]"
     elif args.use_half2_float2:
         description += "[half2]" if precision == "fp16" else "[float2]"
+    else:
+        description += "[half]" if precision == "fp16" else "[float]"
 
     return test_ort_latency(
         device,
@@ -696,8 +698,8 @@ def output_summary(results, csv_filename, data_field="average_latency_ms"):
         sequence_lengths.sort()
 
         data_names = []
-        for batch_size in batch_sizes:
-            for sequence_length in sequence_lengths:
+        for sequence_length in sequence_lengths:
+            for batch_size in batch_sizes:
                 data_names.append(f"b{batch_size}_s{sequence_length}")
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=header_names + data_names)
@@ -719,7 +721,8 @@ def output_summary(results, csv_filename, data_field="average_latency_ms"):
                         row.update(headers)
                     else:
                         for k in header_names:
-                            assert row[k] == headers[k]
+                            if row[k] != headers[k]:
+                                raise RuntimeError("Description shall be unique")
 
                     batch_size = result["batch_size"]
                     sequence_length = result["sequence_length"]
@@ -745,7 +748,7 @@ def output_summary(results, csv_filename, data_field="average_latency_ms"):
         csv_file.flush()
 
 
-def run_experiments(use_fp16, batch_size):
+def run_experiments(use_fp16, batch_size, is_baseline=False):
     """Run experiments to compare different algorithms on one batch size"""
     test_results = run_tests(
         use_fp16=use_fp16,
@@ -754,6 +757,9 @@ def run_experiments(use_fp16, batch_size):
         use_half4_float4=True,
         batch_size=batch_size,
     )
+
+    if is_baseline:
+        return test_results
 
     test_results += run_tests(
         use_fp16=use_fp16,
@@ -818,24 +824,31 @@ def main():
         fp16_batch_sizes = [64, 32, 16, 8, 4, 2, 1]
         fp32_batch_sizes = [16, 8, 4, 2, 1]
 
+    gpu_name = re.sub(r"(?u)[^-\w.]", "_", gpu_list[0]["name"]) if gpu_list else "gpu"
+    is_baseline = os.environ.get("ORT_LONGFORMER_BASELINE", "0") == "1"
+    experiment_name = f"longformer_base_fp16_{gpu_name}" + ("_baseline" if is_baseline else "")
+    print(
+        f"experiment_name={experiment_name}, fp16_batch_sizes={fp16_batch_sizes}, fp32_batch_sizes={fp32_batch_sizes}"
+    )
+
     total_runs = 1
     all_results = []
     for _ in range(total_runs):
         for batch_size in fp16_batch_sizes:
-            fp16_results = run_experiments(use_fp16=True, batch_size=batch_size)
+            fp16_results = run_experiments(use_fp16=True, batch_size=batch_size, is_baseline=is_baseline)
             output_details(fp16_results, "longformer_base_fp16.csv")
             all_results += fp16_results
     for metric_name in ["average_latency_ms", "QPS", "memory", "diff_90_percentile"]:
-        output_summary(all_results, f"longformer_base_fp16_{metric_name}.csv", metric_name)
+        output_summary(all_results, f"{experiment_name}_{metric_name}.csv", metric_name)
 
     all_results = []
     for _ in range(total_runs):
         for batch_size in fp32_batch_sizes:
-            fp32_results = run_experiments(use_fp16=False, batch_size=batch_size)
+            fp32_results = run_experiments(use_fp16=False, batch_size=batch_size, is_baseline=is_baseline)
             output_details(fp32_results, "longformer_base_fp32.csv")
             all_results += fp32_results
     for metric_name in ["average_latency_ms", "QPS", "memory", "diff_90_percentile"]:
-        output_summary(all_results, f"longformer_base_fp32_{metric_name}.csv", metric_name)
+        output_summary(all_results, f"{experiment_name}_{metric_name}.csv", metric_name)
 
 
 if __name__ == "__main__":
