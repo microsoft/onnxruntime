@@ -6,22 +6,30 @@
 
 """Tests for the save_activations module."""
 
+import numpy as np
+import onnx
 import tempfile
 import unittest
+from onnx import TensorProto, helper, numpy_helper
 from pathlib import Path
 from typing import Dict, List
 
-import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
-
 import onnxruntime
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
+from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantizationMode, QuantType, quantize_static
 from onnxruntime.quantization.calibrate import CalibrationDataReader
+from onnxruntime.quantization.onnx_model import ONNXModel
 from onnxruntime.quantization.qdq_loss_debug import (
     collect_activations,
     create_activation_matching,
+    create_weight_matching,
     modify_model_output_intermediate_tensors,
+)
+from onnxruntime.quantization.quant_utils import (
+    DEQUANT_OP_NAME,
+    find_by_name,
+    load_model,
+    model_has_infer_metadata,
+    save_and_reload_model,
 )
 
 
@@ -95,13 +103,13 @@ def construct_test_model1(test_model_path: str, activations_as_outputs=False):
 class TestDataReader(CalibrationDataReader):
     """Random Data Input Generator"""
 
-    def __init__(self):
+    def __init__(self, input_shape=[1, 3, 1, 3]):
         self.preprocess_flag = True
         self.enum_data_dicts = []
         self.count = 2
         self.input_data_list = []
         for _ in range(self.count):
-            self.input_data_list.append(np.random.normal(0, 0.33, [1, 3, 1, 3]).astype(np.float32))
+            self.input_data_list.append(np.random.normal(0, 0.33, input_shape).astype(np.float32))
 
     def get_next(self):
         if self.preprocess_flag:
@@ -214,6 +222,94 @@ class TestSaveActivations(unittest.TestCase):
             self.assertTrue(compare_dict[tensor_name]["post_qdq"])
 
         self.assertFalse(compare_dict.get("Conv1Out"))
+
+    def test_create_weight_matching(self):
+        # Setup: create float model:
+        float_model_path = str(Path(self._tmp_model_dir.name) / "float_model3.onnx")
+        construct_test_model1(float_model_path, activations_as_outputs=False)
+
+        # Setup: create qdq model:
+        data_reader = TestDataReader()
+        qdq_model_path = str(Path(self._tmp_model_dir.name) / "qdq_model3.onnx")
+        quantize_static(
+            float_model_path,
+            qdq_model_path,
+            data_reader,
+            quant_format=QuantFormat.QDQ,
+            per_channel=False,
+            reduce_range=False,
+            activation_type=QuantType.QInt8,
+            weight_type=QuantType.QInt8,
+        )
+
+        # Call function under test and verify all weights are present
+        matched_weights = create_weight_matching(float_model_path, qdq_model_path)
+        weight_names = ["W1", "W3", "W5", "B1", "B3", "B5"]
+        for weight_name in weight_names:
+            float_array = matched_weights[weight_name]["float"]
+            dq_array = matched_weights[weight_name]["dequantized"]
+            self.assertEqual(float_array.shape, dq_array.shape)
+
+    def test_create_weight_matching_per_channel(self):
+
+        # float model
+        #         (input)
+        #           |
+        #          Add
+        #       /   |   \
+        #  MatMul MatMul MatMul
+        #     |     |      |
+        # (output)(output)(output)
+        float_model_path = str(Path(self._tmp_model_dir.name) / "float_model4.onnx")
+        initializers = []
+        input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [5, 5])
+        output_tensor1 = helper.make_tensor_value_info("M", TensorProto.FLOAT, [5, 5])
+        output_tensor2 = helper.make_tensor_value_info("N", TensorProto.FLOAT, [5, 5])
+        output_tensor3 = helper.make_tensor_value_info("O", TensorProto.FLOAT, [5, 5])
+
+        add_weight_data = np.random.normal(0, 0.1, [5, 5]).astype(np.float32)
+        initializers.append(onnx.numpy_helper.from_array(add_weight_data, name="P"))
+        matmul_weight_data_1 = np.random.normal(0, 0.1, [5, 5]).astype(np.float32)
+        initializers.append(onnx.numpy_helper.from_array(matmul_weight_data_1, name="Q"))
+        matmul_weight_data_2 = np.random.normal(0, 0.1, [5, 5]).astype(np.float32)
+        initializers.append(onnx.numpy_helper.from_array(matmul_weight_data_2, name="R"))
+        initializers.append(onnx.numpy_helper.from_array(matmul_weight_data_2, name="S"))
+
+        add_node = onnx.helper.make_node("Add", ["input", "P"], ["T"], name="Add")
+        matmul_node_1 = onnx.helper.make_node("MatMul", ["T", "Q"], ["M"], name="MatMul1")
+        matmul_node_2 = onnx.helper.make_node("MatMul", ["T", "R"], ["N"], name="MatMul2")
+        matmul_node_3 = onnx.helper.make_node("MatMul", ["T", "S"], ["O"], name="MatMul3")
+
+        graph = helper.make_graph(
+            [add_node, matmul_node_1, matmul_node_2, matmul_node_3],
+            "QDQ_Test",
+            [input_tensor],
+            [output_tensor1, output_tensor2, output_tensor3],
+            initializer=initializers,
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        onnx.save(model, float_model_path)
+
+        # Setup: create qdq model:
+        qdq_model_path = str(Path(self._tmp_model_dir.name) / "qdq_model4.onnx")
+        quantize_static(
+            float_model_path,
+            qdq_model_path,
+            TestDataReader([5, 5]),
+            quant_format=QuantFormat.QDQ,
+            per_channel=True,
+            reduce_range=False,
+            activation_type=QuantType.QInt8,
+            weight_type=QuantType.QInt8,
+        )
+
+        # Call function under test and verify all weights are present
+        matched_weights = create_weight_matching(float_model_path, qdq_model_path)
+        weight_names = ["P", "Q", "R", "S"]
+        for weight_name in weight_names:
+            float_array = matched_weights[weight_name]["float"]
+            dq_array = matched_weights[weight_name]["dequantized"]
+            self.assertEqual(float_array.shape, dq_array.shape)
 
 
 if __name__ == "__main__":
