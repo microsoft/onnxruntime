@@ -3,7 +3,7 @@ on:
   push:
     branches:
       - main
-      - csharp-docs
+      - add-csharp-docfx
 jobs:
   publish:
     runs-on: windows-latest
