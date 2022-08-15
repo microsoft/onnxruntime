@@ -6,7 +6,6 @@
 #include "contrib_ops/cuda/bert/longformer_global_impl.h"
 #include "contrib_ops/cuda/bert/longformer_attention_impl.h"
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
-#include "contrib_ops/cuda/bert/transformer_common.h"
 #include "contrib_ops/cuda/bert/longformer_attention.h"
 
 using namespace onnxruntime::cuda;
@@ -35,10 +34,8 @@ template <typename T>
 LongformerAttention<T>::LongformerAttention(const OpKernelInfo& info)
     : CudaKernel(info), LongformerAttentionBase(info) {
   use_compact_memory_ = ParseEnvironmentVariableWithDefault<bool>(longformer::kUseCompactMemory, true);
-
-  const TransformerOptions* options = TransformerOptions::GetInstance();
-  enable_experiment_ = options->EnableExperiment();
-  disable_half2_ = options->DisableHalf2();
+  use_half4_ = ParseEnvironmentVariableWithDefault<bool>(longformer::kUseHalf4, true);
+  use_half8_ = ParseEnvironmentVariableWithDefault<bool>(longformer::kUseHalf8, false);
 }
 
 template <typename T>
@@ -262,8 +259,6 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                              window_,
                                                              disable_compact_memory);
   auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize);
-  bool enable_half2_float2 = !disable_half2_;
-  bool enable_half4_float4 = enable_experiment_;
   if (!LaunchLongformerAttentionKernel(
           device_prop,
           cublas,
@@ -288,8 +283,8 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           element_size,
           disable_compact_memory,
           use_merged_qkv_weights,
-          enable_half2_float2,
-          enable_half4_float4)) {
+          use_half4_,
+          use_half8_)) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);

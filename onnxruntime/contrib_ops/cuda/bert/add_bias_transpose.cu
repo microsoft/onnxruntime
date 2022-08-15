@@ -151,15 +151,22 @@ void LaunchAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
     const half* input, const half* biases, half* output,
-    bool enable_half2_float2, bool enable_half4_float4) {
-  if (enable_half4_float4 && 0 == (head_size % 4)) {
+    bool enable_half4, bool enable_half8) {
+  if (enable_half8 && 0 == (head_size % 8)) {
+    const int H = head_size / 8;
+    const Half8* input2 = reinterpret_cast<const Half8*>(input);   // Requires input alignment to 16 bytes!
+    const Half8* biases2 = reinterpret_cast<const Half8*>(biases);
+    Half8* output2 = reinterpret_cast<Half8*>(output);
+    InvokeAddBiasTranspose<Half8>(stream, num_matrices, format, max_threads_per_block,
+                                    batch_size, sequence_length, num_heads, H, input2, biases2, output2);
+  } else if (enable_half4 && 0 == (head_size % 4)) {
     const int H = head_size / 4;
     const Half4* input2 = reinterpret_cast<const Half4*>(input);
     const Half4* biases2 = reinterpret_cast<const Half4*>(biases);
     Half4* output2 = reinterpret_cast<Half4*>(output);
     InvokeAddBiasTranspose<Half4>(stream, num_matrices, format, max_threads_per_block,
                                    batch_size, sequence_length, num_heads, H, input2, biases2, output2);
-  } else if (enable_half2_float2 && 0 == (head_size & 1)) {
+  } else if (0 == (head_size & 1)) {
     const int H = head_size / 2;
     const half2* input2 = reinterpret_cast<const half2*>(input);
     const half2* biases2 = reinterpret_cast<const half2*>(biases);
@@ -177,15 +184,15 @@ void LaunchAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
     const float* input, const float* biases, float* output,
-    bool enable_half2_float2, bool enable_half4_float4) {
-  if (enable_half4_float4 && 0 == (head_size % 4)) {
+    bool /*enable_half4*/, bool /*enable_half8*/) {
+  if (0 == (head_size % 4)) {
     const int H = head_size / 4;
     const float4* input2 = reinterpret_cast<const float4*>(input);
     const float4* biases2 = reinterpret_cast<const float4*>(biases);
     float4* output2 = reinterpret_cast<float4*>(output);
     InvokeAddBiasTranspose<float4>(stream, num_matrices, format, max_threads_per_block,
                                    batch_size, sequence_length, num_heads, H, input2, biases2, output2);
-  } else if (enable_half2_float2 && 0 == (head_size & 1)) {
+  } else if (0 == (head_size & 1)) {
     const int H = head_size / 2;
     const float2* input2 = reinterpret_cast<const float2*>(input);
     const float2* biases2 = reinterpret_cast<const float2*>(biases);

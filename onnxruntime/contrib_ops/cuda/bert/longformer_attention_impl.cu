@@ -862,8 +862,8 @@ bool LongformerQkvToContext(
     size_t softmax_workspace_size,
     bool disable_compact_memory,
     bool use_merged_qkv_weights,
-    bool enable_half2_float2,
-    bool enable_half4_float4) {
+    bool use_half4,
+    bool use_half8) {
   T* qkv = reinterpret_cast<T*>(reinterpret_cast<char*>(workspace) + softmax_workspace_size);
 
   // Number of elements in Q, K, V, Global_Q, Global_K or Global_V are same: BxNxSxH
@@ -880,25 +880,25 @@ bool LongformerQkvToContext(
     LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
                            sequence_length, num_heads, head_size,
                            input, bias, qkv,
-                           enable_half2_float2, enable_half4_float4);
+                           use_half4, use_half8);
 
     if (max_num_global > 0 && nullptr != global_input) {
       LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
                              sequence_length, num_heads, head_size,
                              global_input, global_bias, qkv + 3 * elements,
-                             enable_half2_float2, enable_half4_float4);
+                             use_half4, use_half8);
     }
   } else {
     LaunchAddBiasTranspose(stream, 5, format, max_threads_per_block, batch_size,
                            sequence_length, num_heads, head_size,
                            input, bias, qkv,
-                           enable_half2_float2, enable_half4_float4);
+                           use_half4, use_half8);
 
     compact_global_q = (disable_compact_memory == false);
     LaunchAddBiasTranspose(stream, 1, format, max_threads_per_block, batch_size,
                            compact_global_q ? max_num_global : sequence_length, num_heads, head_size,
                            global_input + 2 * elements, global_bias, qkv + 5 * elements,
-                           enable_half2_float2, enable_half4_float4);
+                           use_half4, use_half8);
   }
   if (!CUDA_CALL(cudaPeekAtLastError())) {
     return false;
@@ -1008,8 +1008,8 @@ bool LaunchLongformerAttentionKernel(
     const size_t element_size,
     bool disable_compact_memory,
     bool use_merged_qkv_weights,
-    bool enable_half2_float2,
-    bool enable_half4_float4) {
+    bool use_half4,
+    bool use_half8) {
   CublasMathModeSetter helper(device_prop, cublas, CUBLAS_TENSOR_OP_MATH);
   size_t softmax_workspace_size = GetLongformerSoftmaxWorkspaceSize(element_size,
                                                                     batch_size,
@@ -1035,8 +1035,8 @@ bool LaunchLongformerAttentionKernel(
                                   softmax_workspace_size,
                                   disable_compact_memory,
                                   use_merged_qkv_weights,
-                                  enable_half2_float2,
-                                  enable_half4_float4);
+                                  use_half4,
+                                  use_half8);
   } else {
     return LongformerQkvToContext(device_prop, cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
@@ -1055,8 +1055,8 @@ bool LaunchLongformerAttentionKernel(
                                   softmax_workspace_size,
                                   disable_compact_memory,
                                   use_merged_qkv_weights,
-                                  enable_half2_float2,
-                                  enable_half4_float4);
+                                  false,
+                                  false);
   }
 }
 

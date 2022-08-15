@@ -21,8 +21,8 @@ class LongformerAttention final : public CudaKernel, public LongformerAttentionB
 
  private:
   bool use_compact_memory_;
-  bool enable_experiment_;
-  bool disable_half2_;
+  bool use_half8_;
+  bool use_half4_;
 };
 
 }  // namespace cuda

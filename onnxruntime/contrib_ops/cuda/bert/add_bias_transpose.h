@@ -14,11 +14,12 @@ namespace cuda {
 //              (num_matrices, batch_size, sequence_length, num_heads, head_size)  -- format 0
 //     biases:  (num_matrices, num_heads * head_size)
 //     output:  (num_matrices, batch_size, num_heads, sequence_length, head_size)
+// Note that, when Half8 is used, address of input and output buffers shall be aligned to 16 bytes.
 template <typename T>
 void LaunchAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
-    const T* input, const T* biases, T* output, bool enable_half2_float2, bool enable_half4_float4);
+    const T* input, const T* biases, T* output, bool enable_half4, bool enable_half8);
 
 }  // namespace cuda
 }  // namespace contrib
