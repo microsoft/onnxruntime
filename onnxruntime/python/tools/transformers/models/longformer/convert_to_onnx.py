@@ -32,19 +32,22 @@
 # For inference of the onnx model, you will need onnxruntime-gpu 1.7.0 or newer version.
 
 import argparse
+import inspect
 import os
 import sys
 from pathlib import Path
 
-import numpy as np
 import torch
 import transformers
-from longformer_helper import PRETRAINED_LONGFORMER_MODELS, LongformerHelper
+from longformer_helper import PRETRAINED_LONGFORMER_MODELS
+from onnx import load_model
 from packaging import version
 from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import parse_args
+from transformers import LongformerModel, LongformerSelfAttention
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+from onnx_model_bert import BertOnnxModel
 from torch_onnx_export_helper import torch_onnx_export
 
 # Supports format 0 or 1
@@ -306,10 +309,6 @@ def export_longformer(model, onnx_model_path, export_padding):
         raise RuntimeError("This tool requires transformers 4.0.0 or later.")
 
     # Here we replace LongformerSelfAttention.forward using our implementation for exporting ONNX model
-    import inspect
-
-    from transformers import LongformerSelfAttention
-
     key = " ".join(inspect.getfullargspec(LongformerSelfAttention.forward).args)
     args_to_func = {
         "self hidden_states attention_mask layer_head_mask is_index_masked is_index_global_attn is_global_attn output_attentions": my_longformer_self_attention_forward_4_3_2,
@@ -358,10 +357,6 @@ def export_longformer(model, onnx_model_path, export_padding):
 
 
 def optimize_longformer(onnx_model_path, fp32_model_path, fp16_model_path=None):
-    from onnx import load_model
-
-    from onnxruntime.transformers.onnx_model_bert import BertOnnxModel
-
     model = load_model(onnx_model_path, format=None, load_external_data=True)
     optimizer = BertOnnxModel(model)
     optimizer.optimize()
@@ -383,8 +378,6 @@ def main(args):
 
     global weight_bias_format
     weight_bias_format = 1 if args.merge_qkv else 0
-
-    from transformers import LongformerModel
 
     model = LongformerModel.from_pretrained(PRETRAINED_LONGFORMER_MODELS[model_name])
 

@@ -523,7 +523,7 @@ def output_details(results, csv_filename):
         print("No latency results for output.")
         return
 
-    with open(csv_filename, mode="a", newline="") as csv_file:
+    with open(csv_filename, mode="a", newline="", encoding="ascii") as csv_file:
         column_names = [
             "engine",
             "version",
@@ -679,7 +679,7 @@ def run_tests(
 
 
 def output_summary(results, csv_filename, data_field="average_latency_ms"):
-    with open(csv_filename, mode="a", newline="") as csv_file:
+    with open(csv_filename, mode="a", newline="", encoding="ascii") as csv_file:
         header_names = [
             "model_name",
             "precision",

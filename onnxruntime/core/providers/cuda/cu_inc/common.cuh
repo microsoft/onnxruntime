@@ -75,21 +75,42 @@ __device__ __forceinline__ bool operator>=(const half& lh, const half& rh) { ret
 __device__ __forceinline__ bool operator<=(const half& lh, const half& rh) { return (float)lh <= (float)rh; }
 
 // support half2 arithmetic for cuda architecture < 5.3
-__device__ __forceinline__ half2 operator+(const half2& lh, const half2& rh) { half2 r; r.x = lh.x + rh.x; r.y = lh.y + rh.y; return r; }
-__device__ __forceinline__ half2 operator-(const half2& lh, const half2& rh) { half2 r; r.x = lh.x - rh.x; r.y = lh.y - rh.y; return r; }
-__device__ __forceinline__ half2 operator*(const half2& lh, const half2& rh) { half2 r; r.x = lh.x * rh.x; r.y = lh.y * rh.y; return r; }
-__device__ __forceinline__ half2 operator/(const half2& lh, const half2& rh) { half2 r; r.x = lh.x / rh.x; r.y = lh.y / rh.y; return r; }
+__device__ __forceinline__ half2 operator+(const half2& lh, const half2& rh) {
+  half2 r;
+  r.x = lh.x + rh.x;
+  r.y = lh.y + rh.y;
+  return r;
+}
+
+__device__ __forceinline__ half2 operator-(const half2& lh, const half2& rh) {
+  half2 r;
+  r.x = lh.x - rh.x;
+  r.y = lh.y - rh.y;
+  return r;
+}
+
+__device__ __forceinline__ half2 operator*(const half2& lh, const half2& rh) {
+  half2 r;
+  r.x = lh.x * rh.x;
+  r.y = lh.y * rh.y;
+  return r;
+}
+
+__device__ __forceinline__ half2 operator/(const half2& lh, const half2& rh) {
+  half2 r;
+  r.x = lh.x / rh.x;
+  r.y = lh.y / rh.y;
+  return r;
+}
 #endif
 
 /// Arithmetic for half4
-struct __align__(8) Half4
-{
+struct __align__(8) Half4 {
   half2 x;
   half2 y;
 };
 
-__forceinline__ __host__ __device__ Half4 make_Half4(const half2 x, const half2 y)
-{
+__forceinline__ __host__ __device__ Half4 make_Half4(const half2 x, const half2 y) {
   Half4 r;
   r.x = x;
   r.y = y;
@@ -131,15 +152,14 @@ __device__ __forceinline__ float2 operator/(const float2& a, const float2& b) {
 }
 
 /// Arithmetic for half8
-struct __align__(16) Half8{
+struct __align__(16) Half8 {
   half2 x;
   half2 y;
   half2 z;
   half2 w;
 };
 
-__forceinline__ __host__ __device__ Half8 make_Half8(const half2 x, const half2 y, const half2 z, const half2 w)
-{
+__forceinline__ __host__ __device__ Half8 make_Half8(const half2 x, const half2 y, const half2 z, const half2 w) {
   Half8 r;
   r.x = x;
   r.y = y;
@@ -163,7 +183,6 @@ __device__ __forceinline__ Half8 operator*(const Half8& a, const Half8& b) {
 __device__ __forceinline__ Half8 operator/(const Half8& a, const Half8& b) {
   return make_Half8(a.x / b.x, a.y / b.y, a.z / b.z, a.w / b.w);
 }
-
 
 /// Arithmetic for float4
 
@@ -516,7 +535,7 @@ struct GridDim {
 };
 
 // aligned vector generates vectorized load/store on CUDA
-template<typename T, int vec_size>
+template <typename T, int vec_size>
 struct alignas(sizeof(T) * vec_size) aligned_vector {
   T val[vec_size];
 };
