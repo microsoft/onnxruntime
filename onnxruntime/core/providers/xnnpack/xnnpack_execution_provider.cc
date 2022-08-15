@@ -33,7 +33,7 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
       ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, Op)>
 
 #define KERNEL_CREATE_INFO_TYPED(Start, type, Op) \
-  BuildKernelCreateInfo<                        \
+  BuildKernelCreateInfo<                          \
       ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, type, Op)>
 
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, Conv);
@@ -47,7 +47,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSIntern
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, int8_t, QLinearConv);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearAveragePool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider,
-                                      kMSDomain, 1, QLinearSoftmax);
+                                      kMSInternalNHWCDomain, 1, QLinearSoftmax);
 
 std::unique_ptr<KernelRegistry> RegisterKernels() {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
@@ -69,7 +69,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO_TYPED(10, int8_t, QLinearConv),
       KERNEL_CREATE_INFO(1, QLinearAveragePool),
       BuildKernelCreateInfo<
-      ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSDomain, 1, QLinearSoftmax)>,
+          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearSoftmax)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -128,8 +128,8 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
 // after the first call. So we are going to do QDQ fusion in the second call
 // All nodes was collected in one sub_graph
 static void AddComputeCapabilityForNodeUnit(const NodeUnit& node_unit,
-                                     const std::function<void(std::unique_ptr<IndexedSubGraph>)>& adder,
-                                     std::unordered_map<const Node*, const NodeUnit*>& supported_map) {
+                                            const std::function<void(std::unique_ptr<IndexedSubGraph>)>& adder,
+                                            std::unordered_map<const Node*, const NodeUnit*>& supported_map) {
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
   auto process_node = [&sub_graph, &supported_map, &node_unit](const Node& node) {
     sub_graph->nodes.push_back(node.Index());
@@ -142,6 +142,10 @@ static void AddComputeCapabilityForNodeUnit(const NodeUnit& node_unit,
     }
     sub_graph->SetMetaDef(FuseQDQGroup(node_unit));
     sub_graph->use_existing_schema = true;
+    // layout insensitive ops, we will create schema in CreateFusedSubGraphNode.
+    if (node_unit.OpType() == "Softmax") {
+      sub_graph->use_existing_schema = false;
+    }
   } else {
     process_node(node_unit.GetNode());
   }
