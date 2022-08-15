@@ -18,9 +18,11 @@ std::shared_ptr<RunnerImpl> getTVMRunnerImpl(const std::shared_ptr<TvmModule>& m
                                              const std::vector<DLTensor> output_tensors) {
   const std::string& name = options.executor;
   if (name == "graph") {
-    return std::make_shared<GERunnerImpl>(mod, inputs_info, options.output_shapes, output_tensors, options.set_output_zero_copy);
+    return std::make_shared<GERunnerImpl>(mod, inputs_info, options.output_shapes,
+                                          output_tensors, options.set_output_zero_copy);
   } else if (name == "vm") {
-    return std::make_shared<VMRunnerImpl>(mod, inputs_info, options.output_shapes, output_tensors, options.set_output_zero_copy);
+    return std::make_shared<VMRunnerImpl>(mod, inputs_info, options.output_shapes,
+                                          output_tensors, options.set_output_zero_copy);
   }
   return nullptr;
 }
