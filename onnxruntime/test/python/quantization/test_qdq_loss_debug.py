@@ -19,8 +19,8 @@ import onnxruntime
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 from onnxruntime.quantization.calibrate import CalibrationDataReader
 from onnxruntime.quantization.qdq_loss_debug import (
-    create_activation_matching,
     collect_activations,
+    create_activation_matching,
     modify_model_output_intermediate_tensors,
 )
 
