@@ -72,7 +72,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   int N = gsl::narrow_cast<int>(helper.N());
   int K = gsl::narrow_cast<int>(helper.K());
   auto* Y = ctx->Output(0, {M, N});
-  HipT* out_data = reinterpret_cast<HipT*>(Y->template MutableData<T>());
+  HipT* out_data = reinterpret_cast<HipT*>(Y->MutableData<T>());
 
   HipT one = ToHipType<T>::FromFloat(1.0f);
   HipT zero = ToHipType<T>::FromFloat(0.0f);
@@ -80,7 +80,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   // broadcast bias if needed and is present
   if (beta_ != 0 && B != nullptr) {
     auto& b_shape = B->Shape();
-    const HipT* b_data = reinterpret_cast<const HipT*>(B->template Data<T>());
+    const HipT* b_data = reinterpret_cast<const HipT*>(B->Data<T>());
 
     if (b_shape.Size() == 1) {
       // if B is (), (1,) or (1, 1), broadcast the scalar
@@ -131,9 +131,9 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
       trans_A_ ? rocblas_operation_transpose : rocblas_operation_none,
       N, M, K,
       &alpha,
-      reinterpret_cast<const HipT*>(W->template Data<T>()),
+      reinterpret_cast<const HipT*>(W->Data<T>()),
       (trans_B_ ? K : N),
-      reinterpret_cast<const HipT*>(X->template Data<T>()),
+      reinterpret_cast<const HipT*>(X->Data<T>()),
       (trans_A_ ? M : K),
       // ideally we need to set the output buffer contents to 0 if bias is missing,
       // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer

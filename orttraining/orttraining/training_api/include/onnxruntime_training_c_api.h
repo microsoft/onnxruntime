@@ -9,6 +9,15 @@
 ORT_RUNTIME_CLASS(TrainingSession);  /// Type that enables performing training for the given user models.
 ORT_RUNTIME_CLASS(CheckpointState);  /// Type that holds the training states for the training session.
 
+typedef enum OrtLRSchedulerType {
+  LinearLRScheduler
+} OrtLRSchedulerType;
+
+typedef struct OrtLinearLRSchedulerParameters {
+  int64_t warmup_step_count;
+  int64_t total_step_count;
+} OrtLinearLRSchedulerParameters;
+
 struct OrtTrainingApi {
   /** \brief Load a checkpoint state from directory on disk into checkpoint_state.
   *
@@ -148,6 +157,26 @@ struct OrtTrainingApi {
                   size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs,
                   size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
 
+  /** \brief Sets the learning rate for this training session.
+  *
+  * This function allows users to set the learning rate for the training session. The current
+  * learning rate is maintained by the training session and can be overwritten by invoking
+  * this function with the desired learning rate. This function should not be used when a valid
+  * learning rate scheduler is registered. It should be used either to set the learning rate
+  * derived from a custom learning rate scheduler or to set the learning rate constant to be used
+  * throughout the training session.
+  * Please note that this function does not set the initial learning rate that may be needed
+  * by the predefined learning rate schedulers. To set the initial learning rate for learning
+  * rate schedulers, please look at the function `RegisterLRScheduler`.
+  *
+  * \param[in] sess The training session on which the learning rate needs to be set.
+  * \param[in] learning_rate Desired learning rate to set.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  */
+  ORT_API2_STATUS(SetLearningRate, _Inout_ OrtTrainingSession* sess, _In_ float learning_rate);
+
   /** \brief Performs the weight updates for the trainable parameters using the optimizer model.
   *
   * This function performs the weight update step that updates the trainable parameters such that they
@@ -164,6 +193,37 @@ struct OrtTrainingApi {
   */
   ORT_API2_STATUS(OptimizerStep, _Inout_ OrtTrainingSession* sess,
                   _In_opt_ const OrtRunOptions* run_options);
+
+  /** \brief Registers the use of the given learning rate scheduler for the training session.
+  *
+  * Register a learning rate scheduler identified by the given enum with the given
+  * learning rate scheduler parameters. Optionally specify the initial learning rate
+  * that should be used with this learning rate scheduler and training session.
+  *
+  * \param[in] sess The training session that should use the linear learning rate scheduler.
+  * \param[in] lr_scheduler_parameters Learning rate scheduler parameters struct.
+  * \param[in] initial_lr The initial learning rate to be used by the training session.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  */
+  ORT_API2_STATUS(RegisterLRScheduler, _Inout_ OrtTrainingSession* sess, _In_ void* lr_scheduler_parameters,
+                  _In_ enum OrtLRSchedulerType lr_scheduler_type, _In_opt_ const float* initial_lr);
+
+  /** \brief Update the learning rate based on the registered learing rate scheduler.
+  *
+  * Takes a scheduler step that updates the learning rate that is being used by the training session.
+  * This function should typically be called before invoking the optimizer step for each round,
+  * or as determined necessary to update the learning rate being used by the training session.
+  * Please note that a valid predefined learning rate scheduler must be first registered to invoke this
+  * function.
+  *
+  * \param[in] sess The training session that has the registered learning rate scheduler.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  */
+  ORT_API2_STATUS(SchedulerStep, _Inout_ OrtTrainingSession* sess);
 
   /** \brief Frees up the memory used up by the training session.
   *

@@ -29,8 +29,18 @@ class DnnlGraphTransformer {
   bool IsInitilizedWithExpectedValue(const onnxruntime::GraphViewer& onnx_subgraph_viewer, DnnlTensor& input_arg, float expected_value);
   void ConvRelu(DnnlSubgraph& subgraph);
   void MatMulBinaryEltwise(DnnlSubgraph& subgraph);
-  void MatMulAdd(DnnlSubgraph& subgraph);
   void RemoveMatMulIntegerZP(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer);
+  void MatMulIntegerBinaryEltwise(DnnlSubgraph& subgraph);
+  // Function used to identify and fuse post ops
+  //
+  // @param[in] subgraph the DnnlSubgrapy that we are searching for possible fusions
+  // @param[in] node is the first node to check if it contains a binary or an elementwise op
+  // @param[in/out] indicies list of all the indicies for the nodes that will be fused
+  // @param[in/out] fused_node_inputs list of all the inputs that will be part of the fused node
+  // @param[in/out] attr_node this node contains the attributes that will be passed onto the final fused node
+  //
+  // @return a pointer to the node after the last identified binary/elementwise fusion
+  DnnlNode* FuseBinaryEltwisePostOps(DnnlSubgraph& subgraph, DnnlNode* node, std::vector<size_t>& indices, std::vector<DnnlTensor*>& fused_node_inputs, DnnlNode*& attr_node);
   // This function checks a few things
   //   - the node in question has a single output
   //   - The output of the node is only consumed by a one other node

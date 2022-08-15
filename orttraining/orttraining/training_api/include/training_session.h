@@ -5,6 +5,7 @@
 #include "core/common/common.h"
 #include "module.h"
 #include "optimizer.h"
+#include "lr_scheduler.h"
 #include "checkpoint.h"
 
 namespace onnxruntime {
@@ -30,6 +31,10 @@ class TrainingSession {
                   const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
                   const ModelIdentifiers& model_identifiers);
 
+  Status RegisterScheduler(const std::function<
+                               std::unique_ptr<LRSchedulerBase>(std::shared_ptr<Optimizer>)>& get_scheduler,
+                           std::optional<float> initial_lr);
+
   size_t GetTrainModelOutputCount() const noexcept;
 
   size_t GetEvalModelOutputCount() const noexcept;
@@ -50,6 +55,10 @@ class TrainingSession {
 
   Status OptimizerStep(const RunOptions& run_options);
 
+  Status SetLearningRate(float learning_rate) noexcept;
+
+  Status SchedulerStep() noexcept;
+
   Status CreateCheckpointState(CheckpointState& chkpt_state, bool save_optimizer_state) const;
 
  private:
@@ -57,7 +66,8 @@ class TrainingSession {
 
   const std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters_;
   std::unique_ptr<Module> module_;
-  std::unique_ptr<Optimizer> optimizer_;
+  std::shared_ptr<Optimizer> optimizer_;
+  std::unique_ptr<LRSchedulerBase> scheduler_;
 };
 }  // namespace api
 }  // namespace training

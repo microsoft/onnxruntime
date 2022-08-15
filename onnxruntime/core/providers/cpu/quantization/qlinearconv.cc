@@ -70,8 +70,8 @@ class QLinearConv : public OpKernel {
     ORT_ENFORCE(IsValidQuantParam(W_zero_point, M),
                 "QLinearConv : filter zero point shape invalid");
 
-    X_zero_point_value = *(X_zero_point->template Data<ActType>());
-    Y_zero_point_value = *(Y_zero_point->template Data<ActType>());
+    X_zero_point_value = *(X_zero_point->Data<ActType>());
+    Y_zero_point_value = *(Y_zero_point->Data<ActType>());
 
     const int64_t W_zero_point_size = W_zero_point->Shape().Size();
     const auto* W_zero_point_data = static_cast<const uint8_t*>(W_zero_point->DataRaw());
@@ -94,12 +94,12 @@ class QLinearConv : public OpKernel {
     ORT_ENFORCE(IsValidQuantParam(W_scale, M),
                 "QLinearConv : filter scale shape invalid");
 
-    auto X_scale_value = *(X_scale->template Data<float>());
-    auto Y_scale_value = *(Y_scale->template Data<float>());
+    auto X_scale_value = *(X_scale->Data<float>());
+    auto Y_scale_value = *(Y_scale->Data<float>());
 
     std::vector<float> output_scales;
     const int64_t W_scale_size = W_scale->Shape().Size();
-    const auto* W_scale_data = W_scale->template Data<float>();
+    const auto* W_scale_data = W_scale->Data<float>();
     output_scales.resize(static_cast<size_t>(W_scale_size));
     for (int64_t i = 0; i < W_scale_size; i++) {
       output_scales[i] = (X_scale_value * W_scale_data[i] / Y_scale_value);
@@ -116,13 +116,13 @@ class QLinearConv : public OpKernel {
    *        horizontally partition the activation tensor into thin
    *        slices. This function decides the thickness of that slice,
    *        which is also number of output pixels each job produces.
-   * 
+   *
    * @param degree_of_parallelism  Configured thread parallelism for this run
    * @param output_image_size      Number of pixels in the output image
    * @param group_output_channels  Number of filters in this group.
    * @param kernel_dim             Dimension of a filter
    * @param comp_kernel_stride     Best stride to fully utilize hand tuned computing kernel.
-   * @return 
+   * @return
   */
   static int32_t ComputeOutputStride(int32_t degree_of_parallelism,
                                      int64_t output_image_size,
@@ -183,7 +183,7 @@ class QLinearConv : public OpKernel {
       return false;
     }
 
-    auto X_zero_point_value = *(X_zero_point->template Data<ActType>());
+    auto X_zero_point_value = *(X_zero_point->Data<ActType>());
     const size_t W_zero_point_size = static_cast<size_t>(W_zero_point->Shape().Size());
     const auto* W_zero_point_data = W_zero_point->Data<int8_t>();
     if (!std::all_of(W_zero_point_data, W_zero_point_data + W_zero_point_size, [](int8_t v) { return v == 0; })) {
@@ -196,7 +196,7 @@ class QLinearConv : public OpKernel {
     if (packed_size != 0) {
       const Tensor* B = nullptr;
       Info().TryGetConstantInput(8, &B);
-      const auto* Bdata = B != nullptr ? B->template Data<int32_t>() : nullptr;
+      const auto* Bdata = B != nullptr ? B->Data<int32_t>() : nullptr;
 
       column_sums_.resize(output_channels);
       const int8_t* sdata = (const int8_t*)Wdata;
@@ -629,9 +629,9 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
     gemm_output_buffer = BufferUniquePtr(gemm_output_data, BufferDeleter(alloc));
   }
 
-  const auto* Xdata = X->template Data<ActType>();
-  const auto* Bdata = B != nullptr ? B->template Data<int32_t>() : nullptr;
-  auto* Ydata = Y->template MutableData<ActType>();
+  const auto* Xdata = X->Data<ActType>();
+  const auto* Bdata = B != nullptr ? B->Data<int32_t>() : nullptr;
+  auto* Ydata = Y->MutableData<ActType>();
 
   BufferUniquePtr transpose_input_buffer;
   BufferUniquePtr transpose_output_buffer;
@@ -680,7 +680,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   * it can be in cache entirely. Then we simply partition A horizontally into
   * thin slices along M dimension. This would ensure that the slice of A fits
   * into the cache and reduce the chance of kernel waiting for memory.
-  * 
+  *
   * The thickness of A slice should be multiple of kernel stride M. Since
   * we have to choose from many different kernels, the logic of finding
   * the stride M is hacky.

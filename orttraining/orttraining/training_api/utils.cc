@@ -35,22 +35,20 @@ void GetGraphInputOutputNames(const std::unique_ptr<onnxruntime::InferenceSessio
 }
 
 bool GetParamNameFromSuffix(const std::string& name, const std::string& suffix, std::string& param_name) {
-  if (suffix.size() >= name.size()) {
-    param_name = "";
+  if (suffix.size() > name.size()) {
     return false;
   }
-  bool endswith = std::equal(suffix.rbegin(), suffix.rend(), name.rbegin());
-  if (endswith) {
+
+  if (std::equal(suffix.rbegin(), suffix.rend(), name.rbegin())) {
     param_name = name.substr(0, name.length() - suffix.length());
     return true;
   } else {
-    param_name = "";
     return false;
   }
 }
 
 bool GetParamNameFromGradient(const std::string& grad_name, std::string& param_name) {
-  for (auto& suffix : GRAD_SUFFIX) {
+  for (const auto& suffix : GRAD_SUFFIX) {
     if (GetParamNameFromSuffix(grad_name, suffix, param_name)) {
       return true;
     }

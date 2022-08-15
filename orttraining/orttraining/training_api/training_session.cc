@@ -21,6 +21,19 @@ TrainingSession::TrainingSession(const Environment& session_env,
                            session_options, session_env, providers)
                      : std::unique_ptr<Optimizer>()} {}
 
+Status TrainingSession::RegisterScheduler(
+    const std::function<std::unique_ptr<LRSchedulerBase>(std::shared_ptr<Optimizer>)>& get_scheduler,
+    std::optional<float> initial_lr) {
+  scheduler_ = std::move(get_scheduler(optimizer_));
+  ORT_RETURN_IF_NOT(scheduler_, "The provided instance of the learning rate scheduler is a nullptr.");
+
+  if (initial_lr.has_value()) {
+    ORT_RETURN_IF_ERROR(optimizer_->SetInitialLearningRate(initial_lr.value()));
+  }
+
+  return Status::OK();
+}
+
 size_t TrainingSession::GetTrainModelOutputCount() const noexcept {
   return module_->GetTrainModelOutputCount();
 }
@@ -64,6 +77,17 @@ Status TrainingSession::CreateCheckpointState(CheckpointState& chkpt_state, bool
   }
 
   return Status::OK();
+}
+
+Status TrainingSession::SetLearningRate(float learning_rate) noexcept {
+  ORT_RETURN_IF_ERROR(optimizer_->SetLearningRate(learning_rate));
+
+  return Status::OK();
+}
+
+Status TrainingSession::SchedulerStep() noexcept {
+  ORT_RETURN_IF_NOT(scheduler_, "No learning rate schedler was registered. Please register a valid learning rate scheduler");
+  return scheduler_->Step();
 }
 
 }  // namespace api

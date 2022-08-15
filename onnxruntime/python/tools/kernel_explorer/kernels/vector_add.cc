@@ -18,8 +18,7 @@ class VectorAdd: public Operator {
     x_(reinterpret_cast<T*>(x.ptr())),
     y_(reinterpret_cast<T*>(y.ptr())),
     z_(reinterpret_cast<T*>(z.ptr())),
-    n_(n),
-    Operator() {}
+    n_(n) {}
 
   void Run() {
     LaunchVectorAdd<T, ThreadsPerBlock, VecSize>(stream_, x_, y_, z_, n_);
@@ -39,8 +38,7 @@ class VectorAddTunable: public Operator {
     x_(reinterpret_cast<T*>(x.ptr())),
     y_(reinterpret_cast<T*>(y.ptr())),
     z_(reinterpret_cast<T*>(z.ptr())),
-    n_(n),
-    Operator() {
+    n_(n) {
     op_.EnableTuning();
   }
 

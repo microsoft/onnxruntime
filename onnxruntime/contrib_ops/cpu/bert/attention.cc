@@ -427,7 +427,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const int batch_size = static_cast<int>(shape[0]);
   const int sequence_length = static_cast<int>(shape[1]);
   const int input_hidden_size = static_cast<int>(shape[2]);
-  
+
   int hidden_size;
 
   if (qkv_hidden_sizes_.size() == 0) {
@@ -480,9 +480,9 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
   {
     const int loop_len = 3 * batch_size * num_heads_;
-    const auto* input_data = input->template Data<T>();
-    const auto* weights_data = weights ? weights->template Data<T>() : nullptr;
-    const auto* bias_data = bias->template Data<T>();
+    const auto* input_data = input->Data<T>();
+    const auto* weights_data = weights ? weights->Data<T>() : nullptr;
+    const auto* bias_data = bias->Data<T>();
 
     const double cost =
         static_cast<double>(sequence_length) * static_cast<double>(head_size) * static_cast<double>(input_hidden_size);

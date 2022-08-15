@@ -7,7 +7,7 @@ ORTMODULE_BUILD=false
 TARGET_ROCM=false
 CU_VER="11.1"
 ROCM_VER="5.1.1"
-TORCH_VERSION='1.10.0'
+TORCH_VERSION='1.11.0'
 USE_CONDA=false
 
 while getopts p:h:d:v:tmurc parameter_Option
@@ -46,6 +46,8 @@ elif [[ "$PYTHON_VER" = "3.9" && -d "/opt/python/cp39-cp39"  ]]; then
    PYTHON_EXE="/opt/python/cp39-cp39/bin/python3.9"
 elif [[ "$PYTHON_VER" = "3.10" && -d "/opt/python/cp310-cp310"  ]]; then
    PYTHON_EXE="/opt/python/cp310-cp310/bin/python3.10"
+elif [[ "$PYTHON_VER" = "3.11" && -d "/opt/python/cp311-cp311"  ]]; then
+   PYTHON_EXE="/opt/python/cp311-cp311/bin/python3.11"
 else
    PYTHON_EXE="/usr/bin/python${PYTHON_VER}"
 fi

@@ -213,6 +213,17 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::EvalStep, _In_ const OrtTrainingSession* se
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtTrainingApis::SetLearningRate, _Inout_ OrtTrainingSession* sess,
+                    _In_ float learning_rate) {
+  API_IMPL_BEGIN
+
+  auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->SetLearningRate(learning_rate));
+
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtTrainingApis::OptimizerStep, _Inout_ OrtTrainingSession* sess,
                     _In_opt_ const OrtRunOptions* run_options) {
   API_IMPL_BEGIN
@@ -223,6 +234,50 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::OptimizerStep, _Inout_ OrtTrainingSession* 
   } else {
     ORT_API_RETURN_IF_STATUS_NOT_OK(session->OptimizerStep(*run_options));
   }
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::RegisterLRScheduler, _Inout_ OrtTrainingSession* sess,
+                    _In_ void* lr_scheduler_parameters, _In_ enum OrtLRSchedulerType lr_scheduler_type,
+                    _In_opt_ const float* initial_lr) {
+  API_IMPL_BEGIN
+
+  OrtStatus* status = nullptr;
+
+  auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
+
+  if (!lr_scheduler_parameters) {
+    return OrtApis::CreateStatus(ORT_FAIL, "The provided learning rate scheduler parameters is a nullptr.");
+  }
+
+  switch (lr_scheduler_type) {
+    case OrtLRSchedulerType::LinearLRScheduler: {
+      auto parameters = reinterpret_cast<OrtLinearLRSchedulerParameters*>(lr_scheduler_parameters);
+      ORT_API_RETURN_IF_STATUS_NOT_OK(
+          session->RegisterScheduler([&parameters](auto optimizer) {
+            return std::make_unique<onnxruntime::training::api::LinearLRScheduler>(
+                optimizer, parameters->warmup_step_count, parameters->total_step_count);
+          },
+                                     initial_lr ? std::optional<float>(*initial_lr) : std::nullopt));
+      break;
+    }
+    default: {
+      status = OrtApis::CreateStatus(ORT_FAIL, "Could not decipher the OrtLRSchedulerType from the given argument.");
+      break;
+    }
+  }
+
+  return status;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::SchedulerStep, _Inout_ OrtTrainingSession* sess) {
+  API_IMPL_BEGIN
+
+  auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->SchedulerStep());
 
   return nullptr;
   API_IMPL_END
@@ -271,7 +326,10 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::ResetGrad,
     &OrtTrainingApis::TrainStep,
     &OrtTrainingApis::EvalStep,
+    &OrtTrainingApis::SetLearningRate,
     &OrtTrainingApis::OptimizerStep,
+    &OrtTrainingApis::RegisterLRScheduler,
+    &OrtTrainingApis::SchedulerStep,
     &OrtTrainingApis::ReleaseTrainingSession,
     &OrtTrainingApis::ReleaseCheckpointState,
 };

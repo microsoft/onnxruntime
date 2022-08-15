@@ -14,6 +14,8 @@ __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
 onnx_domain = "ai.onnx"
 ms_domain = "com.microsoft"
+QUANT_OP_NAME = "QuantizeLinear"
+DEQUANT_OP_NAME = "DequantizeLinear"
 
 type_to_name = {
     1: "FLOAT",
@@ -117,8 +119,7 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
 
 
 def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
-    """
-    Calculate the scale s and zero point z for the quantization relation
+    """Calculate the scale s and zero point z for the quantization relation
     r = s(q-z), where r are the original values and q are the corresponding
     quantized values.
 
@@ -136,6 +137,9 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
 
     """
 
+    if qmin > 0 or qmax < 0:
+        raise ValueError(f"qmin and qmax must meet requirement: qmin <= 0 <= qmax while qmin:{qmin}, qmmax:{qmax}")
+
     # Adjust rmin and rmax such that 0 is included in the range. This is
     # required to make sure zero can be represented by the quantization data
     # type (i.e. to make sure qmin <= zero_point <= qmax)
@@ -147,8 +151,12 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
         rmin = -absmax
         rmax = +absmax
 
-    scale = (rmax - rmin) / float(qmax - qmin) if rmax != rmin else 1.0
-    zero_point = round(qmin - rmin / scale)
+    scale = (rmax - rmin) / float(qmax - qmin)
+    if scale < numpy.finfo(numpy.float32).tiny:
+        scale = 1.0
+        zero_point = 0
+    else:
+        zero_point = round(qmin - rmin / scale)
 
     return [zero_point, scale]
 
@@ -549,3 +557,36 @@ def clone_model_with_shape_infer(model):
     else:
         cloned_model = save_and_reload_model(model)
     return cloned_model
+
+
+def tensor_proto_to_array(initializer):
+    if initializer.data_type == onnx_proto.TensorProto.FLOAT:
+        return onnx.numpy_helper.to_array(initializer)
+
+    raise ValueError(
+        f"Only float type is supported. Weights {initializer.name} is {type_to_name[initializer.data_type]}"
+    )
+
+
+def add_quant_suffix(tensor_name):
+    return tensor_name + "_QuantizeLinear"
+
+
+def add_quant_input_suffix(tensor_name):
+    return tensor_name + "_QuantizeLinear_Input"
+
+
+def add_quant_output_suffix(tensor_name):
+    return tensor_name + "_QuantizeLinear_Output"
+
+
+def add_dequant_suffix(tensor_name):
+    return tensor_name + "_DequantizeLinear"
+
+
+def add_dequant_input_suffix(tensor_name):
+    return tensor_name + "_DequantizeLinear_Input"
+
+
+def add_dequant_output_suffix(tensor_name):
+    return tensor_name + "_DequantizeLinear_Output"
