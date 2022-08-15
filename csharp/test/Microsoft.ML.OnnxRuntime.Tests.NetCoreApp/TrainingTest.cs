@@ -43,15 +43,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
                 state.LoadCheckpoint(checkpointPath);
                 string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
-                string evalPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
-                string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
 
-
-                //var trainingSession = new InferenceSession(trainingPath);
-                //var trainingSession = new TrainingSession(state, trainingPath, evalPath, "");
                 var trainingSession = new TrainingSession(state, trainingPath);
-
-                trainingSession.Dispose();
             }
         }
 
@@ -100,8 +93,77 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     trainingSession.TrainStep(pinnedInputs, pinnedOutputs);
                     Assert.Equal(expectedOutput, outputBuffer, new FloatComparer());
                 }
+            }
+        }
 
-                trainingSession.Dispose();
+        void RunTrainStep(TrainingSession trainingSession)
+        {
+            float[] expectedOutput = TestDataLoader.LoadTensorFromFile("loss_1.out");
+            var expectedOutputDimensions = new int[] { 1 };
+            float[] input = TestDataLoader.LoadTensorFromFile("input-0.in");
+            Int32[] labels = { 1, 1 };
+
+            // Run inference with pinned inputs and pinned outputs
+            using (DisposableListTest<FixedBufferOnnxValue> pinnedInputs = new DisposableListTest<FixedBufferOnnxValue>())
+            {
+                var memInfo = OrtMemoryInfo.DefaultInstance; // CPU
+
+                // Create inputs
+                long[] inputShape = { 2, 784 };
+                var byteSize = inputShape.Aggregate(1L, (a, b) => a * b) * sizeof(float);
+                pinnedInputs.Add(FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, input,
+                    TensorElementType.Float, inputShape, byteSize));
+
+                long[] labelsShape = { 2 };
+                byteSize = labelsShape.Aggregate(1L, (a, b) => a * b) * sizeof(Int32);
+                pinnedInputs.Add(FixedBufferOnnxValue.CreateFromMemory<Int32>(memInfo, labels,
+                    TensorElementType.Int32, labelsShape, byteSize));
+
+                var outputs = trainingSession.TrainStep(pinnedInputs);
+                var outputBuffer = outputs.ElementAtOrDefault(0);
+
+                Assert.Equal("542.loss", outputBuffer.Name);
+                Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, outputBuffer.ValueType);
+                Assert.Equal(TensorElementType.Float, outputBuffer.ElementType);
+
+                var outLabelTensor = outputBuffer.AsTensor<float>();
+                Assert.NotNull(outLabelTensor);
+                Assert.Equal(expectedOutput, outLabelTensor, new FloatComparer());
+            }
+        }
+
+        [Fact(DisplayName = "TestTrainingSessionTrainStepOrtOutput")]
+        public void TestTrainingSessionTrainStepOrtOutput()
+        {
+            using (var state = new CheckpointState())
+            {
+                Assert.NotNull(state);
+                string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+                state.LoadCheckpoint(checkpointPath);
+                string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+
+                var trainingSession = new TrainingSession(state, trainingPath);
+
+                RunTrainStep(trainingSession);
+            }
+        }
+
+
+        [Fact(DisplayName = "TestSaveCheckpoint")]
+        public void TestSaveCheckpoint()
+        {
+            using (var state = new CheckpointState())
+            {
+                Assert.NotNull(state);
+                string path = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+                state.LoadCheckpoint(path);
+                string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+                var trainingSession = new TrainingSession(state, trainingPath);
+                string savedCheckpointPath = Path.Combine(Directory.GetCurrentDirectory(), "saved_checkpoint.ckpt");
+                trainingSession.SaveCheckpoint(savedCheckpointPath, false);
+                state.LoadCheckpoint(savedCheckpointPath);
+                var trainingSession_2 = new TrainingSession(state, trainingPath);
+                RunTrainStep(trainingSession_2);
             }
         }
 
@@ -124,7 +186,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 float[] input = TestDataLoader.LoadTensorFromFile("input-0.in");
                 Int32[] labels = { 1, 1 };
 
-                // Run inference with pinned inputs and pinned outputs
+                // Run train step with pinned inputs and pinned outputs
                 using (DisposableListTest<FixedBufferOnnxValue> pinnedInputs = new DisposableListTest<FixedBufferOnnxValue>(),
                                                             pinnedOutputs = new DisposableListTest<FixedBufferOnnxValue>())
                 {
@@ -193,7 +255,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 float[] input = TestDataLoader.LoadTensorFromFile("input-0.in");
                 Int32[] labels = { 1, 1 };
 
-                // Run inference with pinned inputs and pinned outputs
+                // Run train step with pinned inputs and pinned outputs
                 using (DisposableListTest<FixedBufferOnnxValue> pinnedInputs = new DisposableListTest<FixedBufferOnnxValue>(),
                                                             pinnedOutputs = new DisposableListTest<FixedBufferOnnxValue>())
                 {
@@ -239,49 +301,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 return x.GetHashCode();
             }
-        }
-
-        // Copy of the class that is internal in the main package
-        internal class DisposableListTest<T> : List<T>, IDisposableReadOnlyCollection<T>
-            where T : IDisposable
-        {
-            public DisposableListTest() { }
-            public DisposableListTest(int count) : base(count) { }
-
-            #region IDisposable Support
-            private bool disposedValue = false; // To detect redundant calls
-
-            protected virtual void Dispose(bool disposing)
-            {
-                if (!disposedValue)
-                {
-                    if (disposing)
-                    {
-                        // Dispose in the reverse order.
-                        // Objects should typically be destroyed/disposed
-                        // in the reverse order of its creation
-                        // especially if the objects created later refer to the
-                        // objects created earlier. For homogeneous collections of objects
-                        // it would not matter.
-                        for (int i = this.Count - 1; i >= 0; --i)
-                        {
-                            this[i]?.Dispose();
-                        }
-                        this.Clear();
-                    }
-
-                    disposedValue = true;
-                }
-            }
-
-            // This code added to correctly implement the disposable pattern.
-            public void Dispose()
-            {
-                // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
-                Dispose(true);
-                GC.SuppressFinalize(this);
-            }
-            #endregion
         }
     }
 }

@@ -24,7 +24,16 @@ namespace Microsoft.ML.OnnxRuntime
         public CheckpointState()
             : base(IntPtr.Zero, true)
         {
-            var envHandle = OrtEnv.Handle; // just so it is initialized
+            if (NativeTrainingMethods.TrainingEnabled())
+            {
+                var envHandle = OrtEnv.Handle; // just so it is initialized
+            }
+            else
+            {
+                throw new InvalidOperationException("Training is disabled in the current build");
+            }
+
+
         }
 
         /// <summary>
@@ -39,7 +48,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="checkpointPath"> absolute path to checkpoint</param>
         public void LoadCheckpoint(string checkpointPath)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtLoadCheckpoint(NativeMethods.GetPlatformSerializedString(checkpointPath), out handle));
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtLoadCheckpoint(NativeMethods.GetPlatformSerializedString(checkpointPath), out handle));
         }
 
         #region SafeHandle
@@ -50,7 +59,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
         {
-            NativeMethods.OrtReleaseCheckpointState(handle);
+            NativeTrainingMethods.OrtReleaseCheckpointState(handle);
             handle = IntPtr.Zero;
             return true;
         }
