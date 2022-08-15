@@ -74,6 +74,36 @@ static Status AddBinaryOperator(int32_t op_type,
     ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
   }
 
+  const auto& output_shape = GetShapeInfoFromNodeArg(model_builder, output);
+  shaper.AddShape(output, output_shape);
+  const OperandType output_operand_type(operand_types.at(input1).type, output_shape,
+                                        output_scale, output_zero_point);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_type, input_indices,
+                                                 {output}, {output_operand_type}));
+  return Status::OK();
+}
+
+static Status AddBinaryOperator2(int32_t op_type,
+                                 ModelBuilder& model_builder,
+                                 const std::string& input1,
+                                 const std::string& input2,
+                                 bool add_activation,
+                                 int32_t fuse_code,
+                                 const std::string& output,
+                                 float output_scale = 0.0f,
+                                 int32_t output_zero_point = 0) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input1));  // input 1
+  input_indices.push_back(operand_indices.at(input2));  // input 2
+
+  if (add_activation) {
+    ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
+  }
+
   ORT_RETURN_IF_ERROR(shaper.Eltwise(input1, input2, output));
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output],
                                         output_scale, output_zero_point);
@@ -1044,6 +1074,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   const auto eps = helper.Get("epsilon", 1e-5f);
 
   const auto size = SafeInt<uint32_t>(scale_tensor.dims()[0]);
+  LOGS_DEFAULT(VERBOSE) << "batchnormalization op builder - check size int" << scale_tensor.dims()[0] << " - size";
   std::vector<float> a, b;
   a.reserve(size);
   b.reserve(size);
@@ -1098,19 +1129,19 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(tensor_b_name, b.data(), b_operand_type));
 
   // Mul
-  ORT_RETURN_IF_ERROR(AddBinaryOperator(ANEURALNETWORKS_MUL,
-                                        model_builder,
-                                        input, tensor_a_name,
-                                        true /* add_activation */, ANEURALNETWORKS_FUSED_NONE,
-                                        tensor_imm_product_name));
+  ORT_RETURN_IF_ERROR(AddBinaryOperator2(ANEURALNETWORKS_MUL,
+                                         model_builder,
+                                         input, tensor_a_name,
+                                         true /* add_activation */, ANEURALNETWORKS_FUSED_NONE,
+                                         tensor_imm_product_name));
 
   // Add
   int32_t fuse_code = model_builder.FindActivation(node_unit);
-  ORT_RETURN_IF_ERROR(AddBinaryOperator(ANEURALNETWORKS_ADD,
-                                        model_builder,
-                                        tensor_imm_product_name, tensor_b_name,
-                                        true /* add_activation */, fuse_code,
-                                        output));
+  ORT_RETURN_IF_ERROR(AddBinaryOperator2(ANEURALNETWORKS_ADD,
+                                         model_builder,
+                                         tensor_imm_product_name, tensor_b_name,
+                                         true /* add_activation */, fuse_code,
+                                         output));
 
   return Status::OK();
 }
@@ -1840,7 +1871,6 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       if (shaper[bias].size() > 1) {
         std::string bias_squeezed = model_builder.GetUniqueName(node_unit.Name() + op + "_bias_squeezed");
         // We will use squeeze all here
-        LOGS_DEFAULT(VERBOSE) << "gemmopbuilder- before call addsqueeze";
         ORT_RETURN_IF_ERROR(AddSqueezeOp(model_builder, node_unit.Name(),
                                          bias, bias_squeezed,
                                          {} /* axes */));
