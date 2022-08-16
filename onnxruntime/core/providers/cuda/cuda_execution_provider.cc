@@ -260,7 +260,9 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
       use_ep_level_unified_stream_ = true;
     }
     else {
-      stream_ = nullptr;
+      //stream_ = nullptr;
+      CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
+      use_ep_level_unified_stream_ = true;
     }
   }
 
