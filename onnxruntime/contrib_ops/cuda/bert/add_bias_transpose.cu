@@ -27,8 +27,8 @@ __device__ __forceinline__ float4 operator+(const float4& a, const float4& b) {
   return make_float4(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
 }
 
-}
-}
+}  // namespace cuda
+}  // namespace onnxruntime
 
 using namespace onnxruntime::cuda;
 
@@ -183,7 +183,7 @@ void LaunchAddBiasTranspose(
     const Half4* biases2 = reinterpret_cast<const Half4*>(biases);
     Half4* output2 = reinterpret_cast<Half4*>(output);
     InvokeAddBiasTranspose<Half4>(stream, num_matrices, format, max_threads_per_block,
-                                   batch_size, sequence_length, num_heads, H, input2, biases2, output2);
+                                  batch_size, sequence_length, num_heads, H, input2, biases2, output2);
   } else if (0 == (head_size & 1)) {
     const int H = head_size / 2;
     const half2* input2 = reinterpret_cast<const half2*>(input);
