@@ -34,7 +34,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
     bool device_found = false;
     bool device_id_found = false;
     auto available_devices = openvino_ep::BackendManager::GetGlobalContext().ie_core.GetAvailableDevices();
-    //Checking for device_type configuration
+    // Checking for device_type configuration
     if (info.device_type_ != "") {
       if (info.device_type_ == "CPU" || info.device_type_ == "GPU" || info.device_type_ == "MYRIAD") {
         for (auto device : available_devices) {
@@ -58,13 +58,14 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
       }
     }
     if (!device_found) {
-      std::string err_msg = std::string("Device Type not found : ") + info.device_type_ + "\nChoose the right precision with one of:\n";
+      std::string err_msg = std::string("Device Type not found : ") + info.device_type_ + 
+                                        "\nChoose the right precision with one of:\n";
       for (auto device : available_devices) {
         err_msg = err_msg + device + "\n";
       }
       ORT_THROW(err_msg);
     }
-    //Checking for device_id configuration
+    // Checking for device_id configuration
     if (info.device_id_ != "") {
       for (auto device : available_devices) {
         if (device.rfind(info.device_id_, 0) == 0) {
