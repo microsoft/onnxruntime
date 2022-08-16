@@ -32,22 +32,28 @@
 
 import argparse
 import csv
+import logging
 import math
 import os
 import re
 import sys
 import timeit
 import traceback
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
+from typing import Any, Dict, List
 
 import numpy as np
 import torch
 from longformer_helper import PRETRAINED_LONGFORMER_MODELS, LongformerHelper, LongformerInputs
+from transformers import LongformerModel
 
 import onnxruntime
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 import benchmark_helper
+
+logger = logging.getLogger("")
 
 
 def test_torch_latency(
@@ -59,8 +65,7 @@ def test_torch_latency(
     global_lengths,
     test_times,
     num_threads,
-    verbose,
-):
+) -> List[Dict[str, Any]]:
     if num_threads > 0:
         torch.set_num_threads(num_threads)
 
@@ -68,8 +73,7 @@ def test_torch_latency(
     for batch_size in batch_sizes:
         for sequence_length in sequence_lengths:
             for global_length in global_lengths:
-                if verbose:
-                    print(f"batch_size={batch_size} sequence_length={sequence_length} global_length={global_length}...")
+                logger.info(f"batch_size={batch_size} sequence_length={sequence_length} global_length={global_length}")
                 inputs: LongformerInputs = LongformerHelper.get_dummy_inputs(
                     batch_size, sequence_length, global_length, device
                 )
@@ -100,15 +104,14 @@ def test_torch_latency(
                     "use_compact_memory": "NA",
                 }
                 result.update(benchmark_helper.get_latency_result(runtimes, batch_size))
-
-                print(result)
+                logger.info("%s", result)
                 results.append(result)
     return results
 
 
 def test_parity(device, model, ort_session, batch_size, sequence_length, global_length, verbose=True):
     parameters = f"batch_size={batch_size} sequence_length={sequence_length} global_length={global_length}"
-    print(f"Comparing Torch and ORT outputs for {parameters}...")
+    logger.info(f"Comparing Torch and ORT outputs for {parameters}...")
     dummy_inputs: LongformerInputs = LongformerHelper.get_dummy_inputs(
         batch_size, sequence_length, global_length, device
     )
@@ -117,7 +120,7 @@ def test_parity(device, model, ort_session, batch_size, sequence_length, global_
     input_list = dummy_inputs.to_list()
     torch_outputs = model(*input_list)
     max_diff = np.amax(torch_outputs[0].cpu().numpy() - ort_outputs[0])
-    print(f"last_state max diff = {max_diff}")
+    logger.info(f"last_state max diff = {max_diff}")
     if verbose and (math.isnan(max_diff) or max_diff > 0.001):
         print("torch last_state:", torch_outputs[0])
         print("ort last_state:", ort_outputs[0])
@@ -142,7 +145,7 @@ def test_ort_latency(
     use_compact_memory=False,
     use_half4=False,
     disable_parity=False,
-):
+) -> List[Dict[str, Any]]:
     results = []
     for batch_size in batch_sizes:
         for sequence_length in sequence_lengths:
@@ -151,7 +154,7 @@ def test_ort_latency(
                     global_length <= model.config.attention_window[0]
                 ), "Limitation of current implementation: number of global token <= attention_window"
 
-                print(
+                logger.info(
                     f"Testing batch_size={batch_size} sequence_length={sequence_length} global_length={global_length} "
                     f"optimizer={optimizer}, precision={precision} io_binding={not disable_io_binding}..."
                 )
@@ -249,8 +252,8 @@ def test_ort_memory(
     global_length,
     test_times,
     num_threads,
-):
-    print(
+) -> Dict[str, Any]:
+    logger.info(
         f"Testing memory for model={onnx_model_path}, batch_size={batch_size}, sequence_length={sequence_length}, "
         f"global_length={global_length}, test_times={test_times}, num_threads={num_threads}"
     )
@@ -291,9 +294,6 @@ def load_torch_model(model_name, device):
     torch_model_name_or_dir = (
         PRETRAINED_LONGFORMER_MODELS[model_name] if model_name in PRETRAINED_LONGFORMER_MODELS else model_name
     )
-
-    from transformers import LongformerModel
-
     model = LongformerModel.from_pretrained(torch_model_name_or_dir)
     model.to(device)
     return model
@@ -301,8 +301,6 @@ def load_torch_model(model_name, device):
 
 def find_onnx_model(model_name, onnx_dir="."):
     # Search onnx model in the following order: optimized fp16 model, optimized fp32 model, raw model
-    import os.path
-
     onnx_model_path = os.path.join(onnx_dir, model_name + ".onnx")
     optimized_fp32_model = os.path.join(onnx_dir, model_name + "_fp32.onnx")
     optimized_fp16_model = os.path.join(onnx_dir, model_name + "_fp16.onnx")
@@ -313,7 +311,7 @@ def find_onnx_model(model_name, onnx_dir="."):
     return onnx_model_path
 
 
-def test_memory(args, device):
+def test_memory(args, device) -> Dict[str, Any]:
     if len(args.batch_sizes) > 1:
         raise RuntimeError("For memory test, only one batch_size (-b) is allowed.")
     if len(args.sequence_lengths) > 1:
@@ -336,7 +334,7 @@ def test_memory(args, device):
     )
 
 
-def test_ort(args, device):
+def test_ort(args, device) -> List[Dict[str, Any]]:
     model_name = args.model
 
     onnx_model_path = find_onnx_model(model_name) if not args.onnx else args.onnx
@@ -391,7 +389,7 @@ def test_ort(args, device):
     )
 
 
-def test_torch(args, device):
+def test_torch(args, device) -> List[Dict[str, Any]]:
     model = load_torch_model(args.model, device)
     return test_torch_latency(
         device,
@@ -402,17 +400,14 @@ def test_torch(args, device):
         args.global_lengths,
         args.test_times,
         args.num_threads,
-        args.verbose,
     )
 
 
-def test_latency(args, device):
+def test_latency(args, device) -> List[Dict[str, Any]]:
     if "onnxruntime" == args.engine:
         return test_ort(args, device)
-    elif "torch" == args.engine:
-        return test_torch(args, device)
 
-    raise RuntimeError("unknown engine " + args.engine)
+    return test_torch(args, device)
 
 
 def parse_arguments(argv=None):
@@ -559,10 +554,7 @@ def output_details(results, csv_filename):
     print(f"Detail results are saved to csv file: {csv_filename}")
 
 
-def run(args):
-    if not torch.cuda.is_available():
-        raise RuntimeError("Please install PyTorch with Cuda, and use a machine with GPU for testing gpu performance.")
-
+def run(args) -> List[Dict[str, Any]]:
     torch.set_grad_enabled(False)
 
     # set random seed manually to get deterministic results
@@ -572,13 +564,14 @@ def run(args):
     device = torch.device("cuda:0")
 
     if args.memory:
-        return test_memory(args, device)
-    else:
-        return test_latency(args, device)
+        return [test_memory(args, device)]  # Convert to List so that return type is same as test_latency
+
+    return test_latency(args, device)
 
 
-def launch_test(arguments):
-    from concurrent.futures import ProcessPoolExecutor
+def launch_test(arguments) -> List[Dict[str, Any]]:
+    if not torch.cuda.is_available():
+        raise RuntimeError("Please install PyTorch with Cuda, and use a machine with GPU for testing gpu performance.")
 
     with ProcessPoolExecutor() as executor:
         results = list(executor.map(run, [arguments]))
@@ -598,10 +591,10 @@ def run_tests(
 ):
     compact_memory = "1" if use_compact_memory else "0"
     os.environ["ORT_LONGFORMER_COMPACT_MEMORY"] = compact_memory
-    print(f"ORT_LONGFORMER_COMPACT_MEMORY={compact_memory}")
+    logger.info(f"ORT_LONGFORMER_COMPACT_MEMORY={compact_memory}")
 
     os.environ["ORT_LONGFORMER_USE_HALF4"] = "1" if use_half4 else "0"
-    print("ORT_LONGFORMER_USE_HALF4={}".format("1" if use_half4 else "0"))
+    logger.info("ORT_LONGFORMER_USE_HALF4={}".format("1" if use_half4 else "0"))
 
     results = []
     test_times = 1000
@@ -649,22 +642,21 @@ def run_tests(
                         if run_memory:
                             args = parse_arguments(f"{arguments} -t 10 --memory".split(" "))
                             memory_results = launch_test(args)
-                            print(memory_results)
 
                         args = parse_arguments(f"{arguments} -t {test_times}".split(" "))
                         latency_results = launch_test(args)
-                    except KeyboardInterrupt:
-                        raise RuntimeError("Keyboard Interrupted")
+                    except KeyboardInterrupt as exc:
+                        raise RuntimeError("Keyboard Interrupted") from exc
                     except:
                         traceback.print_exc()
                         continue
 
                     if len(latency_results) == 1:
-                        latency_results[0]["memory"] = memory_results["memory"] if memory_results else "N/A"
+                        latency_results[0]["memory"] = memory_results[0]["memory"] if memory_results else "N/A"
                     else:
-                        raise RuntimeError("len(latency_results) is not 1")
+                        raise RuntimeError("length of latency_results should be 1")
 
-                    print(latency_results)
+                    logger.info("%s", latency_results)
 
                     results += latency_results
     return results
@@ -783,17 +775,19 @@ def run_experiments(use_fp16, batch_size, is_baseline=False):
 def main():
     torch.multiprocessing.set_start_method("spawn")
 
-    if len(sys.argv) > 1:
-        args = parse_arguments()
-        test_results = launch_test(args)
+    args = parse_arguments()
 
+    benchmark_helper.setup_logger(args.verbose)
+
+    if len(sys.argv) > 1:
+        test_results = launch_test(args)
         time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         csv_filename = f"benchmark_detail_{time_stamp}.csv"
         output_details(test_results, csv_filename)
         return
 
     gpu_list = benchmark_helper.get_gpu_info()
-    print("GPU info:", gpu_list)
+    logger.info("GPU info: %s", gpu_list)
     fp16_batch_sizes = [16, 8, 4, 2, 1]
     fp32_batch_sizes = [4, 2, 1]
     if gpu_list and gpu_list[0]["total"] >= 32 * 1024 * 1024 * 1024:  # 32 GB
@@ -802,8 +796,8 @@ def main():
 
     gpu_name = re.sub(r"(?u)[^-\w.]", "_", gpu_list[0]["name"]) if gpu_list else "gpu"
     is_baseline = os.environ.get("ORT_LONGFORMER_BASELINE", "0") == "1"
-    experiment_name = f"longformer_base_fp16_{gpu_name}" + ("_baseline" if is_baseline else "")
-    print(
+    experiment_name = f"longformer_base_{gpu_name}" + ("_baseline" if is_baseline else "")
+    logger.info(
         f"experiment_name={experiment_name}, fp16_batch_sizes={fp16_batch_sizes}, fp32_batch_sizes={fp32_batch_sizes}"
     )
 

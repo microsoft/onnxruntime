@@ -462,6 +462,7 @@ def measure_memory(is_gpu, func):
                 nvmlInit()
                 device_count = nvmlDeviceGetCount()
                 if not isinstance(device_count, int):
+                    logger.error(f"nvmlDeviceGetCount result is not integer: {device_count}")
                     return None
 
                 max_gpu_usage = [0 for i in range(device_count)]
@@ -470,6 +471,7 @@ def measure_memory(is_gpu, func):
                     for i in range(device_count):
                         info = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(i))
                         if isinstance(info, str):
+                            logger.error(f"nvmlDeviceGetMemoryInfo returns str: {info}")
                             return None
                         max_gpu_usage[i] = max(max_gpu_usage[i], info.used / 1024**2)
                     sleep(0.005)  # 5ms
@@ -485,7 +487,7 @@ def measure_memory(is_gpu, func):
                     for i in range(device_count)
                 ]
             except NVMLError as error:
-                print("Error fetching GPU information using nvml: %s", error)
+                logger.error("Error fetching GPU information using nvml: %s", error)
                 return None
 
     monitor = MemoryMonitor(False)
@@ -509,7 +511,7 @@ def measure_memory(is_gpu, func):
                 return None
 
             print(f"GPU memory usage: before={memory_before_test}  peak={max_usage}")
-            if len(memory_before_test) >= 1 and len(max_usage) >= 1 and len(memory_before_test) != len(max_usage):
+            if len(memory_before_test) >= 1 and len(max_usage) >= 1 and len(memory_before_test) == len(max_usage):
                 # When there are multiple GPUs, we will check the one with maximum usage.
                 max_used = 0
                 for i, memory_before in enumerate(memory_before_test):
