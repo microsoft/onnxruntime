@@ -10,6 +10,7 @@ from glob import glob
 from shutil import copyfile
 
 import torch
+from packaging import version
 
 from onnxruntime.training import ortmodule
 
@@ -38,6 +39,16 @@ def _install_extension(ext_name, ext_path, cwd):
         sys.exit(ret_code)
 
 
+def _get_cuda_extra_build_params():
+    nvcc_extra_args = ["-lineinfo", "-O3", "--use_fast_math"]
+    cuda_version = torch.version.cuda
+    if cuda_version is not None and version.parse(cuda_version) > version.parse("11.2"):
+        # If number is 0, the number of threads used is the number of CPUs on the machine.
+        nvcc_extra_args += ["--threads", "0"]
+
+    os.environ["ONNXRUNTIME_CUDA_NVCC_EXTRA_ARGS"] = ",".join(nvcc_extra_args)
+
+
 def build_torch_cpp_extensions():
     """Builds PyTorch CPP extensions and returns metadata."""
     # Run this from within onnxruntime package folder
@@ -53,6 +64,9 @@ def build_torch_cpp_extensions():
     os.environ["ONNXRUNTIME_ROCM_VERSION"] = (
         ortmodule.ONNXRUNTIME_ROCM_VERSION if ortmodule.ONNXRUNTIME_ROCM_VERSION is not None else ""
     )
+
+    if torch.version.cuda is not None and ortmodule.ONNXRUNTIME_CUDA_VERSION is not None:
+        _get_cuda_extra_build_params()
 
     ############################################################################
     # Pytorch CPP Extensions that DO require CUDA/ROCM

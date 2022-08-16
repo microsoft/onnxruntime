@@ -103,6 +103,10 @@ class QDQRemovableActivation(QDQOperatorBase):
     def quantize(self):
         node = self.node
 
+        # If input to this node is not quantized then keep this node
+        if not self.quantizer.is_tensor_quantized(node.input[0]):
+            return
+
         if not self.quantizer.is_activation_symmetric and self.quantizer.try_replacing_upstream_output(
             node.input[0], node.output[0]
         ):

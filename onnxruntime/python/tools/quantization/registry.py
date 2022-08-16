@@ -3,11 +3,11 @@ from .operators.argmax import QArgMax
 from .operators.attention import AttentionQuant, QDQAttention
 from .operators.base_operator import QuantOperatorBase
 from .operators.binary_op import QLinearBinaryOp
-from .operators.concat import QDQConcat, QLinearConcat
+from .operators.concat import QLinearConcat
 from .operators.conv import ConvInteger, QDQConv, QLinearConv
 from .operators.direct_q8 import Direct8BitOp, QDQDirect8BitOp
 from .operators.embed_layernorm import EmbedLayerNormalizationQuant
-from .operators.gather import GatherQuant
+from .operators.gather import GatherQuant, QDQGather
 from .operators.gavgpool import QGlobalAveragePool
 from .operators.gemm import QDQGemm, QLinearGemm
 from .operators.lstm import LSTMQuant, QDQLSTM
@@ -17,7 +17,8 @@ from .operators.pad import QPad
 from .operators.pooling import QLinearPool
 from .operators.qdq_base_operator import QDQOperatorBase
 from .operators.resize import QDQResize, QResize
-from .operators.split import QSplit
+from .operators.softmax import QDQSoftmax, QLinearSoftmax
+from .operators.split import QDQSplit, QSplit
 from .quant_utils import QuantizationMode
 
 import logging
@@ -57,6 +58,7 @@ QLinearOpsRegistry = {
     "Resize": QResize,
     "AveragePool": QLinearPool,
     "Concat": QLinearConcat,
+    "Softmax": QLinearSoftmax,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)
 
@@ -72,8 +74,10 @@ QDQRegistry = {
     "Resize": QDQResize,
     "MaxPool": QDQMaxPool,
     "AveragePool": QDQDirect8BitOp,
-    "Concat": QDQConcat,
     "MatMul": QDQMatMul,
+    "Split": QDQSplit,
+    "Gather": QDQGather,
+    "Softmax": QDQSoftmax,
 }
 
 QDQDynamicRegistry = {

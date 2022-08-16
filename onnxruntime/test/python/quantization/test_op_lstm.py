@@ -83,9 +83,9 @@ class TestOpLSTM(TestCaseTempDir):
         model_int8_qop_path = "lstm_int8.qop.onnx"
         model_int8_qop_path = Path(self._tmp_model_dir.name).joinpath(model_int8_qop_path).as_posix()
         model_int8_qdq_path = "lstm_int8.qdq.onnx"
-        model_int8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_int8_qdq_path).as_posix()
+        # model_int8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_int8_qdq_path).as_posix()
         model_uint8_qdq_path = "lstm_uint8.qdq.onnx"
-        model_uint8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_qdq_path).as_posix()
+        # model_uint8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_qdq_path).as_posix()
 
         inputarr = np.random.rand(1, 3, 2).astype(np.float32)
         
@@ -146,24 +146,6 @@ class TestOpLSTM(TestCaseTempDir):
             model_uint8_qdq_path,
             {"input": inputarr},
         )
-
-        model = onnx.load(model_uint8_qdq_path)
-        intermediate_layer_value_info = helper.ValueInfoProto()
-        intermediate_layer_value_info.name = "input_DequantizeLinear"
-        model.graph.output.append(intermediate_layer_value_info)
-        intermediate_layer_value_info = helper.ValueInfoProto()
-        intermediate_layer_value_info.name = "qkv.weight_DequantizeLinear"
-        model.graph.output.append(intermediate_layer_value_info)
-        onnx.save(model, model_uint8_qdq_path)
-
-        model = onnx.load(model_int8_qdq_path)
-        intermediate_layer_value_info = helper.ValueInfoProto()
-        intermediate_layer_value_info.name = "input_DequantizeLinear"
-        model.graph.output.append(intermediate_layer_value_info)
-        intermediate_layer_value_info = helper.ValueInfoProto()
-        intermediate_layer_value_info.name = "qkv.weight_DequantizeLinear"
-        model.graph.output.append(intermediate_layer_value_info)
-        onnx.save(model, model_int8_qdq_path)
 
         check_model_correctness(
             self,

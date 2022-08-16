@@ -21,14 +21,14 @@ class BeamSearchGpt : public BeamSearchBase<T> {
                 void* cuda_stream,
                 IConsoleDumper* cuda_dumper,
                 BeamSearchParameters& params,
-                const BeamSearchDeviceHelper::CreateGptInputsFunc& create_inputs_func,
-                const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
-                const BeamSearchDeviceHelper::TopkFunc& topk_func,
-                const BeamSearchDeviceHelper::ProcessLogitsFunc<T>& process_logits_func,
-                const BeamSearchDeviceHelper::InitBeamStateFunc<T>& init_beam_state_func,
-                const BeamSearchDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
-                const BeamSearchDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
-                const BeamSearchDeviceHelper::UpdateGptFeedsFunc<T>& update_feeds_func)
+                const GenerationDeviceHelper::CreateGptInputsFunc& create_inputs_func,
+                const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
+                const GenerationDeviceHelper::TopkFunc& topk_func,
+                const GenerationDeviceHelper::ProcessLogitsFunc<T>& process_logits_func,
+                const GenerationDeviceHelper::InitBeamStateFunc<T>& init_beam_state_func,
+                const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
+                const GenerationDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
+                const GenerationDeviceHelper::UpdateGptFeedsFunc<T>& update_feeds_func)
       : BeamSearchBase<T>(context, decoder_session_state, thread_pool,
                           cuda_stream, cuda_dumper, params,
                           topk_func, process_logits_func, device_copy_func, device_copy_int32_func),
@@ -63,10 +63,10 @@ class BeamSearchGpt : public BeamSearchBase<T> {
   GptSubgraph& gpt_subgraph_;
 
   // Device specific functions
-  BeamSearchDeviceHelper::CreateGptInputsFunc create_inputs_func_;
-  BeamSearchDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
-  BeamSearchDeviceHelper::InitBeamStateFunc<T> init_beam_state_func_;
-  BeamSearchDeviceHelper::UpdateGptFeedsFunc<T> update_feeds_func_;
+  GenerationDeviceHelper::CreateGptInputsFunc create_inputs_func_;
+  GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
+  GenerationDeviceHelper::InitBeamStateFunc<T> init_beam_state_func_;
+  GenerationDeviceHelper::UpdateGptFeedsFunc<T> update_feeds_func_;
 };
 
 template <typename T>
@@ -186,7 +186,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manage
                         parameters->max_length,
                         parameters->sequence_length);
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   const IConsoleDumper* dumper = this->GetConsoleDumper();
 #endif
   // Position ids for all iterations except the first. It uses memory buffer owned by next_positions.
@@ -203,8 +203,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manage
   int iteration_counter = 0;
   while (current_length < parameters->max_length) {
     iteration_counter++;
-
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
     auto cur_len = std::to_string(current_length);
     dumper->Print("***CurrentLength", cur_len, true);
     dumper->Print("iteration", iteration_counter, true);

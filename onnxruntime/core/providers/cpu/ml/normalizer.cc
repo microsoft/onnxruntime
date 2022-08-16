@@ -134,7 +134,7 @@ Status Normalizer::Normalize(OpKernelContext* context) const {
 
   Tensor* Y = context->Output(0, x_shape);
 
-  const T* input = X.template Data<T>();
+  const T* input = X.Data<T>();
   float* output = Y->MutableData<float>();
 
   switch (normalization_) {

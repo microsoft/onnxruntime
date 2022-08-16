@@ -605,6 +605,12 @@ inline Session::Session(Env& env, const void* model_data, size_t model_data_leng
   ThrowOnError(GetApi().CreateSessionFromArray(env, model_data, model_data_length, options, &p_));
 }
 
+inline Session::Session(Env& env, const void* model_data, size_t model_data_length,
+                        const SessionOptions& options, OrtPrepackedWeightsContainer* prepacked_weights_container) {
+  ThrowOnError(GetApi().CreateSessionFromArrayWithPrepackedWeightsContainer(env, model_data, model_data_length, options,
+                                                                            prepacked_weights_container, &p_));
+}
+
 inline std::vector<Value> Session::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
                                        const char* const* output_names, size_t output_names_count) {
   std::vector<Ort::Value> output_values;
@@ -1363,7 +1369,7 @@ inline OrtKernelInfo* CustomOpApi::CopyKernelInfo(_In_ const OrtKernelInfo* info
 
 inline void CustomOpApi::ReleaseKernelInfo(_Frees_ptr_opt_ OrtKernelInfo* info_copy) {
   api_.ReleaseKernelInfo(info_copy);
-} 
+}
 
 inline SessionOptions& SessionOptions::DisablePerSessionThreads() {
   ThrowOnError(GetApi().DisablePerSessionThreads(p_));

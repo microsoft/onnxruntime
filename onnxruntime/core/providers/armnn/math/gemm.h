@@ -69,17 +69,17 @@ class Gemm : public onnxruntime::Gemm<T> {
     LOGS_DEFAULT(VERBOSE) << "trans_A_ " << (trans_A_ == CblasTrans);
     LOGS_DEFAULT(VERBOSE) << "trans_B_ " << (trans_B_ == CblasTrans);
 
-    const T* x_data = X->template Data<T>();
-    const T* w_data = W->template Data<T>();
+    const T* x_data = X->Data<T>();
+    const T* w_data = W->Data<T>();
     const T* b_data;
     if (useBias)
-      b_data = B->template Data<T>();
-    T* y_data = Y->template MutableData<T>();
+      b_data = B->Data<T>();
+    T* y_data = Y->MutableData<T>();
 
     armnn::NetworkId* pNetworkId;
     GEMMLayersIterator it = Gemm::gemmLayers.find((OpKernel*)this);
     if (it == Gemm::gemmLayers.end()) {
-      
+
       armnn::NetworkId networkId;
 
       armnn::INetworkPtr myNetwork = armnn::INetwork::Create();

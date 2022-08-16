@@ -4,21 +4,15 @@
 # license information.
 # --------------------------------------------------------------------------
 import logging
-import os
-import struct
-from pathlib import Path
 
 import numpy as np
 import onnx
 import onnx.numpy_helper
 from onnx import onnx_pb as onnx_proto
 
-from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
-
 from .onnx_model import ONNXModel
 from .quant_utils import (
     QuantizationMode,
-    QuantizedInitializer,
     QuantizedValue,
     QuantizedValueType,
     QuantType,
@@ -28,19 +22,14 @@ from .quant_utils import (
     attribute_to_kwarg,
     compute_scale_zp,
     find_by_name,
-    generate_identified_filename,
-    get_elem_index,
-    get_mul_node,
     get_qmin_qmax_for_qType,
     get_qrange_for_qType,
     model_has_infer_metadata,
-    onnx_domain,
     quantize_data,
-    quantize_nparray,
     save_and_reload_model,
-    type_to_name,
+    tensor_proto_to_array,
 )
-from .registry import CreateDefaultOpQuantizer, CreateOpQuantizer
+from .registry import CreateOpQuantizer
 
 
 class ONNXQuantizer:
@@ -57,14 +46,14 @@ class ONNXQuantizer:
         nodes_to_quantize,
         nodes_to_exclude,
         op_types_to_quantize,
-        extra_options={},
+        extra_options=None,
     ):
         if not model_has_infer_metadata(model):
             model = save_and_reload_model(model)
         self.value_infos = {vi.name: vi for vi in model.graph.value_info}
         self.value_infos.update({ot.name: ot for ot in model.graph.output})
         self.value_infos.update({it.name: it for it in model.graph.input})
-
+        
         self.model = ONNXModel(model)
         if not static:
             self.model.replace_gemm_with_matmul()
@@ -75,7 +64,7 @@ class ONNXQuantizer:
         self.static = static  # use static quantization for inputs.
         self.fuse_dynamic_quant = False
 
-        self.extra_options = extra_options if extra_options is not None else {}
+        self.extra_options = extra_options if extra_options else {}
         self.enable_subgraph_quantization = (
             "EnableSubgraph" in self.extra_options and self.extra_options["EnableSubgraph"]
         )
@@ -142,6 +131,8 @@ class ONNXQuantizer:
         # some output from nodes will be quantized, yet itself should be treat as existing so
         # no dequantized will be applied when needed later
         self.generated_value_names = self.model.get_non_initializer_inputs()
+        # to store specified scale and zeropoint instead of calculated value, tensor_name->(scale, zeropoint)
+        self.used_scale_zp_map = {}
 
     # routines for subgraph support
     def quantize_subgraph(self, subgraph, graph_key):
@@ -246,81 +237,6 @@ class ONNXQuantizer:
             node.op_type == "QuantizeLinear" or node.op_type == "DequantizeLinear" for node in self.model.nodes()
         )
 
-    def remove_fake_quantized_nodes(self):
-        """
-        Detect and remove the quantize/dequantizelinear node pairs(fake quantized nodes in Quantization-Aware training)
-        and reconnect and update the nodes.
-        """
-        nodes_to_remove = []
-        initializers_to_remove = []
-
-        for curr_node in self.model.nodes():
-            if curr_node.op_type == "QuantizeLinear":
-                next_node, prev_node, succ_node = None, None, None
-                for child_node in self.model.get_children(curr_node):
-                    if child_node.op_type == "DequantizeLinear":
-                        next_node = child_node
-                if next_node is None:
-                    raise ValueError(
-                        "Remove fake-quantized node pair Error: DequantizeLinear node is not found for {}.".format(
-                            curr_node.name
-                        )
-                    )
-
-                prev_node = self.model.get_parent(curr_node, 0)
-                if prev_node is None:
-                    raise ValueError(
-                        "Remove fake-quantized node pair Error: Parent node is not found for {}.".format(curr_node.name)
-                    )
-
-                succ_nodes = self.model.get_children(next_node)
-                if len(succ_nodes) == 0:
-                    raise ValueError(
-                        "Remove fake-quantized node pair Error: No successive nodes found for {}.".format(
-                            next_node.name
-                        )
-                    )
-
-                # TODO: convert it to the specified input_type
-                scale_tensor_name = curr_node.input[1]
-                zp_tensor_name = curr_node.input[2]
-                initializer_scale = find_by_name(scale_tensor_name, self.model.initializer())
-                initializer_zp = find_by_name(zp_tensor_name, self.model.initializer())
-                zp_and_scale = [
-                    onnx.numpy_helper.to_array(initializer_zp),
-                    onnx.numpy_helper.to_array(initializer_scale),
-                ]
-
-                # connect the previous and successive node input and output
-                for succ_node in succ_nodes:
-                    succ_idx = get_elem_index(next_node.output[0], succ_node.input)
-                    if succ_idx != -1:
-                        succ_node.input[succ_idx] = curr_node.input[0]
-                    else:
-                        raise ValueError(
-                            "Remove fake-quantized node pair Error: Connection failed. No matched successive node input found for {}.".format(
-                                next_node.name
-                            )
-                        )
-
-                param_name = curr_node.input[0]
-                if self.quantization_params is None:
-                    self.quantization_params = {}
-                self.quantization_params[param_name] = zp_and_scale
-
-                # remove fake-quantized nodes
-                nodes_to_remove.extend([curr_node])
-                nodes_to_remove.extend([next_node])
-
-                # remove unused initializers in graph
-                initializers_to_remove.extend([initializer_scale])
-                initializers_to_remove.extend([initializer_zp])
-
-        self.model.remove_nodes(nodes_to_remove)
-        self.model.remove_initializers(initializers_to_remove)
-
-        return self.model.model
-
     def find_initializer_in_path(self, initializer_name):
         if find_by_name(initializer_name, self.model.initializer()) is not None:
             return True
@@ -362,7 +278,7 @@ class ONNXQuantizer:
 
         # Remove ununsed initializers from graph, starting from the top level graph.
         if self.parent is None:
-            _, initializers_not_found = ONNXQuantizer.CleanGraphInitializers(self.model.graph(), self.model.model)
+            _, initializers_not_found = self.model.clean_initializers()
             if len(initializers_not_found) > 0:
                 raise RuntimeError("Invalid model with unknown initializers/tensors." + str(initializers_not_found))
 
@@ -370,18 +286,6 @@ class ONNXQuantizer:
         self.model.model.producer_version = __version__
 
         return self.model.model
-
-    @staticmethod
-    def tensor_proto_to_array(initializer):
-        if initializer.data_type == onnx_proto.TensorProto.FLOAT:
-            weights = onnx.numpy_helper.to_array(initializer)
-        else:
-            raise ValueError(
-                "Only float type quantization is supported. Weights {} is {}. ".format(
-                    initializer.name, type_to_name[initializer.data_type]
-                )
-            )
-        return weights
 
     def is_input_a_weight(self, input_name):
         initializer = find_by_name(input_name, self.model.initializer())
@@ -742,6 +646,18 @@ class ONNXQuantizer:
         self.quantized_value_map[input_name] = QuantizedValue(input_name, output_name, scale_name, zp_name, qType)
         return nodes + [qlinear_node]
 
+    def set_quant_scale_zp(self, tensor_name, value):
+        assert isinstance(value, tuple) and len(value) == 2, "value must be scale(float) and zeropoint"
+        assert tensor_name not in self.used_scale_zp_map, f"{tensor_name} has been setted before"
+        self.used_scale_zp_map[tensor_name] = value
+
+    def find_quant_scale_zp(self, input_name):
+        if input_name in self.used_scale_zp_map:
+            return self.used_scale_zp_map[input_name]
+        if self.parent is not None:
+            return self.parent.find_quantized_value(input_name)
+        return (None, None)
+
     def find_quantized_value(self, input_name):
         if input_name in self.quantized_value_map:
             return self.quantized_value_map[input_name]
@@ -754,18 +670,18 @@ class ONNXQuantizer:
         Quantized the bias. Zero Point == 0 and Scale == Input_Scale * Weight_Scale
         """
 
-        # Handle case where bias already in quantizatio map
+        # Handle case where bias already in quantization map
         if bias_name in self.quantized_value_map:
             return self.quantized_value_map[bias_name].q_name
 
         # get scale for weight
         weight_scale_name = self.quantized_value_map[weight_name].scale_name
         weight_initializer = find_by_name(weight_scale_name, self.model.initializer())
-        weight_scale = self.tensor_proto_to_array(weight_initializer)
+        weight_scale = tensor_proto_to_array(weight_initializer)
 
         # get bias
         bias_initializer = find_by_name(bias_name, self.model.initializer())
-        bias_data = self.tensor_proto_to_array(bias_initializer)
+        bias_data = tensor_proto_to_array(bias_initializer)
         quantized_bias_name = bias_name + "_quantized"
 
         # get scale for input
@@ -777,11 +693,8 @@ class ONNXQuantizer:
             raise ValueError("Expected {} to be in quantized value map for static quantization".format(input_name))
         
         inputscale_initializer = find_by_name(input_scale_name, self.model.initializer())
-        # input_scale = 1.0
-        # if inputscale_initializer  is not None:
-        #     input_scale = self.tensor_proto_to_array(inputscale_initializer)
         
-        input_scale = self.tensor_proto_to_array(inputscale_initializer)
+        input_scale = tensor_proto_to_array(inputscale_initializer)
 
         # calculate scale for bias
         bias_scale = input_scale * weight_scale * beta
@@ -959,7 +872,7 @@ class ONNXQuantizer:
         scale_name = weight.name + "_scale"
 
         # Update packed weight, zero point, and scale initializers
-        weight_data = self.tensor_proto_to_array(weight)
+        weight_data = tensor_proto_to_array(weight)
         _, _, zero_point, scale, q_weight_data = quantize_data(
             weight_data.flatten().tolist(),
             qType,
@@ -1011,7 +924,7 @@ class ONNXQuantizer:
         if initializer is None:
             raise ValueError("{} is not an initializer", weight_name)
 
-        weights = self.tensor_proto_to_array(initializer)
+        weights = tensor_proto_to_array(initializer)
         channel_count = weights.shape[channel_axis]
         rmin_list = []
         rmax_list = []
@@ -1140,90 +1053,3 @@ class ONNXQuantizer:
             quantization_params[tensor_name] = compute_scale_zp(rmin, rmax, qmin, qmax, self.is_activation_symmetric)
 
         return quantization_params
-
-    # static method
-    def CleanGraphInitializers(graph, model):
-        """
-        Clean unused initializers including which is caused by quantizing the model.
-            return cleaned graph, and list of tensor names from this graph and all its subgraphes
-            that can not be found in this graph and its subgraphes
-        """
-        requesting_tensor_names = {}
-        requesting_tensor_names.update(
-            {input_name: 1 for node in graph.node for input_name in node.input if input_name}
-        )
-        requesting_tensor_names.update({g_out.name: 1 for g_out in graph.output if g_out.name})
-
-        new_nodes = []
-        for node in graph.node:
-            node_2_add = node
-            graph_attrs = [
-                attr
-                for attr in node.attribute
-                if attr.type == onnx.AttributeProto.GRAPH or attr.type == onnx.AttributeProto.GRAPHS
-            ]
-            if len(graph_attrs) > 0:
-                kwargs = {}
-                for attr in node.attribute:
-                    kv = {}
-                    if attr.type == onnx.AttributeProto.GRAPH:
-                        (
-                            cleaned_sub_graph,
-                            sub_requesting_tensor_names,
-                        ) = ONNXQuantizer.CleanGraphInitializers(attr.g, model)
-                        kv = {attr.name: cleaned_sub_graph}
-                        requesting_tensor_names.update({gn: 1 for gn in sub_requesting_tensor_names})
-                    elif attr.type == onnx.AttributeProto.GRAPHS:
-                        cleaned_graphes = []
-                        for subgraph in attr.graphs:
-                            (
-                                cleaned_sub_graph,
-                                sub_requesting_tensor_names,
-                            ) = ONNXQuantizer.CleanGraphInitializers(subgraph, model)
-                            cleaned_graphes.extend([cleaned_sub_graph])
-                            requesting_tensor_names.update({gn: 1 for gn in sub_requesting_tensor_names})
-                        kv = {attr.name: cleaned_graphes}
-                    else:
-                        kv = attribute_to_kwarg(attr)
-                    kwargs.update(kv)
-                node_2_add = onnx.helper.make_node(node.op_type, node.input, node.output, name=node.name, **kwargs)
-            new_nodes.extend([node_2_add])
-
-        graph.ClearField("node")
-        graph.node.extend(new_nodes)
-
-        generated_names = {}
-        generated_names.update({output_name: 1 for node in graph.node for output_name in node.output if output_name})
-        for gn in generated_names:
-            requesting_tensor_names.pop(gn, None)
-
-        name_to_input = {}
-        for input in graph.input:
-            name_to_input[input.name] = input
-
-        unused_ini_tensors = []
-        for ini_tensor in graph.initializer:
-            if ini_tensor.name in requesting_tensor_names:
-                requesting_tensor_names.pop(ini_tensor.name, None)
-            else:
-                # mark it to remove, remove here directly will cause mis-behavier
-                unused_ini_tensors.append(ini_tensor)
-
-        for ini_tensor in unused_ini_tensors:
-            graph.initializer.remove(ini_tensor)
-            if ini_tensor.name in name_to_input:
-                try:
-                    graph.input.remove(name_to_input[ini_tensor.name])
-                except StopIteration:
-                    if model.ir_version < 4:
-                        print(
-                            "Warning: invalid weight name {} found in the graph (not a graph input)".format(
-                                ini_tensor.name
-                            )
-                        )
-
-        for input in graph.input:
-            if input.name in requesting_tensor_names:
-                requesting_tensor_names.pop(input.name, None)
-
-        return graph, requesting_tensor_names

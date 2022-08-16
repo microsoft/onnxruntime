@@ -55,7 +55,7 @@ Status Subgraph::Setup(const SessionState& session_state,
   session_state_ = &session_state;
   subgraph_session_state_ = &subgraph_session_state;
 
-  std::vector<std::string> feed_names;
+  InlinedVector<std::string_view> feed_names;
   feed_names.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
 
   // Use the first output (logits) to find device location.
@@ -69,25 +69,24 @@ Status Subgraph::Setup(const SessionState& session_state,
     feed_names.push_back(entry->Name());
   }
 
-  std::vector<OrtDevice> feed_locations;
-  feed_locations.resize(feed_names.size());
+  InlinedVector<OrtDevice> feed_locations;
+  feed_locations.reserve(feed_names.size());
 
   for (size_t i = 0, end = feed_names.size(); i < end; ++i) {
     if (i >= subgraph_input_names.size()) {  // Implicit inputs
       const auto& location = utils::FindMemoryInfoForValue(session_state, feed_names[i]);
-      feed_locations[i] = location.device;
+      feed_locations.push_back(location.device);
     } else {
-      feed_locations[i] = default_location.device;
+      feed_locations.push_back(default_location.device);
     }
   }
 
-  std::unique_ptr<FeedsFetchesManager> ffm;
   ORT_RETURN_IF_ERROR(FeedsFetchesManager::Create(feed_names, subgraph_output_names,
-                                                  subgraph_session_state.GetOrtValueNameIdxMap(), ffm));
-  ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(subgraph_session_state, *ffm));
+                                                  subgraph_session_state.GetOrtValueNameIdxMap(), feeds_fetches_manager_));
+  ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(subgraph_session_state, *feeds_fetches_manager_));
 
   // Setup the locations where we want the subgraph output to end up on
-  std::vector<const OrtMemoryInfo*> fetch_locations;
+  InlinedVector<const OrtMemoryInfo*> fetch_locations;
   fetch_locations.reserve(num_subgraph_outputs);
 
   // Past state need to be where we can feed them in to the next iteration, so set the location to match the feed.
@@ -95,9 +94,7 @@ Status Subgraph::Setup(const SessionState& session_state,
     fetch_locations.push_back(&default_location);
   }
 
-  utils::FinalizeFeedFetchCopyInfo(*ffm, feed_locations, fetch_locations);
-
-  feeds_fetches_manager_ = std::move(ffm);
+  utils::FinalizeFeedFetchCopyInfo(*feeds_fetches_manager_, feed_locations, fetch_locations);
 
   // Check subgraph only need once so put in Setup function.
   auto& inputs = subgraph.GetInputs();

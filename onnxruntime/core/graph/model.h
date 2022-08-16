@@ -40,7 +40,8 @@ struct ModelOptions {
   bool strict_shape_type_inference;
 
   ModelOptions(bool allow_released_opsets_only, bool strict_shape_type_inference)
-      : allow_released_opsets_only(allow_released_opsets_only), strict_shape_type_inference(strict_shape_type_inference) {}
+      : allow_released_opsets_only(allow_released_opsets_only),
+        strict_shape_type_inference(strict_shape_type_inference) {}
 
   ModelOptions() : ModelOptions(true, false) {}
 };
@@ -297,6 +298,7 @@ class Model {
 #if !defined(ORT_MINIMAL_BUILD)
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,
 #endif
+                                          bool can_use_flatbuffer_for_initializers,
                                           const logging::Logger& logger,
                                           std::unique_ptr<Model>& model);
 

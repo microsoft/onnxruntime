@@ -7,9 +7,16 @@
 #include <vector>
 #include <type_traits>
 
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 4127)
+#endif
 #include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/io/zero_copy_stream.h"
 #include "google/protobuf/message_lite.h"
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
 
 #include "core/common/common.h"
 

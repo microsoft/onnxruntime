@@ -30,6 +30,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.GatherND">com.microsoft.GatherND</a>
   * <a href="#com.microsoft.Gelu">com.microsoft.Gelu</a>
   * <a href="#com.microsoft.GemmFastGelu">com.microsoft.GemmFastGelu</a>
+  * <a href="#com.microsoft.GreedySearch">com.microsoft.GreedySearch</a>
   * <a href="#com.microsoft.GridSample">com.microsoft.GridSample</a>
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
@@ -54,6 +55,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.QLinearMul">com.microsoft.QLinearMul</a>
   * <a href="#com.microsoft.QLinearReduceMean">com.microsoft.QLinearReduceMean</a>
   * <a href="#com.microsoft.QLinearSigmoid">com.microsoft.QLinearSigmoid</a>
+  * <a href="#com.microsoft.QLinearSoftmax">com.microsoft.QLinearSoftmax</a>
   * <a href="#com.microsoft.QuantizeLinear">com.microsoft.QuantizeLinear</a>
   * <a href="#com.microsoft.Range">com.microsoft.Range</a>
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
@@ -515,10 +517,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>broadcast_axis</tt> : int</dt>
-<dd>broadcast bias across input for dimensions broadcast_axis to softmax_axis-1</dd>
-<dt><tt>softmax_axis</tt> : int</dt>
-<dd>apply softmax to elements for dimensions softmax_axis or higher</dd>
+<dt><tt>axis</tt> : int</dt>
+<dd>apply softmax to elements for dimensions axis or higher</dd>
+<dt><tt>is_inner_broadcast</tt> : int (required)</dt>
+<dd>true if broadcast bias across input for dimensions broadcast_axis to axis-1, otherwise broadcast bias across input for dimensions 0 to broadcast_axis - 1</dd>
 </dl>
 
 #### Inputs
@@ -1544,6 +1546,67 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float or half tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.GreedySearch"></a><a name="com.microsoft.greedysearch">**com.microsoft.GreedySearch**</a>
+
+  Greedy Search for text generation.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>decoder</tt> : graph (required)</dt>
+<dd>Decoder subgraph to execute in a loop.</dd>
+<dt><tt>decoder_start_token_id</tt> : int</dt>
+<dd>The id of the token that indicates decoding starts.</dd>
+<dt><tt>encoder</tt> : graph</dt>
+<dd>The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.</dd>
+<dt><tt>eos_token_id</tt> : int (required)</dt>
+<dd>The id of the end-of-sequence token</dd>
+<dt><tt>model_type</tt> : int</dt>
+<dd>model type: 0 for decoder only like GPT-2; 1 for encoder decoder like Bart</dd>
+<dt><tt>no_repeat_ngram_size</tt> : int</dt>
+<dd>no repeat ngrams size</dd>
+<dt><tt>pad_token_id</tt> : int (required)</dt>
+<dd>The id of the padding token</dd>
+</dl>
+
+#### Inputs (2 - 6)
+
+<dl>
+<dt><tt>input_ids</tt> : I</dt>
+<dd>The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)</dd>
+<dt><tt>max_length</tt> : I</dt>
+<dd>The maximum length of the sequence to be generated. Shape is (1)</dd>
+<dt><tt>min_length</tt> (optional) : I</dt>
+<dd>The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)</dd>
+<dt><tt>repetition_penalty</tt> (optional) : T</dt>
+<dd>The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)</dd>
+<dt><tt>vocab_mask</tt> (optional) : I</dt>
+<dd>Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)</dd>
+<dt><tt>prefix_vocab_mask</tt> (optional) : I</dt>
+<dd>Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>sequences</tt> : I</dt>
+<dd>Word IDs of generated sequences. Shape is (batch_size, max_sequence_length)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>I</tt> : tensor(int32)</dt>
+<dd>Constrain to integer types</dd>
 </dl>
 
 
@@ -2709,7 +2772,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.QLinearSigmoid"></a><a name="com.microsoft.qlinearsigmoid">**com.microsoft.QLinearSigmoid**</a>
 
-  QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data 
+  QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data
   (Tensor<T>) where the function `f(x) = quantize(Sigmoid(dequantize(x)))`, is applied to the data tensor elementwise.
   Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` 
 
@@ -2744,6 +2807,58 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(uint8), tensor(int8)</dt>
 <dd>Constrain input and output types to 8 bit tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.QLinearSoftmax"></a><a name="com.microsoft.qlinearsoftmax">**com.microsoft.QLinearSoftmax**</a>
+
+  QLinearSoftmax computes the normalized exponential values for the given input:
+  Softmax(input, axis) = Exp(input) / ReduceSum(Exp(input), axis=axis, keepdims=1)
+  The input does not need to explicitly be a 2D vector. The "axis" attribute
+  indicates the dimension along which QLinearSoftmax will be performed for onnx v.13+.
+  or the dimension coerced to NxD Matrix for onnx v.12-.
+  The output tensor has the same shape.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>axis</tt> : int</dt>
+<dd>apply softmax to elements for dimensions axis,or all dims along with axis according to op-version</dd>
+<dt><tt>opset</tt> : int (required)</dt>
+<dd>opset version of corresponding SoftMax.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>The input tensor</dd>
+<dt><tt>X_scale</tt> : tensor(float)</dt>
+<dd>Scale of quantized input 'X'. It must be a scalar.</dd>
+<dt><tt>x_zero_point</tt> (optional) : T</dt>
+<dd>Zero point tensor for input 'X'.It must be a scalar.</dd>
+<dt><tt>y_scale</tt> : tensor(float)</dt>
+<dd>Scale of quantized output 'Y'. It must be a scalar.</dd>
+<dt><tt>y_zero_point</tt> : T</dt>
+<dd>Zero point tensor for output 'Y'. It must be a scalar.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output data tensor from pooling across the input tensor. The output tensor has the same rank as the input. </dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(uint8), tensor(int8)</dt>
+<dd>Constrain input and output types to singed/unsigned int8 tensors.</dd>
 </dl>
 
 
