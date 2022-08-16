@@ -256,6 +256,8 @@ def _run_dequantize_linear(
             channel_weights = numpy.asarray(dequantized_per_channel_data).reshape(reshape_dims)
             dequantized_weights = numpy.concatenate((dequantized_weights, channel_weights), channel_axis)
 
+    if dequantized_weights is None:
+        raise RuntimeError("QDQ Model Error: invalid weight channel count {}".format(channel_count))
     dequantized_weights.reshape(weight_tensor.shape)
     return dequantized_weights
 
