@@ -32,10 +32,10 @@ JS_FILES = [
 ]
 
 NPM_BUILD_DIR = [
-    {"command": "npm ci", "path": abspath(dirname(__file__))},
-    {"command": "npm ci", "path": os.path.join(abspath(dirname(__file__)), "common")},
-    {"command": "npm ci", "path": os.path.join(abspath(dirname(__file__)), "web")},
-    {"command": "npm run build", "path": os.path.join(abspath(dirname(__file__)), "web")},
+    {"command": "npm ci", "path": os.path.normpath(os.path.join(abspath(dirname(__file__)), "../"))},
+    {"command": "npm ci", "path": os.path.normpath(os.path.join(abspath(dirname(__file__)), "../common"))},
+    {"command": "npm ci", "path": os.path.normpath(os.path.join(abspath(dirname(__file__)), "../web"))},
+    {"command": "npm run build", "path": os.path.normpath(os.path.join(abspath(dirname(__file__)), "../web"))},
 ]
 
 #### generating the build folders
