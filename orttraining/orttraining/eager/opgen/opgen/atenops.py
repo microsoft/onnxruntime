@@ -49,8 +49,10 @@ class SoftmaxGrad(ONNXOp):
         super().__init__(
             "SoftmaxGrad",
             1,
-            [{"at::kDouble", "at::kBFloat16", "at::kHalf", "at::kFloat"},
-             {"at::kDouble", "at::kBFloat16", "at::kHalf", "at::kFloat"}],
+            [
+                {"at::kDouble", "at::kBFloat16", "at::kHalf", "at::kFloat"},
+                {"at::kDouble", "at::kBFloat16", "at::kHalf", "at::kFloat"},
+            ],
             dY,
             Y,
             axis=ONNXAttr(axis, AttrType.INT),
@@ -67,8 +69,10 @@ class LogSoftmaxGrad(ONNXOp):
         super().__init__(
             "LogSoftmaxGrad",
             1,
-            [{"at::kDouble", "at::kBFloat16", "at::kHalf", "at::kFloat"},
-             {"at::kDouble", "at::kBFloat16", "at::kHalf", "at::kFloat"}],
+            [
+                {"at::kDouble", "at::kBFloat16", "at::kHalf", "at::kFloat"},
+                {"at::kDouble", "at::kBFloat16", "at::kHalf", "at::kFloat"},
+            ],
             dY,
             Y,
             axis=ONNXAttr(axis, AttrType.INT),
