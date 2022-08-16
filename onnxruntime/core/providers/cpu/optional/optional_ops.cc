@@ -43,14 +43,14 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(OptionalGetElement,
 ONNX_CPU_OPERATOR_KERNEL(OptionalHasElement,
                          18,
                          KernelDefBuilder()
-                             .TypeConstraint("O", DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypes())
+                             .TypeConstraint("O", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes())
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()),
                          OptionalHasElement);
 
 ONNX_CPU_OPERATOR_KERNEL(OptionalGetElement,
                          18,
                          KernelDefBuilder()
-                             .TypeConstraint("O", DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypes())
+                             .TypeConstraint("O", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes())
                              .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes())
                              // We may be able to re-use the input for the output as is unless the output
                              // is a graph output. We provide this hint to the allocation planner

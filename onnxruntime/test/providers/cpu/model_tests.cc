@@ -198,6 +198,12 @@ TEST_P(ModelTest, Run) {
       {"shape_start_1_end_negative_1", "type error", {}},
       {"shape_start_negative_1", "type error", {}},
       {"simple_rnn_batchwise", "type error", {}},
+      {"downsample_sizes_nearest_tf_half_pixel_for_nn", "Either `sizes` or `scales` must be provided, but not both of them", {}},
+      {"upsample_sizes_nearest", "Either `sizes` or `scales` must be provided, but not both of them", {}},
+      {"upsample_sizes_cubic", "Either `sizes` or `scales` must be provided, but not both of them", {}},
+      {"downsample_sizes_nearest", "Either `sizes` or `scales` must be provided, but not both of them", {}},
+      {"downsample_sizes_cubic", "Either `sizes` or `scales` must be provided, but not both of them", {}},
+      {"downsample_sizes_linear_pytorch_half_pixel", "Either `sizes` or `scales` must be provided, but not both of them", {}},
 #ifdef ENABLE_TRAINING
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.
       {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
