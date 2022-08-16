@@ -21,8 +21,8 @@ var ot_opts = {
     // os: getAnchorSelectedOS() || getDefaultSelectedOS(),
     ot_os: 'ot_linux',
     ot_architecture: 'ot_X64',
-    ot_language: 'ot_PyTorch19',
-    ot_hardwareAcceleration: 'ot_CUDA10',
+    ot_language: 'ot_ORTModule',
+    ot_hardwareAcceleration: 'ot_CUDA',
 };
 
 var os = $(".os > .r-option");
@@ -534,62 +534,13 @@ function ot_buildMatcher() {
 }
 
 var ot_validCombos = {
-   //linux
-    "ot_linux,ot_PyTorch18,ot_X64,ot_CUDA10":
-    "pip install torch-ort<br/> python -m torch_ort.configure",
 
-    "ot_linux,ot_PyTorch18,ot_X64,ot_CUDA11":
-    "pip install torch-ort -f https://download.onnxruntime.ai/onnxruntime_stable_cu111.html<br/> python -m torch_ort.configure",
+    "ot_linux,ot_ORTModule,ot_X64,ot_CUDA":
+    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
 
-    "ot_linux,ot_PyTorch18,ot_X64,ot_DefaultCPU":
-    "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
-
-    "ot_linux,ot_PyTorch18,ot_X64,ot_ROCm42":
-    "This combination requires an AMD docker image. See <a href=https://github.com/pytorch/ort>the torch-ort repo</a> for details",
-   
-    "ot_linux,ot_PyTorch18,ot_X64,ot_ROCm431":
-    "This combination requires an AMD docker image. See <a href=https://github.com/pytorch/ort>the torch-ort repo</a> for details",
-   
-    "ot_linux,ot_PyTorch18,ot_X64,ot_DNNL":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/build/training' target='_blank'>build from source</a>.",
-   
-    "ot_linux,ot_PyTorch19,ot_X64,ot_CUDA10":
-    "pip install torch-ort<br/> python -m torch_ort.configure",
-
-    "ot_linux,ot_PyTorch19,ot_X64,ot_CUDA11":
-    "pip install torch-ort -f https://download.onnxruntime.ai/onnxruntime_stable_cu111.html<br/> python -m torch_ort.configure",
-
-    "ot_linux,ot_PyTorch19,ot_X64,ot_ROCm42":
-    "(Preview) pip install torch -f https://download.pytorch.org/whl/rocm4.2/torch_stable.html<br/>pip install torch-ort -f https://download.onnxruntime.ai/onnxruntime_stable_rocm42.html<br/>python -m torch_ort.configure</br>",
-   
-    "ot_linux,ot_PyTorch19,ot_X64,ot_ROCm431":
-    "This combination requires an AMD docker image. See <a href=https://github.com/pytorch/ort>the torch-ort repo</a> for details",
-   
-    "ot_linux,ot_C++,ot_X64,ot_CUDA10":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/build/training' target='_blank'>build from source</a>.",
-
-    "ot_linux,ot_C++,ot_X64,ot_DefaultCPU":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/build/training' target='_blank'>build from source</a>.",
+    "ot_linux,ot_ORTModule,ot_X64,ot_ROCm":
+    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>"
     
-    //windows
-    "ot_windows,ot_PyTorch18,ot_X64,ot_CUDA10":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/build/training' target='_blank'>build from source</a>.",
-
-    "ot_windows,ot_PyTorch18,ot_X64,ot_DefaultCPU":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/build/training' target='_blank'>build from source</a>.",
-
-    "ot_windows,ot_C++,ot_X64,ot_DefaultCPU":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/build/training' target='_blank'>build from source</a>.",
-
-    "ot_windows,ot_C++,ot_X64,ot_CUDA10":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/build/training' target='_blank'>build from source</a>.",
-
-    //mac
-    "ot_mac,ot_PyTorch18,ot_X64,ot_DefaultCPU":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/build/training' target='_blank'>build from source</a>.",
-
-    "ot_mac,ot_C++,ot_X64,ot_DefaultCPU":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/build/training' target='_blank'>build from source</a>."
 };
 
 function ot_commandMessage(key) {
@@ -617,7 +568,7 @@ function ot_commandMessage(key) {
 
     // //console.log('key- '+key);
     //  var ot_object = {
-    //     "ot_linux,ot_PyTorch18,ot_X64,ot_CUDA10":
+    //     "ot_linux,ot_ORTModule,ot_X64,ot_CUDA10":
     //         "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
 
     //     "ot_linux,ot_TensorFlow,ot_X64,ot_CUDA10":
