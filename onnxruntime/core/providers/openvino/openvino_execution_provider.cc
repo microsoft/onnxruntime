@@ -58,7 +58,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
       }
     }
     if (!device_found) {
-      std::string err_msg = std::string("Device Type not found : ") + info.device_type_ + 
+      std::string err_msg = std::string("Device Type not found : ") + info.device_type_ +
                                         "\nChoose the right precision with one of:\n";
       for (auto device : available_devices) {
         err_msg = err_msg + device + "\n";
