@@ -21,9 +21,6 @@ class Shaper {
   inline const Shape& operator[](const std::string& key) const {
     return shape_map_.at(key);
   }
-
-  common::Status Eltwise(const std::string& input1_name, const std::string& input2_name, const std::string& output_name);
-
   // If the shape of certain input is dynamic
   // Use the following 2 functions to update the particular shape
   // and calculate the new output shape
@@ -34,8 +31,6 @@ class Shaper {
   void Clear();
 
  private:
-  common::Status EltwiseImpl(const std::string& input1_name, const std::string& input2_name, const std::string& output_name);
-
   std::unordered_map<std::string, Shape> shape_map_;
   std::vector<std::function<common::Status(Shaper&)>> shape_ops_;
 };
