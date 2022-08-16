@@ -73,10 +73,10 @@ size_t HandleSliceOrShape15Indices(int64_t& start,
 
 bool CanConstantFoldShape(Node& node,
                           const TensorShapeVector& dim_values,
-                          int64_t& start, size_t& clamped_slice_length) {
+                          int64_t& start,
+                          int64_t& end,
+                          size_t& clamped_slice_length) {
   bool can_fold = true;
-  start = 0;
-  int64_t end = std::numeric_limits<int64_t>::max();
 
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Shape", {15})) {
     // Opset-15 Shape supports slicing using a 'start' and 'end' attribute
@@ -122,8 +122,9 @@ bool ConstantFoldShapeNode(Graph& graph,
     }
 
     int64_t start = 0;
+    int64_t end = std::numeric_limits<int64_t>::max();
     size_t clamped_slice_length = 0;
-    if (CanConstantFoldShape(node, dim_values, start, clamped_slice_length)) {
+    if (CanConstantFoldShape(node, dim_values, start, end, clamped_slice_length)) {
       CreateInitializerFromShapeVector(graph, node, dim_values, start, clamped_slice_length);
       nodes_to_remove.push_back(&node);
       return true;
@@ -168,12 +169,18 @@ bool ConstantFoldShapeNode(Graph& graph,
           continue;
         }
 
+        bool can_fold = true;
         int64_t start = starts_values[0];
         int64_t end = ends_values[0];
         size_t clamped_slice_length = HandleSliceOrShape15Indices(start, end, dim_values.size());
+        for (int64_t i = start; i <= end; ++i) {
+          if (dim_values[i] == -1) {
+            can_fold = false;
+            break;
+          }
+        }
 
-        // If requested shape is missing, then we can't do anything.
-        if (dim_values[start] < 0) {
+        if (!can_fold) {
           continue;
         }
 
