@@ -818,7 +818,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_SliceGeneratesGraphOutput)
   }
 }
 
-#if !defined(DISABLE_CONTRIB_OPS)
+#if (!defined(DISABLE_CONTRIB_OPS) && defined(ENABLE_TRAINING))
 TEST_F(GraphTransformationTests, ConstantFoldingShape_ConcreteDimUsedBySlice) {
   /*
                         [attention_mask1_dim0,24,512,512]

@@ -121,11 +121,11 @@ bool ConstantFoldShapeNode(Graph& graph,
       }
     }
 
-    int64_t start = 0;
-    int64_t end = std::numeric_limits<int64_t>::max();
-    size_t clamped_slice_length = 0;
-    if (CanConstantFoldShape(node, dim_values, start, end, clamped_slice_length)) {
-      CreateInitializerFromShapeVector(graph, node, dim_values, start, clamped_slice_length);
+    int64_t shape_slice_start = 0;
+    int64_t shape_slice_end = std::numeric_limits<int64_t>::max();
+    size_t shape_slice_length = 0;
+    if (CanConstantFoldShape(node, dim_values, shape_slice_start, shape_slice_end, shape_slice_length)) {
+      CreateInitializerFromShapeVector(graph, node, dim_values, shape_slice_start, shape_slice_length);
       nodes_to_remove.push_back(&node);
       return true;
     }
@@ -170,10 +170,10 @@ bool ConstantFoldShapeNode(Graph& graph,
         }
 
         bool can_fold = true;
-        int64_t start = starts_values[0];
-        int64_t end = ends_values[0];
-        size_t clamped_slice_length = HandleSliceOrShape15Indices(start, end, dim_values.size());
-        for (int64_t i = start; i <= end; ++i) {
+        int64_t slice_start = starts_values[0];
+        int64_t slice_end = ends_values[0];
+        const size_t slice_length = HandleSliceOrShape15Indices(slice_start, slice_end, dim_values.size());
+        for (int64_t i = slice_start; i <= slice_end; ++i) {
           if (dim_values[i] == -1) {
             can_fold = false;
             break;
@@ -184,7 +184,7 @@ bool ConstantFoldShapeNode(Graph& graph,
           continue;
         }
 
-        CreateInitializerFromShapeVector(graph, output_node, dim_values, start, clamped_slice_length);
+        CreateInitializerFromShapeVector(graph, output_node, dim_values, slice_start, slice_length);
         nodes_to_remove.push_back(&output_node);
 
       } else if (graph_utils::IsSupportedOptypeVersionAndDomain(output_node, "Gather", {11, 13})) {
@@ -212,14 +212,14 @@ bool ConstantFoldShapeNode(Graph& graph,
           continue;
         }
 
-        int64_t start = indices_values[0];
-        int64_t rank = static_cast<int64_t>(dim_values.size());
-        start = start < 0 ? start + rank : start;
-        size_t clamped_slice_length = 1;
+        const int64_t gather_index = indices_values[0];
+        const int64_t rank = static_cast<int64_t>(dim_values.size());
+        const gather_index = gather_index < 0 ? gather_index + rank : gather_index;
+        const size_t gather_indices_length = 1;
 
-        int gather_output_rank = 1 /* gather input data is a 1-D tensor representing a shape */ +
-                                 indices_shape->dim_size() - 1;
-        CreateInitializerFromShapeVector(graph, output_node, dim_values, start, clamped_slice_length,
+        const int gather_output_rank = 1 /* gather input data is a 1-D tensor representing a shape */ +
+                                       indices_shape->dim_size() - 1;
+        CreateInitializerFromShapeVector(graph, output_node, dim_values, gather_index, gather_indices_length,
                                          gather_output_rank == 0);
         nodes_to_remove.push_back(&output_node);
       }
