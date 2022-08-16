@@ -1,4 +1,4 @@
-from ..quant_utils import QuantizedValue, QuantizedValueType
+from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
@@ -30,7 +30,7 @@ class GatherQuant(QuantOperatorBase):
         if quantized_input_names is None:
             return super().quantize()
 
-        gather_new_output = node.output[0] + "_quantized"
+        gather_new_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
 
         # Create an entry for this quantized value
         q_output = QuantizedValue(

@@ -14,26 +14,17 @@ from typing import Dict, List
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
+from op_test_utils import generate_random_initializer
 
 import onnxruntime
-from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantizationMode, QuantType, quantize_static
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 from onnxruntime.quantization.calibrate import CalibrationDataReader
-from onnxruntime.quantization.onnx_model import ONNXModel
 from onnxruntime.quantization.qdq_loss_debug import (
     collect_activations,
     create_activation_matching,
     create_weight_matching,
     modify_model_output_intermediate_tensors,
 )
-from onnxruntime.quantization.quant_utils import (
-    DEQUANT_OP_NAME,
-    find_by_name,
-    load_model,
-    model_has_infer_metadata,
-    save_and_reload_model,
-)
-
-from op_test_utils import generate_random_initializer
 
 
 def construct_test_model1(test_model_path: str, activations_as_outputs=False):
@@ -64,32 +55,28 @@ def construct_test_model1(test_model_path: str, activations_as_outputs=False):
     x4_output = helper.make_tensor_value_info("Conv2Out", TensorProto.FLOAT, [1, 3, 1, 3])
     x5_output = helper.make_tensor_value_info("Conv3Out", TensorProto.FLOAT, [1, 3, 1, 3])
     x6_output = helper.make_tensor_value_info("AddOut", TensorProto.FLOAT, [1, 3, 1, 3])
-    w1 = generate_random_initializer("W1", [3, 3, 1, 1], np.float32)
-    b1 = generate_random_initializer("B1", [3], np.float32)
-    w3 = generate_random_initializer("W3", [3, 3, 1, 1], np.float32)
-    b3 = generate_random_initializer("B3", [3], np.float32)
-    w5 = generate_random_initializer("W5", [3, 3, 1, 1], np.float32)
-    b5 = generate_random_initializer("B5", [3], np.float32)
-    relu_node_1 = helper.make_node("Relu", ["input"], ["Relu1Out"], name="Relu1")
-    conv_node_1 = helper.make_node("Conv", ["Relu1Out", "W1", "B1"], ["Conv1Out"], name="Conv1")
-    relu_node_2 = helper.make_node("Relu", ["Conv1Out"], ["Relu2Out"], name="Relu2")
-    conv_node_2 = helper.make_node("Conv", ["Relu2Out", "W3", "B3"], ["Conv2Out"], name="Conv2")
-    conv_node_3 = helper.make_node("Conv", ["Relu1Out", "W5", "B5"], ["Conv3Out"], name="Conv3")
-    add_node = helper.make_node("Add", ["Conv2Out", "Conv3Out"], ["AddOut"], name="Add")
+
+    initializer = []
+    initializer.append(generate_random_initializer("W1", [3, 3, 1, 1], np.float32))
+    initializer.append(generate_random_initializer("B1", [3], np.float32))
+    initializer.append(generate_random_initializer("W3", [3, 3, 1, 1], np.float32))
+    initializer.append(generate_random_initializer("B3", [3], np.float32))
+    initializer.append(generate_random_initializer("W5", [3, 3, 1, 1], np.float32))
+    initializer.append(generate_random_initializer("B5", [3], np.float32))
+
+    nodes = []
+    nodes.append(helper.make_node("Relu", ["input"], ["Relu1Out"], name="Relu1"))
+    nodes.append(helper.make_node("Conv", ["Relu1Out", "W1", "B1"], ["Conv1Out"], name="Conv1"))
+    nodes.append(helper.make_node("Relu", ["Conv1Out"], ["Relu2Out"], name="Relu2"))
+    nodes.append(helper.make_node("Conv", ["Relu2Out", "W3", "B3"], ["Conv2Out"], name="Conv2"))
+    nodes.append(helper.make_node("Conv", ["Relu1Out", "W5", "B5"], ["Conv3Out"], name="Conv3"))
+    nodes.append(helper.make_node("Add", ["Conv2Out", "Conv3Out"], ["AddOut"], name="Add"))
 
     # we are keeping all tensors in the output anyway for verification purpose
     outputs = [x6_output]
     if activations_as_outputs:
         outputs.extend([x1_output, x2_output, x3_output, x4_output, x5_output])
-    graph = helper.make_graph(
-        [relu_node_1, conv_node_1, relu_node_2, conv_node_2, conv_node_3, add_node], "test_graph_4", [input_vi], outputs
-    )
-    graph.initializer.add().CopyFrom(w1)
-    graph.initializer.add().CopyFrom(b1)
-    graph.initializer.add().CopyFrom(w3)
-    graph.initializer.add().CopyFrom(b3)
-    graph.initializer.add().CopyFrom(w5)
-    graph.initializer.add().CopyFrom(b5)
+    graph = helper.make_graph(nodes, "test_graph_relu_conv", [input_vi], outputs, initializer=initializer)
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
     onnx.save(model, test_model_path)
 
