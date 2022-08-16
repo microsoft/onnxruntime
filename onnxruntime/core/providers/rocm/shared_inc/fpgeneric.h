@@ -68,31 +68,54 @@ inline rocblas_status rocblasGemmHelper(rocblas_handle handle,
                          rocblas_gemm_algo_standard, 0, 0);
 }
 
-inline rocblas_status rocblasGemmHelper(rocblas_handle handle, 
-                                        rocblas_operation transa, 
-                                        rocblas_operation transb, 
-                                        int m, int n, int k, 
-                                        const BFloat16* alpha, 
+inline rocblas_status rocblasGemmHelper(rocblas_handle handle,
+                                        rocblas_operation transa,
+                                        rocblas_operation transb,
+                                        int m, int n, int k,
+                                        const BFloat16* alpha,
                                         const BFloat16* A, int lda,
-                                        const BFloat16* B, int ldb, 
-                                        const BFloat16* beta, 
+                                        const BFloat16* B, int ldb,
+                                        const BFloat16* beta,
                                         BFloat16* C, int ldc) {
   float h_a = alpha->ToFloat();
   float h_b = beta->ToFloat();
 
   // accumulating in FP32
-  return rocblas_gemm_ex(handle, 
-                         transa, 
+  return rocblas_gemm_ex(handle,
+                         transa,
                          transb,
-                         m, n, k, 
-                         &h_a, 
-                         A, rocblas_datatype_bf16_r, lda, 
-                         B, rocblas_datatype_bf16_r, ldb, 
-                         &h_b, 
+                         m, n, k,
+                         &h_a,
+                         A, rocblas_datatype_bf16_r, lda,
+                         B, rocblas_datatype_bf16_r, ldb,
+                         &h_b,
                          C, rocblas_datatype_bf16_r, ldc,
-                         C, rocblas_datatype_bf16_r, ldc, 
+                         C, rocblas_datatype_bf16_r, ldc,
                          rocblas_datatype_f32_r,
                          rocblas_gemm_algo_standard, 0, 0);
+}
+
+// Compatible for function call with the extra hipDeviceProp_t argument
+template<typename Scalar>
+rocblas_status rocblasGemmHelper(rocblas_handle handle,
+                                 rocblas_operation transa,
+                                 rocblas_operation transb,
+                                 int m, int n, int k,
+                                 const Scalar* alpha,
+                                 const Scalar* A, int lda,
+                                 const Scalar* B, int ldb,
+                                 const Scalar* beta,
+                                 Scalar* C, int ldc,
+                                 const hipDeviceProp_t&) {
+    return rocblasGemmHelper(handle,
+                             transa,
+                             transb,
+                             m, n, k,
+                             alpha,
+                             A, lda,
+                             B, ldb,
+                             beta,
+                             C,  ldc);
 }
 
 // batched gemm
@@ -159,31 +182,31 @@ inline rocblas_status rocblasGemmBatchedHelper(rocblas_handle handle,
                                  rocblas_gemm_algo_standard, 0, 0);
 }
 
-inline rocblas_status rocblasGemmBatchedHelper(rocblas_handle handle, 
-                                               rocblas_operation transa, 
+inline rocblas_status rocblasGemmBatchedHelper(rocblas_handle handle,
+                                               rocblas_operation transa,
                                                rocblas_operation transb,
-                                               int m, int n, int k, 
-                                               const BFloat16* alpha, 
-                                               const BFloat16* Aarray[], int lda, 
-                                               const BFloat16* Barray[], int ldb, 
+                                               int m, int n, int k,
+                                               const BFloat16* alpha,
+                                               const BFloat16* Aarray[], int lda,
+                                               const BFloat16* Barray[], int ldb,
                                                const BFloat16* beta,
-                                               BFloat16* Carray[], int ldc, 
+                                               BFloat16* Carray[], int ldc,
                                                int batch_count) {
   float h_a = alpha->ToFloat();
   float h_b = beta->ToFloat();
 
   // accumulating in FP32
-  return rocblas_gemm_batched_ex(handle, 
-                                 transa, 
-                                 transb, 
-                                 m, n, k, 
-                                 &h_a, 
+  return rocblas_gemm_batched_ex(handle,
+                                 transa,
+                                 transb,
+                                 m, n, k,
+                                 &h_a,
                                  (const void**)Aarray, rocblas_datatype_bf16_r, lda,
-                                 (const void**)Barray, rocblas_datatype_bf16_r, ldb, 
-                                 &h_b, 
+                                 (const void**)Barray, rocblas_datatype_bf16_r, ldb,
+                                 &h_b,
                                  (void**)Carray, rocblas_datatype_bf16_r, ldc,
                                  (void**)Carray, rocblas_datatype_bf16_r, ldc,
-                                 batch_count, 
+                                 batch_count,
                                  rocblas_datatype_f32_r,
                                  rocblas_gemm_algo_standard, 0, 0);
 }
@@ -263,33 +286,61 @@ inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,
                                          rocblas_gemm_algo_standard, 0, 0);
 }
 
-inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle, 
+inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,
+                                                       rocblas_operation transa,
+                                                       rocblas_operation transb,
+                                                       int m, int n, int k,
+                                                       const float* alpha,
+                                                       const __half* A, int lda,
+                                                       intmax_t strideA,
+                                                       const __half* B, int ldb,
+                                                       intmax_t strideB,
+                                                       const float* beta,
+                                                       __half* C, int ldc,
+                                                       intmax_t strideC,
+                                                       int batchCount) {
+  return rocblas_gemm_strided_batched_ex(handle,
+                                         transa,
+                                         transb,
+                                         m, n, k,
+                                         &alpha,
+                                         A, rocblas_datatype_f16_r, lda, strideA,
+                                         B, rocblas_datatype_f16_r, ldb, strideB,
+                                         &beta,
+                                         C, rocblas_datatype_f16_r, ldc, strideC,
+                                         C, rocblas_datatype_f16_r, ldc, strideC,
+                                         batchCount,
+                                         rocblas_datatype_f32_r,
+                                         rocblas_gemm_algo_standard, 0, 0);
+}
+
+inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,
                                                       rocblas_operation transa,
-                                                      rocblas_operation transb, 
+                                                      rocblas_operation transb,
                                                       int m, int n, int k,
-                                                      const BFloat16* alpha, 
+                                                      const BFloat16* alpha,
                                                       const BFloat16* A, int lda,
-                                                      long long int strideA, 
+                                                      intmax_t strideA,
                                                       const BFloat16* B, int ldb,
-                                                      long long int strideB, 
-                                                      const BFloat16* beta, 
+                                                      intmax_t strideB,
+                                                      const BFloat16* beta,
                                                       BFloat16* C, int ldc,
-                                                      long long int strideC, 
+                                                      intmax_t strideC,
                                                       int batch_count) {
   float h_a = alpha->ToFloat();
   float h_b = beta->ToFloat();
   // accumulating in FP32
-  return rocblas_gemm_strided_batched_ex(handle, 
-                                         transa, 
-                                         transb, 
-                                         m, n, k, 
-                                         &h_a, 
-                                         A, rocblas_datatype_bf16_r, lda, strideA, 
-                                         B, rocblas_datatype_bf16_r, ldb, strideB, 
-                                         &h_b, 
+  return rocblas_gemm_strided_batched_ex(handle,
+                                         transa,
+                                         transb,
+                                         m, n, k,
+                                         &h_a,
+                                         A, rocblas_datatype_bf16_r, lda, strideA,
+                                         B, rocblas_datatype_bf16_r, ldb, strideB,
+                                         &h_b,
                                          C, rocblas_datatype_bf16_r, ldc, strideC,
                                          C, rocblas_datatype_bf16_r, ldc, strideC,
-                                         batch_count, 
+                                         batch_count,
                                          rocblas_datatype_f32_r,
                                          rocblas_gemm_algo_standard, 0, 0);
 }

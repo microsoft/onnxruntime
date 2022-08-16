@@ -83,13 +83,13 @@ Status LoadCheckpoint(const PathString& checkpoint_path,
                       CheckpointState& checkpoint_state);
 
 /**
- * @brief Load training states from ORT checkpoint and returns vector of tensor protos representing the model parameters.
- * @param param_tensor_protos parameters in TensorProto format.
+ * @brief Load training states from ORT checkpoint into a ModelProto.
  * @param checkpoint_path folder where checkpoint is stored.
+ * @param model_proto Model Proto.
  * @return Status
  */
-Status LoadCheckpoint(const PathString& checkpoint_path,
-                      std::vector<ONNX_NAMESPACE::TensorProto>& param_tensor_protos);
+Status LoadCheckpointToModel(const PathString& checkpoint_path,
+                             ONNX_NAMESPACE::ModelProto& model_proto);
 
 }  // namespace api
 }  // namespace training
