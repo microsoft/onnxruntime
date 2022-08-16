@@ -21,7 +21,8 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 4),  // scale_Y
     QOrderedLayerNormalization);
 
-QOrderedLayerNormalization::QOrderedLayerNormalization(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
+QOrderedLayerNormalization::QOrderedLayerNormalization(const OpKernelInfo& op_kernel_info)
+    : CudaKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
 
   float tmp_epsilon;

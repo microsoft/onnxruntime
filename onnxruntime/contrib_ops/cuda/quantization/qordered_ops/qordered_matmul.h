@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
+using onnxruntime::cuda;
 
 class QOrderedMatMul final : public CudaKernel {
  public:

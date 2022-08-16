@@ -36,12 +36,13 @@ __global__ void QOrderedLayerNormRowKernel(const int8_t* __restrict__ src, const
     return;
   }
 
-  const size_t batch_row_index = (size_t)blockIdx.y * (rows * cols) + r * cols;
+  const size_t batch_row_index = static_cast<size_t>(blockIdx.y) * (rows * cols) + r * cols;
   src += batch_row_index;
   dst += batch_row_index;
   for (unsigned c = threadIdx.x << 2; c < cols; c += 128) {
     char4 ch4 = __ldg((const char4*)(src + c));
-    sum += ((short)ch4.x + (short)ch4.y + (short)ch4.z + (short)ch4.w);
+    sum += (static_cast<short>(ch4.x) + static_cast<short>(ch4.y) +
+            static_cast<short>(ch4.z) + static_cast<short>(ch4.w));
     square_sum = __dp4a(ch4, ch4, square_sum);
   }
 
@@ -50,24 +51,27 @@ __global__ void QOrderedLayerNormRowKernel(const int8_t* __restrict__ src, const
 
   const float mean = __double2float_rn(src_scale * (double)sum / cols);
 
-  const float rvar = rsqrtf(src_scale * src_scale * __double2float_rn((double)square_sum - ((double)sum * (double)sum / (double)cols)) / cols + epsilon);
+  const float rvar = rsqrtf(src_scale * src_scale * __double2float_rn(static_cast<double>(square_sum) - (static_cast<double>(sum) * static_cast<double>(sum) / static_cast<double>(cols))) / cols + epsilon);
 
   const float dst_rscale = 1.0f / dst_scale;
 
   float4 f4;
   for (unsigned c = threadIdx.x << 2; c < cols; c += 128) {
     char4 ch4 = __ldg((const char4*)(src + c));
+
     f4.x = (src_scale * ch4.x - mean) * rvar * ToFloat(gamma[c]);
     f4.y = (src_scale * ch4.y - mean) * rvar * ToFloat(gamma[c + 1]);
     f4.z = (src_scale * ch4.z - mean) * rvar * ToFloat(gamma[c + 2]);
     f4.w = (src_scale * ch4.w - mean) * rvar * ToFloat(gamma[c + 3]);
+
     if (beta) {
       f4.x += ToFloat(beta[c]);
       f4.y += ToFloat(beta[c + 1]);
       f4.z += ToFloat(beta[c + 2]);
       f4.w += ToFloat(beta[c + 3]);
     }
-    *(char4*)(dst + c) = QuantizeFloat4Char4(f4, dst_rscale);
+
+    *reinterpret_cast<char4*>(dst + c) = QuantizeFloat4Char4(f4, dst_rscale);
   }
 }
 
@@ -81,9 +85,12 @@ void QOrderedLayerNorm(cudaStream_t stream, const cudaDeviceProp& /*device_prop*
 
   dim3 threads(32, QORDER_LAYERNORM_ROWS_PER_BLOCK, 1);
 
-  dim3 blocks((unsigned)(rows + QORDER_LAYERNORM_ROWS_PER_BLOCK - 1) / QORDER_LAYERNORM_ROWS_PER_BLOCK, (unsigned)batch, 1);
+  dim3 blocks(static_cast<unsigned>(rows + QORDER_LAYERNORM_ROWS_PER_BLOCK - 1) / QORDER_LAYERNORM_ROWS_PER_BLOCK,
+              static_cast<unsigned>(batch), 1);
 
-  QOrderedLayerNormRowKernel<T><<<blocks, threads, 0, stream>>>(src, src_scale, dst, dst_scale, gamma, beta, epsilon, rows, cols);
+  QOrderedLayerNormRowKernel<T><<<blocks, threads, 0, stream>>>(src, src_scale,
+                                                                dst, dst_scale, gamma, beta,
+                                                                epsilon, rows, cols);
 }
 
 template void QOrderedLayerNorm<float>(cudaStream_t stream, const cudaDeviceProp& /*device_prop*/, cublasLtOrder_t order,

@@ -4,11 +4,13 @@
 #include "qordered_matmul.h"
 #include "qordered_matmul_utils.h"
 
+#include <functional>
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
+using onnxruntime::cuda;
 
 ONNX_OPERATOR_KERNEL_EX(
     QOrderedMatMul,
@@ -77,7 +79,8 @@ Status QOrderedMatMul::QOrderedMatMul::ComputeInternal(OpKernelContext* context)
   ORT_ENFORCE(*scale_Y > 0.0f && *scale_A > 0.0f && *scale_B > 0.0f);
 
   const Tensor* tensor_bias = context->Input<Tensor>(5);
-  ORT_ENFORCE(tensor_bias == nullptr || (tensor_bias->Shape().NumDimensions() == 1 && tensor_bias->Shape()[0] == cols_B));
+  ORT_ENFORCE(tensor_bias == nullptr ||
+              (tensor_bias->Shape().NumDimensions() == 1 && tensor_bias->Shape()[0] == cols_B));
 
   const float* bias = (tensor_bias == nullptr) ? nullptr : tensor_bias->Data<float>();
 

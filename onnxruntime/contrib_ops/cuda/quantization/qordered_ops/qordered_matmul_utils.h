@@ -4,6 +4,10 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_common.h"
+
+#include <string>
+#include <unordered_set>
+
 namespace onnxruntime {
 
 namespace contrib {

@@ -6,6 +6,9 @@
 namespace onnxruntime {
 namespace test {
 
+// Only the CUDA EP supports ordered quantized ops for now
+#ifdef USE_CUDA
+
 template <typename T>  // MLFloat16 or float
 static void RunQOrdered_LayerNorm_RowMajor(std::vector<int64_t> const& shape, int axis, float epsilon,
                                            const std::vector<int8_t>& vec_x, float scale_x,
@@ -29,54 +32,6 @@ static void RunQOrdered_LayerNorm_RowMajor(std::vector<int64_t> const& shape, in
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test_qorder.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-}
-
-static void RunQOrdered_LayerNorm_Test(std::vector<int64_t> const& shape,
-                                       int axis, bool has_bias) {
-  int64_t N = std::accumulate(shape.begin(), shape.end(), int64_t{1LL}, std::multiplies<int64_t>());
-  int64_t cols = 0, rows = 0, batch = 0;
-  BatchRowColFromShape(shape, batch, rows, cols);
-
-  std::vector<int64_t> bias_shape = {cols};
-  std::vector<int8_t> vec_x = GenData<int8_t>(shape, 1.0f);
-  RandomValueGenerator random{};
-  std::vector<MLFloat16> gamma = ToFloat16(random.Uniform<float>(bias_shape, -1.0f, 1.0f));
-  std::vector<MLFloat16> beta(cols);
-
-  if (has_bias) {
-    beta = ToFloat16(random.Uniform<float>(bias_shape, -1.0f / 16.0f, -1.0f / 16.0f));
-  }
-
-  std::vector<int8_t> vec_y(N);
-  float scale_x = 2.0f;
-  float scale_y = 2.0f / 128.0f;
-  float epsilon = 0.00001f;
-
-  const int8_t* bsrc = vec_x.data();
-  int8_t* bdst = vec_y.data();
-  for (int b = 0; b < batch; b++) {
-    for (int r = 0; r < rows; r++) {
-      // Var(X)=E[X*X]− E[X]* E[X]
-      int64_t sum_x = std::accumulate(bsrc, bsrc + cols, 0LL, std::plus<int64_t>());
-      int64_t sum_x2 = std::accumulate(bsrc, bsrc + cols, 0LL, [](int64_t s, int64_t v) { return s + v * v; });
-      float u_x_scaled = scale_x * static_cast<float>(sum_x) / cols;  // no precision lost in static_cast<float>(sum_x)
-      float var_x_scaled = static_cast<float>((static_cast<double>(sum_x2) - static_cast<double>(sum_x) * sum_x / cols) / cols) * scale_x * scale_x;
-      float var_episilon = var_x_scaled + epsilon;
-      float rsqrt_var = 1.0f / ::sqrtf(var_episilon);
-      for (int c = 0; c < cols; c++) {
-        float v = (scale_x * static_cast<float>(bsrc[c])) - u_x_scaled;
-        v = (v * rsqrt_var * gamma[c].ToFloat()) + (has_bias ? beta[c].ToFloat() : 0.0f);
-        v = v / scale_y;
-        v = std::max(-128.0f, std::min(v, 127.0f));
-        bdst[c] = static_cast<int8_t>((int)std::nearbyintf(v));
-      }
-      bsrc += cols;
-      bdst += cols;
-    }
-  }
-
-  RunQOrdered_LayerNorm_RowMajor(shape, axis, epsilon, vec_x, scale_x, gamma,
-                                 has_bias ? &beta : nullptr, scale_y, vec_y);
 }
 
 TEST(QOrderedTest, LayerNormalization_RowMajor) {
@@ -144,11 +99,14 @@ TEST(QOrderedTest, LayerNormalization_RowMajor) {
 
   float scale_y = 1.0 / 64.0f;
 
-  RunQOrdered_LayerNorm_RowMajor({2, 2, 32}, -1, 0.00001f, vec_x, scale_x,
+  RunQOrdered_LayerNorm_RowMajor({batch, sequence, hidden}, -1, 0.00001f, vec_x, scale_x,
                                  gamma_fp16, &beta_fp16, scale_y, vec_y);
 
-  RunQOrdered_LayerNorm_RowMajor({2, 2, 32}, -1, 0.00001f, vec_x, scale_x,
+  RunQOrdered_LayerNorm_RowMajor({batch, sequence, hidden}, -1, 0.00001f, vec_x, scale_x,
                                  gamma_fp32, &beta_fp32, scale_y, vec_y);
 }
+
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime

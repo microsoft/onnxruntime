@@ -6,6 +6,9 @@
 namespace onnxruntime {
 namespace test {
 
+// Only the CUDA EP supports ordered quantized ops for now
+#ifdef USE_CUDA
+
 static void RunQOrdered_MatMul_Test(
     std::vector<int64_t> const& shape_A,
     std::vector<int64_t> const& shape_B,
@@ -70,7 +73,7 @@ static void RunQOrdered_MatMul_Test(
         if (scale_C != 0.0f) {
           sum += beta * C[posY];
         }
-        Y[posY] = static_cast<int8_t>((int)std::nearbyintf(std::min(127.0f, std::max(-128.0f, sum))));
+        Y[posY] = static_cast<int8_t>(std::nearbyintf(std::min(127.0f, std::max(-128.0f, sum))));
       }
     }
     A += (batch_A <= 1 ? int64_t{0} : (rows_A * cols_A));
@@ -194,6 +197,8 @@ TEST(QOrderedTest, MatMul_bias_addC_broadcastC_COL_16x64x32_b2_1) {
                           1.0f / 32.0f, 1.0f / 32.0f, 0.0f /*scaleC*/, 2.0f,
                           true /* add bias */, true /* broadcast batch c */);
 }
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

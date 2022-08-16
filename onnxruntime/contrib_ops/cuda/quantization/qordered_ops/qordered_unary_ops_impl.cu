@@ -8,7 +8,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
+using onnxruntime::cuda;
 
 constexpr int kNumLinePerThread = 4;
 constexpr int kNumThreadsPerBlock = 256;
@@ -21,7 +21,7 @@ __global__ void QOrderedUnaryElementWiseSharedMemoryKernel(
     float inverse_output_scale, const FuncT& functor, CUDA_LONG N) {
   __shared__ char table[256];
 
-  const int calc_id = (int)threadIdx.x - 128;
+  const int calc_id = static_cast<int>(threadIdx.x) - 128;
   float gelu_value = inverse_output_scale * functor(input_scale * calc_id);
   gelu_value = fmaxf(-128.0f, fmin(127.0f, gelu_value));
   table[threadIdx.x] = static_cast<char>(__float2int_rn(gelu_value));
@@ -37,7 +37,7 @@ __global__ void QOrderedUnaryElementWiseSharedMemoryKernel(
       i4.y = table[128 + i4.y];
       i4.z = table[128 + i4.z];
       i4.w = table[128 + i4.w];
-      *(char4*)(output_data + id) = i4;
+      *reinterpret_cast<char4*>(output_data + id) = i4;
       id += kNumElementsPerBlockLine;
     }
   }

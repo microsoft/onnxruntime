@@ -7,7 +7,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
+using onnxruntime::cuda;
 
 int64_t CalcLeadingDimensionLt(int64_t rows, int64_t cols, cublasLtOrder_t order) {
   switch (order) {
@@ -23,7 +23,8 @@ int64_t CalcLeadingDimensionLt(int64_t rows, int64_t cols, cublasLtOrder_t order
 
 static Status cublasLtMatMulInt8SetupAlgo(cublasLtHandle_t cublasLt_handle, cublasLtMatmulAlgo_t& algo,
                                           int algo_id, int swizzle,
-                                          int custom_option, int tile, int splitk_val, int reduction_scheme, int stages) {
+                                          int custom_option, int tile, int splitk_val,
+                                          int reduction_scheme, int stages) {
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulAlgoInit(cublasLt_handle, CUBLAS_COMPUTE_32I, CUDA_R_32F,
                                                 CUDA_R_8I, CUDA_R_8I, CUDA_R_8I, CUDA_R_8I, algo_id, &algo));
 
@@ -79,8 +80,10 @@ void CublasLtMMAlgoMap::GetAlgo(cublasLtHandle_t cublasLt_handle, cublasLtMatmul
   auto algo_it = best_algos_.find(key);
   if (algo_it != best_algos_.end() && algo_it->second.workspace_size == 0) {
     const auto& algo_info = algo_it->second;
-    ORT_THROW_IF_ERROR(cublasLtMatMulInt8SetupAlgo(cublasLt_handle, algo, algo_info.algo_id, algo_info.swizzle, algo_info.custom_option,
-                                                   algo_info.tile, algo_info.splitk_val, algo_info.reduction_scheme, algo_info.stages));
+    ORT_THROW_IF_ERROR(cublasLtMatMulInt8SetupAlgo(cublasLt_handle, algo, algo_info.algo_id,
+                                                   algo_info.swizzle, algo_info.custom_option,
+                                                   algo_info.tile, algo_info.splitk_val,
+                                                   algo_info.reduction_scheme, algo_info.stages));
   } else {
     // Default algo
     int algo_id = 21;
@@ -101,9 +104,13 @@ static Status CreateLtMatrixLayout(cublasLtMatrixLayout_t& layout_desc,
                                                       CalcLeadingDimensionLt(rows_after_op, cols_after_op, mat_order)));
   }
 
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(layout_desc, CUBLASLT_MATRIX_LAYOUT_ORDER, &mat_order, sizeof(mat_order)));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(layout_desc,
+                                                          CUBLASLT_MATRIX_LAYOUT_ORDER,
+                                                          &mat_order, sizeof(mat_order)));
 
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(layout_desc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch_count, sizeof(batch_count)));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(layout_desc,
+                                                          CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT,
+                                                          &batch_count, sizeof(batch_count)));
 
   if (batch_count > 1) {
     int64_t batch_stride = rows_after_op * cols_after_op;
@@ -145,12 +152,19 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream,
 
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescCreate(&matmul_desc, CUBLAS_COMPUTE_32I, CUDA_R_32F));
 
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc, CUBLASLT_MATMUL_DESC_TRANSA, &transpose_op, sizeof(transpose_op)));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc,
+                                                        CUBLASLT_MATMUL_DESC_TRANSA,
+                                                        &transpose_op, sizeof(transpose_op)));
 
   if (bias != nullptr) {
     cublasLtEpilogue_t epilogue_bias = CUBLASLT_EPILOGUE_BIAS;
-    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc, CUBLASLT_MATMUL_DESC_EPILOGUE, &epilogue_bias, sizeof(epilogue_bias)));
-    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc, CUBLASLT_MATMUL_DESC_BIAS_POINTER, &bias, sizeof(bias)));
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc,
+                                                          CUBLASLT_MATMUL_DESC_EPILOGUE,
+                                                          &epilogue_bias, sizeof(epilogue_bias)));
+
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc,
+                                                          CUBLASLT_MATMUL_DESC_BIAS_POINTER,
+                                                          &bias, sizeof(bias)));
   }
 
   ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_A, batch_count, k, m, CUDA_R_8I,
@@ -162,7 +176,9 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream,
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_B, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT,
                                                           &batch_count, sizeof(batch_count)));
 
-  ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_D, batch_count, n, m, CUDA_R_8I, CUBLASLT_ORDER_COL, CUBLAS_OP_N));  // For D'
+  ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_D, batch_count, n, m,
+                                           CUDA_R_8I, CUBLASLT_ORDER_COL,
+                                           CUBLAS_OP_N));  // For D'
 
   if (C != nullptr) {
     ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_C, batch_C, n, m, CUDA_R_8I,

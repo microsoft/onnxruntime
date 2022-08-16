@@ -8,7 +8,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
+using onnxruntime::cuda;
 
 ONNX_OPERATOR_KERNEL_EX(
     QOrderedGelu,

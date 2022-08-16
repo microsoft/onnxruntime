@@ -6,6 +6,9 @@
 namespace onnxruntime {
 namespace test {
 
+// Only the CUDA EP supports ordered quantized ops for now
+#ifdef USE_CUDA
+
 static void
 RunQOrdered_Gelu_Test(std::vector<int64_t> const& shape, float scale_x,
                       float scale_y, OrderCublasLt order) {
@@ -15,9 +18,9 @@ RunQOrdered_Gelu_Test(std::vector<int64_t> const& shape, float scale_x,
   std::vector<int8_t> vec_x = GenData<int8_t>(shape, 1.0f);
   std::vector<int8_t> vec_y(N);
   for (int64_t i = 0; i < N; i++) {
-    float x = scale_x * (float)vec_x[i];
+    float x = scale_x * static_cast<float>(vec_x[i]);
     float r = (x * (0.5f * (1.0f + std::erff(x / sqrt_of_2)))) / scale_y;
-    int8_t q = static_cast<int8_t>((int)std::nearbyintf(std::min(127.0f, std::max(-128.0f, r))));
+    int8_t q = static_cast<int8_t>(std::nearbyintf(std::min(127.0f, std::max(-128.0f, r))));
     vec_y[i] = q;
   }
 
@@ -37,6 +40,8 @@ RunQOrdered_Gelu_Test(std::vector<int64_t> const& shape, float scale_x,
 TEST(QOrderedTest, Gelu_3x11x12) {
   RunQOrdered_Gelu_Test({3, 11, 12}, 1.0f / 32.0f, 1.0f / 128.0f, ORDER_ROW);
 }
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
