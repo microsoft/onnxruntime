@@ -1008,6 +1008,7 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
     "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/initializer_view/initializer_view.cc"
   )
 
   file(GLOB onnxruntime_providers_nnapi_cc_srcs CONFIGURE_DEPENDS ${onnxruntime_provider_nnapi_cc_src_patterns})
@@ -1533,6 +1534,7 @@ if (onnxruntime_USE_XNNPACK)
     # utils for handling QDQ models
     "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/initializer_view/initializer_view.cc"
   )
 
   source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_xnnpack_cc_srcs})
