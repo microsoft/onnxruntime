@@ -123,12 +123,14 @@ class CudnnRnnBase : public CudaKernel {
                                void* w_data,
                                const T* W_data,
                                const T* R_data,
-                               const T* B_data) const;
+                               const T* B_data,
+                               cudaStream_t cuda_stream) const;
 
   Status ReorganizeWeights(const Tensor* W, const Tensor* R, const Tensor* B,
                            IAllocatorUniquePtr<void>& target_w_data,
                            CudnnFilterDescriptor& target_w_desc,
-                           CudnnRNN& rnn_desc) const;
+                           CudnnRNN& rnn_desc,
+                           onnxruntime::Stream* ort_stream) const;
 
   void SetWeightBias(const cudnnHandle_t handle,
                      const cudnnRNNDescriptor_t rnn_desc,
@@ -140,13 +142,15 @@ class CudnnRnnBase : public CudaKernel {
                      const int lin_layer_id,
                      const T* pos,
                      int& offset,
-                     bool is_matrix) const;
+                     bool is_matrix,
+                     cudaStream_t cuda_stream) const;
 
   void SetZeroSequences(const int64_t zero_seq_index_cache_size,
                         const std::vector<int32_t> zero_seq_index_cache,
                         T* y_data,
                         T* y_h_data,
-                        T* y_c_data) const;
+                        T* y_c_data,
+                        onnxruntime::Stream* cuda_stream) const;
 
  protected:
   // W_lin_layer_id_ & R_lin_layer_id_ are set in Constructor
