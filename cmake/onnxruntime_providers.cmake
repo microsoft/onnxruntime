@@ -622,7 +622,7 @@ if (onnxruntime_USE_TENSORRT)
   endif()
   set(CXX_VERSION_DEFINED TRUE)
   
-  if (onnxruntime_USE_TENSORRT_PARSER)
+  if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
     # Add TensorRT library
     find_path(TENSORRT_INCLUDE_DIR NvInfer.h
       HINTS ${TENSORRT_ROOT}
@@ -672,7 +672,7 @@ if (onnxruntime_USE_TENSORRT)
   onnxruntime_add_shared_library_module(onnxruntime_providers_tensorrt ${onnxruntime_providers_tensorrt_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt onnxruntime_common onnx flatbuffers)
   add_dependencies(onnxruntime_providers_tensorrt onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  if (onnxruntime_USE_TENSORRT_PARSER)
+  if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
     target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${trt_link_libs} cudart ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers ${ABSEIL_LIBS})
     target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} ${TENSORRT_INCLUDE_DIR} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   else()
