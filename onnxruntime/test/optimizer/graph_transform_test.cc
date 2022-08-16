@@ -440,6 +440,226 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithScalarShapeToInitializer) {
   ASSERT_TRUE(op_to_count["Add"] == 1);
 }
 
+TEST_F(GraphTransformationTests, ConstantFoldingShape_Shape15) {
+  /*
+                   [attention_mask1_dim0,512,1536]
+                                  |
+                               Identity
+                                /
+        [attention_mask1_dim0,512,1536]
+                           |
+                        Shape15
+                           |
+                      [2]: (512,1536)
+                           |
+                        Identity
+                           |
+                          [2]
+  */
+
+  std::string identity_output_name;
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Identity"], 2);
+    ASSERT_EQ(op_to_count["Shape"], 1);
+
+    // Put node on CPU EP to allow constant folding optimizer
+    // handle some msdomain operators.
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType().compare("Identity") == 0)
+        identity_output_name = node.MutableOutputDefs()[0]->Name();
+      node.SetExecutionProviderType(kCpuExecutionProvider);
+    }
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Identity"], 0);
+    ASSERT_EQ(op_to_count["Shape"], 0);
+
+    ASSERT_TRUE(!identity_output_name.empty());
+    auto input_arg = graph.GetNodeArg(identity_output_name);
+    // Try to parse int64 type constant initializers.
+    InlinedVector<int64_t> shape_values;
+    ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *input_arg, shape_values, true));
+    ASSERT_EQ(shape_values.size(), 2);
+    ASSERT_EQ(shape_values[0], 512);
+    ASSERT_EQ(shape_values[1], 1536);
+  };
+
+  std::vector<int> opset_candidates{15};
+  for (auto opset : opset_candidates) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      std::vector<std::variant<int64_t, std::string>> identity_input_shape;
+      identity_input_shape.reserve(3);
+      identity_input_shape.push_back("attention_mask1_dim0");
+      identity_input_shape.push_back(512);
+      identity_input_shape.push_back(1536);
+
+      auto* identity_input_arg = builder.MakeSymbolicInput<float>(identity_input_shape);
+      auto* identity_out_arg = builder.MakeIntermediate();
+      builder.AddNode("Identity", {identity_input_arg}, {identity_out_arg});
+
+      auto* shape_out_arg = builder.MakeIntermediate();
+      builder.AddNode("Shape", {identity_out_arg}, {shape_out_arg})
+          .AddAttribute("start", static_cast<int64_t>(-2));
+
+      auto* identity_out_arg_1 = builder.MakeOutput();
+      builder.AddNode("Identity", {shape_out_arg}, {identity_out_arg_1});
+    };
+
+    InlinedHashSet<std::string_view> compatible_eps;
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantFolding>(
+        *e.get(), false /*skip_dequantize_linear*/, compatible_eps);
+    TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+}
+
+TEST_F(GraphTransformationTests, ConstantFoldingShape_Shape15TakesGraphInput) {
+  /*
+   [attention_mask1_dim0,512,1536]
+                    |
+                  Shape15
+                    |
+                [2]: (512,1536)
+                    |
+                 Identity
+                    |
+                   [2]
+  */
+
+  std::string identity_output_name;
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Identity"], 1);
+    ASSERT_EQ(op_to_count["Shape"], 1);
+
+    // Put node on CPU EP to allow constant folding optimizer
+    // handle some msdomain operators.
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType().compare("Identity") == 0)
+        identity_output_name = node.MutableOutputDefs()[0]->Name();
+      node.SetExecutionProviderType(kCpuExecutionProvider);
+    }
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Identity"], 0);
+    ASSERT_EQ(op_to_count["Shape"], 0);
+
+    ASSERT_TRUE(!identity_output_name.empty());
+    auto input_arg = graph.GetNodeArg(identity_output_name);
+    // Try to parse int64 type constant initializers.
+    InlinedVector<int64_t> shape_values;
+    ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *input_arg, shape_values, true));
+    ASSERT_EQ(shape_values.size(), 2);
+    ASSERT_EQ(shape_values[0], 512);
+    ASSERT_EQ(shape_values[1], 1536);
+  };
+
+  std::vector<int> opset_candidates{15};
+  for (auto opset : opset_candidates) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      std::vector<std::variant<int64_t, std::string>> shape_input_shape;
+      shape_input_shape.reserve(3);
+      shape_input_shape.push_back("attention_mask1_dim0");
+      shape_input_shape.push_back(512);
+      shape_input_shape.push_back(1536);
+
+      auto* shape_input_arg = builder.MakeSymbolicInput<float>(shape_input_shape);
+      auto* shape_out_arg = builder.MakeIntermediate();
+      builder.AddNode("Shape", {shape_input_arg}, {shape_out_arg})
+          .AddAttribute("start", static_cast<int64_t>(-2));
+
+      auto* identity_out_arg_1 = builder.MakeOutput();
+      builder.AddNode("Identity", {shape_out_arg}, {identity_out_arg_1});
+    };
+
+    InlinedHashSet<std::string_view> compatible_eps;
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantFolding>(
+        *e.get(), false /*skip_dequantize_linear*/, compatible_eps);
+    TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+}
+
+TEST_F(GraphTransformationTests, ConstantFoldingShape_Shape15GeneratesGraphOutput) {
+  /*
+                   [attention_mask1_dim0,512,1536]
+                                  |
+                               Identity
+                                /
+        [attention_mask1_dim0,512,1536]
+                           |
+                        Shape15
+                           |
+                      [2]: (512,1536)
+                           |
+                          [2]
+  */
+  std::string shape_output_name;
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Identity"], 1);
+    ASSERT_EQ(op_to_count["Shape"], 1);
+
+    // Put node on CPU EP to allow constant folding optimizer
+    // handle some msdomain operators.
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType().compare("Shape") == 0)
+        shape_output_name = node.MutableOutputDefs()[0]->Name();
+      node.SetExecutionProviderType(kCpuExecutionProvider);
+    }
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Identity"], 0);
+    ASSERT_EQ(op_to_count["Shape"], 0);
+
+    ASSERT_TRUE(!shape_output_name.empty());
+    auto input_arg = graph.GetNodeArg(shape_output_name);
+    // Try to parse int64 type constant initializers.
+    InlinedVector<int64_t> shape_values;
+    ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *input_arg, shape_values, true));
+    ASSERT_EQ(shape_values.size(), 2);
+    ASSERT_EQ(shape_values[0], 512);
+    ASSERT_EQ(shape_values[1], 1536);
+  };
+
+  std::vector<int> opset_candidates{15};
+  for (auto opset : opset_candidates) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      std::vector<std::variant<int64_t, std::string>> identity_input_shape;
+      identity_input_shape.reserve(3);
+      identity_input_shape.push_back("attention_mask1_dim0");
+      identity_input_shape.push_back(512);
+      identity_input_shape.push_back(1536);
+
+      auto* identity_input_arg = builder.MakeSymbolicInput<float>(identity_input_shape);
+      auto* identity_out_arg = builder.MakeIntermediate();
+      builder.AddNode("Identity", {identity_input_arg}, {identity_out_arg});
+
+      auto* shape_out_arg = builder.MakeOutput();
+      builder.AddNode("Shape", {identity_out_arg}, {shape_out_arg})
+          .AddAttribute("start", static_cast<int64_t>(-2));
+    };
+
+    InlinedHashSet<std::string_view> compatible_eps;
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantFolding>(
+        *e.get(), false /*skip_dequantize_linear*/, compatible_eps);
+    TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+}
+
+#if !defined(DISABLE_CONTRIB_OPS)
 TEST_F(GraphTransformationTests, ConstantFoldingShape_ConcreteDimUsedBySlice) {
   /*
                         [attention_mask1_dim0,24,512,512]
@@ -904,6 +1124,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_ConcreteDimUsedByGatherGat
                          pre_graph_checker, post_graph_checker);
   }
 }
+#endif
 
 static void VerifyConstantFoldingWithDequantizeLinear(int quantize_linear_count,
                                                       int dequantize_linear_count,
