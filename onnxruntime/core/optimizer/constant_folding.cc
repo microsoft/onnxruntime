@@ -201,9 +201,8 @@ bool ConstantFoldShapeNode(Graph& graph,
           continue;
         }
 
-        const ONNX_NAMESPACE::AttributeProto* axis_attr;
-        if ((axis_attr = graph_utils::GetNodeAttribute(output_node, "axis")) &&
-            static_cast<int>(axis_attr->i()) != 0) {
+        const ONNX_NAMESPACE::AttributeProto* axis_attr = graph_utils::GetNodeAttribute(output_node, "axis");
+        if (axis_attr && static_cast<int>(axis_attr->i()) != 0) {
           continue;
         }
 
