@@ -25,7 +25,7 @@
 #   python setup.py install
 #   cd ..
 #   python convert_to_onnx.py --model longformer-base-4096 --precision fp16 --optimize_onnx
-#   python convert_to_onnx.py --model longformer-base-4096 --precision fp16 --optimize_onnx --merge_qkv
+#   python convert_to_onnx.py --model longformer-base-4096 --precision fp16 --optimize_onnx --no_merge_qkv
 #
 # GPU is not needed for this script. You can run it in CPU. For --optimize_onnx, you can use either onnxruntime or onnxruntime-gpu package.
 #
@@ -91,6 +91,11 @@ torch.ops.load_library(
 
 
 def parse_arguments():
+    """Parse arguments
+
+    Returns:
+        args: Namespace
+    """
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -112,12 +117,12 @@ def parse_arguments():
     parser.set_defaults(export_padding=False)
 
     parser.add_argument(
-        "--merge_qkv",
+        "--no_merge_qkv",
         required=False,
         action="store_true",
-        help="Stack the weights of q, k and v on dimension 1 instead of dimension 0.",
+        help="Stack the weights of q, k and v on dimension 0 instead of dimension 1.",
     )
-    parser.set_defaults(merge_qkv=False)
+    parser.set_defaults(no_merge_qkv=False)
 
     parser.add_argument(
         "-o",
@@ -294,7 +299,18 @@ def my_longformer_self_attention_forward_4_3_2(
     )
 
 
-def export_longformer(model, onnx_model_path, export_padding):
+def export_longformer(model:LongformerModel, onnx_model_path:str, export_padding:bool):
+    """Export longformer model to ONNX
+
+    Args:
+        model (LongformerModel): longformer model
+        onnx_model_path (str): output onnx path
+        export_padding (bool): whether export padding logic to ONNX so that input string can be any length.
+
+    Raises:
+        RuntimeError: This tool requires transformers 4.0.0 or later.
+        RuntimeError: LongformerSelfAttention.forward arguments are different.
+    """
     input_ids, attention_mask, global_attention_mask = get_dummy_inputs(
         model.config, export_padding, device=torch.device("cpu")
     )
@@ -356,7 +372,14 @@ def export_longformer(model, onnx_model_path, export_padding):
     LongformerSelfAttention.forward = original_forward
 
 
-def optimize_longformer(onnx_model_path, fp32_model_path, fp16_model_path=None):
+def optimize_longformer(onnx_model_path:str, fp32_model_path:str, fp16_model_path=None):
+    """Optimize longformer onnx model
+
+    Args:
+        onnx_model_path (str): path of original ONNX model.
+        fp32_model_path (str): path of optimized fp32 model.
+        fp16_model_path (str, optional): path of optimized fp16 model. Defaults to None.
+    """
     model = load_model(onnx_model_path, format=None, load_external_data=True)
     optimizer = BertOnnxModel(model)
     optimizer.optimize()
@@ -377,7 +400,7 @@ def main(args):
     onnx_model_path = model_name + ".onnx"
 
     global weight_bias_format
-    weight_bias_format = 1 if args.merge_qkv else 0
+    weight_bias_format = 0 if args.no_merge_qkv else 1
 
     model = LongformerModel.from_pretrained(PRETRAINED_LONGFORMER_MODELS[model_name])
 
