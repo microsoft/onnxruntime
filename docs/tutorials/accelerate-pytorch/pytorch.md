@@ -27,3 +27,6 @@ ONNX Runtime can be used to accelerate PyTorch models inferencing.
 ### GPT-2
 * [Accelerate GPT2 on CPU](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/Inference_GPT2_with_OnnxRuntime_on_CPU.ipynb)
 * [Accelerate GPT2 (with one step search) on CPU](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/Inference_GPT2-OneStepSearch_OnnxRuntime_CPU.ipynb)
+
+### RESNET-50
+* [Accelerate RESNET-50 model on CPU, GPU, and OpenVINO](resnet-inferencing.md)
