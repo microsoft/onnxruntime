@@ -50,7 +50,11 @@ class Memcpy final : public OpKernel {
         }
         return Status::OK();
       } else {
-        return Info().GetDataTransferManager().CopyTensor(*X, *Y);
+        auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
+        ORT_RETURN_IF_ERROR(gpu_data_transfer->CopyTensorAsync(*X, *Y, ctx->GetComputeStream()));
+        ctx->GetComputeStream()->Flush();
+        //return Info().GetDataTransferManager().CopyTensor(*X, *Y);
+        return Status::OK();
       }
     } else {
       // TODO: support aysnc copy for sparse tensor
