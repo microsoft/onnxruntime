@@ -354,6 +354,9 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 
     Node* n = PlaceNode(graph, *capability->sub_graph, fusion_style, type, mode, fused_node_unique_id);
     if (n != nullptr) {
+      if (n->OpType() == "QLinearSoftmax") {
+        printf(" ");
+      }
       // searching in kernel registries, if no kernel registered for the fused_node, use compile approach
       if (!KernelRegistryManager::HasImplementationOf(kernel_registry_mgr, *n, type)) {
         nodes_to_compile.push_back(n);
@@ -380,8 +383,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       std::call_once(
           legacy_compile_method_warning_flag, [](std::string_view ep_type) {
             LOGS_DEFAULT(WARNING) << "Execution Provider: " << ep_type << " is still using Function style Compile API "
-                                     "which is deprecated and will be removed soon. Please migrate to the new Compile "
-                                     "API based on FilteredGraphViewer.";
+                                                                          "which is deprecated and will be removed soon. Please migrate to the new Compile "
+                                                                          "API based on FilteredGraphViewer.";
           },
           type);
       ORT_RETURN_IF_ERROR(current_ep.Compile(nodes_to_compile, node_compute_funcs));
