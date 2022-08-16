@@ -124,10 +124,10 @@ static Status AddNnapiBatchNormalization(ModelBuilder& model_builder,
   return Status::OK();
 }
 
-static Status AddSqueezeOp(ModelBuilder& model_builder,
-                           const std::string& node_name,
-                           const std::string& input, const std::string& output,
-                           std::vector<int32_t> axes) {
+static Status AddNnapiSqueeze(ModelBuilder& model_builder,
+                              const std::string& node_name,
+                              const std::string& input, const std::string& output,
+                              std::vector<int32_t> axes) {
   if (model_builder.GetNNAPIFeatureLevel() < ANEURALNETWORKS_FEATURE_LEVEL_2) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, FAIL, "Squeeze is not supported on API level ", model_builder.GetNNAPIFeatureLevel());
@@ -165,8 +165,31 @@ static Status AddSqueezeOp(ModelBuilder& model_builder,
   input_indices.push_back(operand_indices.at(input));      // input
   input_indices.push_back(operand_indices.at(axes_name));  // axes
 
-  ORT_RETURN_IF_ERROR(shaper.Squeeze(input, axes, output));
-  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  // Shape inference calculation for squeeze
+  const Shape& input_dimen = GetShapeInfoFromNodeArg(model_builder, input);
+  int32_t input_size = static_cast<int32_t>(input_dimen.size());
+  std::unordered_set<int32_t> axes_to_be_squeezed;
+
+  // If the Op is squeezing all by not specifying axes, the axes is pre-populate
+  // with axes of all single dimensions by the caller
+  for (const auto& axis : axes)
+    axes_to_be_squeezed.insert(axis);
+
+  // Make output dimensions
+  std::vector<uint32_t> output_dimen;
+  output_dimen.reserve(input_size - axes_to_be_squeezed.size());
+  for (int32_t i = 0; i < input_size; i++) {
+    if (!Contains(axes_to_be_squeezed, i))
+      output_dimen.push_back(input_dimen[i]);
+  }
+
+  // In case of a tensor has all 1's in dimension such as {1,1,1,1} and gets squeezed all
+  // the output shape will be {1}
+  if (output_dimen.empty())
+    output_dimen.push_back(1);
+
+  shaper.AddShape(output, output_dimen);
+  const OperandType output_operand_type(operand_types.at(input).type, output_dimen);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SQUEEZE, input_indices,
                                                  {output}, {output_operand_type}));
   return Status::OK();
@@ -1870,9 +1893,9 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       if (shaper[bias].size() > 1) {
         std::string bias_squeezed = model_builder.GetUniqueName(node_unit.Name() + op + "_bias_squeezed");
         // We will use squeeze all here
-        ORT_RETURN_IF_ERROR(AddSqueezeOp(model_builder, node_unit.Name(),
-                                         bias, bias_squeezed,
-                                         {} /* axes */));
+        ORT_RETURN_IF_ERROR(AddNnapiSqueeze(model_builder, node_unit.Name(),
+                                            bias, bias_squeezed,
+                                            {} /* axes */));
         bias_idx = operand_indices.at(bias_squeezed);
         LOGS_DEFAULT(VERBOSE) << "GemmOpBuilder - Operand [" << bias << "] squeezed from "
                               << Shape2String(shaper[bias])

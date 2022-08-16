@@ -34,8 +34,22 @@ Status AddNnapiTranspose(ModelBuilder& model_builder,
   uint32_t perm_idx = operand_indices.at(perm_input);
 
   input_indices.push_back(perm_idx);  // permutation
-  ORT_RETURN_IF_ERROR(shaper.Transpose(data_input, perm, output));
+
+  auto calculate_transpose_output_shape = [&](const std::string& data_input,
+                                              const std::string& output, const std::vector<int32_t>& perm) -> Status {
+    const Shape& input_dimen = shaper[data_input];
+    ORT_RETURN_IF_NOT(perm.size() == input_dimen.size(), "Invalid perm is given!");
+    size_t size = input_dimen.size();
+    Shape output_dimen(size);
+    for (size_t i = 0; i < size; i++)
+      output_dimen[i] = input_dimen[perm[i]];
+
+    shaper.AddShape(output, output_dimen);
+    return Status::OK();
+  };
+
   OperandType output_operand_type = operand_types.at(data_input);
+  ORT_RETURN_IF_ERROR(calculate_transpose_output_shape(data_input, output, perm));
   output_operand_type.SetDimensions(shaper[output]);
   return model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output},
                                     {output_operand_type});
@@ -47,7 +61,42 @@ Status AddNnapiReshape(ModelBuilder& model_builder,
                        const std::string& output, const Shape* output_shape) {
   if (output_shape == nullptr) {
     auto& shaper = model_builder.GetShaper();
-    ORT_RETURN_IF_ERROR(shaper.Reshape(data_input, shape_value, output));
+    auto calculate_reshape_output_shape = [&](const std::string& data_input,
+                                              const std::vector<int32_t>& shape_value,
+                                              const std::string& output) -> Status {
+      const Shape& input_dimen = shaper[data_input];
+      uint32_t input_size = Product(input_dimen);
+      std::vector<uint32_t> output_dimen(shape_value.size());
+
+      int64_t capacity = 1;
+      int unk_dim_idx = -1;
+      for (size_t i = 0; i < shape_value.size(); i++) {
+        int32_t dim_i = shape_value[i];
+        ORT_RETURN_IF_NOT(dim_i != 0, "NNAPI does not support 0 reshape dimension");
+        if (dim_i == -1) {
+          ORT_RETURN_IF_NOT(unk_dim_idx == -1, "Only one input dimension of Attr(shape) can be unknown!");
+          unk_dim_idx = static_cast<int>(i);
+        } else {
+          capacity *= dim_i;
+          output_dimen[i] = static_cast<uint32_t>(dim_i);
+        }
+      }
+
+      if (unk_dim_idx != -1) {
+        if (input_size == 0)
+          output_dimen[unk_dim_idx] = 0;
+        else
+          output_dimen[unk_dim_idx] = static_cast<uint32_t>(input_size / capacity);
+
+        capacity *= output_dimen[unk_dim_idx];
+      }
+
+      ORT_RETURN_IF_NOT(capacity == input_size, "Invalid shape is given!");
+
+      shaper.AddShape(output, output_dimen);
+      return Status::OK();
+    };
+    ORT_RETURN_IF_ERROR(calculate_reshape_output_shape(data_input, shape_value, output));
     output_shape = &shaper[output];
   }
 
@@ -85,8 +134,25 @@ Status AddNnapiSplit(ModelBuilder& model_builder,
   const auto input_rank = shaper[input].size();
   axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_rank));
 
-  ORT_RETURN_IF_ERROR(shaper.Split(input, axis, outputs));
+  auto calculate_split_output_shape = [&](const std::string& input,
+                                          int32_t axis,
+                                          const std::vector<std::string>& outputs) -> Status {
+    const auto& input_shape = shaper[input];
+    const auto count = gsl::narrow<int32_t>(outputs.size());
 
+    ORT_RETURN_IF_NOT(input_shape[axis] % count == 0,
+                      "count [", count, "] does not evenly divide dimension ", axis, " [", input_shape[axis], "]");
+
+    Shape output_shape = input_shape;
+    output_shape[axis] = SafeInt<uint32_t>(input_shape[axis] / count);
+
+    for (const auto& output_name : outputs) {
+      shaper.AddShape(output_name, output_shape);
+    }
+    return Status::OK();
+  };
+
+  ORT_RETURN_IF_ERROR(calculate_split_output_shape(input, axis, outputs));
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ORT_RETURN_IF_ERROR(AddScalarOperand(model_builder, input_indices, axis));
@@ -289,8 +355,11 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
       int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
       ORT_RETURN_IF_ERROR(AddScalarOperand(model_builder, input_indices, fuse_code));
 
-      ORT_RETURN_IF_ERROR(shaper.FC(a, b_transposed, output));
-      const OperandType output_operand_type(operand_types.at(a).type, shaper[output]);
+      const Shape& input1_dimen = shaper[a];
+      const Shape& input2_dimen = shaper[b_transposed];  // num_units, input_size
+      Shape output_dimen{input1_dimen[0], input2_dimen[0]};
+      shaper.AddShape(output, output_dimen);
+      const OperandType output_operand_type(operand_types.at(a).type, output_dimen);
       ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_FULLY_CONNECTED, input_indices,
                                                      {output}, {output_operand_type}));
       return Status::OK();
@@ -331,7 +400,32 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
                      [&operand_indices](const std::string& input) { return operand_indices.at(input); });
       const int32_t axis = 0;
       ORT_RETURN_IF_ERROR(AddScalarOperand(model_builder, input_indices, axis));
-      ORT_RETURN_IF_ERROR(shaper.Concat(inputs, axis, output));
+
+      auto calculate_concat_output_shape = [&](const std::vector<std::string>& inputs,
+                                               const std::string& output,
+                                               const int32_t axis) -> Status {
+        std::vector<Shape> dimens;
+        for (const auto& input_name : inputs) {
+          const Shape& dimen = shaper[input_name];
+          dimens.push_back(dimen);
+        }
+
+        // If one of the inputs has dynamic shape (at axis), we will keep the dimen[axis] as 0 (dynamic)
+        auto output_dimen = dimens[0];
+        if (output_dimen[axis] != 0) {
+          for (size_t i = 1; i < dimens.size(); i++) {
+            if (dimens[i][axis] == 0) {
+              output_dimen[axis] = 0;
+              break;
+            }
+            output_dimen[axis] += dimens[i][axis];
+          }
+        }
+        shaper.AddShape(output, output_dimen);
+        return Status::OK();
+      };
+
+      ORT_RETURN_IF_ERROR(calculate_concat_output_shape(inputs, output, axis));
       OperandType output_operand_type = operand_types.at(inputs[0]);
       output_operand_type.SetDimensions(shaper[output]);
       ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CONCATENATION,
