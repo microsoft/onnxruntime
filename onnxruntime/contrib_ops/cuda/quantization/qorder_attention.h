@@ -38,6 +38,7 @@ class QOrderedAttention final : public CudaKernel, public AttentionBase {
   float const_scale_qkv_gemm_[3];
   BufferUniquePtr merged_qkv_alpha_;
   BufferUniquePtr merged_qkv_bias_;
+  BufferUniquePtr softmax_lookup_;
 
  private:
   Status PutIntoMergedWeight(const Tensor& tensor, AllocatorPtr alloc, int qkv_index);

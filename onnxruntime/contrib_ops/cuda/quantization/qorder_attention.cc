@@ -7,6 +7,8 @@
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "contrib_ops/cuda/bert/attention_impl.h"
+#include <cmath>
 #include <iostream>
 
 using namespace onnxruntime::cuda;
@@ -40,8 +42,8 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, InputIds::Scale_Q_Gemm)
         .InputMemoryType(OrtMemTypeCPUInput, InputIds::Scale_K_Gemm)
         .InputMemoryType(OrtMemTypeCPUInput, InputIds::Scale_V_Gemm)
-        .InputMemoryType(OrtMemTypeCPUInput, InputIds::Scale_QKT_Gemm)
-        .InputMemoryType(OrtMemTypeCPUInput, InputIds::Scale_QKT_Softmax)
+        .InputMemoryType(OrtMemTypeCPUInput, InputIds::Scale_QK_Gemm)
+        .InputMemoryType(OrtMemTypeCPUInput, InputIds::Scale_QK_Softmax)
         .InputMemoryType(OrtMemTypeCPUInput, InputIds::Scale_Values_Gemm),
     QOrderedAttention);
 
@@ -81,14 +83,21 @@ Status QOrderedAttention::PutIntoMergedWeight(const Tensor& tensor, AllocatorPtr
     ORT_ENFORCE(single_weight_shape_ == tensor.Shape(), "QKV weight size should be same!");
   }
   qkv_weight_const_count_++;
-  auto single_weight_bytes = single_weight_shape_.Size() * sizeof(float);
   if (!merged_qkv_weight_) {
-    auto* merged_qkv_weight_data = alloc->Alloc(3 * single_weight_bytes);
+    auto* merged_qkv_weight_data = alloc->Alloc(3 * single_weight_shape_.Size() * sizeof(float));
     merged_qkv_weight_ = BufferUniquePtr(merged_qkv_weight_data, BufferDeleter(alloc));
   }
-  float* start = (float*)(((uint8_t*)merged_qkv_weight_.get()) + single_weight_bytes * qkv_index);
-  int64_t N = single_weight_shape_.Size();
-  CUBLAS_RETURN_IF_ERROR(cublasScopy(CublasHandle(), gsl::narrow_cast<int>(N), tensor.Data<float>(), 1, start, 1));
+  auto single_weight_row_in_bytes = single_weight_shape_[1] * sizeof(float);
+  float* start = (float*)(((uint8_t*)merged_qkv_weight_.get()) + single_weight_row_in_bytes * qkv_index);
+  auto stream = Stream();
+  CUDA_RETURN_IF_ERROR(cudaMemcpy2DAsync(start,
+                                         3 * single_weight_row_in_bytes,
+                                         tensor.Data<float>(),
+                                         single_weight_row_in_bytes,
+                                         single_weight_row_in_bytes,
+                                         single_weight_shape_[0],
+                                         cudaMemcpyDeviceToDevice,
+                                         stream));
   return Status::OK();
 }
 
@@ -144,23 +153,32 @@ Status QOrderedAttention::PrePack(const Tensor& tensor, int input_idx, /*out*/ A
   if (input_idx == InputIds::ScaleInput) {
     const_sacle_input_ = *tensor.Data<float>();
   }
-  if (input_idx == InputIds::Scale_Q_Gemm || input_idx == InputIds::Scale_K_Gemm || input_idx == InputIds::Scale_V_Gemm) {
+  if (input_idx >= InputIds::Scale_Q_Gemm || input_idx < InputIds::Scale_Q_Gemm + 3) {
     const_scale_qkv_gemm_[input_idx - InputIds::Scale_Q_Gemm] = *tensor.Data<float>();
   }
 
-  if (input_idx == InputIds::Q_Weight || input_idx == InputIds::K_Weight || input_idx == InputIds::V_Weight) {
+  if (input_idx >= InputIds::Q_Weight || input_idx < InputIds::Q_Weight + 3) {
     is_packed = true;
     ORT_RETURN_IF_ERROR(PutIntoMergedWeight(tensor, alloc, input_idx - InputIds::Q_Weight));
   }
 
-  if (input_idx == InputIds::Scale_Q_Weight || input_idx == InputIds::Scale_Q_Weight || input_idx == InputIds::Scale_Q_Weight) {
+  if (input_idx >= InputIds::Scale_Q_Weight || input_idx < InputIds::Scale_Q_Weight + 3) {
     is_packed = true;
     ORT_RETURN_IF_ERROR(PutIntoMergedWeightScale(tensor, alloc, input_idx - InputIds::Scale_Q_Weight));
   }
 
-  if (input_idx == InputIds::Q_Bias || input_idx == InputIds::K_Bias || input_idx == InputIds::V_Bias) {
+  if (input_idx >= InputIds::Q_Bias || input_idx < InputIds::Q_Bias + 3) {
     is_packed = true;
     ORT_RETURN_IF_ERROR(PutIntoMergedBias(tensor, alloc, input_idx - InputIds::Q_Bias));
+  }
+
+  if (input_idx == InputIds::Scale_QK_Gemm) {
+    ORT_ENFORCE(qkv_hidden_sizes_ > 0, "Need it to calc head sizes!");
+    float scale = *tensor.Data<float>();
+    float base = std::exp(scale / sqrtf(qkv_hidden_sizes_ / num_heads_));
+    auto* softmax_lookup_data = alloc->Alloc(256 * sizeof(float));
+    softmax_lookup_ = BufferUniquePtr(softmax_lookup_data, BufferDeleter(alloc));
+    BuildTableForSoftmaxPowerOf(Stream(), base, (float*)softmax_lookup_.get());
   }
 
   return Status::OK();
@@ -181,12 +199,20 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   const Tensor* mask_index = context->Input<Tensor>(InputIds::Mask_Index);
 
   auto& device_prop = GetDeviceProp();
-  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), merged_weights_shape, merged_bias_shape, mask_index, nullptr, nullptr, device_prop.maxThreadsPerBlock));
+  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), merged_weights_shape, merged_bias_shape,
+                                  mask_index, nullptr, nullptr, device_prop.maxThreadsPerBlock));
 
-  const Tensor* scale_output = context->Input<Tensor>(InputIds::Scale_Values_Gemm);
-  const float* scale_output_data = scale_output->template Data<float>();
+  const Tensor* tensor_scale_attn_scores = context->Input<Tensor>(InputIds::Scale_QK_Gemm);
+  const float* scale_attn_scores_data = tensor_scale_attn_scores->Data<float>();
+
+  const Tensor* tensor_scale_attn_probs = context->Input<Tensor>(InputIds::Scale_QK_Softmax);
+  const float* scale_attn_probs_data = tensor_scale_attn_probs->Data<float>();
+
+  const Tensor* scale_output_tensor = context->Input<Tensor>(InputIds::Scale_Values_Gemm);
+  const float* scale_output_data = scale_output_tensor->template Data<float>();
 
   // input shape (batch_size, sequence_length, input_hidden_size)
+  constexpr int max_threads_per_block = 256;
   const auto& shape = input->Shape();
   int batch_size = static_cast<int>(shape[0]);
   int sequence_length = static_cast<int>(shape[1]);
@@ -205,65 +231,52 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   int m = batch_size * sequence_length;
   int n = 3 * hidden_size;
   int k = input_hidden_size;
-  auto gemm_buffer_quantized = GetScratchBuffer<int8_t>(2 * m * n);  // col32 + row
+  auto gemm_buffer_quantized = GetScratchBuffer<int8_t>(2 * m * n);  // merged and transposed
 
   cudaStream_t stream = Stream();
-
-  // Gemm result(M, N) = alpha * input * scale_weights * weights + scale_bias.
+  // Gemm result (M, N) = alpha * input * weights + scale_bias.
   ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
                                       1, m, n, k,
                                       (const float*)merged_qkv_alpha_.get(), input->template Data<int8_t>(), (const int8_t*)merged_qkv_weight_.get(),
                                       (const float*)merged_qkv_bias_.get(), gemm_buffer_quantized.get(),
-                                      (cublasLtOrder_t)order_weight_, CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_ZERO));
+                                      (cublasLtOrder_t)order_weight_,
+                                      CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_ZERO));
 
-  using CudaT = ToCudaType<MLFloat16>::MappedType;
-  constexpr size_t element_size = sizeof(MLFloat16);
+  int8_t* stacked_qkv_layers = gemm_buffer_quantized.get();
+  int8_t* tranposed_qkv_layers = stacked_qkv_layers + ((int64_t)m * n);
 
-  auto gemm_buffer = GetScratchBuffer<int8_t>(m * n * element_size);  // row, fp16
+  // BxSx3xNxH => 3xBxNxSxH, treat 4 consecutive int8 as float
+  LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size / sizeof(float), num_heads_,
+                 max_threads_per_block, false, (const float*)stacked_qkv_layers, (float*)tranposed_qkv_layers);
 
-  const int8_t* batch_src = ((const int8_t*)gemm_buffer_quantized.get());
-  CudaT* batch_dst = ((CudaT*)gemm_buffer.get());
-  int64_t single_gemm_result_size = sequence_length * hidden_size;
-  for (int b = 0; b < batch_size; b++) {
-    for (int qkv = 0; qkv < 3; qkv++) {
-      QOrderDequantizeToRow((cublasLtOrder_t)order_input_, stream, GetDeviceProp(), batch_src, batch_dst,
-                            const_scale_qkv_gemm_[qkv], batch_size, sequence_length, n);
-      batch_src += single_gemm_result_size;
-      batch_dst += single_gemm_result_size;
-    }
-  }
+  const int8_t* q_layer = tranposed_qkv_layers;
+  const int8_t* k_layer = q_layer + ((int64_t)sequence_length * hidden_size);
+  const int8_t* v_layer = k_layer + (k_layer - q_layer);
+  int8_t* attention_scores = stacked_qkv_layers;                       // reuse it
+  int8_t* attention_probs = stacked_qkv_layers + (k_layer - q_layer);  // attention_probs
+  int8_t* context_layer = attention_probs + (k_layer - q_layer);
 
-  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, 0);
-  auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);
-  auto output_buffer = GetScratchBuffer<int8_t>(m * n * element_size);  // row, fp16
-  cublasHandle_t cublas = CublasHandle();
-  if (!LaunchAttentionKernel(
-          device_prop,
-          stream,
-          reinterpret_cast<const CudaT*>(gemm_buffer.get()),
-          nullptr == mask_index ? nullptr : mask_index->template Data<int>(),
-          nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
-          reinterpret_cast<CudaT*>(output_buffer.get()),
-          batch_size,
-          sequence_length,
-          num_heads_,
-          head_size,
-          temp_buffer.get(),
-          cublas,
-          element_size,
-          is_unidirectional_,
-          0,
-          nullptr,
-          nullptr,
-          nullptr)) {
-    // Get last error to reset it to cudaSuccess.
-    CUDA_CALL(cudaGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
+  const float q_mm_k_alpha = const_scale_qkv_gemm_[0] * const_scale_qkv_gemm_[1] / *scale_attn_scores_data;
+  ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
+                                      batch_size * num_heads_, sequence_length, sequence_length, head_size,
+                                      &q_mm_k_alpha, q_layer, k_layer, nullptr, attention_scores,
+                                      (cublasLtOrder_t)order_weight_));
 
-  QOrderQuantizeRowTo((cublasLtOrder_t)order_input_, stream, GetDeviceProp(),
-                      (const CudaT*)output_buffer.get(), output->MutableData<int8_t>(),
-                      *(const float*)scale_output_data, batch_size, sequence_length, hidden_size);
+  ORT_ENFORCE(softmax_lookup_.get() != nullptr, "qk_gemm scale must be constent");
+  // the div sqrt(head_size) was processed when building the softmax lookup table
+  QOrderMaskedSoftmax(stream, device_prop, attention_scores, (const float*)softmax_lookup_.get(),
+                      mask_index->Data<int32_t>(), attention_probs, *scale_attn_probs_data,
+                      batch_size, num_heads_, sequence_length);
+
+  const float context_layer_alpha = *scale_attn_probs_data * *scale_attn_scores_data / *scale_output_data;
+  ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
+                                      batch_size * num_heads_, sequence_length, head_size, sequence_length,
+                                      &context_layer_alpha, attention_probs, v_layer, nullptr, context_layer,
+                                      (cublasLtOrder_t)order_weight_));
+
+  // scratch3 is BxNxSxH, transpose to output SxBxNxH
+  LaunchTransCtx(stream, sequence_length, batch_size, head_size / sizeof(float), num_heads_,
+                 max_threads_per_block, false, (const float*)context_layer, (float*)output->MutableData<int8_t>());
 
   return Status::OK();
 }

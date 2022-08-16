@@ -77,6 +77,16 @@ void ReorderS8RowToCol32(
     const int8_t* src, int8_t* dst,
     unsigned batch, unsigned rows, unsigned cols);
 
+// mask_index is (batch, sequence_len)
+void QOrderMaskedSoftmax(
+    cudaStream_t stream, const cudaDeviceProp& device_prop,
+    const int8_t* src, const float* lookup_table,
+    const int32_t* mask_index,
+    int8_t* dst, const float scale_dst,
+    const unsigned batch, const unsigned num_heads, const unsigned sequence_len);
+
+void BuildTableForSoftmaxPowerOf(cudaStream_t stream, const float base, float* table);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
