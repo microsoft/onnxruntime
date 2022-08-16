@@ -39,12 +39,13 @@ is a list of tensors, one from each model run
 
 """
 
-import numpy
-import onnx
 import time
-from onnx import ModelProto, TensorProto, helper, numpy_helper
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Union
+
+import numpy
+import onnx
+from onnx import ModelProto, TensorProto, helper, numpy_helper
 
 import onnxruntime
 
@@ -245,6 +246,7 @@ def _run_dequantize_linear(
     reshape_dims = list(weight_tensor.shape)  # deep copy
     reshape_dims[channel_axis] = 1  # only one per channel for reshape
     channel_count = weight_tensor.shape[channel_axis]
+    dequantized_weights = None
     for i in range(channel_count):
         per_channel_data = weight_tensor.take(i, channel_axis)
         dequantized_per_channel_data = (per_channel_data - weight_zp[i]) * weight_scale[i]
