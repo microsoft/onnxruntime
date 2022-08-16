@@ -792,6 +792,8 @@ class InferenceSession {
   // "session.use_ort_model_bytes_directly" to "1", this will be empty
   std::vector<uint8_t> ort_format_model_bytes_data_holder_;
 
+  bool using_ort_model_bytes_for_initializers_{false};
+
   // Container to store pre-packed weights to share between sessions.
   // The life-cycle of the cache itself is maintained by the user and the user will ensure
   // the cache is valid until any session reliant on it is still in scope.

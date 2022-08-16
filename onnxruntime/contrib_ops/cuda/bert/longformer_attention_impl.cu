@@ -26,9 +26,9 @@ limitations under the License.
 #include <library_types.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
-#include "longformer_attention_impl.h"
-#include "attention_impl.h"
-#include "longformer_attention_softmax.h"
+#include "contrib_ops/cuda/bert/longformer_attention_impl.h"
+#include "contrib_ops/cuda/bert/attention_impl.h"
+#include "contrib_ops/cuda/bert/longformer_attention_softmax.h"
 #include "core/common/safeint.h"
 
 using namespace onnxruntime::cuda;

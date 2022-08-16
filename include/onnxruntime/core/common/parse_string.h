@@ -17,7 +17,7 @@ namespace onnxruntime {
  */
 template <typename T>
 bool TryParseStringWithClassicLocale(std::string_view str, T& value) {
-  ORT_IF_CONSTEXPR (std::is_integral<T>::value && std::is_unsigned<T>::value) {
+  if constexpr (std::is_integral<T>::value && std::is_unsigned<T>::value) {
     // if T is unsigned integral type, reject negative values which will wrap
     if (!str.empty() && str[0] == '-') {
       return false;

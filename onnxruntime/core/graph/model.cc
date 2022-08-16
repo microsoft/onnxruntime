@@ -770,6 +770,7 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
 #if !defined(ORT_MINIMAL_BUILD)
                                         const IOnnxRuntimeOpSchemaRegistryList* local_registries,
 #endif
+                                        bool can_use_flatbuffer_for_initializers,
                                         const logging::Logger& logger,
                                         std::unique_ptr<Model>& model) {
   model = std::make_unique<Model>();
@@ -827,10 +828,11 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
   ORT_RETURN_IF(nullptr == fbs_graph, "Graph is null. Invalid ORT format model.");
 
 #if !defined(ORT_MINIMAL_BUILD)
-  ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, schema_registry, logger,
-                                               model->graph_));
+  ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, schema_registry,
+                                               can_use_flatbuffer_for_initializers, logger, model->graph_));
 #else
-  ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, logger, model->graph_));
+  ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version,
+                                               can_use_flatbuffer_for_initializers, logger, model->graph_));
 #endif
   return Status::OK();
 }

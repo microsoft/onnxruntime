@@ -9,6 +9,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+// BiasSoftmax follows the OpSet-11 definision of Softmax Op, that is, the input will be coerced to a 2D tensor
+// using axis attribute, all dims after axis (included) are in the same batch. This is different from definition
+// since OpSet-13. To use BiasSoftmax, during the fusion, if Softmax is OpSet-13 or newer, you can only fuse it
+// when axis attribute is the last dim, othewise, the computation result may be wrong.
 class BiasSoftmax final : public onnxruntime::cuda::CudaKernel {
  public:
   BiasSoftmax(const OpKernelInfo& info) : CudaKernel{info} {
