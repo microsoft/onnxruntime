@@ -378,7 +378,6 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
         // Remove the output edges of the constant node and then remove the node itself.
         graph_utils::RemoveNodeOutputEdges(graph, *node_to_remove);
-        std::cout << "Removing Node named " << node_to_remove->Name() << node_to_remove->OpType() << std::endl;
         graph.RemoveNode(node_to_remove->Index());
         modified = true;
         have_updated_nodes = true;
