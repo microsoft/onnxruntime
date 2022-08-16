@@ -348,12 +348,19 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
   return g_host->GetCpuPreferredNodes(graph, provider_type, kernel_registries, tentative_nodes);
 }
 
+namespace profiling {
+
+std::string demangle(const char* name) { return g_host->demangle(name); }
+std::string demangle(const std::string& name) { return g_host->demangle(name); }
+
+}  // namespace profiling
+
 namespace logging {
 
-// This is defined in core/common/logging/logging.cc
-// Redefining it here causes link issues
+unsigned int GetThreadId() { return g_host->GetThreadId(); }
+unsigned int GetProcessId() { return g_host->GetProcessId(); }
 
-//const char* Category::onnxruntime = "onnxruntime";
+const char* Category::onnxruntime = "onnxruntime";
 
 }  // namespace logging
 
