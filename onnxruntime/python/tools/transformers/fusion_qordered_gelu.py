@@ -83,6 +83,9 @@ class FusionQOrderedGelu(Fusion):
             name=self.model.create_node_name("QOrderedGelu", name_prefix="QOrderedGelu"),
         )
 
+        ordered_gelu_node.attribute.extend([helper.make_attribute("order_X", 1)])
+        ordered_gelu_node.attribute.extend([helper.make_attribute("order_Y", 1)])
+
         ordered_gelu_node.domain = "com.microsoft"
 
         self.nodes_to_add.append(ordered_gelu_node)

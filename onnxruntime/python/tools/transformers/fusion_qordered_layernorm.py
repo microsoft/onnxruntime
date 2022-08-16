@@ -90,7 +90,11 @@ class FusionQOrderedLayerNormalization(Fusion):
             name_prefix="QOrderedLayerNormalization"),
         )
 
+        normalize_node.attribute.extend([helper.make_attribute("order_X", 1)])
+        normalize_node.attribute.extend([helper.make_attribute("order_Y", 1)])
+
         normalize_node.domain = "com.microsoft"
+        
         self.nodes_to_add.append(normalize_node)
         self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
 

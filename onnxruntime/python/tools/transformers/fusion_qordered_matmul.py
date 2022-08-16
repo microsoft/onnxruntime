@@ -198,10 +198,17 @@ class FusionQOrderedMatMul(Fusion):
             fused_node_inputs.append(residual_add_dequantize_node.input[0])
             fused_node_inputs.append(residual_add_dequantize_node.input[1])
 
+        # The MatMul weight 'B' and 'bias' need some post-processing
+
         # Transpose weight 'B' from ROW to COL
+        # This offline transpose is needed only while using the CUDA EP
+        # TODO: Make this fusion logic EP-agnostic ?
         weight_tensor = self.model.get_initializer(dequantize_node_1.input[0])
         self.model.transpose_2d_tensor(weight_tensor)
         
+        bias_tensor = self.model.get_initializer(bias_add_node.input[bias_add_node_index])
+        self.model.scale_1d_tensor(bias_tensor, y_scale)
+
         fused_node = helper.make_node(
             "QOrderedMatMul",
             inputs=fused_node_inputs,
@@ -209,7 +216,10 @@ class FusionQOrderedMatMul(Fusion):
             name=self.model.create_node_name("QOrderedMatMul", name_prefix="QOrderedMatMul"),
         )
 
+        fused_node.attribute.extend([helper.make_attribute("order_A", 1)])
         fused_node.attribute.extend([helper.make_attribute("order_B", 0)])
+        fused_node.attribute.extend([helper.make_attribute("order_Y", 1)])
+        
         fused_node.domain = "com.microsoft"
 
         self.nodes_to_remove.extend(subgraph_nodes)

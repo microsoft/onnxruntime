@@ -428,6 +428,23 @@ class OnnxModel:
 
         return tensor
 
+    def scale_1d_tensor(self, tensor, div_scale):
+        if not isinstance(tensor, onnx_proto.TensorProto):
+            raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
+
+        if len(tensor.dims) != 1 or tensor.data_type != onnx_proto.TensorProto.FLOAT:
+            raise ValueError("Only FLOAT32 1-D tensors can be transposed")
+
+        if tensor.raw_data:
+            float32_data = np.frombuffer(tensor.raw_data, dtype="float32")
+            float32_scaled_data = float32_data / div_scale
+            tensor.raw_data = float32_scaled_data.tobytes()
+
+        else:
+            raise ValueError("only raw buffer supported")
+
+        return tensor
+
     def get_constant_input(self, node):
         for i, input in enumerate(node.input):
             value = self.get_constant_value(input)

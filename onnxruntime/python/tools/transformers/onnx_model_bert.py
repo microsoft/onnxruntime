@@ -17,6 +17,7 @@ from fusion_options import FusionOptions
 from fusion_reshape import FusionReshape
 from fusion_shape import FusionShape
 from fusion_skiplayernorm import FusionBiasSkipLayerNormalization, FusionSkipLayerNormalization
+from fusion_qordered_attention import FusionQOrderedAttention
 from fusion_qordered_layernorm import FusionQOrderedLayerNormalization
 from fusion_qordered_gelu import FusionQOrderedGelu
 from fusion_qordered_matmul import FusionQOrderedMatMul
@@ -52,10 +53,13 @@ class BertOnnxModel(OnnxModel):
 
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
+        self.qordered_attention_fusion = FusionQOrderedAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
+
         self.utils = FusionUtils(self)
 
     def fuse_attention(self):
         self.attention_fusion.apply()
+        self.qordered_attention_fusion.apply()
 
     def fuse_gelu(self):
         fusion = FusionGelu(self)
@@ -446,7 +450,7 @@ class BertOnnxModel(OnnxModel):
         """
         op_count = self.get_fused_operator_statistics()
         embed = op_count["EmbedLayerNormalization"]
-        attention = op_count["Attention"]
+        attention = op_count["Attention"] + op_count["QOrderedAttention"]
         gelu = op_count["Gelu"] + op_count["BiasGelu"] + op_count["FastGelu"]
         layer_norm = op_count["LayerNormalization"] + op_count["SkipLayerNormalization"]
         is_perfect = (embed > 0) and (attention > 0) and (attention == gelu) and (layer_norm >= 2 * attention)
