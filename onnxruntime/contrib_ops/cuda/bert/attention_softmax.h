@@ -181,25 +181,25 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
   using BlockReduce = cub::BlockReduce<float, TPB>;
   __shared__ typename BlockReduce::TempStorage tmp_storage;
 
-  __shared__ float sum_reverse_block;
-  __shared__ float max_block;
+  __shared__ T sum_reverse_block;
+  __shared__ T max_block;
 
   // Input dimension is BxNxSxS*; blockIdx.y is batch index b; gridDim.x=N*S;  blockIdx.x is index within N*S;
   int index = (blockIdx.y * gridDim.x + blockIdx.x) * all_sequence_length + threadIdx.x;
 
-  float thread_data = -CUDART_INF_F;
+  T thread_data = -CUDART_INF_F;
   if (threadIdx.x < all_sequence_length) {
     if (add_before_softmax == nullptr) {
-      thread_data = float(input[index]) * rsqrt_head_size;
+      thread_data = input[index] * T(rsqrt_head_size);
     } else {
-      thread_data = float(input[index] + add_before_softmax[index]) * rsqrt_head_size;
+      thread_data = (input[index] + add_before_softmax[index]) * T(rsqrt_head_size);
     }
 
     const int sequence_index = blockIdx.x % sequence_length;
     if (is_unidirectional) {
       int from_index = all_sequence_length - sequence_length + sequence_index;  // offset of from token in all sequence length.
       if (threadIdx.x > from_index) {
-        thread_data = -10000.0f;
+        thread_data = T(-10000.0f);
       }
     }
 
@@ -216,36 +216,36 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
     if (nullptr == key_padding_mask) {
       const int& mask = attention_mask[mask_offset];
       if (mask == 0)
-        thread_data += -10000.0f;
+        thread_data += T(-10000.0f);
     } else {
       const bool mask = key_padding_mask[mask_offset];
       if (mask) {
-        thread_data = -CUDART_INF_F;
+        thread_data = T(-CUDART_INF_F);
       }
     }
   }
 
   if (skip_softmax) {
     if (threadIdx.x < all_sequence_length) {
-      output[index] = T(thread_data);
+      output[index] = thread_data;
     }
     return;
   }
 
-  const float max = BlockReduce(tmp_storage).Reduce(thread_data, cub::Max(), all_sequence_length);
+  const T max = T(BlockReduce(tmp_storage).Reduce(thread_data, cub::Max(), all_sequence_length));
 
   // Store max value
   if (threadIdx.x == 0) {
-    max_block = max;
+    max_block = T(max);
   }
   __syncthreads();
 
-  float thread_data_exp = threadIdx.x < all_sequence_length ? expf(thread_data - max_block) : 0.0f;
-  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), all_sequence_length);
+  T thread_data_exp = threadIdx.x < all_sequence_length ? expf(thread_data - max_block) : 0.0f;
+  const T sum = T(BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), all_sequence_length));
 
   // Store value of 1.0/sum
   if (threadIdx.x == 0) {
-    sum_reverse_block = (1.f) / sum;
+    sum_reverse_block = T(1.f) / sum;
   }
   __syncthreads();
 
