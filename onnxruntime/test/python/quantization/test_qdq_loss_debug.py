@@ -13,7 +13,7 @@ from typing import Dict, List
 
 import numpy as np
 import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnx import TensorProto, helper
 
 import onnxruntime
 from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantizationMode, QuantType, quantize_static
@@ -33,14 +33,7 @@ from onnxruntime.quantization.quant_utils import (
     save_and_reload_model,
 )
 
-
-def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
-    """
-    Helper function to generate initializers for test inputs
-    """
-    tensor = np.random.normal(0, 0.3, tensor_shape).astype(tensor_dtype)
-    init = numpy_helper.from_array(tensor, input_name)
-    return init
+from op_test_utils import generate_random_initializer
 
 
 def construct_test_model1(test_model_path: str, activations_as_outputs=False):
@@ -71,12 +64,12 @@ def construct_test_model1(test_model_path: str, activations_as_outputs=False):
     x4_output = helper.make_tensor_value_info("Conv2Out", TensorProto.FLOAT, [1, 3, 1, 3])
     x5_output = helper.make_tensor_value_info("Conv3Out", TensorProto.FLOAT, [1, 3, 1, 3])
     x6_output = helper.make_tensor_value_info("AddOut", TensorProto.FLOAT, [1, 3, 1, 3])
-    w1 = generate_input_initializer([3, 3, 1, 1], np.float32, "W1")
-    b1 = generate_input_initializer([3], np.float32, "B1")
-    w3 = generate_input_initializer([3, 3, 1, 1], np.float32, "W3")
-    b3 = generate_input_initializer([3], np.float32, "B3")
-    w5 = generate_input_initializer([3, 3, 1, 1], np.float32, "W5")
-    b5 = generate_input_initializer([3], np.float32, "B5")
+    w1 = generate_random_initializer("W1", [3, 3, 1, 1], np.float32)
+    b1 = generate_random_initializer("B1", [3], np.float32)
+    w3 = generate_random_initializer("W3", [3, 3, 1, 1], np.float32)
+    b3 = generate_random_initializer("B3", [3], np.float32)
+    w5 = generate_random_initializer("W5", [3, 3, 1, 1], np.float32)
+    b5 = generate_random_initializer("B5", [3], np.float32)
     relu_node_1 = helper.make_node("Relu", ["input"], ["Relu1Out"], name="Relu1")
     conv_node_1 = helper.make_node("Conv", ["Relu1Out", "W1", "B1"], ["Conv1Out"], name="Conv1")
     relu_node_2 = helper.make_node("Relu", ["Conv1Out"], ["Relu2Out"], name="Relu2")
