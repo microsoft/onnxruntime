@@ -106,6 +106,8 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
      * git checkout 7.2.1
      * build as usual (but add the --skip_submodule_sync command so it doesn't update the submodule)
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
+   * ONNX Runtime also supports using TensorRT built-in parser library (instead of generating the parser library from onnx-tensorrt submodule). 
+     * To enable this build option, add additional `--use_tensorrt_builtin_parser` parameter next to the parameter `--use_tensorrt` in build commands below.
 
 ### Build Instructions
 {: .no_toc }
