@@ -145,7 +145,6 @@ Status AddNnapiSplit(ModelBuilder& model_builder,
 
     Shape output_shape = input_shape;
     output_shape[axis] = SafeInt<uint32_t>(input_shape[axis] / count);
-
     for (const auto& output_name : outputs) {
       shaper.AddShape(output_name, output_shape);
     }

@@ -159,7 +159,7 @@ static Status AddNnapiBatchNormalization(ModelBuilder& model_builder,
 static Status AddNnapiSqueeze(ModelBuilder& model_builder,
                               const std::string& node_name,
                               const std::string& input, const std::string& output,
-                              std::vector<int32_t> axes = {}) {
+                              std::vector<int32_t> axes) {
   if (model_builder.GetNNAPIFeatureLevel() < ANEURALNETWORKS_FEATURE_LEVEL_2) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, FAIL, "Squeeze is not supported on API level ", model_builder.GetNNAPIFeatureLevel());
@@ -175,10 +175,17 @@ static Status AddNnapiSqueeze(ModelBuilder& model_builder,
     axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_dims));
   }
 
-  // Squeeze all
-  for (size_t i = 0; i < input_dims; i++) {
-    if (input_shape[i] == 1)
-      axes.push_back(static_cast<int32_t>(i));
+  // Despite the spec of ANEURALNETWORKS_SQUEEZE at
+  // https://developer.android.com/ndk/reference/group/neural-networks
+  // states, that the axes (input 1 of ANEURALNETWORKS_SQUEEZE) is optional.
+  //
+  // The actual code of NNAPI requires the axes to be provided
+  // https://android.googlesource.com/platform/frameworks/ml/+/master/nn/common/operations/Squeeze.cpp#31
+  if (axes.empty()) {  // Squeeze all
+    for (size_t i = 0; i < input_dims; i++) {
+      if (input_shape[i] == 1)
+        axes.push_back(static_cast<int32_t>(i));
+    }
   }
 
   const auto axes_name = model_builder.GetUniqueName(node_name + input + "_axes");
@@ -997,8 +1004,8 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   const auto& output_shape = GetShapeInfoFromNodeArg(model_builder, output);
   shaper.AddShape(output, output_shape);
 
-  auto input_rank = input_shape.size();
-  auto output_rank = output_shape.size();
+  const auto input_rank = input_shape.size();
+  const auto output_rank = output_shape.size();
 
   // For reshape, the output type should be the same as the input type except the shape is different
   auto output_operand_type = operand_types.at(input);
@@ -1016,6 +1023,7 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
     ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiReshape(model_builder, input, shape_name, shape, output,
                                                             &output_shape));
   }
+
   return Status::OK();
 }
 
@@ -1133,7 +1141,6 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   const auto eps = helper.Get("epsilon", 1e-5f);
 
   const auto size = SafeInt<uint32_t>(scale_tensor.dims()[0]);
-  LOGS_DEFAULT(VERBOSE) << "batchnormalization op builder - check size int" << scale_tensor.dims()[0] << " - size";
   std::vector<float> a, b;
   a.reserve(size);
   b.reserve(size);
@@ -1918,7 +1925,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         std::string bias_squeezed = model_builder.GetUniqueName(node_unit.Name() + op + "_bias_squeezed");
         // We will use squeeze all here
         ORT_RETURN_IF_ERROR(AddNnapiSqueeze(model_builder, node_unit.Name(),
-                                            bias, bias_squeezed));
+                                            bias, bias_squeezed, {} /* axes */));
         bias_idx = operand_indices.at(bias_squeezed);
         LOGS_DEFAULT(VERBOSE) << "GemmOpBuilder - Operand [" << bias << "] squeezed from "
                               << Shape2String(shaper[bias])
@@ -2231,49 +2238,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
   std::vector<int32_t> axes;
   ORT_RETURN_IF_ERROR(GetAxesForSqueezeAndUnSqueeze(model_builder, node_unit, axes));
-  if (model_builder.GetNNAPIFeatureLevel() < ANEURALNETWORKS_FEATURE_LEVEL_2) {
-    return ORT_MAKE_STATUS(
-        ONNXRUNTIME, FAIL, "Squeeze is not supported on API level ", model_builder.GetNNAPIFeatureLevel());
-  }
-
-  auto& shaper(model_builder.GetShaper());
-  const auto& operand_indices(model_builder.GetOperandIndices());
-  const auto& operand_types(model_builder.GetOperandTypes());
-
-  const auto& input_shape = GetShapeInfoFromNodeArg(model_builder, input);
-  auto input_dims = input_shape.size();
-  for (auto& axis : axes) {
-    axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_dims));
-  }
-
-  // Despite the spec of ANEURALNETWORKS_SQUEEZE at
-  // https://developer.android.com/ndk/reference/group/neural-networks
-  // states, that the axes (input 1 of ANEURALNETWORKS_SQUEEZE) is optional.
-  //
-  // The actual code of NNAPI requires the axes to be provided
-  // https://android.googlesource.com/platform/frameworks/ml/+/master/nn/common/operations/Squeeze.cpp#31
-  if (axes.empty()) {  // Squeeze all
-    for (size_t i = 0; i < input_dims; i++) {
-      if (input_shape[i] == 1)
-        axes.push_back(static_cast<int32_t>(i));
-    }
-  }
-
-  const auto axes_name = model_builder.GetUniqueName(node_unit.Name() + input + "_axes");
-  Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
-  const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
-
-  std::vector<uint32_t> input_indices;
-  input_indices.push_back(operand_indices.at(input));      // input
-  input_indices.push_back(operand_indices.at(axes_name));  // axes
-
-  const auto& output_shape = GetShapeInfoFromNodeArg(model_builder, output);
-  shaper.AddShape(output, output_shape);
-  const OperandType output_operand_type(operand_types.at(input).type, output_shape);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SQUEEZE, input_indices,
-                                                 {output}, {output_operand_type}));
-  return Status::OK();
+  return AddNnapiSqueeze(model_builder, node_unit.Name(), input, output, axes);
 }
 
 #pragma endregion
