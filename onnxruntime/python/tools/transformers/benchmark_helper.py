@@ -17,19 +17,9 @@ from typing import Any, Dict, List, Optional
 
 import coloredlogs
 import numpy
-import psutil
 import torch
 import transformers
 from packaging import version
-from py3nvml.py3nvml import (
-    NVMLError,
-    nvmlDeviceGetCount,
-    nvmlDeviceGetHandleByIndex,
-    nvmlDeviceGetMemoryInfo,
-    nvmlDeviceGetName,
-    nvmlInit,
-    nvmlShutdown,
-)
 
 import onnxruntime
 
@@ -144,7 +134,7 @@ def create_onnxruntime_session(
 
         session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=providers)
     except:
-        logger.error(f"Exception", exc_info=True)
+        logger.error("Exception", exc_info=True)
 
     return session
 
@@ -402,6 +392,16 @@ def set_random_seed(seed=123):
 
 
 def get_gpu_info() -> Optional[List[Dict[str, Any]]]:
+    from py3nvml.py3nvml import (
+        NVMLError,
+        nvmlDeviceGetCount,
+        nvmlDeviceGetHandleByIndex,
+        nvmlDeviceGetMemoryInfo,
+        nvmlDeviceGetName,
+        nvmlInit,
+        nvmlShutdown,
+    )
+
     try:
         nvmlInit()
         result = []
@@ -435,6 +435,8 @@ def measure_memory(is_gpu, func):
             self.keep_measuring = keep_measuring
 
         def measure_cpu_usage(self):
+            import psutil
+
             max_usage = 0
             while True:
                 max_usage = max(max_usage, psutil.Process(os.getpid()).memory_info().rss / 1024**2)
@@ -444,6 +446,16 @@ def measure_memory(is_gpu, func):
             return max_usage
 
         def measure_gpu_usage(self) -> Optional[List[Dict[str, Any]]]:
+            from py3nvml.py3nvml import (
+                NVMLError,
+                nvmlDeviceGetCount,
+                nvmlDeviceGetHandleByIndex,
+                nvmlDeviceGetMemoryInfo,
+                nvmlDeviceGetName,
+                nvmlInit,
+                nvmlShutdown,
+            )
+
             max_gpu_usage = []
             gpu_name = []
             try:
