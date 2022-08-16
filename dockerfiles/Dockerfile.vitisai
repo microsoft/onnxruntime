@@ -7,7 +7,7 @@
 FROM xilinx/vitis-ai-cpu:1.3.598
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
-ARG ONNXRUNTIME_BRANCH=master
+ARG ONNXRUNTIME_BRANCH=main
 
 ARG PYXIR_REPO=https://github.com/Xilinx/pyxir
 ARG PYXIR_BRANCH=v0.2.0
