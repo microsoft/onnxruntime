@@ -299,7 +299,7 @@ def my_longformer_self_attention_forward_4_3_2(
     )
 
 
-def export_longformer(model:LongformerModel, onnx_model_path:str, export_padding:bool):
+def export_longformer(model: LongformerModel, onnx_model_path: str, export_padding: bool):
     """Export longformer model to ONNX
 
     Args:
@@ -372,7 +372,7 @@ def export_longformer(model:LongformerModel, onnx_model_path:str, export_padding
     LongformerSelfAttention.forward = original_forward
 
 
-def optimize_longformer(onnx_model_path:str, fp32_model_path:str, fp16_model_path=None):
+def optimize_longformer(onnx_model_path: str, fp32_model_path: str, fp16_model_path=None):
     """Optimize longformer onnx model
 
     Args:
