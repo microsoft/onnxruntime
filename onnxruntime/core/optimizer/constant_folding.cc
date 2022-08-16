@@ -212,9 +212,9 @@ bool ConstantFoldShapeNode(Graph& graph,
           continue;
         }
 
-        const int64_t gather_index = indices_values[0];
+        int64_t gather_index = indices_values[0];
         const int64_t rank = static_cast<int64_t>(dim_values.size());
-        const gather_index = gather_index < 0 ? gather_index + rank : gather_index;
+        gather_index = gather_index < 0 ? gather_index + rank : gather_index;
         const size_t gather_indices_length = 1;
 
         const int gather_output_rank = 1 /* gather input data is a 1-D tensor representing a shape */ +
