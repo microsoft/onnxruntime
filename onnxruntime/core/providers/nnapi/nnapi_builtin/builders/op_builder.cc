@@ -83,32 +83,44 @@ static Status AddBinaryOperator(int32_t op_type,
   return Status::OK();
 }
 
-static Status AddBinaryOperator2(int32_t op_type,
-                                 ModelBuilder& model_builder,
-                                 const std::string& input1,
-                                 const std::string& input2,
-                                 bool add_activation,
-                                 int32_t fuse_code,
-                                 const std::string& output,
-                                 float output_scale = 0.0f,
-                                 int32_t output_zero_point = 0) {
+static Status AddNnapiBatchNormalization(ModelBuilder& model_builder,
+                                         const std::string& input1,
+                                         const std::string& input2,
+                                         const std::string& output1,
+                                         const std::string& input3,
+                                         const std::string& output2,
+                                         int32_t fuse_code,
+                                         float output_scale = 0.0f,
+                                         int32_t output_zero_point = 0) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
 
+  // Add Nnapi Mul
   std::vector<uint32_t> input_indices;
-  input_indices.push_back(operand_indices.at(input1));  // input 1
-  input_indices.push_back(operand_indices.at(input2));  // input 2
+  input_indices.push_back(operand_indices.at(input1));
+  input_indices.push_back(operand_indices.at(input2));
+  // Add activation
+  ADD_SCALAR_OPERAND(model_builder, input_indices, ANEURALNETWORKS_FUSED_NONE);
 
-  if (add_activation) {
-    ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
-  }
-
-  ORT_RETURN_IF_ERROR(shaper.Eltwise(input1, input2, output));
-  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output],
+  ORT_RETURN_IF_ERROR(shaper.Eltwise(input1, input2, output1));
+  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output1],
                                         output_scale, output_zero_point);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_type, input_indices,
-                                                 {output}, {output_operand_type}));
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_MUL, input_indices,
+                                                 {output1}, {output_operand_type}));
+
+  // Add Nnapi Add
+  input_indices.clear();
+  input_indices.push_back(operand_indices.at(output1));
+  input_indices.push_back(operand_indices.at(input3));
+  // Add activation
+  ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
+
+  ORT_RETURN_IF_ERROR(shaper.Eltwise(output1, input3, output2));
+  const OperandType output_operand_type2(operand_types.at(input3).type, shaper[output2],
+                                         output_scale, output_zero_point);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_ADD, input_indices,
+                                                 {output2}, {output_operand_type2}));
   return Status::OK();
 }
 
@@ -1128,21 +1140,8 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   const OperandType b_operand_type(operand_types.at(input).type, tensor_a_dimen);
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(tensor_b_name, b.data(), b_operand_type));
 
-  // Mul
-  ORT_RETURN_IF_ERROR(AddBinaryOperator2(ANEURALNETWORKS_MUL,
-                                         model_builder,
-                                         input, tensor_a_name,
-                                         true /* add_activation */, ANEURALNETWORKS_FUSED_NONE,
-                                         tensor_imm_product_name));
-
-  // Add
   int32_t fuse_code = model_builder.FindActivation(node_unit);
-  ORT_RETURN_IF_ERROR(AddBinaryOperator2(ANEURALNETWORKS_ADD,
-                                         model_builder,
-                                         tensor_imm_product_name, tensor_b_name,
-                                         true /* add_activation */, fuse_code,
-                                         output));
-
+  ORT_RETURN_IF_ERROR(AddNnapiBatchNormalization(model_builder, input, tensor_a_name, tensor_imm_product_name, tensor_b_name, output, fuse_code));
   return Status::OK();
 }
 
