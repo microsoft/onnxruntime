@@ -5,7 +5,7 @@ parent: Accelerate PyTorch
 grand_parent: Tutorials
 nav_order: 1
 ---
-# Inference PyTorch models
+# Inference with PyTorch
 {: .no_toc }
 
 Learn about PyTorch and how to perform inference with PyTorch models.
