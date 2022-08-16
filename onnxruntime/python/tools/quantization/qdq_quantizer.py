@@ -5,10 +5,6 @@
 # --------------------------------------------------------------------------
 from onnx.helper import make_function
 import logging
-# import os
-# from pickletools import uint8
-# import struct
-# from pathlib import Path
 from enum import Enum
 
 import onnx
@@ -31,14 +27,8 @@ from .quant_utils import (
     add_quant_output_suffix,
     add_quant_suffix,
     find_by_name,
-    # generate_identified_filename,
-    # get_elem_index,
-    # get_mul_node,
     get_qmin_qmax_for_qType,
     get_qrange_for_qType,
-    # onnx_domain,
-    # quantize_nparray,
-    # type_to_name,
 )
 from .registry import CreateQDQQuantizer
 import onnx.helper
@@ -214,7 +204,6 @@ class QDQQuantizer(ONNXQuantizer):
         self.remove_nodes()
         if not self.add_qdq_pair_to_weight:
             self.model.clean_initializers()
-            # ONNXQuantizer.CleanGraphInitializers(self.model.graph(), self.model.model)
         self.model.model.producer_name = __producer__
         self.model.model.producer_version = __version__
 
@@ -251,8 +240,6 @@ class QDQQuantizer(ONNXQuantizer):
             input_name+"_ComputeQuantizationParameters",
             domain=self.compute_quantization_parameters_function.domain,
         )
-        # nodes_list.append(compute_quant_param_node)
-        # self.model.add_node(compute_quant_param_node)
         return input_scale_name, input_zp_name, [], [], compute_quant_param_node
 
     def create_dynamic_subgraph_function(self, qType, symmetric):
@@ -365,11 +352,6 @@ class QDQQuantizer(ONNXQuantizer):
             zp_cast_node = onnx.helper.make_node("Cast", [fixed_zero_zp_name], [input_zp_name], zp_cast_name, to=qType) # TODO recast zp as int32 to avoid underflow...
             nodes_list.append(zp_cast_node)
 
-            # qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range=self.reduce_range, symmetric=True)
-            # zp = int((qmin + qmax) / 2)
-            # initializer_zp = onnx.helper.make_tensor(fixed_zero_zp_name, qType, [], [zp])
-            # self.model.add_initializer(initializer_zp)
-
             # Create function op
             func_domain = 'com.microsoft'
             func_opset_imports = [onnx.helper.make_opsetid("", self.opset_version)]
@@ -395,20 +377,6 @@ class QDQQuantizer(ONNXQuantizer):
             input_zp_name = input_name + "_zero_point"
             qrange_name = self.fixed_qrange_int8_name if qType == onnx_proto.TensorProto.INT8 else self.fixed_qrange_uint8_name
             nodes_list=[]
-
-            # Add tensors for quantize range and zero value.
-            # initializer_qrange = onnx.helper.make_tensor(
-            #     qrange_name,
-            #     onnx_proto.TensorProto.FLOAT,
-            #     [],
-            #     [get_qrange_for_qType(qType, reduce_range=self.reduce_range, symmetric=False)],
-            # )
-            # self.model.add_initializer(initializer_qrange)
-            # initializer_qvalue = onnx.helper.make_tensor(self.fixed_zero_name, onnx_proto.TensorProto.FLOAT, [], [0.0])
-            # self.model.add_initializer(initializer_qvalue)
-            # qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range=self.reduce_range, symmetric=False)
-            # initializer_qmin = onnx.helper.make_tensor(self.fixed_qmin_name, onnx_proto.TensorProto.FLOAT, [], [qmin])
-            # self.model.add_initializer(initializer_qmin)
 
             # Create Constant tensors instead of initializers
             qrange_name = input_name+"_"+qrange_name
@@ -549,19 +517,11 @@ class QDQQuantizer(ONNXQuantizer):
             return make_function(
                 func_domain, # TODO: What domain
                 "ComputeQuantizationParameters",
-                [input_name],#, qrange_name, self.fixed_zero_name, self.fixed_qmin_name],
+                [input_name],
                 [input_scale_name, input_zp_name],
                 nodes_list,
                 func_opset_imports,
             )
-
-    # def quantize_tensors(self):
-    #     for tensor_name in self.tensors_to_quantize:
-    #         if tensor_name in self.quantized_value_map.keys():
-    #             continue
-    #         # Quantize the input
-    #         initializer = find_by_name(tensor_name, self.model.initializer())
-    #         if initializer is not None:
 
     def _create_qdq_nodes(
         self, q_input, q_output, quant_node_name, dq_input, dq_output, dequant_node_name, scale_name, zp_name, axis=None
@@ -620,81 +580,6 @@ class QDQQuantizer(ONNXQuantizer):
                 axis=axis,
             )
             self.model.add_node(dequant_node)
-
-# self.model.add_nodes([qlinear_node, dequant_node])
-#                 else:
-#                     q_weight_name, zp_name, scale_name = self.quantize_weight(initializer, self.weight_qType)
-#                     inputs = [q_weight_name, scale_name, zp_name]
-#                     output_name = tensor_name + "_DequantizeLinear"
-#                     node = onnx.helper.make_node(
-#                         "DequantizeLinear",
-#                         inputs,
-#                         [output_name],
-#                         tensor_name + "_DequantizeLinear",
-#                     )
-#                     self.model.add_node(node)
-#                     self.model.replace_input_of_all_nodes(tensor_name, tensor_name + "_DequantizeLinear")
-#             else:
-#                 data_found, scale_name, zp_name, _, _ = self._get_quantization_params(tensor_name)
-#                 nodes = []
-
-#                 compute_function = None
-#                 if data_found == False:
-#                     if self.static:
-#                         raise ValueError(
-#                             "Quantization parameters are not specified for param {}."
-#                             "In static mode quantization params for inputs and outputs of nodes to be quantized are required.".format(
-#                                 tensor_name
-#                             )
-#                         )
-#                     # Here we add dynamic subgraph, if we found no static params
-#                     # Scale and Zero Points not available for this input. Add nodes to dynamically compute it
-#                     qType = self.input_qType
-#                     if self.model.is_graph_output(tensor_name): # Changes name to quantize output correctly
-#                         (
-#                             scale_name,
-#                             zp_name,
-#                             scale_shape,
-#                             zp_shape,
-#                         ) = self.create_dynamic_subgraph(tensor_name + "_QuantizeLinearInput", nodes)
-#                     else:
-#                         (
-#                             scale_name,
-#                             zp_name,
-#                             scale_shape,
-#                             zp_shape,
-#                         ) = self.create_dynamic_subgraph(tensor_name, nodes)
-#                 if (
-#                     self.dedicated_qdq_pair
-#                     and tensor_name in self.tensor_to_its_receiving_nodes
-#                     and len(self.tensor_to_its_receiving_nodes[tensor_name]) > 1
-#                 ):
-#                     # TODO: This if block should be tested
-#                     num_dedicated_qdq_pair = len(self.tensor_to_its_receiving_nodes[tensor_name])
-#                     for i in range(num_dedicated_qdq_pair):
-#                         postfix = str(i + 1)
-#                         q_input = tensor_name
-#                         q_output = tensor_name + "_QuantizeLinear_" + postfix
-#                         dq_input = q_output
-#                         dq_output = tensor_name + "_DequantizeLinear_" + postfix
-#                         quant_node_name = tensor_name + "_QuantizeLinear_" + postfix
-#                         dequant_node_name = tensor_name + "_DequantizeLinear_" + postfix
-#                         qlinear_node = onnx.helper.make_node(
-#                             "QuantizeLinear",
-#                             [q_input, scale_name, zp_name],
-#                             [q_output],
-#                             quant_node_name,
-#                         )
-#                         dequant_node = onnx.helper.make_node(
-#                             "DequantizeLinear",
-#                             [dq_input, scale_name, zp_name],
-#                             [dq_output],
-#                             dequant_node_name,
-#                         )
-#                         self.model.add_nodes([qlinear_node, dequant_node] + nodes)
-
-#                         node = self.tensor_to_its_receiving_nodes[tensor_name][i]
-#                         self.model.replace_node_input(node, tensor_name, dq_output)
 
     def _add_qdq_pair_for_activation(self, tensor_name, scale_name, zp_name):
         if (
@@ -809,7 +694,6 @@ class QDQQuantizer(ONNXQuantizer):
 
                 del self.tensors_to_quantize[tensor_name]
 
-    # TODO: ASK WHAT THIS IS
     def _quantize_sharing_param_tensors(self):
         while self.tensors_to_quantize:
             for tensor_name, tensor_info in self.tensors_to_quantize.copy().items():
@@ -836,7 +720,6 @@ class QDQQuantizer(ONNXQuantizer):
                 _, input_scale_name, _, _, _ = self._get_quantization_params(input_name)
             inputscale_initializer = find_by_name(input_scale_name, self.model.initializer())
             if inputscale_initializer  is None:
-                # self.model.remove_initializer(find_by_name(bias_name, self.model.initializer()))
                 continue
             self.quantize_bias_static(bias_name, input_name, weight_name, beta)
             self.model.remove_initializer(find_by_name(bias_name, self.model.initializer()))
