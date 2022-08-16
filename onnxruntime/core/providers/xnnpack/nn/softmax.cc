@@ -8,6 +8,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/math/softmax_shared.h"
 #include "core/optimizer/initializer.h"
+#include "core/providers/shared/initializer_view/initializer_view.h"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -29,16 +30,16 @@ bool IsQuantSoftmaxSupported(const NodeUnit& node_unit, const GraphViewer& graph
     // idealy, QlinearSoftmax or QDQSoftmax will keep this output scale and zp, but we have to handle some
     // qdq models converted from other framework
     auto [scale_tensor, zero_tensor] = GetQuantizationZeroPointAndScale(graph, node_unit.Outputs()[0]);
-    InternalDataInitializer q_scale(*scale_tensor);
-    if (!q_scale.IsOK()) {
+    auto q_scale = InitializerView::Create(*scale_tensor);
+    if (!q_scale) {
       break;
     }
-    if (fabs(*q_scale.data<float>() - 1.0f / 256.0f) > 0.0001f) {
+    if (fabs(q_scale->DataAsSpan<float>()[0] - 1.0f / 256.0f) > 0.0001f) {
       break;
     }
     if (scale_tensor) {
-      InternalDataInitializer q_zp(*zero_tensor);
-      if (q_zp.IsOK() && q_zp.DataSpan<int8_t>()[0] != 0) {
+      auto q_zp = InitializerView::Create(*zero_tensor);
+      if (q_zp && q_zp->DataAsSpan<int8_t>()[0] != 0) {
         break;
       }
     }

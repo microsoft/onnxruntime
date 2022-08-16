@@ -57,50 +57,6 @@ enum class QuantizedOpType : uint8_t {
   Unknown,
 };
 
-class InternalDataInitializer {
- public:
-  InternalDataInitializer(const ONNX_NAMESPACE::TensorProto& tensor_proto);
-
-  bool HasExternalData() {
-    return has_external_data_;
-  }
-  const TensorShape& Shape() {
-    return shape_;
-  }
-
-  const DataTypeImpl* Type() {
-    return type_;
-  }
-
-  const void* raw_data() {
-    return unpacked_tensor_.data();
-  }
-
-  template <class T>
-  gsl::span<const T> DataSpan() {
-    return gsl::make_span(data<T>(), unpacked_tensor_.size() / sizeof(T));
-  }
-
-  template <class T>
-  const T* data() {
-    static_assert(std::is_same_v<typename std::decay<T>::type, T>);
-    return reinterpret_cast<const T*>(unpacked_tensor_.data());
-  }
-  bool IsOK() {
-    return status_.IsOK();
-  }
-  const Status& GetStatus() {
-    return status_;
-  }
-
- private:
-  bool has_external_data_{false};
-  TensorShape shape_;
-  const DataTypeImpl* type_{nullptr};
-  std::vector<uint8_t> unpacked_tensor_;
-  Status status_;
-};
-
 QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit);
 
 // forward declaration for this EP's namespace.

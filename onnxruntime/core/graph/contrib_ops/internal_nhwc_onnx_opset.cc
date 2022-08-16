@@ -86,6 +86,8 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   //   LRN,
   //   GridSample
   //   DepthToSpace, SpaceToDepth
+
+  /// for layout insensitive ops, we will register it in xnnpack_execution_provider.cc
 }
 
 }  // namespace internal_nhwc_onnx

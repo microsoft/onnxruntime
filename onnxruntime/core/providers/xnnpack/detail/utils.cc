@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "utils.h"
-#include <stdint.h>
 #include <unordered_map>
 #include <vector>
 
@@ -14,42 +13,10 @@
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "onnx/defs/attr_proto_util.h"
 #include "core/common/safeint.h"
-#include "core/optimizer/initializer.h"
+#include "core/providers/shared/initializer_view/initializer_view.h"
+
 namespace onnxruntime {
 namespace xnnpack {
-
-InternalDataInitializer::InternalDataInitializer(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
-  status_ = Status::OK();
-  if (!utils::HasDataType(tensor_proto)) {
-    status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Initializer must have a datatype");
-    return;
-  }
-  if (utils::HasExternalData(tensor_proto)) {
-    status_ = ORT_MAKE_STATUS(
-        ONNXRUNTIME, FAIL,
-        "don't support externalData in this helper class, please use class `Initializer` ");
-    has_external_data_ = false;
-    return;
-  }
-
-  auto proto_data_type = tensor_proto.data_type();
-  auto proto_dims = utils::GetTensorShapeFromTensorProto(tensor_proto);
-  shape_ = TensorShape(proto_dims);
-
-  type_ = DataTypeImpl::TensorTypeFromONNXEnum(proto_data_type)->GetElementType();
-
-  Path external_path;
-  status_ = utils::UnpackInitializerData(tensor_proto, external_path, unpacked_tensor_);
-  if (!status_.IsOK()) {
-    return;
-  }
-
-  const char* raw_data = static_cast<const char*>(tensor_proto.raw_data().data());
-  if (nullptr != raw_data && utils::IsPrimitiveDataType<std::string>(type_)) {
-    status_ = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not have raw data");
-    return;
-  }
-}
 
 const char* OpTypeToString(OpComputeType opCtype) {
   switch (opCtype) {
@@ -366,13 +333,12 @@ TensorQuantType GetTensorQuantType(const NodeUnit& node_unit, int32_t io_index,
       } else if (scales_dim == tensor_shape[0]) {
         // default 0 for zero-point if zero_dim == 0
         if (zero_tensor != nullptr) {
-          InternalDataInitializer zp_val(*zero_tensor);
-          if (!zp_val.IsOK()) {
-            LOGS_DEFAULT(ERROR) << "error when unpack zero tensor: "
-                                << ", error msg: " << zp_val.GetStatus().ErrorMessage();
+          auto zp_val = InitializerView::Create(*zero_tensor);
+          if (!zp_val) {
+            LOGS_DEFAULT(ERROR) << "error when unpack zero tensor: ";
             break;
           }
-          auto zero_points = zp_val.DataSpan<int8_t>();
+          auto zero_points = zp_val->DataAsSpan<int8_t>();
           for (size_t i = 0; i < zero_points.size(); i++) {
             if (zero_points[i] != 0) {
               LOGS_DEFAULT(VERBOSE) << "only support 0 as zero point for per-channel quantization, "

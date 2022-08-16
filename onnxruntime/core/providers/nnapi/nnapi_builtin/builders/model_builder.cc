@@ -13,6 +13,7 @@
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
+#include "core/providers/shared/initializer_view/initializer_view.h"
 
 #include "helper.h"
 #include "op_builder.h"

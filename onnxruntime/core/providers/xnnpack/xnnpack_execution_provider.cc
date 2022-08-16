@@ -5,6 +5,7 @@
 #include <unordered_set>
 #include <utility>
 
+#include "core/graph/function_utils.h"
 #include "xnnpack_execution_provider.h"
 #include "detail/utils.h"
 #include "detail/node_support_checker.h"
@@ -142,10 +143,6 @@ static void AddComputeCapabilityForNodeUnit(const NodeUnit& node_unit,
     }
     sub_graph->SetMetaDef(FuseQDQGroup(node_unit));
     sub_graph->use_existing_schema = true;
-    // layout insensitive ops, we will create schema in CreateFusedSubGraphNode.
-    if (node_unit.OpType() == "Softmax") {
-      sub_graph->use_existing_schema = false;
-    }
   } else {
     process_node(node_unit.GetNode());
   }
@@ -240,19 +237,36 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
     }
     node_unit_supported_result[&node_unit] = request_node;
     if (request_node) {
+      auto required_register = [](const IndexedSubGraph& subgraph) -> bool {
+        if (subgraph.GetMetaDef() == nullptr) return false;
+
+        const std::string& op_type = subgraph.GetMetaDef()->name;
+        // layout insensitive ops registration, add more ops here if needed.
+        if (std::unordered_set<std::string>{"QLinearSoftmax"}.count(op_type)) {
+          return true;
+        }
+        return false;
+      };
+      auto register_layout_insensitive_ops = [&graph, &required_register](const IndexedSubGraph& subgraph) {
+        if(required_register(subgraph)){
+          auto temp_schema_ptr = function_utils::CreateSchema(graph.GetGraph(), subgraph);
+          // RegisterSchema may complain registration more than once, but it's fine.
+          ONNX_NAMESPACE::RegisterSchema(*temp_schema_ptr);
+      }; };
       // Create ComputeCapability from IndexedSubGraph and add
-      auto add_capability = [&](std::unique_ptr<IndexedSubGraph> sub_graph) {
+      auto add_capability_or_register_schema = [&](std::unique_ptr<IndexedSubGraph> sub_graph) {
+        register_layout_insensitive_ops(*sub_graph);
         capabilities.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
         node_to_compute_capability.insert({&node_unit, capabilities.back().get()});
       };
 
       // first pass: add ComputeCapability for all individual nodes in NodeUnit
       if (node_unit.GetNode().GetExecutionProviderType().empty()) {
-        AddComputeCapabilityForEachNodeInNodeUnit(node_unit, add_capability, supported_node_unit_map);
+        AddComputeCapabilityForEachNodeInNodeUnit(node_unit, add_capability_or_register_schema, supported_node_unit_map);
       } else {  // == Type()
         // second pass: add single ComputeCapability for all nodes in NodeUnit so any QDQ node groups get fused
         // Activation fusion happens later
-        AddComputeCapabilityForNodeUnit(node_unit, add_capability, supported_node_unit_map);
+        AddComputeCapabilityForNodeUnit(node_unit, add_capability_or_register_schema, supported_node_unit_map);
       }
     }
   }
