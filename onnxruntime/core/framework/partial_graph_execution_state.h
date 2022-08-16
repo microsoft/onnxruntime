@@ -7,6 +7,7 @@
 #include "core/common/common.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/iexecutor.h"
+#include "core/common/inlined_containers.h"
 #include "core/framework/program_region.h"
 
 namespace onnxruntime {
