@@ -8,14 +8,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-static cudaStream_t CudnnInitializationStream() {
-  return nullptr;
-}
-
-static onnxruntime::Stream* CudnnOrtStream() {
-  return nullptr;
-}
-
 template <typename T>
 void CudnnRnnBase<T>::SetWeightBias(const cudnnHandle_t handle,
                                     const cudnnRNNDescriptor_t rnn_desc,
@@ -149,20 +141,11 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
     } else {
       ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, nullptr, w_data_cache_, w_desc_cache_, tmp_rnn_desc, nullptr));
     }
-    cudaStreamSynchronize(CudnnInitializationStream());
+    cudaStreamSynchronize(nullptr);
     weight_cached_ = true;
   }
 
   return Status::OK();
-}
-
-//make dst stream wait on src stream
-static void MakeStreamWaitOnAnother(cudaStream_t src, cudaStream_t dst) {
-  cudaEvent_t current_event;
-  CUDA_CALL_THROW(cudaEventCreateWithFlags(&current_event, cudaEventDisableTiming));
-  CUDA_CALL_THROW(cudaEventRecord(current_event, src));
-  CUDA_CALL_THROW(cudaStreamWaitEvent(dst, current_event));
-  CUDA_CALL_THROW(cudaEventDestroy(current_event));
 }
 
 template <typename T>
@@ -179,20 +162,6 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (rnn_mode_ == CUDNN_LSTM) {
     initial_c = ctx->Input<Tensor>(RNN_Input_Index::initial_c);  // initial cell. [num_directions_, batch_size, hidden_size_]
   }
-
-  // RNN kernel use cudnn to cache some states during construction, 
-  // this result in cudnn operation happened on default stream, 
-  // even cudnnSetStream won't help to put cudnn kernels to correct stream.
-  // I don't know why, it seems like a bug in cudnn.
-  // to workaround it:
-  //  1. we first let default stream wait on the input stream.
-  //  2. all the computation/memcpy within Rnn kernel running on default stream
-  //  3. before exist, let input stream wait on default stream.
-  // I really don't like it, but didn't find a better solution.
-  cudaStream_t current_stream = static_cast<cudaStream_t>(ctx->GetComputeStream()->handle);
-  //default stream wait on current stream before launch cudnn
-  MakeStreamWaitOnAnother(current_stream, CudnnInitializationStream());
-
 
   int64_t seq_length = X->Shape()[0];
   int64_t batch_size = X->Shape()[1];
@@ -229,8 +198,8 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   const T* x_data = X->Data<T>();
   if (reverse_) {
     // reverse input data
-    x_reversed_data = GetScratchBuffer<T>(seq_length * batch_size * input_size, CudnnOrtStream());
-    ReverseBySequence(CudnnInitializationStream(),
+    x_reversed_data = GetScratchBuffer<T>(seq_length * batch_size * input_size, OrtStream(ctx));
+    ReverseBySequence(Stream(ctx),
                       gsl::narrow_cast<int32_t>(seq_length),
                       gsl::narrow_cast<int32_t>(batch_size),
                       gsl::narrow_cast<int32_t>(input_size),
@@ -251,7 +220,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (Y != nullptr) {
     y_data = Y->MutableData<T>();
   } else {
-    y_alloc_data = GetScratchBuffer<T>(output_size, CudnnOrtStream());
+    y_alloc_data = GetScratchBuffer<T>(output_size, OrtStream(ctx));
     y_data = y_alloc_data.get();
   }
 
@@ -274,17 +243,17 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     const Tensor& W = *ctx->Input<Tensor>(RNN_Input_Index::W);
     const Tensor& R = *ctx->Input<Tensor>(RNN_Input_Index::R);
     const Tensor* B = ctx->Input<Tensor>(RNN_Input_Index::B);
-    ORT_RETURN_IF_ERROR(ReorganizeWeights(&W, &R, B, w_data, w_desc, rnn_desc, CudnnOrtStream()));
+    ORT_RETURN_IF_ERROR(ReorganizeWeights(&W, &R, B, w_data, w_desc, rnn_desc, OrtStream(ctx)));
   }
 
   // CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED works with CUDNN_RNN_PADDED_IO_ENABLED, so that it will auto fill 0 for the shorter sequences
   CUDNN_RETURN_IF_ERROR(cudnnSetRNNPaddingMode(rnn_desc, CUDNN_RNN_PADDED_IO_ENABLED),
-      CudnnHandle(), CudnnInitializationStream());
+      CudnnHandle(), Stream(ctx));
 
   size_t workspace_bytes;
   CUDNN_RETURN_IF_ERROR(cudnnGetRNNWorkspaceSize(CudnnHandle(), rnn_desc, gsl::narrow_cast<int>(seq_length), x_desc.data(), &workspace_bytes),
-                        CudnnHandle(), CudnnInitializationStream());
-  auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes, CudnnOrtStream());
+                        CudnnHandle(), Stream(ctx));
+  auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes, OrtStream(ctx));
   int32_t zero_seq_count = 0;
   std::vector<int32_t> zero_seq_index_cache(batch_size, 0);
   int64_t zero_seq_index_cache_size = 0;
@@ -309,7 +278,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                    y_c_data,
                                                    workspace_cuda.get(),
                                                    workspace_bytes),
-                          CudnnHandle(), CudnnInitializationStream());
+                          CudnnHandle(), Stream(ctx));
   } else {
     // cudnn doesn't support 0 sequence inside the batch, find the 0 sequence and set it to 1
     // there's a ZeroMask kernel to reset the result to 0 for the 0 sequence
@@ -358,16 +327,14 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                      nullptr, nullptr, nullptr, nullptr,
                                                      workspace_cuda.get(),
                                                      workspace_bytes),
-                          CudnnHandle(), CudnnInitializationStream());
+                          CudnnHandle(), Stream(ctx));
 
     // Early terminate for this case since Y data is not required, and Y_h is obtained correctly, no need the following code to retrive Y_h from Y data.
     if (nullptr == Y) {
       // Mask on output for 0 sequence batches
       if (zero_seq_count > 0) {
-        SetZeroSequences(zero_seq_index_cache_size, zero_seq_index_cache, y_data, y_h_data, y_c_data, CudnnOrtStream());
+        SetZeroSequences(zero_seq_index_cache_size, zero_seq_index_cache, y_data, y_h_data, y_c_data, OrtStream(ctx));
       }
-      //current stream wait on default stream to complete cudnn
-      MakeStreamWaitOnAnother(CudnnInitializationStream(), current_stream);
       return Status::OK();
     }
   }
@@ -375,10 +342,10 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   IAllocatorUniquePtr<T> y_reorganized_data;
   if (reverse_ || num_directions_ == 2) {
     //reverse output
-    y_reorganized_data = GetScratchBuffer<T>(output_size, CudnnOrtStream());
+    y_reorganized_data = GetScratchBuffer<T>(output_size, OrtStream(ctx));
     if (reverse_) {
       //reverse output data
-      ReverseBySequence(CudnnInitializationStream(),
+      ReverseBySequence(Stream(ctx),
                         gsl::narrow_cast<int32_t>(seq_length),
                         gsl::narrow_cast<int32_t>(batch_size),
                         gsl::narrow_cast<int32_t>(hidden_size_),
@@ -386,7 +353,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                         reinterpret_cast<CudaT*>(y_reorganized_data.get()),
                         output_size);
     } else {
-      ReorderBidirectionalDataInSequence(CudnnInitializationStream(),
+      ReorderBidirectionalDataInSequence(Stream(ctx),
                                          gsl::narrow_cast<int32_t>(seq_length),
                                          gsl::narrow_cast<int32_t>(batch_size),
                                          gsl::narrow_cast<int32_t>(hidden_size_),
@@ -397,7 +364,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
     if (Y != nullptr) {
       // User specified this optional output, so need to copy the reversed data to orignial place
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(y_data, y_reorganized_data.get(), output_size * sizeof(T), cudaMemcpyDeviceToDevice, CudnnInitializationStream()));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(y_data, y_reorganized_data.get(), output_size * sizeof(T), cudaMemcpyDeviceToDevice, Stream(ctx)));
     } else {
       y_data = y_reorganized_data.get();
     }
@@ -405,14 +372,14 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   // Mask on output for 0 sequence batches
   if (zero_seq_count > 0) {
-    SetZeroSequences(zero_seq_index_cache_size, zero_seq_index_cache, y_data, y_h_data, y_c_data, CudnnOrtStream());
+    SetZeroSequences(zero_seq_index_cache_size, zero_seq_index_cache, y_data, y_h_data, y_c_data, OrtStream(ctx));
   }
 
   if ((CUDNN_RNN_RELU == rnn_mode_ || CUDNN_RNN_TANH == rnn_mode_) && sequence_lens_data != nullptr && y_h_data != nullptr && y_data != nullptr) {
     CudaAsyncBuffer<int32_t> sequence_lens_buffer(this, batch_size);
     memcpy(sequence_lens_buffer.CpuPtr(), sequence_lens_data, batch_size * sizeof(int32_t));
-    ORT_RETURN_IF_ERROR(sequence_lens_buffer.CopyToGpu(CudnnOrtStream()));
-    RnnMaskImpl(CudnnInitializationStream(),
+    ORT_RETURN_IF_ERROR(sequence_lens_buffer.CopyToGpu(OrtStream(ctx)));
+    RnnMaskImpl(Stream(ctx),
                 gsl::narrow_cast<int32_t>(num_directions_),
                 gsl::narrow_cast<int32_t>(seq_length),
                 gsl::narrow_cast<int32_t>(batch_size),
@@ -422,8 +389,6 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                 reinterpret_cast<CudaT*>(y_h_data),
                 output_size);
   }
-  //current stream wait on default stream to complete cudnn
-  MakeStreamWaitOnAnother(CudnnInitializationStream(), current_stream);
   return Status::OK();
 }
 
