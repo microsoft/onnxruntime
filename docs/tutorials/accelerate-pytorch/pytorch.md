@@ -59,7 +59,7 @@ tokenizer = transformers.BertTokenizer.from_pretrained(model_name)
 model = transformers.BertForQuestionAnswering.from_pretrained(model_name)
 ```
 
-Now that you have created or imported a trained model, how do you run it to perform inference? There are a number of different methods and frameworks that you can use to perform inference in PyTorch.
+Once you have created or imported a trained model, how do you run it to perform inference? There are a number of different methods and frameworks that you can use to perform inference in PyTorch.
 
 ## Inference with native PyTorch
 
@@ -131,9 +131,9 @@ model.eval()
 
 ## Inference with ONNXRuntime
 
-If your machine learning application has latency, throughput and/or memory constraints and/or you need to deploy your application across cloud, edge, web or mobile then you can perform inference on your PyTorch model with ONNXRuntime.
+When performance is paramount you can use ONNXRuntime to perform inference on a PyTorch model. With ONNXRuntime, you can reduce latency and memory and increase throughput. You can also run a single model on cloud, edge, web  or mobile, using the language bindings and libraries provided with ONNXRuntime.
 
-Firstly export your model to ONNX format using the PyTorch ONNX exporter.
+The first step is to export your PyTorch model to ONNX format using the PyTorch ONNX exporter.
 
 ```python
 # Specify example data
@@ -143,43 +143,38 @@ example = ...
 torch.onnx.export(model, PATH, example)
 ```
 
-Once exported to ONNX format, you can view the model in the Netron viewer. You can see the model graph and the inputs and output node names and shapes, and which nodes have variably sized inputs and outputs (dynamic axes).
+Once exported to ONNX format, you can view the model in the Netron viewer to understand the model graph and the inputs and output node names and shapes, and which nodes have variably sized inputs and outputs (dynamic axes).
 
-Then you can run the ONNX model in the environment of your choice. The ONNXRuntime engine is implemented in C++ and had a C++ API as well as language bindings in Python, C#, Java, Javascript, Julia and Ruby. For example, the following code snippet shows a skeleton of a C++ inference application.
+Then you can run the ONNX model in the environment of your choice. The ONNXRuntime engine is implemented in C++ and had a C++ API as well as APIs in Python, C#, Java, Javascript, Julia and Ruby. For example, the following code snippet shows a skeleton of a C++ inference application.
 
 ```cpp
+  // Allocate ONNXRuntime session
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
   Ort::Env env;
   Ort::Session session{env, L"model.onnx", Ort::SessionOptions{nullptr}};
 
-
-  // Fill in with shape and size of inputs
+  // Allocate model inputs: fill in shape and size
   std::array<float, ...> input{};
   std::array<int64_t, ...> input_shape{...};
   Ort::Value input_tensor = Ort::Value::CreateTensor<float>(memory_info, input.data(), input.size(), input_shape.data(), input_shape.size());
+  const char* input_names[] = {...};
 
-  // Fill in with shape and size of outputs
+  // Allocate model outputs: fill in shape and size
   std::array<float, ...> output{};
   std::array<int64_t, ...> output_shape{...};
   Ort::Value output_tensor = Ort::Value::CreateTensor<float>(memory_info, output.data(), output.size(), output_shape.data(), output_shape.size());
-
-  const char* input_names[] = {...};
   const char* output_names[] = {...};
 
+  // Run the model
   session_.Run(Ort::RunOptions{nullptr}, input_names, &input_tensor, 1, output_names, &output_tensor, 1);
 ```
 
-## Performance
+Out of the box, ONNXRuntime applies a series of optimizations to the ONNX graph, combining nodes where possible and factoring out constant values (constant folding). ONNXRuntime also integrates with a number of hardware accelerators via its Execution Provider interface, including CUDA, TensorRT, OpenVINO, CoreML and NNAPI, depending on which hardware you are running on.
 
-- Latency, throughput
-- Model optimization
-- Model size: quantization
+You can also improve the performance of the ONNX model by quantizing it.
 
-## Cross platform
+If the application is running in constrained environments, such as mobile and edge you can build a reduced size runtime, based on the model or models that the application runs.
 
-- Run on cloud
-- Run on mobile
-- Run on web
 
 ## Further reading
 
