@@ -35,7 +35,6 @@ LongformerAttention<T>::LongformerAttention(const OpKernelInfo& info)
     : CudaKernel(info), LongformerAttentionBase(info) {
   use_compact_memory_ = ParseEnvironmentVariableWithDefault<bool>(longformer::kUseCompactMemory, true);
   use_half4_ = ParseEnvironmentVariableWithDefault<bool>(longformer::kUseHalf4, true);
-  use_half8_ = ParseEnvironmentVariableWithDefault<bool>(longformer::kUseHalf8, false);
 }
 
 template <typename T>
@@ -283,8 +282,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           element_size,
           disable_compact_memory,
           use_merged_qkv_weights,
-          use_half4_,
-          use_half8_)) {
+          use_half4_)) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);

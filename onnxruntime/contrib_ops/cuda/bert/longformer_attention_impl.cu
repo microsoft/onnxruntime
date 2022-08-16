@@ -862,8 +862,7 @@ bool LongformerQkvToContext(
     size_t softmax_workspace_size,
     bool disable_compact_memory,
     bool use_merged_qkv_weights,
-    bool use_half4,
-    bool use_half8) {
+    bool use_half4) {
   T* qkv = reinterpret_cast<T*>(reinterpret_cast<char*>(workspace) + softmax_workspace_size);
 
   // Number of elements in Q, K, V, Global_Q, Global_K or Global_V are same: BxNxSxH
@@ -880,25 +879,25 @@ bool LongformerQkvToContext(
     LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
                            sequence_length, num_heads, head_size,
                            input, bias, qkv,
-                           use_half4, use_half8);
+                           use_half4);
 
     if (max_num_global > 0 && nullptr != global_input) {
       LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
                              sequence_length, num_heads, head_size,
                              global_input, global_bias, qkv + 3 * elements,
-                             use_half4, use_half8);
+                             use_half4);
     }
   } else {
     LaunchAddBiasTranspose(stream, 5, format, max_threads_per_block, batch_size,
                            sequence_length, num_heads, head_size,
                            input, bias, qkv,
-                           use_half4, use_half8);
+                           use_half4);
 
     compact_global_q = (disable_compact_memory == false);
     LaunchAddBiasTranspose(stream, 1, format, max_threads_per_block, batch_size,
                            compact_global_q ? max_num_global : sequence_length, num_heads, head_size,
                            global_input + 2 * elements, global_bias, qkv + 5 * elements,
-                           use_half4, use_half8);
+                           use_half4);
   }
   if (!CUDA_CALL(cudaPeekAtLastError())) {
     return false;
@@ -1008,8 +1007,7 @@ bool LaunchLongformerAttentionKernel(
     const size_t element_size,
     bool disable_compact_memory,
     bool use_merged_qkv_weights,
-    bool use_half4,
-    bool use_half8) {
+    bool use_half4) {
   CublasMathModeSetter helper(device_prop, cublas, CUBLAS_TENSOR_OP_MATH);
   size_t softmax_workspace_size = GetLongformerSoftmaxWorkspaceSize(element_size,
                                                                     batch_size,
@@ -1035,8 +1033,7 @@ bool LaunchLongformerAttentionKernel(
                                   softmax_workspace_size,
                                   disable_compact_memory,
                                   use_merged_qkv_weights,
-                                  use_half4,
-                                  use_half8);
+                                  use_half4);
   } else {
     return LongformerQkvToContext(device_prop, cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
@@ -1055,7 +1052,6 @@ bool LaunchLongformerAttentionKernel(
                                   softmax_workspace_size,
                                   disable_compact_memory,
                                   use_merged_qkv_weights,
-                                  false,
                                   false);
   }
 }

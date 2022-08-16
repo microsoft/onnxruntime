@@ -151,39 +151,6 @@ __device__ __forceinline__ float2 operator/(const float2& a, const float2& b) {
   return make_float2(a.x / b.x, a.y / b.y);
 }
 
-/// Arithmetic for half8
-struct __align__(16) Half8 {
-  half2 x;
-  half2 y;
-  half2 z;
-  half2 w;
-};
-
-__forceinline__ __host__ __device__ Half8 make_Half8(const half2 x, const half2 y, const half2 z, const half2 w) {
-  Half8 r;
-  r.x = x;
-  r.y = y;
-  r.z = z;
-  r.w = w;
-  return r;
-}
-
-__device__ __forceinline__ Half8 operator+(const Half8& a, const Half8& b) {
-  return make_Half8(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
-}
-
-__device__ __forceinline__ Half8 operator-(const Half8& a, const Half8& b) {
-  return make_Half8(a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w);
-}
-
-__device__ __forceinline__ Half8 operator*(const Half8& a, const Half8& b) {
-  return make_Half8(a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w);
-}
-
-__device__ __forceinline__ Half8 operator/(const Half8& a, const Half8& b) {
-  return make_Half8(a.x / b.x, a.y / b.y, a.z / b.z, a.w / b.w);
-}
-
 /// Arithmetic for float4
 
 __device__ __forceinline__ float4 operator+(const float4& a, const float4& b) {

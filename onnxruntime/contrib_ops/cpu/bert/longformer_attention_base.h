@@ -41,9 +41,6 @@ constexpr const char* kUseCompactMemory = "ORT_LONGFORMER_COMPACT_MEMORY";
 // Environment variable to enable half4 in AddBiasTranspose kernel. Default is true.
 constexpr const char* kUseHalf4 = "ORT_LONGFORMER_USE_HALF4";
 
-// Environment variable to enable half8 in AddBiasTranspose kernel. Default is false.
-constexpr const char* kUseHalf8 = "ORT_LONGFORMER_USE_HALF8";
-
 }  // namespace longformer
 
 }  // namespace contrib

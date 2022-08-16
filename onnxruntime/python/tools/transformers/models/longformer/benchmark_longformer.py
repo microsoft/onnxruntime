@@ -37,6 +37,7 @@ import os
 import re
 import sys
 import timeit
+import traceback
 from datetime import datetime
 
 import numpy as np
@@ -140,7 +141,6 @@ def test_ort_latency(
     verbose=True,
     use_compact_memory=False,
     use_half4=False,
-    use_half8=False,
     disable_parity=False,
 ):
     results = []
@@ -190,7 +190,6 @@ def test_ort_latency(
                     "diff_99_percentile": None,
                     "use_compact_memory": use_compact_memory,
                     "use_half4": use_half4,
-                    "use_half8": use_half8,
                 }
 
                 if not disable_io_binding:
@@ -366,12 +365,10 @@ def test_ort(args, device):
     if not use_compact_memory:
         description += "[non_compact_memory]"
 
-    if args.use_half8:
-        description += "[half8]" if precision == "fp16" else ""
-    elif args.use_half4:
-        description += "[half4]" if precision == "fp16" else ""
+    if args.use_half4:
+        description += "[half4]" if precision == "fp16" else "[float4]"
     else:
-        description += "[half]" if precision == "fp16" else ""
+        description += "[half2]" if precision == "fp16" else "[float4]"
 
     return test_ort_latency(
         device,
@@ -390,7 +387,6 @@ def test_ort(args, device):
         args.verbose,
         use_compact_memory,
         args.use_half4,
-        args.use_half8,
         args.disable_parity,
     )
 
@@ -506,9 +502,6 @@ def parse_arguments(argv=None):
     parser.add_argument("--use_half4", required=False, action="store_true", help="Use half4 kernel.")
     parser.set_defaults(use_half4=False)
 
-    parser.add_argument("--use_half8", required=False, action="store_true", help="Use half8 kernel.")
-    parser.set_defaults(use_half8=False)
-
     parser.add_argument("--disable_parity", required=False, action="store_true", help="Do not run parity test.")
     parser.set_defaults(disable_parity=False)
 
@@ -542,7 +535,6 @@ def output_details(results, csv_filename):
             "global_length",
             "use_compact_memory",
             "use_half4",
-            "use_half8",
             "diff_max",
             "diff_90_percentile",
             "diff_95_percentile",
@@ -602,7 +594,6 @@ def run_tests(
     use_fp16=True,
     use_merged_qkv_weights=True,
     use_half4=True,
-    use_half8=False,
     batch_size=1,
 ):
     compact_memory = "1" if use_compact_memory else "0"
@@ -611,9 +602,6 @@ def run_tests(
 
     os.environ["ORT_LONGFORMER_USE_HALF4"] = "1" if use_half4 else "0"
     print("ORT_LONGFORMER_USE_HALF4={}".format("1" if use_half4 else "0"))
-
-    os.environ["ORT_LONGFORMER_USE_HALF8"] = "1" if use_half8 else "0"
-    print("ORT_LONGFORMER_USE_HALF8={}".format("1" if use_half8 else "0"))
 
     results = []
     test_times = 1000
@@ -652,21 +640,25 @@ def run_tests(
                     if use_half4:
                         arguments += " --use_half4"
 
-                    if use_half8:
-                        arguments += " --use_half8"
-
                     # Disable parity test to avoid out of memory for large batch size
                     if batch_size >= 4:
                         arguments += " --disable_parity"
 
                     memory_results = None
-                    if run_memory:
-                        args = parse_arguments(f"{arguments} -t 10 --memory".split(" "))
-                        memory_results = launch_test(args)
-                        print(memory_results)
+                    try:
+                        if run_memory:
+                            args = parse_arguments(f"{arguments} -t 10 --memory".split(" "))
+                            memory_results = launch_test(args)
+                            print(memory_results)
 
-                    args = parse_arguments(f"{arguments} -t {test_times}".split(" "))
-                    latency_results = launch_test(args)
+                        args = parse_arguments(f"{arguments} -t {test_times}".split(" "))
+                        latency_results = launch_test(args)
+                    except KeyboardInterrupt:
+                        raise RuntimeError("Keyboard Interrupted")
+                    except:
+                        traceback.print_exc()
+                        continue
+
                     if len(latency_results) == 1:
                         latency_results[0]["memory"] = memory_results["memory"] if memory_results else "N/A"
                     else:
@@ -688,7 +680,6 @@ def output_summary(results, csv_filename, data_field="average_latency_ms"):
             "global_length",
             "use_compact_memory",
             "use_half4",
-            "use_half8",
             "description",
         ]
 
@@ -752,66 +743,37 @@ def output_summary(results, csv_filename, data_field="average_latency_ms"):
         csv_file.flush()
 
 
-def run_experiments(use_fp16, batch_size, num_tests=1):
+def run_experiments(use_fp16, batch_size, is_baseline=False):
     """Run experiments to compare different algorithms on one batch size"""
     test_results = run_tests(
         use_fp16=use_fp16,
         use_merged_qkv_weights=True,
-        use_half4=True,
-        use_half8=True,
-        batch_size=batch_size,
-    )
-
-    if num_tests == 1:
-        return test_results
-
-    test_results += run_tests(
-        use_fp16=use_fp16,
-        use_merged_qkv_weights=False,
-        use_half4=True,
-        use_half8=True,
-        batch_size=batch_size,
-    )
-
-    # No need to test half4 or half8 for fp32 model.
-    if num_tests == 2 or not use_fp16:
-        return test_results
-
-    test_results += run_tests(
-        use_fp16=use_fp16,
-        use_merged_qkv_weights=True,
-        use_half4=True,
-        use_half8=False,
-        batch_size=batch_size,
-    )
-    if num_tests == 3:
-        return test_results
-
-    test_results += run_tests(
-        use_fp16=use_fp16,
-        use_merged_qkv_weights=True,
         use_half4=False,
-        use_half8=False,
         batch_size=batch_size,
     )
-    if num_tests == 4:
+
+    if is_baseline:
         return test_results
 
-    test_results += run_tests(
-        use_fp16=use_fp16,
-        use_merged_qkv_weights=False,
-        use_half4=True,
-        use_half8=False,
-        batch_size=batch_size,
-    )
-    if num_tests == 5:
-        return test_results
+    if use_fp16:
+        test_results += run_tests(
+            use_fp16=use_fp16,
+            use_merged_qkv_weights=True,
+            use_half4=True,
+            batch_size=batch_size,
+        )
+
+        test_results += run_tests(
+            use_fp16=use_fp16,
+            use_merged_qkv_weights=False,
+            use_half4=True,
+            batch_size=batch_size,
+        )
 
     test_results += run_tests(
         use_fp16=use_fp16,
         use_merged_qkv_weights=False,
         use_half4=False,
-        use_half8=False,
         batch_size=batch_size,
     )
 
@@ -849,8 +811,7 @@ def main():
     all_results = []
     for _ in range(total_runs):
         for batch_size in fp16_batch_sizes:
-            num_tests = 1 if is_baseline else 2
-            fp16_results = run_experiments(use_fp16=True, batch_size=batch_size, num_tests=num_tests)
+            fp16_results = run_experiments(use_fp16=True, batch_size=batch_size, is_baseline=is_baseline)
             output_details(fp16_results, "longformer_base_fp16.csv")
             all_results += fp16_results
     for metric_name in ["average_latency_ms", "QPS", "memory", "diff_90_percentile"]:
@@ -859,8 +820,7 @@ def main():
     all_results = []
     for _ in range(total_runs):
         for batch_size in fp32_batch_sizes:
-            num_tests = 1 if is_baseline else 2
-            fp32_results = run_experiments(use_fp16=False, batch_size=batch_size, num_tests=num_tests)
+            fp32_results = run_experiments(use_fp16=False, batch_size=batch_size, is_baseline=is_baseline)
             output_details(fp32_results, "longformer_base_fp32.csv")
             all_results += fp32_results
     for metric_name in ["average_latency_ms", "QPS", "memory", "diff_90_percentile"]:
