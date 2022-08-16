@@ -24,7 +24,7 @@ This article assumes that you are looking for information about performing infer
 
 ## Overview of PyTorch
 
-At the heart of PyTorch is the `nn.Module`, a class that represents an entire deep learning model, or a single layer. Modules can be composed or extended to build models. To write your own module, you implement a forward function that calculates outputs based on inputs, as well as the trained weights of the model. If you are writing your own PyTorch model, then you are likely training it too. Alternatively you can use pre-trained models from PyTorch itself or from other libraries, such as HuggingFace.
+At the heart of PyTorch is the `nn.Module`, a class that represents an entire deep learning model, or a single layer. Modules can be composed or extended to build models. To write your own module, you implement a forward function that calculates outputs based on model inputs and the trained weights of the model. If you are writing your own PyTorch model, then you are likely training it too. Alternatively you can use pre-trained models from PyTorch itself or from other libraries, such as HuggingFace.
 
 To code an image processing model using PyTorch itself:
 
