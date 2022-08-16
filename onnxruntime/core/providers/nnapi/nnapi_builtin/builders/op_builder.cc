@@ -55,8 +55,7 @@ std::vector<uint32_t> GetShapeInfoFromNodeArg(ModelBuilder& model_builder, const
 
 static Status AddBinaryOperator(int32_t op_type,
                                 ModelBuilder& model_builder,
-                                const std::string& input1,
-                                const std::string& input2,
+                                const std::string& input1, const std::string& input2,
                                 bool add_activation,
                                 int32_t fuse_code,
                                 const std::string& output,
@@ -100,10 +99,43 @@ static Status AddNnapiBatchNormalization(ModelBuilder& model_builder,
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input1));
   input_indices.push_back(operand_indices.at(input2));
-  // Add activation
+
   ADD_SCALAR_OPERAND(model_builder, input_indices, ANEURALNETWORKS_FUSED_NONE);
 
-  ORT_RETURN_IF_ERROR(shaper.Eltwise(input1, input2, output1));
+  auto calculate_eltwise_output_shape = [&](const std::string& input1_name,
+                                            const std::string& input2_name,
+                                            const std::string& output_name) -> Status {
+    const Shape& shape1 = shaper[input1_name];
+    const Shape& shape2 = shaper[input2_name];
+
+    // broadcasting support
+    bool shape1IsBigger = shape1.size() >= shape2.size();
+    auto max_shape = shape1IsBigger ? shape1 : shape2;
+    auto min_shape = shape1IsBigger ? shape2 : shape1;
+    for (int i = (int)max_shape.size() - 1,
+             j = (int)min_shape.size() - 1;
+         i >= 0 && j >= 0;
+         i--, j--) {
+      int dim_max_shape = max_shape[i];
+      int dim_min_shape = min_shape[j];
+      if (dim_max_shape != dim_min_shape) {
+        ORT_RETURN_IF_NOT(dim_max_shape == 1 || dim_min_shape == 1,
+                          "Dimensions are not compatible, dim1: ", std::to_string(dim_max_shape),
+                          "dim2: ", std::to_string(dim_min_shape));
+      }
+
+      if (dim_max_shape == 0 || dim_min_shape == 0) {
+        max_shape[i] = 0;
+      } else if (dim_max_shape < dim_min_shape) {
+        max_shape[i] = dim_min_shape;
+      }
+    }
+
+    shaper.AddShape(output_name, max_shape);
+    return Status::OK();
+  };
+
+  ORT_RETURN_IF_ERROR(calculate_eltwise_output_shape(input1, input2, output1));
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output1],
                                         output_scale, output_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_MUL, input_indices,
@@ -113,10 +145,10 @@ static Status AddNnapiBatchNormalization(ModelBuilder& model_builder,
   input_indices.clear();
   input_indices.push_back(operand_indices.at(output1));
   input_indices.push_back(operand_indices.at(input3));
-  // Add activation
+
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
-  ORT_RETURN_IF_ERROR(shaper.Eltwise(output1, input3, output2));
+  ORT_RETURN_IF_ERROR(calculate_eltwise_output_shape(output1, input3, output2));
   const OperandType output_operand_type2(operand_types.at(input3).type, shaper[output2],
                                          output_scale, output_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_ADD, input_indices,
@@ -127,7 +159,7 @@ static Status AddNnapiBatchNormalization(ModelBuilder& model_builder,
 static Status AddNnapiSqueeze(ModelBuilder& model_builder,
                               const std::string& node_name,
                               const std::string& input, const std::string& output,
-                              std::vector<int32_t> axes) {
+                              std::vector<int32_t> axes = {}) {
   if (model_builder.GetNNAPIFeatureLevel() < ANEURALNETWORKS_FEATURE_LEVEL_2) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, FAIL, "Squeeze is not supported on API level ", model_builder.GetNNAPIFeatureLevel());
@@ -143,17 +175,10 @@ static Status AddNnapiSqueeze(ModelBuilder& model_builder,
     axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_dims));
   }
 
-  // Despite the spec of ANEURALNETWORKS_SQUEEZE at
-  // https://developer.android.com/ndk/reference/group/neural-networks
-  // states, that the axes (input 1 of ANEURALNETWORKS_SQUEEZE) is optional.
-  //
-  // The actual code of NNAPI requires the axes to be provided
-  // https://android.googlesource.com/platform/frameworks/ml/+/master/nn/common/operations/Squeeze.cpp#31
-  if (axes.empty()) {  // Squeeze all
-    for (size_t i = 0; i < input_dims; i++) {
-      if (input_shape[i] == 1)
-        axes.push_back(static_cast<int32_t>(i));
-    }
+  // Squeeze all
+  for (size_t i = 0; i < input_dims; i++) {
+    if (input_shape[i] == 1)
+      axes.push_back(static_cast<int32_t>(i));
   }
 
   const auto axes_name = model_builder.GetUniqueName(node_name + input + "_axes");
@@ -1894,8 +1919,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         std::string bias_squeezed = model_builder.GetUniqueName(node_unit.Name() + op + "_bias_squeezed");
         // We will use squeeze all here
         ORT_RETURN_IF_ERROR(AddNnapiSqueeze(model_builder, node_unit.Name(),
-                                            bias, bias_squeezed,
-                                            {} /* axes */));
+                                            bias, bias_squeezed));
         bias_idx = operand_indices.at(bias_squeezed);
         LOGS_DEFAULT(VERBOSE) << "GemmOpBuilder - Operand [" << bias << "] squeezed from "
                               << Shape2String(shaper[bias])
