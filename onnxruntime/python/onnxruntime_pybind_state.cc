@@ -184,7 +184,7 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj,
     ORT_ENFORCE(rtensor.Location().device.Type() == OrtDevice::CPU,
                 "Copying string tensors located on another device to the host is currently not supported");
     py::object* outObj = static_cast<py::object*>(out_ptr);
-    const std::string* src = rtensor.template Data<std::string>();
+    const std::string* src = rtensor.Data<std::string>();
     for (int i = 0; i < rtensor.Shape().Size(); i++, src++) {
       outObj[i] = py::cast(*src);
     }

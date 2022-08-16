@@ -6,6 +6,7 @@
 
 #include "cxxopts.hpp"
 #include "core/common/path_string.h"
+#include "core/platform/path_lib.h"
 #include "../common/synthetic_data_loader.h"
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
@@ -77,7 +78,8 @@ bool ParseArguments(int argc, char* argv[], TestRunnerParameters& params) {
         cxxopts::value<std::string>()->default_value(""))
       ("model_name", "The name of the model.",
         cxxopts::value<std::string>()->default_value("model_test"))
-      ("synthetic_input_type", "Input type can be 'dummy'(input, target) or 'attention'(input_id, attention, target)",
+      ("synthetic_input_type", "Input type can be 'dummy' for test model, 'S', 'U', 'R' which represent some internal"
+      " models.",
         cxxopts::value<std::string>()->default_value("attention"))
 
       ("train_data_dir", "Input ONNX example files (can be a glob or comma separated).",
@@ -150,8 +152,7 @@ void InitSyntheticDataLoader(
     onnxruntime::training::test::training_api::SyntheticDataLoader& data_loader,
     const TestRunnerParameters& params,
     int64_t num_of_batches_per_epoch) {
-  bool sample_model = params.synthetic_input_type == "dummy" ? true : false;
-  if (sample_model) {
+  if (params.synthetic_input_type == "dummy") {
     std::vector<int64_t> input1_shape{params.train_batch_size, 784};
     std::vector<int64_t> target_shape{params.train_batch_size};
     for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
@@ -160,18 +161,46 @@ void InitSyntheticDataLoader(
       sample->AddInt32Input(target_shape, 0, 1);
       data_loader.AddSyntheticSampleBatch(std::move(sample));
     }
-  } else {
+  } else if (params.synthetic_input_type == "S") {
     int64_t sequence_length = 128;
     std::vector<int64_t> input_ids_shape{params.train_batch_size, sequence_length};
     std::vector<int64_t> attention_mask_shape{params.train_batch_size, sequence_length};
-    std::vector<int64_t> target_shape{params.train_batch_size, 7};
+    std::vector<int64_t> target_shape{params.train_batch_size};
     for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
       auto sample = std::make_unique<onnxruntime::training::test::training_api::SyntheticSampleBatch>();
       sample->AddInt64Input(input_ids_shape, 0, 250002 - 1);
       sample->AddInt64Input(attention_mask_shape, 0, 1);
-      sample->AddFloatInput(target_shape);
+      sample->AddInt32Input(target_shape, 0, 1);
       data_loader.AddSyntheticSampleBatch(std::move(sample));
     }
+  } else if (params.synthetic_input_type == "U") {
+    int64_t sequence_length = 128;
+    std::vector<int64_t> input_ids_shape{params.train_batch_size, sequence_length};
+    std::vector<int64_t> attention_mask_shape{params.train_batch_size, sequence_length};
+    std::vector<int64_t> target1_shape{params.train_batch_size};
+    std::vector<int64_t> target2_shape{params.train_batch_size, 81};
+    for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
+      auto sample = std::make_unique<onnxruntime::training::test::training_api::SyntheticSampleBatch>();
+      sample->AddInt64Input(input_ids_shape, 0, 250002 - 1);
+      sample->AddInt64Input(attention_mask_shape, 0, 1);
+      sample->AddInt32Input(target1_shape, 0, 1);
+      sample->AddInt32Input(target2_shape, 0, 1);
+      data_loader.AddSyntheticSampleBatch(std::move(sample));
+    }
+  } else if (params.synthetic_input_type == "R") {
+    int64_t sequence_length = 128;
+    std::vector<int64_t> input_ids_shape{params.train_batch_size, sequence_length};
+    std::vector<int64_t> attention_mask_shape{params.train_batch_size, sequence_length};
+    std::vector<int64_t> labels_shape{params.train_batch_size, 81};
+    for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
+      auto sample = std::make_unique<onnxruntime::training::test::training_api::SyntheticSampleBatch>();
+      sample->AddInt64Input(input_ids_shape, 0, 250002 - 1);
+      sample->AddInt64Input(attention_mask_shape, 0, 1);
+      sample->AddInt32Input(labels_shape, 0, 1);
+      data_loader.AddSyntheticSampleBatch(std::move(sample));
+    }
+  } else {
+    std::runtime_error("unknown synthetic_input_type: " + params.synthetic_input_type);
   }
 }
 
@@ -185,7 +214,7 @@ int RunTraining(const TestRunnerParameters& params) {
   OrtThreadingOptions* threading_options = nullptr;
   ORT_RETURN_ON_ERROR(g_ort_api->CreateThreadingOptions(&threading_options));
   ORT_RETURN_ON_ERROR(g_ort_api->CreateEnvWithGlobalThreadPools(
-      ORT_LOGGING_LEVEL_VERBOSE, "log", threading_options, &env));
+      ORT_LOGGING_LEVEL_WARNING, "log", threading_options, &env));
   g_ort_api->ReleaseThreadingOptions(threading_options);
 
   // Load Checkpoint State
@@ -217,7 +246,7 @@ int RunTraining(const TestRunnerParameters& params) {
     ORT_RETURN_ON_ERROR(g_ort_training_api->TrainingSessionGetEvalModeOutputCount(session, &eval_mode_output_count));
   }
 
-  int64_t sample_batch_count_per_epoch = 4;
+  int64_t sample_batch_count_per_epoch = params.train_batch_size;
   if (sample_batch_count_per_epoch < params.train_batch_size ||
       sample_batch_count_per_epoch % params.train_batch_size != 0) {
     throw std::runtime_error("sample_count cannot be divisible by batch_size");
@@ -227,10 +256,11 @@ int RunTraining(const TestRunnerParameters& params) {
   onnxruntime::training::test::training_api::SyntheticDataLoader data_loader;
   InitSyntheticDataLoader(data_loader, params, num_of_batches_per_epoch);
 
-  // TODO(baiju): Add C API for LRScheduler
-  // int64_t total_step_count = params.num_train_epochs * num_of_batches_per_epoch;
-  // int64_t warmup_step_count = total_step_count / 3;
-  // Ort::OrtLinearLRScheduler scheduler = Ort::OrtLinearLRScheduler(optimizer, warmup_step_count, total_step_count);
+  auto lr_scheduler_parameters = std::make_unique<OrtLinearLRSchedulerParameters>().get();
+  lr_scheduler_parameters->total_step_count = params.num_train_epochs * num_of_batches_per_epoch;
+  lr_scheduler_parameters->warmup_step_count = lr_scheduler_parameters->total_step_count / 3;
+  ORT_RETURN_ON_ERROR(g_ort_training_api->RegisterLRScheduler(
+    session, reinterpret_cast<void*>(lr_scheduler_parameters), OrtLRSchedulerType::LinearLRScheduler, nullptr));
 
   std::cout << "Initialization completed. Now starting training loop." << std::endl;
   const int64_t stabilized_perf_start_step = 0;
@@ -280,7 +310,7 @@ int RunTraining(const TestRunnerParameters& params) {
 #endif
 
         // Update learning rate.
-        // EnforceCheck(scheduler.Step(), "Failed during shceduler.Step()");
+        ORT_RETURN_ON_ERROR(g_ort_training_api->SchedulerStep(session));
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
         onnxruntime::profile::NvtxRangeCreator resetgrad_range(
@@ -305,8 +335,9 @@ int RunTraining(const TestRunnerParameters& params) {
 
       if ((batch_idx + 1) % params.checkpoint_interval == 0) {
         // Save trained weights
-        PathString ckpt_file = ToPathString(
-            params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx));
+        std::ostringstream oss;
+        oss << "ckpt_" << params.model_name << std::to_string(batch_idx);
+        PathString ckpt_file = ConcatPathComponent<PathChar>(params.output_dir, ToPathString(oss.str()));
         ORT_RETURN_ON_ERROR(g_ort_training_api->SaveCheckpoint(ckpt_file.c_str(), session, true));
 
         // TODO(baiju): enable adding more properties to checkpoint
@@ -328,7 +359,9 @@ int RunTraining(const TestRunnerParameters& params) {
   }
 
   // Save trained weights
-  PathString ckpt_file = ToPathString(params.output_dir + "/ckpt_" + params.model_name);
+  std::ostringstream oss;
+  oss << "ckpt_" << params.model_name;
+  PathString ckpt_file = ConcatPathComponent<PathChar>(params.output_dir, ToPathString(oss.str()));
   ORT_RETURN_ON_ERROR(g_ort_training_api->SaveCheckpoint(ckpt_file.c_str(), session, true));
 
   auto end = std::chrono::high_resolution_clock::now();

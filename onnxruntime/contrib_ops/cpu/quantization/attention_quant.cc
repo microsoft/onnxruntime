@@ -163,10 +163,10 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
-  T input_scale = *(input_scale_tensor->template Data<T>());
+  T input_scale = *(input_scale_tensor->Data<T>());
 
   bool is_weight_scale_per_column = !IsScalarOr1ElementVector(weight_scale_tensor);
-  const T* weight_scale_data = weight_scale_tensor->template Data<T>();
+  const T* weight_scale_data = weight_scale_tensor->Data<T>();
 
   std::vector<T> dequant_scales(weight_scale_data, weight_scale_data + weight_scale_tensor->Shape().Size());
   std::for_each(dequant_scales.begin(), dequant_scales.end(), [&input_scale](float& dequant_scale) {
@@ -177,7 +177,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   if (i_zp_tensor != nullptr) {
     ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(i_zp_tensor),
                       "input zero point must be a scalar or 1D tensor of size 1.");
-    input_zero_point = *i_zp_tensor->template Data<uint8_t>();
+    input_zero_point = *i_zp_tensor->Data<uint8_t>();
   }
 
   bool is_weight_zp_per_column = false;
@@ -221,8 +221,8 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
 
   {
     const int loop_len = 3 * batch_size * num_heads_;
-    const auto* input_data = input->template Data<uint8_t>();
-    const auto* bias_data = bias->template Data<T>();
+    const auto* input_data = input->Data<uint8_t>();
+    const auto* bias_data = bias->Data<T>();
 
     const auto* weights_data = packed_weights_ ? nullptr : static_cast<const uint8_t*>(weights->DataRaw());
     const bool weights_is_signed = packed_weights_ ? weights_is_signed_ : weights->IsDataType<int8_t>();

@@ -99,7 +99,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   auto tensor2 = p_ml_value_const ? &(p_ml_value_const->Get<Tensor>()) : nullptr;
   ASSERT_TRUE(tensor2);
   ASSERT_EQ(tensor2->Shape(), shape2);
-  ASSERT_EQ(tensor2->template Data<float>(), p_tensor->template Data<float>());
+  ASSERT_EQ(tensor2->Data<float>(), p_tensor->Data<float>());
 }
 
 TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {

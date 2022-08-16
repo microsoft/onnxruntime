@@ -39,8 +39,8 @@ namespace cuda {
     Ctx##x func_ctx = MakeFuncCtx();                                                                       \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                          \
         Stream(),                                                                                          \
-        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(p.input_tensor->template Data<T>()),   \
-        reinterpret_cast<typename ToCudaType<T>::MappedType*>(p.output_tensor->template MutableData<T>()), \
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(p.input_tensor->Data<T>()),   \
+        reinterpret_cast<typename ToCudaType<T>::MappedType*>(p.output_tensor->MutableData<T>()), \
         &func_ctx, p.output_tensor->Shape().Size());                                                       \
                                                                                                            \
     return Status::OK();                                                                                   \

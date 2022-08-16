@@ -57,9 +57,9 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   if (!LaunchFastGeluKernel<HipT>(Stream(),
                                   static_cast<int>(input_length),
                                   static_cast<int>(bias_length),
-                                  reinterpret_cast<const HipT*>(input->template Data<T>()),
-                                  (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->template Data<T>()) : nullptr,
-                                  reinterpret_cast<HipT*>(output->template MutableData<T>()),
+                                  reinterpret_cast<const HipT*>(input->Data<T>()),
+                                  (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr,
+                                  reinterpret_cast<HipT*>(output->MutableData<T>()),
                                   tuning_)) {
     HIP_CALL(hipGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);

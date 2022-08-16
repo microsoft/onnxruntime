@@ -29,6 +29,7 @@ static void RunAttentionTest(
   int min_cuda_architecture = use_float16 ? 530 : 0;
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
   bool enable_cpu = false;
   if (enable_cpu || enable_cuda) {
     OpTester tester("LongformerAttention", 1, onnxruntime::kMSDomain);
@@ -64,17 +65,18 @@ static void RunAttentionTest(
 
     tester.AddInput<int32_t>("global", global_dims, global_data);
 
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     if (enable_cuda) {
-      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultCudaExecutionProvider());
-      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
+    if (enable_rocm) {
+      execution_providers.push_back(DefaultRocmExecutionProvider());
+    }
+    if (enable_cpu) {
+      execution_providers.push_back(DefaultCpuExecutionProvider());
     }
 
-    if (enable_cpu) {
-      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-      execution_providers.push_back(DefaultCpuExecutionProvider());
-      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-    }
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
 
