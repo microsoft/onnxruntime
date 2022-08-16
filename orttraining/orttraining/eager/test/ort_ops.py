@@ -211,9 +211,15 @@ class OrtOpTests(unittest.TestCase):
         assert torch.allclose(cpu_result_c, ort_result_c.cpu())
         assert torch.allclose(ort_result_a.cpu(), ort_result_c.cpu())
 
-    @parameterized.expand([param((2, 64, 256), 0), param((2, 64, 256), 1),
-                           param((2, 64, 256), -1), ((4096, 1024), 0),
-                           param((512, 8192), 1)])
+    @parameterized.expand(
+        [
+            param((2, 64, 256), 0),
+            param((2, 64, 256), 1),
+            param((2, 64, 256), -1),
+            param((4096, 1024), 0),
+            param((512, 8192), 1),
+        ]
+    )
     def test_softmax_grad(self, input_shape, dim):
         device = self.get_device()
         cpu_tensor = torch.nn.Parameter(torch.rand(input_shape))
@@ -227,9 +233,15 @@ class OrtOpTests(unittest.TestCase):
         assert torch.allclose(ort_result.cpu(), cpu_result)
         assert torch.allclose(ort_tensor.grad.cpu(), cpu_tensor.grad, rtol=0.01)
 
-    @parameterized.expand([param((2, 64, 256), 0), param((2, 32, 128), 1),
-                           param((2, 64, 128), -1), ((1024, 8), 0),
-                           param((2, 2048), 1)])
+    @parameterized.expand(
+        [
+            param((2, 64, 256), 0),
+            param((2, 32, 128), 1),
+            param((2, 64, 128), -1),
+            param((1024, 8), 0),
+            param((2, 2048), 1),
+        ]
+    )
     def test_logsoftmax_grad(self, input_shape, dim):
         device = self.get_device()
         cpu_tensor = torch.nn.Parameter(torch.rand(input_shape))
