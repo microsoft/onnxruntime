@@ -2,14 +2,16 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/providers/cuda/shared_inc/cuda_utils.h"
-#include <cuda_fp16.h>
-#include <cublas_v2.h>
+
+#include <hip/hip_fp16.h>
+#include <rocblas.h>
+#include "core/providers/rocm/shared_inc/rocm_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
-namespace cuda {
-size_t GetAttentionScratchSize(size_t element_size, int batch_size, int num_heads, int sequence_length, int all_sequence_length);
+namespace rocm {
+size_t GetAttentionScratchSize(size_t element_size, int batch_size,
+                               int num_heads, int sequence_length, int all_sequence_length);
 
 size_t GetAttentionWorkspaceSize(
     size_t element_size,
@@ -20,10 +22,13 @@ size_t GetAttentionWorkspaceSize(
     int past_sequence_length);
 
 bool LaunchAttentionKernel(
-    const cudaDeviceProp& prop,                   // Device Properties
-    cudaStream_t stream,                          // cuda stream
+    const hipDeviceProp_t& prop,                  // Device Properties
+    hipStream_t stream,                           // rocm stream
     const void* input,                            // Input tensor
-    const int* mask_index,                        // Attention mask raw data or index (end position of each sequence, or end positions and start positions). NULL means no mask.
+    const int* mask_index,                        // Attention mask raw data or index
+                                                  // (end position of each sequence,
+                                                  //  or end positions and start positions).
+                                                  // NULL means no mask.
     gsl::span<const int64_t> mask_index_dims,     // Mask index shape
     void* output,                                 // Output tensor
     int batch_size,                               // Batch size (B)
@@ -31,7 +36,7 @@ bool LaunchAttentionKernel(
     int num_heads,                                // Number of attention heads (N)
     int head_size,                                // Hidden layer size per head (H)
     void* workspace,                              // Temporary buffer
-    cublasHandle_t& cublas,                       // Cublas handle
+    rocblas_handle& rocblas,                      // Rocblas handle
     const size_t element_size,                    // Element size of input tensor
     bool is_unidirectional,                       // Whether there is unidirecitonal mask.
     int past_sequence_length,                     // Sequence length in past state
@@ -41,9 +46,9 @@ bool LaunchAttentionKernel(
 );
 
 bool LaunchDecoderAttentionKernel(
-    const cudaDeviceProp& prop,                   // Device Properties
-    cudaStream_t stream,                          // Cuda stream
-    cublasHandle_t& cublas,                       // Cublas handle
+    const hipDeviceProp_t& prop,                   // Device Properties
+    hipStream_t stream,                          // Cuda stream
+    rocblas_handle& rocblas,                       // Rocblas handle
     const size_t element_size,                    // Element size of input tensor
     const int batch_size,                         // Batch size (B)
     const int sequence_length,                    // Sequence length (S)
@@ -66,23 +71,23 @@ bool LaunchDecoderAttentionKernel(
     void* new_value_cache                         // New_value_cache tensor
 );
 
-bool LaunchTransCtx(cudaStream_t stream,
+bool LaunchTransCtx(hipStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                     const int max_threads_per_block, const bool reversed_bs, const float* input, float* output);
 
-bool LaunchTransCtx(cudaStream_t stream,
+bool LaunchTransCtx(hipStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                     const int max_threads_per_block, const bool reversed_bs, const half* input, half* output);
 
-bool LaunchTransQkv(cudaStream_t stream, const int matrix_num,
+bool LaunchTransQkv(hipStream_t stream, const int matrix_num,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                     const int max_threads_per_block, const bool reversed_bs, const float* input, float* output);
 
-bool LaunchTransQkv(cudaStream_t stream, const int matrix_num,
+bool LaunchTransQkv(hipStream_t stream, const int matrix_num,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                     const int max_threads_per_block, const bool reversed_bs, const half* input, half* output);
 
-bool LaunchConcatTensorToTensor(cudaStream_t stream,
+bool LaunchConcatTensorToTensor(hipStream_t stream,
                                 const int all_sequence_length,
                                 const int sequence_length,
                                 const int batch_size,
@@ -94,7 +99,7 @@ bool LaunchConcatTensorToTensor(cudaStream_t stream,
                                 const float* tensor_add,
                                 float* tensor_out);
 
-bool LaunchConcatTensorToTensor(cudaStream_t stream,
+bool LaunchConcatTensorToTensor(hipStream_t stream,
                                 const int all_sequence_length,
                                 const int sequence_length,
                                 const int batch_size,
@@ -106,7 +111,7 @@ bool LaunchConcatTensorToTensor(cudaStream_t stream,
                                 const half* tensor_add,
                                 half* tensor_out);
 
-bool LaunchConcatPastToPresent(cudaStream_t stream,
+bool LaunchConcatPastToPresent(hipStream_t stream,
                                const int all_sequence_length,
                                const int sequence_length,
                                const int batch_size,
@@ -117,7 +122,7 @@ bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const float* k_v,
                                float* present);
 
-bool LaunchConcatPastToPresent(cudaStream_t stream,
+bool LaunchConcatPastToPresent(hipStream_t stream,
                                const int all_sequence_length,
                                const int sequence_length,
                                const int batch_size,
@@ -128,6 +133,68 @@ bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const half* k_v,
                                half* present);
 
-}  // namespace cuda
+inline rocblas_status _compat_rocblas_gemm_strided_batched_ex(rocblas_handle     handle,
+                                                              rocblas_operation  transa,
+                                                              rocblas_operation  transb,
+                                                              int                m,
+                                                              int                n,
+                                                              int                k,
+                                                              const void*        alpha,
+                                                              const void*        A,
+                                                              rocblas_datatype   a_type,
+                                                              rocblas_int        lda,
+                                                              rocblas_stride     stride_A,
+                                                              const void*        b,
+                                                              rocblas_datatype   b_type,
+                                                              rocblas_int        ldb,
+                                                              rocblas_stride     stride_b,
+                                                              const void*        beta,
+                                                              void*              c,
+                                                              rocblas_datatype   c_type,
+                                                              rocblas_int        ldc,
+                                                              rocblas_stride     stride_c,
+                                                              rocblas_int        batch_count,
+                                                              rocblas_datatype   compute_type,
+                                                              rocblas_gemm_algo  algo) {
+    return rocblas_gemm_strided_batched_ex(handle,
+                                           transa,
+                                           transb,
+                                           m,                   // m
+                                           n,                   // n
+                                           k,                   // k
+                                           alpha,               // alpha
+                                           A,                   // A
+                                           a_type,              // A type
+                                           lda,                 // lda
+                                           stride_A,            // strideA
+                                           b,                   // B
+                                           b_type,              // B type
+                                           ldb,                 // ldb
+                                           stride_b,            // strideB
+                                           beta,                // beta
+                                           c,                   // C
+                                           c_type,              // C type
+                                           ldc,                 // ldc
+                                           stride_c,            // strideC
+                                           c,                   // D = C
+                                           c_type,              // D type = C type
+                                           ldc,                 // ldd = ldc
+                                           stride_c,            // strideD = strideC
+                                           batch_count,         // batch count
+                                           compute_type,
+                                           algo,
+                                           0, 0);
+}
+
+// Compatible for CublasMathModeSetter
+class CompatRocblasMathModeSetter {
+ public:
+  CompatRocblasMathModeSetter(const hipDeviceProp_t&,
+                              rocblas_handle,
+                              int) {
+  }
+};
+
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

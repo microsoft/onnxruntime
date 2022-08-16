@@ -80,10 +80,8 @@ __global__ void SkipLayerNormKernelSmall(
   const int idx = blockIdx.x * ld + threadIdx.x * ILP;  // grid_size = n / ld
 
   using VecT = aligned_vector<T, ILP>;
-  __shared__ T mu;      // mean
-  __shared__ T rsigma;  // 1 / std.dev.
 
-  T input_v[ILP], skip_v[ILP], bias_v[ILP], output_v[ILP];
+  T input_v[ILP], skip_v[ILP], bias_v[ILP];
 
   VecT* input_val = reinterpret_cast<VecT*>(&input_v);
   *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
@@ -193,5 +191,3 @@ template bool LaunchSkipLayerNormKernel<half>(hipStream_t stream, half* output, 
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime
-
-

@@ -76,6 +76,13 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
 template <size_t alignment>
 common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
 
+/**
+Special marker used to indicate an existing memory buffer contains the TensorProto external data.
+If the 'location' field of the external data info is set to this marker, the 'offset' field should contain the
+address of the memory containing the data.
+*/
+constexpr const ORTCHAR_T* kTensorProtoMemoryAddressTag = ORT_TSTR("*/_ORT_MEM_ADDR_/*");
+
 // Given a tensor proto with external data obtain a pointer to the data and its length.
 // The ext_data_deleter argument is updated with a callback that owns/releases the data.
 common::Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
