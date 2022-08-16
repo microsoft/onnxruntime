@@ -34,7 +34,7 @@ struct OpBuilderRegistrations {
   ORT_RETURN_IF_ERROR(onnxruntime::nnapi::op_builder_helpers::AddScalarOperand( \
       model_builder, input_indices, scalar_value))
 
-std::vector<uint32_t> GetShapeInfoFromNodeArg(ModelBuilder& model_builder, const std::string& name) {
+Shape GetShapeInfoFromNodeArg(ModelBuilder& model_builder, const std::string& name) {
   // can be applied to both input and output
   const auto& graph_viewer = model_builder.GetGraphViewer();
   const auto* node_arg = graph_viewer.GetNodeArg(name);
@@ -260,12 +260,11 @@ static Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const N
 // since NNAPI requires X and W to be same type for per-tensor quantization,
 // the initializer tensor W will be converted from int8 to uint8 by flip each byte by XOR 0x80
 // byte ^ 0x80 == byte + 128
-static Status
-AddInitializerInNewLayout(ModelBuilder& model_builder,
-                          const std::string& name,
-                          const OperandType& source_operand_type,
-                          DataLayout new_layout,
-                          bool is_per_tensor_u8s8) {
+static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
+                                        const std::string& name,
+                                        const OperandType& source_operand_type,
+                                        DataLayout new_layout,
+                                        bool is_per_tensor_u8s8) {
   const auto& tensor = *model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
   ORT_RETURN_IF_NOT(shape.size() == 4,

@@ -2,23 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/providers/common.h"
-#include "core/common/safeint.h"
 
 #include "shaper.h"
-#include "helper.h"
 
 namespace onnxruntime {
 namespace nnapi {
-
-#define SHAPER_FUNC(FUNC, ...)                  \
-  ORT_RETURN_IF_ERROR(FUNC##Impl(__VA_ARGS__)); \
-  shape_ops_.push_back(                         \
-      [__VA_ARGS__](Shaper& shaper) {           \
-        return shaper.FUNC##Impl(__VA_ARGS__);  \
-      });                                       \
-  return Status::OK();
-
-#undef SHAPER_FUNC
 
 void Shaper::AddShape(const std::string& name, const Shape& shape) {
   shape_map_[name] = shape;

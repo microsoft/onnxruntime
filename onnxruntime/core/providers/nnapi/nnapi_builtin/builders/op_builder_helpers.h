@@ -41,12 +41,6 @@ Status AddNnapiSplit(ModelBuilder& model_builder,
                      int32_t axis,
                      const std::vector<std::string>& outputs);
 
-// adds ANEURALNETWORKS_SQUEEZE operation
-Status AddNnapiSqueeze(ModelBuilder& model_builder,
-                       const std::string& node_name,
-                       const std::string& input, const std::string& output,
-                       std::vector<int32_t> axes);
-
 // checks whether batch MatMul in the given NodeUnit is supported by NNAPI EP
 bool IsSupportedBatchMatMul(const NodeUnit& node_unit, int32_t nnapi_feature_level);
 
