@@ -16,10 +16,6 @@ common::Status InitializerView::Create(
   initializer->type_ = DataTypeImpl::TensorTypeFromONNXEnum(proto_data_type)->GetElementType();
 
   Path external_path;
-  auto status = utils::UnpackInitializerData(tensor_proto, external_path, initializer->unpacked_tensor_);
-  if (!status.IsOK()) {
-    return {};
-  }
-  return status;
+  return utils::UnpackInitializerData(tensor_proto, external_path, initializer->unpacked_tensor_);
 }
 }  // namespace onnxruntime
