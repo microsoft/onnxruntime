@@ -43,7 +43,10 @@ __global__ void QOrderedLayerNormRowKernel(const int8_t* __restrict__ src, const
     char4 ch4 = __ldg(reinterpret_cast<const char4*>(src + c));
     sum += (static_cast<short>(ch4.x) + static_cast<short>(ch4.y) +
             static_cast<short>(ch4.z) + static_cast<short>(ch4.w));
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 610
     square_sum = __dp4a(ch4, ch4, square_sum);
+#else
+#endif
   }
 
   sum = WarpReduceSum<int32_t>(sum);
