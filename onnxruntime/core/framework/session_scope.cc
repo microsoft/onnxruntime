@@ -4,10 +4,96 @@
 #include "core/common/profiler.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/session_state.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 
 using namespace onnxruntime::profiling;
+
+static void CalculateTotalOutputSizes2(OpKernelContextInternal* op_kernel_context,
+                                      size_t& total_output_sizes,
+                                      const std::string& node_name,
+                                      std::string& output_type_shape) {
+  // Calculate total output sizes for this operation.
+  std::stringstream ss;
+  int added_type_shapes = 0;
+  ss << "[";
+  total_output_sizes = 0;
+  ORT_UNUSED_PARAMETER(node_name);
+  int output_count = op_kernel_context->OutputCount();
+  for (auto i = 0; i < output_count; i++) {
+    const OrtValue* p_output = op_kernel_context->GetOutputMLValue(i);
+    if (p_output != nullptr && p_output->IsTensor()) {
+      const auto& tensor = p_output->Get<Tensor>();
+      size_t tensor_size = tensor.SizeInBytes();
+#if defined(TRACE_EXECUTION)
+      const TensorShape& tensor_shape = tensor.Shape();
+      std::cout << node_name << " output[" << i << "]"
+                << " size=" << tensor_size
+                << " shape=" << tensor_shape.ToString()
+                << " element_size=" << tensor.DataType()->Size()
+                << "\n";
+#endif
+      total_output_sizes += tensor_size;
+      auto shape_str = tensor.Shape().ToString();
+      ss << (added_type_shapes++ > 0 ? "," : "")
+         << "{\"" << DataTypeImpl::ToString(tensor.DataType()) << "\":["
+         << shape_str.substr(1, shape_str.size() - 2) << "]}";
+    }
+  }
+  ss << "]";
+  output_type_shape = ss.str();
+}
+
+static void CalculateTotalInputSizes2(const OpKernelContextInternal* op_kernel_context,
+                                     const onnxruntime::OpKernel* p_op_kernel,
+                                     size_t& input_activation_sizes,
+                                     size_t& input_parameter_sizes,
+                                     const std::string& node_name,
+                                     std::string& input_type_shape) {
+  // Calculate total input sizes for this operation.
+  std::stringstream ss;
+  ss << "[";
+  int added_type_shapes = 0;
+  input_activation_sizes = 0;
+  input_parameter_sizes = 0;
+  ORT_UNUSED_PARAMETER(node_name);
+  const int input_count = op_kernel_context->InputCount();
+  for (auto i = 0; i < input_count; i++) {
+    const OrtValue* p_input = op_kernel_context->GetInputMLValue(i);
+    if (p_input != nullptr && p_input->IsTensor()) {
+      const OpKernelInfo& op_kernel_info = p_op_kernel->Info();
+      const Tensor* p_tensor = nullptr;
+      bool is_param = op_kernel_info.TryGetConstantInput(i, &p_tensor);
+      if (!is_param) {
+        p_tensor = &(p_input->Get<Tensor>());
+      }
+      size_t tensor_size = p_tensor->SizeInBytes();
+
+#if defined(TRACE_EXECUTION)
+      const TensorShape& tensor_shape = p_tensor->Shape();
+      size_t element_size = p_tensor->DataType()->Size();
+      LOGS(logger, INFO) << node_name << " input[" << i << "]"
+                         << " is_param=" << is_param
+                         << " size=" << tensor_size
+                         << " shape=" << tensor_shape.ToString()
+                         << " element_size=" << element_size
+                         << "\n";
+#endif
+      if (is_param) {
+        input_parameter_sizes += tensor_size;
+      } else {
+        input_activation_sizes += tensor_size;
+      }
+      auto shape_str = p_tensor->Shape().ToString();
+      ss << (added_type_shapes++ > 0 ? "," : "")
+         << "{\"" << DataTypeImpl::ToString(p_tensor->DataType()) << "\":["
+         << shape_str.substr(1, shape_str.size() - 2) << "]}";
+    }
+  }
+  ss << "]";
+  input_type_shape = ss.str();
+}
 
 #ifdef ORT_MINIMAL_BUILD
 
@@ -216,10 +302,11 @@ class ProfilerScope : public IScope {
       profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", sess_start_);
     }
   }
+  bool Enabled() const { return enabled_; }
+  Profiler& profiler_;
 
  private:
   bool enabled_;
-  Profiler& profiler_;
   TimePoint sess_start_;
 };
 
@@ -259,24 +346,73 @@ class KernelScopeImpl {
                   SessionScope& sess_scope) : context_(context),
                                               kernel_(kernel),
                                               sess_scope_(sess_scope),
+                                              sess_state_(sess_scope.impl_->sess_state_),
                                               concur_scope_(sess_scope.impl_->concurrency_scope_, kernel),
                                               nvtx_scope_(kernel),
-                                              dump_scope_(sess_scope.impl_->sess_state_, context, kernel, sess_scope.impl_->iteration_) {}
-  ~KernelScopeImpl() = default;
+                                              dump_scope_(sess_scope.impl_->sess_state_, context, kernel, sess_scope.impl_->iteration_) {
+    is_profiler_enabled_ = sess_scope.impl_->profiler_scope_.Enabled();
+
+    if (is_profiler_enabled_) {
+      auto& node = kernel.Node();
+      node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
+      auto& profiler = sess_scope.impl_->profiler_scope_.profiler_;
+      auto sync_time_begin = profiler.Start();
+      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                     node_name_ + "_fence_before",
+                                     sync_time_begin,
+                                     {{"op_name", kernel_.KernelDef().OpName()}});
+
+      concurrency::ThreadPool::StartProfiling(sess_state_.GetThreadPool());
+      kernel_begin_time_ = profiler.Start();
+      CalculateTotalInputSizes2(&context,
+                                &kernel,
+                                input_activation_sizes_,
+                                input_parameter_sizes_,
+                                node_name_,
+                                input_type_shape_);
+    }
+  }
+
+  ~KernelScopeImpl() {
+    if (is_profiler_enabled_) {
+      CalculateTotalOutputSizes2(&context_, total_output_sizes_, node_name_, output_type_shape_);
+      auto& profiler = sess_scope_.impl_->profiler_scope_.profiler_;
+      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                     node_name_ + "_kernel_time",
+                                     kernel_begin_time_,
+                                     {
+                                         {"op_name", kernel_.KernelDef().OpName()},
+                                         {"provider", kernel_.KernelDef().Provider()},
+                                         {"node_index", std::to_string(kernel_.Node().Index())},
+                                         {"activation_size", std::to_string(input_activation_sizes_)},
+                                         {"parameter_size", std::to_string(input_parameter_sizes_)},
+                                         {"output_size", std::to_string(total_output_sizes_)},
+                                         {"input_type_shape", input_type_shape_},
+                                         {"output_type_shape", output_type_shape_},
+                                         {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(sess_state_.GetThreadPool())},
+                                     });
+      auto sync_time_begin = profiler.Start();
+      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                     node_name_ + "_fence_after",
+                                     sync_time_begin,
+                                     {{"op_name", kernel_.KernelDef().OpName()}});
+    }
+  }
 
  private:
 
+  bool is_profiler_enabled_ = false;
   TimePoint kernel_begin_time_;
   std::string node_name_;
   OpKernelContextInternal& context_;
   const OpKernel& kernel_;
   SessionScope& sess_scope_;
+  const SessionState& sess_state_;
   size_t input_activation_sizes_{};
   size_t input_parameter_sizes_{};
   size_t total_output_sizes_{};
   std::string input_type_shape_{};
   std::string output_type_shape_{};
-
   ConcurrencyKernelScope concur_scope_;
   NVTXKernelScope nvtx_scope_;
   DumpKernelScope dump_scope_;
