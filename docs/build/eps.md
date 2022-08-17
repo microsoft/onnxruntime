@@ -94,18 +94,20 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 {: .no_toc }
 
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 10.2/11.0/11.1/11.4 and cuDNN 8.0/cuDNN 8.2.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 10.2/11.0/11.1/11.4/11.6 and cuDNN 8.0/cuDNN 8.2/cuDNN 8.4.
    * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter. The CUDA path should contain `bin`, `include` and `lib` directories.
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
  * Install [TensorRT](https://developer.nvidia.com/tensorrt)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.2.3.0.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.4.1.5.
    * To use different versions of TensorRT, prior to building, change the onnx-tensorrt submodule to a branch corresponding to the TensorRT version. e.g. To use TensorRT 7.2.x,
      * cd cmake/external/onnx-tensorrt
      * git remote update
      * git checkout 7.2.1
      * build as usual (but add the --skip_submodule_sync command so it doesn't update the submodule)
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
+   * ONNX Runtime also supports using TensorRT built-in parser library (instead of generating the parser library from onnx-tensorrt submodule). 
+     * To enable this build option, add additional `--use_tensorrt_builtin_parser` parameter next to the parameter `--use_tensorrt` in build commands below.
 
 ### Build Instructions
 {: .no_toc }
