@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "session_scope.h"
 #include "core/common/profiler.h"
+#include "core/framework/memory_info.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -26,14 +27,14 @@ static void CalculateTotalOutputSizes2(OpKernelContextInternal* op_kernel_contex
     if (p_output != nullptr && p_output->IsTensor()) {
       const auto& tensor = p_output->Get<Tensor>();
       size_t tensor_size = tensor.SizeInBytes();
-#if defined(TRACE_EXECUTION)
-      const TensorShape& tensor_shape = tensor.Shape();
-      std::cout << node_name << " output[" << i << "]"
-                << " size=" << tensor_size
-                << " shape=" << tensor_shape.ToString()
-                << " element_size=" << tensor.DataType()->Size()
-                << "\n";
-#endif
+//#if defined(TRACE_EXECUTION)
+//      const TensorShape& tensor_shape = tensor.Shape();
+//      std::cout << node_name << " output[" << i << "]"
+//                << " size=" << tensor_size
+//                << " shape=" << tensor_shape.ToString()
+//                << " element_size=" << tensor.DataType()->Size()
+//                << "\n";
+//#endif
       total_output_sizes += tensor_size;
       auto shape_str = tensor.Shape().ToString();
       ss << (added_type_shapes++ > 0 ? "," : "")
@@ -70,16 +71,16 @@ static void CalculateTotalInputSizes2(const OpKernelContextInternal* op_kernel_c
       }
       size_t tensor_size = p_tensor->SizeInBytes();
 
-#if defined(TRACE_EXECUTION)
-      const TensorShape& tensor_shape = p_tensor->Shape();
-      size_t element_size = p_tensor->DataType()->Size();
-      LOGS(logger, INFO) << node_name << " input[" << i << "]"
-                         << " is_param=" << is_param
-                         << " size=" << tensor_size
-                         << " shape=" << tensor_shape.ToString()
-                         << " element_size=" << element_size
-                         << "\n";
-#endif
+//#if defined(TRACE_EXECUTION)
+//      const TensorShape& tensor_shape = p_tensor->Shape();
+//      size_t element_size = p_tensor->DataType()->Size();
+//      LOGS(logger, INFO) << node_name << " input[" << i << "]"
+//                         << " is_param=" << is_param
+//                         << " size=" << tensor_size
+//                         << " shape=" << tensor_shape.ToString()
+//                         << " element_size=" << element_size
+//                         << "\n";
+//#endif
       if (is_param) {
         input_parameter_sizes += tensor_size;
       } else {
@@ -157,9 +158,7 @@ class ConcurrencyKernelScope {
  private:
   diagnostic::span span_;
 };
-
 #else
-
 class ConcurrencyScope : public IScope {
  public:
   ConcurrencyScope(const GraphViewer&) {}
@@ -170,14 +169,11 @@ class ConcurrencyKernelScope {
  public:
   ConcurrencyKernelScope(ConcurrencyScope&, const OpKernel&);
 };
-
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
-
 #include "core/providers/cuda/nvtx_profile.h"
 #include "core/providers/cuda/nvtx_profile_context.h"
-
 /// <summary>
 /// NVTXScope
 /// </summary>
@@ -208,7 +204,6 @@ class NVTXScope : public IScope {
   profile::NvtxRangeCreator forward_range_;
   profile::NvtxRangeCreator backward_range_;
 };
-
 class NVTXKernelScope {
  public:
   NVTXKernelScope(const OpKernel& kernel) : node_compute_range_(MakeString(kernel.Node().OpType(), ".",
@@ -224,20 +219,16 @@ class NVTXKernelScope {
  private:
   profile::NvtxRangeCreator node_compute_range_;
 };
-
 #else
-
 class NVTXScope : public IScope {
  public:
   NVTXScope(const std::thread::id&) {}
   ~NVTXScope() = default;
 };
-
 class NVTXKernelScope {
  public:
   NVTXKernelScope(const OpKernel&);
 };
-
 #endif
 
 /// <summary>
@@ -249,7 +240,6 @@ class NVTXKernelScope {
 //  ~DumpInOutScope() = default;
 //};
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-
 class DumpKernelScope {
  public:
   DumpKernelScope(const SessionState& sess_state;
@@ -265,7 +255,6 @@ class DumpKernelScope {
   DumpKernelScope() {
     utils::DumpNodeOutputs(dump_ctx_, context_, kernel_.Node(), sess_state_);
   }
-
  private:
   const SessionState& sess_state_;
   OpKernelContextInternal& context_;
@@ -273,9 +262,7 @@ class DumpKernelScope {
   size_t iteration_;
   utils::NodeDumpContext dump_ctx_;
 };
-
 #else
-
 class DumpKernelScope {
  public:
   DumpKernelScope(const SessionState&,
@@ -283,7 +270,60 @@ class DumpKernelScope {
                   const OpKernel&,
                   size_t) {}
 };
+#endif
 
+#ifdef ORT_MEMORY_PROFILE
+class MemSessionScope {
+ public:
+  MemSessionScope(const SessionState& sess_state,
+                  const ExecutionFrame& frame) : logger_(sess_state.GetLogger()),
+                                                 frame_(frame),
+                                                 profiler_(sess_state.GetMemoryProfiler()) {}
+  ~MemSessionScope() {
+    profiler_.CreateEvents(
+        "dynamic activations_" + std::to_string(profiler_.GetMemoryInfo().GetIteration()),
+        profiler_.GetAndIncreasePid(),
+        MemoryInfo::MapType::DynamicActivation, "", 0);
+    profiler_.Clear();
+    for (auto i : frame_.GetStaticMemorySizeInfo()) {
+      LOGS(logger_, INFO) << "[Memory] ExecutionFrame statically allocates "
+                          << i.second << " bytes for " << i.first << std::endl;
+    }
+
+    for (auto i : frame.GetDynamicMemorySizeInfo()) {
+      LOGS(logger_, INFO) << "[Memory] ExecutionFrame dynamically allocates "
+                          << i.second << " bytes for " << i.first << std::endl;
+    }
+  }
+
+ private:
+  const logging::Logger& logger_;
+  const ExecutionFrame& frame_;
+  MemoryProfiler& profiler_;
+};
+class MemKernelScope {
+ public:
+  MemKernelScope(const SessionState& sess_state) : profiler_(sess_state.GetMemoryProfiler()) {}
+  ~MemKernelScope() {
+    profiler_.CreateEvents(
+        "dynamic activations_" + std::to_string(profiler_.GetMemoryInfo().GetIteration()),
+        profiler_.GetAndIncreasePid(),
+        MemoryInfo::MapType::DynamicActivation, "", 0);
+  }
+
+ private:
+  MemoryProfiler& profiler_;
+};
+#else
+class MemSessionScope {
+ public:
+  MemSessionScope(const SessionState&,
+                  const ExecutionFrame&) {}
+};
+class MemKernelScope {
+ public:
+  MemKernelScope(const SessionState&) {}
+};
 #endif
 
 /// <summary>
@@ -321,7 +361,8 @@ class SessionScopeImpl {
                                                   frame_(frame),
                                                   concurrency_scope_(sess_state.GetGraphViewer()),
                                                   profiler_scope_(sess_state.Profiler()),
-                                                  nvtx_scope_(std::this_thread::get_id()) {
+                                                  nvtx_scope_(std::this_thread::get_id()),
+                                                  mem_scope_(sess_state, frame) {
     iteration_++;
   };
   ~SessionScopeImpl() {}
@@ -332,12 +373,56 @@ class SessionScopeImpl {
   ConcurrencyScope concurrency_scope_;
   ProfilerScope profiler_scope_;
   NVTXScope nvtx_scope_;
+  MemSessionScope mem_scope_;
   std::atomic<size_t> iteration_{0};
 };
 
 SessionScope::SessionScope(const SessionState& sess_state, const ExecutionFrame& frame) {
   impl_ = std::make_unique<SessionScopeImpl>(sess_state, frame);
 }
+
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+#include <Windows.h>
+#include "core/platform/tracing.h"
+LARGE_INTEGER OrtGetPerformanceFrequency() {
+  LARGE_INTEGER v;
+  // On systems that run Windows XP or later, the QueryPerformanceFrequency function will always succeed
+  // and will thus never return zero.
+  (void)QueryPerformanceFrequency(&v);
+  return v;
+}
+
+LARGE_INTEGER perf_freq = OrtGetPerformanceFrequency();
+
+class InstrumentScope {
+ public:
+  InstrumentScope(const OpKernel& kernel) : kernel_(kernel) {
+    QueryPerformanceCounter(&kernel_start_);
+  }
+  ~InstrumentScope() {
+    LARGE_INTEGER kernel_stop;
+    QueryPerformanceCounter(&kernel_stop);
+    LARGE_INTEGER elapsed;
+    elapsed.QuadPart = kernel_stop.QuadPart - kernel_start_.QuadPart;
+    elapsed.QuadPart *= 1000000;
+    elapsed.QuadPart /= perf_freq.QuadPart;
+    // Log an event
+    TraceLoggingWrite(telemetry_provider_handle,  // handle to my provider
+                      "OpEnd",                    // Event Name that should uniquely identify your event.
+                      TraceLoggingValue(kernel_->KernelDef().OpName().c_str(), "op_name"),
+                      TraceLoggingValue(elapsed.QuadPart, "time"));
+  }
+
+ private:
+  const OpKernel& kernel_;
+  LARGE_INTEGER kernel_start_;
+};
+#else
+class InstrumentScope {
+ public:
+  InstrumentScope(const OpKernel&);
+};
+#endif
 
 class KernelScopeImpl {
  public:
@@ -349,7 +434,8 @@ class KernelScopeImpl {
                                               sess_state_(sess_scope.impl_->sess_state_),
                                               concur_scope_(sess_scope.impl_->concurrency_scope_, kernel),
                                               nvtx_scope_(kernel),
-                                              dump_scope_(sess_scope.impl_->sess_state_, context, kernel, sess_scope.impl_->iteration_) {
+                                              dump_scope_(sess_scope.impl_->sess_state_, context, kernel, sess_scope.impl_->iteration_),
+                                              mem_scope_(sess_scope.impl_->sess_state_) {
     is_profiler_enabled_ = sess_scope.impl_->profiler_scope_.Enabled();
 
     if (is_profiler_enabled_) {
@@ -416,6 +502,7 @@ class KernelScopeImpl {
   ConcurrencyKernelScope concur_scope_;
   NVTXKernelScope nvtx_scope_;
   DumpKernelScope dump_scope_;
+  MemKernelScope mem_scope_;
 };
 
 KernelScope::KernelScope(OpKernelContextInternal& kernel_context,
