@@ -15,8 +15,8 @@ namespace onnxruntime {
  * @brief Given a QuantizeLinear and DequantizeLinear pair with type int8_t,
  *        Convert them to uint8_t
  * @param graph
- * @param q_node 
- * @param dq_node 
+ * @param q_node
+ * @param dq_node
  * @return whether conversion happened
 */
 static bool QDQ_S8_to_U8(Graph& graph, Node& q_node, Node& dq_node) {
@@ -73,6 +73,21 @@ static bool QDQ_S8_to_U8(Graph& graph, Node& q_node, Node& dq_node) {
   return true;
 }
 
+bool QDQS8ToU8Transformer::ShouldConvertWeightFromS8ToU8(Graph& graph, Node& node) const {
+  const auto consumers = graph.GetConsumerNodes(node.Name());
+
+  if (weights_to_u8_) {
+    return true;
+  }
+
+  for (const Node* c : consumers) {
+    if (exclude_next.find(c->OpType()) != exclude_next.end()) {
+      // opType is among the exclude_next, leave out this node
+      return false;
+    }
+  }
+  return true;
+}
 
 // Convert QuantizeLinear and DequantizeLinear pair with type int8_t to type uint8_t
 Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
@@ -103,7 +118,8 @@ Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     // recognize lone DQ node
-    if (weights_to_u8_ && QDQ::MatchDQNode(node)) {
+    // if (weights_to_u8_ && this->ShouldConvertWeightFromS8ToU8(graph, node)) {
+    if (QDQ::MatchDQNode(node) && this->ShouldConvertWeightFromS8ToU8(graph, node)) {
       modified |= QDQ::ConvertS8WeightToU8(graph, node, 0, 2);
       continue;
     }
