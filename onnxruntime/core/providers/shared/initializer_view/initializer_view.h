@@ -3,6 +3,7 @@
 // Licensed under the MIT License.
 #pragma once
 
+#include <cstdint>
 #include <optional>
 
 #include "core/framework/tensorprotoutils.h"
@@ -27,8 +28,8 @@ class InitializerView {
     return shape_;
   }
 
-  const DataTypeImpl* Type() const {
-    return type_;
+  int32_t Type() {
+    return data_type_;
   }
 
   template <class T>
@@ -48,7 +49,7 @@ class InitializerView {
 
  private:
   TensorShape shape_;
-  const DataTypeImpl* type_{nullptr};
+  int32_t data_type_{0};
   std::vector<uint8_t> unpacked_tensor_;
 };
 }  // namespace onnxruntime
