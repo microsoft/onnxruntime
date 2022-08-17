@@ -3,7 +3,7 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include <memory>
+#include <optional>
 
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_shape.h"
@@ -16,28 +16,30 @@ class InitializerView {
  private:
   InitializerView(const InitializerView&) = delete;
   InitializerView& operator=(const InitializerView&) = delete;
-  InitializerView() = default;
 
  public:
-  static std::unique_ptr<InitializerView> Create(
-      const ONNX_NAMESPACE::TensorProto& tensor_proto);
-  const TensorShape& Shape() {
+  InitializerView() = default;
+
+  static common::Status Create(
+      const ONNX_NAMESPACE::TensorProto& tensor_proto, std::optional<InitializerView>& initializer);
+
+  const TensorShape& Shape() const {
     return shape_;
   }
 
-  const DataTypeImpl* Type() {
+  const DataTypeImpl* Type() const {
     return type_;
   }
 
   template <class T>
-  gsl::span<const T> DataAsSpan() {
-    ORT_ENFORCE(unpacked_tensor_.size() >= sizeof(T), " data bytes must more than sizeof (T)");
+  gsl::span<const T> DataAsSpan() const {
+    // make sure data bytes are more than sizeof (T)";
     return gsl::make_span(data<T>(), unpacked_tensor_.size() / sizeof(T));
   }
 
  private:
   template <class T>
-  const T* data() {
+  const T* data() const {
     // make sure T has no qualifier
     static_assert(std::is_same_v<typename std::decay<T>::type, T> &&
                   std::is_same_v<typename std::remove_pointer<T>::type, T>);

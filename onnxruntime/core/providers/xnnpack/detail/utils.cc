@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "utils.h"
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -161,7 +162,7 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
     def.inputs.push_back(y_quant_param.scale.Name());
     def.inputs.push_back(y_quant_param.zero_point ? y_quant_param.zero_point->Name() : "");
     if (qtype == QuantizedOpType::QDQSoftmax) {
-      def.since_version = 1;
+      def.domain = kDynamicDomainByCreate;
       def.attributes.emplace("opset", utils::MakeAttribute(std::string("opset"), int64_t(node_unit.SinceVersion())));
     }
   } else if (qtype == QuantizedOpType::QDQMaxPool) {
@@ -333,8 +334,8 @@ TensorQuantType GetTensorQuantType(const NodeUnit& node_unit, int32_t io_index,
       } else if (scales_dim == tensor_shape[0]) {
         // default 0 for zero-point if zero_dim == 0
         if (zero_tensor != nullptr) {
-          auto zp_val = InitializerView::Create(*zero_tensor);
-          if (!zp_val) {
+          std::optional<InitializerView> zp_val;
+          if (!InitializerView::Create(*zero_tensor, zp_val).IsOK()) {
             LOGS_DEFAULT(ERROR) << "error when unpack zero tensor: ";
             break;
           }

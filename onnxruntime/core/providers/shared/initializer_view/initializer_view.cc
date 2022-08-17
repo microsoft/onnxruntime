@@ -3,11 +3,12 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared/initializer_view/initializer_view.h"
+#include <utility>
 
 namespace onnxruntime {
-std::unique_ptr<InitializerView> InitializerView::Create(
-    const ONNX_NAMESPACE::TensorProto& tensor_proto) {
-  auto initializer = std::unique_ptr<InitializerView>(new InitializerView);
+common::Status InitializerView::Create(
+    const ONNX_NAMESPACE::TensorProto& tensor_proto, std::optional<InitializerView>& initializer) {
+  initializer.emplace();  // create instance in place
 
   auto proto_data_type = tensor_proto.data_type();
   auto proto_dims = utils::GetTensorShapeFromTensorProto(tensor_proto);
@@ -19,6 +20,6 @@ std::unique_ptr<InitializerView> InitializerView::Create(
   if (!status.IsOK()) {
     return {};
   }
-  return initializer;
+  return status;
 }
 }  // namespace onnxruntime

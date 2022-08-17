@@ -3,6 +3,7 @@
 
 #include "core/providers/xnnpack/nn/softmax.h"
 
+#include <optional>
 #include <utility>
 
 #include "core/framework/op_kernel.h"
@@ -30,16 +31,16 @@ bool IsQuantSoftmaxSupported(const NodeUnit& node_unit, const GraphViewer& graph
     // idealy, QlinearSoftmax or QDQSoftmax will keep this output scale and zp, but we have to handle some
     // qdq models converted from other framework
     auto [scale_tensor, zero_tensor] = GetQuantizationZeroPointAndScale(graph, node_unit.Outputs()[0]);
-    auto q_scale = InitializerView::Create(*scale_tensor);
-    if (!q_scale) {
+    std::optional<InitializerView> q_scale;
+    if (!InitializerView::Create(*scale_tensor, q_scale).IsOK()) {
       break;
     }
     if (fabs(q_scale->DataAsSpan<float>()[0] - 1.0f / 256.0f) > 0.0001f) {
       break;
     }
-    if (scale_tensor) {
-      auto q_zp = InitializerView::Create(*zero_tensor);
-      if (q_zp && q_zp->DataAsSpan<int8_t>()[0] != 0) {
+    if (zero_tensor) {
+      std::optional<InitializerView> q_zp;
+      if (InitializerView::Create(*zero_tensor, q_zp).IsOK() && q_zp->DataAsSpan<int8_t>()[0] != 0) {
         break;
       }
     }
@@ -234,7 +235,7 @@ ONNX_OPERATOR_KERNEL_EX(Softmax, kOnnxDomain, 13, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         Softmax);
 
-ONNX_OPERATOR_KERNEL_EX(QLinearSoftmax, kMSInternalNHWCDomain, 1, kXnnpackExecutionProvider,
+ONNX_OPERATOR_KERNEL_EX(QLinearSoftmax, kDynamicDomainByCreate, 1, kXnnpackExecutionProvider,
                         KernelDefBuilder(),
                         Softmax);
 

@@ -15,13 +15,13 @@
 #include "core/providers/common.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 
-#include "gsl/gsl-lite.hpp"
 #include "xnnpack.h"
 
 namespace onnxruntime {
 class GraphViewer;
 class NodeUnit;
 namespace xnnpack {
+constexpr const char* kDynamicDomainByCreate = __DATE__ ".domain";
 
 enum OpComputeType : uint8_t {
   op_compute_type_invalid = 0,

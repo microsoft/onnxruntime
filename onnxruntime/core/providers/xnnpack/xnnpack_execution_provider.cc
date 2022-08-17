@@ -13,6 +13,7 @@
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry.h"
 #include "core/providers/shared/node_unit/node_unit.h"
+#include "core/common/inlined_containers.h"
 
 #include <xnnpack.h>
 
@@ -48,7 +49,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSIntern
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, int8_t, QLinearConv);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearAveragePool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider,
-                                      kMSInternalNHWCDomain, 1, QLinearSoftmax);
+                                      kDynamicDomainByCreate, 1, QLinearSoftmax);
 
 std::unique_ptr<KernelRegistry> RegisterKernels() {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
@@ -70,7 +71,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO_TYPED(10, int8_t, QLinearConv),
       KERNEL_CREATE_INFO(1, QLinearAveragePool),
       BuildKernelCreateInfo<
-          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearSoftmax)>,
+          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kDynamicDomainByCreate, 1, QLinearSoftmax)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -242,7 +243,7 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
 
         const std::string& op_type = subgraph.GetMetaDef()->name;
         // layout insensitive ops registration, add more ops here if needed.
-        if (std::unordered_set<std::string>{"QLinearSoftmax"}.count(op_type)) {
+        if (onnxruntime::InlinedHashSet<absl::string_view>{"QLinearSoftmax"}.count(op_type)) {
           return true;
         }
         return false;
@@ -250,6 +251,7 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
       auto register_layout_insensitive_ops = [&graph, &required_register](const IndexedSubGraph& subgraph) {
         if(required_register(subgraph)){
           auto temp_schema_ptr = function_utils::CreateSchema(graph.GetGraph(), subgraph);
+          temp_schema_ptr->SinceVersion(1);
           // RegisterSchema may complain registration more than once, but it's fine.
           ONNX_NAMESPACE::RegisterSchema(*temp_schema_ptr);
       }; };
