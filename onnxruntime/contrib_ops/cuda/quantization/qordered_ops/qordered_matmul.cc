@@ -26,8 +26,8 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 7),  // scale_C
     QOrderedMatMul);
 
-static Status ParseTensorMetadata(const Tensor& input_tensor, cublasLtOrder_t input_order, cublasLtOrder_t output_order,
-                                  int64_t& rows, int64_t& cols, int64_t& batch_count, int64_t& element_count) {
+static Status ParseRowMajorTensorMetadata(const Tensor& input_tensor, int64_t& rows,
+                                  int64_t& cols, int64_t& batch_count, int64_t& element_count) {
   const auto& dims = input_tensor.Shape().GetDims();
 
   cols = dims.back();
@@ -68,10 +68,8 @@ Status QOrderedMatMul::QOrderedMatMul::ComputeInternal(OpKernelContext* context)
   ORT_ENFORCE(tensor_A.Shape().NumDimensions() == 2 || tensor_A.Shape().NumDimensions() == 3);
   ORT_ENFORCE(tensor_B.Shape().NumDimensions() == 2 || tensor_B.Shape().NumDimensions() == 3);
 
-  ORT_RETURN_IF_ERROR(ParseTensorMetadata(tensor_A, static_cast<cublasLtOrder_t>(order_A_),
-                                          static_cast<cublasLtOrder_t>(order_A_), rows_A, cols_A, batch_A, elements_A));
-  ORT_RETURN_IF_ERROR(ParseTensorMetadata(tensor_B, static_cast<cublasLtOrder_t>(order_B_),
-                                          static_cast<cublasLtOrder_t>(order_B_), rows_B, cols_B, batch_B, elements_B));
+  ORT_RETURN_IF_ERROR(ParseRowMajorTensorMetadata(tensor_A, rows_A, cols_A, batch_A, elements_A));
+  ORT_RETURN_IF_ERROR(ParseRowMajorTensorMetadata(tensor_B, rows_B, cols_B, batch_B, elements_B));
 
   const float* scale_A = context->Input<Tensor>(1)->Data<float>();
   const float* scale_B = context->Input<Tensor>(3)->Data<float>();
@@ -98,9 +96,7 @@ Status QOrderedMatMul::QOrderedMatMul::ComputeInternal(OpKernelContext* context)
 
   if (tensor_C != nullptr) {
     ORT_ENFORCE(tensor_C->Shape().NumDimensions() == 2 || tensor_C->Shape().NumDimensions() == 3);
-    ORT_RETURN_IF_ERROR(ParseTensorMetadata(*tensor_C, static_cast<cublasLtOrder_t>(order_A_),
-                                            static_cast<cublasLtOrder_t>(order_A_),
-                                            rows_C, cols_C, batch_C, elements_C));
+    ORT_RETURN_IF_ERROR(ParseRowMajorTensorMetadata(*tensor_C, rows_C, cols_C, batch_C, elements_C));
 
     ORT_ENFORCE(batch_C == batch_A || batch_C == 1);
     ORT_ENFORCE(rows_C == rows_A && cols_C == cols_B);
