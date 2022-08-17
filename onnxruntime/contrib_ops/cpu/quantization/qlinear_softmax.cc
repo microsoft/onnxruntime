@@ -27,18 +27,22 @@ namespace {
 void QlinearBuildLookupTableUint32(gsl::span<QLinearSoftmax::EXP_OUT_DTYPE> table,
                                    const float x_scale,
                                    size_t reduce_len, bool is_signed) {
-  const double qscale =
-      fmin(static_cast<double>(UINT32_MAX) / static_cast<double>(reduce_len), static_cast<double>(0x7fffff));
+  // make sure sum(exp(x)) < max<T>()
+  double bit_shift =
+      log(std::numeric_limits<QLinearSoftmax::EXP_OUT_DTYPE>::max() / reduce_len);
+  double reserve_bit = std::is_same_v<QLinearSoftmax::EXP_OUT_DTYPE, float> ? 5 : 3;
+  bit_shift = std::max(0.0, bit_shift - reserve_bit) / x_scale;
+
   for (int32_t i = 0; i < 256; i++) {
-    double scaled_exp_xi = qscale * exp(static_cast<double>(i - 255) * static_cast<double>(x_scale));
-    // we can't get the real max value of input tensor here, so we just assume 255.
+    double scaled_exp_xi = exp((i - 255 + bit_shift) * static_cast<double>(x_scale));
+    // we can't get the real max value of input tensor here, so we just assume 255-bit_shift.
     // in the function of `QlinearSoftmaxCPU`,
-    // all numbers will have a shift (255-max_value) if its max value is not 255
+    // all numbers will have a shift (255-bit_shift-max_value) if its max value is not 255
     //
     // if is_signed index = [1 2 3 ......126 127 -128 -127 ..... -3 -2 -1]
     // else [0 1 2 3 4 ..... 256]
     uint8_t index = static_cast<uint8_t>(is_signed ? i - 128 : i);
-    table[index] = static_cast<QLinearSoftmax::EXP_OUT_DTYPE>(std::nearbyint(scaled_exp_xi));
+    table[index] = static_cast<QLinearSoftmax::EXP_OUT_DTYPE>((scaled_exp_xi));
   }
 }
 
@@ -174,12 +178,11 @@ common::Status QlinearSoftmaxCPU<uint8_t>(size_t N,
           elements_n = D;
           x_t_cur = x_t;
           // elementwise div, y_i=\frac{x_i}{vsum}
-          const QLinearSoftmax::EXP_OUT_DTYPE vrounding = (vsum / 2);
           do {
             const size_t vx = *x_t_cur++;
             const QLinearSoftmax::EXP_OUT_DTYPE vt = shifted_lookuptable[vx];
             // simulate round function, and re-quant to uint8
-            const uint32_t vq = static_cast<uint32_t>(((vt * c_y_scale) + vrounding) / vsum) + c_y_zp;
+            const uint32_t vq = static_cast<uint32_t>(std::nearbyintf(((vt * c_y_scale)) / vsum)) + c_y_zp;
             const uint8_t vy = vq > 255 ? static_cast<uint8_t>(255) : static_cast<uint8_t>(vq);
             *y_t++ = vy;
           } while (--elements_n != 0);
@@ -232,12 +235,11 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
           elements_n = D;
           x_t_cur = x_t;
           // elementwise div
-          const QLinearSoftmax::EXP_OUT_DTYPE vrounding = (vsum / 2);
           do {
             const size_t vx = uint8_t(adjustment + (*x_t_cur++));
             const QLinearSoftmax::EXP_OUT_DTYPE vt = shifted_lookuptable[vx];
             // simulate round function, and re-quant to Int8
-            const int32_t vq = static_cast<int32_t>(((vt * c_y_scale) + vrounding) / vsum) + c_y_zp;
+            const int32_t vq = static_cast<int32_t>(std::nearbyintf(((vt * c_y_scale)) / vsum)) + c_y_zp;
             const int8_t vy = static_cast<int32_t>(vq) > 255 ? static_cast<int8_t>(255) : static_cast<int8_t>(vq);
             *y_t++ = vy;
           } while (--elements_n != 0);
