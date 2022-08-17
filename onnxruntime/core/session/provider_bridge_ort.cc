@@ -759,8 +759,10 @@ struct ProviderHostImpl : ProviderHost {
 
   const std::vector<const NodeArg*>& Graph__GetInputs(const Graph* p) noexcept override { return p->GetInputs(); }
   bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) override { return p->GetInitializedTensor(tensor_name, value); }
+  bool Graph__IsInitializedTensor(const Graph* p, const std::string& tensor_name) override { return p->IsInitializedTensor(tensor_name); }
   
-  //const Graph* Graph__ParentGraph(Graph* p) const { return p->ParentGraph(); }
+  const Graph* Graph__ParentGraph(const Graph* p) const override { return p->ParentGraph(); }
+  Graph* Graph__MutableParentGraph(Graph* p) override { return p->MutableParentGraph(); }
   const Node* Graph__ParentNode(const Graph* p) const override { return p->ParentNode(); }
   Node* Graph__GetNode(Graph* p, NodeIndex node_index) noexcept { return p->GetNode(node_index); }
   const Node* Graph__GetNode(const Graph* p, NodeIndex node_index) const override { return p->GetNode(node_index); }

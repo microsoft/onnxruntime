@@ -703,16 +703,75 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   return sub_graph;
 }
 
-// Resolve outer scope values for the newly built subgraph for meeting ORT graph requirements
+// This helper function is for handling nested control flow op which has subgraphs.
 void TensorrtExecutionProvider::ResolveGraphOuterScopeValues(Graph* build_graph, const Graph* graph) const {
-  // outer scope values should be added to graph, otherwise graph.Resolve() will fail.
-  // Note: graph->GetOuterScopeNodeArgNames() always returns empty? so we need to use ImplicitInputDefs to handle outer scope values instead.
+
+}
+
+void TensorrtExecutionProvider::GetAllNodesOutput(const Graph* graph, std::unordered_set<std::string> all_output_set) const {
+  for (int i = 0; i < graph->MaxNodeIndex(); ++i) {
+    auto node = graph->GetNode(i); 
+    
+    if (node == nullptr) {
+      continue;
+    }
+
+    for (auto output : node->OutputDefs()) {
+      all_output_set.insert(output->Name());
+    }
+  }
+}
+
+bool TensorrtExecutionProvider::IsGraphInput(const Graph* graph, std::string name) const {
+  for (auto input : graph->GetInputs()) {
+    if (name == input->Name()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// This helper function is for the case where the graph contains control flow op or nested control flow op.
+// If control flow op's subgraph contains any outer scope value, TRT EP needs to properly set outer scope values for the newly built subgraph as a self-contained graph per ORT graph requirements,
+// otherwise graph.Resolve() will fail.
+void TensorrtExecutionProvider::SetGraphOuterScopeValues(Graph* build_graph, const Graph* graph) const {
+  
   if (build_graph->ParentNode()) {
+    // If the graph is a subgraph.
+ 
+    std::cout << "Parent Node:" << build_graph->ParentNode()->Name() << std::endl;
+    std::cout << "implicit inputs:" << std::endl;
+    std::unordered_set<std::string> all_nodes_output; 
+    GetAllNodesOutput(build_graph->ParentGraph(), all_nodes_output);
+    
+    // (Note: It seems graph->GetOuterScopeNodeArgNames() always returns empty? so we need to use ImplicitInputDefs to handle outer scope values instead)
     for (const auto& input : graph->ParentNode()->ImplicitInputDefs()) {
+      
+      // Set outer scope value for current graph.
+      // 
+      // The node arg in parent node's implicit inputs could be used for parent node's other subgraph, for example "If" node.
+      // So we need to make sure handle the node arg that is used in current subgraph only.
+      // (GetNodeArg searches for specific node arg in all node args in the graph)
       if (build_graph->GetNodeArg(input->Name())) {
         build_graph->AddOuterScopeNodeArg(input->Name());
+        std::cout << input->Name() << std::endl;
       }
-    }  
+
+      // Handle the case where outer scope value is from ancestor of current graph's parent.
+      // 
+      // If node arg is not in the following cases, it's from ancestor of graph's parent.
+      //   1. inputs/initialiers in graph's parent graph
+      //   2. outputs of nodes in graph's parent graph
+      // Need to set outer scope value in current graph's parent as well.
+      if ((all_nodes_output.find(input->Name()) == all_nodes_output.end()) && 
+          !build_graph->ParentGraph()->IsInitializedTensor(input->Name()) &&
+          !IsGraphInput(build_graph->ParentGraph(), input->Name()))
+      {
+        build_graph->MutableParentGraph()->AddOuterScopeNodeArg(input->Name());
+        std::cout << "!!!!!" << std::endl;
+        std::cout << input->Name() << std::endl;
+      }
+    }
   }
 
   // iterate all the nodes and recurse into subgraph
@@ -741,7 +800,7 @@ void TensorrtExecutionProvider::ResolveGraphOuterScopeValues(Graph* build_graph,
       if (subgraph_map.find(attr_name) != subgraph_map.end()) {
         // recurse into subgraph
         const Graph* graph_subgraph = subgraph_map.at(attr_name);
-        ResolveGraphOuterScopeValues(subgraph, graph_subgraph);
+        SetGraphOuterScopeValues(subgraph, graph_subgraph);
       }
     }
   }
@@ -833,7 +892,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           }
         }
 
-        ResolveGraphOuterScopeValues(&graph_build, &graph.GetGraph());
+        SetGraphOuterScopeValues(&graph_build, &graph.GetGraph());
         ORT_ENFORCE(graph_build.Resolve().IsOK());
 
         // Add parent graph output to the subgraph
@@ -1188,6 +1247,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
           }
         }
       }
+      LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
       return result;
     }    
   } 
