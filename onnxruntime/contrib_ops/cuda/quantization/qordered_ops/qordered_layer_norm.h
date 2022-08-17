@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using onnxruntime::cuda;
+using namespace onnxruntime::cuda;
 
 class QOrderedLayerNormalization final : public CudaKernel {
  public:

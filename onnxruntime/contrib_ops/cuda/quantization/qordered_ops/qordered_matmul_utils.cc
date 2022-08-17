@@ -7,7 +7,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using onnxruntime::cuda;
+using namespace onnxruntime::cuda;
 
 int64_t CalcLeadingDimensionLt(int64_t rows, int64_t cols, cublasLtOrder_t order) {
   switch (order) {
