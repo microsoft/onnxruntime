@@ -34,7 +34,7 @@ Status RocBlasGemmOp(const GemmParams<T>* params) {
       params->a, params->lda,
       &(params->beta),
       params->c, params->ldc);
-  ORT_RETURN_IF(status != rocblas_status_success, ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, rocblas_status_to_string(status)));
+  ORT_RETURN_IF(status != rocblas_status_success, rocblas_status_to_string(status));
   return Status::OK();
 }
 

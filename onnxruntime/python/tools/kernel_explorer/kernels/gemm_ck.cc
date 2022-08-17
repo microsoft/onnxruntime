@@ -63,9 +63,8 @@ auto GetCKGemmOpTypeStringAndInstances() {
                                            params->m, params->n, params->k,
                                            params->lda, params->ldb, params->ldc,
                                            nop, nop, nop);
-      ORT_RETURN_IF(!impl->IsSupportedArgument(arg.get()),
-                    TUNABLE_OP_MAKE_UNSUPPOTED_ARGUMENT_STATUS(
-                        impl->GetTypeString(), " does not support ", params->Signature()));
+      TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
+                                               impl->GetTypeString(), " does not support ", params->Signature());
       invoker->Run(arg.get(), StreamConfig{params->stream});
       return Status::OK();
     };

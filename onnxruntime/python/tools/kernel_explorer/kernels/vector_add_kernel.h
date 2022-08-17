@@ -55,7 +55,7 @@ Status LaunchVectorAdd(hipStream_t stream, const T* x, const T* y, T* z, int n) 
                      0, stream,
                      x, y, z, n);
   auto status = hipGetLastError();
-  ORT_RETURN_IF(status == hipSuccess, ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, hipGetErrorName(status)));
+  ORT_RETURN_IF(status != hipSuccess, hipGetErrorName(status));
   return Status::OK();
 }
 
