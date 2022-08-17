@@ -209,7 +209,7 @@ def parse_arguments():
         const="yes",
         type=str,
         help="Generate documentation listing standard ONNX operators and types implemented by "
-        "various execution providers and contrib operator schemas. "
+        "various execution providers and contrib operator schemas. Must be used for inference builds, only!"
         "Use `--gen_doc validate` to validate these match the current contents in /docs.",
     )
 
@@ -1189,6 +1189,8 @@ def generate_build_tree(
         ]
 
     if args.gen_doc:
+        if args.enable_training:
+            raise BuildError("--gen_doc is not supported along with --enable_training")
         add_default_definition(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "ON")
     else:
         add_default_definition(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "OFF")
