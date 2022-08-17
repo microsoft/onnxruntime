@@ -40,7 +40,7 @@ __global__ void QOrderedLayerNormRowKernel(const int8_t* __restrict__ src, const
   src += batch_row_index;
   dst += batch_row_index;
   for (unsigned c = threadIdx.x << 2; c < cols; c += 128) {
-    char4 ch4 = __ldg((const char4*)(src + c));
+    char4 ch4 = __ldg(reinterpret_cast<const char4*>(src + c));
     sum += (static_cast<short>(ch4.x) + static_cast<short>(ch4.y) +
             static_cast<short>(ch4.z) + static_cast<short>(ch4.w));
     square_sum = __dp4a(ch4, ch4, square_sum);
@@ -57,7 +57,7 @@ __global__ void QOrderedLayerNormRowKernel(const int8_t* __restrict__ src, const
 
   float4 f4;
   for (unsigned c = threadIdx.x << 2; c < cols; c += 128) {
-    char4 ch4 = __ldg((const char4*)(src + c));
+    char4 ch4 = __ldg(reinterpret_cast<const char4*>(src + c));
 
     f4.x = (src_scale * ch4.x - mean) * rvar * ToFloat(gamma[c]);
     f4.y = (src_scale * ch4.y - mean) * rvar * ToFloat(gamma[c + 1]);
