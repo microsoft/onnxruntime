@@ -621,25 +621,46 @@ if (onnxruntime_USE_TENSORRT)
     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-missing-field-initializers")
   endif()
   set(CXX_VERSION_DEFINED TRUE)
-  add_subdirectory(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
-  set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
-  if ( CMAKE_COMPILER_IS_GNUCC )
-    set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
+  
+  if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
+    # Add TensorRT library
+    find_path(TENSORRT_INCLUDE_DIR NvInfer.h
+      HINTS ${TENSORRT_ROOT}
+      PATH_SUFFIXES include)
+    MESSAGE(STATUS "Found TensorRT headers at ${TENSORRT_INCLUDE_DIR}")
+    find_library(TENSORRT_LIBRARY_INFER nvinfer
+      HINTS ${TENSORRT_ROOT}
+      PATH_SUFFIXES lib lib64 lib/x64)
+    find_library(TENSORRT_LIBRARY_INFER_PLUGIN nvinfer_plugin
+      HINTS  ${TENSORRT_ROOT}
+      PATH_SUFFIXES lib lib64 lib/x64)
+    find_library(TENSORRT_LIBRARY_NVONNXPARSER nvonnxparser
+      HINTS  ${TENSORRT_ROOT}
+      PATH_SUFFIXES lib lib64 lib/x64)
+    set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_INFER_PLUGIN} ${TENSORRT_LIBRARY_NVONNXPARSER})
+    MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_LIBRARY}")
+  else()
+    add_subdirectory(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
+    set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
+    if ( CMAKE_COMPILER_IS_GNUCC )
+      set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
+    endif()
+    if (WIN32)
+      set(CMAKE_CUDA_FLAGS ${OLD_CMAKE_CUDA_FLAGS})
+      unset(PROTOBUF_LIBRARY)
+      unset(OLD_CMAKE_CXX_FLAGS)
+      unset(OLD_CMAKE_CUDA_FLAGS)
+      set_target_properties(nvonnxparser PROPERTIES LINK_FLAGS "/ignore:4199")
+      target_compile_options(nvonnxparser_static PRIVATE /FIio.h /wd4100)
+      target_compile_options(nvonnxparser PRIVATE /FIio.h /wd4100)
+    endif()
+    include_directories(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
+    include_directories(${TENSORRT_INCLUDE_DIR})
+    set(onnxparser_link_libs nvonnxparser_static)
   endif()
-  if (WIN32)
-    set(CMAKE_CUDA_FLAGS ${OLD_CMAKE_CUDA_FLAGS})
-    unset(PROTOBUF_LIBRARY)
-    unset(OLD_CMAKE_CXX_FLAGS)
-    unset(OLD_CMAKE_CUDA_FLAGS)
-    set_target_properties(nvonnxparser PROPERTIES LINK_FLAGS "/ignore:4199")
-    target_compile_options(nvonnxparser_static PRIVATE /FIio.h /wd4100)
-    target_compile_options(nvonnxparser PRIVATE /FIio.h /wd4100)
-  endif()
-  include_directories(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
-  include_directories(${TENSORRT_INCLUDE_DIR})
+  
   set(trt_link_libs cudnn ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
-  set(onnxparser_link_libs nvonnxparser_static)
-
+    
   file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.cc"
@@ -651,8 +672,13 @@ if (onnxruntime_USE_TENSORRT)
   onnxruntime_add_shared_library_module(onnxruntime_providers_tensorrt ${onnxruntime_providers_tensorrt_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt onnxruntime_common onnx flatbuffers)
   add_dependencies(onnxruntime_providers_tensorrt onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${onnxparser_link_libs} ${trt_link_libs} cudart ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers ${ABSEIL_LIBS})
-  target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
+    target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${trt_link_libs} cudart ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers ${ABSEIL_LIBS})
+    target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} ${TENSORRT_INCLUDE_DIR} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  else()
+    target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${onnxparser_link_libs} ${trt_link_libs} cudart ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers ${ABSEIL_LIBS})
+    target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  endif()
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/tensorrt  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_tensorrt PROPERTIES LINKER_LANGUAGE CUDA)
@@ -1394,7 +1420,7 @@ if (onnxruntime_USE_ROCM)
   # Generate GPU code for GFX9 Generation
   list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx906 --amdgpu-target=gfx908)
   if (ROCM_VERSION_DEV_INT GREATER_EQUAL 50000)
-    list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx90a)
+    list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx90a --amdgpu-target=gfx1030)
   endif()
 
   #onnxruntime_add_shared_library_module(onnxruntime_providers_rocm ${onnxruntime_providers_rocm_src})
@@ -1457,11 +1483,22 @@ endif()
 
 if (onnxruntime_USE_TVM)
   add_definitions(-DUSE_TVM=1)
+  if (onnxruntime_TVM_USE_HASH)
+    add_definitions(-DUSE_TVM_HASH=1)
+  endif()
 
-  file (GLOB_RECURSE onnxruntime_providers_tvm_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.cc"
+  if (onnxruntime_TVM_USE_HASH)
+    file (GLOB_RECURSE onnxruntime_providers_tvm_cc_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.cc"
     )
+  else()
+    file (GLOB onnxruntime_providers_tvm_cc_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.cc"
+    )
+  endif()
+
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_tvm_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_tvm ${onnxruntime_providers_tvm_cc_srcs})
 
@@ -1471,24 +1508,34 @@ if (onnxruntime_USE_TVM)
 
   target_include_directories(onnxruntime_providers_tvm PRIVATE
           ${TVM_INCLUDES}
-          ${IPP_CRYPTO_INCLUDES}
           ${PYTHON_INLCUDE_DIRS})
-  onnxruntime_add_include_to_target(onnxruntime_providers_tvm onnxruntime_common onnx tvm ippcp_s)
+  onnxruntime_add_include_to_target(onnxruntime_providers_tvm onnxruntime_common onnx tvm)
 
   add_dependencies(onnxruntime_providers_tvm ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
   target_link_libraries(onnxruntime_providers_tvm PRIVATE
       onnx
       tvm
-      ippcp_s
       onnxruntime_common
       onnxruntime_framework
   )
+  if (onnxruntime_TVM_USE_HASH)
+    add_dependencies(onnxruntime_providers_tvm ippcp_s)
+    target_include_directories(onnxruntime_providers_tvm PRIVATE ${IPP_CRYPTO_INCLUDE_DIR})
+    target_link_libraries(onnxruntime_providers_tvm PRIVATE ippcp_s)
+  endif()
 
   set_target_properties(onnxruntime_providers_tvm PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_tvm PROPERTIES LINKER_LANGUAGE CXX)
 
-  target_compile_options(onnxruntime_providers_tvm PRIVATE -Wno-error=type-limits)
+  if (WIN32 AND MSVC)
+    # wd4100: identifier' : unreferenced formal parameter
+    # wd4127: conditional expression is constant
+    # wd4244: conversion from 'int' to 'char', possible loss of data
+    target_compile_options(onnxruntime_providers_tvm PRIVATE "/wd4100" "/wd4127" "/wd4244")
+  else()
+    target_compile_options(onnxruntime_providers_tvm PRIVATE "-Wno-error=type-limits")
+  endif()
   target_compile_definitions(onnxruntime_providers_tvm PUBLIC DMLC_USE_LOGGING_LIBRARY=<tvm/runtime/logging.h>)
 
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/tvm  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)

@@ -108,18 +108,18 @@ class BatchNorm : public OpKernel {
     }
 #endif
 
-    ConstEigenArrayMap<T> X_arr(X->template Data<T>(),
+    ConstEigenArrayMap<T> X_arr(X->Data<T>(),
                                 is_spatial_ ? sample_size : sample_size_incl_all_channels,
                                 is_spatial_ ? N * C : N);
-    ConstEigenVectorArrayMap<T> scale_arr(scale->template Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
-    ConstEigenVectorArrayMap<T> bias_arr(B->template Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
+    ConstEigenVectorArrayMap<T> scale_arr(scale->Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
+    ConstEigenVectorArrayMap<T> bias_arr(B->Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
 
 #if defined(BATCHNORM_INCLUDE_TRAINING_SUPPORT)
     // Note that we only support spatial BN for training
     if (is_train_) {
-      EigenVectorArrayMap<T> saved_mean_arr(saved_mean->template MutableData<T>(), C);
+      EigenVectorArrayMap<T> saved_mean_arr(saved_mean->MutableData<T>(), C);
       // We first calculate saved_var then later take inverse square root to get saved_inv_std
-      EigenVectorArrayMap<T> saved_var_arr(saved_inv_std->template MutableData<T>(), C);
+      EigenVectorArrayMap<T> saved_var_arr(saved_inv_std->MutableData<T>(), C);
       saved_mean_arr.setZero();
       saved_var_arr.setZero();
 
@@ -143,13 +143,13 @@ class BatchNorm : public OpKernel {
       // Assume that running mean and variance are initialized properly in the model given to us
       // Because we alias it, we have the past history here
       EigenVectorArrayMap<T> running_mean_arr(
-          running_mean->template MutableData<T>(), C);
+          running_mean->MutableData<T>(), C);
       EigenVectorArrayMap<T> running_var_arr(
-          running_var->template MutableData<T>(), C);
+          running_var->MutableData<T>(), C);
       ConstEigenVectorArrayMap<T> input_running_mean_arr(
-          input_running_mean->template Data<T>(), C);
+          input_running_mean->Data<T>(), C);
       ConstEigenVectorArrayMap<T> input_running_var_arr(
-          input_running_var->template Data<T>(), C);
+          input_running_var->Data<T>(), C);
       running_mean_arr = input_running_mean_arr * momentum_ + saved_mean_arr * (1. - momentum_);
       running_var_arr = input_running_var_arr * momentum_ + saved_var_arr * (1. - momentum_);
     }
@@ -162,11 +162,11 @@ class BatchNorm : public OpKernel {
     Eigen::Array<T, Eigen::Dynamic, 1> inv_std(is_spatial_ ? C : sample_size_incl_all_channels);
 
     if (!is_train_) {
-      ConstEigenVectorArrayMap<T> var_arr(var->template Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
+      ConstEigenVectorArrayMap<T> var_arr(var->Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
       inv_std = (var_arr + epsilon_).sqrt().inverse();
     } else {
 #if defined(BATCHNORM_INCLUDE_TRAINING_SUPPORT)
-      EigenVectorArrayMap<T> saved_inv_std_arr(saved_inv_std->template MutableData<T>(), C);
+      EigenVectorArrayMap<T> saved_inv_std_arr(saved_inv_std->MutableData<T>(), C);
       saved_inv_std_arr = (saved_inv_std_arr + epsilon_).inverse().sqrt();
       inv_std = saved_inv_std_arr;
 #endif
@@ -175,9 +175,9 @@ class BatchNorm : public OpKernel {
     // If we're training, do batch normalization based on computation from this batch
     ConstEigenVectorArrayMap<T> mean_arr(
 #if defined(BATCHNORM_INCLUDE_TRAINING_SUPPORT)
-        !is_train_ ? mean->template Data<T>() : saved_mean->template Data<T>(),
+        !is_train_ ? mean->Data<T>() : saved_mean->Data<T>(),
 #else
-        mean->template Data<T>(),
+        mean->Data<T>(),
 #endif
         is_spatial_ ? C : sample_size_incl_all_channels);
 
@@ -187,7 +187,7 @@ class BatchNorm : public OpKernel {
     //   (x * inv_var * scale) + (bias - est_mean * inv_var * scale)
     Eigen::Array<T, Eigen::Dynamic, 1> new_scale = inv_std * scale_arr;
     Eigen::Array<T, Eigen::Dynamic, 1> new_bias = bias_arr - mean_arr * new_scale;
-    EigenArrayMap<T> Y_arr(Y->template MutableData<T>(),
+    EigenArrayMap<T> Y_arr(Y->MutableData<T>(),
                            is_spatial_ ? sample_size : sample_size_incl_all_channels,
                            is_spatial_ ? N * C : N);
 

@@ -70,6 +70,9 @@ class QDQDirect8BitOp(QDQOperatorBase):
         super().__init__(onnx_quantizer, onnx_node)
 
     def quantize(self):
-        self.quantizer.quantize_tensor(self.node.input[0])
-        if not self.disable_qdq_for_node_output:
-            self.quantizer.quantize_tensor(self.node.output[0])
+        if self.quantizer.force_quantize_no_input_check:
+            self.quantizer.quantize_tensor(self.node.input[0])
+            if not self.disable_qdq_for_node_output:
+                self.quantizer.quantize_tensor(self.node.output[0], self.node.input[0])
+        elif self.quantizer.is_tensor_quantized(self.node.input[0]) and not self.disable_qdq_for_node_output:
+            self.quantizer.quantize_tensor(self.node.output[0], self.node.input[0])

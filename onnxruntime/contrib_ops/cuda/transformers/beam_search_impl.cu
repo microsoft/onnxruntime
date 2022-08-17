@@ -248,9 +248,11 @@ __global__ void UpdateGptInputsKernel(const T* old_mask_data,
     int j = index % current_length;
     mask_data[index] = (j < current_length - 1) ? old_mask_data[i * (current_length - 1) + j] : static_cast<T>(1);
 
-    // Update sequence length (or next positions).
-    if (index < batch_beam_size) {
-      next_positions[index]++;
+    if (next_positions != nullptr) {
+      // Update sequence length (or next positions).
+      if (index < batch_beam_size) {
+        next_positions[index]++;
+      }
     }
   }
 }

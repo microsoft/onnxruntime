@@ -252,6 +252,15 @@ file(GLOB onnxruntime_test_training_src
   "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.cc"
   )
 
+if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+  file(GLOB onnxruntime_test_training_on_device_src
+    "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.h"
+    )
+endif()
+
 if(WIN32)
   list(APPEND onnxruntime_test_framework_src_patterns
     "${TEST_SRC_DIR}/platform/windows/*.cc"
@@ -577,6 +586,11 @@ if(onnxruntime_USE_XNNPACK)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_xnnpack)
 endif()
 
+if(onnxruntime_USE_ROCM)
+  find_library(HIP_LIB amdhip64 REQUIRED)
+  list(APPEND onnxruntime_test_providers_libs ${HIP_LIB})
+endif()
+
 
 if(WIN32)
   if (onnxruntime_USE_NUPHAR_TVM)
@@ -661,6 +675,9 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND all_tests ${onnxruntime_test_training_src})
+  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+    list(APPEND all_tests ${onnxruntime_test_training_on_device_src})
+  endif()
 endif()
 
 if (onnxruntime_USE_NUPHAR)

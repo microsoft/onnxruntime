@@ -1342,8 +1342,8 @@ class Asinh final : public OpKernel {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
 
-    auto X_data = X.template Data<float>();
-    auto Y_data = Y.template MutableData<float>();
+    auto X_data = X.Data<float>();
+    auto Y_data = Y.MutableData<float>();
 
     auto in = gsl::make_span(X_data, gsl::narrow<ptrdiff_t>(X.Shape().Size()));
     auto out = gsl::make_span(Y_data, gsl::narrow<ptrdiff_t>(Y.Shape().Size()));
@@ -1374,8 +1374,8 @@ class Acosh final : public OpKernel {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
 
-    auto X_data = X.template Data<float>();
-    auto Y_data = Y.template MutableData<float>();
+    auto X_data = X.Data<float>();
+    auto Y_data = Y.MutableData<float>();
 
     auto in = gsl::make_span(X_data, gsl::narrow<ptrdiff_t>(X.Shape().Size()));
     auto out = gsl::make_span(Y_data, gsl::narrow<ptrdiff_t>(Y.Shape().Size()));
@@ -1406,8 +1406,8 @@ class Atanh final : public OpKernel {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
 
-    auto X_data = X.template Data<float>();
-    auto Y_data = Y.template MutableData<float>();
+    auto X_data = X.Data<float>();
+    auto Y_data = Y.MutableData<float>();
 
     auto in = gsl::make_span(X_data, gsl::narrow<ptrdiff_t>(X.Shape().Size()));
     auto out = gsl::make_span(Y_data, gsl::narrow<ptrdiff_t>(Y.Shape().Size()));
@@ -1556,7 +1556,7 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
   auto* Y = context->Output(0, x_shape);
   const size_t N = static_cast<size_t>(x_shape.Size());
 
-  MlasComputeErf(X->template Data<float>(), Y->template MutableData<float>(), N);
+  MlasComputeErf(X->Data<float>(), Y->MutableData<float>(), N);
 
   return Status::OK();
 }

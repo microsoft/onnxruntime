@@ -86,43 +86,43 @@ bool TryBiasSoftmaxSubgraphMatch(Graph& graph, Node& start, Node*& add, Node*& s
   return true;
 }
 
-bool TrySelectInputAndBiasWithAlignment(
-    Node& add_node,
-    Node& softmax_node,
-    NodeArg*& input,
-    NodeArg*& mask,
-    int& broadcast_axis,
-    int& softmax_axis) {
-  // check mask can broadcast across input batches with simple division
-  // -----------------------------------------------------------------------
-
-  /* Here we check input and mask dimensions are as expected:
-
-        Let 
-            input shape = [ a0 ... a(B-1) aB a(B+1) ... a(k-1) ak a(k+1) ... a(N-1) ] 
-        with rank = N and softmax axis = k and to be determined broadcast axis = B.
-
-        Then
-            mask shape  = [ a0 ... a(B-1) 1    1    ...   1    ak a(k+1) ... a(N-1) ] 
-        with rank = N and B <= k, OR
-            mask shape  = [                   ...    1    1    ak a(k+1) ... a(N-1) ] 
-        with rank = N - k + <number of 1's>.
-
-        The mask will be repeated every aB*a(B+1)...*a(k-1) input batches.
-        (If input and mask shape match, B = k and no broadcast occurs.)
-
-        In the BERT case scores shape = [batch_size, num_heads, seq_length, seq_length]
-              and sequence mask shape = [batch_size,     1,         1,      seq_length]
-    */
-
+/**
+ * Here we check input and mask dimensions are as expected.
+ * Let
+ *     input shape = [ a0 ... a(B-1) aB a(B+1) ... a(k-1) ak a(k+1) ... a(N-1) ]
+ * with rank = N and softmax axis = k.
+ *
+ * Then the mask shape should be:
+ *     mask shape  = [                   ...              ak a(k+1) ... a(N-1) ]
+ * with dimensions from k to N - 1 same as input shape.
+ *
+ * We support two types of broadcasting:
+ * The first type is broadcasting the inner dimensions before dim-k:
+ *     mask shape  = [ a0 ... a(B-1) 1    1    ...   1    ak a(k+1) ... a(N-1) ]
+ * The second type is broadcasting the outer dimensions before dim-k:
+ *     mask shape  = [  ...  1,  1,  aB a(B+1) ... a(k-1) ak a(k+1) ... a(N-1) ]
+ * For second case, the rank of mask shape can be smaller than N.
+ *
+ * If for mask shape the dimensions before dim-k are all 1 or are all same as input shape,
+ * either type (inner broadcast or outer broadcast) is OK.
+ *
+ * In the BERT case scores shape = [batch_size, num_heads, seq_length, seq_length]
+ *       and sequence mask shape = [batch_size,     1,         1,      seq_length]
+ *
+ * NOTE that the axis attribute for Softmax in OpSet-11 and OpSet-13 are different. For OpSet-11, dim ak to dim a(N-1)
+ * are in same batch. But since OpSet-13, only ak is in a batch. Above fusion logic is for OpSet-11 or before.
+ * Since OpSet-13, to compute Softmax, we will first transpose the axis dim to the last dim before the real Softmax
+ * computation if axis is not the last dim. Fusing Add+Softmax to BiasSoftmax would require extra transpose for bias,
+ * and bring complex checking condition. So since OpSet-13, we will apply the fusion only when axis is the last dim.
+ */
+bool TrySelectInputAndBiasWithAlignment(Node& add_node, Node& softmax_node, NodeArg*& input, NodeArg*& mask,
+                                        int& new_axis, bool& is_inner_broadcast) {
   NodeArg* input1 = add_node.MutableInputDefs()[0];
   NodeArg* input2 = add_node.MutableInputDefs()[1];
 
-  // confirm all dimensions starting from softmax axis match for input and mask
-  bool singlebatch_shape_matches = true;
-
   // default axis = -1 if opset >= 13
-  int axis = graph_utils::MatchesOpSinceVersion(softmax_node, {1, 11}) ? 1 : -1;
+  bool is_since_opset_13 = !graph_utils::MatchesOpSinceVersion(softmax_node, {1, 11});
+  int axis = is_since_opset_13 ? -1 : 1;
   auto& softmax_attr = softmax_node.GetAttributes();
   if (softmax_attr.find("axis") != softmax_attr.end()) {
     auto& axis_attr = softmax_attr.at("axis");
@@ -131,70 +131,67 @@ bool TrySelectInputAndBiasWithAlignment(
 
   int N1 = input1->Shape()->dim_size();
   int N2 = input2->Shape()->dim_size();
-  int k = (int)HandleNegativeAxis(axis, std::max({N1, N2}));
-  int singlebatch_rank = std::max({N1 - k, N2 - k});
+  int rank = std::max({N1, N2});
+  new_axis = (int)HandleNegativeAxis(axis, rank);
 
+  // The axis attribute for Softmax in OpSet-11 and OpSet-13 are different.
+  if (is_since_opset_13 && new_axis != rank - 1) return false;
+
+  int singlebatch_rank = rank - new_axis;
   if (singlebatch_rank > N1 || singlebatch_rank > N2) {
     return false;
   }
+
+  // All dims from k to N-1 should be same.
   for (int i = 1; i <= singlebatch_rank; i++) {
     if (input1->Shape()->dim(N1 - i) != input2->Shape()->dim(N2 - i)) {
-      singlebatch_shape_matches = false;
-      break;
+      return false;
     }
   }
 
-  if (!singlebatch_shape_matches) {
-    return false;
-  }
-
-  // identify broadcast dimensions (i.e. B to k-1 in expression above)
-  // also distinguish between input and mask in this process
-  bool mask_can_simple_broadcast = true;
-
-  int B;
-
-  // case 1: mask rank == input rank
+  // Inner broadcasting check.
   if (N1 == N2) {
     // discover B (first axis where shapes don't match)
-    B = 0;
-    while (B < k && input1->Shape()->dim(B) == input2->Shape()->dim(B)) {
-      B++;
+    int pos = 0;
+    while (pos < new_axis && input1->Shape()->dim(pos) == input2->Shape()->dim(pos)) {
+      pos++;
     }
 
     // use B dimension to distinguish input and mask
-    select_input_on_lhs_condition(input1->Shape()->dim(B) != 1, add_node, input, mask);
+    select_input_on_lhs_condition(pos == new_axis || input1->Shape()->dim(pos) != 1, add_node, input, mask);
 
     // confirm mask dimensions are ones on broadcast axes B to (k-1)
-    for (int i = B; i < k; i++) {
+    is_inner_broadcast = true;
+    for (int i = pos; i < new_axis; i++) {
       if (mask->Shape()->dim(i) != 1) {
-        mask_can_simple_broadcast = false;
+        is_inner_broadcast = false;
         break;
       }
     }
+
+    // If is_inner_broadcast is true, it's the inner broadcasting type.
+    // Otherwise, we will check the outer broadcasting type below.
+    if (is_inner_broadcast) return true;
   }
 
-  // case 2: mask rank < input rank
-  else {
-    B = 0;
-    select_input_on_lhs_condition(N1 > N2, add_node, input, mask);
+  // Outer broadcasting check.
+  int pos1 = N1 - singlebatch_rank - 1;
+  int pos2 = N2 - singlebatch_rank - 1;
+  while (pos1 >= 0 && pos2 >= 0 && input1->Shape()->dim(pos1) == input2->Shape()->dim(pos2)) {
+    pos1--;
+    pos2--;
+  }
 
-    // confirm any mask dimensions are ones before softmax axis
-    int mask_rank = mask->Shape()->dim_size();
-    for (int i = 0; i < mask_rank - singlebatch_rank; i++) {
-      if (mask->Shape()->dim(i) != 1) {
-        mask_can_simple_broadcast = false;
-        break;
-      }
+  // use B-1 dimension to distinguish input and mask
+  bool is_lhs_input = pos1 > pos2 || (pos1 == pos2 && (pos1 < 0 || input1->Shape()->dim(pos1) != 1));
+  select_input_on_lhs_condition(is_lhs_input, add_node, input, mask);
+  for (int i = is_lhs_input ? pos2 : pos1; i >= 0; --i) {
+    if (mask->Shape()->dim(i) != 1) {
+      return false;
     }
   }
 
-  if (!mask_can_simple_broadcast) {
-    return false;
-  }
-
-  broadcast_axis = B;
-  softmax_axis = k;
+  is_inner_broadcast = false;
   return true;
 }
 
@@ -205,8 +202,8 @@ void FuseBiasSoftmaxSubgraph(
     Node& softmax_node,
     NodeArg* input,
     NodeArg* mask,
-    int broadcast_axis,
-    int softmax_axis) {
+    int axis,
+    bool is_inner_broadcast) {
   const std::array fused_inputs{input, mask};
 
   std::string fused_desc =
@@ -223,8 +220,8 @@ void FuseBiasSoftmaxSubgraph(
 
   // add softmax axis and broadcast axis (to simplify runtime logic)
   // recall broadcast along axes B ... (k-1)
-  fused_node.AddAttribute("softmax_axis", static_cast<int64_t>(softmax_axis));
-  fused_node.AddAttribute("broadcast_axis", static_cast<int64_t>(broadcast_axis));
+  fused_node.AddAttribute("axis", static_cast<int64_t>(axis));
+  fused_node.AddAttribute("is_inner_broadcast", static_cast<int64_t>(is_inner_broadcast ? 1 : 0));
 
   // finalize node fusion (e.g. remove old nodes and shift outputs)
   fused_node.SetExecutionProviderType(add_node.GetExecutionProviderType());
@@ -258,12 +255,13 @@ Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     }
 
     NodeArg *input, *mask;
-    int broadcast_axis, softmax_axis;
-    if (!TrySelectInputAndBiasWithAlignment(*add_node, *softmax_node, input, mask, broadcast_axis, softmax_axis)) {
+    int new_axis;
+    bool is_inner_broadcast;
+    if (!TrySelectInputAndBiasWithAlignment(*add_node, *softmax_node, input, mask, new_axis, is_inner_broadcast)) {
       continue;
     }
 
-    FuseBiasSoftmaxSubgraph(graph, *add_node, *softmax_node, input, mask, broadcast_axis, softmax_axis);
+    FuseBiasSoftmaxSubgraph(graph, *add_node, *softmax_node, input, mask, new_axis, is_inner_broadcast);
     modified = true;
 
     VLOGF(logger, 1, "Fused Add + Softmax into BiasSoftmax node.\n");

@@ -139,23 +139,23 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
     if (!gpt_subgraph_->IsOutputFloat16()) {  // Output float32
       BeamSearchGpt<float> impl{
           *ctx_internal, *decoder_session_state, *gpt_subgraph_, thread_pool, cuda_stream_, dumper_, parameters,
-          BeamSearchCpuDeviceHelper::CreateGptInputs,
-          add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
-          topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
-          process_logits_func_ ? process_logits_func_ : BeamSearchCpuDeviceHelper::ProcessLogits<float>,
-          init_beam_state_func_ ? init_beam_state_func_ : BeamSearchCpuDeviceHelper::InitBeamState<float>,
-          device_copy_func_ ? device_copy_func_ : BeamSearchCpuDeviceHelper::DeviceCopy<float>,
-          device_copy_int32_func_ ? device_copy_int32_func_ : BeamSearchCpuDeviceHelper::DeviceCopy<int32_t>,
-          update_gpt_feeds_func_ ? update_gpt_feeds_func_ : BeamSearchCpuDeviceHelper::UpdateGptFeeds<float>};
+          GenerationCpuDeviceHelper::CreateGptInputs,
+          add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+          topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
+          process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::ProcessLogits<float>,
+          init_beam_state_func_ ? init_beam_state_func_ : GenerationCpuDeviceHelper::InitBeamState<float>,
+          device_copy_func_ ? device_copy_func_ : GenerationCpuDeviceHelper::DeviceCopy<float>,
+          device_copy_int32_func_ ? device_copy_int32_func_ : GenerationCpuDeviceHelper::DeviceCopy<int32_t>,
+          update_gpt_feeds_func_ ? update_gpt_feeds_func_ : GenerationCpuDeviceHelper::UpdateGptFeeds<float>};
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(*decoder_feeds_fetches_manager_);
     } else {  // Output float16
       BeamSearchGpt<MLFloat16> impl{
           *ctx_internal, *decoder_session_state, *gpt_subgraph_, thread_pool, cuda_stream_, dumper_, parameters,
-          BeamSearchCpuDeviceHelper::CreateGptInputs,
-          add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
-          topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
+          GenerationCpuDeviceHelper::CreateGptInputs,
+          add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+          topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_fp16_func_,
           init_beam_state_fp16_func_,
           device_copy_func_,
@@ -176,17 +176,17 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
     BeamSearchT5<float> impl{
         *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
         *t5_decoder_subgraph_, thread_pool, cuda_stream_, dumper_, parameters,
-        add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
-        topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
-        process_logits_func_ ? process_logits_func_ : BeamSearchCpuDeviceHelper::ProcessLogits<float>,
-        init_beam_state_func_ ? init_beam_state_func_ : BeamSearchCpuDeviceHelper::InitBeamState<float>,
-        device_copy_func_ ? device_copy_func_ : BeamSearchCpuDeviceHelper::DeviceCopy<float>,
-        device_copy_int32_func_ ? device_copy_int32_func_ : BeamSearchCpuDeviceHelper::DeviceCopy<int32_t>,
-        create_encoder_inputs_func_ ? create_encoder_inputs_func_ : BeamSearchCpuDeviceHelper::CreateEncoderInputs,
-        update_decoder_feeds_func_ ? update_decoder_feeds_func_ : BeamSearchCpuDeviceHelper::UpdateDecoderFeeds<float>,
-        expand_buffer_int32_func_ ? expand_buffer_int32_func_ : BeamSearchCpuDeviceHelper::ExpandBuffer<int32_t>,
-        expand_buffer_float_func_ ? expand_buffer_float_func_ : BeamSearchCpuDeviceHelper::ExpandBuffer<float>,
-        expand_buffer_float16_func_ ? expand_buffer_float16_func_ : BeamSearchCpuDeviceHelper::ExpandBuffer<MLFloat16>};
+        add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+        topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
+        process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::ProcessLogits<float>,
+        init_beam_state_func_ ? init_beam_state_func_ : GenerationCpuDeviceHelper::InitBeamState<float>,
+        device_copy_func_ ? device_copy_func_ : GenerationCpuDeviceHelper::DeviceCopy<float>,
+        device_copy_int32_func_ ? device_copy_int32_func_ : GenerationCpuDeviceHelper::DeviceCopy<int32_t>,
+        create_encoder_inputs_func_ ? create_encoder_inputs_func_ : GenerationCpuDeviceHelper::CreateEncoderInputs,
+        update_decoder_feeds_func_ ? update_decoder_feeds_func_ : GenerationCpuDeviceHelper::UpdateDecoderFeeds<float>,
+        expand_buffer_int32_func_ ? expand_buffer_int32_func_ : GenerationCpuDeviceHelper::ExpandBuffer<int32_t>,
+        expand_buffer_float_func_ ? expand_buffer_float_func_ : GenerationCpuDeviceHelper::ExpandBuffer<float>,
+        expand_buffer_float16_func_ ? expand_buffer_float16_func_ : GenerationCpuDeviceHelper::ExpandBuffer<MLFloat16>};
     ORT_RETURN_IF_ERROR(impl.Initialize());
 
     return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
@@ -194,8 +194,8 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
     BeamSearchT5<MLFloat16> impl{
         *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
         *t5_decoder_subgraph_, thread_pool, cuda_stream_, dumper_, parameters,
-        add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
-        topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
+        add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
+        topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
         process_logits_fp16_func_,
         init_beam_state_fp16_func_,
         device_copy_func_,

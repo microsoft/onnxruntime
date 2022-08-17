@@ -18,6 +18,9 @@
 
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/attention_fusion.h"
+#ifdef MLAS_TARGET_AMD64_IX86
+#include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
+#endif
 #include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
@@ -217,12 +220,18 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                             onnxruntime::kAclExecutionProvider,
                                                                             onnxruntime::kArmNNExecutionProvider};
 
+#ifdef MLAS_TARGET_AMD64_IX86
+      const bool avx2_precision_mode =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsAvx2PrecisionMode, "0") == "1" && MlasPlatformU8S8Overflow();
+#else
+      const bool avx2_precision_mode = false;
+#endif
       if (!disable_quant_qdq) {
         // currently we don't support QDQS8ToU8Transformer in a minimal build and if supported, this needs to run in
         // Level 1 during export and not Level 2 at runtime as it would result in overlapping optimizations which
         // runtime optimization does not support, so add session config value here to force qdqisint8allowed to be true.
         if (!qdq_is_int8_allowed) {
-          transformers.emplace_back(std::make_unique<QDQS8ToU8Transformer>(cpu_ep));
+          transformers.emplace_back(std::make_unique<QDQS8ToU8Transformer>(avx2_precision_mode, cpu_ep));
         }
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed));
       }
@@ -258,6 +267,12 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       if (enable_gelu_approximation) {
         transformers.emplace_back(std::make_unique<GeluApproximation>(cpu_cuda_rocm_eps));
       }
+
+#ifdef MLAS_TARGET_AMD64_IX86
+      if (avx2_precision_mode) {
+        transformers.emplace_back(std::make_unique<Avx2WeightS8ToU8Transformer>(cpu_ep));
+      }
+#endif
 
 #endif
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their

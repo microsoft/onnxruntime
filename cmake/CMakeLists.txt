@@ -76,6 +76,7 @@ option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable 
 option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
 option(onnxruntime_USE_VITISAI "Build with Vitis-AI" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
+option(onnxruntime_USE_TENSORRT_BUILTIN_PARSER "Use TensorRT builtin parser" OFF)
 option(onnxruntime_TENSORRT_PLACEHOLDER_BUILDER "Instantiate Placeholder TensorRT Builder" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
@@ -109,6 +110,8 @@ option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled 
 option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
 option(onnxruntime_USE_TVM "Build with TVM support" OFF)
 option(onnxruntime_TVM_CUDA_RUNTIME "Build TVM with CUDA support" OFF)
+option(onnxruntime_TVM_USE_LLVM "Build TVM with LLVM. Set customized path to llvm-config.exe here if need" OFF)
+option(onnxruntime_TVM_USE_HASH "Build ipp-crypto library for support hash algorithm. It is defined for TVM only")
 option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)
 
 # Options related to reducing the binary size produced by the build
@@ -142,6 +145,8 @@ option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_MEMORY_PROFILE "Enable memory profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
+# For on-device training ort build, onnxruntime_ENABLE_TRAINING must be ON.
+option(onnxruntime_ENABLE_TRAINING_ON_DEVICE "Enable training on device." OFF)
 option(onnxruntime_ENABLE_TRAINING_OPS "Include training operators but no training session support." OFF)
 option(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP "Enable training kernels interop with torch." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
@@ -188,8 +193,16 @@ option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 # ATen fallback support
 option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
+option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
+
 if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+  if (NOT onnxruntime_ENABLE_TRAINING)
+    message(FATAL_ERROR "To build for on-device training, the training build must be enabled (onnxruntime_ENABLE_TRAINING).")
+  endif()
 endif()
 
 if (APPLE)
@@ -304,6 +317,16 @@ endif()
 # 'extended' implies minimal.
 if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_MINIMAL_BUILD ON)
+endif()
+
+# work around Android NDK bug which doesn't include -O flag for Release configuration
+# https://github.com/android/ndk/issues/1740
+# TODO: remove this when the NDK version(s) we support get fixed
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  # NB: attempting to match the effects of this fix: https://android-review.googlesource.com/c/platform/ndk/+/2168845
+  string(APPEND CMAKE_C_FLAGS_RELEASE " -O3")
+  string(APPEND CMAKE_CXX_FLAGS_RELEASE " -O3")
+  string(APPEND CMAKE_ASM_FLAGS_RELEASE " -O3")
 endif()
 
 # Enable space optimization for gcc/clang
@@ -563,6 +586,10 @@ if (MSVC)
     if (onnxruntime_DEV_MODE)
       string(APPEND CMAKE_CXX_FLAGS " /wd26812")
       string(APPEND CMAKE_C_FLAGS " /wd26812")
+      # warning C4805: '|': unsafe mix of type 'uintptr_t' and type 'bool' in operation (from c10/core/TensorImpl.h)
+      if (onnxruntime_ENABLE_EAGER_MODE)
+        string(APPEND CMAKE_CXX_FLAGS " /wd4805")
+      endif()
     endif()
   endif()
   string(APPEND CMAKE_CXX_FLAGS " /experimental:external /external:W0 /external:templates- /external:I ${CMAKE_CURRENT_SOURCE_DIR} /external:I ${CMAKE_CURRENT_BINARY_DIR}")
@@ -1219,6 +1246,9 @@ endif()
 function(onnxruntime_set_compile_flags target_name)
     target_compile_definitions(${target_name} PUBLIC EIGEN_USE_THREADS)
     if (MSVC)
+      foreach(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+        target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/external:I${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY}>")
+      endforeach()
       target_compile_definitions(${target_name} PUBLIC -DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES -D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS)
       if (onnxruntime_ENABLE_MEMLEAK_CHECKER)
         target_compile_definitions(${target_name} PUBLIC -DONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
@@ -1281,10 +1311,21 @@ function(onnxruntime_configure_target target_name)
   #  set_target_properties(${target_name} PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
   #endif()
   target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${abseil_cpp_SOURCE_DIR})
+  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+    target_include_directories(${target_name} PRIVATE ${ORTTRAINING_ROOT})
+  endif()
   if (onnxruntime_ENABLE_LTO)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
+  endif()
+
+  if (onnxruntime_BUILD_KERNEL_EXPLORER)
+    get_target_property(target_type ${target_name} TYPE)
+    if (target_type STREQUAL "MODULE_LIBRARY" OR target_type STREQUAL "SHARED_LIBRARY")
+      set_property(TARGET ${target_name}
+        APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/tools/kernel_explorer/version_script.lds ")
+    endif()
   endif()
 
   # Keep BinSkim happy
@@ -1427,11 +1468,9 @@ if (onnxruntime_USE_NUPHAR_TVM)
     add_definitions(-DUSE_NUPHAR_TVM_WITH_LLVM)
   endif()
 
-  message(STATUS "TVM BEFORE USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
   message(STATUS "tvm_SOURCE_DIR=${tvm_SOURCE_DIR}")
   message(STATUS "tvm_BINARY_DIR=${tvm_BINARY_DIR}")
   add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR} EXCLUDE_FROM_ALL)
-  message(STATUS "TVM AFTER USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
 
   set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
   set_target_properties(tvm_topi PROPERTIES FOLDER ${tvm_SOURCE_DIR})
@@ -1481,18 +1520,18 @@ if (onnxruntime_USE_TVM)
   if (NOT TARGET tvm)
     message(STATUS "Include TVM(*).")
     include(tvm)
+  endif()
+
+  # ipp-crypto
+  if (onnxruntime_TVM_USE_HASH)
     message(STATUS "Include ipp-crypto(*).")
     include(ipp-crypto)
   endif()
 
-  # ipp-crypto
-  set(ARCH intel64 CACHE STRING "Only defined for TVM")
-  add_subdirectory(${ipp_crypto_SOURCE_DIR} ${ipp_crypto_BINARY_DIR} EXCLUDE_FROM_ALL)
-  set_target_properties(ippcp_s PROPERTIES FOLDER ${ipp_crypto_SOURCE_DIR})
-  set(IPP_CRYPTO_INCLUDES ${ipp_crypto_INCLUDE_DIRS})
-
   # TVM
-  if (onnxruntime_USE_LLVM)
+  if (onnxruntime_TVM_USE_LLVM)
+    set(USE_LLVM "${onnxruntime_TVM_USE_LLVM}" CACHE STRING "Path to LLVM for correct TVM build")
+  elseif(onnxruntime_USE_LLVM)
     set(USE_LLVM ON CACHE BOOL "Only defined for TVM")
   endif()
 
@@ -1523,8 +1562,8 @@ if (onnxruntime_USE_TVM)
       set(FS_STDLIB stdc++fs)
     endif()
   endif()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ippcp_s ${FS_STDLIB})
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm ippcp_s)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ${FS_STDLIB})
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
 endif()
 
 # XNNPACK EP
@@ -1625,6 +1664,12 @@ include_directories(
   ${ONNXRUNTIME_INCLUDE_DIR}
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
+
+if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+  include_directories(
+    ${REPO_ROOT}/orttraining/orttraining/training_api/include/
+  )
+endif()
 
 if (onnxruntime_USE_OPENVINO)
 
@@ -1753,15 +1798,7 @@ if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
   enable_language(CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
-  if (WIN32)
-    set(CMAKE_CUDA_STANDARD 17)
-    foreach(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-      string(APPEND CMAKE_CXX_FLAGS " /external:I\"${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY}\"")
-    endforeach()
-  else()
-    #CUDA 10.2 on Linux doesn't support C++17
-    set(CMAKE_CUDA_STANDARD 14)
-  endif()
+  set(CMAKE_CUDA_STANDARD 17)
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
 
   if (NOT CMAKE_CUDA_ARCHITECTURES)
@@ -1770,6 +1807,9 @@ if (onnxruntime_USE_CUDA)
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_53,code=sm_53") # TX1, Nano
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_62,code=sm_62") # TX2
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_72,code=sm_72") # AGX Xavier, NX Xavier
+      if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
+        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_87,code=sm_87") # AGX Orin, NX Orin
+      endif()
     else()
       # the following compute capabilities are removed in CUDA 11 Toolkit
       if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11)
@@ -1866,6 +1906,10 @@ if (onnxruntime_USE_DML)
   endif()
 
   include(dml)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+  add_compile_definitions(ENABLE_TRAINING_ON_DEVICE)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING_OPS)
@@ -2105,6 +2149,11 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
 
   message(STATUS "WebAssembly Build is enabled")
   include(onnxruntime_webassembly.cmake)
+endif()
+
+if(onnxruntime_BUILD_KERNEL_EXPLORER)
+  message(STATUS "Kernel Explorer Build is enabled")
+  include(onnxruntime_kernel_explorer.cmake)
 endif()
 
 if (UNIX)

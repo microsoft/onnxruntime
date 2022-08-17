@@ -130,8 +130,8 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
   return Status::OK();
 }
 
-Status PartialExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
-                                const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+Status PartialExecutor::Execute(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
+                                gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                 std::vector<OrtValue>& fetches,
                                 const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                 const logging::Logger& logger) {
@@ -157,6 +157,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 
 // Enable TRACE_EXECUTION compile flag to dump execution plan
 #if defined(TRACE_EXECUTION)
+  std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
 #endif
 
   const auto& graph_viewer = session_state.GetGraphViewer();
@@ -357,9 +358,10 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
       if (partial_graph_index_ == 1) {
         // Only record memory consumption after backward partial graph execution.
-        MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                                    MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(),
-                                                    MemoryInfo::MapType::DynamicActivation, "", 0);
+        session_state.GetMemoryProfiler()->CreateEvents(
+            "dynamic activations_" + std::to_string(session_state.GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
+            session_state.GetMemoryProfiler()->GetAndIncreasePid(),
+            MemoryInfo::MapType::DynamicActivation, "", 0);
       }
 #endif
       const auto msg_string = ss.str();
@@ -480,10 +482,11 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   if (partial_graph_index_ == 1) {
     // Only record memory consumption after backward partial graph execution.
-    MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                                MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(),
-                                                MemoryInfo::MapType::DynamicActivation, "", 0);
-    MemoryInfo::MemoryInfoProfile::Clear();
+    session_state.GetMemoryProfiler()->CreateEvents(
+        "dynamic activations_" + std::to_string(session_state.GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
+        session_state.GetMemoryProfiler()->GetAndIncreasePid(),
+        MemoryInfo::MapType::DynamicActivation, "", 0);
+    session_state.GetMemoryProfiler()->Clear();
   }
 #endif
 
