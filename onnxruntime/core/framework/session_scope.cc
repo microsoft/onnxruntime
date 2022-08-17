@@ -12,9 +12,9 @@ namespace onnxruntime {
 using namespace onnxruntime::profiling;
 
 static void CalculateTotalOutputSizes2(OpKernelContextInternal* op_kernel_context,
-                                      size_t& total_output_sizes,
-                                      const std::string& node_name,
-                                      std::string& output_type_shape) {
+                                       size_t& total_output_sizes,
+                                       const std::string& node_name,
+                                       std::string& output_type_shape) {
   // Calculate total output sizes for this operation.
   std::stringstream ss;
   int added_type_shapes = 0;
@@ -27,14 +27,6 @@ static void CalculateTotalOutputSizes2(OpKernelContextInternal* op_kernel_contex
     if (p_output != nullptr && p_output->IsTensor()) {
       const auto& tensor = p_output->Get<Tensor>();
       size_t tensor_size = tensor.SizeInBytes();
-//#if defined(TRACE_EXECUTION)
-//      const TensorShape& tensor_shape = tensor.Shape();
-//      std::cout << node_name << " output[" << i << "]"
-//                << " size=" << tensor_size
-//                << " shape=" << tensor_shape.ToString()
-//                << " element_size=" << tensor.DataType()->Size()
-//                << "\n";
-//#endif
       total_output_sizes += tensor_size;
       auto shape_str = tensor.Shape().ToString();
       ss << (added_type_shapes++ > 0 ? "," : "")
@@ -47,11 +39,11 @@ static void CalculateTotalOutputSizes2(OpKernelContextInternal* op_kernel_contex
 }
 
 static void CalculateTotalInputSizes2(const OpKernelContextInternal* op_kernel_context,
-                                     const onnxruntime::OpKernel* p_op_kernel,
-                                     size_t& input_activation_sizes,
-                                     size_t& input_parameter_sizes,
-                                     const std::string& node_name,
-                                     std::string& input_type_shape) {
+                                      const onnxruntime::OpKernel* p_op_kernel,
+                                      size_t& input_activation_sizes,
+                                      size_t& input_parameter_sizes,
+                                      const std::string& node_name,
+                                      std::string& input_type_shape) {
   // Calculate total input sizes for this operation.
   std::stringstream ss;
   ss << "[";
@@ -70,17 +62,6 @@ static void CalculateTotalInputSizes2(const OpKernelContextInternal* op_kernel_c
         p_tensor = &(p_input->Get<Tensor>());
       }
       size_t tensor_size = p_tensor->SizeInBytes();
-
-//#if defined(TRACE_EXECUTION)
-//      const TensorShape& tensor_shape = p_tensor->Shape();
-//      size_t element_size = p_tensor->DataType()->Size();
-//      LOGS(logger, INFO) << node_name << " input[" << i << "]"
-//                         << " is_param=" << is_param
-//                         << " size=" << tensor_size
-//                         << " shape=" << tensor_shape.ToString()
-//                         << " element_size=" << element_size
-//                         << "\n";
-//#endif
       if (is_param) {
         input_parameter_sizes += tensor_size;
       } else {
@@ -98,38 +79,29 @@ static void CalculateTotalInputSizes2(const OpKernelContextInternal* op_kernel_c
 
 #ifdef ORT_MINIMAL_BUILD
 
-SessionScope::SessionScope(const SessionState&, const ExecutionFrame&) {}
+class SessionScopeImpl {
+};
 
+SessionScope::SessionScope(const SessionState&, const ExecutionFrame&) {}
 SessionScope::~SessionScope() {}
 
-KernelScope::KernelScope(SessionScope&, OpKernelContextInternal&, const OpKernel&) {}
+class KernelScopeImpl {
+};
 
+KernelScope::KernelScope(OpKernelContextInternal&, const OpKernel&, SessionScope&) {}
 KernelScope::~KernelScope() {}
 
 #else
 
-class IScope {
- public:
-  IScope() = default;
-  virtual ~IScope() = 0;
-  //virtual void Start(){};
-  //virtual void Stop(){};
-};
-
-
 #ifdef CONCURRENCY_VISUALIZER
 #include <cvmarkersobj.h>
 using namespace Concurrency;
-
 class ConcurrencyKernelScope;
-/// <summary>
-/// ConcurrencyScope
-/// </summary>
-class ConcurrencyScope : public IScope {
+class ConcurrencySessScope {
  public:
   friend class ConcurrencyKernelScope;
-  ConcurrencyScope(const GraphViewer& graph_viewer) : series_(ComposeSeriesName(graph_viewer)) {}
-  ~ConcurrencyScope() = default;
+  ConcurrencySessScope(const GraphViewer& graph_viewer) : series_(ComposeSeriesName(graph_viewer)) {}
+  ~ConcurrencySessScope() = default;
 
  private:
   static std::string ComposeSeriesName(const GraphViewer& graph_viewer) {
@@ -145,7 +117,7 @@ class ConcurrencyScope : public IScope {
 
 class ConcurrencyKernelScope {
  public:
-  ConcurrencyKernelScope(ConcurrencyScope& scope,
+  ConcurrencyKernelScope(ConcurrencySessScope& scope,
                          const OpKernel& kernel) : span_(scope.series_,
                                                          "%s.%d",
                                                          kernel.Node().OpType().c_str(),
@@ -159,30 +131,26 @@ class ConcurrencyKernelScope {
   diagnostic::span span_;
 };
 #else
-class ConcurrencyScope : public IScope {
+class ConcurrencySessScope {
  public:
-  ConcurrencyScope(const GraphViewer&) {}
-  ~ConcurrencyScope() = default;
+  ConcurrencySessScope(const GraphViewer&){};
 };
 
 class ConcurrencyKernelScope {
  public:
-  ConcurrencyKernelScope(ConcurrencyScope&, const OpKernel&);
+  ConcurrencyKernelScope(ConcurrencySessScope&, const OpKernel&){};
 };
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
 #include "core/providers/cuda/nvtx_profile.h"
 #include "core/providers/cuda/nvtx_profile_context.h"
-/// <summary>
-/// NVTXScope
-/// </summary>
-class NVTXScope : public IScope {
+class NVTXSessScope {
  public:
-  NVTXScope(const std::thread::id& thread_id) : sess_tag_(profile::Context::GetInstance().GetThreadTagOrDefaul(thread_id)),
-                                           forward_range_("Batch-" + session_tag_ + " Forward", profile::Color::White),
-                                           backward_range_("Batch-" + session_tag_ + " Backward", profile::Color::Black) {}
-  ~NVTXScope() {
+  NVTXSessScope(const std::thread::id& thread_id) : sess_tag_(profile::Context::GetInstance().GetThreadTagOrDefaul(thread_id)),
+                                                    forward_range_("Batch-" + session_tag_ + " Forward", profile::Color::White),
+                                                    backward_range_("Batch-" + session_tag_ + " Backward", profile::Color::Black) {}
+  ~NVTXSessScope() {
     // Make sure forward Range object call Begin and End.
     if (!forward_range_.IsBeginCalled()) {
       forward_range_.Begin();
@@ -220,25 +188,16 @@ class NVTXKernelScope {
   profile::NvtxRangeCreator node_compute_range_;
 };
 #else
-class NVTXScope : public IScope {
+class NVTXSessScope {
  public:
-  NVTXScope(const std::thread::id&) {}
-  ~NVTXScope() = default;
+  NVTXSessScope(const std::thread::id&) {}
 };
 class NVTXKernelScope {
  public:
-  NVTXKernelScope(const OpKernel&);
+  NVTXKernelScope(const OpKernel&) {}
 };
 #endif
 
-/// <summary>
-/// DumpInOutScope
-/// </summary>
-//class DumpInOutScope : public IScope {
-// public:
-//  DumpInOutScope(size_t) {}
-//  ~DumpInOutScope() = default;
-//};
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
 class DumpKernelScope {
  public:
@@ -255,6 +214,7 @@ class DumpKernelScope {
   DumpKernelScope() {
     utils::DumpNodeOutputs(dump_ctx_, context_, kernel_.Node(), sess_state_);
   }
+
  private:
   const SessionState& sess_state_;
   OpKernelContextInternal& context_;
@@ -273,13 +233,13 @@ class DumpKernelScope {
 #endif
 
 #ifdef ORT_MEMORY_PROFILE
-class MemSessionScope {
+class MemSessScope {
  public:
-  MemSessionScope(const SessionState& sess_state,
-                  const ExecutionFrame& frame) : logger_(sess_state.GetLogger()),
-                                                 frame_(frame),
-                                                 profiler_(sess_state.GetMemoryProfiler()) {}
-  ~MemSessionScope() {
+  MemSessScope(const SessionState& sess_state,
+               const ExecutionFrame& frame) : logger_(sess_state.GetLogger()),
+                                              frame_(frame),
+                                              profiler_(sess_state.GetMemoryProfiler()) {}
+  ~MemSessScope() {
     profiler_.CreateEvents(
         "dynamic activations_" + std::to_string(profiler_.GetMemoryInfo().GetIteration()),
         profiler_.GetAndIncreasePid(),
@@ -315,10 +275,10 @@ class MemKernelScope {
   MemoryProfiler& profiler_;
 };
 #else
-class MemSessionScope {
+class MemSessScope {
  public:
-  MemSessionScope(const SessionState&,
-                  const ExecutionFrame&) {}
+  MemSessScope(const SessionState&,
+               const ExecutionFrame&) {}
 };
 class MemKernelScope {
  public:
@@ -326,18 +286,15 @@ class MemKernelScope {
 };
 #endif
 
-/// <summary>
-/// ProfilerScope
-/// </summary>
-class ProfilerScope : public IScope {
+class ProfilerSessScope {
  public:
-  ProfilerScope(Profiler& profiler) : profiler_(profiler) {
+  ProfilerSessScope(Profiler& profiler) : profiler_(profiler) {
     enabled_ = profiler_.IsEnabled();
     if (enabled_) {
       sess_start_ = profiler_.Start();
     }
   }
-  ~ProfilerScope() {
+  ~ProfilerSessScope() {
     if (enabled_) {
       profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", sess_start_);
     }
@@ -350,9 +307,72 @@ class ProfilerScope : public IScope {
   TimePoint sess_start_;
 };
 
-/// <summary>
-/// SessionScopeImpl
-/// </summary>
+#ifdef TRACE_EXECUTION
+class TraceSessScope {
+ public:
+  TraceSessScope(const SessionState& sess_state) {
+    const auto& seq_exec_plan = sess_state.GetExecutionPlan();
+    std::cout << std::make_pair(&seq_exec_plan, &sess_state) << std::endl;
+  }
+};
+class TraceKernelScope {
+ public:
+  TraceKernelScope(const OpKernelContextInternal& context,
+                   const onnxruntime::OpKernel& kernel) : context_(context) {
+    const int input_count = context_.InputCount();
+    for (auto i = 0; i < input_count; i++) {
+      const OrtValue* p_input = context_.GetInputMLValue(i);
+      if (p_input && p_input->IsTensor()) {
+        const OpKernelInfo& op_kernel_info = kernel.Info();
+        const Tensor* p_tensor = nullptr;
+        bool is_param = op_kernel_info.TryGetConstantInput(i, &p_tensor);
+        if (!is_param) {
+          p_tensor = &(p_input->Get<Tensor>());
+        }
+        size_t tensor_size = p_tensor->SizeInBytes();
+        const TensorShape& tensor_shape = p_tensor->Shape();
+        size_t element_size = p_tensor->DataType()->Size();
+        std::cout << node_name << " input[" << i << "]"
+                  << " is_param=" << is_param
+                  << " size=" << tensor_size
+                  << " shape=" << tensor_shape.ToString()
+                  << " element_size=" << element_size
+                  << "\n";
+      }
+    }
+  }
+  ~TraceKernelScope() {
+    int output_count = context_.OutputCount();
+    for (auto i = 0; i < output_count; i++) {
+      const OrtValue* p_output = context_.GetOutputMLValue(i);
+      if (p_output != nullptr && p_output->IsTensor()) {
+        const auto& tensor = p_output->Get<Tensor>();
+        size_t tensor_size = tensor.SizeInBytes();
+        const TensorShape& tensor_shape = tensor.Shape();
+        std::cout << node_name << " output[" << i << "]"
+                  << " size=" << tensor_size
+                  << " shape=" << tensor_shape.ToString()
+                  << " element_size=" << tensor.DataType()->Size()
+                  << "\n";
+      }
+    }
+  }
+
+ private:
+  const OpKernelContextInternal& context_;
+};
+#else
+class TraceSessScope {
+ public:
+  TraceSessScope(const SessionState&){};
+};
+class TraceKernelScope {
+ public:
+  TraceKernelScope(const OpKernelContextInternal&,
+                   const onnxruntime::OpKernel&) {}
+};
+#endif
+
 class SessionScopeImpl {
  public:
   friend class KernelScopeImpl;
@@ -362,24 +382,28 @@ class SessionScopeImpl {
                                                   concurrency_scope_(sess_state.GetGraphViewer()),
                                                   profiler_scope_(sess_state.Profiler()),
                                                   nvtx_scope_(std::this_thread::get_id()),
-                                                  mem_scope_(sess_state, frame) {
+                                                  mem_scope_(sess_state, frame),
+                                                  trace_scope_(sess_state) {
     iteration_++;
-  };
+  }
   ~SessionScopeImpl() {}
 
  private:
   const SessionState& sess_state_;
   const ExecutionFrame& frame_;
-  ConcurrencyScope concurrency_scope_;
-  ProfilerScope profiler_scope_;
-  NVTXScope nvtx_scope_;
-  MemSessionScope mem_scope_;
+  ConcurrencySessScope concurrency_scope_;
+  ProfilerSessScope profiler_scope_;
+  NVTXSessScope nvtx_scope_;
+  MemSessScope mem_scope_;
+  TraceSessScope trace_scope_;
   std::atomic<size_t> iteration_{0};
 };
 
 SessionScope::SessionScope(const SessionState& sess_state, const ExecutionFrame& frame) {
   impl_ = std::make_unique<SessionScopeImpl>(sess_state, frame);
 }
+
+SessionScope::~SessionScope() {}
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include <Windows.h>
@@ -394,12 +418,12 @@ LARGE_INTEGER OrtGetPerformanceFrequency() {
 
 LARGE_INTEGER perf_freq = OrtGetPerformanceFrequency();
 
-class InstrumentScope {
+class InstrumentKernelScope {
  public:
-  InstrumentScope(const OpKernel& kernel) : kernel_(kernel) {
+  InstrumentKernelScope(const OpKernel& kernel) : kernel_(kernel) {
     QueryPerformanceCounter(&kernel_start_);
   }
-  ~InstrumentScope() {
+  ~InstrumentKernelScope() {
     LARGE_INTEGER kernel_stop;
     QueryPerformanceCounter(&kernel_stop);
     LARGE_INTEGER elapsed;
@@ -418,9 +442,9 @@ class InstrumentScope {
   LARGE_INTEGER kernel_start_;
 };
 #else
-class InstrumentScope {
+class InstrumentKernelScope {
  public:
-  InstrumentScope(const OpKernel&);
+  InstrumentKernelScope(const OpKernel&){};
 };
 #endif
 
@@ -435,7 +459,9 @@ class KernelScopeImpl {
                                               concur_scope_(sess_scope.impl_->concurrency_scope_, kernel),
                                               nvtx_scope_(kernel),
                                               dump_scope_(sess_scope.impl_->sess_state_, context, kernel, sess_scope.impl_->iteration_),
-                                              mem_scope_(sess_scope.impl_->sess_state_) {
+                                              mem_scope_(sess_scope.impl_->sess_state_),
+                                              trace_scope_(context, kernel),
+                                              instrument_scope_(kernel) {
     is_profiler_enabled_ = sess_scope.impl_->profiler_scope_.Enabled();
 
     if (is_profiler_enabled_) {
@@ -486,7 +512,6 @@ class KernelScopeImpl {
   }
 
  private:
-
   bool is_profiler_enabled_ = false;
   TimePoint kernel_begin_time_;
   std::string node_name_;
@@ -503,12 +528,16 @@ class KernelScopeImpl {
   NVTXKernelScope nvtx_scope_;
   DumpKernelScope dump_scope_;
   MemKernelScope mem_scope_;
+  TraceKernelScope trace_scope_;
+  InstrumentKernelScope instrument_scope_;
 };
 
 KernelScope::KernelScope(OpKernelContextInternal& kernel_context,
                          const OpKernel& kernel, SessionScope& sess_scope) {
   impl_ = std::make_unique<KernelScopeImpl>(kernel_context, kernel, sess_scope);
 }
+
+KernelScope::~KernelScope() {}
 
 #endif
 

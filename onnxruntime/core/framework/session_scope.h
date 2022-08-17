@@ -17,7 +17,7 @@ class SessionScope {
  public:
   friend class KernelScopeImpl;
   SessionScope(const SessionState&, const ExecutionFrame&);
-  ~SessionScope() = default;
+  ~SessionScope();
 
  private:
   std::unique_ptr<SessionScopeImpl> impl_;
@@ -28,7 +28,7 @@ class KernelScope {
   KernelScope(OpKernelContextInternal&,
               const OpKernel&,
               SessionScope&);
-  ~KernelScope() = default;
+  ~KernelScope();
 
  private:
   std::unique_ptr<KernelScopeImpl> impl_;
