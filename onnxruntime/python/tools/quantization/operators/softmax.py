@@ -1,6 +1,6 @@
 import onnx
 
-from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
+from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
@@ -36,7 +36,7 @@ class QLinearSoftmax(QuantOperatorBase):
             return super().quantize()
 
         # Create an entry for output quantized value.
-        qlinear_output_name = node.output[0] + "_quantized"
+        qlinear_output_name = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
         quantized_output_value = QuantizedValue(
             node.output[0],
             qlinear_output_name,

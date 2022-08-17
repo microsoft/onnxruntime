@@ -1,7 +1,7 @@
 import onnx
 from onnx import onnx_pb as onnx_proto
 
-from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
+from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
@@ -57,7 +57,7 @@ class QLinearActivation(QuantOperatorBase):
         if not data_found or quantized_input_names is None:
             return super().quantize()
 
-        qlinear_activation_output = node.output[0] + "_quantized"
+        qlinear_activation_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
         qlinear_activation_name = ""
         if node.name != "":
             qlinear_activation_name = node.name + "_quant"
