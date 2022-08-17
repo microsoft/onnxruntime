@@ -391,6 +391,60 @@ inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,
                                          rocblas_gemm_algo_standard, 0, 0);
 }
 
+// Compatible for function call with the extra hipDeviceProp_t argument
+template <typename Scalar>
+rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,
+                                               rocblas_operation transa,
+                                               rocblas_operation transb,
+                                               int m, int n, int k,
+                                               const Scalar* alpha,
+                                               const Scalar* A, int lda,
+                                               intmax_t strideA,
+                                               const Scalar* B, int ldb,
+                                               intmax_t strideB,
+                                               const Scalar* beta,
+                                               Scalar* C, int ldc,
+                                               intmax_t strideC,
+                                               int batchCount,
+                                               const hipDeviceProp_t&) {
+  return rocblasGemmStridedBatchedHelper(handle,
+                                         transa,
+                                         transb,
+                                         m, n, k,
+                                         alpha,
+                                         A, lda, strideA,
+                                         B, ldb, strideB,
+                                         &beta,
+                                         C, ldc, strideC,
+                                         batchCount);
+}
+
+inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,
+                                                      rocblas_operation transa,
+                                                      rocblas_operation transb,
+                                                      int m, int n, int k,
+                                                      const float* alpha,
+                                                      const __half* A, int lda,
+                                                      intmax_t strideA,
+                                                      const __half* B, int ldb,
+                                                      intmax_t strideB,
+                                                      const float* beta,
+                                                      __half* C, int ldc,
+                                                      intmax_t strideC,
+                                                      int batchCount,
+                                                      const hipDeviceProp_t&) {
+  return rocblasGemmStridedBatchedHelper(handle,
+                                         transa,
+                                         transb,
+                                         m, n, k,
+                                         alpha,
+                                         A, lda, strideA,
+                                         B, ldb, strideB,
+                                         &beta,
+                                         C, ldc, strideC,
+                                         batchCount);
+}
+
 // transpose using geam
 inline rocblas_status rocblasTransposeHelper(hipStream_t /*stream*/, rocblas_handle handle, rocblas_operation transa, rocblas_operation transb, int m, int n, const float* alpha, const float* A, int lda, const float* beta, const float* B, int ldb, float* C, int ldc) {
   return rocblas_sgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);
