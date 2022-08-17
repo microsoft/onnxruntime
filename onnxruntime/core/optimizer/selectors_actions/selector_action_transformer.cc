@@ -152,10 +152,12 @@ static Status MatchAndProcess(
                                     node_selection,
                                     action_saved_state.produced_nodes});
 
-      for (const auto* op_schema : action_saved_state.produced_node_op_schemas) {
-        status = save_context->record_produced_node_op_schema(op_schema);
-        if (!status.IsOK()) {
-          break;
+      if (save_context->record_produced_node_op_schema) {
+        for (const auto* op_schema : action_saved_state.produced_node_op_schemas) {
+          status = save_context->record_produced_node_op_schema(op_schema);
+          if (!status.IsOK()) {
+            break;
+          }
         }
       }
     } else {

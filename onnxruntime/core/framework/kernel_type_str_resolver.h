@@ -33,6 +33,8 @@ struct KernelTypeStrResolver;
 using common::Status;
 
 using ArgTypeAndIndex = std::pair<ArgType, size_t>;
+using KernelTypeStrToArgsMap = InlinedHashMap<std::string, InlinedVector<ArgTypeAndIndex>>;
+using OpKernelTypeStrMap = InlinedHashMap<OpIdentifier, KernelTypeStrToArgsMap>;
 
 class IKernelTypeStrResolver {
 public:
@@ -78,9 +80,9 @@ class KernelTypeStrResolver : public IKernelTypeStrResolver {
 
   void Merge(KernelTypeStrResolver& src);
 
+  const OpKernelTypeStrMap& GetOpKernelTypeStrMap() const { return op_kernel_type_str_map_; }
+
  private:
-  using KernelTypeStrToArgsMap = InlinedHashMap<std::string, InlinedVector<ArgTypeAndIndex>>;
-  using OpKernelTypeStrMap = InlinedHashMap<OpIdentifier, KernelTypeStrToArgsMap>;
   OpKernelTypeStrMap op_kernel_type_str_map_;
 };
 

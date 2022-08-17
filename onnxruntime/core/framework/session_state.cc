@@ -951,7 +951,7 @@ Status SessionState::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 
     const auto kernel_specifier =
         fbs::CreateOpIdAndEpType(builder,
-                                 builder.CreateSharedString(MakeOpId(*node)),
+                                 builder.CreateSharedString(utils::MakeOpId(*node)),
                                  builder.CreateSharedString(node->GetExecutionProviderType()));
 
     kernel_specifiers.push_back(kernel_specifier);

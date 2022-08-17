@@ -1068,7 +1068,7 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
       fbs_kernel_type_str_resolver != nullptr) {
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.LoadFromOrtFormat(*fbs_kernel_type_str_resolver));
   }
-  ORT_RETURN_IF_ERROR(utils::AddOptimizationOpsToKernelTypeStrResolver(kernel_type_str_resolver));
+  ORT_RETURN_IF_ERROR(kernel_type_str_resolver_utils::AddRequiredOpsToKernelTypeStrResolver(kernel_type_str_resolver));
   kernel_registry_manager_.SetKernelTypeStrResolver(std::move(kernel_type_str_resolver));
 
   is_model_loaded_ = true;

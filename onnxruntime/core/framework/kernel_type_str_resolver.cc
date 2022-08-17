@@ -13,7 +13,7 @@ namespace onnxruntime {
 
 Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
                                                    gsl::span<const ArgTypeAndIndex>& resolved_args) const {
-  const auto op_id = MakeOpId(node);
+  const auto op_id = utils::MakeOpId(node);
   const auto op_it = op_kernel_type_str_map_.find(op_id);
   ORT_RETURN_IF(op_it == op_kernel_type_str_map_.end(), "Failed to find op_id: ", op_id);
   const auto& type_str_map = op_it->second;
@@ -25,7 +25,7 @@ Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema, bool* registered_out) {
-  auto op_id = MakeOpId(op_schema);
+  auto op_id = utils::MakeOpId(op_schema);
   if (Contains(op_kernel_type_str_map_, op_id)) {
     if (registered_out) *registered_out = false;
     return Status::OK();
@@ -42,9 +42,8 @@ Status KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& o
   }();
 
   InlinedHashMap<std::string, InlinedVector<ArgTypeAndIndex>> kernel_type_str_map{};
-  // one entry for each type constraint, input, and output name
-  kernel_type_str_map.reserve(type_constraint_names.size() +
-                              op_schema.inputs().size() + op_schema.outputs().size());
+  // at most one entry for each input/output
+  kernel_type_str_map.reserve(op_schema.inputs().size() + op_schema.outputs().size());
 
   auto process_formal_params = [&](ArgType arg_type) -> Status {
     const auto& formal_params = arg_type == ArgType::kInput ? op_schema.inputs() : op_schema.outputs();
@@ -52,13 +51,14 @@ Status KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& o
       const auto& formal_param = formal_params[i];
       auto curr_arg_type_and_idx = ArgTypeAndIndex{arg_type, i};
 
-      // handle type constraint
+      // first, try to use type constraint name as kernel type string
       if (const auto& type_str = formal_param.GetTypeStr();
           Contains(type_constraint_names, type_str)) {
         kernel_type_str_map[type_str].push_back(curr_arg_type_and_idx);
+        continue;
       }
 
-      // handle input/output name
+      // otherwise, use input/output name as kernel type string
       auto& args_for_io_name = kernel_type_str_map[formal_param.GetName()];
       if (!args_for_io_name.empty()) {
         // It's possible that an input and output have the same name (e.g, BatchNormalization-9 has both an input and
