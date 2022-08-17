@@ -118,7 +118,6 @@ Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     // recognize lone DQ node
-    // if (weights_to_u8_ && this->ShouldConvertWeightFromS8ToU8(graph, node)) {
     if (QDQ::MatchDQNode(node) && this->ShouldConvertWeightFromS8ToU8(graph, node)) {
       modified |= QDQ::ConvertS8WeightToU8(graph, node, 0, 2);
       continue;

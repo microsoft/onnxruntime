@@ -17,7 +17,7 @@ class QDQS8ToU8Transformer : public GraphTransformer {
  public:
   QDQS8ToU8Transformer(bool weights_to_u8, const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("QDQS8ToU8Transformer", compatible_execution_providers), weights_to_u8_(weights_to_u8) {
-          exclude_next = {"MatMul", "Conv", "Gemm"};
+          exclude_next = {"MatMul", "Conv", "Gemm", "Gather"};
       }
   bool ShouldConvertWeightFromS8ToU8(Graph& graph, Node& node) const;
 
