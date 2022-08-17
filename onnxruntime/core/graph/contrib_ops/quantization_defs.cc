@@ -1255,7 +1255,7 @@ TODO: Support them if needed in the future.
                  "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)"
                  "or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).",
                  "G", OpSchema::Optional)
-          .Input(18, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
+          .Input(18, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "Q", OpSchema::Optional)
           .Input(19, "extra_add", "additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).", "S", OpSchema::Optional)
           .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "Q")
           .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
