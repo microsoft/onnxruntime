@@ -40,6 +40,14 @@ ORT_API_STATUS_IMPL(LoadCheckpoint, _In_ const ORTCHAR_T* checkpoint_path,
 ORT_API_STATUS_IMPL(SaveCheckpoint, _In_ const ORTCHAR_T* checkpoint_path, _In_ const OrtTrainingSession* session,
                     bool save_optimizer_state);
 
+ORT_API_STATUS_IMPL(SetCheckpointProperty, _Inout_ OrtCheckpointState* checkpoint_state,
+                    _In_ const char* property_name, enum OrtCheckpointPropertyType property_type,
+                    _In_ void* property_value);
+
+ORT_API_STATUS_IMPL(GetCheckpointProperty, _In_ const OrtCheckpointState* checkpoint_state,
+                    _In_ const char* property_name, enum OrtCheckpointPropertyType property_type,
+                    _Out_ void* property_value);
+
 ORT_API(void, ReleaseCheckpointState, _Frees_ptr_opt_ OrtCheckpointState* session);
 
 }  // namespace OrtTrainingApis

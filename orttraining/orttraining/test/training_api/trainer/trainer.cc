@@ -275,7 +275,7 @@ int RunTraining(const TestRunnerParameters& params) {
   lr_scheduler_parameters->total_step_count = params.num_train_epochs * num_of_batches_per_epoch;
   lr_scheduler_parameters->warmup_step_count = lr_scheduler_parameters->total_step_count / 3;
   ORT_RETURN_ON_ERROR(g_ort_training_api->RegisterLRScheduler(
-    session, reinterpret_cast<void*>(lr_scheduler_parameters), OrtLRSchedulerType::LinearLRScheduler, nullptr));
+      session, reinterpret_cast<void*>(lr_scheduler_parameters), OrtLRSchedulerType::LinearLRScheduler, nullptr));
 
   std::cout << "Initialization completed. Now starting training loop." << std::endl;
   const int64_t stabilized_perf_start_step = 0;
@@ -355,8 +355,14 @@ int RunTraining(const TestRunnerParameters& params) {
         PathString ckpt_file = ConcatPathComponent<PathChar>(params.output_dir, ToPathString(oss.str()));
         ORT_RETURN_ON_ERROR(g_ort_training_api->SaveCheckpoint(ckpt_file.c_str(), session, true));
 
-        // TODO(baiju): enable adding more properties to checkpoint
-        // state_to_save.property_bag.AddProperty<int64_t>(std::string("epoch"), epoch);
+        ORT_RETURN_ON_ERROR(g_ort_training_api->SetCheckpointProperty(
+            checkpoint_state, "epoch", OrtCheckpointPropertyType::IntProperty, &epoch));
+
+        // Fetch the epoch for illustration
+        int64_t saved_epoch;
+        ORT_RETURN_ON_ERROR(g_ort_training_api->GetCheckpointProperty(
+            checkpoint_state, "epoch", OrtCheckpointPropertyType::IntProperty, &saved_epoch));
+        std::cout << "The saved epoch is " << saved_epoch << std::endl;
       }
       batch_idx++;
 

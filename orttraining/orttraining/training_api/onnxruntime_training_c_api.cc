@@ -278,6 +278,82 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::SaveCheckpoint, _In_ const ORTCHAR_T* check
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtTrainingApis::SetCheckpointProperty, _Inout_ OrtCheckpointState* checkpoint_state,
+                    _In_ const char* property_name, enum OrtCheckpointPropertyType property_type,
+                    _In_ void* property_value) {
+  API_IMPL_BEGIN
+
+  OrtStatus* status = nullptr;
+
+  auto chkpt_state = reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
+
+  switch (property_type) {
+    case OrtCheckpointPropertyType::IntProperty: {
+      int64_t* value = reinterpret_cast<int64_t*>(property_value);
+      chkpt_state->property_bag.AddProperty(property_name, *value);
+      break;
+    }
+    case OrtCheckpointPropertyType::FloatProperty: {
+      float* value = reinterpret_cast<float*>(property_value);
+      chkpt_state->property_bag.AddProperty(property_name, *value);
+      break;
+    }
+    case OrtCheckpointPropertyType::StringProperty: {
+      char* value = reinterpret_cast<char*>(property_value);
+      chkpt_state->property_bag.AddProperty(property_name, value);
+      break;
+    }
+    default: {
+      status = OrtApis::CreateStatus(ORT_FAIL,
+                                     "Could not decipher the OrtCheckpointPropertyType from "
+                                     "the given argument.");
+      break;
+    }
+  }
+
+  return status;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::GetCheckpointProperty, _In_ const OrtCheckpointState* checkpoint_state,
+                    _In_ const char* property_name, enum OrtCheckpointPropertyType property_type,
+                    _Out_ void* property_value) {
+  API_IMPL_BEGIN
+
+  OrtStatus* status = nullptr;
+
+  auto chkpt_state = reinterpret_cast<const onnxruntime::training::api::CheckpointState*>(checkpoint_state);
+
+  switch (property_type) {
+    case OrtCheckpointPropertyType::IntProperty: {
+      *(reinterpret_cast<int64_t*>(property_value)) = chkpt_state->property_bag.GetProperty<int64_t>(property_name);
+      break;
+    }
+    case OrtCheckpointPropertyType::FloatProperty: {
+      *(reinterpret_cast<float*>(property_value)) = chkpt_state->property_bag.GetProperty<float>(property_name);
+      break;
+    }
+    case OrtCheckpointPropertyType::StringProperty: {
+      auto property_value_str = chkpt_state->property_bag.GetProperty<std::string>(property_name);
+      // property_value_str.length() + 1 for null termination of c strings
+      // The buffer is allocated on the heap. The user is expected to free up the memory as needed.
+      auto buffer = std::make_unique<char[]>(property_value_str.length() + 1).release();
+      memcpy(buffer, property_value_str.c_str(), property_value_str.length());
+      *(reinterpret_cast<char**>(property_value)) = buffer;
+      break;
+    }
+    default: {
+      status = OrtApis::CreateStatus(ORT_FAIL,
+                                     "Could not decipher the OrtCheckpointPropertyType from "
+                                     "the given argument.");
+      break;
+    }
+  }
+
+  return status;
+  API_IMPL_END
+}
+
 ORT_API(void, OrtTrainingApis::ReleaseTrainingSession, _Frees_ptr_opt_ OrtTrainingSession* session) {
   delete reinterpret_cast<onnxruntime::training::api::TrainingSession*>(session);
 }
@@ -299,6 +375,8 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::OptimizerStep,
     &OrtTrainingApis::RegisterLRScheduler,
     &OrtTrainingApis::SchedulerStep,
+    &OrtTrainingApis::SetCheckpointProperty,
+    &OrtTrainingApis::GetCheckpointProperty,
     &OrtTrainingApis::ReleaseTrainingSession,
     &OrtTrainingApis::ReleaseCheckpointState,
 };

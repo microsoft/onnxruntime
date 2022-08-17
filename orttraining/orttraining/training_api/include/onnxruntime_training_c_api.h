@@ -18,6 +18,12 @@ typedef struct OrtLinearLRSchedulerParameters {
   int64_t total_step_count;
 } OrtLinearLRSchedulerParameters;
 
+typedef enum OrtCheckpointPropertyType {
+  IntProperty,
+  FloatProperty,
+  StringProperty
+} OrtCheckpointPropertyType;
+
 struct OrtTrainingApi {
   /** \brief Load a checkpoint state from directory on disk into checkpoint_state.
   *
@@ -220,6 +226,43 @@ struct OrtTrainingApi {
   *
   */
   ORT_API2_STATUS(SchedulerStep, _Inout_ OrtTrainingSession* sess);
+
+  /** \brief Adds the given property to the checkpoint state.
+  *
+  * Runtime properties such as epoch, training step, best score, and others can be saved by
+  * the user if they desire by calling this function with the appropriate property name and
+  * value. The given property name must be unique to be able to successfully add the property.
+  *
+  * \param[in] checkpoint_state The checkpoint state which should hold the property.
+  * \param[in] property_name Unique name of the property being added.
+  * \param[in] property_type Type of the property associated with the given name.
+  * \param[in] property_value Property value associated with the given name.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  */
+  ORT_API2_STATUS(SetCheckpointProperty, _Inout_ OrtCheckpointState* checkpoint_state,
+                  _In_ const char* property_name, enum OrtCheckpointPropertyType property_type,
+                  _In_ void* property_value);
+
+  /** \brief Gets the property value associated with the given name from the checkpoint state.
+  *
+  * Gets the property value from an existing entry in the checkpoint state. The property must
+  * exist in the checkpoint state to be able to retrieve it successfully.
+  * If the property value is of string type, a char array is allocated on the heap. The user
+  * must free up the memory as needed by their application.
+  *
+  * \param[in] checkpoint_state The checkpoint state that is currently holding the property.
+  * \param[in] property_name Unique name of the property being retrieved.
+  * \param[in] property_type Type of the property associated with the given name.
+  * \param[out] property_value Property value associated with the given name.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  */
+  ORT_API2_STATUS(GetCheckpointProperty, _In_ const OrtCheckpointState* checkpoint_state,
+                  _In_ const char* property_name, enum OrtCheckpointPropertyType property_type,
+                  _Out_ void* property_value);
 
   /** \brief Frees up the memory used up by the training session.
   *
