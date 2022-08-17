@@ -5,6 +5,10 @@
 
 #include <pybind11/stl.h>
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "core/providers/rocm/rocm_common.h"
 #include "contrib_ops/rocm/bert/tunable_op.h"
 #include "python/tools/kernel_explorer/kernels/gemm.h"
