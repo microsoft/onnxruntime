@@ -30,6 +30,7 @@ void SessionState::SetupAllocators() {
   // per-thread allocators will be preferred over the TensorRT/MIGraphX EP non-per-thread allocators.
   // TODO: Refactor the EP/allocator relationship so that we can be explicit about which allocator is preferred and
   //       avoid creating unnecessary allocators.
+  // See issue #12625
   std::for_each(std::make_reverse_iterator(execution_providers_.end()),
                 std::make_reverse_iterator(execution_providers_.begin()),
                 [this](const auto& provider_iter) {
@@ -41,8 +42,13 @@ void SessionState::SetupAllocators() {
                       // EPs could be sharing allocators so no info message unless this is a different instance.
                       // This is an expected scenario as multiple EPs may have allocators for the same device.
                       // e.g. xnnpack and CPU EP are both CPU based.
-                      if (iter->second(memory_info.id, memory_info.mem_type) != allocator) {
-                        LOGS(logger_, INFO) << "Allocator already registered for " << allocator->Info()
+                      bool alloc_check = iter->second(memory_info.id, memory_info.mem_type) != allocator;
+                      if (alloc_check && provider.Type() == onnxruntime::kTvmExecutionProvider) {
+                        allocators_[memory_info] = [&provider](int id, OrtMemType mem_type) {
+                          return provider.GetAllocator(id, mem_type);
+                        };
+                      } else if (alloc_check) {
+                        LOGS(logger_, INFO) << "Allocator already registered for " << memory_info
                                             << ". Ignoring allocator from " << provider.Type();
                       }
                     } else {
