@@ -26,7 +26,7 @@ Status AddScalarOperand(ModelBuilder& model_builder, std::vector<uint32_t>& inpu
 Status AddNnapiTranspose(ModelBuilder& model_builder,
                          const std::string& data_input,
                          const std::string& perm_input,
-                         const std::vector<int32_t>& perm,
+                         const gsl::span<const int32_t> perm,
                          const std::string& output);
 
 // adds ANEURALNETWORKS_RESHAPE operation
@@ -39,7 +39,7 @@ Status AddNnapiReshape(ModelBuilder& model_builder,
 Status AddNnapiSplit(ModelBuilder& model_builder,
                      const std::string& input,
                      int32_t axis,
-                     const std::vector<std::string>& outputs);
+                     const gsl::span<const std::string> outputs);
 
 // checks whether batch MatMul in the given NodeUnit is supported by NNAPI EP
 bool IsSupportedBatchMatMul(const NodeUnit& node_unit, int32_t nnapi_feature_level);

@@ -19,7 +19,8 @@ using android::nn::wrapper::OperandType, android::nn::wrapper::Type;
 
 Status AddNnapiTranspose(ModelBuilder& model_builder,
                          const std::string& data_input,
-                         const std::string& perm_input, const std::vector<int32_t>& perm,
+                         const std::string& perm_input,
+                         const gsl::span<const int32_t> perm,
                          const std::string& output) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
@@ -36,7 +37,7 @@ Status AddNnapiTranspose(ModelBuilder& model_builder,
   input_indices.push_back(perm_idx);  // permutation
 
   auto calculate_transpose_output_shape = [&](const std::string& data_input,
-                                              const std::string& output, const std::vector<int32_t>& perm) -> Status {
+                                              const std::string& output, const gsl::span<const int32_t> perm) -> Status {
     const Shape& input_dimen = shaper[data_input];
     ORT_RETURN_IF_NOT(perm.size() == input_dimen.size(), "Invalid perm is given!");
     size_t size = input_dimen.size();
@@ -300,7 +301,8 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
   {
     const std::string b_new_perm = model_builder.GetUniqueName(b + "/new_perm"),
                       b_transposed = model_builder.GetUniqueName(b + "/transposed");
-    ORT_RETURN_IF_ERROR(AddNnapiTranspose(model_builder, gemm_b_inputs.front(), b_new_perm, {0, 2, 1}, b_transposed));
+    std::vector<int32_t> perm_data{0, 2, 1};
+    ORT_RETURN_IF_ERROR(AddNnapiTranspose(model_builder, gemm_b_inputs.front(), b_new_perm, gsl::make_span(perm_data), b_transposed));
     gemm_b_inputs.front() = b_transposed;
   }
 
