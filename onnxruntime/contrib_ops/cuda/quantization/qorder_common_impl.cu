@@ -683,20 +683,20 @@ QOrderMaskedSoftmaxKernel(const int8_t* src, const float* lookup_table, const in
   __shared__ float sum_reverse_block;
   __shared__ int32_t max_in_block;
 
-  int offset = (blockIdx.y * gridDim.x + blockIdx.x) * sequence_len; /* 4 bytes per thread */
-  src += offset;
-  dst += offset;
+  const int block_offset = (blockIdx.y * gridDim.x + blockIdx.x) * sequence_len; /* 4 bytes per thread */
+  src += block_offset;
+  dst += block_offset;
   mask_index += (blockIdx.y * sequence_len); // to to the batch
-  for (offset = threadIdx.x * 4; offset < sequence_len; offset += TPB*4) {
+  for (int offset = threadIdx.x * 4; offset < sequence_len; offset += TPB*4) {
     char4 ch4 = *(const char4*)(src + offset);
     int32_t max_of_4 = max(max((int)ch4.x, (int)ch4.y), max((int)ch4.z, (int)ch4.w));
-
     const int32_t max_all = BlockReduceInt32(tmp_storage_int32).Reduce(max_of_4, cub::Max());
     if (threadIdx.x == 0) {
       max_in_block = max_all;
     }
-    const int4 mask_of_4 = *(const int4*)(mask_index + offset);
     __syncthreads();
+
+    const int4 mask_of_4 = *(const int4*)(mask_index + offset);
     // TODO: bank conflick
     float4 epow_of_4 = { mask_of_4.x ? lookup_table[255 - max_in_block + (int)ch4.x] : 0.0f,
                          mask_of_4.y ? lookup_table[255 - max_in_block + (int)ch4.y] : 0.0f,
@@ -709,17 +709,17 @@ QOrderMaskedSoftmaxKernel(const int8_t* src, const float* lookup_table, const in
     }
     __syncthreads();
 
-    ch4.x = epow_of_4.x * sum_reverse_block;
-    ch4.y = epow_of_4.y * sum_reverse_block;
-    ch4.z = epow_of_4.z * sum_reverse_block;
-    ch4.w = epow_of_4.w * sum_reverse_block;
+    ch4.x = (int8_t)(epow_of_4.x * sum_reverse_block);
+    ch4.y = (int8_t)(epow_of_4.y * sum_reverse_block);
+    ch4.z = (int8_t)(epow_of_4.z * sum_reverse_block);
+    ch4.w = (int8_t)(epow_of_4.w * sum_reverse_block);
 
     *(char4 *)(dst + offset) = ch4;
   }
 }
 
 void QOrderMaskedSoftmax(
-    cudaStream_t stream, const cudaDeviceProp& device_prop,
+    cudaStream_t stream, const cudaDeviceProp& /*device_prop*/,
     const int8_t* src, const float* lookup_table,
     const int32_t* mask_index,
     int8_t* dst, const float scale_dst,

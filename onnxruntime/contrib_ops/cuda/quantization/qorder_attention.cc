@@ -152,6 +152,8 @@ Status QOrderedAttention::PrePack(const Tensor& tensor, int input_idx, /*out*/ A
 }
 
 Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
+
   ORT_ENFORCE(qkv_bias_const_cout_ == 3 && scale_qkv_weight_const_count_ == 3 && qkv_weight_const_count_ == 3,
               "qkv gemm weight and their scales, qkv gemm bias must all be constant!");
   ORT_ENFORCE(const_sacle_input_ > 0.0f, "input scale must be constant");
@@ -199,50 +201,59 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   int m = batch_size * sequence_length;
   int n = 3 * hidden_size;
   int k = input_hidden_size;
-  auto gemm_buffer_quantized = GetScratchBuffer<int8_t>(2 * m * n);  // merged and transposed
+  int64_t size_of_attention_scores = ((int64_t)batch_size) * num_heads_ * sequence_length * sequence_length;
+
+  // union(transposed, context_layer),  union(stacked, attention probs, attention scores)
+  auto gemm_buffer_quantized = GetScratchBuffer<int8_t>(m * n + std::max((int64_t)m * n, 2 * size_of_attention_scores));
+
+  int8_t* stacked_qkv_layers = gemm_buffer_quantized.get() + ((int64_t)m * n);
+  int8_t* tranposed_qkv_layers = gemm_buffer_quantized.get();
+  const int8_t* q_layer = tranposed_qkv_layers;
+  const int8_t* k_layer = tranposed_qkv_layers + ((int64_t)batch_size * sequence_length * hidden_size);
+  const int8_t* v_layer = tranposed_qkv_layers + ((int64_t)batch_size * sequence_length * hidden_size * 2);
+  int8_t* attention_scores = stacked_qkv_layers + size_of_attention_scores; // rewrite to stacked_qkv_layers after they are transposed
+  int8_t* attention_probs = stacked_qkv_layers; // rewrite to stacked_qkv_layers after they are transposed
+  int8_t* context_layer = gemm_buffer_quantized.get(); // rewrite q_layer after it is not used
 
   cudaStream_t stream = Stream();
   // Gemm result (M, N) = alpha * input * weights + scale_bias.
   ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
                                       1, m, n, k,
                                       (const float*)merged_qkv_alpha_.get(), input->template Data<int8_t>(), (const int8_t*)merged_qkv_weight_.get(),
-                                      (const float*)merged_qkv_bias_.get(), gemm_buffer_quantized.get(),
+                                      (const float*)merged_qkv_bias_.get(), stacked_qkv_layers,
                                       (cublasLtOrder_t)order_weight_,
-                                      CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_ZERO));
+                                      CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_HOST));
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
 
-  int8_t* stacked_qkv_layers = gemm_buffer_quantized.get();
-  int8_t* tranposed_qkv_layers = stacked_qkv_layers + ((int64_t)m * n);
   // BxSx3xNxH => 3xBxNxSxH, treat 4 consecutive int8 as float
   LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size / sizeof(float), num_heads_,
                  max_threads_per_block, false, (const float*)stacked_qkv_layers, (float*)tranposed_qkv_layers);
-
-  const int8_t* q_layer = tranposed_qkv_layers;
-  const int8_t* k_layer = q_layer + ((int64_t)sequence_length * hidden_size);
-  const int8_t* v_layer = k_layer + (k_layer - q_layer);
-  int8_t* attention_scores = stacked_qkv_layers;                       // reuse it
-  int8_t* attention_probs = stacked_qkv_layers + (k_layer - q_layer);  // attention_probs
-  int8_t* context_layer = attention_probs + (k_layer - q_layer);
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
 
   const float q_mm_k_alpha = const_scale_qkv_layer_[0] * const_scale_qkv_layer_[1] / *scale_attn_scores_data;
   ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
                                       batch_size * num_heads_, sequence_length, sequence_length, head_size,
                                       &q_mm_k_alpha, q_layer, k_layer, nullptr, attention_scores,
-                                      (cublasLtOrder_t)order_weight_));
+                                      CUBLASLT_ORDER_ROW)); // matrix B need extra transpose
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
 
   // the div sqrt(head_size) was processed when building the softmax lookup table
   QOrderMaskedSoftmax(stream, device_prop, attention_scores, (const float*)softmax_lookup_.get(),
                       mask_index->Data<int32_t>(), attention_probs, *scale_attn_probs_data,
                       batch_size, num_heads_, sequence_length);
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
 
   const float context_layer_alpha = *scale_attn_probs_data * *scale_attn_scores_data / *scale_output_data;
   ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
                                       batch_size * num_heads_, sequence_length, head_size, sequence_length,
                                       &context_layer_alpha, attention_probs, v_layer, nullptr, context_layer,
                                       (cublasLtOrder_t)order_weight_));
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
 
   // scratch3 is BxNxSxH, transpose to output SxBxNxH
   LaunchTransCtx(stream, sequence_length, batch_size, head_size / sizeof(float), num_heads_,
                  max_threads_per_block, false, (const float*)context_layer, (float*)output->MutableData<int8_t>());
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
 
   return Status::OK();
 }

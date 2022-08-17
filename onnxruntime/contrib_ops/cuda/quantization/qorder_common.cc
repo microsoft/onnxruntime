@@ -195,26 +195,16 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, [[
   auto clean_desc_C = gsl::finally([&desc_C]() {if (desc_C) cublasLtMatrixLayoutDestroy(desc_C); });
   cublasLtMatrixLayout_t desc_D = nullptr;
   auto clean_desc_D = gsl::finally([&desc_D]() {if (desc_D) cublasLtMatrixLayoutDestroy(desc_D); });
-  cublasLtOrder_t order_ACD = CUBLASLT_ORDER_ROW;
   const float beta_zero = 0.0f;
   beta = (C == nullptr ? &beta_zero : beta);
 
+  cublasLtMatmulAlgo_t algo;
+  cublasLtOrder_t order_ACD = ((order_weight == CUBLASLT_ORDER_COL || order_weight == CUBLASLT_ORDER_ROW) ? CUBLASLT_ORDER_COL : CUBLASLT_ORDER_COL32);
+  CublasLtMMAlgoMap::instance().GetAlgo(cublasLt_handle, algo, device_prop, batchCount, (int)m, (int)n, (int)k, order_weight, order_ACD);
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescCreate(&matmul_desc, CUBLAS_COMPUTE_32I, CUDA_R_32F));
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc, CUBLASLT_MATMUL_DESC_POINTER_MODE, &pointer_mode, sizeof(pointer_mode)));
-  const bool BtXAt = order_weight == CUBLASLT_ORDER_COL;
-  if (!BtXAt) {
-    // TODO: bias handling is not correct here.
-    order_ACD = CUBLASLT_ORDER_COL32;
-    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc, CUBLASLT_MATMUL_DESC_TRANSB, &transpose_op, sizeof(transpose_op)));
-    ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_A, batchCount, m, k, CUDA_R_8I, CUBLASLT_ORDER_COL32, CUBLAS_OP_N));
-    ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_B, batchB, k, n, CUDA_R_8I, order_weight, CUBLAS_OP_T));
-    CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_B, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batchCount, sizeof(batchCount)));
-    ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_D, batchCount, m, n, CUDA_R_8I, CUBLASLT_ORDER_COL32, CUBLAS_OP_N));
-    if (C != nullptr) {
-      ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_C, batchC, m, n, CUDA_R_8I, CUBLASLT_ORDER_COL32, CUBLAS_OP_N));
-      CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_C, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batchCount, sizeof(batchCount)));
-    }
-  } else {
+  
+  if (order_weight == CUBLASLT_ORDER_COL) {
     CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc, CUBLASLT_MATMUL_DESC_TRANSA, &transpose_op, sizeof(transpose_op)));
     if (bias != nullptr) {
       cublasLtEpilogue_t epilogue_bias = CUBLASLT_EPILOGUE_BIAS;
@@ -230,17 +220,48 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, [[
       ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_C, batchC, n, m, CUDA_R_8I, CUBLASLT_ORDER_COL, CUBLAS_OP_N));  // For C'
       CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_C, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batchCount, sizeof(batchCount)));
     }
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmul(cublasLt_handle, matmul_desc,
+                                          alpha, B, desc_B, A, desc_A,
+                                          beta, C == nullptr ? D : C, C == nullptr ? desc_D : desc_C,
+                                          D, desc_D,
+                                          &algo, nullptr, 0,  // algo, workspace, workspace_size
+                                          stream));
+  } else if (order_weight == CUBLASLT_ORDER_ROW) {
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc, CUBLASLT_MATMUL_DESC_TRANSA, &transpose_op, sizeof(transpose_op)));
+    ORT_ENFORCE(bias == nullptr);
+    ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_A, batchCount, k, m, CUDA_R_8I, CUBLASLT_ORDER_COL, CUBLAS_OP_N));  // for A'
+    ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_B, batchB, k, n, CUDA_R_8I, CUBLASLT_ORDER_COL, CUBLAS_OP_N));      // For B
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_B, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batchCount, sizeof(batchCount)));
+    ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_D, batchCount, m, n, CUDA_R_8I, CUBLASLT_ORDER_COL, CUBLAS_OP_N));  // For D'
+    if (C != nullptr) {
+      ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_C, batchC, m, n, CUDA_R_8I, CUBLASLT_ORDER_COL, CUBLAS_OP_N));  // For C'
+      CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_C, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batchCount, sizeof(batchCount)));
+    }
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmul(cublasLt_handle, matmul_desc,
+                                          alpha, A, desc_A, B, desc_B,
+                                          beta, C == nullptr ? D : C, C == nullptr ? desc_D : desc_C,
+                                          D, desc_D,
+                                          nullptr, nullptr, 0,  // algo, workspace, workspace_size
+                                          stream));
+  } else {
+    ORT_ENFORCE(bias == nullptr);
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc, CUBLASLT_MATMUL_DESC_TRANSB, &transpose_op, sizeof(transpose_op)));
+    ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_A, batchCount, m, k, CUDA_R_8I, CUBLASLT_ORDER_COL32, CUBLAS_OP_N));
+    ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_B, batchB, k, n, CUDA_R_8I, order_weight, CUBLAS_OP_T));
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_B, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batchCount, sizeof(batchCount)));
+    ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_D, batchCount, m, n, CUDA_R_8I, CUBLASLT_ORDER_COL32, CUBLAS_OP_N));
+    if (C != nullptr) {
+      ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_C, batchC, m, n, CUDA_R_8I, CUBLASLT_ORDER_COL32, CUBLAS_OP_N));
+      CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_C, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batchCount, sizeof(batchCount)));
+    }
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmul(cublasLt_handle, matmul_desc,
+                                          alpha, A, desc_A, B, desc_B,
+                                          beta, C == nullptr ? D : C, C == nullptr ? desc_D : desc_C,
+                                          D, desc_D,
+                                          &algo, nullptr, 0,  // algo, workspace, workspace_size
+                                          stream));
   }
 
-  cublasLtMatmulAlgo_t algo;
-  CublasLtMMAlgoMap::instance().GetAlgo(cublasLt_handle, algo, device_prop, batchCount, (int)m, (int)n, (int)k, order_weight, order_ACD);
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatmul(cublasLt_handle, matmul_desc,
-                                        alpha, BtXAt ? B : A, BtXAt ? desc_B : desc_A,
-                                        BtXAt ? A : B, BtXAt ? desc_A : desc_B,
-                                        beta, C == nullptr ? D : C, C == nullptr ? desc_D : desc_C,
-                                        D, desc_D,
-                                        &algo, nullptr, 0,  // algo, workspace, workspace_size
-                                        stream));
   return Status::OK();
 }
 
