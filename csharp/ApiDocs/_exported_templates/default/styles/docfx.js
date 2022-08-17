@@ -88,7 +88,7 @@ $(function () {
       if (block.innerHTML === "") return;
       var lines = block.innerHTML.split('\n');
 
-      queryString = block.getAttribute('highlight-lines');
+      let queryString = block.getAttribute('highlight-lines');
       if (!queryString) return;
 
       var ranges = queryString.split(',');
@@ -128,11 +128,7 @@ $(function () {
     }
     try {
       var worker = new Worker(relHref + 'styles/search-worker.js');
-      if (!worker && !window.worker) {
-        localSearch();
-      } else {
-        webWorkerSearch();
-      }
+      webWorkerSearch();
 
       renderSearchBox();
       highlightKeywords();
@@ -291,7 +287,6 @@ $(function () {
       var briefOffset = 512;
       var words = query.split(/\s+/g);
       var queryIndex = content.indexOf(words[0]);
-      var briefContent;
       if (queryIndex > briefOffset) {
         return "..." + content.slice(queryIndex - briefOffset, queryIndex + briefOffset) + "...";
       } else if (queryIndex <= briefOffset) {
@@ -306,7 +301,7 @@ $(function () {
       pagination.removeData("twbs-pagination");
       if (hits.length === 0) {
         $('#search-results>.sr-items').html('<p>No results found</p>');
-      } else {        
+      } else {
         pagination.twbsPagination({
           first: pagination.data('first'),
           prev: pagination.data('prev'),
@@ -326,7 +321,7 @@ $(function () {
                 var itemBrief = extractContentBrief(hit.keywords);
 
                 var itemNode = $('<div>').attr('class', 'sr-item');
-                var itemTitleNode = $('<div>').attr('class', 'item-title').append($('<a>').attr('href', itemHref).attr("target", "_blank").attr("rel", "noopener noreferrer").text(itemTitle));
+                var itemTitleNode = $('<div>').attr('class', 'item-title').append($('<a>').attr('href', 'itemHref').attr("target", "_blank").attr("rel", "noopener noreferrer").text(itemTitle));
                 var itemHrefNode = $('<div>').attr('class', 'item-href').text(itemRawHref);
                 var itemBriefNode = $('<div>').attr('class', 'item-brief').text(itemBrief);
                 itemNode.append(itemTitleNode).append(itemHrefNode).append(itemBriefNode);
@@ -354,7 +349,7 @@ $(function () {
       renderBreadcrumb();
       showSearch();
     }
-    
+
     function showSearch() {
       if ($('#search-results').length !== 0) {
           $('#search').show();
@@ -443,7 +438,7 @@ $(function () {
     function registerTocEvents() {
       var tocFilterInput = $('#toc_filter_input');
       var tocFilterClearButton = $('#toc_filter_clear');
-        
+
       $('.toc .nav > li > .expand-stub').click(function (e) {
         $(e.target).parent().toggleClass(expanded);
       });
@@ -477,7 +472,7 @@ $(function () {
           parent.removeClass(show);
           parent.removeClass(filtered);
         })
-        
+
         // Get leaf nodes
         $('#toc li>a').filter(function (i, e) {
           return $(e).siblings().length === 0
@@ -518,7 +513,7 @@ $(function () {
           return false;
         }
       });
-      
+
       // toc filter clear button
       tocFilterClearButton.hide();
       tocFilterClearButton.on("click", function(e){
@@ -694,23 +689,6 @@ $(function () {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
     }
-
-    function htmlDecode(value) {
-      if (!str) return str;
-      return value
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&amp;/g, '&');
-    }
-
-    function cssEscape(str) {
-      // see: http://stackoverflow.com/questions/2786538/need-to-escape-a-special-character-in-a-jquery-selector-string#answer-2837646
-      if (!str) return str;
-      return str
-        .replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, "\\$&");
-    }
   }
 
   // Show footer
@@ -868,7 +846,7 @@ $(function () {
       if (state.groups.length === 0) {
         return state;
       }
-      selectTabs(queryStringTabs, container);
+      selectTabs(queryStringTabs);
       updateTabsQueryStringParam(state);
       notifyContentUpdated();
       return state;
@@ -950,7 +928,7 @@ $(function () {
       }
       event.preventDefault();
       info.anchor.href = 'javascript:';
-      setTimeout(function () { return info.anchor.href = '#' + info.anchor.getAttribute('aria-controls'); });
+      setTimeout(function () { return info.anchor.href = $('#' + info.anchor.getAttribute('aria-controls')); });
       var tabIds = info.tabIds, group = info.group;
       var originalTop = info.anchor.getBoundingClientRect().top;
       if (group.independent) {
