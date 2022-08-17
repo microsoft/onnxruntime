@@ -6,14 +6,15 @@
 
 """Tests for the save_activations module."""
 
-import numpy as np
-import onnx
 import tempfile
 import unittest
-from onnx import TensorProto, helper
-from op_test_utils import generate_random_initializer
 from pathlib import Path
 from typing import Dict, List
+
+import numpy as np
+import onnx
+from onnx import TensorProto, helper
+from op_test_utils import generate_random_initializer
 
 import onnxruntime
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static

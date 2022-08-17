@@ -41,12 +41,13 @@ is a list of tensors, one from each model run
 
 import logging
 import math
-import numpy
-import onnx
 import time
-from onnx import ModelProto, TensorProto, helper, numpy_helper
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Union
+
+import numpy
+import onnx
+from onnx import ModelProto, TensorProto, helper, numpy_helper
 
 import onnxruntime
 
