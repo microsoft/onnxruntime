@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/rocm/bert/tunable_op.h"
+#include "python/tools/kernel_explorer/kernels/gemm_tunable.h"
 
 #include <pybind11/stl.h>
 
 #include "core/providers/rocm/rocm_common.h"
+#include "contrib_ops/rocm/bert/tunable_op.h"
 #include "python/tools/kernel_explorer/kernels/gemm.h"
 #include "python/tools/kernel_explorer/kernels/gemm_ck.h"
 #include "python/tools/kernel_explorer/kernels/gemm_rocblas.h"

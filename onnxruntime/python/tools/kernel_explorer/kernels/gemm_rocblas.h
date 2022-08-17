@@ -35,4 +35,4 @@ Status RocBlasGemmOp(const GemmParams<T>* params) {
 
 void InitRocBlasGemm(py::module mod);
 
-}
+}  // namespace onnxruntime
