@@ -1931,6 +1931,59 @@ class PlannerImpl {
         }
       }
     }
+    // if any node outputs sit on non-device memory, and its consumer is in the same stream
+    // we also need to generate a notification.
+    // for example, in stream A we have:
+    //  ..., MemCpyToHost(...host_data_ptr), ....., Reshape(...., host_data_ptr)
+    // Before launch Reshape kernel, we need to make sure the MemCpyToHost is done.
+    // So we need to make the stream A like:
+    // ..., MemCpyToHost(...host_data_ptr), Activate(N1), ....., Wait(N1), Reshape(...., host_data_ptr)
+    // key: the consumer of non-device tensor
+    // value: the list of in-stream notification indices that current nodes depends on.
+    InlinedHashMap<NodeIndex, InlinedVector<NotificationIndex>> in_stream_sync_nodes_to_notification;
+    InlinedHashSet<NotificationIndex> no_down_stream_notifications;
+    // TODO: for current ORT, the only possibility of this In-Stream wait is wait on CPU tensors.
+    // Need to fix it in the future if we have other cases.
+    const std::string non_device_ep_type = kCpuExecutionProvider;
+    for (size_t i = 0; i < num_logic_streams_; ++i) {
+      for (auto node_index : stream_nodes_[i]) {
+        auto* node = graph_viewer_.GetNode(node_index);
+
+        onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
+        const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
+        auto& node_device_mem_location = ep->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info();
+
+        InlinedHashSet<const Node*> producers;
+        for (auto* input : node->InputDefs()) {
+          if (!input->Exists())
+            continue;
+          OrtValueIndex input_arg_idx;
+          ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(input->Name(), input_arg_idx));
+          if (plan_.allocation_plan[input_arg_idx].location != node_device_mem_location) {
+            ORT_ENFORCE(plan_.allocation_plan[input_arg_idx].location.device.Type() == OrtDevice::CPU);
+            auto* producer = graph_viewer_.GetProducerNode(input->Name());
+            // whether producer in the same stream
+            if (producer && std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), producer->Index()) != stream_nodes_[i].end()) {
+              producers.insert(producer);
+            }
+          }
+        }
+        if (!producers.empty()) {
+          for (auto* producer : producers) {
+            auto it = node_to_notification.find(producer->Index());
+            if (it != node_to_notification.end()) {
+              // the producer already have a notification
+              in_stream_sync_nodes_to_notification[node_index].push_back(it->second);
+            } else {
+              node_to_notification[producer->Index()] = num_notifications;
+              no_down_stream_notifications.insert(num_notifications);
+              in_stream_sync_nodes_to_notification[node_index].push_back(num_notifications++);
+            }
+          }
+        }
+      }
+    }
+
     // 3. Check the nodes in each logical stream, set EP instance;
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       std::set<const IExecutionProvider*> providers;
@@ -1991,6 +2044,23 @@ class PlannerImpl {
             }
           }
         }
+        // wait for in_stream notification if any
+        auto in_stream_notificaiton_it = in_stream_sync_nodes_to_notification.find(node->Index());
+        if (in_stream_notificaiton_it != in_stream_sync_nodes_to_notification.end()) {
+          for (auto& notification_idx : in_stream_notificaiton_it->second) {
+            // we don't need barrier for in-stream wait
+            auto wait_handle = stream_handle_registry.GetWaitHandle(
+                execution_plan[plan_.notification_owners[notification_idx]]->ep_->Type(),
+                non_device_ep_type);
+            if (wait_handle) {
+              execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_idx));
+#ifdef ENABLE_TRAINING
+              execution_plan[i]->step_node_index.push_back(node_index);
+#endif
+            }
+          }
+        }
+
         for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
           // add dependency for model graph
           dependence_graph_[it->Index()].insert(node_index);
@@ -2014,15 +2084,19 @@ class PlannerImpl {
             size_t cur_distance = std::distance(order.begin(), order_it);
             distance = std::min(distance, cur_distance);
           }
+          // if node doesn't have any consumer, use the current node index
+          auto consumer_index = distance < order.size() ? order[distance] : node_index;
           // set the notification step as the triggering part of next node.
-          execution_plan[i]->step_node_index.push_back(order[distance]);
+          execution_plan[i]->step_node_index.push_back(node_index);
 #endif
-          // notify downstreams
-          execution_plan[i]->steps_.emplace_back(std::make_unique<TriggerDownstreamStep>(notification_index));
+          if (no_down_stream_notifications.find(notification_index) == no_down_stream_notifications.end()) {
+            // notify downstreams
+            execution_plan[i]->steps_.emplace_back(std::make_unique<TriggerDownstreamStep>(notification_index));
 #ifdef ENABLE_TRAINING
-          // set the notification step as the triggering part of next node.
-          execution_plan[i]->step_node_index.push_back(order[distance]);
+            // set the notification step as the triggering part of next node.
+            execution_plan[i]->step_node_index.push_back(node_index);
 #endif
+          }
         }
       }
     }
