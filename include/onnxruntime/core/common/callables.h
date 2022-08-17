@@ -7,8 +7,6 @@
 #include <tuple>
 
 namespace onnxruntime {
-namespace test {
-
 /// <summary>
 /// This class serves as a callable entity that can be used
 /// either in a threadpool or as a callback for async operations. It supports both
@@ -146,5 +144,4 @@ private:
   ObjectType* obj_;
 };
 
-} // test
 } // onnxruntime
