@@ -174,7 +174,7 @@ void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
       int max_index = -1;
       for (int k = 0; k < next_token_scores.vocab_size; k++, p++) {
         if (prefix_vocab_mask_[prefix_vocab_mask_offset + static_cast<size_t>(k)] == 0) {
-          if (!prefix_uppercase_.empty() && prefix_uppercase_[i] && *p > max_value) {
+          if (!step_ && !prefix_uppercase_.empty() && prefix_uppercase_[i] && *p > max_value) {
             max_value = *p;
             p1 = p;
             max_index = k;
@@ -183,8 +183,8 @@ void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
         }
       }
 
-      if (!prefix_uppercase_.empty() && prefix_uppercase_[i] && max_index >= next_token_scores.vocab_size - 1 - deep_write_spl_tokens_) {
-        *p1 = max_value; 
+      if (!step_ && !prefix_uppercase_.empty() && prefix_uppercase_[i] && max_index >= next_token_scores.vocab_size - 1 - deep_write_spl_tokens_) {
+        *p1 = max_value;
       }
     }
   }
