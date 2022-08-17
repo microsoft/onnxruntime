@@ -8,17 +8,16 @@ from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 data = np.random.rand(10,2)
 
 
-train_model_uri = "train_model.onnx"
-ckpt_uri = "checkpoint.ckpt"
-optimizer_model_uri = "optimizer.onnx"
+train_model_uri = "data/training_model.onnx"
+ckpt_uri = "data/checkpoint.ckpt"
+optimizer_model_uri = "data/adamw.onnx"
 
 
 # Create a training module.
 model = TrainingModule(train_model_uri, ckpt_uri)
-
+print(model.parameters())
 # Create a training optimizer.
-optimizer = TrainingOptimizer(optimizer_model_uri, model.parameters())
-
+optimizer = TrainingOptimizer(optimizer_model_uri, model.get_model())
 loss = 0
 batch = 0
 for epoch in range(10):  # loop over the dataset multiple times

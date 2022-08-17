@@ -816,6 +816,33 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         });
 
 #ifdef ENABLE_TRAINING_ON_DEVICE
+  py::class_<onnxruntime::training::api::Module> training_module(m, "Module", R"pbdoc(Training Module Class.)pbdoc");
+  training_module.def(py::init([](
+                                   const std::string model_uri, const std::string ckpt_uri) {
+                   onnxruntime::training::api::CheckpointState state;
+                   auto checkpoint_to_load_path = ckpt_uri;
+                   ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpoint(checkpoint_to_load_path, state));
+
+                   onnxruntime::SessionOptions session_option;
+
+                   auto model = std::make_unique<onnxruntime::training::api::Module>(model_uri,
+                                                                                     state.module_checkpoint_state.named_parameters, session_option,
+                                                                                     GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>());
+                   for (auto& key_value_pair : model->NamedParameters()) std::cout << "Module Initialization : Parameter is " << key_value_pair.first << std::endl;
+
+                   return model;
+                 }))
+      .def_property_readonly("parameters", [](const onnxruntime::training::api::Module* model) -> std::unordered_map<std::string, std::shared_ptr<onnxruntime::training::api::Parameter>> {
+        return model->NamedParameters();
+      });
+  py::class_<onnxruntime::training::api::Optimizer> training_optimizer(m, "Optimizer", R"pbdoc(Training Optimizer Class.)pbdoc");
+  training_optimizer.def(py::init([](const std::string optimizer_model_uri, const onnxruntime::training::api::Module* model) {
+    onnxruntime::SessionOptions session_option;
+    auto optimizer = std::make_unique<onnxruntime::training::api::Optimizer>(optimizer_model_uri,
+                                                                             model->NamedParameters(), session_option,
+                                                                             GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>());
+    return optimizer;
+  }));
   m.def("save_checkpoint",
         [](const std::vector<py::bytes>& trainable_tensor_protos_pybytes,
            const std::vector<py::bytes>& non_trainable_tensor_protos_pybytes,

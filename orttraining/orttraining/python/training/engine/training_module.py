@@ -7,6 +7,7 @@ class TrainingModule:
         """
         Initializes Model for Training.
         """
+        # TODO : Add support for bytes on train_model_uri and eval_model_uri.
         self._train_model_uri = train_model_uri
         self._ckpt_uri = ckpt_uri
         self._eval_model_uri = eval_model_uri
@@ -31,7 +32,7 @@ class TrainingModule:
         # Create session options as a default value.
         self._env = None
         # Module is not exposed yet
-        model = C.Module(self._train_model_uri, self._parameters, self._session_options, self._env, self._providers ,self._eval_model_uri)
+        model = C.Module(self._train_model_uri, self._ckpt_uri)
         self._model = model
 
 
@@ -53,4 +54,10 @@ class TrainingModule:
         Returns the parameters of the model.
         Typically passed to the optimizer.
         """
-        return self._model.parameters()
+        return self._model.parameters
+
+    def get_model(self):
+        """
+        Returns the model to be passed to initialize the Optimizer.
+        """
+        return self._model

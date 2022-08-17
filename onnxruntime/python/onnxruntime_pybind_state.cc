@@ -30,6 +30,9 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
 
+#include "orttraining/training_api/include/module.h"
+#include "orttraining/training_api/include/checkpoint.h"
+
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
@@ -1402,7 +1405,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             return arr;
           },
           "node shape (assuming the node holds a tensor)");
-
   py::class_<SessionObjectInitializer> sessionObjectInitializer(m, "SessionObjectInitializer");
   py::class_<PyInferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
       // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
