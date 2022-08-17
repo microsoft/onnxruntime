@@ -45,51 +45,34 @@ using Nop = ck::tensor_operation::element_wise::PassThrough;
 
 // to be moved to onnxruntime once we have a monolithicly tunable gemm wrapper and it is enabled for onnxruntime
 template <typename T, typename ALayout, typename BLayout>
-class CKGemmOp {
-  using OpType = CKGemmOp<T, ALayout, BLayout>;
-
+auto GetCKGemmOpTypeStringAndInstances() {
   using CKDataType = typename DataTypeAdaptor<T>::type;
-
   using DeviceGemm = ck::tensor_operation::device::DeviceGemm<
       ALayout, BLayout, Row,
       CKDataType, CKDataType, CKDataType,
       Nop, Nop, Nop>;
-
   using InstanceFactory = ck::tensor_operation::device::instance::DeviceOperationInstanceFactory<DeviceGemm>;
 
- public:
-  static std::vector<OpType> GetInstances() {
-    std::vector<OpType> ret;
-    for (auto&& impl : InstanceFactory::GetInstances()) {
-      ret.emplace_back(CKGemmOp{std::move(impl)});
-    }
-    return ret;
+  std::vector<std::pair<std::string, contrib::rocm::Op<GemmParams<T>>>> ret;
+  for (auto&& impl : InstanceFactory::GetInstances()) {
+    auto type_string = impl->GetTypeString();
+    auto invoker = impl->MakeInvokerPointer();
+    auto ck_gemm_op = [impl = std::move(impl), invoker = std::move(invoker)](const GemmParams<T>* params) -> Status {
+      auto nop = Nop{};
+      auto arg = impl->MakeArgumentPointer(params->a, params->b, params->c,
+                                           params->m, params->n, params->k,
+                                           params->lda, params->ldb, params->ldc,
+                                           nop, nop, nop);
+      ORT_RETURN_IF(!impl->IsSupportedArgument(arg.get()),
+                    TUNABLE_OP_MAKE_UNSUPPOTED_ARGUMENT_STATUS(
+                        impl->GetTypeString(), " does not support ", params->Signature()));
+      invoker->Run(arg.get(), StreamConfig{params->stream});
+      return Status::OK();
+    };
+    ret.emplace_back(std::make_pair(std::move(type_string), std::move(ck_gemm_op)));
   }
-
-  explicit CKGemmOp(std::unique_ptr<DeviceGemm>&& device_instance)
-      : impl_{std::move(device_instance)},
-        invoker_{impl_->MakeInvokerPointer()} {}
-
-  Status operator()(const GemmParams<T>* params) {
-    auto nop = Nop{};
-    auto arg = impl_->MakeArgumentPointer(params->a, params->b, params->c,
-                                          params->m, params->n, params->k,
-                                          params->lda, params->ldb, params->ldc,
-                                          nop, nop, nop);
-    ORT_RETURN_IF(!impl_->IsSupportedArgument(arg.get()),
-                  TUNABLE_OP_MAKE_UNSUPPOTED_ARGUMENT_STATUS(
-                      impl_->GetTypeString(), " does not support ", params->Signature()));
-    invoker_->Run(arg.get(), StreamConfig{params->stream});
-    return Status::OK();
-  }
-
-  std::string GetTypeString() const {
-    return impl_->GetTypeString();
-  }
-
-  std::unique_ptr<DeviceGemm> impl_;
-  std::unique_ptr<ck::tensor_operation::device::BaseInvoker> invoker_;
-};
+  return ret;
+}
 
 template <typename T, typename ALayout, typename BLayout>
 class CKGemm : public IKernelExplorer {
@@ -101,11 +84,9 @@ class CKGemm : public IKernelExplorer {
          DeviceArray& b, int64_t ldb,
          double beta,
          DeviceArray& c, int64_t ldc)
-      : params_{},
-        impls_{CKGemmOp<T, ALayout, BLayout>::GetInstances()} {
+      : params_{} {
     auto supports_a = opa == BlasOp::N ? std::is_same_v<ALayout, Row> : std::is_same_v<ALayout, Col>;
     auto supports_b = opb == BlasOp::N ? std::is_same_v<BLayout, Row> : std::is_same_v<BLayout, Col>;
-    ORT_ENFORCE(!impls_.empty());
     ORT_ENFORCE(supports_a && supports_b);
 
     // rocblas handle is not used for ck
@@ -123,6 +104,12 @@ class CKGemm : public IKernelExplorer {
     params_.beta = beta;
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
+
+    for (auto&& [type_string, op] : GetCKGemmOpTypeStringAndInstances<T, ALayout, BLayout>()) {
+      type_strings_.emplace_back(std::move(type_string));
+      impls_.emplace_back(std::move(op));
+    }
+    ORT_ENFORCE(!impls_.empty());
   }
 
   void Run() override {
@@ -130,15 +117,12 @@ class CKGemm : public IKernelExplorer {
   }
 
   std::vector<std::string> ListImpls() const {
-    std::vector<std::string> results;
-    std::transform(impls_.cbegin(), impls_.cend(), std::back_inserter(results),
-                   [](const auto& it) { return it.GetTypeString(); });
-    return results;
+    return type_strings_;
   }
 
   bool SelectImpl(const std::string& name) {
     for (size_t i = 0; i < impls_.size(); i++) {
-      if (impls_[i].GetTypeString() == name) {
+      if (type_strings_[i] == name) {
         selected_impl_ = i;
         Status status = impls_[i](&params_);
         return status.IsOK();
@@ -150,9 +134,10 @@ class CKGemm : public IKernelExplorer {
 
  private:
   using ParamsT = GemmParams<T>;
+  using OpT = contrib::rocm::Op<ParamsT>;
   ParamsT params_;
-
-  std::vector<CKGemmOp<T, ALayout, BLayout>> impls_;
+  std::vector<OpT> impls_;
+  std::vector<std::string> type_strings_;
   size_t selected_impl_{};
 };
 
