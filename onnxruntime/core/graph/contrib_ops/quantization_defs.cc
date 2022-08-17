@@ -1232,7 +1232,6 @@ TODO: Support them if needed in the future.
           .Attr("qkv_hidden_sizes", "Hidden layer sizes of Q, K, V paths in Attention", AttributeProto::INTS, OPTIONAL_VALUE)
           .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
           .Attr("order_weight", "cublasLt order of weight matrix", AttributeProto::INT)
-          .Attr("order_bias", "cublasLt order of bias, (TODO: remove not used)", AttributeProto::INT)
           .Attr("order_output", "cublasLt order of global bias", AttributeProto::INT)
           .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, input_hidden_size)", "Q")
           .Input(1, "scale_input", "scale of the input, scalar value (per tensor) currently.", "S")

@@ -48,18 +48,20 @@ ONNX_OPERATOR_KERNEL_EX(
     QOrderedAttention);
 
 QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info), input_hidden_size_(0) {
+  ORT_ENFORCE(qkv_hidden_sizes_.size() == 3, "qkv_hidden_sizes is needed and must be of shape [3]!");
+  ORT_ENFORCE(std::all_of(qkv_hidden_sizes_.begin(), qkv_hidden_sizes_.end(),
+                          [num_heads = this->num_heads_](int64_t v) { return (v > 0) && (v % num_heads) == 0; }),
+              "All qkv hiddend_sizes must be positive and divisible by num_heads");
+  qkv_total_hidden_size_ = qkv_hidden_sizes_[0] + qkv_hidden_sizes_[1] + qkv_hidden_sizes_[2];
   order_input_ = GetCublasLtOrderAttr(info, "order_input");
   order_weight_ = GetCublasLtOrderAttr(info, "order_weight");
-  order_bias_ = GetCublasLtOrderAttr(info, "order_bias");
   order_output_ = GetCublasLtOrderAttr(info, "order_output");
   if (order_input_ == CUBLASLT_ORDER_ROW) {
     ORT_ENFORCE(order_weight_ == CUBLASLT_ORDER_COL, "Only CUBLASLT_ORDER_COL is supported for order_weight_");
-    ORT_ENFORCE(order_bias_ == CUBLASLT_ORDER_ROW, "Only CUBLASLT_ORDER_ROW is supported for order_bias");
     ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_ROW, "Only CUBLASLT_ORDER_ROW is supported for order_output");
   } else if (order_input_ == CUBLASLT_ORDER_COL32) {
     ORT_ENFORCE(order_weight_ == CUBLASLT_ORDER_COL4_4R2_8C || order_weight_ == CUBLASLT_ORDER_COL32_2R_4R4,
                 "Only CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4 are supported for order_weight_");
-    ORT_ENFORCE(order_bias_ == CUBLASLT_ORDER_COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_bias");
     ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_output");
   } else {
     ORT_ENFORCE(false, "Only CUBLASLT_ORDER_ROW or CUBLASLT_ORDER_COL32 are supported for order_input");
@@ -69,68 +71,53 @@ QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info
 }
 
 Status QOrderedAttention::PutIntoMergedWeight(const Tensor& tensor, AllocatorPtr alloc, int qkv_index) {
-  auto shape = tensor.Shape().GetDims();
-  ORT_ENFORCE(shape.size() == 2, "QKV weight must be 2d tensors!");
-  if (input_hidden_size_ == 0) {
-    input_hidden_size_ = shape[0];
-  } else {
-    ORT_ENFORCE(input_hidden_size_ == shape[0], "QKV weight's shape[0] should be same!");
-  }
-  ORT_ENFORCE(qkv_hidden_sizes_.size() == 3, "qkv_hidden_sizes is needed!");
-  ORT_ENFORCE(qkv_hidden_sizes_[qkv_index] == shape[1], "qkv hidden size not match on qkv_id:", qkv_index);
   ++qkv_weight_const_count_;
-  int64_t qkv_total_hidden_size = qkv_hidden_sizes_[0] + qkv_hidden_sizes_[1] + qkv_hidden_sizes_[2];
+  ORT_ENFORCE(tensor.Shape().NumDimensions() == 2, "QKV weight must be 2d tensors!");
+  input_hidden_size_ = (input_hidden_size_ == 0 ? tensor.Shape()[0] : input_hidden_size_);
+  ORT_ENFORCE(input_hidden_size_ == tensor.Shape()[0] && input_hidden_size_ > 0, "QKV weight's shape[0] should be same positive value!");
+  ORT_ENFORCE(qkv_hidden_sizes_[qkv_index] == tensor.Shape()[1], "qkv hidden size not match with qkv_hidden_sizes on qkv_id:", qkv_index);
   if (!merged_qkv_weight_) {
-    auto* merged_qkv_weight_data = alloc->Alloc(input_hidden_size_ * qkv_total_hidden_size * sizeof(float));
-    merged_qkv_weight_ = BufferUniquePtr(merged_qkv_weight_data, BufferDeleter(alloc));
+    merged_qkv_weight_ = BufferUniquePtr(alloc->Alloc(input_hidden_size_ * qkv_total_hidden_size_), BufferDeleter(alloc));
   }
-  auto column_offset = std::accumulate(&qkv_hidden_sizes_[0], &qkv_hidden_sizes_[qkv_index], 0LL);
-  int8_t* start = ((int8_t*)merged_qkv_weight_.get()) + column_offset * input_hidden_size_;
-  auto stream = Stream();
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(start, tensor.Data<int8_t>(), qkv_hidden_sizes_[qkv_index] * input_hidden_size_,
-                                       cudaMemcpyDeviceToDevice, stream));
+  auto offset = std::accumulate(&qkv_hidden_sizes_[0], &qkv_hidden_sizes_[qkv_index], 0LL);
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(((int8_t*)merged_qkv_weight_.get()) + (offset * input_hidden_size_),
+                                       tensor.Data<int8_t>(), qkv_hidden_sizes_[qkv_index] * input_hidden_size_,
+                                       cudaMemcpyDeviceToDevice, Stream()));
   return Status::OK();
 }
 
 Status QOrderedAttention::PutIntoMergedWeightScale(const Tensor& tensor, AllocatorPtr alloc, int qkv_index) {
-  ORT_ENFORCE(tensor.Shape().IsScalar() || tensor.Shape().NumDimensions() == 1, "qkv gemm scale must be scalar or 1d vector");
-  scale_qkv_weight_const_count_++;
-  ORT_ENFORCE(qkv_hidden_sizes_.size() == 3, "qkv_hidden_sizes is needed!");
-  ORT_ENFORCE(input_hidden_size_ > 0, "input_hidden_size_ can not be zero!");
-  int64_t qkv_total_hidden_size = qkv_hidden_sizes_[0] + qkv_hidden_sizes_[1] + qkv_hidden_sizes_[2];
-
+  ++scale_qkv_weight_const_count_;
+  ORT_ENFORCE(tensor.Shape().IsScalar() || (tensor.Shape().NumDimensions() == 1 && qkv_hidden_sizes_[qkv_index] == tensor.Shape()[0]),
+              "qkv gemm scale is not scalar or 1d vector, or not same dims as in qkv_hidden_sizes at qkv_index:", qkv_index);
   if (!merged_qkv_alpha_) {
-    auto* merged_alpha_data = alloc->Alloc(3 * qkv_total_hidden_size * sizeof(float));
-    merged_qkv_alpha_ = BufferUniquePtr(merged_alpha_data, BufferDeleter(alloc));
+    merged_qkv_alpha_ = BufferUniquePtr(alloc->Alloc(qkv_total_hidden_size_ * sizeof(float)), BufferDeleter(alloc));
   }
-  auto column_offset = std::accumulate(&qkv_hidden_sizes_[0], &qkv_hidden_sizes_[qkv_index], 0LL);
-  float* start = ((float*)merged_qkv_alpha_.get()) + column_offset;
-  int incr = (tensor.Shape().IsScalar() ? 0 : 1);
-  CUBLAS_RETURN_IF_ERROR(cublasScopy(CublasHandle(), gsl::narrow_cast<int>(qkv_hidden_sizes_[qkv_index]), tensor.Data<float>(), incr, start, 1));
-  ORT_ENFORCE(const_sacle_input_ > 0.0f && const_scale_qkv_layer_[qkv_index] > 0.0f, "input scale and repective qkv gemm scale must be constant!");
+  auto offset = std::accumulate(&qkv_hidden_sizes_[0], &qkv_hidden_sizes_[qkv_index], 0LL);
+  float* target = ((float*)merged_qkv_alpha_.get()) + offset;
+  int count = gsl::narrow_cast<int>(qkv_hidden_sizes_[qkv_index]);
+  CUBLAS_RETURN_IF_ERROR(cublasScopy(CublasHandle(), count, tensor.Data<float>(), tensor.Shape().IsScalar() ? 0 : 1, target, 1));
+  ORT_ENFORCE(const_sacle_input_ > 0.0f && const_scale_qkv_layer_[qkv_index] > 0.0f,
+              "input scale and respective qkv gemm scale must be positive constant!");
   float scale = const_sacle_input_ / const_scale_qkv_layer_[qkv_index];
-  CUBLAS_RETURN_IF_ERROR(cublasSscal(CublasHandle(), gsl::narrow_cast<int>(qkv_hidden_sizes_[qkv_index]), &scale, start, 1));
+  CUBLAS_RETURN_IF_ERROR(cublasSscal(CublasHandle(), count, &scale, target, 1));
   return Status::OK();
 }
 
 Status QOrderedAttention::PutIntoMergedBias(const Tensor& tensor, AllocatorPtr alloc, int qkv_index) {
+  ++qkv_bias_const_cout_;
   ORT_ENFORCE(tensor.Shape().NumDimensions() == 1, "bias must be 1d vector");
-  qkv_bias_const_cout_++;
-  ORT_ENFORCE(qkv_hidden_sizes_.size() == 3, "qkv_hidden_sizes is needed!");
-  ORT_ENFORCE(input_hidden_size_ > 0, "input_hidden_size_ can not be zero!");
-  ORT_ENFORCE(qkv_hidden_sizes_[qkv_index] == tensor.Shape().GetDims().back(), "qkv hidden size is not matching");
-  int64_t qkv_total_hidden_size = qkv_hidden_sizes_[0] + qkv_hidden_sizes_[1] + qkv_hidden_sizes_[2];
-
+  ORT_ENFORCE(qkv_hidden_sizes_[qkv_index] == tensor.Shape()[0], "qkv hidden size is not matching qkv_hidden_sizes at qkv_index:", qkv_index);
   if (!merged_qkv_bias_) {
-    auto* merged_bias_data = alloc->Alloc(qkv_total_hidden_size * sizeof(float));
-    merged_qkv_bias_ = BufferUniquePtr(merged_bias_data, BufferDeleter(alloc));
+    merged_qkv_bias_ = BufferUniquePtr(alloc->Alloc(qkv_total_hidden_size_ * sizeof(float)), BufferDeleter(alloc));
   }
-  auto column_offset = std::accumulate(&qkv_hidden_sizes_[0], &qkv_hidden_sizes_[qkv_index], 0LL);
-  float* start = ((float*)merged_qkv_bias_.get()) + column_offset;
-  CUBLAS_RETURN_IF_ERROR(cublasScopy(CublasHandle(), gsl::narrow_cast<int>(qkv_hidden_sizes_[qkv_index]), tensor.Data<float>(), 1, start, 1));
-  ORT_ENFORCE(const_scale_qkv_layer_[qkv_index] > 0.0f, "repective qkv gemm scale must be constant!");
+  auto offset = std::accumulate(&qkv_hidden_sizes_[0], &qkv_hidden_sizes_[qkv_index], 0LL);
+  float* target = ((float*)merged_qkv_bias_.get()) + offset;
+  int count = gsl::narrow_cast<int>(qkv_hidden_sizes_[qkv_index]);
+  CUBLAS_RETURN_IF_ERROR(cublasScopy(CublasHandle(), count, tensor.Data<float>(), 1, target, 1));
+  ORT_ENFORCE(const_scale_qkv_layer_[qkv_index] > 0.0f, "qkv gemm scale should be positive constant at qkv_index", qkv_index);
   float scale = 1.0f / const_scale_qkv_layer_[qkv_index];
-  CUBLAS_RETURN_IF_ERROR(cublasSscal(CublasHandle(), gsl::narrow_cast<int>(qkv_hidden_sizes_[qkv_index]), &scale, start, 1));
+  CUBLAS_RETURN_IF_ERROR(cublasSscal(CublasHandle(), count, &scale, target, 1));
   return Status::OK();
 }
 
@@ -141,27 +128,18 @@ Status QOrderedAttention::PrePack(const Tensor& tensor, int input_idx, /*out*/ A
 
   if (input_idx == InputIds::ScaleInput) {
     const_sacle_input_ = *tensor.Data<float>();
-  }
-  if (input_idx >= InputIds::Scale_Q_Gemm && input_idx < InputIds::Scale_Q_Gemm + 3) {
+  } else if (input_idx >= InputIds::Scale_Q_Gemm && input_idx < InputIds::Scale_Q_Gemm + 3) {
     const_scale_qkv_layer_[input_idx - InputIds::Scale_Q_Gemm] = *tensor.Data<float>();
-  }
-
-  if (input_idx >= InputIds::Q_Weight && input_idx < InputIds::Q_Weight + 3) {
+  } else if (input_idx >= InputIds::Q_Weight && input_idx < InputIds::Q_Weight + 3) {
     is_packed = true;
     ORT_RETURN_IF_ERROR(PutIntoMergedWeight(tensor, alloc, input_idx - InputIds::Q_Weight));
-  }
-
-  if (input_idx >= InputIds::Scale_Q_Weight && input_idx < InputIds::Scale_Q_Weight + 3) {
+  } else if (input_idx >= InputIds::Scale_Q_Weight && input_idx < InputIds::Scale_Q_Weight + 3) {
     is_packed = true;
     ORT_RETURN_IF_ERROR(PutIntoMergedWeightScale(tensor, alloc, input_idx - InputIds::Scale_Q_Weight));
-  }
-
-  if (input_idx >= InputIds::Q_Bias && input_idx < InputIds::Q_Bias + 3) {
+  } else if (input_idx >= InputIds::Q_Bias && input_idx < InputIds::Q_Bias + 3) {
     is_packed = true;
     ORT_RETURN_IF_ERROR(PutIntoMergedBias(tensor, alloc, input_idx - InputIds::Q_Bias));
-  }
-
-  if (input_idx == InputIds::Scale_QK_Gemm) {
+  } else if (input_idx == InputIds::Scale_QK_Gemm) {
     ORT_ENFORCE(qkv_hidden_sizes_.size() == 3, "Need it to calc head sizes!");
     float scale = *tensor.Data<float>();
     float base = std::exp(scale / sqrtf(qkv_hidden_sizes_[0] / num_heads_));
@@ -179,11 +157,13 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   ORT_ENFORCE(const_sacle_input_ > 0.0f, "input scale must be constant");
   ORT_ENFORCE(std::all_of(&const_scale_qkv_layer_[0], &const_scale_qkv_layer_[3], [](float v) -> bool { return v > 0.0f; }),
               "All qkv gemm output scale must be constant!");
+  ORT_ENFORCE(softmax_lookup_.get() != nullptr, "qk_gemm scale must be positive constant to make softmax prepared!");
+
   // inputs are column based
   const Tensor* input = context->Input<Tensor>(InputIds::Input);
-  TensorShapeVector merged_shape = {input_hidden_size_, qkv_hidden_sizes_[0] + qkv_hidden_sizes_[1] + qkv_hidden_sizes_[2]};
-  TensorShape merged_weights_shape(merged_shape);
-  TensorShape merged_bias_shape{qkv_hidden_sizes_[0] + qkv_hidden_sizes_[1] + qkv_hidden_sizes_[2]};
+  // TensorShapeVector{input_hidden_size_, qkv_total_hidden_size_}
+  TensorShape merged_weights_shape{input_hidden_size_, qkv_total_hidden_size_};
+  TensorShape merged_bias_shape{qkv_total_hidden_size_};
   const Tensor* mask_index = context->Input<Tensor>(InputIds::Mask_Index);
 
   auto& device_prop = GetDeviceProp();
@@ -232,7 +212,6 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
 
   int8_t* stacked_qkv_layers = gemm_buffer_quantized.get();
   int8_t* tranposed_qkv_layers = stacked_qkv_layers + ((int64_t)m * n);
-
   // BxSx3xNxH => 3xBxNxSxH, treat 4 consecutive int8 as float
   LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size / sizeof(float), num_heads_,
                  max_threads_per_block, false, (const float*)stacked_qkv_layers, (float*)tranposed_qkv_layers);
@@ -250,7 +229,6 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
                                       &q_mm_k_alpha, q_layer, k_layer, nullptr, attention_scores,
                                       (cublasLtOrder_t)order_weight_));
 
-  ORT_ENFORCE(softmax_lookup_.get() != nullptr, "qk_gemm scale must be constent");
   // the div sqrt(head_size) was processed when building the softmax lookup table
   QOrderMaskedSoftmax(stream, device_prop, attention_scores, (const float*)softmax_lookup_.get(),
                       mask_index->Data<int32_t>(), attention_probs, *scale_attn_probs_data,

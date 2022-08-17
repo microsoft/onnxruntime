@@ -25,18 +25,18 @@ class QOrderedAttention final : public CudaKernel, public AttentionBase {
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
  private:
-  int order_input_;
-  int order_weight_;
-  int order_bias_;
-  int order_output_;
-  int input_hidden_size_;
-  int qkv_weight_const_count_, scale_qkv_weight_const_count_, qkv_bias_const_cout_;
+  int64_t input_hidden_size_;
+  int64_t qkv_total_hidden_size_;
   BufferUniquePtr merged_qkv_weight_;
-  float const_sacle_input_;
-  float const_scale_qkv_layer_[3];
   BufferUniquePtr merged_qkv_alpha_;
   BufferUniquePtr merged_qkv_bias_;
   BufferUniquePtr softmax_lookup_;
+  int order_input_;
+  int order_weight_;
+  int order_output_;
+  float const_sacle_input_;
+  float const_scale_qkv_layer_[3];
+  int qkv_weight_const_count_, scale_qkv_weight_const_count_, qkv_bias_const_cout_;
 
  private:
   Status PutIntoMergedWeight(const Tensor& tensor, AllocatorPtr alloc, int qkv_index);
