@@ -350,9 +350,7 @@ def compute_signal_to_quantization_noice_ratio(
 
 def compute_weight_error(
     weights_match: Dict[str, Dict[str, numpy.ndarray]],
-    err_func: Callable[
-        [Union[Sequence[numpy.ndarray], numpy.ndarray], Union[Sequence[numpy.ndarray], numpy.ndarray]], float
-    ] = compute_signal_to_quantization_noice_ratio,
+    err_func: Callable[[numpy.ndarray, numpy.ndarray], float] = compute_signal_to_quantization_noice_ratio,
 ) -> Dict[str, float]:
     result: Dict[str, float] = {}
     for weight_name, weight_match in weights_match.items():
@@ -363,7 +361,7 @@ def compute_weight_error(
 def compute_activation_error(
     activations_match: Dict[str, Dict[str, Sequence[numpy.ndarray]]],
     err_func: Callable[
-        [Union[Sequence[numpy.ndarray], numpy.ndarray], Union[Sequence[numpy.ndarray], numpy.ndarray]], float
+        [Sequence[numpy.ndarray], Sequence[numpy.ndarray]], float
     ] = compute_signal_to_quantization_noice_ratio,
 ) -> Dict[str, Dict[str, float]]:
     result: Dict[str, Dict[str, float]] = {}
