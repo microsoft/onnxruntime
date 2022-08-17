@@ -145,8 +145,8 @@ void VocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
 }
 
 template <typename T>
-PrefixVocabMaskLogitsProcessor<T>::PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& prefix_vocab_mask, const gsl::span<const bool>& prefix_uppercase, int batch_size)
-    : prefix_vocab_mask_(prefix_vocab_mask), prefix_uppercase_(prefix_uppercase), batch_size_(batch_size) {
+PrefixVocabMaskLogitsProcessor<T>::PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& prefix_vocab_mask, const gsl::span<const bool>& prefix_uppercase, int batch_size, int max_iteration_for_prefix_vocab_mask)
+    : max_iteration_for_prefix_vocab_mask(max_iteration_for_prefix_vocab_mask), prefix_vocab_mask_(prefix_vocab_mask), prefix_uppercase_(prefix_uppercase), batch_size_(batch_size), step_(0) {
     // TODO dw do this per model
     deep_write_spl_tokens_ = 5;
 }
@@ -161,17 +161,20 @@ void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
   assert(num_beams * batch_size_ == next_token_scores.batch_beam_size);
 
   // Process prefix vocabulary mask and set tokens with mask value 0 to -inf.
-  // prefix_vocab_mask shape (batch_szie, vocab_size).
+  // prefix_vocab_mask shape (max_iteration, batch_size, vocab_size).
+  size_t step_offset = SafeInt<size_t>(step_) * batch_size_ * next_token_scores.vocab_size;
+  step_++; // increment step
+
   T* p = next_token_scores.scores.data();
   for (int i = 0; i < batch_size_; i++) {
-    size_t prefix_vocab_mask_offset = SafeInt<size_t>(i) * next_token_scores.vocab_size;
+    size_t prefix_vocab_mask_offset = SafeInt<size_t>(i) * next_token_scores.vocab_size + step_offset;
     for (int j = 0; j < num_beams; j++) {
       T max_value = std::numeric_limits<T>::lowest();
       T* p1 = nullptr;
       int max_index = -1;
       for (int k = 0; k < next_token_scores.vocab_size; k++, p++) {
         if (prefix_vocab_mask_[prefix_vocab_mask_offset + static_cast<size_t>(k)] == 0) {
-          if (!prefix_uppercase_.empty() && prefix_uppercase_[i] && *p > max_value) {
+          if (!step_ && !prefix_uppercase_.empty() && prefix_uppercase_[i] && *p > max_value) {
             max_value = *p;
             p1 = p;
             max_index = k;
@@ -180,8 +183,8 @@ void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
         }
       }
 
-      if (!prefix_uppercase_.empty() && prefix_uppercase_[i] && max_index >= next_token_scores.vocab_size - 1 - deep_write_spl_tokens_) {
-        *p1 = max_value; 
+      if (!step_ && !prefix_uppercase_.empty() && prefix_uppercase_[i] && max_index >= next_token_scores.vocab_size - 1 - deep_write_spl_tokens_) {
+        *p1 = max_value;
       }
     }
   }
@@ -210,7 +213,7 @@ void LogitsProcessorList::Init(const BeamSearchParameters& parameters) {
   }
 
   if (!parameters.prefix_vocab_mask.empty()) {
-    prefix_vocab_mask_processor_ = std::make_unique<PrefixVocabMaskLogitsProcessor<float>>(parameters.prefix_vocab_mask, parameters.prefix_uppercase, parameters.batch_size);
+    prefix_vocab_mask_processor_ = std::make_unique<PrefixVocabMaskLogitsProcessor<float>>(parameters.prefix_vocab_mask, parameters.prefix_uppercase, parameters.batch_size, parameters.max_iteration_for_prefix_vocab_mask);
     processor_list_.push_back(prefix_vocab_mask_processor_.get());
   }
 
@@ -228,8 +231,8 @@ void LogitsProcessorList::Process(const ISequences* sequences,
                                   int step) {
   NextTokenScores<float> input_scores = {next_token_scores, batch_beam_size_, vocab_size_};
   for (size_t i = 0; i < processor_list_.size(); i++) {
-    // Prefix vocab mask is applied to first iteration only.
-    if (step > 1 && processor_list_[i] == prefix_vocab_mask_processor_.get()) {
+    // Prefix vocab mask is applied until max_iteration_for_prefix_vocab_mask is reached.
+    if (processor_list_[i] == prefix_vocab_mask_processor_.get() && step > prefix_vocab_mask_processor_->max_iteration_for_prefix_vocab_mask) {
       continue;
     }
     processor_list_[i]->Process(sequences, input_scores);

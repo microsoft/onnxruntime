@@ -935,7 +935,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                        "T", OpSchema::Optional)
                                 .Input(7, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
                                 .Input(8, "vocab_mask", "Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)", "M", OpSchema::Optional)
-                                .Input(9, "prefix_vocab_mask", "Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)", "M", OpSchema::Optional)
+                                .Input(9, "prefix_vocab_mask", "Mask of vocabulary for first few steps until max_iteration. Words that are masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (max_iteration, batch_size, vocab_size)", "M", OpSchema::Optional)
                                 .Input(10, "vocab_ids_len", "Tokenizer's vocab ids to len tensor. Shape is (vocab_size)", "M", OpSchema::Optional)
                                 .Input(11, "prefix_lens", "Prefix lengths. Shape is (batch_size)", "M", OpSchema::Optional)
                                 .Input(12, "ecs_min_chars", "minimum number of characters needed for expected character savings. Shape is (1)", "I", OpSchema::Optional)

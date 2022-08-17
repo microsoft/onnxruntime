@@ -362,22 +362,24 @@ Status BeamSearchImpl<T>::CheckInputs(const OpKernelContextInternal& context) {
   if (prefix_vocab_mask != nullptr) {
     // prefix_vocab_mask is optional
     const auto& vocab_mask_dims = prefix_vocab_mask->Shape().GetDims();
-    if (vocab_mask_dims.size() != 2) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'prefix_vocab_mask' is expected to have 2 dimensions, got ",
+    if (vocab_mask_dims.size() != 3) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'prefix_vocab_mask' is expected to have 3 dimensions, got ",
                              vocab_mask_dims.size());
     }
 
-    // prefix_vocab_mask first dimension should be same as the first dimension of input_ids
-    if (static_cast<int>(vocab_mask_dims[0]) != static_cast<int>(dims[0])) {
+    // prefix_vocab_mask second dimension should be same as the first dimension of input_ids
+    if (static_cast<int>(vocab_mask_dims[1]) != static_cast<int>(dims[0])) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "input_ids and prefix_vocab_mask must have the same batch_size");
     }
 
     // There is dependency on vocab_size parameter, which shall be set before calling this function.
-    if (static_cast<int>(vocab_mask_dims[1]) != parameters_->vocab_size) {
+    if (static_cast<int>(vocab_mask_dims[2]) != parameters_->vocab_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'prefix_vocab_mask' shape does not match with vocab_size, got ",
                              vocab_mask_dims[0]);
     }
 
+    // store max # iterations for prefix vocab mask in parameters
+    parameters_->max_iteration_for_prefix_vocab_mask = static_cast<int>(vocab_mask_dims[0]);
     // store prefix vocab mask in parameters.
     parameters_->prefix_vocab_mask = prefix_vocab_mask->DataAsSpan<int32_t>();
   }

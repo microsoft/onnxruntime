@@ -169,7 +169,7 @@ def parse_arguments(argv=None):
         '--prefix_vocab_mask',
         required=False,
         action='store_true',
-        help="This vocab mask applies only to first iteration, enable if last word in query might need auto complete")
+        help="This vocab mask applies only to the first few steps until max_iteration, enable if last word in query might need auto complete")
     beam_search_group.set_defaults(prefix_vocab_mask=False)
 
     args = parser.parse_args(argv)
@@ -388,7 +388,7 @@ def convert_model(args):
 
     if args.prefix_vocab_mask:
         prefix_vocab_mask = helper.make_tensor_value_info('prefix_vocab_mask', TensorProto.INT32,
-                                                          ['batch_size', vocab_size])
+                                                          ['max_iteration', 'batch_size', vocab_size])
         graph_inputs.append(prefix_vocab_mask)
 
     if args.enable_ecs:

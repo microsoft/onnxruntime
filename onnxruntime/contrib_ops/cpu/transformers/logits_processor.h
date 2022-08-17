@@ -82,7 +82,9 @@ class VocabMaskLogitsProcessor : public ILogitsProcessor<T> {
 template <typename T>
 class PrefixVocabMaskLogitsProcessor : public ILogitsProcessor<T> {
  public:
-  PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& vocab_mask, const gsl::span<const bool>& prefix_uppercase, int batch_size);
+  const int max_iteration_for_prefix_vocab_mask;
+
+  PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& vocab_mask, const gsl::span<const bool>& prefix_uppercase, int batch_size, int max_iteration_for_prefix_vocab_mask);
 
   void Process(const ISequences* sequences,
                NextTokenScores<T>& next_token_scores) override;
@@ -92,6 +94,7 @@ class PrefixVocabMaskLogitsProcessor : public ILogitsProcessor<T> {
   gsl::span<const bool> prefix_uppercase_;
 
   const int batch_size_;
+  int step_;
   int deep_write_spl_tokens_;
 };
 

@@ -388,7 +388,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>vocab_mask</tt> (optional) : M</dt>
 <dd>Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)</dd>
 <dt><tt>prefix_vocab_mask</tt> (optional) : M</dt>
-<dd>Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)</dd>
+<dd>Mask of vocabulary for first few steps until max_iteration. Words that are masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (max_iteration, batch_size, vocab_size)</dd>
 <dt><tt>vocab_ids_len</tt> (optional) : M</dt>
 <dd>Tokenizer's vocab ids to len tensor. Shape is (vocab_size)</dd>
 <dt><tt>prefix_lens</tt> (optional) : M</dt>

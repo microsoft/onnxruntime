@@ -96,6 +96,7 @@ struct IBeamSearchParameters {
   float repetition_penalty;
   int batch_size;       // deduce from first dimension of input_ids
   int sequence_length;  // deduce from second dimension of input_ids
+  int max_iteration_for_prefix_vocab_mask; // deduce from first dimension of prefix_vocab_mask
 
   //expected character savings parameters
   int ecs_min_chars;

@@ -218,12 +218,12 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   //    next_token_logits = logits[:, -1, :], and the result shape is (batch_size * num_beams, vocab_size)
   // When input_length == 1, use logits directly in SoftmaxCPU below so it only need for input_length > 1.
   gsl::span<T>& next_token_logits = beam_state->next_token_logits;
-  if (input_length > 1) {
+  if (step <= parameters->max_iteration_for_prefix_vocab_mask) {
     const T* current_logits = logits_data + (input_length - 1) * vocab_size;
     for (int i = 0; i < batch_beam_size; i++) {
       gsl::span<const T> source(current_logits, vocab_size);
       gsl::span<T> target = next_token_logits.subspan(SafeInt<gsl::index>(i) * vocab_size, static_cast<gsl::index>(vocab_size));
-      gsl::copy(source, target);
+      gsl::copy(source, target); // TODO: This copy might not be required for step > 1
       current_logits += input_length * vocab_size;
     }
   }
@@ -244,7 +244,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   gsl::span<T>& next_token_scores = beam_state->next_token_scores;
   ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(batch_beam_size,  // rows
                                     vocab_size,       // elements per row
-                                    input_length > 1 ? next_token_logits.data() : logits_data,
+                                    step <= parameters->max_iteration_for_prefix_vocab_mask ? next_token_logits.data() : logits_data,
                                     next_token_scores.data(),
                                     true,
                                     thread_pool));
