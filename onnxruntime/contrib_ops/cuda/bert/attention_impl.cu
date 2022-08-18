@@ -25,9 +25,9 @@ limitations under the License.
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
-#include "attention_impl.h"
-#include "attention_softmax.h"
-#include "transformer_common.h"
+#include "contrib_ops/cuda/bert/attention_impl.h"
+#include "contrib_ops/cuda/bert/attention_softmax.h"
+#include "contrib_ops/cuda/bert/transformer_common.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -45,9 +45,13 @@ static size_t AlignTo(size_t a, size_t b) {
   return CeilDiv(a, b) * b;
 }
 
-size_t GetAttentionScratchSize(size_t element_size, int batch_size, int num_heads, int sequence_length, int all_sequence_length) {
-  const size_t len = batch_size * num_heads * sequence_length * all_sequence_length;
-  const size_t bytes = len * element_size;
+size_t GetAttentionScratchSize(
+  size_t element_size,
+  size_t batch_size,
+  size_t num_heads,
+  size_t sequence_length,
+  size_t all_sequence_length) {
+  const size_t bytes = element_size * batch_size * num_heads * sequence_length * all_sequence_length;
 
   const size_t alignment = 256;
   const size_t bytesAligned = AlignTo(bytes, alignment);
@@ -56,12 +60,12 @@ size_t GetAttentionScratchSize(size_t element_size, int batch_size, int num_head
 
 size_t GetAttentionWorkspaceSize(
     size_t element_size,
-    int batch_size,
-    int num_heads,
-    int head_size,
-    int sequence_length,
-    int past_sequence_length) {
-  size_t qkv_size = 3 * batch_size * sequence_length * num_heads * head_size * element_size;
+    size_t batch_size,
+    size_t num_heads,
+    size_t head_size,
+    size_t sequence_length,
+    size_t past_sequence_length) {
+  size_t qkv_size = element_size * 3 * batch_size * sequence_length * num_heads * head_size;
   return qkv_size + 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, past_sequence_length + sequence_length);
 }
 

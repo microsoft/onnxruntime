@@ -15,7 +15,11 @@ __version__ = "0.1.0"
 onnx_domain = "ai.onnx"
 ms_domain = "com.microsoft"
 QUANT_OP_NAME = "QuantizeLinear"
+QUANT_INPUT_SUFFIX = "_QuantizeLinear_Input"
 DEQUANT_OP_NAME = "DequantizeLinear"
+DEQUANT_OUTPUT_SUFFIX = "_DequantizeLinear_Output"
+TENSOR_NAME_QUANT_SUFFIX = "_quantized"
+
 
 type_to_name = {
     1: "FLOAT",
@@ -573,7 +577,7 @@ def add_quant_suffix(tensor_name):
 
 
 def add_quant_input_suffix(tensor_name):
-    return tensor_name + "_QuantizeLinear_Input"
+    return tensor_name + QUANT_INPUT_SUFFIX
 
 
 def add_quant_output_suffix(tensor_name):
@@ -589,4 +593,4 @@ def add_dequant_input_suffix(tensor_name):
 
 
 def add_dequant_output_suffix(tensor_name):
-    return tensor_name + "_DequantizeLinear_Output"
+    return tensor_name + DEQUANT_OUTPUT_SUFFIX

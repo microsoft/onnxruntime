@@ -489,6 +489,23 @@ class OrtOpTests(unittest.TestCase):
         assert torch.equal(cpu_result1, ort_result1.cpu())
         assert torch.equal(cpu_result2, ort_result2.cpu())
 
+    def test_add_broadcasting(self):
+        device = self.get_device()
+        cpu_first = torch.rand(1, 1, 3, 4, 5)
+        ort_first = cpu_first.to(device)
+        cpu_last = torch.rand(1, 2, 3, 1, 1)
+        ort_last = cpu_last.to(device)
+        cpu_single = torch.rand(5)
+        ort_single = cpu_single.to(device)
+
+        cpu_result1 = cpu_first + cpu_last  # dims = (1,2,3,4,5) is final
+        ort_result1 = ort_first + ort_last
+        assert torch.equal(cpu_result1, ort_result1.cpu())
+
+        cpu_result2 = cpu_result1 + cpu_single
+        ort_result2 = ort_result1 + ort_single
+        assert torch.equal(cpu_result2, ort_result2.cpu())
+
     ################################ parameterized test follow #######################################
     # OPS - is a list of [test_operator, tested_tensor=torch.rand (6)].
     # The default value for tested_tensor is torch.rand (6)- size of 6 uniform distribution on the interval [0, 1).
@@ -670,7 +687,7 @@ class OrtOpTests(unittest.TestCase):
     @parameterized.expand(binary_ops, name_func=rename_func)
     def test_op_binary_tensor(self, binary_op, op_sign, alpha_supported):
         device = self.get_device()
-        cpu_input = torch.rand(3, 3)
+        cpu_input = torch.rand(3, 1)  # use broadcasting in the second dim.
         ort_input = cpu_input.to(device)
         cpu_other = torch.rand(3, 3)
         ort_other = cpu_other.to(device)

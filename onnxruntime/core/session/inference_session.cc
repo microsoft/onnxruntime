@@ -961,9 +961,11 @@ Status InferenceSession::LoadOrtModel(const PathString& model_uri) {
 
 Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len) {
   return LoadOrtModelWithLoader([&]() {
+    const auto& config_options = GetSessionOptions().config_options;
     const auto use_ort_model_bytes_directly =
-        GetSessionOptions().config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "0");
-    if (use_ort_model_bytes_directly != "1") {
+        config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "0") == "1";
+
+    if (!use_ort_model_bytes_directly) {
       // copy bytes as we need them to be available when InferenceSession::Initialize is called later.
       ort_format_model_bytes_data_holder_.resize(model_data_len);
       std::copy_n(reinterpret_cast<const uint8_t*>(model_data), model_data_len,
@@ -1014,15 +1016,25 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   const auto* fbs_model = fbs_session->model();
   ORT_RETURN_IF(nullptr == fbs_model, "Missing Model. Invalid ORT format model.");
 
+  // if we're using the bytes directly because kOrtSessionOptionsConfigUseORTModelBytesDirectly was set and the user
+  // provided an existing buffer of bytes when creating the InferenceSession, ort_format_model_bytes_data_holder_
+  // will be empty.
+  // if that is the case we also allow creating initializers that directly use those bytes.
+  const auto& config_options = session_options_.config_options;
+  using_ort_model_bytes_for_initializers_ =
+      ort_format_model_bytes_data_holder_.empty() &&
+      config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseORTModelBytesForInitializers, "0") == "1";
+
   // need to go from unique_ptr to shared_ptr when moving into model_
   std::unique_ptr<Model> tmp_model;
 #if !defined(ORT_MINIMAL_BUILD)
   ORT_RETURN_IF_ERROR(Model::LoadFromOrtFormat(*fbs_model,
                                                HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+                                               using_ort_model_bytes_for_initializers_,
                                                *session_logger_, tmp_model));
-
 #else
-  ORT_RETURN_IF_ERROR(Model::LoadFromOrtFormat(*fbs_model, *session_logger_, tmp_model));
+  ORT_RETURN_IF_ERROR(Model::LoadFromOrtFormat(*fbs_model, using_ort_model_bytes_for_initializers_, *session_logger_,
+                                               tmp_model));
 #endif
 
   ORT_RETURN_IF_ERROR(SaveModelMetadata(*tmp_model));
@@ -1253,9 +1265,9 @@ common::Status InferenceSession::Initialize() {
     //
     // NOTE: UpdateProvidersWithSharedAllocators is replace-only and will not insert a new allocator into the EP, so
     // it must be called after RegisterAllocator.
-    std::string use_env_allocators = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators,
-                                                                                        "0");
-    if (use_env_allocators == "1") {
+    bool use_env_allocators =
+        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1";
+    if (use_env_allocators) {
       LOGS(*session_logger_, INFO) << "This session will use the allocator registered with the environment.";
       UpdateProvidersWithSharedAllocators();
     }
@@ -1435,10 +1447,10 @@ common::Status InferenceSession::Initialize() {
 
     is_inited_ = true;
 
-    // we don't directly use the ORT format bytes currently, so free those now
-    // TODO, we may need to keep the bytes if we are using the offset directly in the initializers
-    ort_format_model_bytes_ = gsl::span<const uint8_t>();
-    std::vector<uint8_t>().swap(ort_format_model_bytes_data_holder_);
+    if (!using_ort_model_bytes_for_initializers_) {
+      ort_format_model_bytes_ = gsl::span<const uint8_t>();
+      std::vector<uint8_t>().swap(ort_format_model_bytes_data_holder_);
+    }
 
     // and log telemetry
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
