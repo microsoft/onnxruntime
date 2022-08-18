@@ -109,8 +109,11 @@ class TestOrtLazyTensor(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    # The first run of Pytorch JIT is actual eager mode,
-    # so, as a JIT sub-executor, ORT won't be unless we run
-    # multiple times. Thus, in each test function, we repeat
-    # their core test function multiple times.
+    # For a specific model, the first 1 or 2 runs of Pytorch
+    # JIT is actual eager mode. As a Pytorch JIT sub-executor,
+    # ORT won't be unless we run multiple times. Thus, in each
+    # test function, we repeat their core test function multiple times.
+    # Here we repeat 5 times because we want to our test similar to
+    # training loop.
+    # TODO: we should force torch.jit executor to use ORT at the first run.
     unittest.main()
