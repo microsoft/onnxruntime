@@ -139,6 +139,7 @@ def quantize_static(
         )
         calibrator.collect_data(calibration_data_reader)
         tensors_range = calibrator.compute_range()
+        del calibrator
 
     check_static_quant_arguments(quant_format, activation_type, weight_type)
 

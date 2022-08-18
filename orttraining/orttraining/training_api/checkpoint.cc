@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/path.h"
@@ -46,14 +47,14 @@ Status CreateTensorProtosFromOrtValues(
     const DataTransferManager& data_transfer_manager,
     std::vector<ONNX_NAMESPACE::TensorProto>& saved_tensor_protos) {
   // Order the tensors by name.
-  std::vector<std::string> ordered_tensor_names{};
+  InlinedVector<std::string> ordered_tensor_names{};
   ordered_tensor_names.reserve(name_to_ort_value.size());
   std::transform(name_to_ort_value.begin(), name_to_ort_value.end(), std::back_inserter(ordered_tensor_names),
                  [](const NameMLValMap::value_type& v) { return v.first; });
   std::sort(ordered_tensor_names.begin(), ordered_tensor_names.end());
 
   // Copy the tensor data and create TensorProto storing the data.
-  std::vector<char> tensor_data_buffer{};
+  InlinedVector<char> tensor_data_buffer{};
   static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
 
   saved_tensor_protos.reserve(ordered_tensor_names.size());
@@ -182,11 +183,11 @@ Status OrtSaveInternal(
     const std::vector<ONNX_NAMESPACE::TensorProto>& non_trainable_tensor_protos,
     const PathString& checkpoint_path) {
   // Make sure name unique across trainable and non-trainable lists.
-  std::unordered_set<std::string> trainable_unique_names;
-  std::unordered_set<std::string> non_trainable_unique_names;
-  std::vector<std::string> inter_sec;
+  std::set<std::string> trainable_unique_names;
+  std::set<std::string> non_trainable_unique_names;
+  InlinedVector<std::string> inter_sec;
   auto check_unique = [](const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
-                         std::unordered_set<std::string>& unique_names) {
+                         std::set<std::string>& unique_names) {
     for (auto& tensor_proto : tensor_protos) {
       ORT_ENFORCE(unique_names.find(tensor_proto.name()) == unique_names.end(),
                   "Duplicated tensor proto named ", tensor_proto.name());
@@ -231,7 +232,7 @@ Status OrtSaveModuleStatesInternal(ModuleCheckpointState& module_state,
     ORT_ENFORCE(module_state.train_session_data_transfer_mgr,
                 "module checkpoint state has null train_session_data_transfer_mgr.");
 
-    std::unordered_map<PathString, std::unordered_map<std::string, OrtValue>>
+    InlinedHashMap<PathString, std::unordered_map<std::string, OrtValue>>
         parameter_ort_values;
     for (auto it = param_states.begin(); it != param_states.end(); ++it) {
       if (it->second->RequiresGrad()) {
@@ -277,7 +278,7 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
 
     // Re-organize optimizer_state_ort_values mapping
     // Firstly indexed by momentum names; Secondly indexed by parameter names.
-    std::unordered_map<std::string, std::unordered_map<std::string, OrtValue>> optimizer_state_ort_values;
+    InlinedHashMap<std::string, std::unordered_map<std::string, OrtValue>> optimizer_state_ort_values;
     for (const std::pair<std::string, ParameterOptimizerState>&
              param_named_optimizer_state : group_optimizer_state_ptr->param_named_optimizer_states) {
       const std::string& param_name = param_named_optimizer_state.first;
@@ -319,8 +320,8 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
 
     // Storing group-wise properties.
     PropertyBag properties;
-    properties.AddProperty<float>(builtin_lr_property_name, group_optimizer_state_ptr->initial_lr);
-    properties.AddProperty<int64_t>(builtin_step_property_name, group_optimizer_state_ptr->step);
+    properties.AddProperty(builtin_lr_property_name, group_optimizer_state_ptr->initial_lr);
+    properties.AddProperty(builtin_step_property_name, group_optimizer_state_ptr->step);
     std::vector<ONNX_NAMESPACE::TensorProto> group_wise_properties_tensor_protos;
     properties.ToTensorProtos(group_wise_properties_tensor_protos);
 
@@ -363,7 +364,7 @@ Status OrtSaveInternal(
 Status OrtLoadModuleStatesInternal(
     const PathString& parameter_folder_path, ModuleCheckpointState& module_state) {
   // Find parameter files.
-  std::vector<std::pair<PathString, bool>> param_filenames;
+  InlinedVector<std::pair<PathString, bool>> param_filenames;
   FilterFilesFromDirectory(
       parameter_folder_path,
       [&param_filenames](const PathChar* filename) -> bool {
