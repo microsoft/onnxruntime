@@ -39,7 +39,7 @@ Status AddNnapiReshape(ModelBuilder& model_builder,
 Status AddNnapiSplit(ModelBuilder& model_builder,
                      const std::string& input,
                      int32_t axis,
-                     const gsl::span<const std::string> outputs);
+                     const std::vector<std::string>& outputs);
 
 // checks whether batch MatMul in the given NodeUnit is supported by NNAPI EP
 bool IsSupportedBatchMatMul(const NodeUnit& node_unit, int32_t nnapi_feature_level);
