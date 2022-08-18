@@ -280,7 +280,6 @@ inline std::string ToWideString(const std::string& s) { return s; }
 
 constexpr size_t kMaxStrLen = 2048;
 
-namespace container_utils {
 // Returns whether `key` is in `container`.
 // Like C++20's map/set contains() member function.
 template <typename Key, typename... OtherContainerArgs,
@@ -289,10 +288,5 @@ template <typename Key, typename... OtherContainerArgs,
 inline bool Contains(const AssociativeContainer<Key, OtherContainerArgs...>& container, LookupKey&& key) {
   return container.find(std::forward<LookupKey>(key)) != container.end();
 }
-}  // namespace container_utils
-
-// Note: Contains() is now in the container_utils namespace but it wasn't before and there is existing usage from the
-// onnxruntime namespace.
-using container_utils::Contains;
 
 }  // namespace onnxruntime
