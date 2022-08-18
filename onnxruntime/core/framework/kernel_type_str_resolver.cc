@@ -18,7 +18,10 @@ Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string
   ORT_RETURN_IF(op_it == op_kernel_type_str_map_.end(), "Failed to find op_id: ", op_id);
   const auto& type_str_map = op_it->second;
   const auto type_str_it = type_str_map.find(kernel_type_str);
-  ORT_RETURN_IF(type_str_it == type_str_map.end(), "Failed to find args for kernel type string: ", kernel_type_str);
+  ORT_RETURN_IF(type_str_it == type_str_map.end(),
+                "Failed to find args for kernel type string '", kernel_type_str,
+                "'. If type constraint names are available, ensure that they are used in the kernel def type "
+                "constraints instead of op input or output names. Not doing so will result in this error.");
   resolved_args = type_str_it->second;
   return Status::OK();
 }
@@ -72,9 +75,9 @@ Status KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& o
         };
 
         ORT_RETURN_IF_NOT(formal_param_type_str(curr_arg_type_and_idx) == formal_param_type_str(args_for_io_name.front()),
-                    "Kernel type string already exists for formal parameter name '", formal_param.GetName(),
-                    "', but the existing argument with that formal parameter name has a different formal parameter "
-                    "type string.");
+                          "Kernel type string already exists for formal parameter name '", formal_param.GetName(),
+                          "', but the existing argument with that formal parameter name has a different formal parameter "
+                          "type string.");
       }
       args_for_io_name.push_back(std::move(curr_arg_type_and_idx));
     }
