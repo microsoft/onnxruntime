@@ -2249,7 +2249,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
 ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 #ifdef ENABLE_TRAINING_ON_DEVICE
   return OrtTrainingApis::GetTrainingApi(version);
-#endif
+#else
 
   ORT_UNUSED_PARAMETER(version);
   fprintf(stderr,

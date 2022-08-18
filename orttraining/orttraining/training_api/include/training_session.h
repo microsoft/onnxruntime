@@ -57,6 +57,8 @@ class TrainingSession {
 
   Status SetLearningRate(float learning_rate) noexcept;
 
+  float GetLearningRate();
+
   Status SchedulerStep() noexcept;
 
   Status CreateCheckpointState(CheckpointState& chkpt_state, bool save_optimizer_state) const;

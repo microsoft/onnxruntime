@@ -20,7 +20,11 @@ namespace Microsoft.ML.OnnxRuntime
             public IntPtr ResetGrad;
             public IntPtr TrainStep;
             public IntPtr EvalStep;
+            public IntPtr SetLearningRate;
+            public IntPtr GetLearningRate;
             public IntPtr OptimizerStep;
+            public IntPtr RegisterLinearLRScheduler;
+            public IntPtr SchedulerStep;
             public IntPtr ReleaseTrainingSession;
             public IntPtr ReleaseCheckpointState;
         }
@@ -44,7 +48,7 @@ namespace Microsoft.ML.OnnxRuntime
 
                 // TODO: Make this save the pointer, and not copy the whole structure across
                 api_ = (OrtApi)OrtGetApi(4 /*ORT_API_VERSION*/);
- 
+
                 OrtGetTrainingApi = (DOrtGetTrainingApi)Marshal.GetDelegateForFunctionPointer(api_.GetTrainingApi, typeof(DOrtGetTrainingApi));
                 trainingApiPtr = OrtGetTrainingApi(4 /*ORT_API_VERSION*/);
                 if (trainingApiPtr != IntPtr.Zero)
@@ -60,7 +64,11 @@ namespace Microsoft.ML.OnnxRuntime
                     OrtResetGrad = (DOrtResetGrad)Marshal.GetDelegateForFunctionPointer(trainingApi_.ResetGrad, typeof(DOrtResetGrad));
                     OrtTrainStep = (DOrtTrainStep)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainStep, typeof(DOrtTrainStep));
                     OrtEvalStep = (DOrtEvalStep)Marshal.GetDelegateForFunctionPointer(trainingApi_.EvalStep, typeof(DOrtEvalStep));
+                    OrtSetLearningRate = (DOrtSetLearningRate)Marshal.GetDelegateForFunctionPointer(trainingApi_.SetLearningRate, typeof(DOrtSetLearningRate));
+                    OrtGetLearningRate = (DOrtGetLearningRate)Marshal.GetDelegateForFunctionPointer(trainingApi_.GetLearningRate, typeof(DOrtGetLearningRate));
                     OrtOptimizerStep = (DOrtOptimizerStep)Marshal.GetDelegateForFunctionPointer(trainingApi_.OptimizerStep, typeof(DOrtOptimizerStep));
+                    OrtRegisterLinearLRScheduler = (DOrtRegisterLinearLRScheduler)Marshal.GetDelegateForFunctionPointer(trainingApi_.RegisterLinearLRScheduler, typeof(DOrtRegisterLinearLRScheduler));
+                    OrtSchedulerStep = (DOrtSchedulerStep)Marshal.GetDelegateForFunctionPointer(trainingApi_.SchedulerStep, typeof(DOrtSchedulerStep));
                     OrtReleaseTrainingSession = (DOrtReleaseTrainingSession)Marshal.GetDelegateForFunctionPointer(trainingApi_.ReleaseTrainingSession, typeof(DOrtReleaseTrainingSession));
                     OrtReleaseCheckpointState = (DOrtReleaseCheckpointState)Marshal.GetDelegateForFunctionPointer(trainingApi_.ReleaseCheckpointState, typeof(DOrtReleaseCheckpointState));
                 }
@@ -186,6 +194,37 @@ namespace Microsoft.ML.OnnxRuntime
                                                     );
 
             public static DOrtOptimizerStep OrtOptimizerStep;
+
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate IntPtr /*(ONNStatus*)*/ DOrtSetLearningRate(
+                                                    IntPtr /*(OrtTrainingSession*)*/ session,
+                                                    float learningRate
+                                                    );
+
+            public static DOrtSetLearningRate OrtSetLearningRate;
+
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate IntPtr /*(ONNStatus*)*/ DOrtGetLearningRate(
+                                                    IntPtr /*(OrtTrainingSession*)*/ session,
+                                                    ref float learningRate
+                                                    );
+
+            public static DOrtGetLearningRate OrtGetLearningRate;
+
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate IntPtr /*(ONNStatus*)*/ DOrtRegisterLinearLRScheduler(
+                                                    IntPtr /*(OrtTrainingSession*)*/ session,
+                                                    long warmupStepCount,
+                                                    long totalStepCount,
+                                                    float learningRate
+                                                    );
+            public static DOrtRegisterLinearLRScheduler OrtRegisterLinearLRScheduler;
+
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate IntPtr /*(ONNStatus*)*/ DOrtSchedulerStep(
+                                                    IntPtr /*(OrtTrainingSession*)*/ session
+                                                    );
+            public static DOrtSchedulerStep OrtSchedulerStep;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate void DOrtReleaseTrainingSession(IntPtr /*(OrtSession*)*/session);

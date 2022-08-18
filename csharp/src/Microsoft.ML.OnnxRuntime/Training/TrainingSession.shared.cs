@@ -7,6 +7,12 @@ using System.Linq;
 
 namespace Microsoft.ML.OnnxRuntime
 {
+    enum LRScheduler
+    {
+        None = 0,
+        Constant = 1,
+        Linear = 2
+    }
     /// <summary>
     /// Represents a Training Session on an ONNX Model.
     /// This is a IDisposable class and it must be disposed of
@@ -29,6 +35,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         private SessionOptions _builtInSessionOptions = null;
         private RunOptions _builtInRunOptions = null;
+        private LRScheduler _scheduler = LRScheduler.None;
         private bool _disposed = false;
 
         #region Public API
@@ -241,6 +248,64 @@ namespace Microsoft.ML.OnnxRuntime
                 inputValuesArray, (UIntPtr)outputValues.Count, outputValuesArray));
         }
 
+
+        /// <summary>
+        /// Sets a constant learning rate for the session. LR must be controlled by either this method
+        /// or by registering a LR scheduler.
+        /// </summary>
+        public void SetLearningRate(float learningRate)
+        {
+            if (_scheduler != LRScheduler.None && _scheduler != LRScheduler.Constant)
+            {
+                throw new InvalidOperationException("Cannot set constant LR while using LR scheduler.");
+            }
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtSetLearningRate(_nativeHandle, learningRate));
+            _scheduler = LRScheduler.Constant;
+        }
+
+        /// <summary>
+        /// Gets the current learning rate for the session.
+        /// </summary>
+        public float GetLearningRate()
+        {
+            // IntPtr lr;
+            float lr= (float)0.0;
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetLearningRate(_nativeHandle, ref lr));
+            return lr;
+        }
+
+        /// <summary>
+        /// Registers a linear learning rate scheduler for the session. LR must be controlled by either
+        /// the SetLearningRate method or by registering a LR scheduler.
+        /// <param name="warmupStepCount"> Number of warmup steps</param>
+        /// <param name="totalStepCount"> Number of total steps</param>
+        /// <param name="initialLearningRate"> Initial learning rate</param>
+        /// </summary>
+        public void RegisterLinearLRScheduler(long warmupStepCount,
+                                              long totalStepCount,
+                                              float initialLearningRate)
+        {
+            if (_scheduler != LRScheduler.None && _scheduler != LRScheduler.Constant)
+            {
+                throw new InvalidOperationException("Cannot set LR scheduler while using constant LR.");
+            }
+
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtRegisterLinearLRScheduler(_nativeHandle, warmupStepCount,totalStepCount, initialLearningRate));
+            _scheduler = LRScheduler.Linear;
+        }
+
+        /// <summary>
+        /// Runs a LR scheduler step. There must be a valid LR scheduler registered for the training session.
+        /// </summary>
+        public void SchedulerStep()
+        {
+            if (_scheduler == LRScheduler.Constant || _scheduler == LRScheduler.None)
+            {
+                throw new InvalidOperationException("Cannot take scheduler step without registering a valid LR scheduler.");
+            }
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtSchedulerStep(_nativeHandle));
+        }
+
         /// <summary>
         /// Runs an optimizer step on the loaded model for the given inputs. The optimizer graph must be passed while TrainingSession creation.
         /// </summary>
@@ -324,7 +389,7 @@ namespace Microsoft.ML.OnnxRuntime
         private string GetOutputName(ulong index, bool training)
         {
             var allocator = OrtAllocator.DefaultInstance;
-            IntPtr nameHandle = IntPtr.Zero;
+            IntPtr nameHandle;
             string str = null;
             if (training)
             { NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetTrainModelOutputName(

@@ -73,6 +73,10 @@ struct Optimizer {
     return Status::OK();
   }
 
+  inline float GetLearningRate() {
+    return optimizer_state_.learning_rate;
+  }
+
   inline Status SetInitialLearningRate(float initial_lr) {
     optimizer_state_.initial_lr = initial_lr;
     optimizer_state_.learning_rate = initial_lr;

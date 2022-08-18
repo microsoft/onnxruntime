@@ -80,13 +80,19 @@ Status TrainingSession::CreateCheckpointState(CheckpointState& chkpt_state, bool
 }
 
 Status TrainingSession::SetLearningRate(float learning_rate) noexcept {
+  ORT_RETURN_IF_NOT(optimizer_, "No optimizer session initialized.");
   ORT_RETURN_IF_ERROR(optimizer_->SetLearningRate(learning_rate));
 
   return Status::OK();
 }
 
+float TrainingSession::GetLearningRate() {
+  ORT_ENFORCE(optimizer_, "No optimizer session initialized.");
+  return optimizer_->GetLearningRate();
+}
+
 Status TrainingSession::SchedulerStep() noexcept {
-  ORT_RETURN_IF_NOT(scheduler_, "No learning rate schedler was registered. Please register a valid learning rate scheduler");
+  ORT_RETURN_IF_NOT(scheduler_, "No learning rate scheduler was registered. Please register a valid learning rate scheduler");
   return scheduler_->Step();
 }
 

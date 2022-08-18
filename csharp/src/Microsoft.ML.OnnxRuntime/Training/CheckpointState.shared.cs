@@ -19,21 +19,21 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Default __ctor. Creates default CheckpointState
+        /// Creates CheckpointState by loading state from path.
+        /// <param name="checkpointPath"> absolute path to checkpoint file.</param>
         /// </summary>
-        public CheckpointState()
+        public CheckpointState(string checkpointPath)
             : base(IntPtr.Zero, true)
         {
             if (NativeTrainingMethods.TrainingEnabled())
             {
                 var envHandle = OrtEnv.Handle; // just so it is initialized
+                LoadCheckpoint(checkpointPath);
             }
             else
             {
                 throw new InvalidOperationException("Training is disabled in the current build");
             }
-
-
         }
 
         /// <summary>
@@ -46,7 +46,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Loads Checkpoint state from path
         /// </summary>
         /// <param name="checkpointPath"> absolute path to checkpoint</param>
-        public void LoadCheckpoint(string checkpointPath)
+        private void LoadCheckpoint(string checkpointPath)
         {
             NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtLoadCheckpoint(NativeMethods.GetPlatformSerializedString(checkpointPath), out handle));
         }
