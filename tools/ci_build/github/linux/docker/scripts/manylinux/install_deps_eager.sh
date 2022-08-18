@@ -90,10 +90,17 @@ fi
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 
+cd /tmp/src
+echo "Cloning Pytorch"
+git clone --recursive https://github.com/pytorch/pytorch.git
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
   ${PYTHON_EXE} -m pip install -r ${0/%install_deps_eager\.sh/requirements\.txt}
   ${PYTHON_EXE} -m pip install -r ${0/%install_deps_eager\.sh/..\/training\/ortmodule\/stage1\/torch_eager_cpu\/requirements.txt}
+
+  echo "Building and installing Pytorch"
+  cd /tmp/src/pytorch
+  VERBOSE=1 BUILD_LAZY_TS_BACKEND=1 ${PYTHON_EXE} -m pip install -I /tmp/src/pytorch
 done
 
 cd /tmp/src
