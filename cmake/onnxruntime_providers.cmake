@@ -1304,8 +1304,6 @@ if (onnxruntime_USE_ROCM)
   file(GLOB_RECURSE onnxruntime_providers_rocm_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.cc"
-    #"${ONNXRUNTIME_ROOT}/core/common/profiler_common.cc"
-    #"${ONNXRUNTIME_ROOT}/core/common/logging/logging.cc"
   )
 
   # The shared_library files are in a separate list since they use precompiled headers, and the above files have them disabled.
