@@ -47,7 +47,7 @@ class SoftmaxGrad(ONNXOp):
 
     def __init__(self, dY, Y, axis=None):
         super().__init__(
-            "SoftmaxGrad",
+            "SoftmaxGrad_13",
             1,
             [
                 {"at::kDouble", "at::kBFloat16", "at::kHalf", "at::kFloat"},
@@ -67,7 +67,7 @@ class LogSoftmaxGrad(ONNXOp):
 
     def __init__(self, dY, Y, axis=None):
         super().__init__(
-            "LogSoftmaxGrad",
+            "LogSoftmaxGrad_13",
             1,
             [
                 {"at::kDouble", "at::kBFloat16", "at::kHalf", "at::kFloat"},
