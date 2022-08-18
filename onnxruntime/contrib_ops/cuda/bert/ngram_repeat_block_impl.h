@@ -19,7 +19,7 @@ void NGramRepeatBlockImpl(
     int max_predict_len,
     int vocab_size,
     int beam_size,
-    int banned_no_further_than,
+    int recency_length,
     int no_repeat_ngram_size);
 
 }  // namespace cuda

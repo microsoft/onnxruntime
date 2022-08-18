@@ -2016,8 +2016,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>ngram_size</tt> : int (required)</dt>
 <dd>The NGram size.</dd>
-<dt><tt>banned_no_further_than</tt> : int</dt>
-<dd>Banned tokens no further than a certain number of previous tokens.</dd>
+<dt><tt>recency_length</tt> : int</dt>
+<dd>Only look at the last recency_length tokens when enforcing no repetition of n-grams.</dd>
 </dl>
 
 #### Inputs

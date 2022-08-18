@@ -21,7 +21,7 @@ TEST(NGramRepeatBlockTest, NGramSize_3_BannedNoFurther_0) {
        5.0f,  6.0f,  7.0f,  8.0f,
        9.0f, 10.0f, 11.0f, 12.0f});
   tester.AddAttribute("ngram_size", (int64_t)3);
-  tester.AddAttribute("banned_no_further_than", (int64_t)0);
+  tester.AddAttribute("recency_length", (int64_t)0);
   tester.AddOutput<float>("scores_out", {3, 4},
       {1.0f, 2.0f, 3.0f, -std::numeric_limits<float>::infinity(),
        -std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(), 7.0f, 8.0f,
@@ -57,7 +57,7 @@ TEST(NGramRepeatBlockTest, NGramSize_5_BannedNoFurther_0) {
        15.0f, 16.0f, 17.0f, 18.0f, 19.0f,
        20.0f, 21.0f, 22.0f, 23.0f, 24.0f});
   tester.AddAttribute("ngram_size", (int64_t)5);
-  tester.AddAttribute("banned_no_further_than", (int64_t)0);
+  tester.AddAttribute("recency_length", (int64_t)0);
   tester.AddOutput<float>("scores_out", {1, 25},
       {0.0f, 1.0f, 2.0f, -std::numeric_limits<float>::infinity(), 4.0f,
        5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
@@ -95,7 +95,7 @@ TEST(NGramRepeatBlockTest, NGramSize_5_BannedNoFurther_24) {
        15.0f, 16.0f, 17.0f, 18.0f, 19.0f,
        20.0f, 21.0f, 22.0f, 23.0f, 24.0f});
   tester.AddAttribute("ngram_size", (int64_t)5);
-  tester.AddAttribute("banned_no_further_than", (int64_t)25);
+  tester.AddAttribute("recency_length", (int64_t)25);
   tester.AddOutput<float>("scores_out", {1, 25},
       {0.0f, 1.0f, 2.0f, -std::numeric_limits<float>::infinity(), 4.0f,
        5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
