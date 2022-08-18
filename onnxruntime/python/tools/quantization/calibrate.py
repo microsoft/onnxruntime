@@ -10,7 +10,7 @@ import itertools
 import uuid
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Optional, Sequence
 
 import numpy as np
 import onnx
