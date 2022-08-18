@@ -26,10 +26,10 @@ ort.set_seed(1)
 
 
 class TestOrtLazyTensor(unittest.TestCase):
-    def test_Simple(self):
-        def run_Simple():
+    def test_elementwise_model(self):
+        def run_elementwise_model():
             # A function to test.
-            def Foo(x):
+            def elementwise_model(x):
                 w = x.relu()
                 y = w * w + 1.5
                 z = y + x
@@ -43,26 +43,23 @@ class TestOrtLazyTensor(unittest.TestCase):
                 y.sum().backward()
                 return x, y, x.grad
 
-            # Beseline.
-            x, y, g_x = run(Foo, "cpu", [-1.0, 2.0])
+            # Baseline.
+            x, y, g_x = run(elementwise_model, "cpu", [-1.0, 2.0])
             # ORT result.
-            x_new, y_new, g_x_new = run(Foo, "lazy", [-1.0, 2.0])
+            x_new, y_new, g_x_new = run(elementwise_model, "lazy", [-1.0, 2.0])
 
             torch.testing.assert_close(x.to("lazy"), x_new)
             torch.testing.assert_close(y.to("lazy"), y_new)
             torch.testing.assert_close(g_x.to("lazy"), g_x_new)
 
         for _ in range(5):
-            run_Simple()
+            run_elementwise_model()
 
-            def test_MNIST(self):
-                test_MNIST()
-
-    def test_MNIST(self):
-        def run_MNIST():
-            class Net(nn.Module):
+    def test_mnist_model(self):
+        def run_mnist_model():
+            class MNISTModel(nn.Module):
                 def __init__(self):
-                    super(Net, self).__init__()
+                    super().__init__()
                     self.conv1 = nn.Conv2d(1, 32, 3, 1, bias=False)
                     self.conv2 = nn.Conv2d(32, 64, 3, 1, bias=False)
                     self.fc1 = nn.Linear(9216, 128, bias=False)
@@ -95,7 +92,7 @@ class TestOrtLazyTensor(unittest.TestCase):
 
             x = torch.rand((64, 1, 28, 28), dtype=torch.float32)
             y = torch.randint(0, 9, (64,), dtype=torch.int64)
-            model = Net()
+            model = MNISTModel()
 
             # Baseline.
             loss, grads = run(model, "cpu", x, y)
@@ -108,7 +105,7 @@ class TestOrtLazyTensor(unittest.TestCase):
                 torch.testing.assert_close(g.to("lazy"), g_new)
 
         for _ in range(5):
-            run_MNIST()
+            run_mnist_model()
 
 
 if __name__ == "__main__":

@@ -56,7 +56,7 @@ endif()
 # Support ORT as a backend in Pytorch's LazyTensor.
 if (onnxruntime_ENABLE_LAZY_TENSOR)
   file(GLOB onnxruntime_lazy_tensor_extension_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_ROOT}/orttraining/lazy_tensor/*.cpp")
+    "${ORTTRAINING_ROOT}/orttraining/lazy_tensor/*.cc")
   file(GLOB onnxruntime_lazy_tensor_extension_headers CONFIGURE_DEPENDS
     "${ORTTRAINING_ROOT}/orttraining/lazy_tensor/*.h")
 
@@ -68,7 +68,7 @@ if (onnxruntime_ENABLE_LAZY_TENSOR)
 endif()
 
 # onnxruntime_ENABLE_LAZY_TENSOR and onnxruntime_ENABLE_EAGER_MODE
-# need DLPack code to pass tensors cross ORT and Pytorch boundry.
+# need DLPack code to pass tensors cross ORT and Pytorch boundary.
 # TODO: consider making DLPack code a standalone library.
 if (onnxruntime_ENABLE_LAZY_TENSOR OR onnxruntime_ENABLE_EAGER_MODE)
   # If DLPack code is not built, add it to ORT's pybind target.

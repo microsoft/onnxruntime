@@ -21,7 +21,7 @@ void register_ort_as_torch_jit_executor() {
       torch::jit::Symbol::fromQualString("ort::graph");
   // First, register a pass that will coalesce supported consecutive operators
   // into a single symbol (it contains a subgraph). Encountering an unsupported
-  // operator will result two seperated symbols (i.e., two independent sub-graphs).
+  // operator will result two separated symbols (i.e., two independent sub-graphs).
   //
   // TODO: Allow single-op fusion in Pytorch so ORT can receive single-op sub-graph.
   torch::jit::RegisterPass pass([accelerator_symbol](std::shared_ptr<torch::jit::Graph>& g) {
