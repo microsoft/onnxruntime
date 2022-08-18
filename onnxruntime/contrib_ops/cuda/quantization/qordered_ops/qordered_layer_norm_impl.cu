@@ -22,6 +22,23 @@ __device__ inline char4 QuantizeFloat4Char4(const float4 val4, const float rscal
                QuantizeFloatS8(val4.z, rscale), QuantizeFloatS8(val4.w, rscale)};
 }
 
+__device__ inline int32_t Dp4a_Defined(const char4 input_1, const char4 input_2) {
+  int8_t input_1_x = static_cast<int8_t>(input_1.x - '0');
+  int8_t input_1_y = static_cast<int8_t>(input_1.y - '0');
+  int8_t input_1_z = static_cast<int8_t>(input_1.z - '0');
+  int8_t input_1_w = static_cast<int8_t>(input_1.w - '0');
+
+  int8_t input_2_x = static_cast<int8_t>(input_2.x - '0');
+  int8_t input_2_y = static_cast<int8_t>(input_2.y - '0');
+  int8_t input_2_z = static_cast<int8_t>(input_2.z - '0');
+  int8_t input_2_w = static_cast<int8_t>(input_2.w - '0');
+
+  return input_1_x * input_2_x +
+         input_1_y * input_2_y +
+         input_1_z * input_2_z +
+         input_1_w * input_2_w;
+}
+
 template <typename T>
 __global__ void QOrderedLayerNormRowKernel(const int8_t* __restrict__ src, const float src_scale,
                                            int8_t* __restrict__ dst, const float dst_scale,
@@ -46,6 +63,7 @@ __global__ void QOrderedLayerNormRowKernel(const int8_t* __restrict__ src, const
 #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 610
     square_sum = __dp4a(ch4, ch4, square_sum);
 #else
+    square_sum = Dp4a_Defined(ch4, ch4);
 #endif
   }
 
