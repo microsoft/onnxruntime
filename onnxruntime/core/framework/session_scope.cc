@@ -12,10 +12,10 @@ namespace onnxruntime {
 
 using namespace onnxruntime::profiling;
 
-static void CalculateTotalOutputSizes2(OpKernelContextInternal* op_kernel_context,
-                                       size_t& total_output_sizes,
-                                       const std::string& node_name,
-                                       std::string& output_type_shape) {
+static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context,
+                                      size_t& total_output_sizes,
+                                      const std::string& node_name,
+                                      std::string& output_type_shape) {
   // Calculate total output sizes for this operation.
   std::stringstream ss;
   int added_type_shapes = 0;
@@ -39,12 +39,12 @@ static void CalculateTotalOutputSizes2(OpKernelContextInternal* op_kernel_contex
   output_type_shape = ss.str();
 }
 
-static void CalculateTotalInputSizes2(const OpKernelContextInternal* op_kernel_context,
-                                      const onnxruntime::OpKernel* p_op_kernel,
-                                      size_t& input_activation_sizes,
-                                      size_t& input_parameter_sizes,
-                                      const std::string& node_name,
-                                      std::string& input_type_shape) {
+static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_context,
+                                     const onnxruntime::OpKernel* p_op_kernel,
+                                     size_t& input_activation_sizes,
+                                     size_t& input_parameter_sizes,
+                                     const std::string& node_name,
+                                     std::string& input_type_shape) {
   // Calculate total input sizes for this operation.
   std::stringstream ss;
   ss << "[";
@@ -380,11 +380,11 @@ class SessionScopeImpl {
   SessionScopeImpl(const SessionState& sess_state,
                    const ExecutionFrame& frame) : sess_state_(sess_state),
                                                   frame_(frame),
-                                                  concurrency_scope_(sess_state.GetGraphViewer()),
-                                                  profiler_scope_(sess_state.Profiler()),
+                                                  concurrency_scope_(sess_state_.GetGraphViewer()),
+                                                  profiler_scope_(sess_state_.Profiler()),
                                                   nvtx_scope_(std::this_thread::get_id()),
-                                                  mem_scope_(sess_state, frame),
-                                                  trace_scope_(sess_state) {
+                                                  mem_scope_(sess_state_, frame_),
+                                                  trace_scope_(sess_state_) {
     iteration_++;
   }
   ~SessionScopeImpl() {}
@@ -477,18 +477,18 @@ class KernelScopeImpl {
 
       concurrency::ThreadPool::StartProfiling(sess_state_.GetThreadPool());
       kernel_begin_time_ = profiler.Start();
-      CalculateTotalInputSizes2(&context,
-                                &kernel,
-                                input_activation_sizes_,
-                                input_parameter_sizes_,
-                                node_name_,
-                                input_type_shape_);
+      CalculateTotalInputSizes(&context,
+                               &kernel,
+                               input_activation_sizes_,
+                               input_parameter_sizes_,
+                               node_name_,
+                               input_type_shape_);
     }
   }
 
   ~KernelScopeImpl() {
     if (is_profiler_enabled_) {
-      CalculateTotalOutputSizes2(&context_, total_output_sizes_, node_name_, output_type_shape_);
+      CalculateTotalOutputSizes(&context_, total_output_sizes_, node_name_, output_type_shape_);
       auto& profiler = sess_scope_.impl_->profiler_scope_.profiler_;
       profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                      node_name_ + "_kernel_time",
