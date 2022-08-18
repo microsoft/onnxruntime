@@ -12,6 +12,7 @@ from onnx import onnx_pb as onnx_proto
 
 from .onnx_model import ONNXModel
 from .quant_utils import (
+    TENSOR_NAME_QUANT_SUFFIX,
     QuantizationMode,
     QuantizedValue,
     QuantizedValueType,
@@ -595,7 +596,7 @@ class ONNXQuantizer:
         :return: List of newly created nodes in NodeProto format.
         """
         input_name = node.input[input_index]
-        output_name = input_name + "_quantized"
+        output_name = input_name + TENSOR_NAME_QUANT_SUFFIX
         ql_node_name = input_name + "_QuantizeLinear"
 
         if (given_scale_name is not None) and (given_zp_name is not None):
@@ -678,7 +679,7 @@ class ONNXQuantizer:
         # get bias
         bias_initializer = find_by_name(bias_name, self.model.initializer())
         bias_data = tensor_proto_to_array(bias_initializer)
-        quantized_bias_name = bias_name + "_quantized"
+        quantized_bias_name = bias_name + TENSOR_NAME_QUANT_SUFFIX
 
         # get scale for input
         if input_name in self.quantized_value_map:
@@ -863,7 +864,7 @@ class ONNXQuantizer:
                 quantized_value.scale_name,
             )
 
-        q_weight_name = weight.name + "_quantized"
+        q_weight_name = weight.name + TENSOR_NAME_QUANT_SUFFIX
         zp_name = weight.name + "_zero_point"
         scale_name = weight.name + "_scale"
 
@@ -949,7 +950,7 @@ class ONNXQuantizer:
             channel_weights = np.asarray(quantized_per_channel_data_list[i]).reshape(reshape_dims)
             quantized_weights = np.concatenate((quantized_weights, channel_weights), channel_axis)
 
-        q_weight_name = weight_name + "_quantized"
+        q_weight_name = weight_name + TENSOR_NAME_QUANT_SUFFIX
         zp_name = weight_name + "_zero_point"
         scale_name = weight_name + "_scale"
 
