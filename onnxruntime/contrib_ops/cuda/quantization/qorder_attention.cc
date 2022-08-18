@@ -188,7 +188,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   int batch_size = static_cast<int>(shape[0]);
   int sequence_length = static_cast<int>(shape[1]);
   int input_hidden_size = static_cast<int>(shape[2]);
-  int hidden_size = qkv_hidden_sizes_[0];
+  int hidden_size = static_cast<int>(qkv_hidden_sizes_[0]);
   int head_size = hidden_size / num_heads_;
 
   TensorShapeVector output_shape(3);
