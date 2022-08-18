@@ -8,6 +8,7 @@
 #include "gsl/gsl"
 
 #include "core/common/safeint.h"
+#include "core/common/span_utils.h"
 #include "core/graph/node_arg.h"
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
@@ -301,8 +302,7 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
   {
     const std::string b_new_perm = model_builder.GetUniqueName(b + "/new_perm"),
                       b_transposed = model_builder.GetUniqueName(b + "/transposed");
-    std::vector<int32_t> perm_data{0, 2, 1};
-    ORT_RETURN_IF_ERROR(AddNnapiTranspose(model_builder, gemm_b_inputs.front(), b_new_perm, gsl::make_span(perm_data), b_transposed));
+    ORT_RETURN_IF_ERROR(AddNnapiTranspose(model_builder, gemm_b_inputs.front(), b_new_perm, AsSpan<int32_t>({0, 2, 1}), b_transposed));
     gemm_b_inputs.front() = b_transposed;
   }
 

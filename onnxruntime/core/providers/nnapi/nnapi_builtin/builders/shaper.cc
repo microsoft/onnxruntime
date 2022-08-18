@@ -31,10 +31,5 @@ Status Shaper::UpdateDynamicDimensions() {
   return Status::OK();
 }
 
-void Shaper::Clear() {
-  shape_map_.clear();
-  shape_ops_.clear();
-}
-
 }  // namespace nnapi
 }  // namespace onnxruntime

@@ -28,8 +28,6 @@ class Shaper {
   common::Status UpdateShape(const std::string& name, const Shape& new_shape);
   common::Status UpdateDynamicDimensions();
 
-  void Clear();
-
  private:
   std::unordered_map<std::string, Shape> shape_map_;
   std::vector<std::function<common::Status(Shaper&)>> shape_ops_;
