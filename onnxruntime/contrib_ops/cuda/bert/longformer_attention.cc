@@ -136,7 +136,8 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
         weights_data, n,
         input_data, k,
-        &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+        &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop),
+        cublas, stream);
   } else {
     // q
     const CudaT* q_weight = weights_data;
@@ -145,7 +146,8 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
         q_weight, n,
         input_data, k,
-        &zero, q_data, n, device_prop));
+        &zero, q_data, n, device_prop),
+        cublas, stream);
     // k
     const CudaT* k_weight = q_weight + hidden_size * hidden_size;
     CudaT* k_data = q_data + batch_size * sequence_length * hidden_size;
