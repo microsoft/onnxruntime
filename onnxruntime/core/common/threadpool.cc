@@ -262,7 +262,7 @@ struct alignas(CACHE_LINE_BYTES) LoopCounterShard {
 };
 
 static_assert(sizeof(LoopCounterShard) == CACHE_LINE_BYTES, "Expected loop counter shards to match cache-line size");
- 
+
 class alignas(CACHE_LINE_BYTES) LoopCounter {
  public:
   LoopCounter(uint64_t num_iterations,
@@ -402,12 +402,12 @@ ThreadPool::~ThreadPool() = default;
 // range of indices to run.
 void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
                                                      const std::ptrdiff_t block_size,
-                                                     const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
+                                                     Callable<void, std::ptrdiff_t, std::ptrdiff_t> fn) {
   if (total <= 0)
     return;
 
   if (total <= block_size) {
-    fn(0, total);
+    fn.Invoke(0, total);
     return;
   }
 
@@ -421,31 +421,32 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
     assert(num_work_items > 0);
 
     LoopCounter lc(total, d_of_p, block_size);
-    std::function<void(unsigned)> run_work = [&](unsigned idx) {
+    auto run_work = [&](unsigned idx) {
       unsigned my_home_shard = lc.GetHomeShard(idx);
       unsigned my_shard = my_home_shard;
       uint64_t my_iter_start, my_iter_end;
       while (lc.ClaimIterations(my_home_shard, my_shard, my_iter_start, my_iter_end, block_size)) {
-        fn(static_cast<std::ptrdiff_t>(my_iter_start),
-           static_cast<std::ptrdiff_t>(my_iter_end));
+        fn.Invoke(static_cast<std::ptrdiff_t>(my_iter_start),
+                  static_cast<std::ptrdiff_t>(my_iter_end));
       }
     };
     // Run the work in the thread pool (and in the current thread).  Synchronization with helping
     // threads is handled within RunInParallel, hence we can deallocate lc and other state captured by
     // run_work.
-    RunInParallel(run_work, num_work_items, block_size);
+    FunctorCallback<decltype(run_work), unsigned> run_work_fn(run_work);
+    RunInParallel(run_work_fn.GetCallable(), num_work_items, block_size);
   } else {
     int num_of_blocks = d_of_p * thread_options_.dynamic_block_base_;
     std::ptrdiff_t base_block_size = static_cast<std::ptrdiff_t>(std::max(1LL, std::llroundl(static_cast<long double>(total) / num_of_blocks)));
     alignas(CACHE_LINE_BYTES) std::atomic<std::ptrdiff_t> left{total};
     LoopCounter lc(total, d_of_p, base_block_size);
-    std::function<void(unsigned)> run_work = [&](unsigned idx) {
+    auto run_work = [&](unsigned idx) {
       std::ptrdiff_t b = base_block_size;
       unsigned my_home_shard = lc.GetHomeShard(idx);
       unsigned my_shard = my_home_shard;
       uint64_t my_iter_start, my_iter_end;
       while (lc.ClaimIterations(my_home_shard, my_shard, my_iter_start, my_iter_end, b)) {
-        fn(static_cast<std::ptrdiff_t>(my_iter_start),
+        fn.Invoke(static_cast<std::ptrdiff_t>(my_iter_start),
            static_cast<std::ptrdiff_t>(my_iter_end));
         auto todo = left.fetch_sub(static_cast<std::ptrdiff_t>(my_iter_end - my_iter_start), std::memory_order_relaxed);
         if (b > 1) {
@@ -453,18 +454,22 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
         }
       }
     };
-    // Distribute task among all threads in the pool, reduce number of work items if 
+    // Distribute task among all threads in the pool, reduce number of work items if
     // num_of_blocks is smaller than number of threads.
-    RunInParallel(run_work, std::min(NumThreads() + 1, num_of_blocks), base_block_size);
+    FunctorCallback<decltype(run_work), unsigned> run_work_fn(run_work);
+    RunInParallel(run_work_fn.GetCallable(), std::min(NumThreads() + 1, num_of_blocks), base_block_size);
   }
 }
 
 void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
-  ParallelForFixedBlockSizeScheduling(total, 1, [&](std::ptrdiff_t first, std::ptrdiff_t last) {
+  auto fixed_loop = [&](std::ptrdiff_t first, std::ptrdiff_t last) {
     for (std::ptrdiff_t idx = first; idx < last; idx++) {
       fn(idx);
     }
-  });
+  };
+
+  FunctorCallback<decltype(fixed_loop), std::ptrdiff_t, std::ptrdiff_t> fixed_loop_fn(fixed_loop);
+  ParallelForFixedBlockSizeScheduling(total, 1, fixed_loop_fn.GetCallable());
 }
 
 void ThreadPool::Schedule(std::function<void()> fn) {
@@ -511,18 +516,17 @@ ThreadPool::ParallelSection::~ParallelSection() {
   }
 }
 
-void ThreadPool::RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) {
+void ThreadPool::RunInParallel(Callable<void, unsigned> fn, unsigned n, std::ptrdiff_t block_size) {
   if (underlying_threadpool_) {
     if (current_parallel_section.has_value()) {
       underlying_threadpool_->RunInParallelSection(*current_parallel_section,
-                                                   std::move(fn),
+                                                   fn,
                                                    n, block_size);
     } else {
-      underlying_threadpool_->RunInParallel(std::move(fn),
-                                            n, block_size);
+      underlying_threadpool_->RunInParallel(fn, n, block_size);
     }
   } else {
-    fn(0);
+    fn.Invoke(0);
   }
 }
 
@@ -553,7 +557,7 @@ using CostModel = Eigen::TensorCostModel<Eigen::ThreadPoolDevice>;
 // imbalance and we also want number of blocks to be evenly dividable across
 // threads.
 static ptrdiff_t CalculateParallelForBlock(const ptrdiff_t n, const Eigen::TensorOpCost& cost,
-                                           std::function<ptrdiff_t(ptrdiff_t)> block_align, int num_threads) {
+                                           const std::function<ptrdiff_t(ptrdiff_t)>& block_align, int num_threads) {
   const double block_size_f = 1.0 / CostModel::taskSize(1, cost);
   constexpr ptrdiff_t max_oversharding_factor = 4;
   ptrdiff_t block_size = Eigen::numext::mini(
@@ -619,7 +623,8 @@ void ThreadPool::ParallelFor(std::ptrdiff_t n, const TensorOpCost& c,
   }
 
   ptrdiff_t block = CalculateParallelForBlock(n, cost, nullptr, d_of_p);
-  ParallelForFixedBlockSizeScheduling(n, block, f);
+  FunctorCallback<std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>, std::ptrdiff_t, std::ptrdiff_t> work_fn(f);
+  ParallelForFixedBlockSizeScheduling(n, block, work_fn.GetCallable());
 }
 
 void ThreadPool::ParallelFor(std::ptrdiff_t total, double cost_per_unit,

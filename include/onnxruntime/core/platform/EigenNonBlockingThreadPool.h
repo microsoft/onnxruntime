@@ -33,6 +33,8 @@
 #pragma warning(disable : 4805)
 #endif
 #include <memory>
+#include <optional>
+#include <variant>
 #include "unsupported/Eigen/CXX11/ThreadPool"
 
 #if defined(__GNUC__)
@@ -40,7 +42,10 @@
 #elif defined(_MSC_VER)
 #pragma warning(pop)
 #endif
+
+#include <gsl/gsl>
 #include "core/common/denormal.h"
+#include "core/common/callables.h"
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/spin_pause.h"
 #include "core/platform/ort_mutex.h"
@@ -168,6 +173,70 @@ enum class PushResult {
   ACCEPTED_BUSY
 };
 
+/// <summary>
+/// Using this to create a callback to an arbitrary functor
+/// </summary>
+/// <typeparam name="F"></typeparam>
+template <typename F, typename... Args>
+class FunctorCallback {
+ public:
+  using Callable_t = Callable<void, Args...>;
+
+  explicit FunctorCallback(const F& f) noexcept
+      : f_(f) {}
+
+  Callable_t GetCallable() noexcept {
+    CallableFactory<FunctorCallback, void, Args...> f(this);
+    return f.GetCallable<&FunctorCallback::Func>();
+  }
+
+ private:
+  void Func(Args... args) {
+    f_(std::forward<Args>(args)...);
+  }
+
+  const F& f_;
+};
+
+/// <summary>
+/// An instance that we are going to store as a task in a thread-poll circular buffer
+/// </summary>
+class ThreadPoolTask {
+ public:
+  using Callable_t = Callable<void>;
+
+  ThreadPoolTask() = default;
+  // This is the case when we absorb a function that is thrown from Schedule()
+  // so we need to store it someplace
+  ThreadPoolTask(std::function<void()> fn) noexcept
+      : fn_(std::move(fn)) {
+  }
+
+  // Typical case for PS when the call to run in parallel is synchronous
+  // and the original user-supplied functor (or a chain of functors) lives on the stack
+  ThreadPoolTask(Callable_t call) noexcept
+      : callable_(call) {}
+
+  void operator()() const {
+    //if (!Valid()) {
+    //  DebugBreak();
+    //}
+    if (callable_) {
+      callable_.Invoke();
+      return;
+    }
+    (*fn_)();
+  }
+
+  operator bool() const noexcept { return Valid(); }
+
+  bool Valid() const noexcept { return callable_ || fn_.has_value(); }
+
+ private:
+  Callable_t callable_;
+  std::optional<std::function<void()>> fn_;
+};
+
 // Align to avoid false sharing with prior fields.  If required,
 // alignment or padding must be added subsequently to avoid false
 // sharing with later fields.  Note that:
@@ -277,7 +346,7 @@ class ThreadPoolProfiler {
     std::thread::id thread_id_;
     uint64_t num_run_ = 0;
     onnxruntime::TimePoint last_logged_point_ = Clock::now();
-    int32_t core_ = -1;                   //core that the child thread is running on
+    int32_t core_ = -1;  //core that the child thread is running on
   };
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -310,7 +379,7 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   // The parameter idx provides a loop-local thread ID in the range
   // [0,k) where k<=n.
   virtual void RunInParallelSection(ThreadPoolParallelSection& ps,
-                                    std::function<void(unsigned idx)> fn,
+                                    Callable<void, unsigned> fn,
                                     unsigned n, std::ptrdiff_t block_size) = 0;
 
   // Special case alternative to RunInParallelSection for use without
@@ -327,7 +396,7 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   //
   // [ Note that this 20% overhead is more than paid for when we have
   // two loops execute in series in a parallel section. ]
-  virtual void RunInParallel(std::function<void(unsigned idx)> fn,
+  virtual void RunInParallel(Callable<void, unsigned> fn,
                              unsigned n, std::ptrdiff_t block_size) = 0;
   virtual void StartProfiling() = 0;
   virtual std::string StopProfiling() = 0;
@@ -387,10 +456,10 @@ class ThreadPoolParallelSection {
 
 class ThreadPoolLoop {
  public:
-  ThreadPoolLoop(std::function<void(unsigned)> f, unsigned t) : fn(std::move(f)), threads_needed(t) {
+  ThreadPoolLoop(Callable<void, unsigned> f, unsigned t) : fn(f), threads_needed(t) {
   }
 
-  const std::function<void(unsigned)> fn;
+  const Callable<void, unsigned> fn;
   const unsigned threads_needed;
 
  private:
@@ -662,7 +731,7 @@ class RunQueue {
   }
 
   RunQueue(const RunQueue&) = delete;
-  void operator=(const RunQueue&) = delete;
+  RunQueue& operator=(const RunQueue&) = delete;
 };
 
 static std::atomic<uint32_t> next_tag{1};
@@ -724,8 +793,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     uint32_t v_ = 0;
   };
 
-  typedef std::function<void()> Task;
-  typedef RunQueue<Task, Tag, 1024> Queue;
+  using Task = ThreadPoolTask;
+  using Queue = RunQueue<Task, Tag, 1024>;
 
   ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
                   const ThreadOptions& thread_options)
@@ -768,6 +837,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     for (size_t i = 0; i < worker_data_.size(); ++i) worker_data_[i].thread.reset();
   }
 
+
+
   // Run fn().  Ordinarily, the function will be added to the thread pool and executed
   // by a worker thread.  If the thread pool rejects the work then fn() will instead
   // execute synchronously during Schedule(fn).  Currently the thread pool will only
@@ -778,13 +849,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     int q_idx = Rand(&pt->rand) % num_threads_;
     WorkerData& td = worker_data_[q_idx];
     Queue& q = td.queue;
-    fn = q.PushBack(std::move(fn));
-    if (!fn) {
+    auto work = q.PushBack(std::move(fn));
+    if (!work) {
       // The queue accepted the work; ensure that the thread will pick it up
       td.EnsureAwake();
     } else {
       // Run the work directly if the queue rejected the work
-      fn();
+      work();
     }
   }
 
@@ -870,7 +941,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       }
     }
 
-    // Now we know that dispatch is finshed, we synchronize with the
+    // Now we know that dispatch is finished, we synchronize with the
     // tasks that were created (if any) for the parallel section.  We
     // revoke tasks still in queues, and then wait for any that are
     // still running.
@@ -898,6 +969,10 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     while (ps.tasks_finished < tasks_to_wait_for) {
       onnxruntime::concurrency::SpinPause();
     }
+
+    pt.disp_task.reset();
+    pt.ClearFns();
+    pt.cons_loop.reset();
 
     // Clear status to allow the ThreadPoolParallelSection to be
     // re-used.
@@ -1029,7 +1104,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   // Update the preferred worker for par_idx to be the calling thread
 
-  void UpdatePreferredWorker(InlinedVector<int>& preferred_workers,
+  void UpdatePreferredWorker(gsl::span<int> preferred_workers,
                              unsigned par_idx) {
     unsigned ran_on_idx = GetPerThread()->thread_id;
     assert(ran_on_idx < num_threads_);
@@ -1037,15 +1112,62 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     preferred_workers[par_idx] = ran_on_idx;
   }
 
+  /// <summary>
+  /// For scheduling on preferred workers
+  /// </summary>
+  class ScheduleOnPreferredFunc {
+   public:
+    using Callable_t = Callable<void>;
+
+    ScheduleOnPreferredFunc(Callable<void, unsigned> worker_fn, unsigned par_idx,
+                            gsl::span<int> preferred_workers, ThreadPoolParallelSection& ps,
+                            ThreadPoolTempl<Environment>* tp) noexcept
+        : worker_fn_(worker_fn), par_idx_(par_idx), preferred_workers_(preferred_workers), ps_(ps), tp_(tp) {}
+
+    Callable_t GetCallable() noexcept {
+      CallableFactory<ScheduleOnPreferredFunc, void> f(this);
+      return f.GetCallable<&ScheduleOnPreferredFunc::Func>();
+    }
+
+   private:
+    void Func() {
+      // Record the worker thread that actually runs this task.
+      // This will form the preferred worker for the next loop.
+      tp_->UpdatePreferredWorker(preferred_workers_, par_idx_);
+      worker_fn_.Invoke(par_idx_);
+      ps_.tasks_finished++;
+    }
+
+    Callable<void, unsigned> worker_fn_;
+    unsigned par_idx_;
+    gsl::span<int> preferred_workers_;
+    ThreadPoolParallelSection& ps_;
+    ThreadPoolTempl<Environment>* tp_;
+  };
+
+  using SchedulePreferredCont = std::vector<ScheduleOnPreferredFunc>;
+
+  void PreparePreferredScheduling(ThreadPoolParallelSection& ps,
+                                  unsigned par_idx_start,
+                                  unsigned par_idx_end,
+                                  gsl::span<int> preferred_workers,
+                                  Callable<void, unsigned> worker_fn,
+                                  SchedulePreferredCont& fns) {
+    fns.reserve(par_idx_end - par_idx_start);
+    for (auto par_idx = par_idx_start; par_idx < par_idx_end; ++par_idx) {
+      fns.emplace_back(worker_fn, par_idx, preferred_workers, ps, this);
+    }
+  }
+
   // Schedule [par_idx_start,par_idx_end) across the preferred workers
 
   void ScheduleOnPreferredWorkers(PerThread& pt,
                                   ThreadPoolParallelSection& ps,
-                                  InlinedVector<int>& preferred_workers,
+                                  gsl::span<int> preferred_workers,
                                   unsigned par_idx_start,
-                                  unsigned par_idx_end,
-                                  std::function<void(unsigned)> worker_fn) {
-    for (auto par_idx = par_idx_start; par_idx < par_idx_end; ++par_idx) {
+                                  unsigned par_idx_end) {
+    auto& fns = pt.GetFns();
+    for (unsigned fn_idx = 0, par_idx = par_idx_start; par_idx < par_idx_end; ++par_idx, ++fn_idx) {
       // Look up hint for par_idx.  Note that the hints may have been
       // recorded from a prior thread pool with a different number of
       // threads, hence we must cap at num_threads_.
@@ -1056,15 +1178,16 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       Queue& q = td.queue;
       unsigned w_idx;
 
+      auto push_status = q.PushBackWithTag(fns[fn_idx].GetCallable(), pt.tag, w_idx);
       // Attempt to enqueue the task
-      auto push_status = q.PushBackWithTag([worker_fn, par_idx, &preferred_workers, &ps, this]() {
-        // Record the worker thread that actually runs this task.
-        // This will form the preferred worker for the next loop.
-        UpdatePreferredWorker(preferred_workers, par_idx);
-        worker_fn(par_idx);
-        ps.tasks_finished++;
-      },
-                                           pt.tag, w_idx);
+      //auto push_status = q.PushBackWithTag([worker_fn, par_idx, preferred_workers, &ps, this]() {
+      //  // Record the worker thread that actually runs this task.
+      //  // This will form the preferred worker for the next loop.
+      //  UpdatePreferredWorker(preferred_workers, par_idx);
+      //  worker_fn(par_idx);
+      //  ps.tasks_finished++;
+      //},
+      //                                     pt.tag, w_idx);
 
       // Queue accepted the task; wake the thread that owns the queue.
       // In addition, if the queue was non-empty, attempt to wake
@@ -1086,7 +1209,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   //
   // Ensure that the ThreadPoolParallelSection has sufficient workers to
   // execute a loop with degree of parallelism n.  We track the number
-  // of workers already avaiable to the parallel section, prior to
+  // of workers already available to the parallel section, prior to
   // submitting tasks to the work queues to make up the total.
   //
   // Each worker will call in to worker_fn(idx) with a per-worker thread
@@ -1109,11 +1232,69 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   // See the note on terminology above for the use of variable names
   // here.
 
+  class DispatcherTask {
+   public:
+    using Callable_t = Callable<void>;
+
+    DispatcherTask(unsigned current_dop, unsigned new_dop, Callable<void, unsigned> worker_fn,
+                   ThreadPoolParallelSection& ps, PerThread& pt,
+                   ThreadPoolTempl<Environment>* tp)
+        : current_dop_(current_dop),
+          new_dop_(new_dop),
+          worker_fn_(worker_fn),
+          ps_(ps),
+          pt_(pt),
+          tp_(tp) {}
+
+    ORT_DISALLOW_COPY_AND_ASSIGNMENT(DispatcherTask);
+
+    Callable_t GetCallable() noexcept {
+      CallableFactory<DispatcherTask, void> f(this);
+      return f.GetCallable<&DispatcherTask::Func>();
+    }
+
+   private:
+    void Func() {
+      // Record that dispatch work has started.  This must occur
+      // prior to scheduling tasks, in order to synchronize with
+      // EndParallelSectionInternal.  [ If EndParallelSection
+      // revoked a task, and then sees distpatch_started=false, then
+      // it knows that it revoked the dispatcher.  Conversely, if it
+      // revokes a task, and then sees dispatch_started=true, then
+      // it knows it revoked a worker task. ]
+      ps_.dispatch_started.store(true, std::memory_order_seq_cst);
+
+      auto& fns = pt_.InitFnsAndGet();
+      auto& preferred_workers = pt_.preferred_workers;
+      tp_->PreparePreferredScheduling(ps_, current_dop_ + 1, new_dop_, preferred_workers, worker_fn_, fns);
+      // Schedule tasks par_idx=[current_dop+1,new_dop)
+      tp_->ScheduleOnPreferredWorkers(pt_, ps_, preferred_workers, current_dop_ + 1, new_dop_);
+      ps_.dispatch_done.store(true, std::memory_order_release);
+
+      // Record the worker thread that actually runs this task.
+      // This will form the preferred worker for the next loop.
+      tp_->UpdatePreferredWorker(preferred_workers, current_dop_);
+
+      // Run dispatcher task's own work, par_idx=current_dop
+      worker_fn_.Invoke(current_dop_);
+
+      // Dispatcher's work complete
+      ps_.work_done.store(true, std::memory_order_release);
+    }
+
+    unsigned int current_dop_;
+    unsigned int new_dop_;
+    Callable<void, unsigned> worker_fn_;
+    ThreadPoolParallelSection& ps_;
+    PerThread& pt_;
+    ThreadPoolTempl<Environment>* tp_;
+  };
+
   void RunInParallelInternal(PerThread& pt,
                              ThreadPoolParallelSection& ps,
                              unsigned new_dop,
                              bool dispatch_async,
-                             std::function<void(unsigned)> worker_fn) {
+                             Callable<void, unsigned> worker_fn) {
     // Ensure that the vector of preferred workers is sufficient for the
     // size of the loop we are entering.  We do this before dispatching
     // tasks for the loop in order to avoid any races between changes to
@@ -1138,30 +1319,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         assert(current_dop == 1);
 
         // Task for dispatching work asynchronously.
-        Task dispatch_task = [current_dop, new_dop, worker_fn, &preferred_workers, &ps, &pt, this]() {
-          // Record that dispatch work has started.  This must occur
-          // prior to scheduling tasks, in order to synchronize with
-          // EndParallelSectionInternal.  [ If EndParallelSection
-          // revoked a task, and then sees distpatch_started=false, then
-          // it knows that it revoked the dispatcher.  Conversely, if it
-          // revokes a task, and then sees dispatch_started=true, then
-          // it knows it revoked a worker task. ]
-          ps.dispatch_started.store(true, std::memory_order_seq_cst);
-
-          // Schedule tasks par_idx=[current_dop+1,new_dop)
-          ScheduleOnPreferredWorkers(pt, ps, preferred_workers, current_dop + 1, new_dop, worker_fn);
-          ps.dispatch_done.store(true, std::memory_order_release);
-
-          // Record the worker thread that actually runs this task.
-          // This will form the preferred worker for the next loop.
-          UpdatePreferredWorker(preferred_workers, current_dop);
-
-          // Run dispatcher task's own work, par_idx=current_dop
-          worker_fn(current_dop);
-
-          // Dispatcher's work complete
-          ps.work_done.store(true, std::memory_order_release);
-        };
+        pt.disp_task.emplace(current_dop, new_dop, worker_fn, ps, pt, this);
 
         profiler_.LogStart();
         ps.dispatch_q_idx = preferred_workers[current_dop] % num_threads_;
@@ -1169,7 +1327,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         Queue& dispatch_que = dispatch_td.queue;
 
         // assign dispatch task to selected dispatcher
-        auto push_status = dispatch_que.PushBackWithTag(dispatch_task, pt.tag, ps.dispatch_w_idx);
+        auto push_status = dispatch_que.PushBackWithTag(pt.disp_task->GetCallable(), pt.tag, ps.dispatch_w_idx);
         // Queue accepted the task; wake the thread that owns the queue.
         // In addition, if the queue was non-empty, attempt to wake
         // another thread (which may then steal the task).
@@ -1184,21 +1342,60 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
       } else {
         // Synchronous dispatch
-        ScheduleOnPreferredWorkers(pt, ps, preferred_workers, current_dop, new_dop, std::move(worker_fn));
+        auto& fns = pt.InitFnsAndGet();
+        PreparePreferredScheduling(ps, current_dop, new_dop, preferred_workers, worker_fn, fns);
+        ScheduleOnPreferredWorkers(pt, ps, preferred_workers, current_dop, new_dop);
       }
       ps.current_dop = new_dop;
     }
   }
+
+  /// <summary>
+  /// XXX. Waiting for clarification on this one.
+  /// </summary>
+  class ConsistencyLoop {
+   public:
+    using Callable_t = Callable<void, unsigned>;
+    explicit ConsistencyLoop(ThreadPoolParallelSection& ps) noexcept
+        : ps_(ps) {}
+
+    Callable_t GetCallable() noexcept {
+      CallableFactory<ConsistencyLoop, void, unsigned> f(this);
+      return f.GetCallable<&ConsistencyLoop::Func>();
+    }
+
+   private:
+    void Func(unsigned par_idx) {
+      while (ps_.active) {
+        if (ps_.current_loop.load() == nullptr) {
+          onnxruntime::concurrency::SpinPause();
+        } else {
+          ps_.workers_in_loop++;
+          ThreadPoolLoop* work_item = ps_.current_loop;
+          if (work_item && par_idx < work_item->threads_needed) {
+            work_item->fn.Invoke(par_idx);
+          }
+          ps_.workers_in_loop--;
+          break;
+        }
+      }
+    }
+
+    ThreadPoolParallelSection& ps_;
+  };
 
   // Run a single parallel loop in an existing parallel section.  This
   // maps directly onto SummonWorkers to create sufficient worker
   // threads for the desired degree of parallelism, followed by
   // dispatching the loop to those workers.
   void RunInParallelSection(ThreadPoolParallelSection& ps,
-                            std::function<void(unsigned idx)> fn,
+                            Callable<void, unsigned> fn,
                             unsigned n,
                             std::ptrdiff_t block_size) override {
-    ORT_ENFORCE(n <= num_threads_ + 1, "More work items than threads");
+    //ORT_ENFORCE(n <= num_threads_ + 1, "More work items than threads");
+    if (n > num_threads_ + 1) {
+      DebugBreak();
+    }
     profiler_.LogStartAndCoreAndBlock(block_size);
     PerThread* pt = GetPerThread();
     assert(pt->leading_par_section && "RunInParallel, but not in parallel section");
@@ -1213,26 +1410,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     // Increase the worker count if needed.  Each worker will pick up
     // loops to execute from the current parallel section.
-    std::function<void(unsigned)> worker_fn = [&ps](unsigned par_idx) {
-      while (ps.active) {
-        if (ps.current_loop.load() == nullptr) {
-          onnxruntime::concurrency::SpinPause();
-        } else {
-          ps.workers_in_loop++;
-          ThreadPoolLoop* work_item = ps.current_loop;
-          if (work_item && par_idx < work_item->threads_needed) {
-            work_item->fn(par_idx);
-          }
-          ps.workers_in_loop--;
-        }
-      }
-    };
-    RunInParallelInternal(*pt, ps, n, false, std::move(worker_fn));
+    pt->cons_loop.emplace(ps);
+    RunInParallelInternal(*pt, ps, n, false, pt->cons_loop->GetCallable());
     assert(ps.dispatch_q_idx == -1);
     profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
 
     // Run work in the main thread
-    loop.fn(0);
+    loop.fn.Invoke(0);
     profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
 
     // Wait for workers to exit the loop
@@ -1255,15 +1439,18 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   //  2. run fn(...) itself.
   // For all other threads:
   //  1. run fn(...);
-  void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) override {
-    ORT_ENFORCE(n <= num_threads_ + 1, "More work items than threads");
+  void RunInParallel(Callable<void, unsigned> fn, unsigned n, std::ptrdiff_t block_size) override {
+    //ORT_ENFORCE(n <= num_threads_ + 1, "More work items than threads");
+    if (n > num_threads_ + 1) {
+      DebugBreak();
+    }
     profiler_.LogStartAndCoreAndBlock(block_size);
     PerThread* pt = GetPerThread();
     ThreadPoolParallelSection ps;
     StartParallelSectionInternal(*pt, ps);
     RunInParallelInternal(*pt, ps, n, true, fn);  // select dispatcher and do job distribution;
     profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
-    fn(0);  // run fn(0)
+    fn.Invoke(0);  // run fn(0)
     profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
     EndParallelSectionInternal(*pt, ps);  // wait for all
     profiler_.LogEnd(ThreadPoolProfiler::WAIT);
@@ -1322,7 +1509,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 #pragma warning(push)
 // C4324: structure was padded due to alignment specifier
 #pragma warning(disable : 4324)
-#endif // _MSC_VER
+#endif  // _MSC_VER
 
   struct ORT_ALIGN_TO_AVOID_FALSE_SHARING PerThread {
     constexpr PerThread() : pool(nullptr) {
@@ -1340,12 +1527,29 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // of times that the work-stealing code paths are used for
     // rebalancing.
     InlinedVector<int> preferred_workers;
+    std::optional<ConsistencyLoop> cons_loop;
+    std::optional<DispatcherTask> disp_task;
+
+    SchedulePreferredCont& InitFnsAndGet() {
+      fns.clear();
+      return fns;
+    }
+
+    SchedulePreferredCont& GetFns() {
+      return fns;
+    }
+
+    void ClearFns() {
+      fns.clear();
+    }
+
+   private:
+    SchedulePreferredCont fns;
   };
 
 #ifdef _MSC_VER
 #pragma warning(pop)
-#endif // _MSC_VER
-
+#endif  // _MSC_VER
 
   struct WorkerData {
     constexpr WorkerData() : thread(), queue() {

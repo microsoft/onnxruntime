@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 #include <functional>
 #include <memory>
+
+#include "core/common/callables.h"
 #include "core/common/common.h"
 #include "core/platform/env.h"
 
@@ -137,6 +139,10 @@ class ExtendedThreadPoolInterface;
 class LoopCounter;
 class ThreadPoolParallelSection;
 
+namespace threadpool_details {
+
+}
+
 class ThreadPool {
  public:
 #ifdef _WIN32
@@ -204,11 +210,7 @@ class ThreadPool {
   private:
     friend class ThreadPool;
 
-    // Owning reference for the underlying ThreadPoolParallelSection
-    // which implements the thread management.  We use an explicit
-    // deleter here so that the definition of
-    // ThreadPoolParallelSection does not need to be available at this
-    // point to avoid a dependence on the Eigen headers.
+    // Pointer to a thread-local instance
     ThreadPoolParallelSection* ps_{nullptr};
     ThreadPool *tp_;
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelSection);
@@ -229,7 +231,7 @@ class ThreadPool {
   static void Schedule(ThreadPool* tp,
                        std::function<void()> fn) {
     if (tp) {
-      tp->Schedule(fn);
+      tp->Schedule(std::move(fn));
     } else {
       fn();
     }
@@ -383,7 +385,7 @@ class ThreadPool {
   // then the function will run directly in the caller.  The fork-join
   // synchronization is handled in the thread pool, and so any state captured
   // by fn() is safe from concurrent access once RunWithHelp returns.
-  void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size);
+  void RunInParallel(Callable<void, unsigned> fn, unsigned n, std::ptrdiff_t block_size);
 
   // Divides the work represented by the range [0, total) into k shards.
   // Calls fn(i*block_size, (i+1)*block_size) from the ith shard (0 <= i < k).
@@ -392,7 +394,7 @@ class ThreadPool {
   // When (i+1)*block_size > total, fn(i*block_size, total) is called instead.
   // Requires 0 < block_size <= total.
   void ParallelForFixedBlockSizeScheduling(std::ptrdiff_t total, std::ptrdiff_t block_size,
-                                           const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);
+                                           Callable<void, std::ptrdiff_t, std::ptrdiff_t> fn);
 
   // Return whether or not the calling thread should run a loop of
   // num_iterations divided in chunks of block_size in parallel.  If not,
