@@ -369,7 +369,7 @@ TEST(OrtModelOnlyTests, MetadataSerialization) {
 #if !defined(DISABLE_ML_OPS)
 TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
   const std::basic_string<ORTCHAR_T> ort_file =
-      ORT_TSTR("testdata/sklearn_bin_voting_classifier_soft_converted.test_output.ort");
+      ORT_TSTR("testdata/sklearn_bin_voting_classifier_soft.onnx.test_output.ort");
   SaveAndCompareModels("testdata/sklearn_bin_voting_classifier_soft.onnx", ort_file);
 
   OrtModelTestInfo test_info;
@@ -479,7 +479,7 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBufferNoCopyInitializersUseBuffer)
 // for a model with sequence and map outputs
 OrtModelTestInfo GetTestInfoForLoadOrtFormatModelMLOps() {
   OrtModelTestInfo test_info;
-  test_info.model_filename = ORT_TSTR("testdata/sklearn_bin_voting_classifier_soft.ort");
+  test_info.model_filename = ORT_TSTR("testdata/sklearn_bin_voting_classifier_soft.onnx.ort");
   test_info.logid = "LoadOrtFormatModelMLOps";
 
   OrtValue ml_value;

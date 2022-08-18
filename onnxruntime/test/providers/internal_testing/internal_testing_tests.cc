@@ -110,7 +110,7 @@ TEST(InternalTestingEP, TestSaveAndLoadOrtModel) {
 
   //
   // Second, load the ORT format model with just the CPU EP to make sure it can be executed. This tests that the
-  // fallback to the CPU EP kernel hashes works.
+  // fallback to the CPU EP works.
   //
   std::unique_ptr<InferenceSessionWrapper> session2;
 

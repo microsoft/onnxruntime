@@ -484,7 +484,7 @@ TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
 
 TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
   // mnist model that has only had basic optimizations applied. nnapi should be able to take at least some of the nodes
-  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/mnist.level1_opt.ort");
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/mnist.basic.ort");
 
 // The execution can only be performed on Android
 #if defined(__ANDROID__)
@@ -514,7 +514,7 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
 // test that NNAPI EP can process an activation node that is outside of its partition
 TEST(NnapiExecutionProviderTest, ActivationOutsideOfPartition) {
   // model starts with Conv -> Relu
-  constexpr auto* model_file_name = ORT_TSTR("testdata/mnist.level1_opt.ort");
+  constexpr auto* model_file_name = ORT_TSTR("testdata/mnist.basic.ort");
   // stop NNAPI partitioning at Relu so NNAPI EP only takes first Conv
   const auto nnapi_partitioning_stop_ops = "Relu";
   SessionOptions so;
