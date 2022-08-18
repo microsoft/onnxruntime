@@ -52,6 +52,8 @@ QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info
   ORT_ENFORCE(std::all_of(qkv_hidden_sizes_.begin(), qkv_hidden_sizes_.end(),
                           [num_heads = this->num_heads_](int64_t v) { return (v > 0) && (v % num_heads) == 0; }),
               "All qkv hiddend_sizes must be positive and divisible by num_heads");
+  ORT_ENFORCE(qkv_hidden_sizes_[0] == qkv_hidden_sizes_[1] && qkv_hidden_sizes_[0] == qkv_hidden_sizes_[2],
+              "currently qkv hidden size should be same");
   qkv_total_hidden_size_ = qkv_hidden_sizes_[0] + qkv_hidden_sizes_[1] + qkv_hidden_sizes_[2];
   order_input_ = GetCublasLtOrderAttr(info, "order_input");
   order_weight_ = GetCublasLtOrderAttr(info, "order_weight");
@@ -140,9 +142,8 @@ Status QOrderedAttention::PrePack(const Tensor& tensor, int input_idx, /*out*/ A
     is_packed = true;
     ORT_RETURN_IF_ERROR(PutIntoMergedBias(tensor, alloc, input_idx - InputIds::Q_Bias));
   } else if (input_idx == InputIds::Scale_QK_Gemm) {
-    ORT_ENFORCE(qkv_hidden_sizes_.size() == 3, "Need it to calc head sizes!");
     float scale = *tensor.Data<float>();
-    float base = std::exp(scale / sqrtf(qkv_hidden_sizes_[0] / num_heads_));
+    float base = std::exp(scale / sqrtf(qkv_hidden_sizes_[0] / static_cast<float>(num_heads_)));
     auto* softmax_lookup_data = alloc->Alloc(256 * sizeof(float));
     softmax_lookup_ = BufferUniquePtr(softmax_lookup_data, BufferDeleter(alloc));
     BuildTableForSoftmaxPowerOf(Stream(), base, (float*)softmax_lookup_.get());

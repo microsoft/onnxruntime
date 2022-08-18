@@ -388,7 +388,7 @@ void QOrderQuantize(cudaStream_t stream, const cudaDeviceProp& /* device_prop */
   unsigned int threads = 256;
   unsigned int EPB = threads * sizeof(QuantizedVecT) * kElementsPerThread;
   T inverse_scale = (T)(1.0f / (scale));
-  unsigned int blocks = gsl::narrow<unsigned int>((N + (EPB - 1)) / EPB);
+  unsigned int blocks = (unsigned int)((N + (EPB - 1)) / EPB);
   QOrderQuantizeKernel<FloatVecT, kElementsPerThread><<<blocks, threads, 0, stream>>>(src, dst, N, inverse_scale);
 }
 
@@ -402,7 +402,7 @@ void QOrderQuantize_Strict(cudaStream_t stream, const cudaDeviceProp& /* device_
   unsigned int threads = 256;
   unsigned int EPB = threads * sizeof(char4) * kElementsPerThread;
   float inverse_scale = 1.0f / scale;
-  unsigned int blocks = gsl::narrow<unsigned int>((N + (EPB - 1)) / EPB);
+  unsigned int blocks = (unsigned int)((N + (EPB - 1)) / EPB);
   QOrderQuantizeHalfStrictKernel<kElementsPerThread><<<blocks, threads, 0, stream>>>(src, dst, N, inverse_scale);
 }
 
@@ -452,7 +452,7 @@ void QOrderDequantize(cudaStream_t stream, const cudaDeviceProp& /* device_prop 
   unsigned int threads = 256;
   unsigned int EPB = threads * sizeof(QuantizedVecT) * kElementsPerThread;
   T scale_as_T = (T)(scale);
-  unsigned int blocks = gsl::narrow<unsigned int>((N + (EPB - 1)) / EPB);
+  unsigned int blocks = (unsigned int)((N + (EPB - 1)) / EPB);
   QOrderDequantizeKernel<FloatVecT, kElementsPerThread><<<blocks, threads, 0, stream>>>(src, dst, N, scale_as_T);
 }
 
@@ -482,7 +482,7 @@ void QOrderDequantize_Strict(cudaStream_t stream, const cudaDeviceProp& device_p
   static constexpr unsigned kElementsPerThread = 2;
   unsigned int threads = 256;
   unsigned int EPB = threads * sizeof(char4) * kElementsPerThread;
-  unsigned int blocks = gsl::narrow<unsigned int>((N + (EPB - 1)) / EPB);
+  unsigned int blocks = (unsigned int)((N + (EPB - 1)) / EPB);
   QOrderDequantizeKernel_Strict<kElementsPerThread><<<blocks, threads, 0, stream>>>(src, dst, N, scale);
 }
 
