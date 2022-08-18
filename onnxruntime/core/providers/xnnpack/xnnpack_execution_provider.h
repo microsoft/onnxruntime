@@ -38,6 +38,10 @@ class XnnpackExecutionProvider : public IExecutionProvider {
 
   // xnnpack does not support concurrent execution of a kernel
   bool ConcurrentRunSupported() const override { return false; }
+  const ONNX_NAMESPACE::OpSchema* GetDynamicSchema(const Node& fused_node) const override;
+
+ private:
+  std::unordered_map<std::string, std::unique_ptr<ONNX_NAMESPACE::OpSchema>> dynamic_schema_map_;
 };
 
 }  // namespace onnxruntime

@@ -1087,7 +1087,8 @@ class Graph {
            while this is in use.
            Call FinalizeFuseSubGraph to remove them once the fused replacement node is fully created.
   */
-  Node& BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
+  Node& BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name,
+                          const std::function<const ONNX_NAMESPACE::OpSchema*(const Node&)> schema_create_func = {});
 
   /**
   If we have BeginFuseSubGraph, but somehow hit errors, such as Compile of an EP failed on thesub_graph.
@@ -1553,7 +1554,8 @@ class Graph {
   // @returns false if node_index was invalid.
   bool ReleaseNode(NodeIndex node_index);
 
-  Node& CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
+  Node& CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std::string& fused_node_name,
+                                const std::function<const ONNX_NAMESPACE::OpSchema*(const Node&)>& set_schema_func = {});
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   Node* NodeAtIndexImpl(NodeIndex node_index) const {

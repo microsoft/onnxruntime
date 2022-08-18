@@ -118,6 +118,20 @@ class IExecutionProvider {
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const { return nullptr; }
 
   /**
+   * @brief Get the Dynamic Schema object
+   * A EP could have its own operation schema definition. Some of them could be created on the fly
+    We don't want to place them on the common domain if the other EPs don't have a implementation.
+    It's not worth to create one
+    and will make the binary size intolerable in especially EDGE scenario(NNAPI/COREML/XNNPACK)
+    Hence we build this function to decouple schema creating and registration from model initialization
+    and bind to each EP.
+   * @return const ONNX_NAMESPACE::OpSchema*
+   */
+  virtual const ONNX_NAMESPACE::OpSchema* GetDynamicSchema(const Node&) const {
+    return nullptr;
+  }
+
+  /**
      Get the device id of current execution provider
   */
   virtual int GetDeviceId() const { return -1; };

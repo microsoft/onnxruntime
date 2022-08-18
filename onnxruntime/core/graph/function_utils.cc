@@ -42,16 +42,16 @@ CreateSchema(const Graph& graph,
 
   int i = 0;
 
-  for (auto& input : meta_def->inputs) {
-    auto input_arg = graph.GetNodeArg(input);
+  for (const auto& input : meta_def->inputs) {
+    const auto* input_arg = graph.GetNodeArg(input);
     // inputs must have a type. can be inferred for outputs.
     ORT_ENFORCE(input_arg->Type() != nullptr);
     op_schema->Input(i, input, "", *input_arg->Type());
     ++i;
   }
   i = 0;
-  for (auto& output : meta_def->outputs) {
-    auto output_arg = graph.GetNodeArg(output);
+  for (const auto& output : meta_def->outputs) {
+    const auto* output_arg = graph.GetNodeArg(output);
     op_schema->Output(i, output, "", *output_arg->Type());
     ++i;
   }
@@ -278,7 +278,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
 }
 
 class Inliner {
-private:
+ private:
   std::string prefix;
   const onnxruntime::NodeAttributes& attr_map;
   std::vector<InlinedHashMap<std::string, std::string>> rename_scopes;
@@ -369,7 +369,7 @@ private:
       if (attr.has_g()) {
         transform(*attr.mutable_g());
       }
-      for (auto& graph: *attr.mutable_graphs())
+      for (auto& graph : *attr.mutable_graphs())
         transform(graph);
       ++attr_iter;
     }
@@ -387,7 +387,7 @@ private:
     rename_scopes.pop_back();
   }
 
-public:
+ public:
   // The main specialization method: specialize a FunctionProto for a particular call-site.
   static void specialize(const NodeProto& callnode, FunctionProto& callee, const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix) {
     Inliner inliner(unique_prefix, attr_map);

@@ -3775,7 +3775,8 @@ bool Graph::ReleaseNode(NodeIndex index) {
   return true;
 }
 
-Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std::string& fused_node_name) {
+Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std::string& fused_node_name,
+                                     const std::function<const ONNX_NAMESPACE::OpSchema*(const Node&)>& set_schema_func) {
   const auto* func_meta_def = sub_graph.GetMetaDef();
   ORT_ENFORCE(nullptr != func_meta_def);
   std::vector<NodeArg*> input_args;
@@ -3784,13 +3785,13 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   std::unordered_map<std::string, int> output_indexes;
 
   int cur_idx = 0;
-  for (auto& arg_name : func_meta_def->inputs) {
+  for (const auto& arg_name : func_meta_def->inputs) {
     input_args.push_back(GetNodeArg(arg_name));
     input_indexes[arg_name] = cur_idx++;
   }
 
   cur_idx = 0;
-  for (auto& arg_name : func_meta_def->outputs) {
+  for (const auto& arg_name : func_meta_def->outputs) {
     output_args.push_back(GetNodeArg(arg_name));
     output_indexes[arg_name] = cur_idx++;
   }
@@ -3810,6 +3811,9 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   // in an extended minimal build we do the lookup via a hash so don't need a schema.
   fused_node.SetSinceVersion(func_meta_def->since_version);
   if (sub_graph.use_existing_schema) {
+    if (set_schema_func) {
+      fused_node.op_ = set_schema_func(fused_node);
+    }
     ORT_ENFORCE(SetOpSchemaFromRegistryForNode(fused_node),
                 "Schema was not found for fused node. Domain:", fused_node.Domain(), " OpType:", fused_node.OpType());
   } else {
@@ -3821,8 +3825,9 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   return fused_node;
 }
 
-Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name) {
-  Node& node = CreateFusedSubGraphNode(sub_graph, fused_node_name);
+Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name,
+                               const std::function<const ONNX_NAMESPACE::OpSchema*(const Node&)> schema_create_func) {
+  Node& node = CreateFusedSubGraphNode(sub_graph, fused_node_name, schema_create_func);
 
   return node;
 }

@@ -163,6 +163,7 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
     def.inputs.push_back(y_quant_param.zero_point ? y_quant_param.zero_point->Name() : "");
     if (qtype == QuantizedOpType::QDQSoftmax) {
       def.domain = kDynamicDomainByCreate;
+      def.since_version = 1;
       def.attributes.emplace("opset", utils::MakeAttribute(std::string("opset"), int64_t(node_unit.SinceVersion())));
     }
   } else if (qtype == QuantizedOpType::QDQMaxPool) {

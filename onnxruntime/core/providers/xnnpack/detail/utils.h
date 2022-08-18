@@ -21,7 +21,7 @@ namespace onnxruntime {
 class GraphViewer;
 class NodeUnit;
 namespace xnnpack {
-constexpr const char* kDynamicDomainByCreate = __DATE__ ".domain";
+constexpr const char* kDynamicDomainByCreate = "xnnpack.create.domain";
 
 enum OpComputeType : uint8_t {
   op_compute_type_invalid = 0,

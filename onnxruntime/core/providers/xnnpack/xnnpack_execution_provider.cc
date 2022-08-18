@@ -13,11 +13,62 @@
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry.h"
 #include "core/providers/shared/node_unit/node_unit.h"
-#include "core/common/inlined_containers.h"
 
 #include <xnnpack.h>
 
 namespace onnxruntime {
+
+static std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
+    const std::string& name,
+    const std::string& domain,
+    int since_version,
+    int num_inputs,
+    int num_outputs,
+    std::initializer_list<const char*> aggregated_list_of_types) {
+  using ONNX_NAMESPACE::OpSchema;
+  std::vector<const char*> i_o_type_constraint{aggregated_list_of_types};
+  auto op_schema = std::make_unique<OpSchema>(name, __FILE__, __LINE__);
+
+  op_schema->SetDomain(domain);
+  op_schema->SetDoc("");
+  op_schema->SinceVersion(since_version);
+
+  // for simplicity we use one list that combines all the valid types for the operator inputs and outputs.
+  // we manually check if the node is supported in the EP, so if we ever create a node in our custom domain
+  // we know it's supported. due to that the type constraints here don't really matter - they just need to be cover
+  // all valid values. extra types for a specific input or output don't hurt.
+  op_schema->TypeConstraint("T", aggregated_list_of_types, "match the first input/output's type");
+  // we have to enumerate all types for the other inputs/outputs
+  op_schema->TypeConstraint("T_other", {
+                                           "tensor(bfloat16)",
+                                           "tensor(float16)",
+                                           "tensor(float)",
+                                           "tensor(double)",
+                                           "tensor(int8)",
+                                           "tensor(uint8)",
+                                           "tensor(uint16)",
+                                           "tensor(int16)",
+                                           "tensor(int32)",
+                                           "tensor(uint32)",
+                                           "tensor(uint64)",
+                                           "tensor(int64)",
+                                           "tensor(bool)",
+                                       },
+                            " don't care the other inputs/outputs");
+
+  for (int i = 0; i < num_inputs; ++i) {
+    op_schema->Input(i, "input_" + std::to_string(i), "",
+                     i == 0 ? "T" : "T_other", OpSchema::FormalParameterOption::Single, i == 0);
+  }
+
+  for (int i = 0; i < num_outputs; ++i) {
+    op_schema->Output(i, "output_" + std::to_string(i), "",
+                      i == 0 ? "T" : "T_other", OpSchema::FormalParameterOption::Single, i == 0);
+  }
+
+  op_schema->Finalize();
+  return op_schema;
+}
 
 namespace xnnpack {
 template <>
@@ -90,6 +141,19 @@ using namespace xnnpack;
 
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& /*info*/)
     : IExecutionProvider{kXnnpackExecutionProvider, true} {
+  // Create and register dynamic schema for ops,
+  // There ops are not layout sensitive and does not defined in onnxdomain
+  dynamic_schema_map_["QLinearSoftmax"] = CreateSchema("QLinearSoftmax", kDynamicDomainByCreate, 1,
+                                                       /* inputs */ 5, /* outputs*/ 1,
+                                                       {"tensor(uint8)", "tensor(int8)"});
+}
+
+const ONNX_NAMESPACE::OpSchema* XnnpackExecutionProvider::GetDynamicSchema(const Node& fused_node) const {
+  const std::string& op_type = fused_node.OpType();
+  return (dynamic_schema_map_.count(op_type) > 0 &&
+          dynamic_schema_map_.at(op_type)->domain() == fused_node.Domain())
+             ? dynamic_schema_map_.at(op_type).get()
+             : nullptr;
 }
 
 // implement RegisterAllocator to test/validate sharing the CPU EP's allocator
@@ -238,37 +302,19 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
     }
     node_unit_supported_result[&node_unit] = request_node;
     if (request_node) {
-      auto required_register = [](const IndexedSubGraph& subgraph) -> bool {
-        if (subgraph.GetMetaDef() == nullptr) return false;
-
-        const std::string& op_type = subgraph.GetMetaDef()->name;
-        // layout insensitive ops registration, add more ops here if needed.
-        if (onnxruntime::InlinedHashSet<absl::string_view>{"QLinearSoftmax"}.count(op_type)) {
-          return true;
-        }
-        return false;
-      };
-      auto register_layout_insensitive_ops = [&graph, &required_register](const IndexedSubGraph& subgraph) {
-        if(required_register(subgraph)){
-          auto temp_schema_ptr = function_utils::CreateSchema(graph.GetGraph(), subgraph);
-          temp_schema_ptr->SinceVersion(1);
-          // RegisterSchema may complain registration more than once, but it's fine.
-          ONNX_NAMESPACE::RegisterSchema(*temp_schema_ptr);
-      }; };
       // Create ComputeCapability from IndexedSubGraph and add
-      auto add_capability_or_register_schema = [&](std::unique_ptr<IndexedSubGraph> sub_graph) {
-        register_layout_insensitive_ops(*sub_graph);
+      auto add_capability = [&](std::unique_ptr<IndexedSubGraph> sub_graph) {
         capabilities.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
         node_to_compute_capability.insert({&node_unit, capabilities.back().get()});
       };
 
       // first pass: add ComputeCapability for all individual nodes in NodeUnit
       if (node_unit.GetNode().GetExecutionProviderType().empty()) {
-        AddComputeCapabilityForEachNodeInNodeUnit(node_unit, add_capability_or_register_schema, supported_node_unit_map);
+        AddComputeCapabilityForEachNodeInNodeUnit(node_unit, add_capability, supported_node_unit_map);
       } else {  // == Type()
         // second pass: add single ComputeCapability for all nodes in NodeUnit so any QDQ node groups get fused
         // Activation fusion happens later
-        AddComputeCapabilityForNodeUnit(node_unit, add_capability_or_register_schema, supported_node_unit_map);
+        AddComputeCapabilityForNodeUnit(node_unit, add_capability, supported_node_unit_map);
       }
     }
   }
