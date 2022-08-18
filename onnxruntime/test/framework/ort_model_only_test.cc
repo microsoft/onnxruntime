@@ -536,7 +536,8 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOpsFromBufferNoCopy) {
   RunOrtModel(test_info);
 }
 
-TEST(OrtModelOnlyTests, TestBackwardsCompat) {
+// TODO provide backwards compatibility?
+TEST(OrtModelOnlyTests, DISABLED_TestBackwardsCompat) {
   auto v110_dir = ORT_TSTR("testdata/ort_backwards_compat/ORTv1.10/");
   std::vector<std::string> models = {"gathernd9.basic.ort",
                                      "not1.basic.ort",
