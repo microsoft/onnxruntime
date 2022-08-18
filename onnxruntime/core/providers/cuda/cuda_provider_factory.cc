@@ -217,9 +217,6 @@ struct CUDA_Provider : Provider {
     info.user_compute_stream = params->user_compute_stream;
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
     info.cudnn_conv_use_max_workspace = params->cudnn_conv_use_max_workspace != 0;
-    info.external_allocator_info.alloc = params->alloc;
-    info.external_allocator_info.free = params->free;
-    info.external_allocator_info.empty_cache = params->empty_cache;
     info.enable_cuda_graph = params->enable_cuda_graph != 0;
     info.cudnn_conv1d_pad_to_nc1d = params->cudnn_conv1d_pad_to_nc1d != 0;
 

@@ -25,9 +25,6 @@ struct OrtCUDAProviderOptionsV2 {
                                                            // (will be overridden by contents of `default_memory_arena_cfg` is it exists)
   OrtArenaCfg* default_memory_arena_cfg;                   // BFC Arena config flags.
   int cudnn_conv_use_max_workspace;                        // flag specifying if maximum workspace can be used in cudnn conv algo search.
-  void* alloc;
-  void* free;
-  void* empty_cache;
   int enable_cuda_graph;                                   // flag specifying if the CUDA graph is to be captured for the model.
   int cudnn_conv1d_pad_to_nc1d;                            // flag specifying if pad Conv1D's input [N,C,D] to [N,C,1,D] or [N,C,D,1].
 };

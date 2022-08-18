@@ -309,6 +309,7 @@ static void InitializeSession(
   // When CUDA is enabled, some CUDA-only graph graph fusions are enabled.
   // If we don't add CUDA EP, ONNX Runtime may throw even when running MNIST.
   // Information needed to construct CUDA execution providers.
+  // Note that CUDA is enabled by setting LTC_TS_CUDAA=1 when running LazyTensor.
   if (device.Type() == OrtDevice::GPU) {
     ORT_THROW_IF_ERROR(sess.RegisterExecutionProvider(
         CUDAExecutionProviderPool::GetInstance().GetExecutionProvider(device.Id())));

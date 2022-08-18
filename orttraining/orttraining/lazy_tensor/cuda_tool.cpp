@@ -12,6 +12,7 @@
 // ORT
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/provider_factory_creators.h"
+#include "orttraining/python/orttraining_pybind_common.h"
 
 namespace onnxruntime {
 namespace lazytensor {
@@ -42,13 +43,16 @@ void CUDAExecutionProviderPool::Initialize() {
   int device_count = 0;
   cudaGetDeviceCount(&device_count);
   for (int i = 0; i < device_count; ++i) {
-    OrtCUDAProviderOptionsV2 provider_options{};
-    provider_options.device_id = i;
-    provider_options.do_copy_in_default_stream = true;
-    provider_options.alloc = reinterpret_cast<void*>(&CudaAllocDelegate);
-    provider_options.free = reinterpret_cast<void*>(&CudaFreeDelegate);
-    auto factory = onnxruntime::CudaProviderFactoryCreator::Create(&provider_options);
-    cuda_execution_providers_.emplace_back(std::move(factory->CreateProvider()));
+    onnxruntime::ProviderOptions options;
+    options["device_id"] = std::to_string(i);
+    options["do_copy_in_default_stream"] = "true";
+    options["gpu_external_alloc"] = std::to_string(reinterpret_cast<size_t>(&CudaAllocDelegate));
+    options["gpu_external_free"] = std::to_string(reinterpret_cast<size_t>(&CudaFreeDelegate));
+
+    ProviderInfo_CUDA* cuda_provider_info = TryGetProviderInfo_CUDA();
+    CUDAExecutionProviderInfo info;
+    cuda_provider_info->CUDAExecutionProviderInfo__FromProviderOptions(options, info);
+    cuda_execution_providers_.emplace_back(std::move(cuda_provider_info->CreateExecutionProviderFactory(info)->CreateProvider()));
   }
 }
 

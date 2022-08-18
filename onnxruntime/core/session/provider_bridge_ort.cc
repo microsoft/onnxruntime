@@ -830,16 +830,16 @@ struct ProviderHostImpl : ProviderHost {
   const DataTransferManager& SessionState__GetDataTransferMgr(const SessionState* p) override { return p->GetDataTransferMgr(); }
 
   // Tensor (wrapped)
-  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) override { 
-    return std::make_unique<Tensor>(p_type, shape, std::move(allocator)); 
+  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) override {
+    return std::make_unique<Tensor>(p_type, shape, std::move(allocator));
   }
 
   std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset) override {
-    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset); 
+    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset);
   }
 
   std::unique_ptr<Tensor> Tensor__construct_default() override {
-    return std::make_unique<Tensor>(); 
+    return std::make_unique<Tensor>();
   }
 
   virtual void Tensor__move_assign(Tensor& lhs, Tensor&& rhs) noexcept override {
@@ -1138,9 +1138,6 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
   cuda_options_converted.default_memory_arena_cfg = legacy_cuda_options->default_memory_arena_cfg;
   // Use default value as this field is not available in OrtCUDAProviderOptions
   cuda_options_converted.cudnn_conv_use_max_workspace = 0;
-  cuda_options_converted.alloc = NULL;
-  cuda_options_converted.free = NULL;
-  cuda_options_converted.empty_cache = NULL;
   cuda_options_converted.enable_cuda_graph = 0;
   cuda_options_converted.cudnn_conv1d_pad_to_nc1d = 0;
 
