@@ -38,7 +38,7 @@ NPM_BUILD_DIR = [
     {"command": "npm run build", "path": os.path.normpath(os.path.join(abspath(dirname(__file__)), "../web"))},
 ]
 
-#### generating the build folders
+#### Generating the build folders
 if not os.path.isdir(BINARIES_DIR):
     os.mkdir(BINARIES_DIR)
 
@@ -53,18 +53,14 @@ if not os.path.isdir(DIST_PATH):
 if not os.path.isdir(BINDING_PATH):
     os.mkdir(BINDING_PATH)
 
-#### running the WASM build commands
+#### Running the WASM build commands
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--config",
     choices=["Release", "Debug", "RelWithDebInfo"],
     help="build WASM artifactsfor the configuration - {Release,Debug,RelWithDebInfo}",
 )
-parser.add_argument(
-    "--copy",
-    choices=["Release", "Debug", "RelWithDebInfo"],
-    help="copy WASM artifacts to destination folders - {Release,Debug,RelWithDebInfo}",
-)
+
 args = parser.parse_args()
 configuration = "none"
 
@@ -85,31 +81,31 @@ if args.config:
         )
         p = subprocess.Popen(command, shell=True)
         p.wait()
-
-#### copy the files to the right location
-if args.copy:
-    configuration = args.copy
-    ## Copying WASM artifacts
-    for entry in BUILDS:
-        if not os.path.exists(os.path.join(BINARIES_DIR, entry["dir"], configuration, entry["wasm_file_name"])):
+        if(not os.path.exists(os.path.join(BINARIES_DIR, entry["dir"], configuration, entry["wasm_file_name"]))and (p.returncode!=0)):
             print("Error - can find " + entry["wasm_file_name"] + " there might be an issue with the build\n")
             exit()
-        shutil.copyfile(
-            os.path.join(BINARIES_DIR, entry["dir"], configuration, entry["wasm_file_name"]),
-            os.path.join(DIST_PATH, entry["wasm_file_name"]),
-        )
 
-    ## Copying JS binding files
-    for entry in JS_FILES:
-        if not os.path.exists(os.path.join(BINARIES_DIR, entry["dir"], configuration, entry["file_name"])):
-            print("Error - can find " + entry["file_name"] + " there might be an issue with the build\n")
-            exit()
-        shutil.copyfile(
-            os.path.join(BINARIES_DIR, entry["dir"], configuration, entry["file_name"]),
-            os.path.join(BINDING_PATH, entry["file_name"]),
-        )
+## Copying WASM artifacts
+for entry in BUILDS:
+    if not os.path.exists(os.path.join(BINARIES_DIR, entry["dir"], configuration, entry["wasm_file_name"])):
+        print("Error - can find " + entry["wasm_file_name"] + " there might be an issue with the build\n")
+        exit()
+    shutil.copyfile(
+        os.path.join(BINARIES_DIR, entry["dir"], configuration, entry["wasm_file_name"]),
+        os.path.join(DIST_PATH, entry["wasm_file_name"]),
+    )
 
-#### build NPM package
+## Copying JS binding files
+for entry in JS_FILES:
+    if not os.path.exists(os.path.join(BINARIES_DIR, entry["dir"], configuration, entry["file_name"])):
+        print("Error - can find " + entry["file_name"] + " there might be an issue with the build\n")
+        exit()
+    shutil.copyfile(
+        os.path.join(BINARIES_DIR, entry["dir"], configuration, entry["file_name"]),
+        os.path.join(BINDING_PATH, entry["file_name"]),
+    )
+
+#### Build NPM package
 for entry in NPM_BUILD_DIR:
     p = subprocess.Popen(entry["command"], shell=True, cwd=entry["path"])
     p.wait()
