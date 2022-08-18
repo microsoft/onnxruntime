@@ -150,3 +150,7 @@ static const char* const kOrtSessionOptionsConfigThreadAffinities = "session.thr
 // binary string in form of "0,0,0,1,0,1,1,1..." size up to the number of intra op threads including the main thread
 // 1 means it is a small core thread
 static const char* const kOrtSessionOptionsConfigSmallCoreThreads = "session.small_core_threads";
+
+// for a small core thread:
+// block_size = block_size // small_core_ratio
+static const char* const kOrtSessionOptionsConfigSmallCoreRatio = "session.small_core_ratio";

@@ -432,6 +432,8 @@ class ThreadPool {
 
   // Force the thread pool to run in hybrid mode on a normal cpu.
   bool force_hybrid_ = false;
+
+  int small_core_ratio_ = 1;
 };
 
 }  // namespace concurrency

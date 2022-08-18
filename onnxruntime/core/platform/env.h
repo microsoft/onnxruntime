@@ -81,6 +81,7 @@ struct ThreadOptions {
   int dynamic_block_base_ = 0;
 
   std::vector<bool> small_cores;
+  int small_core_ratio = 1;
 };
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.

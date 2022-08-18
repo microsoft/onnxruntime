@@ -345,6 +345,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
             to.small_core_vec_len = bytes;
           }
         }
+        ////////////////////////////////////////// small core ratio //////////////////////////////////////////
+        to.small_core_ratio = stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSmallCoreRatio, "1").c_str());
         //////////////////////////////////////////////////////////////////////////////////////////////////////
 
         to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));

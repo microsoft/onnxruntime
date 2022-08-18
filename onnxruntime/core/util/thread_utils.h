@@ -40,6 +40,8 @@ struct OrtThreadPoolParams {
   char* small_core_vec = nullptr;
   size_t small_core_vec_len = 0;
 
+  int small_core_ratio = 1;
+
   //TODO - find place to free affinity_vec and small_core_vec
   //~OrtThreadPoolParams() {
   //  if (affinity_vec) {
