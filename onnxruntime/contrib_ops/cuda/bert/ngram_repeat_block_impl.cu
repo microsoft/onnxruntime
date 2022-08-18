@@ -20,40 +20,42 @@ using namespace onnxruntime::cuda;
 __global__ void banRepeatedTokens(const int64_t* __restrict__ tokens,
                                   float* __restrict__ lprobs,
                                   int max_predict_len, int vocab_size,
-                                  int banned_no_further_than,
+                                  int recency_length,
                                   int no_repeat_ngram_size) {
   auto row = blockIdx.x;
   auto col = threadIdx.x;
   auto start = row * (max_predict_len) + col;
   auto cur_len = (row + 1) * (max_predict_len);
-  if (banned_no_further_than > 0 && cur_len > banned_no_further_than_){
-    start = cur_len - banned_no_further_than_;
-  }
-  // Each thread compares ngram starting from
-  // thread index with final ngram starting from
-  // step - no_repeat_ngram_size +2
-  auto check_start_pos = blockDim.x;
-  auto lprob_start = row * vocab_size;
-  bool is_banned = true;
-  extern __shared__ int64_t tokens_shm[];
-  tokens_shm[col] = tokens[start];
-  if (col == blockDim.x - 1) {
-    for (int i=1; i<no_repeat_ngram_size; i++){
-      if (col+i < max_predict_len){
-        tokens_shm[col + i] = tokens[start + i];
+  bool skip_this_ngram = recency_length > 0 && cur_len > recency_length
+  bool is_banned = false;
+  if (!skip_this_ngram){
+    // Each thread compares ngram starting from
+    // thread index with final ngram starting from
+    // step - no_repeat_ngram_size +2
+    auto check_start_pos = blockDim.x;
+    auto lprob_start = row * vocab_size;
+    is_banned = true;
+    extern __shared__ int64_t tokens_shm[];
+    tokens_shm[col] = tokens[start];
+    if (col == blockDim.x - 1) {
+      for (int i=1; i<no_repeat_ngram_size; i++){
+        if (col+i < max_predict_len){
+          tokens_shm[col + i] = tokens[start + i];
+        }
       }
     }
   }
   __syncthreads();
-
-  for (int k = 0; k < no_repeat_ngram_size - 1; k++) {
-    if (tokens_shm[col + k] != tokens_shm[check_start_pos + k]) {
-      is_banned = false;
+  if (!skip_this_ngram){
+    for (int k = 0; k < no_repeat_ngram_size - 1; k++) {
+      if (tokens_shm[col + k] != tokens_shm[check_start_pos + k]) {
+        is_banned = false;
+      }
     }
-  }
-  if (is_banned == true) {
-    auto token_to_be_banned = tokens_shm[col + no_repeat_ngram_size - 1];
-    lprobs[lprob_start + token_to_be_banned] = -INFINITY;
+    if (is_banned == true) {
+      auto token_to_be_banned = tokens_shm[col + no_repeat_ngram_size - 1];
+      lprobs[lprob_start + token_to_be_banned] = -INFINITY;
+    }
   }
 }
 
@@ -69,7 +71,7 @@ void NGramRepeatBlockImpl(
     int max_predict_len,
     int vocab_size,
     int beam_size,
-    int banned_no_further_than,
+    int recency_length,
     int no_repeat_ngram_size) {
   int threads = step - no_repeat_ngram_size + 2;
   if (threads <= 0) return;
@@ -82,7 +84,7 @@ void NGramRepeatBlockImpl(
   // each token will be accessed N times to compare with current Ngram where
   // N is Ngram size.
   banRepeatedTokens<<<blocks, threads, shared_mem_size, stream>>>(
-      tokens_ptr, scores_ptr, max_predict_len, vocab_size, banned_no_further_than, no_repeat_ngram_size);
+      tokens_ptr, scores_ptr, max_predict_len, vocab_size, recency_length, no_repeat_ngram_size);
 }
 
 }  // namespace cuda
