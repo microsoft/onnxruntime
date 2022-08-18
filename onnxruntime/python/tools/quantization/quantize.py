@@ -7,26 +7,10 @@ import logging
 import tempfile
 from pathlib import Path
 
-from onnx import onnx_pb as onnx_proto
-
 from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator
-from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
-from .quant_utils import (
-    QuantFormat,
-    QuantizationMode,
-    QuantizedInitializer,
-    QuantizedValue,
-    QuantizedValueType,
-    QuantType,
-    attribute_to_kwarg,
-    find_by_name,
-    generate_identified_filename,
-    get_elem_index,
-    get_mul_node,
-    load_model,
-)
+from .quant_utils import QuantFormat, QuantizationMode, QuantType, load_model
 from .registry import IntegerOpsRegistry, QLinearOpsRegistry
 
 
@@ -155,6 +139,7 @@ def quantize_static(
         )
         calibrator.collect_data(calibration_data_reader)
         tensors_range = calibrator.compute_range()
+        del calibrator
 
     check_static_quant_arguments(quant_format, activation_type, weight_type)
 

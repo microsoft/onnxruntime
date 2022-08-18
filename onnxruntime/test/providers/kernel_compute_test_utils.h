@@ -78,7 +78,7 @@ class KernelComputeTester {
     Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), shape, std::move(allocator), value, strides);
     if (values) {
       Tensor* tensor = value.GetMutable<Tensor>();
-      auto* p_data = tensor->template MutableData<T>();
+      auto* p_data = tensor->MutableData<T>();
       memcpy(p_data, values, tensor->SizeInBytes());
     }
 

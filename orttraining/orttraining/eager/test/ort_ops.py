@@ -108,6 +108,24 @@ class OrtOpTests(unittest.TestCase):
         assert torch.allclose(cpu_min, ort_min.cpu())
         assert cpu_min.dim() == ort_min.dim()
 
+    def test_cat(self):
+        device = self.get_device()
+        cpu_out_tensor = torch.tensor([])
+        ort_out_tensor = cpu_out_tensor.to(device)
+        cpu_x = torch.randn((128, 64))
+        cpu_y = torch.randn((128, 64))
+        cpu_z = torch.randn((128, 64))
+        cpu_ans_0 = torch.cat((cpu_x, cpu_y, cpu_z), 0)
+        cpu_ans_1 = torch.cat((cpu_x, cpu_y, cpu_z), -1, out=cpu_out_tensor)
+        ort_x = cpu_x.to(device)
+        ort_y = cpu_y.to(device)
+        ort_z = cpu_z.to(device)
+        ort_ans_0 = torch.cat((ort_x, ort_y, ort_z), 0)
+        ort_ans_1 = torch.cat((ort_x, ort_y, ort_z), -1, out=ort_out_tensor)
+        assert torch.allclose(cpu_ans_0, ort_ans_0.cpu())
+        assert torch.allclose(cpu_ans_1, ort_ans_1.cpu())
+        assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu())
+
     def test_equal(self):
         device = self.get_device()
         cpu_a = torch.Tensor([1.0, 1.5])
@@ -444,6 +462,50 @@ class OrtOpTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             torch.mm(ort_mat1, ort_not_matrix)
 
+    def test_squeeze(self):
+        device = self.get_device()
+        cpu_tensor = torch.zeros(2, 1, 2, 1, 2)
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_result1 = torch.squeeze(cpu_tensor)
+        ort_result1 = torch.squeeze(ort_tensor)
+
+        cpu_result2 = torch.squeeze(cpu_tensor, 1)
+        ort_result2 = torch.squeeze(ort_tensor, 1)
+
+        assert torch.equal(cpu_result1, ort_result1.cpu())
+        assert torch.equal(cpu_result2, ort_result2.cpu())
+
+    def test_unsqueeze(self):
+        device = self.get_device()
+        cpu_tensor = torch.tensor([1, 2, 3, 4])
+        ort_tensor = cpu_tensor.to(device)
+
+        cpu_result1 = torch.unsqueeze(cpu_tensor, 0)
+        ort_result1 = torch.unsqueeze(ort_tensor, 0)
+        cpu_result2 = torch.unsqueeze(cpu_tensor, 1)
+        ort_result2 = torch.unsqueeze(ort_tensor, 1)
+
+        assert torch.equal(cpu_result1, ort_result1.cpu())
+        assert torch.equal(cpu_result2, ort_result2.cpu())
+
+    def test_add_broadcasting(self):
+        device = self.get_device()
+        cpu_first = torch.rand(1, 1, 3, 4, 5)
+        ort_first = cpu_first.to(device)
+        cpu_last = torch.rand(1, 2, 3, 1, 1)
+        ort_last = cpu_last.to(device)
+        cpu_single = torch.rand(5)
+        ort_single = cpu_single.to(device)
+
+        cpu_result1 = cpu_first + cpu_last  # dims = (1,2,3,4,5) is final
+        ort_result1 = ort_first + ort_last
+        assert torch.equal(cpu_result1, ort_result1.cpu())
+
+        cpu_result2 = cpu_result1 + cpu_single
+        ort_result2 = ort_result1 + ort_single
+        assert torch.equal(cpu_result2, ort_result2.cpu())
+
     ################################ parameterized test follow #######################################
     # OPS - is a list of [test_operator, tested_tensor=torch.rand (6)].
     # The default value for tested_tensor is torch.rand (6)- size of 6 uniform distribution on the interval [0, 1).
@@ -625,7 +687,7 @@ class OrtOpTests(unittest.TestCase):
     @parameterized.expand(binary_ops, name_func=rename_func)
     def test_op_binary_tensor(self, binary_op, op_sign, alpha_supported):
         device = self.get_device()
-        cpu_input = torch.rand(3, 3)
+        cpu_input = torch.rand(3, 1)  # use broadcasting in the second dim.
         ort_input = cpu_input.to(device)
         cpu_other = torch.rand(3, 3)
         ort_other = cpu_other.to(device)

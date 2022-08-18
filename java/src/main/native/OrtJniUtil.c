@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2022 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -181,6 +181,31 @@ size_t onnxTypeSize(ONNXTensorElementDataType type) {
         default:
             return 0;
     }
+}
+
+OrtErrorCode getTensorTypeShape(JNIEnv * jniEnv, JavaTensorTypeShape* output, const OrtApi * api, const OrtValue * value) {
+  OrtTensorTypeAndShapeInfo* info;
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorTypeAndShape(value, &info));
+  if (code != ORT_OK) {
+    return code;
+  }
+  code = checkOrtStatus(jniEnv, api, api->GetDimensionsCount(info, &output->dimensions));
+  if (code != ORT_OK) {
+    api->ReleaseTensorTypeAndShapeInfo(info);
+    return code;
+  }
+  code = checkOrtStatus(jniEnv, api, api->GetTensorShapeElementCount(info, &output->elementCount));
+  if (code != ORT_OK) {
+    api->ReleaseTensorTypeAndShapeInfo(info);
+    return code;
+  }
+  code = checkOrtStatus(jniEnv, api, api->GetTensorElementType(info, &output->onnxTypeEnum));
+  api->ReleaseTensorTypeAndShapeInfo(info);
+  if (code != ORT_OK) {
+    return code;
+  }
+
+  return ORT_OK;
 }
 
 typedef union FP32 {
@@ -1038,6 +1063,7 @@ OrtErrorCode checkOrtStatus(JNIEnv *jniEnv, const OrtApi * api, OrtStatus * stat
     size_t len = strlen(message)+1;
     char* copy = malloc(sizeof(char)*len);
     if (copy == NULL) {
+      api->ReleaseStatus(status);
       throwOrtException(jniEnv, 1, "Not enough memory");
       return ORT_FAIL;
     }

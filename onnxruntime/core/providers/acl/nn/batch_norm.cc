@@ -47,16 +47,16 @@ Status BatchNorm<T>::Compute(OpKernelContext* context) const {
 
   ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, S, B, M, V));
 
-  LOGS_DEFAULT(VERBOSE) << "BatchNorm ACL:";  
+  LOGS_DEFAULT(VERBOSE) << "BatchNorm ACL:";
   LOGS_DEFAULT(VERBOSE) << "X " << X->Shape().ToString().c_str();
   LOGS_DEFAULT(VERBOSE) << "params " << S->Shape().ToString().c_str();
   LOGS_DEFAULT(VERBOSE) << std::endl;
 
-  const T* x_data = X->template Data<T>();
+  const T* x_data = X->Data<T>();
 
   Tensor* Y = context->Output(0, X->Shape());
 
-  T* y_data = Y->template MutableData<T>();
+  T* y_data = Y->MutableData<T>();
 
   ACLNEBatchNorm* pBatchNorm;
   BatchNormLayersIterator it = batchNormLayers.find((OpKernel*)this);
@@ -84,10 +84,10 @@ Status BatchNorm<T>::Compute(OpKernelContext* context) const {
       tbatch_norm.mean.get(), tbatch_norm.var.get(), B != nullptr ? tbatch_norm.b.get() : nullptr, S != nullptr ? tbatch_norm.scale.get() : nullptr,
       epsilon_);//no activation in onnx
 
-    const T* scale_data = S->template Data<T>();
-    const T* b_data = B->template Data<T>();
-    const T* mean_data = M->template Data<T>();
-    const T* var_data = V->template Data<T>();
+    const T* scale_data = S->Data<T>();
+    const T* b_data = B->Data<T>();
+    const T* mean_data = M->Data<T>();
+    const T* var_data = V->Data<T>();
 
     ACLImportMemory(tbatch_norm.mean->allocator(), (void*)mean_data, M->Shape().Size() * 4);
     ACLImportMemory(tbatch_norm.var->allocator(), (void*)var_data, V->Shape().Size() * 4);

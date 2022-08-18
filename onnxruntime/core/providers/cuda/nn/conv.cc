@@ -92,17 +92,17 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
   const auto x_dims = x_shape.AsShapeVector();
-  s_.x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
+  s_.x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   s_.element_size = X->DataType()->Size();
   //set W
   const Tensor* W = context->Input<Tensor>(1);
   const TensorShape& w_shape = W->Shape();
   auto w_dims = w_shape.AsShapeVector();
-  s_.w_data = reinterpret_cast<const CudaT*>(W->template Data<T>());
+  s_.w_data = reinterpret_cast<const CudaT*>(W->Data<T>());
   //set B
   if (context->InputCount() >= 3) {
     const Tensor* B = context->Input<Tensor>(2);
-    s_.b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
+    s_.b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
   } else {
     s_.b_data = nullptr;
   }
@@ -110,7 +110,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   if (context->InputCount() >= 4) {
     const Tensor* Z = context->Input<Tensor>(3);
     ORT_RETURN_IF_ERROR(s_.z_tensor.Set(Z->Shape().GetDims(), CudnnTensor::GetDataType<CudaT>()));
-    s_.z_data = reinterpret_cast<const CudaT*>(Z->template Data<T>());
+    s_.z_data = reinterpret_cast<const CudaT*>(Z->Data<T>());
   } else {
     s_.z_data = nullptr;
   }
@@ -182,7 +182,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       s_.y_data = reinterpret_cast<CudaT*>(s_.memory_for_cudnn_conv_results.get());
     } else {
       // No post slicing needed. Fill the output tensor's buffer directly.
-      s_.y_data = reinterpret_cast<CudaT*>(s_.Y->template MutableData<T>());
+      s_.y_data = reinterpret_cast<CudaT*>(s_.Y->MutableData<T>());
     }
 
     const CUDAExecutionProvider* cuda_ep =
@@ -241,7 +241,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = b_shape[0];
       ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
-      //s_.b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
+      //s_.b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
     } else if (bias_expected) {
       TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = w_dims[0];
@@ -257,7 +257,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 
     if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
       // set math type to tensor core before algorithm search
-      ORT_IF_CONSTEXPR(std::is_same<T, MLFloat16>::value)
+      if constexpr(std::is_same<T, MLFloat16>::value)
         CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
 
       cudnnConvolutionFwdAlgoPerf_t perf;
@@ -325,7 +325,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(s_.y_dims_with_adjusted_pads).Size() * s_.element_size);
       s_.y_data = reinterpret_cast<CudaT*>(s_.memory_for_cudnn_conv_results.get());
     } else {
-      s_.y_data = reinterpret_cast<CudaT*>(s_.Y->template MutableData<T>());
+      s_.y_data = reinterpret_cast<CudaT*>(s_.Y->MutableData<T>());
     }
   }
   return Status::OK();

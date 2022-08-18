@@ -41,4 +41,4 @@ RUN pip install \
       pytorch_lightning==1.6.0
 
 RUN pip install torch-ort --no-dependencies
-ENV ORTMODULE_ONNX_OPSET_VERSION=14
+ENV ORTMODULE_ONNX_OPSET_VERSION=15

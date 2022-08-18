@@ -1999,8 +1999,8 @@ TEST_F(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(expected_dims_prod);
   ASSERT_EQ(expected_shape, rtensor.Shape());
-  const std::vector<MLFloat16> found(rtensor.template Data<MLFloat16>(),
-                                     rtensor.template Data<MLFloat16>() + expected_dims_prod.size());
+  const std::vector<MLFloat16> found(rtensor.Data<MLFloat16>(),
+                                     rtensor.Data<MLFloat16>() + expected_dims_prod.size());
   ASSERT_EQ(expected_values_prod, found);
 }
 
@@ -3546,7 +3546,7 @@ struct BiasSoftmaxFusionTester {
     }
   }
 
-  void TestFusionOccurs(int expected_broadcast_axis, int expected_softmax_axis) {
+  void TestFusionOccurs(int expected_axis, bool expected_is_inner_broadcast) {
     ASSERT_STATUS_OK(model_load_);
 
     ASSERT_STATUS_OK(graph_transformation_mgr_.ApplyTransformers(p_model_->MainGraph(), TransformerLevel::Level2, *logger_));
@@ -3556,12 +3556,12 @@ struct BiasSoftmaxFusionTester {
     ASSERT_EQ(op_to_count["Softmax"], 0);
     ASSERT_EQ(op_to_count["com.microsoft.BiasSoftmax"], 1);
 
-    int actual_softmax_axis, actual_broadcast_axis;
-    ASSERT_TRUE(GetAxis("BiasSoftmax", "softmax_axis", &actual_softmax_axis));
-    ASSERT_EQ(actual_softmax_axis, expected_softmax_axis);
+    int actual_axis = 1, actual_broadcast_type = 1;
+    ASSERT_TRUE(GetAxis("BiasSoftmax", "axis", &actual_axis));
+    ASSERT_EQ(actual_axis, expected_axis);
 
-    ASSERT_TRUE(GetAxis("BiasSoftmax", "broadcast_axis", &actual_broadcast_axis));
-    ASSERT_EQ(actual_broadcast_axis, expected_broadcast_axis);
+    ASSERT_TRUE(GetAxis("BiasSoftmax", "is_inner_broadcast", &actual_broadcast_type));
+    ASSERT_EQ(actual_broadcast_type, expected_is_inner_broadcast ? 1 : 0);
   }
 
   void TestNoFusionOccurs() {
@@ -3585,19 +3585,19 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_GpuOnly) {
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple_Rocm) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get(), kRocmExecutionProvider);
-  tester.TestFusionOccurs(1, 1);
+  tester.TestFusionOccurs(1, true);
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple_Cuda) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(1, 1);
+  tester.TestFusionOccurs(1, true);
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple_Opset13_DefaultAxis) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple_no_axis_opset13.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(1, 1);
+  tester.TestFusionOccurs(1, true);
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_BFloat16_Input) {
@@ -3609,13 +3609,13 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_BFloat16_Input) {
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_MiddleOnes) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_middleones.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(3, 6);
+  tester.TestFusionOccurs(6, true);
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_ReversedInputs) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_middleones_reversed.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(3, 6);
+  tester.TestFusionOccurs(6, true);
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_BadAxis) {
@@ -3627,19 +3627,99 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_BadAxis) {
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_AllLeadingOnes) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_allleadingones.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(0, 6);
+  tester.TestFusionOccurs(6, true);
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_SomeLeadingOnes) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_someleadingones.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(0, 6);
+  tester.TestFusionOccurs(6, false);
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_NoLeadingOnes) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_noleadingones.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(0, 6);
+  tester.TestFusionOccurs(6, false);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OuterBroadcast) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    for (auto& node : graph.Nodes()) node.SetExecutionProviderType(kCudaExecutionProvider);
+    ASSERT_EQ(CountOpsInGraph(graph)["Softmax"], 1);
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.BiasSoftmax"], 1);
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "BiasSoftmax") {
+        auto& attrs = node.GetAttributes();
+        ASSERT_TRUE(attrs.find("axis") != attrs.end());
+        ASSERT_TRUE(attrs.find("is_inner_broadcast") != attrs.end());
+        ASSERT_EQ(6, static_cast<int>(attrs.at("axis").i()));
+        ASSERT_EQ(static_cast<int>(attrs.at("is_inner_broadcast").i()), 0);
+      }
+    }
+  };
+
+  // Input and bias have different ranks.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3, 2, 3, 3, 3}});
+      auto* bias_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+      auto* add_out = builder.MakeIntermediate();
+      auto* softmax_out = builder.MakeOutput();
+
+      builder.AddNode("Add", {input_arg, bias_arg}, {add_out});
+      builder.AddNode("Softmax", {add_out}, {softmax_out}).AddAttribute("axis", static_cast<int64_t>(6));
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
+    TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // Input and bias have same rank.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3, 2, 3, 3, 3}});
+      auto* bias_arg = builder.MakeInput<float>({{1, 1, 1, 1, 2, 3, 3, 3}});
+      auto* add_out = builder.MakeIntermediate();
+      auto* softmax_out = builder.MakeOutput();
+
+      builder.AddNode("Add", {input_arg, bias_arg}, {add_out});
+      builder.AddNode("Softmax", {add_out}, {softmax_out}).AddAttribute("axis", static_cast<int64_t>(6));
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
+    TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OpSet13InValidAxis) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3, 2, 3, 3, 3}});
+    auto* bias_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+    auto* add_out = builder.MakeIntermediate();
+    auto* softmax_out = builder.MakeOutput();
+
+    builder.AddNode("Add", {input_arg, bias_arg}, {add_out});
+    builder.AddNode("Softmax", {add_out}, {softmax_out}).AddAttribute("axis", static_cast<int64_t>(6));
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    for (auto& node : graph.Nodes()) node.SetExecutionProviderType(kCudaExecutionProvider);
+    ASSERT_EQ(CountOpsInGraph(graph)["Softmax"], 1);
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    ASSERT_EQ(CountOpsInGraph(graph)["Softmax"], 1);
+    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.BiasSoftmax"], 0);
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
+  TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                       pre_graph_checker, post_graph_checker);
 }
 
 static void TestBiasDropoutFusion(const PathString& file_path, const logging::Logger& logger, const int add_count = 0) {

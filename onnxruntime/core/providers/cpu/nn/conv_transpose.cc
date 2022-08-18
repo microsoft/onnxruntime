@@ -149,9 +149,9 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
   T* col_buffer_data = static_cast<T*>(col_buffer.get());
 
-  const T* Xdata = p.X->template Data<T>();
-  const T* filter_data = p.F->template Data<T>();
-  T* Ydata = p.Y->template MutableData<T>();
+  const T* Xdata = p.X->Data<T>();
+  const T* filter_data = p.F->Data<T>();
+  T* Ydata = p.Y->MutableData<T>();
   TensorShape output_shape = p.Y->Shape().Slice(2);
 
   for (auto image_id = 0; image_id < p.N; ++image_id) {
@@ -207,7 +207,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
     if (p.B != nullptr) {
       auto Ymatrix = EigenMatrixMap<T>(Ydata, output_size, p.num_output_channels);
-      auto Bvec = ConstEigenVectorMap<T>(p.B->template Data<T>(), p.num_output_channels);
+      auto Bvec = ConstEigenVectorMap<T>(p.B->Data<T>(), p.num_output_channels);
       Ymatrix.rowwise() += Bvec.transpose();
     }
 
@@ -249,9 +249,9 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
   BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
   float* col_buffer_data = static_cast<float*>(col_buffer.get());
 
-  const float* Xdata = p.X->template Data<float>();
-  const float* filter_data = p.F ? p.F->template Data<float>() : static_cast<float*>(transposed_filter_.get());
-  float* Ydata = p.Y->template MutableData<float>();
+  const float* Xdata = p.X->Data<float>();
+  const float* filter_data = p.F ? p.F->Data<float>() : static_cast<float*>(transposed_filter_.get());
+  float* Ydata = p.Y->MutableData<float>();
   TensorShape output_shape = p.Y->Shape().Slice(2);
 
   for (auto image_id = 0; image_id < p.N; ++image_id) {
@@ -307,7 +307,7 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
 
     if (p.B != nullptr) {
       auto Ymatrix = EigenMatrixMap<float>(Ydata, output_size, p.num_output_channels);
-      auto Bvec = ConstEigenVectorMap<float>(p.B->template Data<float>(), p.num_output_channels);
+      auto Bvec = ConstEigenVectorMap<float>(p.B->Data<float>(), p.num_output_channels);
       Ymatrix.rowwise() += Bvec.transpose();
     }
 

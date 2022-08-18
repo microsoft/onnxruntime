@@ -123,7 +123,8 @@ Status InPlaceAccumulatorV2<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) co
     const T_GRAD* source = right_addee_buffer.template Data<T_GRAD>();
     T* target = left_addee_buffer.template MutableData<T>();
     if (std::is_same<T, T_GRAD>::value) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, right_addee_buffer.SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, right_addee_buffer.SizeInBytes(), cudaMemcpyDeviceToDevice,
+                                           Stream()));
     } else {
       Impl_Cast<CudaT_GRAD, CudaT>(
           Stream(),

@@ -48,7 +48,7 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
   if (split_tensor) {
     ORT_ENFORCE(split_tensor->Shape().NumDimensions() == 1, "An split tensor must be a vector tensor.");
     auto nDims = static_cast<size_t>(split_tensor->Shape()[0]);
-    const int64_t* data = split_tensor->template Data<int64_t>();
+    const int64_t* data = split_tensor->Data<int64_t>();
     split_sizes.assign(data, data + nDims);
   } else {
     split_sizes.assign(split_sizes_.begin(), split_sizes_.end());
