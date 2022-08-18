@@ -112,7 +112,7 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<ConvBNFusion>());
       rules.push_back(std::make_unique<ClipQuantFusion>());
       rules.push_back(std::make_unique<ReluQuantFusion>());
-      rules.push_back(std::make_unique<MatMulIntegerToFloatFusion>());
+      // rules.push_back(std::make_unique<MatMulIntegerToFloatFusion>());
       break;
 
     case TransformerLevel::Level2:
