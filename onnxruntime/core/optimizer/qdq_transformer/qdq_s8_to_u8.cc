@@ -74,15 +74,14 @@ static bool QDQ_S8_to_U8(Graph& graph, Node& q_node, Node& dq_node) {
 }
 
 bool QDQS8ToU8Transformer::ShouldConvertWeightFromS8ToU8(Graph& graph, Node& node) const {
-  const auto consumers = graph.GetConsumerNodes(node.Name());
-
   if (weights_to_u8_) {
     return true;
   }
 
+  const auto consumers = graph.GetConsumerNodes(node.Name());
   for (const Node* c : consumers) {
-    if (exclude_next.find(c->OpType()) != exclude_next.end()) {
-      // opType is among the exclude_next, leave out this node
+    if (operators_prefer_S8.find(c->OpType()) != operators_prefer_S8.cend()) {
+      // opType is among the `operators_prefer_S8`, leave out this node
       return false;
     }
   }
