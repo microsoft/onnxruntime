@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gradient_op_test_utils.h"
+#include "core/framework/kernel_type_str_resolver.h"
 #include "core/session/inference_session.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
@@ -185,7 +186,7 @@ void GradientOpTester::Run(
 
         bool valid = true;
 
-        KernelTypeStrResolver kernel_type_str_resolver{};
+        AutoRegisteringKernelTypeStrResolver kernel_type_str_resolver{};
 
         // set execution provider for all nodes in the graph
         for (auto& node : graph.Nodes()) {
@@ -201,7 +202,6 @@ void GradientOpTester::Run(
           }
 
           auto reg = execution_provider->GetKernelRegistry();
-          ASSERT_STATUS_OK(kernel_type_str_resolver.RegisterNodeOpSchema(node));
           const KernelCreateInfo* kci;
           auto st = reg->TryFindKernel(node, execution_provider->Type(), kernel_type_str_resolver, &kci);
           if (!st.IsOK()) {
