@@ -117,9 +117,10 @@ Status QOrderedAttention::PutIntoMergedBias(const Tensor& tensor, AllocatorPtr a
   float* target = ((float*)merged_qkv_bias_.get()) + offset;
   int count = gsl::narrow_cast<int>(qkv_hidden_sizes_[qkv_index]);
   CUBLAS_RETURN_IF_ERROR(cublasScopy(CublasHandle(), count, tensor.Data<float>(), 1, target, 1));
-  ORT_ENFORCE(const_scale_qkv_layer_[qkv_index] > 0.0f, "qkv gemm scale should be positive constant at qkv_index", qkv_index);
-  float scale = 1.0f / const_scale_qkv_layer_[qkv_index];
-  CUBLAS_RETURN_IF_ERROR(cublasSscal(CublasHandle(), count, &scale, target, 1));
+  // Suppose bias already adjusted, may change it later.
+  // ORT_ENFORCE(const_scale_qkv_layer_[qkv_index] > 0.0f, "qkv gemm scale should be positive constant at qkv_index", qkv_index);
+  // float scale = 1.0f / const_scale_qkv_layer_[qkv_index];
+  // CUBLAS_RETURN_IF_ERROR(cublasSscal(CublasHandle(), count, &scale, target, 1));
   return Status::OK();
 }
 
@@ -222,7 +223,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
                                       1, m, n, k,
                                       (const float*)merged_qkv_alpha_.get(), input->template Data<int8_t>(), (const int8_t*)merged_qkv_weight_.get(),
                                       (const float*)merged_qkv_bias_.get(), stacked_qkv_layers,
-                                      (cublasLtOrder_t)order_weight_,
+                                      CUBLASLT_ORDER_COL,
                                       CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_HOST));
   LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
 
@@ -235,7 +236,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
                                       batch_size * num_heads_, sequence_length, sequence_length, head_size,
                                       &q_mm_k_alpha, q_layer, k_layer, nullptr, attention_scores,
-                                      CUBLASLT_ORDER_ROW)); // matrix B need extra transpose
+                                      CUBLASLT_ORDER_COL)); // matrix B need extra transpose
   LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
 
   // the div sqrt(head_size) was processed when building the softmax lookup table
@@ -248,7 +249,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
                                       batch_size * num_heads_, sequence_length, head_size, sequence_length,
                                       &context_layer_alpha, attention_probs, v_layer, nullptr, context_layer,
-                                      (cublasLtOrder_t)order_weight_));
+                                      CUBLASLT_ORDER_ROW));
   LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
 
   // scratch3 is BxNxSxH, transpose to output SxBxNxH
