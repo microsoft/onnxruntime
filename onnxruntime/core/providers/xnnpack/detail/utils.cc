@@ -334,12 +334,12 @@ TensorQuantType GetTensorQuantType(const NodeUnit& node_unit, int32_t io_index,
       } else if (scales_dim == tensor_shape[0]) {
         // default 0 for zero-point if zero_dim == 0
         if (zero_tensor != nullptr) {
-          std::optional<InitializerView> zp_val;
-          if (!InitializerView::Create(*zero_tensor, zp_val).IsOK()) {
+          InitializerView zp_val;
+          if (!zp_val.Create(*zero_tensor).IsOK()) {
             LOGS_DEFAULT(ERROR) << "error when unpack zero tensor: ";
             break;
           }
-          auto zero_points = zp_val->DataAsSpan<int8_t>();
+          auto zero_points = zp_val.DataAsSpan<int8_t>();
           for (size_t i = 0; i < zero_points.size(); i++) {
             if (zero_points[i] != 0) {
               LOGS_DEFAULT(VERBOSE) << "only support 0 as zero point for per-channel quantization, "

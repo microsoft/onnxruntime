@@ -6,15 +6,19 @@
 #include <utility>
 
 namespace onnxruntime {
-common::Status InitializerView::Create(
-    const ONNX_NAMESPACE::TensorProto& tensor_proto, std::optional<InitializerView>& initializer) {
-  initializer.emplace();  // create instance in place
 
-  initializer->data_type_ = tensor_proto.data_type();
-  auto proto_dims = utils::GetTensorShapeFromTensorProto(tensor_proto);
-  initializer->shape_ = TensorShape(proto_dims);
+InitializerView::InitializerView(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  ORT_THROW_IF_ERROR(Create(tensor_proto));
+}
+
+common::Status InitializerView::Create(
+    const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  dtype_ = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())
+               ->GetElementType()
+               ->AsPrimitiveDataType();
+  shape_ = TensorShape(utils::GetTensorShapeFromTensorProto(tensor_proto));
 
   Path external_path;
-  return utils::UnpackInitializerData(tensor_proto, external_path, initializer->unpacked_tensor_);
+  return utils::UnpackInitializerData(tensor_proto, external_path, unpacked_tensor_);
 }
 }  // namespace onnxruntime

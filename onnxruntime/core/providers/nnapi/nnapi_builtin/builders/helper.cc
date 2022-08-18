@@ -198,21 +198,21 @@ common::Status GetQuantizationScaleAndZeroPoint(
   const auto& quant_param = *io_def.quant_param;
   {  // get the scale
     const auto& name = quant_param.scale.Name();
-    std::optional<InitializerView> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(InitializerView::Create(*initializers.at(name), unpacked_tensor));
+    InitializerView unpacked_tensor;
+    ORT_RETURN_IF_ERROR(unpacked_tensor.Create(*initializers.at(name)));
     // The scale should be one or more floats
-    ORT_RETURN_IF(unpacked_tensor->DataAsSpan<int8_t>().size() < 4,
+    ORT_RETURN_IF(unpacked_tensor.SizeInBytes() < 4,
                   "The initializer [", name, "] should have one or more floats ",
-                  "with size no less than 4, actual size: ", unpacked_tensor->DataAsSpan<int8_t>().size());
-    scale = unpacked_tensor->DataAsSpan<float>()[0];
+                  "with size no less than 4, actual size: ", unpacked_tensor.SizeInBytes());
+    scale = unpacked_tensor.DataAsSpan<float>()[0];
   }
 
   if (quant_param.zero_point) {  // get the zero point if it's there
     const auto& name = quant_param.zero_point->Name();
-    std::optional<InitializerView> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(InitializerView::Create(*initializers.at(name), unpacked_tensor));
+    InitializerView unpacked_tensor;
+    ORT_RETURN_IF_ERROR(unpacked_tensor.Create(*initializers.at(name)));
     // Onnx quantization uses uint8 [int8 not yet supported], need to cast to int32_t used by NNAPI
-    zero_point = static_cast<int32_t>(unpacked_tensor->DataAsSpan<uint8_t>()[0]);
+    zero_point = static_cast<int32_t>(unpacked_tensor.DataAsByteSpan<uint8_t>()[0]);
   }
 
   return Status::OK();

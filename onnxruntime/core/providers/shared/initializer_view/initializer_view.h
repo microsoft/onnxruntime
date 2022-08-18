@@ -14,31 +14,42 @@
 namespace onnxruntime {
 
 class InitializerView {
- private:
-  InitializerView(const InitializerView&) = delete;
-  InitializerView& operator=(const InitializerView&) = delete;
-
  public:
   InitializerView() = default;
+  InitializerView(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
-  static common::Status Create(
-      const ONNX_NAMESPACE::TensorProto& tensor_proto, std::optional<InitializerView>& initializer);
+  common::Status Create(
+      const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
   const TensorShape& Shape() const {
     return shape_;
   }
 
-  int32_t Type() {
-    return data_type_;
+  int32_t GetElementType() {
+    return dtype_->GetDataType();
   }
 
   template <class T>
   gsl::span<const T> DataAsSpan() const {
-    // make sure data bytes are more than sizeof (T)";
+    ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Data type mismatch. ",
+                "T ", "!=", dtype_);
+    return gsl::make_span(data<T>(), unpacked_tensor_.size() / sizeof(T));
+  }
+
+  size_t SizeInBytes() {
+    return unpacked_tensor_.size();
+  }
+
+  template <class T = char>
+  gsl::span<const T> DataAsByteSpan() const {
+    static_assert(std::is_same_v<T, int8_t> || std::is_same_v<T, uint8_t> || std::is_same_v<T, char>,
+                  "expected int8|uint8|char");
     return gsl::make_span(data<T>(), unpacked_tensor_.size() / sizeof(T));
   }
 
  private:
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(InitializerView);
+
   template <class T>
   const T* data() const {
     // make sure T has no qualifier
@@ -49,7 +60,7 @@ class InitializerView {
 
  private:
   TensorShape shape_;
-  int32_t data_type_{0};
+  const PrimitiveDataTypeBase* dtype_{nullptr};
   std::vector<uint8_t> unpacked_tensor_;
 };
 }  // namespace onnxruntime
