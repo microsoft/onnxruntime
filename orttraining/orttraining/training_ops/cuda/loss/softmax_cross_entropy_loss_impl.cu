@@ -128,6 +128,41 @@ struct OpWeightedSoftmaxCrossEntropyLossGrad {
   fast_divmod C_fdm_;
 };
 
+const uint kElemPerThread = 16;
+template <typename T, typename TAcc, typename Tin, bool IsReductionNone>
+__global__ void OpWeightedSoftmaxCrossEntropyLossGradKernel(const T* dY_data, const T* log_prob_data, const Tin* label_data,
+                                        const T* weight_data, const TAcc* normalize_factor_data, CUDA_LONG max_label_depth, T* output_data) {
+  // input data is [N][label_depth]
+  // id map is [blockIdx.x][blockIdx.y, threadIdx.x]
+  // gridDim.x == N, blockIdx.y*blockDim.x+ threadIdx.x >= label_depth
+  __shared__ TAcc shared;
+  __shared__ uint row_offset;
+  __shared__ uint offset_block;
+
+  int row = blockIdx.x;
+  if (threadIdx.x == 0) {
+    if (*normalize_factor_data == TAcc(0.f))
+      shared = TAcc(0.f);
+    else
+      shared = static_cast<TAcc>((IsReductionNone ? dY_data[row] : *dY_data) * weight_data[row]) / (*normalize_factor_data);
+    row_offset = row * max_label_depth;
+    offset_block = blockIdx.y*blockDim.x*kElemPerThread;
+  }
+  __syncthreads();
+
+  #pragma unroll
+  for(int i=0; i<kElemPerThread; i++)
+  {
+    int d =  offset_block + threadIdx.x + blockDim.x*i;
+    if (d >= max_label_depth) {
+      return;
+    }
+
+    auto idx = row_offset + d;
+    output_data[idx] = static_cast<T>(shared * ((_Exp(static_cast<TAcc>(log_prob_data[idx])) - (TAcc)(d == label_data[row]))));
+  }
+}
+
 template <typename T, typename TAcc, typename Tin>
 void SoftmaxCrossEntropyLossGradImpl(cudaStream_t stream, const T* dY, const T* log_prob, const Tin* label,
                                      const T* weight, const TAcc* normalize_factor, size_t count, size_t label_depth,
@@ -137,9 +172,14 @@ void SoftmaxCrossEntropyLossGradImpl(cudaStream_t stream, const T* dY, const T* 
                                                                  static_cast<Tin>(label_depth));
     LaunchElementwiseKernel<T, decltype(op)>(stream, output_data, op, count * label_depth);
   } else {
-    OpWeightedSoftmaxCrossEntropyLossGrad<T, TAcc, Tin, false> op(dY, log_prob, label, weight, normalize_factor,
-                                                                  static_cast<Tin>(label_depth));
-    LaunchElementwiseKernel<T, decltype(op)>(stream, output_data, op, count * label_depth);
+    // OpWeightedSoftmaxCrossEntropyLossGrad<T, TAcc, Tin, false> op(dY, log_prob, label, weight, normalize_factor,
+    //                                                               static_cast<Tin>(label_depth));
+    // LaunchElementwiseKernel<T, decltype(op)>(stream, output_data, op, count * label_depth);
+    const uint blockSize = 128;
+    const uint grid_y = CeilDiv(label_depth, blockSize*kElemPerThread);
+    dim3 grid(count, grid_y, 1);
+    dim3 block(blockSize,1,1);
+    OpWeightedSoftmaxCrossEntropyLossGradKernel<T, TAcc, Tin, false> <<<grid, block,0, stream>>>(dY, log_prob, label, weight, normalize_factor, label_depth, output_data);
   }
 }
 
