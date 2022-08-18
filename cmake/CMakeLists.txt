@@ -170,7 +170,7 @@ option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
 option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
 
 # build Pytorch's LazyTensor support
-option(onnxruntime_ENABLE_LAZY_TENSOR "build custom JIT engine for Pytorch")
+cmake_dependent_option(onnxruntime_ENABLE_LAZY_TENSOR "Enable ORT as a LazyTensor backend in Pytorch." OFF "onnxruntime_ENABLE_TRAINING" ON)
 
 # build separate library of schemas of (custom) ops used by ORT (for ONNX to MLIR translation)
 option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
