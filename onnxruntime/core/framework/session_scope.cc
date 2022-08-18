@@ -6,6 +6,7 @@
 #include "core/framework/execution_frame.h"
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
+#include <thread>
 
 namespace onnxruntime {
 
