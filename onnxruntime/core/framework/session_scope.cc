@@ -6,11 +6,38 @@
 #include "core/framework/execution_frame.h"
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
+#ifdef CONCURRENCY_VISUALIZER
+#include <cvmarkersobj.h>
+#endif
+#ifdef ENABLE_NVTX_PROFILE
+#include "core/providers/cuda/nvtx_profile.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
+#endif
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+#include <Windows.h>
+#include "core/platform/tracing.h"
+#endif
 #include <thread>
 
 namespace onnxruntime {
 
 using namespace onnxruntime::profiling;
+
+#ifdef ORT_MINIMAL_BUILD
+
+class SessionScopeImpl {
+};
+
+SessionScope::SessionScope(const SessionState&, const ExecutionFrame&) {}
+SessionScope::~SessionScope() {}
+
+class KernelScopeImpl {
+};
+
+KernelScope::KernelScope(OpKernelContextInternal&, const OpKernel&, SessionScope&) {}
+KernelScope::~KernelScope() {}
+
+#else
 
 static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context,
                                       size_t& total_output_sizes,
@@ -78,24 +105,7 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
   input_type_shape = ss.str();
 }
 
-#ifdef ORT_MINIMAL_BUILD
-
-class SessionScopeImpl {
-};
-
-SessionScope::SessionScope(const SessionState&, const ExecutionFrame&) {}
-SessionScope::~SessionScope() {}
-
-class KernelScopeImpl {
-};
-
-KernelScope::KernelScope(OpKernelContextInternal&, const OpKernel&, SessionScope&) {}
-KernelScope::~KernelScope() {}
-
-#else
-
 #ifdef CONCURRENCY_VISUALIZER
-#include <cvmarkersobj.h>
 using namespace Concurrency;
 class ConcurrencyKernelScope;
 class ConcurrencySessScope {
@@ -144,8 +154,6 @@ class ConcurrencyKernelScope {
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
-#include "core/providers/cuda/nvtx_profile.h"
-#include "core/providers/cuda/nvtx_profile_context.h"
 class NVTXSessScope {
  public:
   NVTXSessScope(const std::thread::id& thread_id) : sess_tag_(profile::Context::GetInstance().GetThreadTagOrDefaul(thread_id)),
@@ -407,8 +415,6 @@ SessionScope::SessionScope(const SessionState& sess_state, const ExecutionFrame&
 SessionScope::~SessionScope() {}
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
-#include <Windows.h>
-#include "core/platform/tracing.h"
 LARGE_INTEGER OrtGetPerformanceFrequency() {
   LARGE_INTEGER v;
   // On systems that run Windows XP or later, the QueryPerformanceFrequency function will always succeed
