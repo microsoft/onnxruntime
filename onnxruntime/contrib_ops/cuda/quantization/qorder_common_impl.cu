@@ -663,8 +663,8 @@ void ReorderS8RowToCol32(cudaStream_t stream, const cudaDeviceProp& /* device_pr
 
 __global__ void
 BuildTableForSoftmaxPowerOfKernel(const float base, float* table) {
-  int x = threadIdx.x - 255;
-  table[x] = powf(base, x);
+  int g = threadIdx.x - 255;
+  table[255 + g] = powf(base, g);
 }
 
 void BuildTableForSoftmaxPowerOf(cudaStream_t stream, const float base, float* table) {
@@ -686,36 +686,43 @@ QOrderMaskedSoftmaxKernel(const int8_t* src, const float* lookup_table, const in
   const int block_offset = (blockIdx.y * gridDim.x + blockIdx.x) * sequence_len; /* 4 bytes per thread */
   src += block_offset;
   dst += block_offset;
-  mask_index += (blockIdx.y * sequence_len); // to to the batch
-  for (int offset = threadIdx.x * 4; offset < sequence_len; offset += TPB*4) {
-    char4 ch4 = *(const char4*)(src + offset);
-    int32_t max_of_4 = max(max((int)ch4.x, (int)ch4.y), max((int)ch4.z, (int)ch4.w));
-    const int32_t max_all = BlockReduceInt32(tmp_storage_int32).Reduce(max_of_4, cub::Max());
-    if (threadIdx.x == 0) {
-      max_in_block = max_all;
-    }
-    __syncthreads();
+  int offset = threadIdx.x * 4;
+  mask_index += (blockIdx.y * sequence_len) + offset;
+  int4 four_masks = *(const int4*)(mask_index);
 
-    const int4 mask_of_4 = *(const int4*)(mask_index + offset);
-    // TODO: bank conflick
-    float4 epow_of_4 = { mask_of_4.x ? lookup_table[255 - max_in_block + (int)ch4.x] : 0.0f,
-                         mask_of_4.y ? lookup_table[255 - max_in_block + (int)ch4.y] : 0.0f,
-                         mask_of_4.z ? lookup_table[255 - max_in_block + (int)ch4.z] : 0.0f,
-                         mask_of_4.w ? lookup_table[255 - max_in_block + (int)ch4.w] : 0.0f};
-    float sum_of_4 = epow_of_4.x + epow_of_4.y + epow_of_4.z + epow_of_4.w;
-    const float sum_all = BlockReduceFP32(tmp_storage_fp32).Reduce(sum_of_4, cub::Sum());
-    if (threadIdx.x == 0) {
-      sum_reverse_block = (float)(1.0 / ((double)sum_all * scale_dst));
-    }
-    __syncthreads();
-
-    ch4.x = (int8_t)(epow_of_4.x * sum_reverse_block);
-    ch4.y = (int8_t)(epow_of_4.y * sum_reverse_block);
-    ch4.z = (int8_t)(epow_of_4.z * sum_reverse_block);
-    ch4.w = (int8_t)(epow_of_4.w * sum_reverse_block);
-
-    *(char4 *)(dst + offset) = ch4;
+  char4 ch4 = {-128, -128, -128, -128};
+  if (offset < sequence_len) {
+    ch4 = *(const char4*)(src + offset);
   }
+  int32_t max_of_4 = max(max((int)ch4.x, (int)ch4.y), max((int)ch4.z, (int)ch4.w));
+  const int32_t max_all = BlockReduceInt32(tmp_storage_int32).Reduce(max_of_4, cub::Max());
+  if (threadIdx.x == 0) {
+    max_in_block = max_all;
+  }
+  __syncthreads();
+
+  // TODO: bank conflick
+  float sum_of_4 = 0.0f;
+  float4 epow_of_4 = {0.0f, 0.0f, 0.0f, 0.0f};
+  if (offset < sequence_len) {
+    epow_of_4 = {four_masks.x ? lookup_table[255 - max_in_block + (int)ch4.x] : 0.0f,
+                 four_masks.y ? lookup_table[255 - max_in_block + (int)ch4.y] : 0.0f,
+                 four_masks.z ? lookup_table[255 - max_in_block + (int)ch4.z] : 0.0f,
+                 four_masks.w ? lookup_table[255 - max_in_block + (int)ch4.w] : 0.0f};
+  }
+  sum_of_4 = epow_of_4.x + epow_of_4.y + epow_of_4.z + epow_of_4.w;
+  const float sum_all = BlockReduceFP32(tmp_storage_fp32).Reduce(sum_of_4, cub::Sum());
+  if (threadIdx.x == 0) {
+    sum_reverse_block = (float)(1.0 / ((double)sum_all * scale_dst));
+  }
+  __syncthreads();
+
+  ch4.x = (int8_t)(epow_of_4.x * sum_reverse_block);
+  ch4.y = (int8_t)(epow_of_4.y * sum_reverse_block);
+  ch4.z = (int8_t)(epow_of_4.z * sum_reverse_block);
+  ch4.w = (int8_t)(epow_of_4.w * sum_reverse_block);
+
+  *(char4*)(dst + offset) = ch4;
 }
 
 void QOrderMaskedSoftmax(
@@ -724,9 +731,25 @@ void QOrderMaskedSoftmax(
     const int32_t* mask_index,
     int8_t* dst, const float scale_dst,
     const unsigned batch, const unsigned num_heads, const unsigned sequence_len) {
-  dim3 threads(256, 1, 1);
-  dim3 blocks(sequence_len * num_heads, batch, 1);
-  QOrderMaskedSoftmaxKernel<256><<<blocks, threads, 0, stream>>>(src, lookup_table, mask_index, dst, scale_dst, sequence_len);
+  int tpb = (sequence_len + 3) / 4;
+  if (tpb <= 64) {
+    constexpr int TPB = 64;
+    dim3 threads(TPB, 1, 1);
+    dim3 blocks(sequence_len * num_heads, batch, 1);
+    QOrderMaskedSoftmaxKernel<TPB><<<blocks, threads, 0, stream>>>(src, lookup_table, mask_index, dst, scale_dst, sequence_len);
+  } else if (tpb <= 256) {
+    constexpr int TPB = 256;
+    dim3 threads(TPB, 1, 1);
+    dim3 blocks(sequence_len * num_heads, batch, 1);
+    QOrderMaskedSoftmaxKernel<TPB><<<blocks, threads, 0, stream>>>(src, lookup_table, mask_index, dst, scale_dst, sequence_len);
+  } else if (tpb <= 512) {
+    constexpr int TPB = 512;
+    dim3 threads(TPB, 1, 1);
+    dim3 blocks(sequence_len * num_heads, batch, 1);
+    QOrderMaskedSoftmaxKernel<TPB><<<blocks, threads, 0, stream>>>(src, lookup_table, mask_index, dst, scale_dst, sequence_len);
+  } else {
+    ORT_ENFORCE(tpb <= 512, "sequence length too long (> 2048)!");
+  }
 }
 
 }  // namespace cuda

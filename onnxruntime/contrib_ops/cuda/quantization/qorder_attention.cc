@@ -144,7 +144,7 @@ Status QOrderedAttention::PrePack(const Tensor& tensor, int input_idx, /*out*/ A
   } else if (input_idx == InputIds::Scale_QK_Gemm) {
     float scale = *tensor.Data<float>();
     float base = std::exp(scale / sqrtf(qkv_hidden_sizes_[0] / static_cast<float>(num_heads_)));
-    auto* softmax_lookup_data = alloc->Alloc(256 * sizeof(float));
+    auto* softmax_lookup_data = alloc->Alloc(256 * 4 * sizeof(float));
     softmax_lookup_ = BufferUniquePtr(softmax_lookup_data, BufferDeleter(alloc));
     BuildTableForSoftmaxPowerOf(Stream(), base, (float*)softmax_lookup_.get());
   }
