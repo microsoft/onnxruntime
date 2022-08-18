@@ -45,7 +45,7 @@
 #include "core/common/spin_pause.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/Barrier.h"
-
+#include <iostream>
 // ORT thread pool overview
 // ------------------------
 //
@@ -753,6 +753,9 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     worker_data_.resize(num_threads_);
     for (auto i = 0u; i < num_threads_; i++) {
       worker_data_[i].thread.reset(env_.CreateThread(name, i, WorkerLoop, this, thread_options));
+      if (thread_options.small_cores.size() > i) {
+        worker_data_[i].is_small_core = thread_options.small_cores[i];
+      }
     }
   }
 
@@ -1353,6 +1356,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     std::unique_ptr<Thread> thread;
     Queue queue;
 
+    bool is_small_core = false;
+
     // Each thread has a status, available read-only without locking, and protected
     // by the mutex field below for updates.  The status is used for three
     // purposes:
@@ -1483,6 +1488,12 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   void WorkerLoop(int thread_id) {
     PerThread* pt = GetPerThread();
     WorkerData& td = worker_data_[thread_id];
+
+    /////////////////////////////// set small core ///////////////////////////////////////
+    SetSmallCore(td.is_small_core);
+    std::cout << "thread " << thread_id << " runs on " << (td.is_small_core ? "small core" : "big core") << std::endl;
+    //////////////////////////////////////////////////////////////////////////////////////
+
     Queue& q = td.queue;
     bool should_exit = false;
     pt->pool = this;

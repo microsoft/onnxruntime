@@ -142,3 +142,11 @@ static const char* const kOrtSessionOptionsConfigForceSpinningStop = "session.fo
 // "0": in some cases warnings will be logged but processing will continue. The default.
 // May be useful to expose bugs in models.
 static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "session.strict_shape_type_inference";
+
+// string in form of "int,int,int..." size up to the number of intra op threads including the main thread
+// the first int will be applied to the main thread
+static const char* const kOrtSessionOptionsConfigThreadAffinities = "session.thread_affinities";
+
+// binary string in form of "0,0,0,1,0,1,1,1..." size up to the number of intra op threads including the main thread
+// 1 means it is a small core thread
+static const char* const kOrtSessionOptionsConfigSmallCoreThreads = "session.small_core_threads";

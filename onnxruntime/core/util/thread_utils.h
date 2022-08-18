@@ -36,6 +36,23 @@ struct OrtThreadPoolParams {
   OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;
   void* custom_thread_creation_options = nullptr;
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
+
+  char* small_core_vec = nullptr;
+  size_t small_core_vec_len = 0;
+
+  //TODO - find place to free affinity_vec and small_core_vec
+  //~OrtThreadPoolParams() {
+  //  if (affinity_vec) {
+  //    free(affinity_vec);
+  //    affinity_vec = nullptr;
+  //    affinity_vec_len = 0;
+  //  }
+  //  if (small_core_vec) {
+  //    free(small_core_vec);
+  //    small_core_vec = nullptr;
+  //    small_core_vec_len = 0;
+  //  }
+  //}
 };
 
 struct OrtThreadingOptions {
@@ -55,5 +72,6 @@ enum class ThreadPoolType : uint8_t {
 };
 std::unique_ptr<ThreadPool> CreateThreadPool(Env* env, OrtThreadPoolParams options,
                                              ThreadPoolType tpool_type);
+
 }  // namespace concurrency
 }  // namespace onnxruntime

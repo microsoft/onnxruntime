@@ -287,6 +287,66 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
                                to.affinity_vec_len == 0;
         to.allow_spinning = allow_intra_op_spinning;
+
+        //////////////////////////// read and set affinity //////////////////////////////
+        auto affinity_string = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigThreadAffinities, "");
+        auto Split = [](const std::string& s) {
+          std::vector<std::string> ans;
+          std::string tmp;
+          std::stringstream ss;
+          ss << s;
+          while (getline(ss, tmp, ',')) {
+            ans.push_back(tmp);
+          }
+          return ans;
+        };
+        auto ReadAffinity = [&](const std::string& s) {
+          auto affinity_strings = Split(s);
+          std::vector<size_t> affinities;
+          for (const auto& iter : affinity_strings) {
+            affinities.push_back(stoi(iter));
+          }
+          return affinities;
+        };
+        auto affinities = ReadAffinity(affinity_string);
+        if (!affinities.empty()) {
+          auto main_thread_affinity = affinities[0];
+          if (main_thread_affinity) {
+            auto handle = GetCurrentThread();
+            ORT_ENFORCE(SetThreadAffinityMask(handle, main_thread_affinity));
+            std::cout << "set main thread with affinity mask: " << main_thread_affinity << std::endl;
+          }
+          /*if (affinities.size() > 1) {
+            auto bytes = (affinities.size() - 1) * sizeof(size_t);
+            to.affinity_vec = (size_t*)malloc(bytes);
+            memcpy(to.affinity_vec, affinities.data() + 1, bytes);
+            to.affinity_vec_len = affinities.size() - 1;
+            std::cout << "done setting affinity vector with " << to.affinity_vec_len << " affinities" << std::endl;
+          }*/
+          auto bytes = affinities.size() * sizeof(size_t);
+          to.affinity_vec = (size_t*)malloc(bytes);
+          memcpy(to.affinity_vec, affinities.data(), bytes);
+          to.affinity_vec_len = affinities.size();
+          std::cout << "done setting affinity vector with " << to.affinity_vec_len << " affinities" << std::endl;
+        }
+        //////////////////////////////////// read and set if small core //////////////////////////////////////
+        auto small_core_string = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSmallCoreThreads, "");
+        auto small_core_arr = Split(small_core_string);
+        if (!small_core_arr.empty()) {
+          if (small_core_arr[0] == "1") {
+            concurrency::SetSmallCore(true);
+          }
+          if (small_core_arr.size() > 1) {
+            auto bytes = small_core_arr.size() - 1;
+            to.small_core_vec = (char*)malloc(bytes);
+            for (int i = 1; i < small_core_arr.size(); ++i) {
+              to.small_core_vec[i - 1] = small_core_arr[i][0];
+            }
+            to.small_core_vec_len = bytes;
+          }
+        }
+        //////////////////////////////////////////////////////////////////////////////////////////////////////
+
         to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
         LOGS(*session_logger_, INFO) << "Dynamic block base set to " << to.dynamic_block_base_;
 

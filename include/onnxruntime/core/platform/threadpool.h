@@ -137,6 +137,9 @@ class ExtendedThreadPoolInterface;
 class LoopCounter;
 class ThreadPoolParallelSection;
 
+void SetSmallCore(bool);
+bool IsSmallCore();
+
 class ThreadPool {
  public:
 #ifdef _WIN32

@@ -17,7 +17,7 @@ limitations under the License.
 #include "core/platform/env.h"
 
 #include <Windows.h>
-
+#include <iostream>
 #include <fstream>
 #include <string>
 #include <thread>
@@ -31,6 +31,7 @@ limitations under the License.
 #include "core/platform/windows/telemetry.h"
 #include "unsupported/Eigen/CXX11/src/ThreadPool/ThreadPoolInterface.h"
 #include <wil/Resource.h>
+
 
 #include "core/platform/path_lib.h"  // for LoopDir()
 
@@ -115,8 +116,10 @@ class WindowsThread : public EnvThread {
   static unsigned __stdcall ThreadMain(void* param) {
     std::unique_ptr<Param> p((Param*)param);
     // TODO: should I try to use SetThreadSelectedCpuSets?
-    if (!p->thread_options.affinity.empty())
+    if (!p->thread_options.affinity.empty()) {
       SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[p->index]);
+      std::cout << "set affinity for thread " << p->index << " by " << p->thread_options.affinity[p->index] << std::endl;
+    }
 #if WINVER >= _WIN32_WINNT_WIN10
     constexpr SetThreadDescriptionFunc pSetThrDesc = SetThreadDescription;
 #elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)

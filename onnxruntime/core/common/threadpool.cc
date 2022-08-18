@@ -699,5 +699,15 @@ void ThreadPool::TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t tota
   tp->ParallelFor(total, cost_per_unit, fn);
 }
 
+thread_local bool is_small_core_thread = false;
+
+void SetSmallCore(bool is_small_core) {
+  is_small_core_thread = is_small_core;
+}
+
+bool IsSmallCore() {
+  return is_small_core_thread;
+}
+
 }  // namespace concurrency
 }  // namespace onnxruntime
