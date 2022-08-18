@@ -7,12 +7,18 @@
 # --------------------------------------------------------------------------
 
 import unittest
+from pathlib import Path
 
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import TestCaseTempDir, TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
-from pathlib import Path
+from op_test_utils import (
+    TestCaseTempDir,
+    TestDataFeeds,
+    check_model_correctness,
+    check_op_type_count,
+    check_qtype_by_node_type,
+)
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
@@ -197,7 +203,7 @@ class TestOpGemm(TestCaseTempDir):
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
         model_int8_path = "gemm_fp32.quant_dynamic_{}{}.onnx".format(activation_type_str, weight_type_str)
-        model_int8_path = Path(self._tmp_model_dir.name).joinpath(model_int8_path).as_posix()
+        # model_int8_path = Path(self._tmp_model_dir.name).joinpath(model_int8_path).as_posix()
         model_int8_qop_path = "gemm_fp32.quant_qop_dynamic_{}{}.onnx".format(activation_type_str, weight_type_str)
         model_int8_qop_path = Path(self._tmp_model_dir.name).joinpath(model_int8_qop_path).as_posix()
 
@@ -249,7 +255,7 @@ class TestOpGemm(TestCaseTempDir):
         # model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
         self.construct_model_gemm(model_fp32_path)
         data_reader = self.input_feeds(1, {"input": [5, 10]})
-        
+
         self.static_quant_test(
             model_fp32_path,
             data_reader,
@@ -262,7 +268,7 @@ class TestOpGemm(TestCaseTempDir):
             activation_type=QuantType.QUInt8,
             weight_type=QuantType.QUInt8,
         )
-        
+
         self.dynamic_quant_test(
             model_fp32_path,
             data_reader,
@@ -293,8 +299,13 @@ class TestOpGemm(TestCaseTempDir):
         )
 
         # dynamic quantization QOp doesn't support activation:int8
-        self.dynamic_quant_test(model_fp32_path, data_reader, activation_type=QuantType.QInt8, weight_type=QuantType.QInt8,
-                               extra_options={'ActivationSymmetric': True})
+        self.dynamic_quant_test(
+            model_fp32_path,
+            data_reader,
+            activation_type=QuantType.QInt8,
+            weight_type=QuantType.QInt8,
+            extra_options={"ActivationSymmetric": True},
+        )
 
 
 if __name__ == "__main__":

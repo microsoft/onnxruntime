@@ -10,6 +10,7 @@ from pathlib import Path
 from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
+
 # from .quant_utils import (
 #     QuantFormat,
 #     QuantizationMode,
@@ -26,7 +27,7 @@ from .qdq_quantizer import QDQQuantizer
 # )
 # from .registry import IntegerOpsRegistry, QDQRegistry, QLinearOpsRegistry, QDQDynamicRegistry
 from .quant_utils import QuantFormat, QuantizationMode, QuantType, load_model
-from .registry import IntegerOpsRegistry, QLinearOpsRegistry, QDQDynamicRegistry
+from .registry import IntegerOpsRegistry, QDQDynamicRegistry, QLinearOpsRegistry
 
 
 def check_static_quant_arguments(quant_format: QuantFormat, activation_type: QuantType, weight_type: QuantType):
@@ -58,7 +59,7 @@ def quantize_static(
     optimize_model=True,
     use_external_data_format=False,
     calibrate_method=CalibrationMethod.MinMax,
-    calibration_file_path="augmented_model.onnx", #TODO: ok to add a new argument to this?
+    calibration_file_path="augmented_model.onnx",  # TODO: ok to add a new argument to this?
     extra_options={},
 ):
 
@@ -246,7 +247,7 @@ def quantize_dynamic(
     mode = QuantizationMode.IntegerOps
 
     model = load_model(Path(model_input), optimize_model)
-    
+
     if "MatMulConstBOnly" not in extra_options:
         extra_options["MatMulConstBOnly"] = True
 
@@ -271,8 +272,15 @@ def quantize_dynamic(
     else:
         if not op_types_to_quantize or len(op_types_to_quantize) == 0:
             op_types_to_quantize = list(QDQDynamicRegistry.keys())
-        if "OpTypesToExcludeOutputQuantizatioin" not in extra_options: # TODO Is this a good default?
-            extra_options['OpTypesToExcludeOutputQuantizatioin'] = ['Conv', 'Matmul', 'MatMul', 'Gemm', 'Attention','LSTM']
+        if "OpTypesToExcludeOutputQuantizatioin" not in extra_options:  # TODO Is this a good default?
+            extra_options["OpTypesToExcludeOutputQuantizatioin"] = [
+                "Conv",
+                "Matmul",
+                "MatMul",
+                "Gemm",
+                "Attention",
+                "LSTM",
+            ]
         quantizer = QDQQuantizer(
             model,
             per_channel,
@@ -280,7 +288,7 @@ def quantize_dynamic(
             mode,
             False,  # static-only?
             weight_type,
-            activation_type, 
+            activation_type,
             None,
             nodes_to_quantize,
             nodes_to_exclude,

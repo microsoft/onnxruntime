@@ -7,12 +7,18 @@
 # --------------------------------------------------------------------------
 
 import unittest
+from pathlib import Path
 
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import TestCaseTempDir, TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
-from pathlib import Path
+from op_test_utils import (
+    TestCaseTempDir,
+    TestDataFeeds,
+    check_model_correctness,
+    check_op_type_count,
+    check_qtype_by_node_type,
+)
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
@@ -58,7 +64,7 @@ class TestOpGlobalAveragePool(TestCaseTempDir):
         # make Conv node
         weight_name = "conv_weight"
         conv_name = "conv_node"
-        conv_weight_data = np.random.normal(-.5, 0.5, weight_shape).astype(np.float32)
+        conv_weight_data = np.random.normal(-0.5, 0.5, weight_shape).astype(np.float32)
         initializers.append(onnx.numpy_helper.from_array(conv_weight_data, name=weight_name))
         conv_node = onnx.helper.make_node("Conv", [conv_input, weight_name], [gavgpool_input_2nd], name=conv_name)
 

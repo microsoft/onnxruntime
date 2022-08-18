@@ -5,19 +5,19 @@
 # --------------------------------------------------------------------------
 
 import unittest
+from pathlib import Path
 
 import numpy as np
-from onnx import TensorProto, helper, numpy_helper, load, save
+from onnx import TensorProto, helper, load, numpy_helper, save
 from op_test_utils import (
     InputFeedsNegOneZeroOne,
+    TestCaseTempDir,
     check_model_correctness,
     check_op_type_count,
     check_qtype_by_node_type,
-    TestCaseTempDir,
 )
-from pathlib import Path
 
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_static, quantize_dynamic
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 
 class TestConcatModel(TestCaseTempDir):
@@ -44,21 +44,21 @@ class TestConcatModel(TestCaseTempDir):
 
         # Conv1 output [1, 2, 13, 13]
         conv1_weight_initializer = numpy_helper.from_array(
-            np.random.normal(0, .1, [2, 3, 3, 3]).astype(np.float32),
+            np.random.normal(0, 0.1, [2, 3, 3, 3]).astype(np.float32),
             name="conv1_weight",
         )
         conv1_node = helper.make_node("Conv", ["input", "conv1_weight"], ["conv1_output"], name="conv1_node")
 
         # Conv2 output [1, 5, 13, 13]
         conv2_weight_initializer = numpy_helper.from_array(
-            np.random.normal(0, .1, [5, 3, 3, 3]).astype(np.float32),
+            np.random.normal(0, 0.1, [5, 3, 3, 3]).astype(np.float32),
             name="conv2_weight",
         )
         conv2_node = helper.make_node("Conv", ["input", "conv2_weight"], ["conv2_output"], name="conv2_node")
 
         # Conv3 output [1, 6, 13, 13]
         conv3_weight_initializer = numpy_helper.from_array(
-            np.random.normal(0, .1, [6, 3, 3, 3]).astype(np.float32),
+            np.random.normal(0, 0.1, [6, 3, 3, 3]).astype(np.float32),
             name="conv3_weight",
         )
         conv3_node = helper.make_node("Conv", ["input", "conv3_weight"], ["conv3_output"], name="conv3_node")
@@ -152,7 +152,7 @@ class TestConcatModel(TestCaseTempDir):
             model_fp32_path,
             model_q8_qop_path,
             quant_format=QuantFormat.QOperator,
-            activation_type=QuantType.QUInt8, # TODO: QInt8 not supported for QOp dynamic
+            activation_type=QuantType.QUInt8,  # TODO: QInt8 not supported for QOp dynamic
             weight_type=QuantType.QUInt8,
             extra_options=extra_options,
         )

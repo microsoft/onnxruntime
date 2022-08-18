@@ -115,6 +115,7 @@ class LSTMQuant(QuantOperatorBase):
         if dequantize_node is not None:
             self.quantizer.new_nodes.append(dequantize_node)
 
+
 class QDQLSTM(QDQOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
@@ -127,5 +128,5 @@ class QDQLSTM(QDQOperatorBase):
         self.quantizer.quantize_tensor(node.input[0])
         if not self.disable_qdq_for_node_output:
             self.quantizer.quantize_tensor(node.output[0])
-        
+
         self.quantizer.quantize_tensor_per_channel(node.input[1], 1)

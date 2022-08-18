@@ -1,3 +1,5 @@
+import logging
+
 from .operators.activation import QDQRemovableActivation, QLinearActivation
 from .operators.argmax import QArgMax
 from .operators.attention import AttentionQuant, QDQAttention
@@ -10,7 +12,7 @@ from .operators.embed_layernorm import EmbedLayerNormalizationQuant
 from .operators.gather import GatherQuant, QDQGather
 from .operators.gavgpool import QGlobalAveragePool
 from .operators.gemm import QDQGemm, QLinearGemm
-from .operators.lstm import LSTMQuant, QDQLSTM
+from .operators.lstm import QDQLSTM, LSTMQuant
 from .operators.matmul import MatMulInteger, QDQMatMul, QLinearMatMul
 from .operators.maxpool import QDQMaxPool, QMaxPool
 from .operators.pad import QPad
@@ -20,8 +22,6 @@ from .operators.resize import QDQResize, QResize
 from .operators.softmax import QDQSoftmax, QLinearSoftmax
 from .operators.split import QDQSplit, QSplit
 from .quant_utils import QuantizationMode
-
-import logging
 
 CommonOpsRegistry = {
     "Gather": GatherQuant,
@@ -87,7 +87,7 @@ QDQDynamicRegistry = {
     "Attention": QDQAttention,
     "LSTM": QDQLSTM,
 }
-IntegerOpsRegistry.update(CommonOpsRegistry) # Is this ok?
+IntegerOpsRegistry.update(CommonOpsRegistry)  # Is this ok?
 
 
 def CreateDefaultOpQuantizer(onnx_quantizer, node):
@@ -106,14 +106,10 @@ def CreateOpQuantizer(onnx_quantizer, node):
 def CreateQDQQuantizer(onnx_quantizer, node):
     if onnx_quantizer.static and node.op_type in QDQRegistry.keys():
         return QDQRegistry[node.op_type](onnx_quantizer, node)
-    elif not onnx_quantizer.static: 
+    elif not onnx_quantizer.static:
         if node.op_type in QDQDynamicRegistry.keys():
             return QDQDynamicRegistry[node.op_type](onnx_quantizer, node)
         else:
-            logging.warning(
-                "WARNING: {} not supported for Dynamic QDQ quantization.".format(
-                    node.op_type
-                )
-            )
+            logging.warning("WARNING: {} not supported for Dynamic QDQ quantization.".format(node.op_type))
             return None
     return QDQOperatorBase(onnx_quantizer, node)

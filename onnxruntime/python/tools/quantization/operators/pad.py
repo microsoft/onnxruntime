@@ -82,4 +82,3 @@ class QPad(QuantOperatorBase):
         node.input[0] = quantized_input_value.q_name
         node.output[0] = quantized_output_value.q_name
         self.quantizer.new_nodes += [node]
-

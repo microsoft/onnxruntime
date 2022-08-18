@@ -7,6 +7,7 @@
 # --------------------------------------------------------------------------
 
 import unittest
+from pathlib import Path
 
 import numpy as np
 import onnx
@@ -19,9 +20,8 @@ from op_test_utils import (
     check_op_type_count,
     check_qtype_by_node_type,
 )
-from pathlib import Path
 
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_static, quantize_dynamic
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 
 class TestOpAveragePool(TestCaseTempDir):
@@ -30,7 +30,7 @@ class TestOpAveragePool(TestCaseTempDir):
         for i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
-                inputs.update({name: np.random.normal(-.1, .2, shape).astype(np.float32)})
+                inputs.update({name: np.random.normal(-0.1, 0.2, shape).astype(np.float32)})
             input_data_list.extend([inputs])
         dr = TestDataFeeds(input_data_list)
         return dr
@@ -179,7 +179,7 @@ class TestOpAveragePool(TestCaseTempDir):
             activation_type=activation_type,
             weight_type=weight_type,
             extra_options=extra_options,
-            op_types_to_quantize=['Conv', 'AveragePool']
+            op_types_to_quantize=["Conv", "AveragePool"],
         )
         qdqnode_counts = {
             "Conv": 1,

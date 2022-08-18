@@ -7,14 +7,20 @@
 # --------------------------------------------------------------------------
 
 import unittest
+from pathlib import Path
 
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import TestCaseTempDir, TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
-from pathlib import Path
+from op_test_utils import (
+    TestCaseTempDir,
+    TestDataFeeds,
+    check_model_correctness,
+    check_op_type_count,
+    check_qtype_by_node_type,
+)
 
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_static, quantize_dynamic
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 
 class TestOpSqueezeUnsqueeze(TestCaseTempDir):
@@ -23,7 +29,7 @@ class TestOpSqueezeUnsqueeze(TestCaseTempDir):
         for i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
-                inputs.update({name: np.random.normal(.1, .3, shape).astype(np.float32)})
+                inputs.update({name: np.random.normal(0.1, 0.3, shape).astype(np.float32)})
             input_data_list.extend([inputs])
         dr = TestDataFeeds(input_data_list)
         return dr
@@ -165,7 +171,9 @@ class TestOpSqueezeUnsqueeze(TestCaseTempDir):
         model_uint8_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_path).as_posix()
         model_uint8_qdq_path = "squeezes_opset{}_{}{}_qdq.onnx".format(opset, activation_type_str, weight_type_str)
         # model_uint8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_qdq_path).as_posix()
-        model_uint8_qdq_dyn_path = "squeezes_opset{}_{}{}_qdq_dyn.onnx".format(opset, activation_type_str, weight_type_str)
+        model_uint8_qdq_dyn_path = "squeezes_opset{}_{}{}_qdq_dyn.onnx".format(
+            opset, activation_type_str, weight_type_str
+        )
         model_uint8_qdq_dyn_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_qdq_dyn_path).as_posix()
 
         # Verify QOperator mode
@@ -240,7 +248,7 @@ class TestOpSqueezeUnsqueeze(TestCaseTempDir):
             activation_type=activation_type,
             weight_type=weight_type,
             extra_options=extra_options,
-            op_types_to_quantize=['Conv','Squeeze','Unsqueeze']
+            op_types_to_quantize=["Conv", "Squeeze", "Unsqueeze"],
         )
         qdqnode_counts = {"Conv": 3, "QuantizeLinear": 1, "DequantizeLinear": 4}
         check_op_type_count(self, model_uint8_qdq_dyn_path, **qdqnode_counts)

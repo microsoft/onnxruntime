@@ -6,13 +6,13 @@
 import unittest
 import urllib.request
 from pathlib import Path
-from op_test_utils import TestCaseTempDir
 
 import numpy as np
 import onnx
 from onnx import TensorProto, ValueInfoProto, helper, numpy_helper
 from onnx import onnx_pb as onnx_proto
 from onnx import shape_inference
+from op_test_utils import TestCaseTempDir
 
 import onnxruntime
 from onnxruntime.quantization.quant_utils import QuantizationMode
@@ -340,7 +340,10 @@ def compare_two_models(model_1, model_2):
 class TestQAT(TestCaseTempDir):
     def test_remove_fakequant_nodes(self):
 
-        model_names = [Path(self._tmp_model_dir.name).joinpath("qat_model_1.onnx").as_posix(), Path(self._tmp_model_dir.name).joinpath("qat_model_2.onnx").as_posix()]
+        model_names = [
+            Path(self._tmp_model_dir.name).joinpath("qat_model_1.onnx").as_posix(),
+            Path(self._tmp_model_dir.name).joinpath("qat_model_2.onnx").as_posix(),
+        ]
         qat_support_model_names = [
             Path(self._tmp_model_dir.name).joinpath("qat_support_model_1.onnx").as_posix(),
             Path(self._tmp_model_dir.name).joinpath("qat_support_model_2.onnx").as_posix(),

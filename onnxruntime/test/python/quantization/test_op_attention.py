@@ -7,15 +7,15 @@
 # --------------------------------------------------------------------------
 
 import unittest
+from pathlib import Path
 
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
 from op_test_utils import TestCaseTempDir, TestDataFeeds, check_model_correctness, check_op_type_count
-from pathlib import Path
-from onnxruntime.tools import symbolic_shape_infer
 
 from onnxruntime.quantization import QuantFormat, quantize_dynamic
+from onnxruntime.tools import symbolic_shape_infer
 
 
 class TestOpAttention(TestCaseTempDir):
@@ -111,7 +111,7 @@ class TestOpAttention(TestCaseTempDir):
             per_channel=per_channel,
             reduce_range=reduce_range,
         )
-        quant_nodes = {"Attention": 1, "MatMul": 1, "QuantizeLinear":2, "DequantizeLinear":4}
+        quant_nodes = {"Attention": 1, "MatMul": 1, "QuantizeLinear": 2, "DequantizeLinear": 4}
         check_op_type_count(self, model_int8_path, **quant_nodes)
         check_model_correctness(
             self,

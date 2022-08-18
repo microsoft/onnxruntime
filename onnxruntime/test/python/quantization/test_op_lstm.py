@@ -7,15 +7,15 @@
 # --------------------------------------------------------------------------
 
 import unittest
+from pathlib import Path
 
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
 from op_test_utils import TestCaseTempDir, TestDataFeeds, check_model_correctness, check_op_type_count
-from pathlib import Path
-from onnxruntime.tools import symbolic_shape_infer
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic
+from onnxruntime.tools import symbolic_shape_infer
 
 
 class TestOpLSTM(TestCaseTempDir):
@@ -54,12 +54,12 @@ class TestOpLSTM(TestCaseTempDir):
             bias_data = np.random.normal(0, 0.3, [1, number_of_gates * hidden_size, input_size]).astype(np.float32)
             initializers.append(onnx.numpy_helper.from_array(bias_data, name=bias_name))
 
-            return onnx.helper.make_node("LSTM", [input_name, weight_name, bias_name], [output_name],hidden_size=hidden_size)
+            return onnx.helper.make_node(
+                "LSTM", [input_name, weight_name, bias_name], [output_name], hidden_size=hidden_size
+            )
 
         # make lstm node
-        lstm_node = make_lstm_node(
-            input_name, [10, 30], "qkv.weight", [30], "qkv.bias", output_name
-        )
+        lstm_node = make_lstm_node(input_name, [10, 30], "qkv.weight", [30], "qkv.bias", output_name)
 
         # make graph
         input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, [1, -1, 2])
@@ -88,7 +88,7 @@ class TestOpLSTM(TestCaseTempDir):
         # model_uint8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_qdq_path).as_posix()
 
         inputarr = np.random.rand(1, 3, 2).astype(np.float32)
-        
+
         # Test LSTM QOperator Dynamic
         quantize_dynamic(
             model_fp32_path,
@@ -118,7 +118,7 @@ class TestOpLSTM(TestCaseTempDir):
             reduce_range=reduce_range,
         )
 
-        quant_nodes = {"LSTM": 1, "QuantizeLinear":1, "DequantizeLinear":2}
+        quant_nodes = {"LSTM": 1, "QuantizeLinear": 1, "DequantizeLinear": 2}
         check_op_type_count(self, model_int8_qdq_path, **quant_nodes)
         check_model_correctness(
             self,
@@ -127,7 +127,7 @@ class TestOpLSTM(TestCaseTempDir):
             {"input": inputarr},
         )
 
-        # Test LSTM QDQ Dynamic QUInt8 
+        # Test LSTM QDQ Dynamic QUInt8
         quantize_dynamic(
             model_fp32_path,
             model_uint8_qdq_path,
@@ -138,7 +138,7 @@ class TestOpLSTM(TestCaseTempDir):
             reduce_range=reduce_range,
         )
 
-        quant_nodes = {"LSTM": 1, "QuantizeLinear":1, "DequantizeLinear":2}
+        quant_nodes = {"LSTM": 1, "QuantizeLinear": 1, "DequantizeLinear": 2}
         check_op_type_count(self, model_uint8_qdq_path, **quant_nodes)
         check_model_correctness(
             self,

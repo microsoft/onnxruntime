@@ -7,12 +7,18 @@
 # --------------------------------------------------------------------------
 
 import unittest
+from pathlib import Path
 
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import TestCaseTempDir, TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
-from pathlib import Path
+from op_test_utils import (
+    TestCaseTempDir,
+    TestDataFeeds,
+    check_model_correctness,
+    check_op_type_count,
+    check_qtype_by_node_type,
+)
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
@@ -141,7 +147,7 @@ class TestOpQuatizerPad(TestCaseTempDir):
                 quant_format=QuantFormat.QDQ if is_qdq else QuantFormat.QOperator,
                 activation_type=activation_type,
                 weight_type=weight_type,
-                op_types_to_quantize=['Conv'] if is_qdq else None,
+                op_types_to_quantize=["Conv"] if is_qdq else None,
                 extra_options=extra_options,
             )
         else:
@@ -248,7 +254,7 @@ class TestOpQuatizerPad(TestCaseTempDir):
             # which means pad node is running in quantized semantic.
             # In dynamic quantize mode, pad operator in fact not quantized as input is fp32.
             # if quantize_mode != "static":
-            kwargs = {"DequantizeLinear": 2} # if activation_type == QuantType.QUInt8 else {"QuantizeLinear": 1}
+            kwargs = {"DequantizeLinear": 2}  # if activation_type == QuantType.QUInt8 else {"QuantizeLinear": 1}
             # else:
             #     kwargs = {"DequantizeLinear": 4, "QuantizeLinear": 3}
             check_op_type_count(self, model_i8_qdq_path, **kwargs)
@@ -280,7 +286,7 @@ class TestOpQuatizerPad(TestCaseTempDir):
             activation_type=activation_type,
             weight_type=weight_type,
             extra_options=extra_options,
-            is_qdq=False
+            is_qdq=False,
         )
         # DequantizeLinear=2 means there are one DequantizeLinear Node aftr both conv and pad,
         # which means pad node is running in quantized semantic.

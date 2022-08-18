@@ -7,12 +7,12 @@
 # --------------------------------------------------------------------------
 
 import unittest
+from pathlib import Path
 
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
 from op_test_utils import TestCaseTempDir
-from pathlib import Path
 
 from onnxruntime import quantization
 
@@ -47,7 +47,7 @@ class TestSymmetricFlag(TestCaseTempDir):
         )
 
     def perform_quantization(self, activations, weight, act_sym, wgt_sym):
-        
+
         # One-layer convolution model
         act = helper.make_tensor_value_info("ACT", TensorProto.FLOAT, activations[0].shape)
         wgt = helper.make_tensor_value_info("WGT", TensorProto.FLOAT, weight.shape)
@@ -61,7 +61,6 @@ class TestSymmetricFlag(TestCaseTempDir):
         onnx.save(model, fp32_model_path)
         quant_model_path = "quantized-model.onnx"
         quant_model_path = Path(self._tmp_model_dir.name).joinpath(quant_model_path).as_posix()
-
 
         # Quantize model
         class DummyDataReader(quantization.CalibrationDataReader):

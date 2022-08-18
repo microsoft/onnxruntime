@@ -7,6 +7,7 @@
 # --------------------------------------------------------------------------
 
 import unittest
+from pathlib import Path
 
 import numpy as np
 import onnx
@@ -19,9 +20,8 @@ from op_test_utils import (
     check_op_type_count,
     check_qtype_by_node_type,
 )
-from pathlib import Path
 
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_static, quantize_dynamic
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 
 class TestOpMaxPool(TestCaseTempDir):
@@ -30,7 +30,7 @@ class TestOpMaxPool(TestCaseTempDir):
         for i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
-                inputs.update({name: np.random.normal(0, .2, shape).astype(np.float32)})
+                inputs.update({name: np.random.normal(0, 0.2, shape).astype(np.float32)})
             input_data_list.extend([inputs])
         dr = TestDataFeeds(input_data_list)
         return dr
@@ -53,7 +53,7 @@ class TestOpMaxPool(TestCaseTempDir):
         # (identity_out)  (output)
         input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, conv_input_shape)
 
-        conv_weight_arr = np.random.normal(0, .1, conv_weight_shape).astype(np.float32)
+        conv_weight_arr = np.random.normal(0, 0.1, conv_weight_shape).astype(np.float32)
         conv_weight_initializer = onnx.numpy_helper.from_array(conv_weight_arr, name="conv1_weight")
         conv_node = onnx.helper.make_node("Conv", ["input", "conv1_weight"], ["conv_output"], name="conv_node")
 
@@ -175,7 +175,7 @@ class TestOpMaxPool(TestCaseTempDir):
             activation_type=activation_type,
             weight_type=weight_type,
             extra_options=extra_options,
-            op_types_to_quantize=['Conv','MaxPool']
+            op_types_to_quantize=["Conv", "MaxPool"],
         )
         qdqnode_counts = {
             "Conv": 1,
@@ -204,6 +204,7 @@ class TestOpMaxPool(TestCaseTempDir):
             QuantType.QInt8,
             extra_options={"ActivationSymmetric": True},
         )
+
 
 if __name__ == "__main__":
     unittest.main()

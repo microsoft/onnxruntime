@@ -7,6 +7,7 @@
 # --------------------------------------------------------------------------
 
 import unittest
+from pathlib import Path
 
 import numpy as np
 import onnx
@@ -19,8 +20,8 @@ from op_test_utils import (
     check_op_type_count,
     check_qtype_by_node_type,
 )
-from pathlib import Path
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_static, quantize_dynamic
+
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 
 class TestOpArgMax(TestCaseTempDir):
@@ -30,7 +31,7 @@ class TestOpArgMax(TestCaseTempDir):
             inputs = {}
             for name, shape in name2shape.items():
                 # TODO: Use nonrandom linear input
-                rand_arr = np.random.normal(0.0, .1, shape).astype(np.float32)
+                rand_arr = np.random.normal(0.0, 0.1, shape).astype(np.float32)
                 inputs.update({name: rand_arr})
             input_data_list.extend([inputs])
         dr = TestDataFeeds(input_data_list)
@@ -51,7 +52,7 @@ class TestOpArgMax(TestCaseTempDir):
         # make Conv node
         conv_weight_name = "conv_weight"
         # conv_weight_arr = np.random.randint(-1, 2, [32, 256, 1, 1]).astype(np.float32)
-        conv_weight_arr = np.random.normal(0.0, .1, (32, 256, 1, 1)).astype(np.float32)
+        conv_weight_arr = np.random.normal(0.0, 0.1, (32, 256, 1, 1)).astype(np.float32)
         conv_weight_initializer = onnx.numpy_helper.from_array(conv_weight_arr, name=conv_weight_name)
         conv_output_name = "conv_output"
         conv_inputs = [input_name, conv_weight_name]
@@ -184,7 +185,7 @@ class TestOpArgMax(TestCaseTempDir):
             activation_type=activation_type,
             weight_type=weight_type,
             extra_options=extra_options,
-            op_types_to_quantize=["ArgMax","Conv"],
+            op_types_to_quantize=["ArgMax", "Conv"],
         )
         qdqnode_counts = {"QuantizeLinear": 2, "DequantizeLinear": 3, "ArgMax": 1}
         check_op_type_count(self, model_uint8_qdq_trt_path, **qdqnode_counts)
@@ -253,7 +254,6 @@ class TestOpArgMax(TestCaseTempDir):
 
     def test_quantize_argmax(self):
         self.quantize_argmax_test(QuantType.QUInt8, QuantType.QUInt8)
-        
 
     def test_quantize_argmax_s8s8(self):
         self.quantize_argmax_test(

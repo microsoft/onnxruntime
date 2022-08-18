@@ -7,14 +7,14 @@
 # --------------------------------------------------------------------------
 
 import unittest
+from pathlib import Path
 
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
 from op_test_utils import TestCaseTempDir, TestDataFeeds, check_model_correctness, check_op_type_count
-from pathlib import Path
 
-from onnxruntime.quantization import quantize_dynamic, QuantFormat
+from onnxruntime.quantization import QuantFormat, quantize_dynamic
 
 
 class TestOpEmbedLayerNormalization(TestCaseTempDir):
@@ -150,10 +150,7 @@ class TestOpEmbedLayerNormalization(TestCaseTempDir):
         )
 
         # Test QOperator Dynamic
-        quantize_dynamic(
-            model_f32_path,
-            model_uint8_qop_path
-        )
+        quantize_dynamic(model_f32_path, model_uint8_qop_path)
         # Quantization should not have any DequantizeLinear nodes:
         qnode_counts = {"DequantizeLinear": 0, "QEmbedLayerNormalization": 1}
         check_op_type_count(self, model_uint8_qop_path, **qnode_counts)
@@ -183,11 +180,7 @@ class TestOpEmbedLayerNormalization(TestCaseTempDir):
         )
 
         # Test QDQ Dynamic
-        quantize_dynamic(
-            model_f32_path, 
-            model_uint8_path, 
-            quant_format=QuantFormat.QDQ
-        )
+        quantize_dynamic(model_f32_path, model_uint8_path, quant_format=QuantFormat.QDQ)
         # Quantization should not have any DequantizeLinear nodes:
         qnode_counts = {"DequantizeLinear": 0, "EmbedLayerNormalization": 1}
         check_op_type_count(self, model_uint8_path, **qnode_counts)
@@ -203,10 +196,7 @@ class TestOpEmbedLayerNormalization(TestCaseTempDir):
         )
 
         # Test QOperator Dynamic
-        quantize_dynamic(
-            model_f32_path,
-            model_uint8_qop_path
-        )
+        quantize_dynamic(model_f32_path, model_uint8_qop_path)
         # Quantization should not have any DequantizeLinear nodes:
         qnode_counts = {"DequantizeLinear": 0, "QEmbedLayerNormalization": 1}
         check_op_type_count(self, model_uint8_qop_path, **qnode_counts)

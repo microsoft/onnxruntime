@@ -7,19 +7,19 @@
 # --------------------------------------------------------------------------
 
 import unittest
+from pathlib import Path
 
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
 from op_test_utils import (
+    TestCaseTempDir,
     TestDataFeeds,
     check_model_correctness,
     check_op_type_count,
     check_op_type_order,
     check_qtype_by_node_type,
-    TestCaseTempDir,
 )
-from pathlib import Path
 
 import onnxruntime
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic
@@ -32,6 +32,7 @@ def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
     tensor = np.random.normal(0, 0.3, tensor_shape).astype(tensor_dtype)
     init = numpy_helper.from_array(tensor, input_name)
     return init
+
 
 class TestONNXModel(TestCaseTempDir):
     def construct_model(self, model_path):
@@ -72,7 +73,7 @@ class TestONNXModel(TestCaseTempDir):
         model_fp32_path = "conv_bias.fp32.onnx"
         temp_model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
         self.construct_model(temp_model_fp32_path)
-        
+
         activation_type_str = "u8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
         model_int8_qdq_path = "conv_bias.quant.qdq.{}{}.onnx".format(activation_type_str, weight_type_str)

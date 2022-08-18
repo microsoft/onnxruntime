@@ -53,7 +53,7 @@ class ONNXQuantizer:
         self.value_infos = {vi.name: vi for vi in model.graph.value_info}
         self.value_infos.update({ot.name: ot for ot in model.graph.output})
         self.value_infos.update({it.name: it for it in model.graph.input})
-        
+
         self.model = ONNXModel(model)
         if not static:
             self.model.replace_gemm_with_matmul()
@@ -464,13 +464,10 @@ class ONNXQuantizer:
             keepdims=0,
         )
         nodes_list.append(reduce_min_node)
-        
+
         zero_min_name = input_name + "_Min"
         zero_min_node = onnx.helper.make_node(
-            "Min",
-            [reduce_min_name + ":0", self.fixed_zero_name],
-            [zero_min_name+":0"],
-            zero_min_name
+            "Min", [reduce_min_name + ":0", self.fixed_zero_name], [zero_min_name + ":0"], zero_min_name
         )
         nodes_list.append(zero_min_node)
 
@@ -486,10 +483,7 @@ class ONNXQuantizer:
 
         zero_max_name = input_name + "_Max"
         zero_max_node = onnx.helper.make_node(
-            "Max",
-            [reduce_max_name + ":0", self.fixed_zero_name],
-            [zero_max_name+":0"],
-            zero_max_name
+            "Max", [reduce_max_name + ":0", self.fixed_zero_name], [zero_max_name + ":0"], zero_max_name
         )
         nodes_list.append(zero_max_node)
 
@@ -533,14 +527,16 @@ class ONNXQuantizer:
             zp_sub_name,
         )
         nodes_list.append(zp_sub_node)
-        
+
         # Compute round
         zp_round_name = input_name + "_zero_point_Round"
         zp_round_node = onnx.helper.make_node("Round", zp_sub_node.output, [zp_round_name + ":0"], zp_round_name)
         nodes_list.append(zp_round_node)
         # Cast to integer
         zp_cast_name = input_name + "_zero_point_Cast"
-        zp_cast_node = onnx.helper.make_node("Cast", zp_round_node.output, [input_zp_name], zp_cast_name, to=qType) # TODO recast zp as int32 to avoid underflow...
+        zp_cast_node = onnx.helper.make_node(
+            "Cast", zp_round_node.output, [input_zp_name], zp_cast_name, to=qType
+        )  # TODO recast zp as int32 to avoid underflow...
         nodes_list.append(zp_cast_node)
 
         return input_scale_name, input_zp_name, [], []
@@ -691,9 +687,9 @@ class ONNXQuantizer:
             _, input_scale_name, _, _, _ = self._get_quantization_params(input_name)
         else:
             raise ValueError("Expected {} to be in quantized value map for static quantization".format(input_name))
-        
+
         inputscale_initializer = find_by_name(input_scale_name, self.model.initializer())
-        
+
         input_scale = tensor_proto_to_array(inputscale_initializer)
 
         # calculate scale for bias
@@ -1028,7 +1024,7 @@ class ONNXQuantizer:
                 self.new_nodes.append(dequantize_node)
 
     def calculate_quantization_params(self):
-        if self.tensors_range is None: 
+        if self.tensors_range is None:
             return
 
         # adjust tensor_ranges for input of Clip and Relu node

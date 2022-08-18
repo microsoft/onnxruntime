@@ -7,6 +7,7 @@
 # --------------------------------------------------------------------------
 
 import unittest
+from pathlib import Path
 
 import numpy as np
 import onnx
@@ -19,9 +20,8 @@ from op_test_utils import (
     check_op_type_count,
     check_qtype_by_node_type,
 )
-from pathlib import Path
 
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_static, quantize_dynamic
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 
 class TestOpReshape(TestCaseTempDir):
@@ -171,7 +171,7 @@ class TestOpReshape(TestCaseTempDir):
             activation_type=activation_type,
             weight_type=weight_type,
             extra_options=extra_options,
-            op_types_to_quantize=['Reshape','MatMul']
+            op_types_to_quantize=["Reshape", "MatMul"],
         )
         qdqnode_counts = {
             "MatMul": 1,

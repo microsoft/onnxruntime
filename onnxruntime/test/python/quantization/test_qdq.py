@@ -13,10 +13,23 @@ from pathlib import Path
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
-from op_test_utils import TestCaseTempDir, TestDataFeeds, check_model_correctness, check_op_type_count, check_op_type_order, create_clip_node
-from pathlib import Path
+from op_test_utils import (
+    TestCaseTempDir,
+    TestDataFeeds,
+    check_model_correctness,
+    check_op_type_count,
+    check_op_type_order,
+    create_clip_node,
+)
 
-from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantizationMode, QuantType, quantize_static, quantize_dynamic
+from onnxruntime.quantization import (
+    QDQQuantizer,
+    QuantFormat,
+    QuantizationMode,
+    QuantType,
+    quantize_dynamic,
+    quantize_static,
+)
 
 
 class TestQDQFormat(TestCaseTempDir):
@@ -25,7 +38,7 @@ class TestQDQFormat(TestCaseTempDir):
         for i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
-                inputs.update({name: np.random.normal(.1, .5, shape).astype(np.float32)})
+                inputs.update({name: np.random.normal(0.1, 0.5, shape).astype(np.float32)})
             input_data_list.extend([inputs])
         dr = TestDataFeeds(input_data_list)
         return dr
@@ -135,7 +148,7 @@ class TestQDQExtraOptions(TestCaseTempDir):
         #       /   |   \
         #  MatMul MatMul MatMul
         #     |     |      |
-        #(output)(output)(output)
+        # (output)(output)(output)
 
         initializers = []
 
@@ -167,7 +180,7 @@ class TestQDQExtraOptions(TestCaseTempDir):
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         test_model_path = "test_qdq_finetune_2.onnx"
         test_model_path = Path(self._tmp_model_dir.name).joinpath(test_model_path).as_posix()
-        
+
         onnx.save(model, test_model_path)
 
         compute_range = {
@@ -454,7 +467,7 @@ class TestQDQFormatConvClip(TestQDQFormat):
             reduce_range=per_channel,
             activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
-            op_types_to_quantize=['Conv', 'Reshape'],
+            op_types_to_quantize=["Conv", "Reshape"],
         )
         # topo sort check
         if is_quant_type_int8:
@@ -666,7 +679,7 @@ class TestQDQFormatConvRelu(TestQDQFormat):
             reduce_range=per_channel,
             activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
-            op_types_to_quantize=['Conv','Relu']
+            op_types_to_quantize=["Conv", "Relu"],
         )
         data_reader.rewind()
         # topo sort check
