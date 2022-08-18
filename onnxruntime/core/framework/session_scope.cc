@@ -156,9 +156,9 @@ class ConcurrencyKernelScope {
 #ifdef ENABLE_NVTX_PROFILE
 class NVTXSessScope {
  public:
-  NVTXSessScope(const std::thread::id& thread_id) : sess_tag_(profile::Context::GetInstance().GetThreadTagOrDefaul(thread_id)),
-                                                    forward_range_("Batch-" + session_tag_ + " Forward", profile::Color::White),
-                                                    backward_range_("Batch-" + session_tag_ + " Backward", profile::Color::Black) {}
+  NVTXSessScope(const std::thread::id& thread_id) : sess_tag_(profile::Context::GetInstance().GetThreadTagOrDefault(thread_id)),
+                                                    forward_range_("Batch-" + sess_tag_ + " Forward", profile::Color::White),
+                                                    backward_range_("Batch-" + sess_tag_ + " Backward", profile::Color::Black) {}
   ~NVTXSessScope() {
     // Make sure forward Range object call Begin and End.
     if (!forward_range_.IsBeginCalled()) {
@@ -190,7 +190,7 @@ class NVTXKernelScope {
     node_compute_range_.Begin();
   }
   ~NVTXKernelScope() {
-    NVTXKernelScope.End();
+    node_compute_range_.End();
   }
 
  private:
