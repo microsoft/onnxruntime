@@ -124,9 +124,9 @@ static Status CreateLtMatrixLayout(cublasLtMatrixLayout_t& layout_desc,
 Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream,
                        const cudaDeviceProp& device_prop,
                        int32_t batch_count, int64_t m, int64_t n, int64_t k,
-                       const float* alpha, const int8_t* A, const int8_t* B, int batch_B,
+                       const float* alpha, const int8_t* A, const int8_t* B, int32_t batch_B,
                        const float* bias, const float* beta,
-                       const int8_t* C, int batch_C,
+                       const int8_t* C, int32_t batch_C,
                        int8_t* D, cublasLtOrder_t weight_order) {
   ORT_ENFORCE(weight_order == CUBLASLT_ORDER_COL, "Weight should be ORDER_COL");
 

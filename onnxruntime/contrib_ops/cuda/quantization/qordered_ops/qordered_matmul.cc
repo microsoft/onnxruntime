@@ -27,7 +27,7 @@ ONNX_OPERATOR_KERNEL_EX(
     QOrderedMatMul);
 
 static Status ParseRowMajorTensorMetadata(const Tensor& input_tensor, int64_t& rows,
-                                  int64_t& cols, int64_t& batch_count, int64_t& element_count) {
+                                          int64_t& cols, int64_t& batch_count, int64_t& element_count) {
   const auto& dims = input_tensor.Shape().GetDims();
 
   cols = dims.back();
@@ -117,10 +117,10 @@ Status QOrderedMatMul::QOrderedMatMul::ComputeInternal(OpKernelContext* context)
   const float beta = *scale_C / *scale_Y;
 
   ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
-                                      batch_A, rows_A, cols_B, cols_A,
+                                      static_cast<int32_t>(batch_A), rows_A, cols_B, cols_A,
                                       &alpha, tensor_A.Data<int8_t>(), tensor_B.Data<int8_t>(),
-                                      batch_B, bias,
-                                      &beta, C, batch_C,
+                                      static_cast<int32_t>(batch_B), bias,
+                                      &beta, C, static_cast<int32_t>(batch_C),
                                       tensor_Y->MutableData<int8_t>(), static_cast<cublasLtOrder_t>(order_B_)));
 
   return Status::OK();
