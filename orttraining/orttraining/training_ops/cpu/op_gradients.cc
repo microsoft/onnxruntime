@@ -84,7 +84,7 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  bool is_transpose_required = (axis != (rank - 1));
+  bool is_transpose_required = opset_ >= 13 && axis != (rank - 1);
 
   Tensor transposed_dY;
   Tensor transposed_Y;
