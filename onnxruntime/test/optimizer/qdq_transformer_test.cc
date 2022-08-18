@@ -421,23 +421,33 @@ TEST(QDQTransformerTests, Add_Have_Different_Types) {
       auto* dq1_output = AddQDQNodePair<int8_t>(builder, input1_arg, .004f, 1);
 
       // add DQ weights and Add
-      auto* weight = builder.MakeInitializer<uint8_t>(weights_shape, -128, 127);
+      auto* weight = builder.MakeInitializer<uint8_t>(weights_shape, 0, 255);
       auto* dq_w_output = builder.MakeIntermediate();
       auto* add_output = builder.MakeIntermediate();
       builder.AddDequantizeLinearNode<uint8_t>(weight, .003f, 12, dq_w_output);
       builder.AddNode("Add", {dq_w_output, dq1_output}, {add_output});
 
       // add Q
-      builder.AddQuantizeLinearNode<uint8_t>(add_output, .004f, 135, output_arg);
+      auto* q_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<uint8_t>(add_output, .004f, 135, q_output);
+      builder.AddDequantizeLinearNode<uint8_t>(q_output, .004f, 135, output_arg);
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["com.microsoft.QLinearAdd"], 1);
       EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["Add"], 0);
     };
 
-    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      0.01 /*per_sample_tolerance*/,
+                      0.01 /*relative_per_sample_tolerance*/);
   };
   test_case({12, 12}, {12});
 }
