@@ -731,9 +731,8 @@ bool TensorrtExecutionProvider::IsGraphInput(const Graph* graph, std::string nam
   return false;
 }
 
-// This helper function is for the case where the graph contains control flow op or nested control flow op.
-// If control flow op's subgraph contains any outer scope value, TRT EP needs to properly set outer scope values for the newly built subgraph as a self-contained graph per ORT graph requirements,
-// otherwise graph.Resolve() will fail.
+// This helper function is to set outer scope values for the graph where the graph contains control flow op or nested control flow op.
+// If control flow op's subgraph contains any outer scope value, TRT EP needs to properly set outer scope values for the newly built subgraph as a self-contained graph per ORT graph requirements, otherwise graph.Resolve() will fail.
 void TensorrtExecutionProvider::SetGraphOuterScopeValues(Graph* build_graph, const Graph* graph) const {
   
   if (build_graph->ParentNode()) {
@@ -742,27 +741,27 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValues(Graph* build_graph, con
     std::cout << "Parent Node:" << build_graph->ParentNode()->Name() << std::endl;
     std::cout << "implicit inputs:" << std::endl;
     std::unordered_set<std::string> all_nodes_output; 
-    GetAllNodesOutput(build_graph->ParentGraph(), all_nodes_output);
+    GetAllNodesOutput(build_graph->ParentGraph(), all_nodes_output); // Get all node's output from a graph
     
     // (Note: It seems graph->GetOuterScopeNodeArgNames() always returns empty? so we need to use ImplicitInputDefs to handle outer scope values instead)
     for (const auto& input : graph->ParentNode()->ImplicitInputDefs()) {
       
-      // Set outer scope value for current graph.
+      // Set outer scope value for current subgraph.
       // 
       // The node arg in parent node's implicit inputs could be used for parent node's other subgraph, for example "If" node.
-      // So we need to make sure handle the node arg that is used in current subgraph only.
+      // So we need to make sure that the node arg is used in current subgraph only.
       // (GetNodeArg searches for specific node arg in all node args in the graph)
       if (build_graph->GetNodeArg(input->Name())) {
         build_graph->AddOuterScopeNodeArg(input->Name());
         std::cout << input->Name() << std::endl;
       }
 
-      // Handle the case where outer scope value is from ancestor of current graph's parent.
+      // Handle the case where outer scope value is from ancestor of current subgraph's parent.
+      // Need to set outer scope value in current subgraph's parent as well.
       // 
-      // If node arg is not in the following cases, it's from ancestor of graph's parent.
-      //   1. inputs/initialiers in graph's parent graph
-      //   2. outputs of nodes in graph's parent graph
-      // Need to set outer scope value in current graph's parent as well.
+      // If node arg is not in the following cases, the node arg is from ancestor of current subgraph's parent.
+      //   1. inputs/initialiers in current subgraph's parent graph
+      //   2. outputs of nodes in current subgraph's parent graph
       if ((all_nodes_output.find(input->Name()) == all_nodes_output.end()) && 
           !build_graph->ParentGraph()->IsInitializedTensor(input->Name()) &&
           !IsGraphInput(build_graph->ParentGraph(), input->Name()))
