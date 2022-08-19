@@ -103,7 +103,8 @@ def quantize_static(
             QDQOpTypePerChannelSupportToAxis = dictionary : Default is {}. Set channel axis for specific op type, for example: {'MatMul': 1},
                                                             and it's effective only when per channel quantization is supported and per_channel is True.
                                                             If specific op type supports per channel quantization but not explicitly specified with channel axis,
-                                                            default channel axis will be used.
+                                                            default channel axis will be used. MatMul also supports None such as {'MatMul': None} to quantize
+                                                            MatMul in a per-tensor way while per_channel is True, which is useful in CNNs for instance.
             CalibTensorRangeSymmetric = True/False : Default is False. If enabled, the final range of tensor during calibration will be explicitly set to symmetric to central point "0".
             CalibMovingAverage = True/False : Default is False. If enabled, the moving average of the minimum and maximum values
                                               will be computed when the calibration method selected is MinMax.
