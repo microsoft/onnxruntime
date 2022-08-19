@@ -705,7 +705,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
   bool single_thread_mode = true;
 
   auto* execution_plan = session_state.GetExecutionPlan();
-  DeviceStreamCollection device_stream_collection(execution_plan->execution_plan.size());
+  DeviceStreamCollection device_stream_collection(execution_plan->execution_plan.size(), session_state);
 
   ORT_ENFORCE(BindToDeviceStream(parent_stream, *execution_plan, device_stream_collection, session_state.GetStreamHandleRegistryInstance()).IsOK());
   // see if we can skip copies due to the types of execution providers available
