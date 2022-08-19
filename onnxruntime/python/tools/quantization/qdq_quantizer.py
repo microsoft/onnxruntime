@@ -83,17 +83,27 @@ class QDQQuantizer(ONNXQuantizer):
         self.bias_to_quantize = []
 
         self.nodes_to_remove = []
-
         # Specific op types to exclude qdq quantization for their outputs.
         # In TRT, it's not recommended to quantize outputs for weighted ops such as Conv, Matmul, Gemm
         # because those ops may be followed by nodes that require high resolution inputs.
         # Adding QDQ for those ops' output may end up with worse accuracy.
         # So, we don't recommend to add QDQ to node's output under such condition.
-        self.op_types_to_exclude_output_quantization = (
-            []
-            if "OpTypesToExcludeOutputQuantizatioin" not in extra_options
-            else extra_options["OpTypesToExcludeOutputQuantizatioin"]
-        )
+        if "OpTypesToExcludeOutputQuantizatioin" in extra_options:
+            self.op_types_to_exclude_output_quantization = extra_options["OpTypesToExcludeOutputQuantizatioin"]
+        else:
+            self.op_types_to_exclude_output_quantization = (
+                []
+                if static
+                else [
+                    "Conv",
+                    "Matmul",
+                    "MatMul",
+                    "Gemm",
+                    "Attention",
+                    "LSTM",
+                ]
+            )
+
 
         # We do quantization on Dequantizelinear's input to remove Quantizelinear for weight as an optimization.
         # In some cases, for example QDQ BERT model for TensorRT, QDQ should always appear as a pair.

@@ -6,9 +6,11 @@
 
 import unittest
 
+from pathlib import Path
 import numpy as np
 from onnx import TensorProto, helper, save
 from op_test_utils import (
+    TestCaseTempDir,
     InputFeedsNegOneZeroOne,
     check_model_correctness,
     check_op_type_count,
@@ -18,7 +20,7 @@ from op_test_utils import (
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 
 
-class TestONNXModel(unittest.TestCase):
+class TestONNXModel(TestCaseTempDir):
     def construct_model(self, model_path):
         #             (input)
         #                |
@@ -59,6 +61,7 @@ class TestONNXModel(unittest.TestCase):
     def quantize_split_test(self, activation_type, weight_type, extra_options={}):
         np.random.seed(1)
         model_fp32_path = "split_fp32.onnx"
+        model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
         self.construct_model(model_fp32_path)
         data_reader = InputFeedsNegOneZeroOne(1, {"input": [3, 6]})
 
@@ -66,7 +69,9 @@ class TestONNXModel(unittest.TestCase):
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
         model_uint8_path = "split_{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_uint8_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_path).as_posix()
         model_uint8_qdq_path = "split_{}{}_qdq.onnx".format(activation_type_str, weight_type_str)
+        model_uint8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_qdq_path).as_posix()
 
         # Verify QOperator mode
         data_reader.rewind()

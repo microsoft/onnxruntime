@@ -273,15 +273,6 @@ def quantize_dynamic(
     else:
         if not op_types_to_quantize or len(op_types_to_quantize) == 0:
             op_types_to_quantize = list(QDQDynamicRegistry.keys())
-        if "OpTypesToExcludeOutputQuantizatioin" not in extra_options:  # TODO Is this a good default?
-            extra_options["OpTypesToExcludeOutputQuantizatioin"] = [
-                "Conv",
-                "Matmul",
-                "MatMul",
-                "Gemm",
-                "Attention",
-                "LSTM",
-            ]
         quantizer = QDQQuantizer(
             model,
             per_channel,

@@ -11,15 +11,16 @@ Softmax quantization test case
 
 import unittest
 
+from pathlib import Path
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
+from op_test_utils import TestCaseTempDir, TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 
 
-class TestOpSoftmax(unittest.TestCase):
+class TestOpSoftmax(TestCaseTempDir):
     """_summary_
     unittest (softmax): quantization of QDQ and Qop with u8 and s8
     """
@@ -80,6 +81,7 @@ class TestOpSoftmax(unittest.TestCase):
     def quantize_softmax_test(self, activation_type, weight_type, extra_options={}):
         np.random.seed(1)
         model_fp32_path = "softmax_fp32.onnx"
+        model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
         self.construct_model_conv_softmax(
             model_fp32_path,
             [1, 2, 26, 42],
@@ -94,7 +96,9 @@ class TestOpSoftmax(unittest.TestCase):
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
         model_q8_path = f"softmax_{activation_type_str}{weight_type_str}.onnx"
+        model_q8_path = Path(self._tmp_model_dir.name).joinpath(model_q8_path).as_posix()
         model_q8_qdq_path = f"softmax_qdq_{activation_type_str}{weight_type_str}.onnx"
+        model_q8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_q8_qdq_path).as_posix()
 
         # Verify QOperator mode
         data_reader.rewind()
