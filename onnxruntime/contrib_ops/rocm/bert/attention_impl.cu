@@ -50,8 +50,7 @@ size_t GetAttentionScratchSize(size_t element_size,
                                int num_heads,
                                int sequence_length,
                                int all_sequence_length) {
-  const size_t len = batch_size * num_heads * sequence_length * all_sequence_length;
-  const size_t bytes = len * element_size;
+  const size_t bytes = element_size * batch_size * num_heads * sequence_length * all_sequence_length;
 
   const size_t alignment = 256;
   const size_t bytesAligned = AlignTo(bytes, alignment);
@@ -65,7 +64,7 @@ size_t GetAttentionWorkspaceSize(
     int head_size,
     int sequence_length,
     int past_sequence_length) {
-  size_t qkv_size = 3 * batch_size * sequence_length * num_heads * head_size * element_size;
+  size_t qkv_size = element_size * 3 * batch_size * sequence_length * num_heads * head_size;
   return qkv_size + 2 * GetAttentionScratchSize(element_size, batch_size, num_heads,
                                                 sequence_length, past_sequence_length + sequence_length);
 }
@@ -205,7 +204,7 @@ bool QkvToContext(
 bool LaunchAttentionKernel(
     const hipDeviceProp_t& prop,
     hipStream_t stream,
-    rocblas_handle& cublas,
+    rocblas_handle& rocblas,
     const size_t element_size,
     int batch_size,
     int sequence_length,

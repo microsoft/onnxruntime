@@ -19,7 +19,7 @@ size_t GetAttentionScratchSize(
 
 size_t GetAttentionWorkspaceSize(
     size_t element_size,
-    int batchsize,
+    int batch_size,
     int num_heads,
     int head_size,
     int sequence_length,
@@ -28,14 +28,14 @@ size_t GetAttentionWorkspaceSize(
 bool LaunchAttentionKernel(
     const hipDeviceProp_t& prop,               // Device Properties
     hipStream_t stream,                        // cuda stream
-    rocblas_handle& cublas,                    // Cublas handle
+    rocblas_handle& rocblas,                   // Rocblas handle
     const size_t element_size,                 // Element size of input tensor
     int batch_size,                            // Batch size (B)
     int sequence_length,                       // Sequence length (S)
     int num_heads,                             // Number of attention heads (N)
     int head_size,                             // Hidden layer size per head (H)
     int past_sequence_length,                  // Sequence length in past state
-    bool is_unidirectional,                    // Whether there is unidirecitonal mask.
+    bool is_unidirectional,                    // Whether there is unidirectional mask.
     const void* input,                         // Input tensor
     const int* mask_index,                     // Attention mask raw data or index. NULL means no mask.
     gsl::span<const int64_t> mask_index_dims,  // Mask index shape
