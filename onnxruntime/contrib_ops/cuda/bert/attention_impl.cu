@@ -157,7 +157,7 @@ bool QkvToContext(
     const int mask_dimension = static_cast<int>(mask_index_dims.size());
     const int max_sequence_length = mask_dimension == 4 ? static_cast<int>(mask_index_dims.at(3)) : 0;
 
-    T* persistent_softmax_workspace = scratch1; // replace Q*K' in place with masked score for persistent softmax.
+    T* persistent_softmax_workspace = scratch1;  // replace Q*K' in place with masked score for persistent softmax.
     if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads,
                                       mask_index, nullptr, extra_add_qk, scratch1, scratch2,
                                       is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
@@ -386,7 +386,8 @@ bool DecoderQkvToContext(
     constexpr int max_sequence_length = 0;
     if (!ComputeSoftmaxWithRawMask<T>(stream, kv_sequence_length, sequence_length, batch_size, num_heads,
                                       nullptr, key_padding_mask, add_before_softmax, scratch1, scratch2,
-                                      is_unidirectional, 1.0f, mask_dimension, max_sequence_length)) {
+                                      is_unidirectional, 1.0f, mask_dimension, max_sequence_length,
+                                      false, nullptr)) {
       return false;
     }
   } else {
