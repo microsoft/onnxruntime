@@ -62,7 +62,6 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
-configuration = "none"
 
 if args.config:
     configuration = args.config
@@ -81,15 +80,17 @@ if args.config:
         )
         p = subprocess.Popen(command, shell=True)
         p.wait()
-        if(not os.path.exists(os.path.join(BINARIES_DIR, entry["dir"], configuration, entry["wasm_file_name"]))and (p.returncode!=0)):
+        if not os.path.exists(os.path.join(BINARIES_DIR, entry["dir"], configuration, entry["wasm_file_name"])) and (
+            p.returncode != 0
+        ):
             print("Error - can find " + entry["wasm_file_name"] + " there might be an issue with the build\n")
-            exit()
+            sys.exit()
 
 ## Copying WASM artifacts
 for entry in BUILDS:
     if not os.path.exists(os.path.join(BINARIES_DIR, entry["dir"], configuration, entry["wasm_file_name"])):
         print("Error - can find " + entry["wasm_file_name"] + " there might be an issue with the build\n")
-        exit()
+        sys.exit()
     shutil.copyfile(
         os.path.join(BINARIES_DIR, entry["dir"], configuration, entry["wasm_file_name"]),
         os.path.join(DIST_PATH, entry["wasm_file_name"]),
@@ -99,7 +100,7 @@ for entry in BUILDS:
 for entry in JS_FILES:
     if not os.path.exists(os.path.join(BINARIES_DIR, entry["dir"], configuration, entry["file_name"])):
         print("Error - can find " + entry["file_name"] + " there might be an issue with the build\n")
-        exit()
+        sys.exit()
     shutil.copyfile(
         os.path.join(BINARIES_DIR, entry["dir"], configuration, entry["file_name"]),
         os.path.join(BINDING_PATH, entry["file_name"]),
