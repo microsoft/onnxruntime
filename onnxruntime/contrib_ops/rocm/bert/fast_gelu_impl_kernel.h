@@ -56,7 +56,7 @@ __global__ void FastGeluKernelVec(int input_length, int bias_length, const T* in
 
     #pragma unroll
     for (int i = 0; i < ILP; i++) {
-      const T x = (bias == nullptr) ? input_v[i] : input_v[i] + bias_v[i];
+      const T x = (bias == nullptr) ? input_v[i] : (T)(input_v[i] + bias_v[i]);
       const T u = twoT * x * (c * x * x + b);
       const T emu = __expf(-u);
       const T cdf = a + a * (twoT/(oneT + emu) - oneT);
