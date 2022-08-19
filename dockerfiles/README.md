@@ -96,7 +96,7 @@ If the `device_type` runtime config option is not explicitly specified, CPU will
 
    Retrieve your docker image in one of the following ways.
 
-    -  Choose Dockerfile.openvino for Python API or Dockerfile.openvino-csharp for C# API as <Dockerfile> for building an OpenVINO 2021.3 based Docker image. Providing the docker build argument DEVICE enables the onnxruntime build for that particular device. You can also provide arguments ONNXRUNTIME_REPO and ONNXRUNTIME_BRANCH to test that particular repo and branch. Default repository is http://github.com/microsoft/onnxruntime and default branch is master.
+    -  Choose Dockerfile.openvino for Python API or Dockerfile.openvino-csharp for C# API as <Dockerfile> for building an OpenVINO 2021.3 based Docker image. Providing the docker build argument DEVICE enables the onnxruntime build for that particular device. You can also provide arguments ONNXRUNTIME_REPO and ONNXRUNTIME_BRANCH to test that particular repo and branch. Default repository is http://github.com/microsoft/onnxruntime and default branch is main.
        ```
        docker build --rm -t onnxruntime --build-arg DEVICE=$DEVICE -f <Dockerfile> .
        ```

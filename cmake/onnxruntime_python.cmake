@@ -145,6 +145,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${PROVIDERS_TVM}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_XNNPACK}
     ${PROVIDERS_COREML}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
