@@ -1555,7 +1555,7 @@ class Graph {
   bool ReleaseNode(NodeIndex node_index);
 
   Node& CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std::string& fused_node_name,
-                                const std::function<const ONNX_NAMESPACE::OpSchema*(const Node&)>& set_schema_func = {});
+                                const std::function<const ONNX_NAMESPACE::OpSchema*(const Node&)>& schema_create_func = {});
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   Node* NodeAtIndexImpl(NodeIndex node_index) const {

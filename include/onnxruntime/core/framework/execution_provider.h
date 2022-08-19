@@ -31,6 +31,11 @@ class KernelRegistryManager;
 #include "core/framework/func_api.h"
 #include "core/framework/provider_options.h"
 
+// forward declaration
+namespace ONNX_NAMESPACE {
+class OpSchema;
+}
+
 namespace onnxruntime {
 
 /**
