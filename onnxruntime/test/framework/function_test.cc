@@ -306,7 +306,7 @@ TEST(FunctionTest, AttrName) {
         opset_import: [ "" : 16 ],
         domain: "local"
         >
-        myfun <const> (lx) => (ly) {
+        myfun <s> (lx) => (ly) {
             d = Shape <start : int = @s> (lx)
             df = Cast <to = 1> (d)
             ly = Mul (lx, df)
