@@ -92,7 +92,8 @@ bool QkvToContext(
     T* present,
     bool use_persistent_softmax) {
   const int all_sequence_length = past_sequence_length + sequence_length;
-  const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, all_sequence_length);
+  const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
+                                               sequence_length, all_sequence_length);
   T* scratch1 = workspace;
   T* scratch2 = scratch1 + (bytes / element_size);
   T* scratch3 = scratch2 + (bytes / element_size);
@@ -145,7 +146,8 @@ bool QkvToContext(
   float alpha = use_raw_attention_mask ? one : rsqrt_head_size;
 
   if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
-          cublas, CUBLAS_OP_T, CUBLAS_OP_N, all_sequence_length, sequence_length, head_size,
+          cublas, CUBLAS_OP_T, CUBLAS_OP_N,
+          all_sequence_length, sequence_length, head_size,
           &alpha, k, head_size, present_size_per_batch,
           q, head_size, size_per_batch,
           &zero, scratch1, all_sequence_length, temp_matrix_size, batches, prop))) {
@@ -181,7 +183,8 @@ bool QkvToContext(
 
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
   if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
-          cublas, CUBLAS_OP_N, CUBLAS_OP_N, head_size, sequence_length, all_sequence_length,
+          cublas, CUBLAS_OP_N, CUBLAS_OP_N,
+          head_size, sequence_length, all_sequence_length,
           &one, v, head_size, present_size_per_batch,
           scratch2, all_sequence_length, temp_matrix_size,
           &zero, scratch3, head_size, size_per_batch, batches, prop))) {
@@ -363,7 +366,8 @@ bool DecoderQkvToContext(
   const int strideB = sequence_length * head_size;
   if (use_past && static_kv) {
     if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
-            cublas, CUBLAS_OP_T, CUBLAS_OP_N, kv_sequence_length, sequence_length, head_size,
+            cublas, CUBLAS_OP_T, CUBLAS_OP_N,
+            kv_sequence_length, sequence_length, head_size,
             &alpha, key_cache, head_size, strideA,
             q, head_size, strideB,
             &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, prop))) {
@@ -371,7 +375,8 @@ bool DecoderQkvToContext(
     }
   } else {
     if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
-            cublas, CUBLAS_OP_T, CUBLAS_OP_N, kv_sequence_length, sequence_length, head_size,
+            cublas, CUBLAS_OP_T, CUBLAS_OP_N,
+            kv_sequence_length, sequence_length, head_size,
             &alpha, k, head_size, strideA,
             q, head_size, strideB,
             &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, prop))) {
@@ -400,7 +405,8 @@ bool DecoderQkvToContext(
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
   if (use_past && static_kv) {
     if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
-            cublas, CUBLAS_OP_N, CUBLAS_OP_N, head_size, sequence_length, kv_sequence_length,
+            cublas, CUBLAS_OP_N, CUBLAS_OP_N,
+            head_size, sequence_length, kv_sequence_length,
             &one, value_cache, head_size, strideA,
             scratch2, kv_sequence_length, temp_matrix_size,
             &zero, scratch3, head_size, strideB, BN, prop))) {
@@ -408,7 +414,8 @@ bool DecoderQkvToContext(
     }
   } else {
     if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
-            cublas, CUBLAS_OP_N, CUBLAS_OP_N, head_size, sequence_length, kv_sequence_length,
+            cublas, CUBLAS_OP_N, CUBLAS_OP_N,
+            head_size, sequence_length, kv_sequence_length,
             &one, v, head_size, strideA,
             scratch2, kv_sequence_length, temp_matrix_size,
             &zero, scratch3, head_size, strideB, BN, prop))) {

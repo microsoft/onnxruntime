@@ -32,9 +32,9 @@ limitations under the License.
 using namespace onnxruntime::rocm;
 using namespace hipcub;
 
-#define CHECK_ROCM(expr)  \
+#define CHECK_ROCM(expr) \
   if (!HIP_CALL(expr)) { \
-    return false;         \
+    return false;        \
   }
 
 namespace onnxruntime {
@@ -142,17 +142,18 @@ bool QkvToContext(
 
   typedef typename ToHipType<T>::MappedType HipT;
 
-  //float one = 1.0f;
-  //float zero = 0.f;
+  // float one = 1.0f;
+  // float zero = 0.f;
   const HipT one = ToHipType<T>::FromFloat(1.0f);
   const HipT zero = ToHipType<T>::FromFloat(0.f);
 
   // For raw attention mask, the scalar if 1/sqrt(H) is moved to softmax computation.
-  //float temp_alpha = use_raw_attention_mask ? one : rsqrt_head_size;
+  // float temp_alpha = use_raw_attention_mask ? one : rsqrt_head_size;
   const HipT alpha = use_raw_attention_mask ? one : ToHipType<T>::FromFloat(rsqrt_head_size);
 
   if (!ROCBLAS_CALL(rocblasGemmStridedBatchedHelper(
-          rocblas, rocblas_operation_transpose, rocblas_operation_none, all_sequence_length, sequence_length, head_size,
+          rocblas, rocblas_operation_transpose, rocblas_operation_none,
+          all_sequence_length, sequence_length, head_size,
           &alpha, k, head_size, present_size_per_batch,
           q, head_size, size_per_batch,
           &zero, scratch1, all_sequence_length, temp_matrix_size, batches))) {
@@ -164,7 +165,7 @@ bool QkvToContext(
     const int mask_dimension = static_cast<int>(mask_index_dims.size());
     const int max_sequence_length = mask_dimension == 4 ? static_cast<int>(mask_index_dims.at(3)) : 0;
 
-    T* persistent_softmax_workspace = scratch1; // replace Q*K' in place if persistent softmax is selected.
+    T* persistent_softmax_workspace = scratch1;  // replace Q*K' in place if persistent softmax is selected.
     if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads,
                                       mask_index, nullptr, extra_add_qk, scratch1, scratch2,
                                       is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
@@ -188,7 +189,8 @@ bool QkvToContext(
 
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
   if (!ROCBLAS_CALL(rocblasGemmStridedBatchedHelper(
-          rocblas, rocblas_operation_none, rocblas_operation_none, head_size, sequence_length, all_sequence_length,
+          rocblas, rocblas_operation_none, rocblas_operation_none,
+          head_size, sequence_length, all_sequence_length,
           &one, v, head_size, present_size_per_batch,
           scratch2, all_sequence_length, temp_matrix_size,
           &zero, scratch3, head_size, size_per_batch, batches))) {
@@ -197,10 +199,8 @@ bool QkvToContext(
 
   // scratch3 is BxNxSxH, transpose to output BxSxNxH
   return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads,
-  max_threads_per_block, false, scratch3, output);
+                        max_threads_per_block, false, scratch3, output);
 }
-
-
 
 bool LaunchAttentionKernel(
     const hipDeviceProp_t& prop,
@@ -226,49 +226,60 @@ bool LaunchAttentionKernel(
   bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
   if (element_size == 2) {
     return QkvToContext(
-        prop, rocblas, stream,
-        batch_size, sequence_length, num_heads, head_size, element_size,
-        reinterpret_cast<const __half*>(input), reinterpret_cast<__half*>(output), reinterpret_cast<__half*>(workspace),
-        mask_index, mask_index_dims, is_unidirectional,
-        past_sequence_length, reinterpret_cast<const __half*>(past), reinterpret_cast<const __half*>(extra_add_qk),
-        reinterpret_cast<__half*>(present), use_persistent_softmax);
+        prop, rocblas, stream, batch_size, sequence_length, num_heads, head_size, element_size,
+        reinterpret_cast<const __half*>(input),
+        reinterpret_cast<__half*>(output),
+        reinterpret_cast<__half*>(workspace),
+        mask_index,
+        mask_index_dims,
+        is_unidirectional,
+        past_sequence_length,
+        reinterpret_cast<const __half*>(past),
+        reinterpret_cast<const __half*>(extra_add_qk),
+        reinterpret_cast<__half*>(present),
+        use_persistent_softmax);
   } else {
     return QkvToContext(
-        prop, rocblas, stream,
-        batch_size, sequence_length, num_heads, head_size, element_size,
-        reinterpret_cast<const float*>(input), reinterpret_cast<float*>(output), reinterpret_cast<float*>(workspace),
-        mask_index, mask_index_dims, is_unidirectional,
-        past_sequence_length, reinterpret_cast<const float*>(past), reinterpret_cast<const float*>(extra_add_qk),
-        reinterpret_cast<float*>(present), use_persistent_softmax);
+        prop, rocblas, stream, batch_size, sequence_length, num_heads, head_size, element_size,
+        reinterpret_cast<const float*>(input),
+        reinterpret_cast<float*>(output),
+        reinterpret_cast<float*>(workspace),
+        mask_index,
+        mask_index_dims,
+        is_unidirectional,
+        past_sequence_length,
+        reinterpret_cast<const float*>(past),
+        reinterpret_cast<const float*>(extra_add_qk),
+        reinterpret_cast<float*>(present),
+        use_persistent_softmax);
   }
 }
 
-
 template <typename T>
 bool DecoderQkvToContext(
-  const hipDeviceProp_t& prop,
-  hipStream_t stream,
-  rocblas_handle& rocblas,
-  const size_t element_size,
-  const int batch_size,
-  const int sequence_length,
-  const int kv_sequence_length,
-  const int num_heads,
-  const int head_size,
-  const bool static_kv,
-  const bool use_past,
-  const bool has_layer_state,
-  const bool has_key_padding_mask,
-  const T* gemm_query_buffer,
-  const T* gemm_kv_buffer,
-  const bool* key_padding_mask,
-  const T* key_cache,
-  const T* value_cache,
-  T* qkv_buffer,
-  T* workspace_buffer,
-  T* output,
-  T* new_key_cache,
-  T* new_value_cache) {
+    const hipDeviceProp_t& prop,
+    hipStream_t stream,
+    rocblas_handle& rocblas,
+    const size_t element_size,
+    const int batch_size,
+    const int sequence_length,
+    const int kv_sequence_length,
+    const int num_heads,
+    const int head_size,
+    const bool static_kv,
+    const bool use_past,
+    const bool has_layer_state,
+    const bool has_key_padding_mask,
+    const T* gemm_query_buffer,
+    const T* gemm_kv_buffer,
+    const bool* key_padding_mask,
+    const T* key_cache,
+    const T* value_cache,
+    T* qkv_buffer,
+    T* workspace_buffer,
+    T* output,
+    T* new_key_cache,
+    T* new_value_cache) {
   const int max_threads_per_block = prop.maxThreadsPerBlock;
   const int BN = batch_size * num_heads;
   const int BHN = BN * head_size;
@@ -359,16 +370,20 @@ bool DecoderQkvToContext(
   const int strideB = sequence_length * head_size;
   if (use_past && static_kv) {
     if (!ROCBLAS_CALL(rocblasGemmStridedBatchedHelper(
-      rocblas, rocblas_operation_transpose, rocblas_operation_none,
-      kv_sequence_length, sequence_length, head_size, &alpha, key_cache, head_size, strideA,
-      q, head_size, strideB, &zero, scratch1, kv_sequence_length, temp_matrix_size, BN))) {
+            rocblas, rocblas_operation_transpose, rocblas_operation_none,
+            kv_sequence_length, sequence_length, head_size,
+            &alpha, key_cache, head_size, strideA,
+            q, head_size, strideB,
+            &zero, scratch1, kv_sequence_length, temp_matrix_size, BN))) {
       return false;
     }
   } else {
     if (!ROCBLAS_CALL(rocblasGemmStridedBatchedHelper(
-      rocblas, rocblas_operation_transpose, rocblas_operation_none,
-      kv_sequence_length, sequence_length, head_size, &alpha, k, head_size, strideA,
-      q, head_size, strideB, &zero, scratch1, kv_sequence_length, temp_matrix_size, BN))) {
+            rocblas, rocblas_operation_transpose, rocblas_operation_none,
+            kv_sequence_length, sequence_length, head_size,
+            &alpha, k, head_size, strideA,
+            q, head_size, strideB,
+            &zero, scratch1, kv_sequence_length, temp_matrix_size, BN))) {
       return false;
     }
   }
@@ -376,7 +391,7 @@ bool DecoderQkvToContext(
   if (has_key_padding_mask) {
     if (!ComputeSoftmaxWithRawMask<T>(stream, kv_sequence_length, sequence_length, batch_size,
                                       num_heads, nullptr, key_padding_mask, nullptr, scratch1, scratch2,
-        false, 1, 2, static_cast<int>(0), false, nullptr)) {
+                                      false, 1, 2, static_cast<int>(0), false, nullptr)) {
       return false;
     }
   } else {
@@ -389,16 +404,20 @@ bool DecoderQkvToContext(
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
   if (use_past && static_kv) {
     if (!ROCBLAS_CALL(rocblasGemmStridedBatchedHelper(
-      rocblas, rocblas_operation_none, rocblas_operation_none,
-      head_size, sequence_length, kv_sequence_length, &one, value_cache, head_size, strideA,
-      scratch2, kv_sequence_length, temp_matrix_size, &zero, scratch3, head_size, strideB, BN))) {
+            rocblas, rocblas_operation_none, rocblas_operation_none,
+            head_size, sequence_length, kv_sequence_length,
+            &one, value_cache, head_size, strideA,
+            scratch2, kv_sequence_length, temp_matrix_size,
+            &zero, scratch3, head_size, strideB, BN))) {
       return false;
     }
   } else {
     if (!ROCBLAS_CALL(rocblasGemmStridedBatchedHelper(
-      rocblas, rocblas_operation_none, rocblas_operation_none,
-      head_size, sequence_length, kv_sequence_length, &one, v, head_size, strideA,
-      scratch2, kv_sequence_length, temp_matrix_size, &zero, scratch3, head_size, strideB, BN))) {
+            rocblas, rocblas_operation_none, rocblas_operation_none,
+            head_size, sequence_length, kv_sequence_length,
+            &one, v, head_size, strideA,
+            scratch2, kv_sequence_length, temp_matrix_size,
+            &zero, scratch3, head_size, strideB, BN))) {
       return false;
     }
   }
@@ -408,81 +427,80 @@ bool DecoderQkvToContext(
                         num_heads, max_threads_per_block, true, scratch3, output);
 }
 
-
 bool LaunchDecoderAttentionKernel(
-  const hipDeviceProp_t& prop,
-  hipStream_t stream,
-  rocblas_handle& rocblas,
-  const size_t element_size,
-  const int batch_size,
-  const int sequence_length,
-  const int kv_sequence_length,
-  const int num_heads,
-  const int head_size,
-  const bool static_kv,
-  const bool use_past,
-  const bool has_layer_state,
-  const bool has_key_padding_mask,
-  const void* gemm_query_buffer,
-  const void* gemm_kv_buffer,
-  const bool* key_padding_mask,
-  const void* key_cache,
-  const void* value_cache,
-  void* qkv_buffer,
-  void* workspace_buffer,
-  void* output,
-  void* new_key_cache,
-  void* new_value_cache) {
+    const hipDeviceProp_t& prop,
+    hipStream_t stream,
+    rocblas_handle& rocblas,
+    const size_t element_size,
+    const int batch_size,
+    const int sequence_length,
+    const int kv_sequence_length,
+    const int num_heads,
+    const int head_size,
+    const bool static_kv,
+    const bool use_past,
+    const bool has_layer_state,
+    const bool has_key_padding_mask,
+    const void* gemm_query_buffer,
+    const void* gemm_kv_buffer,
+    const bool* key_padding_mask,
+    const void* key_cache,
+    const void* value_cache,
+    void* qkv_buffer,
+    void* workspace_buffer,
+    void* output,
+    void* new_key_cache,
+    void* new_value_cache) {
   if (element_size == 2) {
     return DecoderQkvToContext(
-      prop,
-      stream,
-      rocblas,
-      element_size,
-      batch_size,
-      sequence_length,
-      kv_sequence_length,
-      num_heads,
-      head_size,
-      static_kv,
-      use_past,
-      has_layer_state,
-      has_key_padding_mask,
-      reinterpret_cast<const half*>(gemm_query_buffer),
-      reinterpret_cast<const half*>(gemm_kv_buffer),
-      key_padding_mask,
-      reinterpret_cast<const half*>(key_cache),
-      reinterpret_cast<const half*>(value_cache),
-      reinterpret_cast<half*>(qkv_buffer),
-      reinterpret_cast<half*>(workspace_buffer),
-      reinterpret_cast<half*>(output),
-      reinterpret_cast<half*>(new_key_cache),
-      reinterpret_cast<half*>(new_value_cache));
+        prop,
+        stream,
+        rocblas,
+        element_size,
+        batch_size,
+        sequence_length,
+        kv_sequence_length,
+        num_heads,
+        head_size,
+        static_kv,
+        use_past,
+        has_layer_state,
+        has_key_padding_mask,
+        reinterpret_cast<const half*>(gemm_query_buffer),
+        reinterpret_cast<const half*>(gemm_kv_buffer),
+        key_padding_mask,
+        reinterpret_cast<const half*>(key_cache),
+        reinterpret_cast<const half*>(value_cache),
+        reinterpret_cast<half*>(qkv_buffer),
+        reinterpret_cast<half*>(workspace_buffer),
+        reinterpret_cast<half*>(output),
+        reinterpret_cast<half*>(new_key_cache),
+        reinterpret_cast<half*>(new_value_cache));
   } else {
     return DecoderQkvToContext(
-      prop,
-      stream,
-      rocblas,
-      element_size,
-      batch_size,
-      sequence_length,
-      kv_sequence_length,
-      num_heads,
-      head_size,
-      static_kv,
-      use_past,
-      has_layer_state,
-      has_key_padding_mask,
-      reinterpret_cast<const float*>(gemm_query_buffer),
-      reinterpret_cast<const float*>(gemm_kv_buffer),
-      key_padding_mask,
-      reinterpret_cast<const float*>(key_cache),
-      reinterpret_cast<const float*>(value_cache),
-      reinterpret_cast<float*>(qkv_buffer),
-      reinterpret_cast<float*>(workspace_buffer),
-      reinterpret_cast<float*>(output),
-      reinterpret_cast<float*>(new_key_cache),
-      reinterpret_cast<float*>(new_value_cache));
+        prop,
+        stream,
+        rocblas,
+        element_size,
+        batch_size,
+        sequence_length,
+        kv_sequence_length,
+        num_heads,
+        head_size,
+        static_kv,
+        use_past,
+        has_layer_state,
+        has_key_padding_mask,
+        reinterpret_cast<const float*>(gemm_query_buffer),
+        reinterpret_cast<const float*>(gemm_kv_buffer),
+        key_padding_mask,
+        reinterpret_cast<const float*>(key_cache),
+        reinterpret_cast<const float*>(value_cache),
+        reinterpret_cast<float*>(qkv_buffer),
+        reinterpret_cast<float*>(workspace_buffer),
+        reinterpret_cast<float*>(output),
+        reinterpret_cast<float*>(new_key_cache),
+        reinterpret_cast<float*>(new_value_cache));
   }
 }
 
