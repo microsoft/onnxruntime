@@ -113,7 +113,9 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
           }
           const T* input_word_embedding = word_embedding_data + word_col_index * hidden_size;
           const T* input_position_embedding = position_embedding_data + position_col_index * hidden_size;
-          const T* input_segment_embedding = (nullptr == segment_embedding_data) ? nullptr : segment_embedding_data + segment_col_index * hidden_size;
+          const T* input_segment_embedding = (nullptr == segment_embedding_data)
+                                                 ? nullptr
+                                                 : segment_embedding_data + segment_col_index * hidden_size;
 
           T sum = static_cast<T>(0);
           for (int i = 0; i < hidden_size; i++) {

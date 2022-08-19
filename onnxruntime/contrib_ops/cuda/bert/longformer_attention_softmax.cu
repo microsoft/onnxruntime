@@ -311,7 +311,8 @@ bool LaunchLongformerSoftmaxSimpleKernel(
       for (int j = 0; j < num_heads; ++j) {
         const void* q_head = reinterpret_cast<const char*>(q) +
                              (i * x_offset + j * sequence_length * head_size + w * head_size) * element_size;
-        const void* k_head = reinterpret_cast<const char*>(k) + (i * x_offset + j * sequence_length * head_size) * element_size;
+        const void* k_head = reinterpret_cast<const char*>(k) +
+                             (i * x_offset + j * sequence_length * head_size) * element_size;
         void* qk_head = reinterpret_cast<char*>(scratch1) +
                         (i * y_offset + j * sequence_length * sequence_length + w * sequence_length) * element_size;
         int count = (sequence_length - 2 * w) / w;
@@ -519,8 +520,8 @@ bool LaunchLongformerSoftmaxSimpleKernel(
       for (int j = 0; j < num_heads; ++j) {
         const void* v_head = reinterpret_cast<const char*>(v) +
                              (i * x_offset + j * head_size * sequence_length) * element_size;
-        const void* prob_head = reinterpret_cast<const char*>(softmax_out) +
-                                (i * y_offset + j * sequence_length * sequence_length + w * sequence_length) * element_size;
+        size_t offset = (i * y_offset + j * sequence_length * sequence_length + w * sequence_length) * element_size;
+        const void* prob_head = reinterpret_cast<const char*>(softmax_out) + offset;
         void* out_head = reinterpret_cast<char*>(output) +
                          (i * x_offset + j * head_size * sequence_length + w * head_size) * element_size;
         int count = (sequence_length - 2 * w) / w;

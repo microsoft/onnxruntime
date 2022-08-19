@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <vector>
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 

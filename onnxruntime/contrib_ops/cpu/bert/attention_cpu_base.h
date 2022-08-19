@@ -9,12 +9,7 @@
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
-// TODO: fix the warnings
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(push)
-// Chance of arithmetic overflow could be reduced
-#pragma warning(disable : 26451)
-#endif
+
 namespace onnxruntime {
 namespace contrib {
 
@@ -88,7 +83,8 @@ class AttentionCPUBase : public AttentionBase {
         allocator->Alloc(SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * v_head_size * sizeof(T));
     BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(std::move(allocator)));
 
-    ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(out_tmp_data), static_cast<T*>(attention_probs), V,
+    ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(out_tmp_data),
+                            static_cast<T*>(attention_probs), V,
                             batch_size, sequence_length, past_sequence_length, v_head_size, v_hidden_size,
                             past_data, present_data, tp);
 
@@ -101,12 +97,12 @@ class AttentionCPUBase : public AttentionBase {
   //                                    1 x mask_data(B, N, S, S*)
   //  II.attention_probs(B, N, S, S*) = Softmax(attention_probs)
   template <typename T>
-  void ComputeAttentionProbs(T* attention_probs,                        // output buffer for the attention probs. Its size is BxNxSxS*
+  void ComputeAttentionProbs(T* attention_probs,                        // output buffer with size BxNxSxS*
                              const T* Q,                                // Q data. Its size is BxNxSxH
                              const T* K,                                // k data. Its size is BxNxSxH
-                             const int32_t* mask_index,                 // mask index. nullptr if no mask or its size is B
+                             const int32_t* mask_index,                 // mask index. nullptr if no mask.
                              gsl::span<const int64_t> mask_index_dims,  // mask index shape
-                             T* mask_data,                              // buffer for mask data. It is nullptr if mask_index is nullptr and not unidirectional, otherwise its shape is BxSxS*
+                             T* mask_data,                              // buffer for mask data.
                              bool has_unidirectional,                   // has unidirectional mask
                              int batch_size,                            // batch size of self-attention
                              int sequence_length,                       // sequence length of self-attention
@@ -123,6 +119,7 @@ class AttentionCPUBase : public AttentionBase {
     const size_t present_chunk_length = past_chunk_length + input_chunk_length;              // S* x H
 
     {
+      // mask_data is nullptr when mask_index is nullptr and not unidirectional, otherwise its shape is BxSxS*
       if (mask_data != nullptr) {
         PrepareMask(mask_index, mask_index_dims, mask_data,
                     has_unidirectional, batch_size, sequence_length, past_sequence_length);
