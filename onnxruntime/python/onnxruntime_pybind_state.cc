@@ -1086,12 +1086,14 @@ void addObjectMethods(py::module& m, Environment& env, ExecutionProviderRegistra
   // There is a global var: arena_extend_strategy, which means we can't use that var name here
   // See docs/C_API.md for details on what the following parameters mean and how to choose these values
   ort_arena_cfg_binding.def(py::init([](size_t max_mem, int arena_extend_strategy_local,
-                                        int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
+                                        int initial_chunk_size_bytes, int max_dead_bytes_per_chunk,
+                                        int initial_growth_chunk_size_bytes) {
     auto ort_arena_cfg = std::make_unique<OrtArenaCfg>();
     ort_arena_cfg->max_mem = max_mem;
     ort_arena_cfg->arena_extend_strategy = arena_extend_strategy_local;
     ort_arena_cfg->initial_chunk_size_bytes = initial_chunk_size_bytes;
     ort_arena_cfg->max_dead_bytes_per_chunk = max_dead_bytes_per_chunk;
+    ort_arena_cfg->initial_growth_chunk_size_bytes = initial_growth_chunk_size_bytes;
     return ort_arena_cfg;
   }));
 
