@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
 // Licensed under the MIT License.
 
 package ai.onnxruntime.reactnative;
@@ -196,6 +197,118 @@ public class OnnxruntimeModuleTest {
         }
       }
       ortModule.dispose(sessionKey);
+    } finally {
+      mockSession.finishMocking();
+    }
+  }
+
+  @Test
+  public void throwWrongSizeInput() throws OrtException {
+    MockitoSession mockSession = mockitoSession().mockStatic(Arguments.class).startMocking();
+    try {
+      when(Arguments.createMap()).thenAnswer(i -> new JavaOnlyMap());
+      when(Arguments.createArray()).thenAnswer(i -> new JavaOnlyArray());
+
+      OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
+
+      InputStream modelStream =
+          reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float);
+      JavaOnlyMap options = new JavaOnlyMap();
+      try {
+        ReadableMap resultMap = ortModule.loadModel("test", modelStream, options);
+
+        int[] dims = new int[] {1, 7};
+        float[] inputData = new float[] {1.0f, 2.0f, -3.0f, Float.MIN_VALUE, Float.MAX_VALUE, 5f, -6f};
+
+        JavaOnlyMap inputDataMap = new JavaOnlyMap();
+        JavaOnlyMap inputTensorMap = new JavaOnlyMap();
+
+        JavaOnlyArray dimsArray = new JavaOnlyArray();
+        for (int dim : dims) {
+          dimsArray.pushInt(dim);
+        }
+        inputTensorMap.putArray("dims", dimsArray);
+
+        inputTensorMap.putString("type", TensorHelper.JsTensorTypeFloat);
+
+        ByteBuffer buffer = ByteBuffer.allocate(7 * Float.BYTES).order(ByteOrder.nativeOrder());
+        FloatBuffer floatBuffer = buffer.asFloatBuffer();
+        for (float value : inputData) {
+          floatBuffer.put(value);
+        }
+        floatBuffer.rewind();
+        String dataEncoded = Base64.encodeToString(buffer.array(), Base64.DEFAULT);
+        inputTensorMap.putString("data", dataEncoded);
+
+        inputDataMap.putMap("input", inputTensorMap);
+
+        JavaOnlyArray outputNames = new JavaOnlyArray();
+        outputNames.pushString("output");
+
+        JavaOnlyMap options = new JavaOnlyMap();
+        options.putBoolean("encodeTensorData", true);
+
+        ReadableMap resultMap = ortModule.run("test", inputDataMap, outputNames, options);
+        Assert.fail("Should have thrown exception");
+      } catch (Exception e) {
+        Assert.assertTrue(e.getMessage().contains("Got invalid dimensions for input"));
+      }
+    } finally {
+      mockSession.finishMocking();
+    }
+  }
+
+  @Test
+  public void throwWrongRankInput() throws OrtException {
+    MockitoSession mockSession = mockitoSession().mockStatic(Arguments.class).startMocking();
+    try {
+      when(Arguments.createMap()).thenAnswer(i -> new JavaOnlyMap());
+      when(Arguments.createArray()).thenAnswer(i -> new JavaOnlyArray());
+
+      OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
+
+      InputStream modelStream =
+          reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float);
+      JavaOnlyMap options = new JavaOnlyMap();
+      try {
+        ReadableMap resultMap = ortModule.loadModel("test", modelStream, options);
+
+        int[] dims = new int[] {1, 1, 7};
+        float[] inputData = new float[] {1.0f, 2.0f, -3.0f, Float.MIN_VALUE, Float.MAX_VALUE, 5f, -6f};
+
+        JavaOnlyMap inputDataMap = new JavaOnlyMap();
+        JavaOnlyMap inputTensorMap = new JavaOnlyMap();
+
+        JavaOnlyArray dimsArray = new JavaOnlyArray();
+        for (int dim : dims) {
+          dimsArray.pushInt(dim);
+        }
+        inputTensorMap.putArray("dims", dimsArray);
+
+        inputTensorMap.putString("type", TensorHelper.JsTensorTypeFloat);
+
+        ByteBuffer buffer = ByteBuffer.allocate(7 * Float.BYTES).order(ByteOrder.nativeOrder());
+        FloatBuffer floatBuffer = buffer.asFloatBuffer();
+        for (float value : inputData) {
+          floatBuffer.put(value);
+        }
+        floatBuffer.rewind();
+        String dataEncoded = Base64.encodeToString(buffer.array(), Base64.DEFAULT);
+        inputTensorMap.putString("data", dataEncoded);
+
+        inputDataMap.putMap("input", inputTensorMap);
+
+        JavaOnlyArray outputNames = new JavaOnlyArray();
+        outputNames.pushString("output");
+
+        JavaOnlyMap options = new JavaOnlyMap();
+        options.putBoolean("encodeTensorData", true);
+
+        ReadableMap resultMap = ortModule.run("test", inputDataMap, outputNames, options);
+        Assert.fail("Should have thrown exception");
+      } catch (Exception e) {
+        Assert.assertTrue(e.getMessage().contains("Invalid rank for input"));
+      }
     } finally {
       mockSession.finishMocking();
     }

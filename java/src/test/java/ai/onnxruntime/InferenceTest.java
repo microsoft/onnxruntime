@@ -500,6 +500,51 @@ public class InferenceTest {
   }
 
   @Test
+  public void throwWrongSizeInput() throws OrtException {
+    SqueezeNetTuple tuple = openSessionSqueezeNet();
+    try (OrtSession session = tuple.session) {
+
+      float[] inputData = tuple.inputData;
+      NodeInfo inputMeta = session.getInputInfo().values().iterator().next();
+      Map<String, OnnxTensor> container = new HashMap<>();
+      float[] wrongSizeData = Arrays.copyOf(inputData, 2*224*224);
+      Object tensor = OrtUtil.reshape(wrongSizeData, new long[]{1,2,224,224});
+      container.put(inputMeta.getName(), OnnxTensor.createTensor(env, tensor));
+      try {
+        session.run(container);
+        OnnxValue.close(container.values());
+        fail("Should throw exception for incorrect size.");
+      } catch (OrtException e) {
+        OnnxValue.close(container.values());
+        String msg = e.getMessage();
+        assertTrue(msg.contains("Got invalid dimensions for input"));
+      }
+    }
+  }
+
+  @Test
+  public void throwWrongRankInput() throws OrtException {
+    SqueezeNetTuple tuple = openSessionSqueezeNet();
+    try (OrtSession session = tuple.session) {
+
+      float[] inputData = tuple.inputData;
+      NodeInfo inputMeta = session.getInputInfo().values().iterator().next();
+      Map<String, OnnxTensor> container = new HashMap<>();
+      Object tensor = OrtUtil.reshape(inputData, new long[]{1,1,3,224,224});
+      container.put(inputMeta.getName(), OnnxTensor.createTensor(env, tensor));
+      try {
+        session.run(container);
+        OnnxValue.close(container.values());
+        fail("Should throw exception for incorrect size.");
+      } catch (OrtException e) {
+        OnnxValue.close(container.values());
+        String msg = e.getMessage();
+        assertTrue(msg.contains("Invalid rank for input"));
+      }
+    }
+  }
+
+  @Test
   public void throwExtraInputs() throws OrtException {
     SqueezeNetTuple tuple = openSessionSqueezeNet();
     try (OrtSession session = tuple.session) {
