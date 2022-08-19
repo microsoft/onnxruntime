@@ -129,9 +129,9 @@ struct OpWeightedSoftmaxCrossEntropyLossGrad {
 };
 
 const uint kElemPerThread = 16;
-template <typename T, typename TAcc, typename Tin, bool IsReductionNone>
+template <typename T, typename TAcc, typename Tin, bool IsReductionNone, bool FusedWithAdd>
 __global__ void OpWeightedSoftmaxCrossEntropyLossGradKernel(const T* dY_data, const T* log_prob_data, const Tin* label_data,
-                                        const T* weight_data, const TAcc* normalize_factor_data, CUDA_LONG max_label_depth, T* output_data) {
+                                        const T* weight_data, const TAcc* normalize_factor_data, const T* added_data, CUDA_LONG max_label_depth, T* output_data) {
   // input data is [N][label_depth]
   // id map is [blockIdx.x][blockIdx.y, threadIdx.x]
   // gridDim.x == N, blockIdx.y*blockDim.x+ threadIdx.x >= label_depth
@@ -159,13 +159,17 @@ __global__ void OpWeightedSoftmaxCrossEntropyLossGradKernel(const T* dY_data, co
     }
 
     auto idx = row_offset + d;
-    output_data[idx] = static_cast<T>(shared * ((_Exp(static_cast<TAcc>(log_prob_data[idx])) - (TAcc)(d == label_data[row]))));
+    auto original_scegrad_result = static_cast<T>(shared * ((_Exp(static_cast<TAcc>(log_prob_data[idx])) - (TAcc)(d == label_data[row]))));
+    if (FusedWithAdd)
+    output_data[idx] = original_scegrad_result + added_data[idx];
+    else
+      output_data[idx] = original_scegrad_result;
   }
 }
 
 template <typename T, typename TAcc, typename Tin>
 void SoftmaxCrossEntropyLossGradImpl(cudaStream_t stream, const T* dY, const T* log_prob, const Tin* label,
-                                     const T* weight, const TAcc* normalize_factor, size_t count, size_t label_depth,
+                                     const T* weight, const TAcc* normalize_factor, const T* added_data, size_t count, size_t label_depth,
                                      bool reduction_none, T* output_data) {
   if (reduction_none) {
     OpWeightedSoftmaxCrossEntropyLossGrad<T, TAcc, Tin, true> op(dY, log_prob, label, weight, normalize_factor,
@@ -179,7 +183,10 @@ void SoftmaxCrossEntropyLossGradImpl(cudaStream_t stream, const T* dY, const T* 
     const uint grid_y = CeilDiv(label_depth, blockSize*kElemPerThread);
     dim3 grid(count, grid_y, 1);
     dim3 block(blockSize,1,1);
-    OpWeightedSoftmaxCrossEntropyLossGradKernel<T, TAcc, Tin, false> <<<grid, block,0, stream>>>(dY, log_prob, label, weight, normalize_factor, label_depth, output_data);
+    if (added_data != nullptr)
+      OpWeightedSoftmaxCrossEntropyLossGradKernel<T, TAcc, Tin, false, true> <<<grid, block,0, stream>>>(dY, log_prob, label, weight, normalize_factor, added_data, label_depth, output_data);
+    else
+      OpWeightedSoftmaxCrossEntropyLossGradKernel<T, TAcc, Tin, false, false> <<<grid, block,0, stream>>>(dY, log_prob, label, weight, normalize_factor, added_data, label_depth, output_data);
   }
 }
 
@@ -188,7 +195,7 @@ void SoftmaxCrossEntropyLossGradImpl(cudaStream_t stream, const T* dY, const T* 
                                             const TAcc* normalize_factor, size_t count, size_t label_depth,            \
                                             int64_t ignore_index, T* output_data);                                     \
   template void SoftmaxCrossEntropyLossGradImpl(cudaStream_t stream, const T* dY, const T* log_prob, const Tin* label, \
-                                                const T* weight, const TAcc* normalize_factor, size_t count,           \
+                                                const T* weight, const TAcc* normalize_factor, const T* added_data, size_t count,           \
                                                 size_t label_depth, bool reducation_none, T* output_data)
 
 INSTANTIATE_SCE_LOSS_IMPL(float, float, int32_t);

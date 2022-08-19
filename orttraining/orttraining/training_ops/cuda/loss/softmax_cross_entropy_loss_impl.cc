@@ -197,6 +197,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
   const Tensor& label = *ctx->Input<Tensor>(2);
   const Tensor* p_weight = ctx->Input<Tensor>(3);
   const Tensor* p_ignore_index = ctx->Input<Tensor>(4);
+  const Tensor* p_added_data = ctx->Input<Tensor>(5);
   int64_t ignore_index = ignore_index_;
   if (p_ignore_index) {
     ORT_ENFORCE(p_ignore_index->Shape().IsScalar(), "ignore_index should be a scalar.");
@@ -214,6 +215,9 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
   onnxruntime::contrib::GetNDCFromLogitAndLabelShape(probability_shape, label_shape, N_D, C);
   Tensor* d_logit = ctx->Output(0, probability_shape);
   const T* dY_data = dY.template Data<T>();
+  const T* added_data = nullptr;
+  if(p_added_data)
+    added_data = p_added_data->template Data<T>();
   const T* log_prob_data = log_prob.template Data<T>();
   const Tin* label_data = label.template Data<Tin>();
   T* d_logit_data = d_logit->template MutableData<T>();
@@ -273,6 +277,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
                                   label_data,
                                   reinterpret_cast<const CudaT*>(weight_data_nd_data),
                                   normalize_factor_data.get(),
+                                  reinterpret_cast<const CudaT*>(added_data),
                                   N_D,
                                   C,
                                   ReductionType::NONE == reduction_,
