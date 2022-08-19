@@ -203,7 +203,7 @@ public class OnnxruntimeModuleTest {
   }
 
   @Test
-  public void throwWrongSizeInput() throws OrtException {
+  public void throwWrongSizeInput() {
     MockitoSession mockSession = mockitoSession().mockStatic(Arguments.class).startMocking();
     try {
       when(Arguments.createMap()).thenAnswer(i -> new JavaOnlyMap());
@@ -215,7 +215,7 @@ public class OnnxruntimeModuleTest {
           reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float);
       JavaOnlyMap options = new JavaOnlyMap();
       try {
-        ReadableMap resultMap = ortModule.loadModel("test", modelStream, options);
+        ReadableMap loadMap = ortModule.loadModel("test", modelStream, options);
 
         int[] dims = new int[] {1, 7};
         float[] inputData = new float[] {1.0f, 2.0f, -3.0f, Float.MIN_VALUE, Float.MAX_VALUE, 5f, -6f};
@@ -245,10 +245,10 @@ public class OnnxruntimeModuleTest {
         JavaOnlyArray outputNames = new JavaOnlyArray();
         outputNames.pushString("output");
 
-        JavaOnlyMap options = new JavaOnlyMap();
-        options.putBoolean("encodeTensorData", true);
+        JavaOnlyMap runOptions = new JavaOnlyMap();
+        runOptions.putBoolean("encodeTensorData", true);
 
-        ReadableMap resultMap = ortModule.run("test", inputDataMap, outputNames, options);
+        ReadableMap resultMap = ortModule.run("test", inputDataMap, outputNames, runOptions);
         Assert.fail("Should have thrown exception");
       } catch (Exception e) {
         Assert.assertTrue(e.getMessage().contains("Got invalid dimensions for input"));
@@ -259,7 +259,7 @@ public class OnnxruntimeModuleTest {
   }
 
   @Test
-  public void throwWrongRankInput() throws OrtException {
+  public void throwWrongRankInput() {
     MockitoSession mockSession = mockitoSession().mockStatic(Arguments.class).startMocking();
     try {
       when(Arguments.createMap()).thenAnswer(i -> new JavaOnlyMap());
@@ -271,7 +271,7 @@ public class OnnxruntimeModuleTest {
           reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float);
       JavaOnlyMap options = new JavaOnlyMap();
       try {
-        ReadableMap resultMap = ortModule.loadModel("test", modelStream, options);
+        ReadableMap loadMap = ortModule.loadModel("test", modelStream, options);
 
         int[] dims = new int[] {1, 1, 7};
         float[] inputData = new float[] {1.0f, 2.0f, -3.0f, Float.MIN_VALUE, Float.MAX_VALUE, 5f, -6f};
@@ -301,10 +301,10 @@ public class OnnxruntimeModuleTest {
         JavaOnlyArray outputNames = new JavaOnlyArray();
         outputNames.pushString("output");
 
-        JavaOnlyMap options = new JavaOnlyMap();
-        options.putBoolean("encodeTensorData", true);
+        JavaOnlyMap runOptions = new JavaOnlyMap();
+        runOptions.putBoolean("encodeTensorData", true);
 
-        ReadableMap resultMap = ortModule.run("test", inputDataMap, outputNames, options);
+        ReadableMap resultMap = ortModule.run("test", inputDataMap, outputNames, runOptions);
         Assert.fail("Should have thrown exception");
       } catch (Exception e) {
         Assert.assertTrue(e.getMessage().contains("Invalid rank for input"));
