@@ -59,8 +59,6 @@ class VulkanCommandPool {
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanCommandPool);
 
-  friend class VulkanCommandBuffer;
-
  private:
   const VkDevice& logical_device_;
   uint32_t queue_family_index_;

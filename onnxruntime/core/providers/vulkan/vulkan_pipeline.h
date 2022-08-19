@@ -11,8 +11,9 @@ class VulkanPipeline;
 
 class VulkanDescriptorSet {
  public:
-  VulkanDescriptorSet(VkDescriptorSet descriptor_set, VkDescriptorPool descriptor_pool,
-                      const VulkanPipeline* pipeline);
+  VulkanDescriptorSet(const VkDevice& logical_device,
+                      VkDescriptorSet descriptor_set, VkDescriptorPool descriptor_pool,
+                      VulkanPipeline* pipeline);
 
   virtual ~VulkanDescriptorSet();
 
@@ -27,15 +28,16 @@ class VulkanDescriptorSet {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanDescriptorSet);
 
  private:
+  const VkDevice& logical_device_;
   VkDescriptorSet descriptor_set_;
   VkDescriptorPool descriptor_pool_;
-  const VulkanPipeline* pipeline_;
+  VulkanPipeline* pipeline_;
 };
 
 class VulkanPipeline {
  public:
-  static VulkanPipeline* Create(const VkDevice& vulkan_logical_device, const uint8_t* data, size_t length,
-                                const std::vector<VkDescriptorType>& buffer_types, VkPipelineCache cache,
+  static VulkanPipeline* Create(const VkDevice& logical_device, const uint8_t* data, size_t length,
+                                const std::vector<VkDescriptorType>& descriptor_types, VkPipelineCache cache,
                                 const std::vector<uint32_t>& local_size = std::vector<uint32_t>());
   virtual ~VulkanPipeline();
 
@@ -46,27 +48,29 @@ class VulkanPipeline {
   void Bind(VkCommandBuffer buffer, VkDescriptorSet descriptor_set) const;
 
   inline VkDescriptorType ArgType(int index) const {
-    return buffer_types_[index];
+    return descriptor_types_[index];
   }
 
-  VulkanDescriptorSet* CreateSet() const;
+  VulkanDescriptorSet* CreateSet();
+
+  std::vector<std::pair<VkDescriptorSet, VkDescriptorPool>>& GetFreeDescriptorSets() {
+    return free_sets_;
+  }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanPipeline);
 
  private:
   VulkanPipeline(const VkDevice& logical_device, VkPipeline pipeline,
                  VkPipelineLayout layout, const std::vector<VkDescriptorPoolSize>& descriptor_pool_sizes,
-                 VkDescriptorSetLayout descriptor_set_layout, const std::vector<VkDescriptorType>& buffer_types);
+                 VkDescriptorSetLayout descriptor_set_layout, const std::vector<VkDescriptorType>& descriptor_types);
 
   const VkDevice& logical_device_;
   VkPipeline pipeline_;
-  VkPipelineLayout pipleine_layout_;
+  VkPipelineLayout pipeline_layout_;
   std::vector<VkDescriptorPoolSize> descriptor_pool_sizes_;
   VkDescriptorSetLayout descriptor_set_layout_;
-  std::vector<VkDescriptorType> buffer_types_;
-  mutable std::vector<std::pair<VkDescriptorSet, VkDescriptorPool>> free_sets_;
-
-  friend class VulkanDescriptorSet;
+  std::vector<VkDescriptorType> descriptor_types_;
+  std::vector<std::pair<VkDescriptorSet, VkDescriptorPool>> free_sets_;
 };
 
 class VulkanPipelineFactory {
@@ -77,7 +81,7 @@ class VulkanPipelineFactory {
 
   const VulkanPipeline* GetPipeline(const std::string& key,
                                     const std::vector<VkDescriptorType>& descriptor_types,
-                                    const std::vector<uint32_t>& local_sizes = std::vector<uint32_t>()) const;
+                                    const std::vector<uint32_t>& local_sizes = std::vector<uint32_t>());
 
   void Reset();
 
@@ -85,7 +89,7 @@ class VulkanPipelineFactory {
 
  private:
   const VkDevice& logical_device_;
-  mutable std::unordered_map<std::string, std::shared_ptr<VulkanPipeline>> pipelines_;
+  std::unordered_map<std::string, std::shared_ptr<VulkanPipeline>> pipelines_;
   VkPipelineCache pipeline_cache_;
 
   // std::shared_ptr<VulkanShaderMap> shader_map_;
