@@ -39,10 +39,10 @@ Status GetShapeInfoFromNodeArg(ModelBuilder& model_builder, const std::string& n
   const auto& graph_viewer = model_builder.GetGraphViewer();
 
   const auto* node_arg = graph_viewer.GetNodeArg(name);
-  ORT_RETURN_IF(node_arg == nullptr, "Invalid node_arg for: ", node_arg);
+  ORT_RETURN_IF(node_arg == nullptr, "Invalid node_arg for: ", name);
 
   const auto* shape_proto = node_arg->Shape();
-  ORT_RETURN_IF(shape_proto == nullptr, "shape_proto cannot be null for:", name);
+  ORT_RETURN_IF(shape_proto == nullptr, "shape_proto cannot be null for:", node_arg->Name());
 
   shape.reserve(shape_proto->dim_size());
   const auto& shape_dims = shape_proto->dim();
@@ -852,15 +852,21 @@ bool TransposeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
 
 Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& initializers(model_builder.GetInitializerTensors());
-
+  const auto& graph_viewer = model_builder.GetGraphViewer();
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
+
   NodeAttrHelper helper(node_unit);
-  std::vector<int32_t> perm = helper.Get("perm", std::vector<int32_t>());
-  const auto& graph_viewer = model_builder.GetGraphViewer();
+  auto& shaper(model_builder.GetShaper());
+
   const auto* input_node_arg = graph_viewer.GetNodeArg(input);
+  ORT_RETURN_IF(input_node_arg == nullptr, "Invalid node_arg for input: ", input);
+
   const auto* shape_proto = input_node_arg->Shape();
+  ORT_RETURN_IF(shape_proto == nullptr, "shape_proto cannot be null for: ", input_node_arg->Name());
+
   auto input_dims = static_cast<int32_t>(shape_proto->dim_size());
+  std::vector<int32_t> perm = helper.Get("perm", std::vector<int32_t>());
   if (perm.empty()) {
     for (int32_t i = input_dims - 1; i >= 0; i--)
       perm.push_back(i);
@@ -878,27 +884,10 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   }
 
   std::string perm_name = model_builder.GetUniqueName(node_unit.Name() + input + "perm");
-
-  auto& shaper(model_builder.GetShaper());
-  const auto& operand_indices(model_builder.GetOperandIndices());
-  const auto& operand_types(model_builder.GetOperandTypes());
-
-  std::vector<uint32_t> input_indices;
-  input_indices.push_back(operand_indices.at(input));  // input
-
-  Shape perm_dimen = {SafeInt<uint32_t>(perm.size())};
-  OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), perm_operand_type));
-  uint32_t perm_idx = operand_indices.at(perm_name);
-
-  input_indices.push_back(perm_idx);  // permutation
   Shape output_shape;
   ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
   shaper.AddShape(output, output_shape);
-  OperandType output_operand_type = operand_types.at(input);
-  output_operand_type.SetDimensions(output_shape);
-  return model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output},
-                                    {output_operand_type});
+  ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiTranspose(model_builder, input, perm_name, perm, output, &output_shape));
 
   return Status::OK();
 }

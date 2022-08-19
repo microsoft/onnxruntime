@@ -22,8 +22,28 @@ Status AddNnapiTranspose(ModelBuilder& model_builder,
                          const std::string& data_input,
                          const std::string& perm_input,
                          const gsl::span<const int32_t> perm,
-                         const std::string& output) {
-  auto& shaper(model_builder.GetShaper());
+                         const std::string& output,
+                         const Shape* output_shape) {
+  if (output_shape == nullptr) {
+    auto& shaper(model_builder.GetShaper());
+
+    auto calculate_transpose_output_shape = [&](const std::string& data_input,
+                                                const std::string& output,
+                                                const gsl::span<const int32_t> perm) -> Status {
+      const Shape& input_dimen = shaper[data_input];
+      ORT_RETURN_IF_NOT(perm.size() == input_dimen.size(), "Invalid perm is given!");
+      size_t size = input_dimen.size();
+      Shape output_dimen(size);
+      for (size_t i = 0; i < size; i++)
+        output_dimen[i] = input_dimen[perm[i]];
+
+      shaper.AddShape(output, output_dimen);
+      return Status::OK();
+    };
+    ORT_RETURN_IF_ERROR(calculate_transpose_output_shape(data_input, output, perm));
+    output_shape = &shaper[output];
+  }
+
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
 
@@ -34,25 +54,10 @@ Status AddNnapiTranspose(ModelBuilder& model_builder,
   OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(perm_input, perm.data(), perm_operand_type));
   uint32_t perm_idx = operand_indices.at(perm_input);
-
   input_indices.push_back(perm_idx);  // permutation
 
-  auto calculate_transpose_output_shape = [&](const std::string& data_input,
-                                              const std::string& output, const gsl::span<const int32_t> perm) -> Status {
-    const Shape& input_dimen = shaper[data_input];
-    ORT_RETURN_IF_NOT(perm.size() == input_dimen.size(), "Invalid perm is given!");
-    size_t size = input_dimen.size();
-    Shape output_dimen(size);
-    for (size_t i = 0; i < size; i++)
-      output_dimen[i] = input_dimen[perm[i]];
-
-    shaper.AddShape(output, output_dimen);
-    return Status::OK();
-  };
-
   OperandType output_operand_type = operand_types.at(data_input);
-  ORT_RETURN_IF_ERROR(calculate_transpose_output_shape(data_input, output, perm));
-  output_operand_type.SetDimensions(shaper[output]);
+  output_operand_type.SetDimensions(*output_shape);
   return model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output},
                                     {output_operand_type});
 }
@@ -68,7 +73,7 @@ Status AddNnapiReshape(ModelBuilder& model_builder,
                                               const std::string& output) -> Status {
       const Shape& input_dimen = shaper[data_input];
       uint32_t input_size = Product(input_dimen);
-      std::vector<uint32_t> output_dimen(shape_value.size());
+      Shape output_dimen(shape_value.size());
 
       int64_t capacity = 1;
       int unk_dim_idx = -1;
@@ -302,7 +307,8 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
   {
     const std::string b_new_perm = model_builder.GetUniqueName(b + "/new_perm"),
                       b_transposed = model_builder.GetUniqueName(b + "/transposed");
-    ORT_RETURN_IF_ERROR(AddNnapiTranspose(model_builder, gemm_b_inputs.front(), b_new_perm, AsSpan<int32_t>({0, 2, 1}), b_transposed));
+    ORT_RETURN_IF_ERROR(AddNnapiTranspose(model_builder, gemm_b_inputs.front(), b_new_perm,
+                                          AsSpan<int32_t>({0, 2, 1}), b_transposed, nullptr));
     gemm_b_inputs.front() = b_transposed;
   }
 
