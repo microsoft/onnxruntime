@@ -112,8 +112,6 @@ class ConcurrencySessScope {
  public:
   friend class ConcurrencyKernelScope;
   ConcurrencySessScope(const GraphViewer& graph_viewer) : series_(ComposeSeriesName(graph_viewer)) {}
-  ~ConcurrencySessScope() = default;
-
  private:
   static std::string ComposeSeriesName(const GraphViewer& graph_viewer) {
     char series_name[MaxSeriesNameLengthInChars] = "MainGraph";
@@ -129,15 +127,12 @@ class ConcurrencySessScope {
 class ConcurrencyKernelScope {
  public:
   ConcurrencyKernelScope(ConcurrencySessScope& scope,
-                         const OpKernel& kernel) : span_(scope.series_,
-                                                         "%s.%d",
-                                                         kernel.Node().OpType().c_str(),
-                                                         kernel.Node().Index()) {
-    scope.series_.write_flag(kernel.Node().Name().c_str());
+                         const Node& node) : span_(scope.series_,
+                                                   "%s.%d",
+                                                   node.OpType().c_str(),
+                                                   node.Index()) {
+    scope.series_.write_flag(node.Name().c_str());
   };
-
-  ~ConcurrencyKernelScope() = default;
-
  private:
   diagnostic::span span_;
 };
@@ -149,7 +144,7 @@ class ConcurrencySessScope {
 
 class ConcurrencyKernelScope {
  public:
-  ConcurrencyKernelScope(ConcurrencySessScope&, const OpKernel&){};
+  ConcurrencyKernelScope(ConcurrencySessScope&, const Node&){};
 };
 #endif
 
@@ -183,10 +178,20 @@ class NVTXSessScope {
 };
 class NVTXKernelScope {
  public:
-  NVTXKernelScope(const OpKernel& kernel) : node_compute_range_(MakeString(kernel.Node().OpType(), ".",
-                                                                           kernel.Node().Index(), "(",
-                                                                           kernel.Node().Name(), ")"),
-                                                                profile::Color::Yellow) {
+  NVTXKernelScope(const onnxruntime::Node& node) : node_(node),
+                                                   node_compute_range_(MakeString(node_.OpType(), ".",
+                                                                                  node_.Index(), "(",
+                                                                                  node_.Name(), ")"),
+                                                                       profile::Color::Yellow) {
+    if (node_.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
+      // Start timing forward pass when encountering the first forward node.
+      forward_range.Begin();
+    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() && forward_range.IsBeginCalled()) {
+      // Start timing backward pass when encountering the first backward node.
+      // In the meanwhile, forward range ends.
+      forward_range.End();
+      backward_range.Begin();
+    }
     node_compute_range_.Begin();
   }
   ~NVTXKernelScope() {
@@ -194,6 +199,7 @@ class NVTXKernelScope {
   }
 
  private:
+  onnxruntime::Node& node_;
   profile::NvtxRangeCreator node_compute_range_;
 };
 #else
@@ -203,7 +209,7 @@ class NVTXSessScope {
 };
 class NVTXKernelScope {
  public:
-  NVTXKernelScope(const OpKernel&) {}
+  NVTXKernelScope(const onnxruntime::Node&) {}
 };
 #endif
 
@@ -212,22 +218,22 @@ class DumpKernelScope {
  public:
   DumpKernelScope(const SessionState& sess_state;
                   OpKernelContextInternal & context,
-                  const OpKernel& kernel,
+                  const Node& node,
                   size_t iteration) : sess_state_(sess_state),
                                       context_(context),
-                                      kernel_(kernel),
-                                      dump_ctx_(iteration, kernel_.Node().NodeIndex()) {
-    utils::DumpNodeInputs(dump_ctx_, context_, kernel_.Node(), sess_state_);
+                                      node_(node),
+                                      dump_ctx_(iteration, node_.NodeIndex()) {
+    utils::DumpNodeInputs(dump_ctx_, context_, node_, sess_state_);
   }
 
   DumpKernelScope() {
-    utils::DumpNodeOutputs(dump_ctx_, context_, kernel_.Node(), sess_state_);
+    utils::DumpNodeOutputs(dump_ctx_, context_, node_, sess_state_);
   }
 
  private:
   const SessionState& sess_state_;
   OpKernelContextInternal& context_;
-  const OpKernel& kernel_;
+  const Node& node_;
   size_t iteration_;
   utils::NodeDumpContext dump_ctx_;
 };
@@ -236,7 +242,7 @@ class DumpKernelScope {
  public:
   DumpKernelScope(const SessionState&,
                   OpKernelContextInternal&,
-                  const OpKernel&,
+                  const Node&,
                   size_t) {}
 };
 #endif
@@ -327,12 +333,12 @@ class TraceSessScope {
 class TraceKernelScope {
  public:
   TraceKernelScope(const OpKernelContextInternal& context,
-                   const onnxruntime::OpKernel& kernel) : context_(context) {
+                   const onnxruntime::OpKernel& kernel) : context_(context), kernel_(kernel) {
     const int input_count = context_.InputCount();
     for (auto i = 0; i < input_count; i++) {
       const OrtValue* p_input = context_.GetInputMLValue(i);
       if (p_input && p_input->IsTensor()) {
-        const OpKernelInfo& op_kernel_info = kernel.Info();
+        const OpKernelInfo& op_kernel_info = kernel_.Info();
         const Tensor* p_tensor = nullptr;
         bool is_param = op_kernel_info.TryGetConstantInput(i, &p_tensor);
         if (!is_param) {
@@ -341,12 +347,12 @@ class TraceKernelScope {
         size_t tensor_size = p_tensor->SizeInBytes();
         const TensorShape& tensor_shape = p_tensor->Shape();
         size_t element_size = p_tensor->DataType()->Size();
-        std::cout << node_name << " input[" << i << "]"
+        std::cout << kernel_.Node().Name() << " input[" << i << "]"
                   << " is_param=" << is_param
                   << " size=" << tensor_size
                   << " shape=" << tensor_shape.ToString()
                   << " element_size=" << element_size
-                  << "\n";
+                  << std::endl;
       }
     }
   }
@@ -362,13 +368,20 @@ class TraceKernelScope {
                   << " size=" << tensor_size
                   << " shape=" << tensor_shape.ToString()
                   << " element_size=" << tensor.DataType()->Size()
-                  << "\n";
+                  << std::endl;
       }
     }
+    auto& node = kernel_.Node();
+    std::cout << "Executed op kernel node " << node.Name()
+              << " Index=" << node.Index()
+              << " OpType=" << node.OpType()
+              << " Name=" << node.Name()
+              << std::endl;
   }
 
  private:
   const OpKernelContextInternal& context_;
+  const onnxruntime::OpKernel& kernel_;
 };
 #else
 class TraceSessScope {
@@ -388,24 +401,25 @@ class SessionScopeImpl {
   SessionScopeImpl(const SessionState& sess_state,
                    const ExecutionFrame& frame) : sess_state_(sess_state),
                                                   frame_(frame),
+                                                  trace_scope_(sess_state_),
                                                   concurrency_scope_(sess_state_.GetGraphViewer()),
-                                                  profiler_scope_(sess_state_.Profiler()),
                                                   nvtx_scope_(std::this_thread::get_id()),
-                                                  mem_scope_(sess_state_, frame_),
-                                                  trace_scope_(sess_state_) {
+                                                  profiler_scope_(sess_state_.Profiler()),
+                                                  mem_scope_(sess_state_, frame_) {
     iteration_++;
   }
-  ~SessionScopeImpl() {}
+  ~SessionScopeImpl() = default;
 
  private:
+  std::atomic<size_t> iteration_{0};
   const SessionState& sess_state_;
   const ExecutionFrame& frame_;
-  ConcurrencySessScope concurrency_scope_;
-  ProfilerSessScope profiler_scope_;
-  NVTXSessScope nvtx_scope_;
-  MemSessScope mem_scope_;
   TraceSessScope trace_scope_;
-  std::atomic<size_t> iteration_{0};
+  ConcurrencySessScope concurrency_scope_;
+  NVTXSessScope nvtx_scope_;
+  ProfilerSessScope profiler_scope_;
+  MemSessScope mem_scope_;
+  //add new session scope here
 };
 
 SessionScope::SessionScope(const SessionState& sess_state, const ExecutionFrame& frame) {
@@ -463,9 +477,9 @@ class KernelScopeImpl {
                                               kernel_(kernel),
                                               sess_scope_(sess_scope),
                                               sess_state_(sess_scope.impl_->sess_state_),
-                                              concur_scope_(sess_scope.impl_->concurrency_scope_, kernel),
-                                              nvtx_scope_(kernel),
-                                              dump_scope_(sess_scope.impl_->sess_state_, context, kernel, sess_scope.impl_->iteration_),
+                                              concur_scope_(sess_scope.impl_->concurrency_scope_, kernel.Node()),
+                                              nvtx_scope_(kernel.Node()),
+                                              dump_scope_(sess_scope.impl_->sess_state_, context, kernel.Node(), sess_scope.impl_->iteration_),
                                               mem_scope_(sess_scope.impl_->sess_state_),
                                               trace_scope_(context, kernel),
                                               instrument_scope_(kernel) {
@@ -537,6 +551,7 @@ class KernelScopeImpl {
   MemKernelScope mem_scope_;
   TraceKernelScope trace_scope_;
   InstrumentKernelScope instrument_scope_;
+  //add new kernel scope here
 };
 
 KernelScope::KernelScope(OpKernelContextInternal& kernel_context,
