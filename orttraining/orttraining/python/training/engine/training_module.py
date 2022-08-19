@@ -2,10 +2,17 @@ from onnxruntime.capi import _pybind_state as C
 
 
 class TrainingModule:
+    """
+    Class for running Training.
+    Your models should also instantiate this class.
+    """
 
-    def __init__(self, train_model_uri, ckpt_uri ,eval_model_uri=None, env=None, session_options=None, providers=None, **kwargs) -> None:
+    def __init__(
+        self, train_model_uri, ckpt_uri, eval_model_uri=None, env=None, session_options=None, providers=None, **kwargs
+    ) -> None:
         """
         Initializes Model for Training.
+        __init__ will call an internatl function to create the model.
         """
         # TODO : Add support for bytes on train_model_uri and eval_model_uri.
         self._train_model_uri = train_model_uri
@@ -16,13 +23,12 @@ class TrainingModule:
         if providers is None:
             self._providers = C.get_available_providers()
 
-
         self._create_training_module()
 
-
-
     def _create_training_module(self):
-
+        """
+        This method is responsible for creating the model and initializing the parameters.
+        """
         # Load checkpoint to state, then Pull named parameters from module_checkpoint_state to _parameters.
         self._parameters = {}
 
@@ -35,26 +41,24 @@ class TrainingModule:
         model = C.Module(self._train_model_uri, self._ckpt_uri)
         self._model = model
 
-
     def train(self, input, fetches):
         """
         Trains the model.
+        train_step will run forward and backward pass, and return the loss on the fetches object.
         """
-        return self._model.train(input, fetches)
-
+        return self._model.train_step(input, fetches)
 
     def eval(self, input, fetches):
         """
         Evaluates the model.
         """
-        return self._model.eval(input, fetches)
+        return self._model.eval_step(input, fetches)
 
-    def parameters(self):
+    def reset_grad(self):
         """
-        Returns the parameters of the model.
-        Typically passed to the optimizer.
+        Resets the gradient of the parameters.
         """
-        return self._model.parameters
+        return self._model.reset_grad()
 
     def get_model(self):
         """

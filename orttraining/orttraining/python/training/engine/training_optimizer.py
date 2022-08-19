@@ -2,10 +2,14 @@ from onnxruntime.capi import _pybind_state as C
 
 
 class TrainingOptimizer:
+    """
+    This Class wrapps the Optimizer.
+    Your optimizer should also instantiate this class.
+    """
 
-    def __init__(self, train_optimizer_uri , model , env=None, session_options=None, providers=None, **kwargs) -> None:
+    def __init__(self, train_optimizer_uri, model, env=None, session_options=None, providers=None, **kwargs) -> None:
         """
-        Initializes Model for Training.
+        Initializes Optimizer with the optimizer onnx and the parameters from the model.
         """
         self._train_optimizer_uri = train_optimizer_uri
         self._model = model
@@ -14,12 +18,12 @@ class TrainingOptimizer:
         if providers is None:
             self._providers = C.get_available_providers()
 
-
         self._create_training_optimizer()
 
-
-
     def _create_training_optimizer(self):
+        """
+        This method is responsible for creating the optimizer and initializing the parameters.
+        """
         # Create session options as a default value.
         self._session_options = None
 
@@ -35,4 +39,4 @@ class TrainingOptimizer:
         """
         Run Optimizer Step.
         """
-        return self._optimizer.step()
+        return self._optimizer.optimizer_step()
