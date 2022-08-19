@@ -112,6 +112,7 @@ class ConcurrencySessScope {
  public:
   friend class ConcurrencyKernelScope;
   ConcurrencySessScope(const GraphViewer& graph_viewer) : series_(ComposeSeriesName(graph_viewer)) {}
+
  private:
   static std::string ComposeSeriesName(const GraphViewer& graph_viewer) {
     char series_name[MaxSeriesNameLengthInChars] = "MainGraph";
@@ -133,6 +134,7 @@ class ConcurrencyKernelScope {
                                                    node.Index()) {
     scope.series_.write_flag(node.Name().c_str());
   };
+
  private:
   diagnostic::span span_;
 };
@@ -149,8 +151,10 @@ class ConcurrencyKernelScope {
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
+class NVTXKernelScope;
 class NVTXSessScope {
  public:
+  friend class NVTXKernelScope;
   NVTXSessScope(const std::thread::id& thread_id) : sess_tag_(profile::Context::GetInstance().GetThreadTagOrDefault(thread_id)),
                                                     forward_range_("Batch-" + sess_tag_ + " Forward", profile::Color::White),
                                                     backward_range_("Batch-" + sess_tag_ + " Backward", profile::Color::Black) {}
@@ -178,19 +182,23 @@ class NVTXSessScope {
 };
 class NVTXKernelScope {
  public:
-  NVTXKernelScope(const onnxruntime::Node& node) : node_(node),
+  NVTXKernelScope(NVTXSessScope& nvtx_sess_scope,
+                  const onnxruntime::Node& node) : node_(node),
                                                    node_compute_range_(MakeString(node_.OpType(), ".",
                                                                                   node_.Index(), "(",
                                                                                   node_.Name(), ")"),
                                                                        profile::Color::Yellow) {
-    if (node_.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
+    if (node_.Description() != "Backward pass" &&
+        !nvtx_sess_scope.forward_range_.IsBeginCalled()) {
       // Start timing forward pass when encountering the first forward node.
-      forward_range.Begin();
-    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() && forward_range.IsBeginCalled()) {
+      nvtx_sess_scope.forward_range_.Begin();
+    } else if (node.Description() == "Backward pass" &&
+               !nvtx_sess_scope.backward_range_.IsBeginCalled() &&
+               nvtx_sess_scope.forward_range_.IsBeginCalled()) {
       // Start timing backward pass when encountering the first backward node.
       // In the meanwhile, forward range ends.
-      forward_range.End();
-      backward_range.Begin();
+      nvtx_sess_scope.forward_range_.End();
+      nvtx_sess_scope.backward_range_.Begin();
     }
     node_compute_range_.Begin();
   }
@@ -199,7 +207,7 @@ class NVTXKernelScope {
   }
 
  private:
-  onnxruntime::Node& node_;
+  const onnxruntime::Node& node_;
   profile::NvtxRangeCreator node_compute_range_;
 };
 #else
@@ -209,7 +217,7 @@ class NVTXSessScope {
 };
 class NVTXKernelScope {
  public:
-  NVTXKernelScope(const onnxruntime::Node&) {}
+  NVTXKernelScope(NVTXSessScope&, const onnxruntime::Node&) {}
 };
 #endif
 
@@ -478,7 +486,7 @@ class KernelScopeImpl {
                                               sess_scope_(sess_scope),
                                               sess_state_(sess_scope.impl_->sess_state_),
                                               concur_scope_(sess_scope.impl_->concurrency_scope_, kernel.Node()),
-                                              nvtx_scope_(kernel.Node()),
+                                              nvtx_scope_(sess_scope.impl_->nvtx_scope_, kernel.Node()),
                                               dump_scope_(sess_scope.impl_->sess_state_, context, kernel.Node(), sess_scope.impl_->iteration_),
                                               mem_scope_(sess_scope.impl_->sess_state_),
                                               trace_scope_(context, kernel),
