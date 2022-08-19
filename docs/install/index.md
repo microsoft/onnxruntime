@@ -206,7 +206,7 @@ by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
 ||Official build|Nightly build|Reqs|
 |---|---|---|---|
 |Python|If using pip, run `pip install --upgrade pip` prior to downloading.|||
-||CPU: [**onnxruntime**](https://pypi.org/project/onnxruntime)| [ort-nightly (dev)]([https://test.pypi.org/project/ort-nightly](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly/overview))||
+||CPU: [**onnxruntime**](https://pypi.org/project/onnxruntime)| [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly/overview)||
 ||GPU - CUDA: [**onnxruntime-gpu**](https://pypi.org/project/onnxruntime-gpu) | [ort-nightly-gpu (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-gpu/overview/)|[View](../execution-providers/CUDA-ExecutionProvider.md#requirements)|
 ||OpenVINO: [**intel/onnxruntime**](https://github.com/intel/onnxruntime/releases/latest) - *Intel managed*||[View](../build/eps.md#openvino)|
 ||TensorRT (Jetson): [**Jetson Zoo**](https://elinux.org/Jetson_Zoo#ONNX_Runtime) - *NVIDIA managed*|||
