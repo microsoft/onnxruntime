@@ -194,11 +194,10 @@ table NodesToOptimizeIndices {
   num_variadic_outputs:uint32;
 }
 
-table OpIdAndEpType {
-  node_index:uint32 (deprecated);  // removed as it was not being used
-  kernel_def_hash:uint64 (deprecated);  // replaced by op_id + execution_provider_type
-  op_id:string;
-  execution_provider_type:string;
+/// deprecated: no longer using kernel def hashes
+table DeprecatedNodeIndexAndKernelDefHash {
+  node_index:uint32;
+  kernel_def_hash:uint64;
 }
 
 /// a single runtime optimization
@@ -206,7 +205,7 @@ table OpIdAndEpType {
 table RuntimeOptimizationRecord {
   action_id:string;
   nodes_to_optimize_indices:NodesToOptimizeIndices;
-  produced_nodes:[OpIdAndEpType];
+  produced_nodes:[DeprecatedNodeIndexAndKernelDefHash] (deprecated);
 }
 
 table RuntimeOptimizationRecordContainerEntry {
@@ -255,22 +254,24 @@ table Model {
   metadata_props:[StringStringEntry];
 }
 
-table KernelCreateInfos {
+/// deprecated: no longer using kernel def hashes
+table DeprecatedKernelCreateInfos {
   node_indices:[uint32];
-  kernel_def_hashes:[uint64] (deprecated);  // replaced by kernel_specifiers
-  kernel_specifiers:[OpIdAndEpType];
+  kernel_def_hashes:[uint64];
 }
 
-table SubGraphSessionState {
-  // graph_id can be used to binary search SubGraphSessionState in SessionState.sub_graph_session_states
+/// deprecated: no longer using kernel def hashes
+table DeprecatedSubGraphSessionState {
+  // graph_id can be used to binary search DeprecatedSubGraphSessionState in DeprecatedSessionState.sub_graph_session_states
   graph_id:string (key);
 
-  session_state:SessionState;
+  session_state:DeprecatedSessionState;
 }
 
-table SessionState {
-  kernels:KernelCreateInfos;
-  sub_graph_session_states:[SubGraphSessionState];
+/// deprecated: no longer using kernel def hashes
+table DeprecatedSessionState {
+  kernels:DeprecatedKernelCreateInfos;
+  sub_graph_session_states:[DeprecatedSubGraphSessionState];
 }
 
 enum ArgType : int8 {
@@ -304,7 +305,7 @@ table InferenceSession {
   ort_version:string;
 
   model:Model;
-  session_state:SessionState;
+  session_state:DeprecatedSessionState (deprecated);
 
   kernel_type_str_resolver:KernelTypeStrResolver;
 }
