@@ -17,7 +17,7 @@ class AttentionBase {
                      const TensorShape& bias_shape,
                      const Tensor*& mask_index,  // For dummy mask with shape (1, 1) or (batch_size, 1), it will be updated to nullptr.
                      const Tensor* past,
-                     const Tensor *extra_add_qk,
+                     const Tensor* extra_add_qk,
                      const int max_threads_per_block) const;
 
   Tensor* GetPresent(OpKernelContext* context,
@@ -45,11 +45,11 @@ class AttentionBase {
                      const TensorShape& bias_shape,
                      const Tensor*& mask_index,  // For dummy mask with shape (1, 1) or (batch_size, 1), it will be updated to nullptr.
                      const Tensor* past,
-                     const Tensor *extra_add_qk) const;
+                     const Tensor* extra_add_qk) const;
 
-  int num_heads_;           // number of attention heads
-  bool is_unidirectional_;  // whether every token can only attend to previous tokens.
-  std::vector<int64_t> qkv_hidden_sizes_;   // Q, K, V path hidden layer sizes
+  int num_heads_;                          // number of attention heads
+  bool is_unidirectional_;                 // whether every token can only attend to previous tokens.
+  std::vector<int64_t> qkv_hidden_sizes_;  // Q, K, V path hidden layer sizes
 };
 
 }  // namespace contrib
