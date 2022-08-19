@@ -2197,8 +2197,8 @@ class PlannerImpl {
           auto stream_idx = node_stream_map_[it->Index()];
           if (stream_idx != i) {
             auto node_it = std::find(stream_nodes_[stream_idx].begin(), stream_nodes_[stream_idx].end(), it->Index());
-            int node_offset = static_cast<int>(std::distance(stream_nodes_[stream_idx].begin(), node_it)); 
-            process_stream(stream_idx, node_offset);
+            int offset = static_cast<int>(std::distance(stream_nodes_[stream_idx].begin(), node_it)); 
+            process_stream(stream_idx, offset);
           }
         }
         //move_to_next
