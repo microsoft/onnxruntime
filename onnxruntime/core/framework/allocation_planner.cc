@@ -2430,7 +2430,7 @@ void DummyPartitioner::Initialize() {
           EXIT_ON_ERR("invalid configuration - failed to read execution provider stream setting");
         }
         auto num_current_stream = atoi(columns[1].c_str());
-        max_streams_[std::atoi(columns[0].c_str())] = num_current_stream;  // TODO: handle the case when columns[1] has non alpha char
+        max_streams_[static_cast<OrtDevice::DeviceType>(std::atoi(columns[0].c_str()))] = num_current_stream;  // TODO: handle the case when columns[1] has non alpha char
         num_streams_ += num_current_stream;
       }
       while (getline(if_stream, line)) {
