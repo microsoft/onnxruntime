@@ -292,6 +292,7 @@ class TestQDQFormatConv(TestQDQFormat):
             reduce_range=per_channel,
             activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+            optimize_model=False
         )
         data_reader.rewind()
         qdq_nodes = {
@@ -312,6 +313,7 @@ class TestQDQFormatConv(TestQDQFormat):
             reduce_range=per_channel,
             activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+            optimize_model=False
         )
         data_reader.rewind()
         qop_nodes = {"QLinearConv": 1, "QuantizeLinear": 1, "DequantizeLinear": 1}
@@ -396,6 +398,7 @@ class TestQDQFormatConvClip(TestQDQFormat):
             reduce_range=per_channel,
             activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+            optimize_model=False
         )
         data_reader.rewind()
         # topo sort check
@@ -426,6 +429,7 @@ class TestQDQFormatConvClip(TestQDQFormat):
             reduce_range=per_channel,
             activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+            optimize_model=False
         )
         data_reader.rewind()
         qop_nodes = {"QLinearConv": 1, "QuantizeLinear": 1, "DequantizeLinear": 1}
@@ -564,6 +568,7 @@ class TestQDQFormatConvRelu(TestQDQFormat):
             reduce_range=per_channel,
             activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+            optimize_model=False
         )
         data_reader.rewind()
         # topo sort check
@@ -591,6 +596,7 @@ class TestQDQFormatConvRelu(TestQDQFormat):
             reduce_range=per_channel,
             activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+            optimize_model=False
         )
         data_reader.rewind()
         qop_nodes = {"QLinearConv": 1, "QuantizeLinear": 1, "DequantizeLinear": 1}
@@ -619,6 +625,7 @@ class TestQDQFormatConvRelu(TestQDQFormat):
             reduce_range=False,
             activation_type=QuantType.QInt8,
             weight_type=QuantType.QInt8,
+            optimize_model=False
         )
 
 
@@ -672,7 +679,7 @@ class TestQDQRemovableActivation(TestQDQFormat):
         data_reader = self.input_feeds(2, {"input": [1, 3, 1, 3]})
 
         qdq_model_path = str(Path(self._tmp_model_dir.name) / "qdq_relu_convs_model.onnx")
-        quantize_static(float_model_path, qdq_model_path, data_reader)
+        quantize_static(float_model_path, qdq_model_path, data_reader, optimize_model=False)
 
         qop_nodes = {"Clip": 1, "Relu": 1, "QuantizeLinear": 0, "DequantizeLinear": 0}
         check_op_type_count(self, qdq_model_path, **qop_nodes)

@@ -76,7 +76,8 @@ def quantize_static(
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
-    :param optimize_model: optimize model before quantization.
+    :param optimize_model: optimize model before quantization. NOT recommended, optimization will
+        change the computation graph, making debugging of quantization loss difficult.
     :param use_external_data_format: option used for large size (>2GB) model. Set to False by default.
     :param calibrate_method:
         Current calibration methods supported are MinMax and Entropy.
