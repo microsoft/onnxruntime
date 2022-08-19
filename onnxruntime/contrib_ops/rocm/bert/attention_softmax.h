@@ -61,8 +61,8 @@ __device__ inline void Softmax(const int all_sequence_length,
     if (i >= valid_start) {
       const int index = offset + i;
       float input_at_idx = add_before_softmax == nullptr
-                               ? float(input[index])
-                               : float(input[index] + add_before_softmax[index]);
+                               ? static_cast<float>(input[index])
+                               : static_cast<float>(input[index] + add_before_softmax[index]);
       if (thread_data_max < input_at_idx) {
         thread_data_max = input_at_idx;
       }
@@ -95,8 +95,8 @@ __device__ inline void Softmax(const int all_sequence_length,
   for (int i = threadIdx.x; i < all_sequence_length; i += TPB) {
     const int index = offset + i;
     float input_at_idx = add_before_softmax == nullptr
-                             ? float(input[index])
-                             : float(input[index] + add_before_softmax[index]);
+                             ? static_cast<float>(input[index])
+                             : static_cast<float>(input[index] + add_before_softmax[index]);
     const float val = (i >= valid_start && i < valid_end) ? expf(input_at_idx - max_block) * sum_reverse_block : 0.f;
     output[index] = T(val);
   }
@@ -144,8 +144,8 @@ __device__ inline void SoftmaxSmall(const int all_sequence_length,
   // a math transform as below is leveraged to get a stable softmax:
   // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
   float input_data = add_before_softmax == nullptr
-                         ? float(input[index])
-                         : float(input[index] + add_before_softmax[index]);
+                         ? static_cast<float>(input[index])
+                         : static_cast<float>(input[index] + add_before_softmax[index]);
   float thread_data_max = is_valid ? input_data : float(-ROCMRT_INF_F);
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, hipcub::Max(), end);
 
