@@ -66,21 +66,10 @@ static Status SaveRuntimeOptimizationRecordToOrtFormat(
                                         nodes_to_optimize_indices.num_variadic_inputs,
                                         nodes_to_optimize_indices.num_variadic_outputs);
 
-  const auto fbs_produced_nodes = builder.CreateVector<flatbuffers::Offset<fbs::OpIdAndEpType>>(
-      runtime_optimization_record.produced_nodes.size(),
-      [&](size_t i) -> flatbuffers::Offset<fbs::OpIdAndEpType> {
-        const auto& produced_node_info = runtime_optimization_record.produced_nodes[i];
-        return fbs::CreateOpIdAndEpType(
-            builder,
-            builder.CreateSharedString(produced_node_info.op_id),
-            builder.CreateSharedString(produced_node_info.execution_provider_type));
-      });
-
   fbs_runtime_optimization_record =
       fbs::CreateRuntimeOptimizationRecord(builder,
                                            builder.CreateSharedString(runtime_optimization_record.action_id),
-                                           fbs_nodes_to_optimize,
-                                           fbs_produced_nodes);
+                                           fbs_nodes_to_optimize);
 
   return Status::OK();
 }
@@ -135,20 +124,6 @@ static Status LoadRuntimeOptimizationRecordFromOrtFormat(
     nodes_to_optimize_indices.variadic_output = fbs_nodes_to_optimize_indices->has_variadic_output();
     nodes_to_optimize_indices.num_variadic_inputs = fbs_nodes_to_optimize_indices->num_variadic_inputs();
     nodes_to_optimize_indices.num_variadic_outputs = fbs_nodes_to_optimize_indices->num_variadic_outputs();
-  }
-
-  if (const auto* fbs_produced_nodes = fbs_runtime_optimization_record.produced_nodes()) {
-    runtime_optimization_record.produced_nodes.reserve(fbs_produced_nodes->size());
-    for (const auto* fbs_produced_node_info : *fbs_produced_nodes) {
-      if (!fbs_produced_node_info) continue;
-
-      ORT_RETURN_IF_NOT(fbs_produced_node_info->op_id() && fbs_produced_node_info->execution_provider_type(),
-                        "op_id and execution_provider_type should be present.");
-
-      runtime_optimization_record.produced_nodes.push_back(
-          OpIdAndEpType{fbs_produced_node_info->op_id()->str(),
-                        fbs_produced_node_info->execution_provider_type()->str()});
-    }
   }
 
   runtime_optimization_record_out = std::move(runtime_optimization_record);

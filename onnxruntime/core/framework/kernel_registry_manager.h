@@ -72,6 +72,7 @@ class KernelRegistryManager {
    */
   static bool HasImplementationOf(const KernelRegistryManager& r, const Node& node, const std::string& provider_type);
 
+  // TODO remove
   /**
    * Search the kernel registries given a kernel def hash.
    */

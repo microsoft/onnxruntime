@@ -302,13 +302,7 @@ class SessionState {
 #if !defined(ORT_MINIMAL_BUILD)
   void UpdateToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs);
   const InlinedHashSet<NodeIndex>* GetToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs) const;
-  Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
-                         flatbuffers::Offset<onnxruntime::fbs::SessionState>& fbs_session_state) const;
 #endif
-
-  // TODO replace with PopulateKernelCreateInfo()? let's try it
-  Status LoadFromOrtFormat(const onnxruntime::fbs::SessionState& fbs_session_state,
-                           const KernelRegistryManager& kernel_registry_manager);
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               const KernelRegistryManager& kernel_registry_manager,

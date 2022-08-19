@@ -31,7 +31,6 @@ struct Action {
 #if !defined(ORT_MINIMAL_BUILD)
   // per-action saved state
   struct SavedState {
-    std::vector<OpIdAndEpType> produced_nodes;  // TODO do we need this?
     std::vector<const ONNX_NAMESPACE::OpSchema*> produced_node_op_schemas;
   };
 

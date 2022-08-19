@@ -83,8 +83,6 @@ struct RuntimeOptimizationRecord {
   std::string action_id;
   /** The nodes to consider for optimization. */
   NodesToOptimizeIndices nodes_to_optimize_indices;
-  /** Any new nodes introduced by the optimization. */
-  std::vector<OpIdAndEpType> produced_nodes;
 };
 
 }  // namespace onnxruntime

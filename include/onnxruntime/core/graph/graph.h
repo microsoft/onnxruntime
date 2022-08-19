@@ -1333,21 +1333,6 @@ class Graph {
   RuntimeOptimizationRecordContainer& MutableRuntimeOptimizations() {
     return runtime_optimizations_;
   }
-
-  // TODO is this needed? can we just use the op/EP from the node to look up the kernel?
-  // Stores information collected during the replay of loaded runtime optimizations
-  struct RuntimeOptimizationReplayContext {
-    std::unordered_map<NodeIndex, OpIdAndEpType> produced_node_index_to_info{};
-    size_t num_replayed_optimizations{};
-  };
-
-  const RuntimeOptimizationReplayContext& RuntimeOptimizationReplayCtx() const {
-    return runtime_optimization_replay_context_;
-  }
-
-  RuntimeOptimizationReplayContext& MutableRuntimeOptimizationReplayCtx() {
-    return runtime_optimization_replay_context_;
-  }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   // This friendship relationship should only be used to call Graph::Graph and
@@ -1589,8 +1574,6 @@ class Graph {
   // Note: runtime_optimizations_ == *runtime_optimizations_ptr_ and must be initialized
   std::unique_ptr<RuntimeOptimizationRecordContainer> runtime_optimizations_ptr_;
   RuntimeOptimizationRecordContainer& runtime_optimizations_;
-
-  RuntimeOptimizationReplayContext runtime_optimization_replay_context_;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)

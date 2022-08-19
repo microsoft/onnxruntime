@@ -27,7 +27,6 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/kernel_type_str_resolver_utils.h"
 #include "core/framework/mldata_type_utils.h"
-#include "core/framework/session_state_flatbuffers_utils.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_type_and_shape.h"
@@ -600,10 +599,6 @@ common::Status InferenceSession::SaveToOrtFormat(const PathString& filepath) con
   ORT_RETURN_IF_ERROR(
       model_->SaveToOrtFormat(builder, fbs_model));
 
-  flatbuffers::Offset<fbs::SessionState> fbs_session_state;
-  ORT_RETURN_IF_ERROR(
-      session_state_->SaveToOrtFormat(builder, fbs_session_state));
-
   flatbuffers::Offset<fbs::KernelTypeStrResolver> fbs_kernel_type_str_resolver;
   KernelTypeStrResolver kernel_type_str_resolver{};
   ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterGraphNodeOpSchemas(model_->MainGraph()));
@@ -617,7 +612,6 @@ common::Status InferenceSession::SaveToOrtFormat(const PathString& filepath) con
   fbs::InferenceSessionBuilder sb(builder);
   sb.add_ort_version(ort_model_version);
   sb.add_model(fbs_model);
-  sb.add_session_state(fbs_session_state);
   sb.add_kernel_type_str_resolver(fbs_kernel_type_str_resolver);
   auto session = sb.Finish();
   builder.Finish(session, fbs::InferenceSessionIdentifier());

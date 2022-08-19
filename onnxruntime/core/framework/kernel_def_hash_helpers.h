@@ -13,6 +13,9 @@
 namespace onnxruntime {
 class Node;
 namespace utils {
+
+// TODO remove these
+
 /**
  * @brief Gets the hash value for provided op type + version combination if it is available, otherwise
  * returns a nullopt. The hash value is available if this node was added by layout transformer. For all other

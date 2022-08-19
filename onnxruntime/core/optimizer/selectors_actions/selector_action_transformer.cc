@@ -149,8 +149,7 @@ static Status MatchAndProcess(
       graph.MutableRuntimeOptimizations().AddRecord(
           transformer_name,
           RuntimeOptimizationRecord{selector_action_entry.name,
-                                    node_selection,
-                                    action_saved_state.produced_nodes});
+                                    node_selection});
 
       if (save_context->record_produced_node_op_schema) {
         for (const auto* op_schema : action_saved_state.produced_node_op_schemas) {
@@ -200,44 +199,6 @@ Status SelectorActionTransformer::ApplySelectorsAndActions(
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-static Status RegisterProducedNodesWithGraph(NodeIndex pre_action_max_num_nodes, NodeIndex post_action_max_num_nodes,
-                                             const RuntimeOptimizationRecord& record,
-                                             Graph& graph) {
-  assert(post_action_max_num_nodes >= pre_action_max_num_nodes);
-
-  const auto num_new_node_indices = post_action_max_num_nodes - pre_action_max_num_nodes;
-
-  auto produced_node_it = record.produced_nodes.begin();
-  const auto produced_nodes_end = record.produced_nodes.end();
-
-  std::unordered_map<NodeIndex, OpIdAndEpType> node_index_to_info{};
-
-  for (NodeIndex i = 0; i < num_new_node_indices; ++i) {
-    const NodeIndex new_node_idx = pre_action_max_num_nodes + i;
-    const auto* new_node = graph.GetNode(new_node_idx);
-
-    // only account for new nodes that still exist
-    // an action could add a temporary node and then remove it
-    if (!new_node) {
-      continue;
-    }
-
-    ORT_RETURN_IF(produced_node_it == produced_nodes_end,
-                  "Not enough produced nodes in the runtime optimization record.");
-
-    node_index_to_info.emplace(new_node_idx, *produced_node_it);
-
-    ++produced_node_it;
-  }
-
-  ORT_RETURN_IF(produced_node_it != produced_nodes_end, "Too many produced nodes in the runtime optimization record.");
-
-  graph.MutableRuntimeOptimizationReplayCtx().produced_node_index_to_info.merge(
-      node_index_to_info);
-
-  return Status::OK();
-}
-
 Status SelectorActionTransformer::ApplySavedRuntimeOptimizations(
     Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   for (auto& node : graph.Nodes()) {
@@ -263,17 +224,8 @@ Status SelectorActionTransformer::ApplySavedRuntimeOptimizations(
 
     // all nodes in the group are still available if IsValid returns true
 
-    const NodeIndex pre_action_num_nodes = graph.MaxNodeIndex();
-
     ORT_RETURN_IF_ERROR(selector_action_entry->action->Run(graph, nodes_to_optimize));
     modified = true;
-
-    const NodeIndex post_action_num_nodes = graph.MaxNodeIndex();
-
-    ORT_RETURN_IF_ERROR(RegisterProducedNodesWithGraph(pre_action_num_nodes, post_action_num_nodes,
-                                                       record, graph));
-
-    ++graph.MutableRuntimeOptimizationReplayCtx().num_replayed_optimizations;
   }
 
   return Status::OK();
