@@ -28,21 +28,21 @@ size_t GetAttentionWorkspaceSize(
 bool LaunchAttentionKernel(
     const cudaDeviceProp& prop,                // Device Properties
     cudaStream_t stream,                       // cuda stream
-    const void* input,                         // Input tensor
-    const int* mask_index,                     // Attention mask raw data or index. NULL means no mask.
-    gsl::span<const int64_t> mask_index_dims,  // Mask index shape
-    void* output,                              // Output tensor
+    cublasHandle_t& cublas,                    // Cublas handle
+    const size_t element_size,                 // Element size of input tensor
     int batch_size,                            // Batch size (B)
     int sequence_length,                       // Sequence length (S)
     int num_heads,                             // Number of attention heads (N)
     int head_size,                             // Hidden layer size per head (H)
-    void* workspace,                           // Temporary buffer
-    cublasHandle_t& cublas,                    // Cublas handle
-    const size_t element_size,                 // Element size of input tensor
-    bool is_unidirectional,                    // Whether there is unidirecitonal mask.
     int past_sequence_length,                  // Sequence length in past state
+    bool is_unidirectional,                    // Whether there is unidirecitonal mask.
+    const void* input,                         // Input tensor
+    const int* mask_index,                     // Attention mask raw data or index. NULL means no mask.
+    gsl::span<const int64_t> mask_index_dims,  // Mask index shape
     const void* past,                          // Past state input
     const void* extra_add_qk,                  // Additional Add
+    void* workspace,                           // Temporary buffer
+    void* output,                              // Output tensor
     void* present                              // Present state output
 );
 

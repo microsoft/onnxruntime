@@ -190,8 +190,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
       if (static_cast<int>(mask_dims[0]) != batch_size ||
           static_cast<int>(mask_dims[1]) != past_sequence_length + sequence_length) {
         // Add operator supports broadcasting. Here we handle a case with only one element in the 2nd dimension.
-        if ((static_cast<int>(mask_dims[0]) == batch_size ||
-             static_cast<int>(mask_dims[0]) == 1) &&
+        if ((static_cast<int>(mask_dims[0]) == batch_size || static_cast<int>(mask_dims[0]) == 1) &&
             static_cast<int>(mask_dims[1]) == 1) {
           // Mask will have same value after propagation, which has same effect as no mask.
           mask_index = nullptr;
