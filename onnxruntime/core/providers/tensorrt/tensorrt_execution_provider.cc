@@ -1984,10 +1984,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 }
 
 void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
-  RegisterCudaStreamHandles(stream_handle_registry, kTensorrtExecutionProvider, stream_, external_stream_);
-  // register additional wait method between TRT/Cuda
-  stream_handle_registry.RegisterWaitFn(kTensorrtExecutionProvider, kCudaExecutionProvider, WaitCudaNotificationOnDevice);
-  stream_handle_registry.RegisterWaitFn(kCudaExecutionProvider, kTensorrtExecutionProvider, WaitCudaNotificationOnDevice);
+  RegisterCudaStreamHandles(stream_handle_registry, OrtDevice::GPU, stream_, external_stream_);
 }
 
 }  // namespace onnxruntime

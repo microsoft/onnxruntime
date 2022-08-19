@@ -581,7 +581,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
   auto* execution_plan = session_state.GetExecutionPlan();
 
-  DeviceStreamCollection device_stream_collection(execution_plan->execution_plan.size());
+  DeviceStreamCollection device_stream_collection(execution_plan->execution_plan.size(), session_state);
 
   bool single_stream = session_state.GetExecutionPlan()->NumberOfValidStream() == 1;
   bool is_subgraph = session_state.GetGraphViewer().ParentNode() != nullptr;

@@ -110,7 +110,7 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
   out << "\nExecution Plan:\n";
   for (size_t i = 0; i < plan.execution_plan.size(); ++i) {
     auto& execution_plan = plan.execution_plan[i];
-    out << " Start logic stream : " << i << "on execution provider: " << execution_plan->ep_->Type() << std::endl;
+    out << " Start logic stream : " << i << "on device: " << execution_plan->device_.Type() << std::endl;
     for (auto& step : execution_plan->steps_) {
       out << step->Dump() << std::endl;
     }
@@ -1136,17 +1136,17 @@ class PlannerImpl {
   }
 
   bool IsSingleStream() {
-    // if each execution provider instance only have 1 logic stream
+    // if each device only have 1 logic stream
     // we can safely reuse the existing memory sharing algorithm
-    std::set<std::string> stream_providers_set;
+    std::set<OrtDevice::DeviceType> stream_device_set;
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       auto& stream = stream_nodes_[i];
       if (!stream.empty()) {
-        auto& ep_type = plan_.execution_plan[i]->ep_->Type();
-        if (stream_providers_set.find(ep_type) != stream_providers_set.end()) {
+        auto device_type = plan_.execution_plan[i]->device_.Type();
+        if (stream_device_set.find(device_type) != stream_device_set.end()) {
           return false;
         }
-        stream_providers_set.insert(ep_type);
+        stream_device_set.insert(device_type);
       }
     }
     return true;
@@ -1892,11 +1892,12 @@ class PlannerImpl {
     return Status::OK();
   }
 
-  void PartitionIntoStreams(const logging::Logger& logger, const std::string& partition_config_file) {
+  void PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
+      const std::string& partition_config_file) {
     auto partitioner = INodePartitioner::CreateNodePartitioner(logger, partition_config_file);
     auto status = partitioner->GetStatus();
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    partitioner->PartitionNodes(graph_viewer_, stream_nodes_);
+    partitioner->PartitionNodes(graph_viewer_, execution_providers, stream_nodes_);
     node_stream_map_.resize(graph_viewer_.MaxNodeIndex() + 1);
     // int node_cnt = 0;
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
@@ -1915,7 +1916,18 @@ class PlannerImpl {
     // 1. create logic stream instance
     auto& execution_plan = plan_.execution_plan;
     for (size_t i = 0; i < num_logic_streams_; ++i) {
-      execution_plan.emplace_back(std::make_unique<SequentialExecutionPlan::LogicStream>());
+      if (!stream_nodes_[i].empty()){
+        // get device from first node
+        auto& node_index = stream_nodes_[i][0];
+        auto* node = graph_viewer_.GetNode(node_index);
+        onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
+        const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
+        ORT_ENFORCE(ep);
+        auto& node_device_mem_location = ep->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info();
+        execution_plan.emplace_back(std::make_unique<SequentialExecutionPlan::LogicStream>(node_device_mem_location.device));
+      } else {
+        execution_plan.emplace_back(nullptr);
+      }
     }
     // 2. for each node, if any of its consumer partitioned to another stream, generate a notification
     size_t num_notifications = 0;
@@ -1944,7 +1956,7 @@ class PlannerImpl {
     InlinedHashSet<NotificationIndex> no_down_stream_notifications;
     // TODO: for current ORT, the only possibility of this In-Stream wait is wait on CPU tensors.
     // Need to fix it in the future if we have other cases.
-    const std::string non_device_ep_type = kCpuExecutionProvider;
+    const OrtDevice::DeviceType non_device_type = OrtDevice::CPU;
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
@@ -1984,18 +1996,15 @@ class PlannerImpl {
       }
     }
 
-    // 3. Check the nodes in each logical stream, set EP instance;
+    // 3. Check the nodes in each logical stream, confirm it aligned with the device  in the logic stream;
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       std::set<const IExecutionProvider*> providers;
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
         onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
         const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
-        if (execution_plan[node_stream_map_[node_index]]->ep_) {
-          ORT_ENFORCE(execution_plan[node_stream_map_[node_index]]->ep_ == ep);
-        } else {
-          execution_plan[node_stream_map_[node_index]]->ep_ = ep;
-        }
+        auto& node_device_mem_location = ep->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info();
+        ORT_ENFORCE(execution_plan[node_stream_map_[node_index]]->device_ == node_device_mem_location.device);
       }
     }
     // 4. set notification owners
@@ -2034,8 +2043,8 @@ class PlannerImpl {
 #endif
             // push a wait command if has EP registered it.
             auto wait_handle = stream_handle_registry.GetWaitHandle(
-                execution_plan[plan_.notification_owners[notfication_it->second]]->ep_->Type(),
-                node->GetExecutionProviderType());
+                execution_plan[plan_.notification_owners[notfication_it->second]]->device_.Type(),
+                execution_plan[i]->device_.Type());
             if (wait_handle) {
               execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_index));
 #ifdef ENABLE_TRAINING
@@ -2050,8 +2059,8 @@ class PlannerImpl {
           for (auto& notification_idx : in_stream_notificaiton_it->second) {
             // we don't need barrier for in-stream wait
             auto wait_handle = stream_handle_registry.GetWaitHandle(
-                execution_plan[plan_.notification_owners[notification_idx]]->ep_->Type(),
-                non_device_ep_type);
+                execution_plan[plan_.notification_owners[notification_idx]]->device_.Type(),
+                non_device_type);
             if (wait_handle) {
               execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_idx));
 #ifdef ENABLE_TRAINING
@@ -2255,7 +2264,7 @@ Status PlannerImpl::CreatePlan(const ExecutionProviders& execution_providers,
   auto& p_graph_nodes = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder());
 
   // 1. partition graph into streams
-  PartitionIntoStreams(logger, partition_config_file);
+  PartitionIntoStreams(logger, execution_providers, partition_config_file);
 
   // 2. initialize the plan based on stream partition result
   int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
@@ -2359,7 +2368,7 @@ class DummyPartitioner : public INodePartitioner {
     }
   }
   void DumpPartition() const;
-  void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& stream_nodes) override;
+  void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<std::vector<NodeIndex>>& stream_nodes) override;
   virtual const std::string& Name() const override {
     return name;
   }
@@ -2367,7 +2376,7 @@ class DummyPartitioner : public INodePartitioner {
  private:
   void Initialize();
   int num_streams_{};
-  std::map<std::string, int> max_streams_;
+  std::map<OrtDevice::DeviceType, int> max_streams_;
   std::vector<std::vector<std::string>> node_names_by_stream_;
   bool need_dump_ = false;
   static const std::string name;
@@ -2404,7 +2413,7 @@ void DummyPartitioner::Initialize() {
     }
     if (std::getline(if_stream, line)) {
       auto columns = INodePartitioner::Split(line, ':');
-      if (columns.size() != 2 || columns[0] != "ExecutionProviders") {
+      if (columns.size() != 2 || columns[0] != "Devices") {
         EXIT_ON_ERR("2nd line of configuration file should be of format: ExecutionProviders,<an integer>");
       }
       int eps = atoi(columns[1].c_str());
@@ -2421,7 +2430,7 @@ void DummyPartitioner::Initialize() {
           EXIT_ON_ERR("invalid configuration - failed to read execution provider stream setting");
         }
         auto num_current_stream = atoi(columns[1].c_str());
-        max_streams_[columns[0]] = num_current_stream;  // TODO: handle the case when columns[1] has non alpha char
+        max_streams_[std::atoi(columns[0].c_str())] = num_current_stream;  // TODO: handle the case when columns[1] has non alpha char
         num_streams_ += num_current_stream;
       }
       while (getline(if_stream, line)) {
@@ -2447,7 +2456,7 @@ void DummyPartitioner::DumpPartition() const {
   std::ofstream of_stream(configuration_file_, std::ios_base::out | std::ios_base::trunc);
   if (of_stream.is_open()) {
     of_stream << Name() << std::endl;
-    of_stream << "ExecutionProviders:" << max_streams_.size() << std::endl;
+    of_stream << "Devices:" << max_streams_.size() << std::endl;
     for (const auto& kv : max_streams_) {
       of_stream << kv.first << ":" << kv.second << std::endl;
     }
@@ -2463,7 +2472,9 @@ void DummyPartitioner::DumpPartition() const {
   }
 }
 
-void DummyPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& stream_nodes) {
+void DummyPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, 
+    const ExecutionProviders& execution_providers,
+    std::vector<std::vector<NodeIndex>>& stream_nodes) {
   if (!status_.IsOK()) {
     return;  // input configuration has errors, do nothing
   }
@@ -2473,20 +2484,22 @@ void DummyPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_view
 
   if (max_streams_.empty() && node_names_by_stream_.empty()) {  // input configure empty, do it from scratch
     // partition by ep, each has one stream
-    InlinedHashMap<std::string, int> ep_to_stream;
+    InlinedHashMap<OrtDevice::DeviceType, int> device_to_stream;
     for (auto node_index : p_graph_nodes) {
       const auto* node = graph_viewer.GetNode(node_index);
       const auto& op_type = node->OpType();
       const auto& node_name = node->Name();
-      onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
-      if (max_streams_.find(exec_provider_name) == max_streams_.end()) {
-        max_streams_[exec_provider_name] = 1;
+      auto* ep = execution_providers.Get(*node);
+      auto& device_mem_location = ep->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info();
+      auto device_type = device_mem_location.device.Type();
+      if (max_streams_.find(device_mem_location.device.Type()) == max_streams_.end()) {
+        max_streams_[device_type] = 1;
       }
-      auto it = ep_to_stream.find(exec_provider_name);
-      if (it == ep_to_stream.end()) {
-        ep_to_stream[exec_provider_name] = static_cast<int>(node_names_by_stream_.size());
+      auto it = device_to_stream.find(device_type);
+      if (it == device_to_stream.end()) {
+        device_to_stream[device_type] = static_cast<int>(node_names_by_stream_.size());
         node_names_by_stream_.push_back({});
-        it = ep_to_stream.find(exec_provider_name);
+        it = device_to_stream.find(device_type);
       }
       if (node_name.empty()) {
         node_names_by_stream_[it->second].push_back(op_type + std::to_string(op_type_counter[op_type]++));

@@ -277,17 +277,17 @@ class PlannerTest : public ::testing::Test {
      public:
       // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
       // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
-      virtual WaitNotificationFn GetWaitHandle(const std::string& /*notification_owner_ep_type*/, const std::string& /*executor_ep_type*/) const override {
+      virtual WaitNotificationFn GetWaitHandle(const OrtDevice::DeviceType /*notification_owner_ep_type*/, const OrtDevice::DeviceType /*executor_ep_type*/) const override {
         return nullptr;
       }
 
-      virtual CreateStreamFn GetCreateStreamFn(const std::string& /*execution_provider_type*/) const override {
+      virtual CreateStreamFn GetCreateStreamFn(const OrtDevice::DeviceType /*execution_provider_type*/) const override {
         return nullptr;
       }
 
-      virtual void RegisterWaitFn(const std::string& /*notification_ep_type*/, const std::string& /*ep_type*/, WaitNotificationFn /*fn*/) {}
+      virtual void RegisterWaitFn(const OrtDevice::DeviceType /*notification_ep_type*/, const OrtDevice::DeviceType /*ep_type*/, WaitNotificationFn /*fn*/) override{}
 
-      virtual void RegisterCreateStreamFn(const std::string& /*ep_type*/, CreateStreamFn /*f*/) {}
+      virtual void RegisterCreateStreamFn(const OrtDevice::DeviceType /*ep_type*/, CreateStreamFn /*f*/) override {}
     };
 
     onnxruntime::GraphViewer graph_viewer{graph_};
