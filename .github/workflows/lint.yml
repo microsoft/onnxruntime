@@ -88,6 +88,13 @@ jobs:
           level: warning
           flags: --linelength=120 --exclude=java/src/main/native/*.c
           filter: "-runtime/references"
+      - name: Run clang-tidy
+        uses: ZedThree/clang-tidy-review@v0.9.0
+        with:
+          token: ${{ secrets.github_token }}
+          config_file: ".clang-tidy"
+          lgtm_comment_body: ""
+
 
   lint-js:
     name: Lint JavaScript
