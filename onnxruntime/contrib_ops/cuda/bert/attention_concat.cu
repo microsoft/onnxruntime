@@ -126,8 +126,11 @@ bool LaunchConcatTensorToTensor(cudaStream_t stream,
       ConcatTensorToTensor<float><<<grid, block, 0, stream>>>(sequence_length, tensor_in, tensor_add, tensor_out);
     } else {
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
-      ConcatTensorToTensorLarge<float><<<grid, block, 0, stream>>>(sequence_length, head_size,
-                                                                   tensor_in, tensor_add, tensor_out);
+      ConcatTensorToTensorLarge<float><<<grid, block, 0, stream>>>(sequence_length,
+                                                                   head_size,
+                                                                   tensor_in,
+                                                                   tensor_add,
+                                                                   tensor_out);
     }
   }
   return CUDA_CALL(cudaPeekAtLastError());

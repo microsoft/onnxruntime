@@ -469,7 +469,7 @@ bool ComputeSoftmaxWithRawMask(cudaStream_t stream,
                                const int max_sequence_length) {
   const dim3 grid(sequence_length * num_heads, batch_size, 1);
 
-  T* out = output;
+  T* out = use_persistent_softmax ? persistent_softmax_workspace : output;
   if (all_sequence_length <= 32) {
     const int blockSize = 32;
     SoftmaxWithRawMaskSmallKernel<T, blockSize>
