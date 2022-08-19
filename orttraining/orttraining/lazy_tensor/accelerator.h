@@ -33,6 +33,8 @@ class Accelerator {
   static bool Supported(const torch::jit::Node* node);
 
  private:
+  // This function runs the "subgraph_" using PyTorch JIT executor
+  // to get expected doutput schema. No ORT is involved.
   void ExampleRun(at::ArrayRef<c10::IValue> inputs);
   // This function calls "OrtRun" and "PytorchRun" to execute the graph
   // and compare their results. It may fail if their results are different

@@ -15,6 +15,10 @@
 
 namespace onnxruntime {
 namespace lazytensor {
+// This function register a new torch::jit::Symbol, ort::graph,
+// in Pytorch's JIT executor.
+// A custom callable, is registered to be called when Pytorch's JIT
+// executor encountering this symbol.
 void register_ort_as_torch_jit_executor() {
   // Pytorch's JIT symbol to be execute by ORT.
   const auto accelerator_symbol =
@@ -22,8 +26,10 @@ void register_ort_as_torch_jit_executor() {
   // First, register a pass that will coalesce supported consecutive operators
   // into a single symbol (it contains a subgraph). Encountering an unsupported
   // operator will result two separated symbols (i.e., two independent sub-graphs).
+  // Note that torch::jit::Symbol is an anology of NodeProto in ONNX.
   //
   // TODO: Allow single-op fusion in Pytorch so ORT can receive single-op sub-graph.
+  //       We should extend OrtFuseGraph and OrtFuser to fuse single-op into ort::graph.
   torch::jit::RegisterPass pass([accelerator_symbol](std::shared_ptr<torch::jit::Graph>& g) {
     if (!DynamicSettings::GetInstance().GetOnnxFusionFlag()) {
       if (DumpOnnxFusion()) {

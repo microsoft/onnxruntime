@@ -334,6 +334,9 @@ void Accelerator::ExampleRun(at::ArrayRef<c10::IValue> inputs) {
   ORT_ENFORCE(input_types_.size() == inputs.size());
   for (size_t i = 0; i < inputs.size(); ++i) {
     c10::TypePtr type = inputs.at(i).type();
+    // LazyTensor should only capture graph with numerical inputs and outputs.
+    // If this assumption is broken, please use Accelerator::Supported to filter
+    /// out unsupported types and operators.
     ORT_ENFORCE(type->isSubtypeOf(*c10::TensorType::get()) ||
                     type->isSubtypeOf(*c10::NumberType::get()),
                 "ONNX only support tensor, float, int, bool as graph's input types");
@@ -370,6 +373,8 @@ CompiledObject Accelerator::Compile(
   // Let's get the empty session and initialize it.
   onnxruntime::InferenceSession& sess = *compiled.sess;
   // Export subgraph_ to ONNX.
+  // The exporter should never fail. If it does, please modify
+  // Accelerator::Supported to filter out unsupported operators.
   const std::string serialized_model = ExportToOnnx(subgraph_, args);
   // Memory info for all tensors.
   // Assume all inputs are on the same device.
