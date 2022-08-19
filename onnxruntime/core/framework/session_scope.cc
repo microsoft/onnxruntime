@@ -17,6 +17,9 @@
 #include <Windows.h>
 #include "core/platform/tracing.h"
 #endif
+#if defined DEBUG_NODE_INPUTS_OUTPUTS
+#include "core/framework/debug_node_inputs_outputs_utils.h"
+#endif
 #include <thread>
 
 namespace onnxruntime {
@@ -224,17 +227,17 @@ class NVTXKernelScope {
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
 class DumpKernelScope {
  public:
-  DumpKernelScope(const SessionState& sess_state;
+  DumpKernelScope(const SessionState& sess_state,
                   OpKernelContextInternal & context,
                   const Node& node,
                   size_t iteration) : sess_state_(sess_state),
                                       context_(context),
                                       node_(node),
-                                      dump_ctx_(iteration, node_.NodeIndex()) {
+                                      dump_ctx_{iteration, node_.Index()} {
     utils::DumpNodeInputs(dump_ctx_, context_, node_, sess_state_);
   }
 
-  DumpKernelScope() {
+  ~DumpKernelScope() {
     utils::DumpNodeOutputs(dump_ctx_, context_, node_, sess_state_);
   }
 
@@ -242,7 +245,6 @@ class DumpKernelScope {
   const SessionState& sess_state_;
   OpKernelContextInternal& context_;
   const Node& node_;
-  size_t iteration_;
   utils::NodeDumpContext dump_ctx_;
 };
 #else
@@ -259,9 +261,9 @@ class DumpKernelScope {
 class MemSessScope {
  public:
   MemSessScope(const SessionState& sess_state,
-               const ExecutionFrame& frame) : logger_(sess_state.GetLogger()),
+               const ExecutionFrame& frame) : logger_(sess_state.Logger()),
                                               frame_(frame),
-                                              profiler_(sess_state.GetMemoryProfiler()) {}
+                                              profiler_(*sess_state.GetMemoryProfiler()) {}
   ~MemSessScope() {
     profiler_.CreateEvents(
         "dynamic activations_" + std::to_string(profiler_.GetMemoryInfo().GetIteration()),
@@ -273,7 +275,7 @@ class MemSessScope {
                           << i.second << " bytes for " << i.first << std::endl;
     }
 
-    for (auto i : frame.GetDynamicMemorySizeInfo()) {
+    for (auto i : frame_.GetDynamicMemorySizeInfo()) {
       LOGS(logger_, INFO) << "[Memory] ExecutionFrame dynamically allocates "
                           << i.second << " bytes for " << i.first << std::endl;
     }
@@ -284,29 +286,29 @@ class MemSessScope {
   const ExecutionFrame& frame_;
   MemoryProfiler& profiler_;
 };
-class MemKernelScope {
- public:
-  MemKernelScope(const SessionState& sess_state) : profiler_(sess_state.GetMemoryProfiler()) {}
-  ~MemKernelScope() {
-    profiler_.CreateEvents(
-        "dynamic activations_" + std::to_string(profiler_.GetMemoryInfo().GetIteration()),
-        profiler_.GetAndIncreasePid(),
-        MemoryInfo::MapType::DynamicActivation, "", 0);
-  }
-
- private:
-  MemoryProfiler& profiler_;
-};
+//class MemKernelScope {
+// public:
+//  MemKernelScope(const SessionState& sess_state) : profiler_(*sess_state.GetMemoryProfiler()) {}
+//  ~MemKernelScope() {
+//    profiler_.CreateEvents(
+//        "dynamic activations_" + std::to_string(profiler_.GetMemoryInfo().GetIteration()),
+//        profiler_.GetAndIncreasePid(),
+//        MemoryInfo::MapType::DynamicActivation, "", 0);
+//  }
+//
+// private:
+//  MemoryProfiler& profiler_;
+//};
 #else
 class MemSessScope {
  public:
   MemSessScope(const SessionState&,
                const ExecutionFrame&) {}
 };
-class MemKernelScope {
- public:
-  MemKernelScope(const SessionState&) {}
-};
+//class MemKernelScope {
+// public:
+//  MemKernelScope(const SessionState&) {}
+//};
 #endif
 
 class ProfilerSessScope {
@@ -462,7 +464,7 @@ class InstrumentKernelScope {
     // Log an event
     TraceLoggingWrite(telemetry_provider_handle,  // handle to my provider
                       "OpEnd",                    // Event Name that should uniquely identify your event.
-                      TraceLoggingValue(kernel_->KernelDef().OpName().c_str(), "op_name"),
+                      TraceLoggingValue(kernel_.KernelDef().OpName().c_str(), "op_name"),
                       TraceLoggingValue(elapsed.QuadPart, "time"));
   }
 
@@ -488,7 +490,7 @@ class KernelScopeImpl {
                                               concur_scope_(sess_scope.impl_->concurrency_scope_, kernel.Node()),
                                               nvtx_scope_(sess_scope.impl_->nvtx_scope_, kernel.Node()),
                                               dump_scope_(sess_scope.impl_->sess_state_, context, kernel.Node(), sess_scope.impl_->iteration_),
-                                              mem_scope_(sess_scope.impl_->sess_state_),
+                                              //mem_scope_(sess_scope.impl_->sess_state_),
                                               trace_scope_(context, kernel),
                                               instrument_scope_(kernel) {
     is_profiler_enabled_ = sess_scope.impl_->profiler_scope_.Enabled();
@@ -556,7 +558,7 @@ class KernelScopeImpl {
   ConcurrencyKernelScope concur_scope_;
   NVTXKernelScope nvtx_scope_;
   DumpKernelScope dump_scope_;
-  MemKernelScope mem_scope_;
+  //MemKernelScope mem_scope_;
   TraceKernelScope trace_scope_;
   InstrumentKernelScope instrument_scope_;
   //add new kernel scope here

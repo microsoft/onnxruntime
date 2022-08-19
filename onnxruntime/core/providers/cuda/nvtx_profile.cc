@@ -4,8 +4,8 @@
 #ifdef ENABLE_NVTX_PROFILE
 #include "nvtx_profile.h"
 #include "core/common/common.h"
-#include <nvToolsExt.h>
-#include <nvToolsExtCuda.h>
+#include <nvtx3/nvToolsExt.h>
+#include <nvtx3/nvToolsExtCuda.h>
 
 namespace onnxruntime {
 namespace profile {

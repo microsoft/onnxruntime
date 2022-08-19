@@ -476,9 +476,9 @@ if (onnxruntime_USE_CUDA)
     target_link_libraries(onnxruntime_providers_cuda PRIVATE cupti)
   endif()
 
-  if (onnxruntime_ENABLE_NVTX_PROFILE)
-    target_link_libraries(onnxruntime_providers_cuda PRIVATE nvToolsExt)
-  endif()
+  #if (onnxruntime_ENABLE_NVTX_PROFILE)
+    #target_link_libraries(onnxruntime_providers_cuda PRIVATE nvToolsExt)
+  #endif()
 
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${PROJECT_SOURCE_DIR}/external/cub)

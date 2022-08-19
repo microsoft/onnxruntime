@@ -165,7 +165,7 @@ class ExecutionFrame final : public IExecutionFrame {
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Return the size of virtual memory allocated in runtime.
   // The memory is usually used for activations in forward and backward passes.
-  const std::unordered_map<std::string, size_t>& GetDynamicMemorySizeInfo() {
+  const std::unordered_map<std::string, size_t>& GetDynamicMemorySizeInfo() const {
     // This function is not thread-safe. Please make sure dynamic_activation_memory_sizes_in_byte_
     // is not being changed when calling this function.
     // If one day, race condition happens, please uncomment the following line:
@@ -175,7 +175,7 @@ class ExecutionFrame final : public IExecutionFrame {
 
   // Return the size of virtual memory allocated before computation.
   // The memory is usually used for activations in forward and backward passes.
-  const std::unordered_map<std::string, size_t>& GetStaticMemorySizeInfo() {
+  const std::unordered_map<std::string, size_t>& GetStaticMemorySizeInfo() const {
     // This function is not thread-safe. Please make sure static_activation_memory_sizes_in_byte_
     // is not being changed when calling this function.
     // If one day, race condition happens, please uncomment the following line:
