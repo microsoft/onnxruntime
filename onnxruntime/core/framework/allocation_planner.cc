@@ -2096,7 +2096,7 @@ class PlannerImpl {
           // if node doesn't have any consumer, use the current node index
           auto consumer_index = distance < order.size() ? order[distance] : node_index;
           // set the notification step as the triggering part of next node.
-          execution_plan[i]->step_node_index.push_back(node_index);
+          execution_plan[i]->step_node_index.push_back(consumer_index);
 #endif
           if (no_down_stream_notifications.find(notification_index) == no_down_stream_notifications.end()) {
             // notify downstreams
