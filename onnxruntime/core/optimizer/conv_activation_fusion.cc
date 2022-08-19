@@ -43,6 +43,21 @@ bool HasElementDataType(const NodeArg& node_arg, int32_t data_type) {
   return data_type == actual_data_type;
 }
 
+bool ConvFusionDataTypeCheck(const Node& conv_node) {
+  // TODO(hasesh): The CPU and CUDA EP only support float type for the Conv+Activation
+  // and the Conv+Add+Relu fusions.
+  // Assess the support level for the other compatible EPs and if they also
+  // only support float, remove the EP check altogether.
+  const std::string_view node_ep = conv_node.GetExecutionProviderType();
+  if (node_ep == kCudaExecutionProvider || node_ep == kCpuExecutionProvider) {
+    if (!HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 class ConvActivation : public NodeSelector {
  public:
   ConvActivation() = default;
@@ -74,12 +89,12 @@ class ConvActivation : public NodeSelector {
       return false;
     };
 
+    if (!ConvFusionDataTypeCheck(node)) {
+      return std::nullopt;
+    }
+
     // check EP type and activation
     if (node_ep == kCudaExecutionProvider) {
-      if (!HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
-        return std::nullopt;
-      }
-
       if (!graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Relu", {6, 13, 14})) {
         return std::nullopt;
       }
@@ -109,6 +124,10 @@ class ConvAddRelu : public NodeSelector {
     const std::string_view node_ep = node.GetExecutionProviderType();
     // only for CUDA EP
     if (node_ep != kCudaExecutionProvider) {
+      return std::nullopt;
+    }
+
+    if (!ConvFusionDataTypeCheck(node)) {
       return std::nullopt;
     }
 

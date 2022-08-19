@@ -153,7 +153,7 @@ stages:
           modifyEnvironment: true
 
       - script: |
-          python -m pip install -q setuptools wheel numpy==1.21.0
+          python -m pip install -q setuptools wheel numpy==1.21.6
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Install python modules'
 
@@ -269,7 +269,7 @@ stages:
 
       - task: TSAUpload@2
         displayName: 'TSA upload'
-        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         inputs:
           GdnPublishTsaOnboard: false
           GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
@@ -415,7 +415,7 @@ stages:
           workingFolder: '$(Build.BinariesDirectory)'
 
       - script: |
-          python -m pip install -q setuptools wheel numpy==1.21.0
+          python -m pip install -q setuptools wheel numpy==1.21.6
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Install python modules'
 
@@ -530,7 +530,7 @@ stages:
 
       - task: TSAUpload@2
         displayName: 'TSA upload'
-        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         inputs:
           GdnPublishTsaOnboard: false
           GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'

@@ -3,6 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import warnings
+
 from ._modifier_registry import OptimizerModifierTypeRegistry
 
 
@@ -90,6 +92,7 @@ def FP16_Optimizer(optimizer, **kwargs):
 
     optimizer_full_qualified_name = get_full_qualified_type_name(optimizer)
     if optimizer_full_qualified_name not in OptimizerModifierTypeRegistry:
+        warnings.warn("Skip modifying optimizer because of optimizer name not found in registry.", UserWarning)
         return optimizer
 
     modifier = OptimizerModifierTypeRegistry[optimizer_full_qualified_name](optimizer, **kwargs)

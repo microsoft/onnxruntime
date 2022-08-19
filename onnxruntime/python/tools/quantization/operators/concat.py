@@ -1,6 +1,6 @@
 import onnx
 
-from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
+from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
@@ -32,7 +32,7 @@ class QLinearConcat(QuantOperatorBase):
         quantized_input_value = self.quantizer.quantized_value_map[node.input[0]]
         quantized_output_value = QuantizedValue(
             node.output[0],
-            node.output[0] + "_quantized",
+            node.output[0] + TENSOR_NAME_QUANT_SUFFIX,
             output_scale_name,
             output_zp_name,
             quantized_input_value.value_type,
@@ -54,12 +54,3 @@ class QLinearConcat(QuantOperatorBase):
 
         self.quantizer.new_nodes += nodes
         self.quantizer.new_nodes += [qlconcat_node]
-
-
-class QDQConcat(QDQOperatorBase):
-    def __init__(self, onnx_quantizer, onnx_node):
-        super().__init__(onnx_quantizer, onnx_node)
-
-    def quantize(self):
-        super().quantize()
-        self.quantizer.quantize_tensor(self.node.output[0])

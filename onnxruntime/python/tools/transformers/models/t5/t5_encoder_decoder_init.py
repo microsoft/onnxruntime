@@ -224,8 +224,6 @@ class T5EncoderDecoderInitHelper:
                 onnx_model_path,
                 save_as_external_data=use_external_data_format,
                 all_tensors_to_one_file=True,
-                size_threshold=4096,
-                convert_attribute=False,
             )
 
     @staticmethod

@@ -42,6 +42,7 @@ struct RunConfig {
   size_t duration_in_seconds{600};
   size_t concurrent_session_runs{1};
   bool f_dump_statistics{false};
+  int random_seed_for_input_data{-1};
   bool f_verbose{false};
   bool enable_memory_pattern{true};
   bool enable_cpu_mem_arena{true};
