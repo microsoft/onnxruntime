@@ -465,7 +465,7 @@ stages:
           workingFolder: '$(Build.BinariesDirectory)'
 
       - script: |
-          python -m pip install -q setuptools wheel numpy==1.21.0
+          python -m pip install -q setuptools wheel numpy==1.21.6
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Install python modules'
 
@@ -670,7 +670,7 @@ stages:
           workingFolder: '$(Build.BinariesDirectory)'
 
       - script: |
-          python -m pip install -q setuptools wheel numpy==1.21.0
+          python -m pip install -q setuptools wheel numpy==1.21.6
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Install python modules'
 
@@ -992,7 +992,7 @@ stages:
               --volume $(Build.BinariesDirectory):/build \
               -w /tmp/a \
               quay.io/pypa/$(Image) \
-                /usr/bin/bash -c  "$(PYTHON_EXE) -m pip install numpy==1.21.0 && $(PYTHON_EXE) /onnxruntime_src/tools/ci_build/build.py \
+                /usr/bin/bash -c  "$(PYTHON_EXE) -m pip install numpy==1.21.6 && $(PYTHON_EXE) /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build \
                   --config Release \
                   --skip_submodule_sync \
