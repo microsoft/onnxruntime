@@ -277,6 +277,44 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
   return op_schema;
 }
 
+std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
+    const std::string& name,
+    const std::string& domain,
+    int since_version,
+    int num_inputs,
+    int num_outputs,
+    std::initializer_list<const char*> aggregated_list_of_types) {
+  using ONNX_NAMESPACE::OpSchema;
+  std::vector<const char*> i_o_type_constraint{aggregated_list_of_types};
+  auto op_schema = std::make_unique<OpSchema>(name, __FILE__, __LINE__);
+
+  op_schema->SetDomain(domain);
+  op_schema->SetDoc("");
+  op_schema->SinceVersion(since_version);
+
+  // for simplicity we use one list that combines all the valid types for the operator inputs and outputs.
+  // we manually check if the node is supported in the EP, so if we ever create a node in our custom domain
+  // we know it's supported. due to that the type constraints here don't really matter - they just need to be cover
+  // all valid values. extra types for a specific input or output don't hurt.
+  op_schema->TypeConstraint("T", aggregated_list_of_types, "match the first input/output's type");
+  // we have to enumerate all types for the other inputs/outputs
+  op_schema->TypeConstraint("T_ANY", ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat(),
+                            " don't care the other inputs/outputs");
+
+  for (int i = 0; i < num_inputs; ++i) {
+    op_schema->Input(i, "input_" + std::to_string(i), "",
+                     i == 0 ? "T" : "T_ANY", OpSchema::FormalParameterOption::Single, i == 0);
+  }
+
+  for (int i = 0; i < num_outputs; ++i) {
+    op_schema->Output(i, "output_" + std::to_string(i), "",
+                      i == 0 ? "T" : "T_ANY", OpSchema::FormalParameterOption::Single, i == 0);
+  }
+
+  op_schema->Finalize();
+  return op_schema;
+}
+
 class Inliner {
  private:
   std::string prefix;

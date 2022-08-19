@@ -39,6 +39,23 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
                                                        const SchemaRegistryManager& schema_registry,
                                                        const logging::Logger& logger,
                                                        bool allow_released_opsets_only);
+/** Create a OpSchema given a EP specific op informations.
+ * This is used when EP has its own operation or special fusion optimization when schema is missing.
+ * Dynamic Generate schema for that op.
+ * @param name  op_type
+ * @param domain  it should be unique and don't clash with current domains
+ * @param since_version
+ * @param num_inputs  how many inputs
+ * @param num_outputs  how many outputs
+ * @param aggregated_list_of_types  what type limited for the first input/output
+ */
+std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
+    const std::string& name,
+    const std::string& domain,
+    int since_version,
+    int num_inputs,
+    int num_outputs,
+    std::initializer_list<const char*> aggregated_list_of_types);
 
 /** Get the unique id for function. This is used as a key to find the
 * relevant model local function from it's container.

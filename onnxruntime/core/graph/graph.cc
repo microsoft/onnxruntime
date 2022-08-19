@@ -3776,7 +3776,7 @@ bool Graph::ReleaseNode(NodeIndex index) {
 }
 
 Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std::string& fused_node_name,
-                                     const std::function<const ONNX_NAMESPACE::OpSchema*(const Node&)>& set_schema_func) {
+                                     const std::function<const ONNX_NAMESPACE::OpSchema*(const Node&)>& schema_create_func) {
   const auto* func_meta_def = sub_graph.GetMetaDef();
   ORT_ENFORCE(nullptr != func_meta_def);
   std::vector<NodeArg*> input_args;
@@ -3811,8 +3811,8 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   // in an extended minimal build we do the lookup via a hash so don't need a schema.
   fused_node.SetSinceVersion(func_meta_def->since_version);
   if (sub_graph.use_existing_schema) {
-    if (set_schema_func) {
-      fused_node.op_ = set_schema_func(fused_node);
+    if (schema_create_func) {
+      fused_node.op_ = schema_create_func(fused_node);
     }
     ORT_ENFORCE(SetOpSchemaFromRegistryForNode(fused_node),
                 "Schema was not found for fused node. Domain:", fused_node.Domain(), " OpType:", fused_node.OpType());
