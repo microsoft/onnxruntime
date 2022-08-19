@@ -47,7 +47,7 @@ bool LaunchFastGeluKernel(hipStream_t stream, int input_length, int bias_length,
     op.EnableTuning();
   }
   FastGeluParams<T> op_params(stream, input, bias, output, input_length, bias_length);
-  op.Run(&op_params);
+  op(&op_params);
   return HIP_CALL(hipPeekAtLastError());
 }
 
