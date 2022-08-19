@@ -29,7 +29,7 @@ double GetEnvironmentVariableDoubleOrDefault(const char* name, const double defa
 }
 
 std::string RunType() {
-  const auto run_type = std::getenv("ORT_LT_RUN_TYPE");
+  const auto run_type = std::getenv("LORT_RUN_TYPE");
   if (!run_type) {
     return "ort";
   }
@@ -37,42 +37,42 @@ std::string RunType() {
 }
 
 bool DumpInputsOutputs() {
-  return IsEnvironmentVariableOne("ORT_LT_DUMP_INPUTS_OUTPUTS");
+  return IsEnvironmentVariableOne("LORT_DUMP_INPUTS_OUTPUTS");
 }
 
 bool DumpGraph() {
-  return IsEnvironmentVariableOne("ORT_LT_DUMP_GRAPH");
+  return IsEnvironmentVariableOne("LORT_DUMP_GRAPH");
 }
 
 bool CheckBaseline() {
-  return IsEnvironmentVariableOne("ORT_LT_CHECK_BASELINE");
+  return IsEnvironmentVariableOne("LORT_CHECK_BASELINE");
 }
 
 bool DumpAtenOpHistory() {
-  return IsEnvironmentVariableOne("ORT_LT_DUMP_ATEN_OP_HISTORY");
+  return IsEnvironmentVariableOne("LORT_DUMP_ATEN_OP_HISTORY");
 }
 
 bool CheckTensorContent() {
-  ORT_ENFORCE(CheckBaseline(), "Must set ORT_LT_CHECK_BASELINE=1 to check tensor content.");
-  return IsEnvironmentVariableOne("ORT_LT_CHECK_TENSOR_CONTENT");
+  ORT_ENFORCE(CheckBaseline(), "Must set LORT_CHECK_BASELINE=1 to check tensor content.");
+  return IsEnvironmentVariableOne("LORT_CHECK_TENSOR_CONTENT");
 }
 
 double AbsoluteTolerance() {
   ORT_ENFORCE(CheckBaseline() && CheckTensorContent(),
-              "Do not set ORT_LT_ABSOLUTE_TOLERANCE unless \
-              ORT_LT_CHECK_TENSOR_CONTENT and ORT_LT_CHECK_BASELINE are set.");
-  return GetEnvironmentVariableDoubleOrDefault("ORT_LT_ABSOLUTE_TOLERANCE", 1e-8);
+              "Do not set LORT_ABSOLUTE_TOLERANCE unless \
+              LORT_CHECK_TENSOR_CONTENT and LORT_CHECK_BASELINE are set.");
+  return GetEnvironmentVariableDoubleOrDefault("LORT_ABSOLUTE_TOLERANCE", 1e-8);
 }
 
 double RelativeTolerance() {
   ORT_ENFORCE(CheckBaseline() && CheckTensorContent(),
-              "Do not set ORT_LT_RELATIVE_TOLERANCE unless \
-              ORT_LT_CHECK_TENSOR_CONTENT and ORT_LT_CHECK_BASELINE are set.");
-  return GetEnvironmentVariableDoubleOrDefault("ORT_LT_RELATIVE_TOLERANCE", 1e-5);
+              "Do not set LORT_RELATIVE_TOLERANCE unless \
+              LORT_CHECK_TENSOR_CONTENT and LORT_CHECK_BASELINE are set.");
+  return GetEnvironmentVariableDoubleOrDefault("LORT_RELATIVE_TOLERANCE", 1e-5);
 }
 
 bool DumpOnnxFusion() {
-  return IsEnvironmentVariableOne("ORT_LT_DUMP_ONNX_FUSION");
+  return IsEnvironmentVariableOne("LORT_DUMP_ONNX_FUSION");
 }
 
 }  // namespace lazytensor

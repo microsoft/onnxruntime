@@ -224,7 +224,7 @@ struct OrtFuser {
   // to prepare for fusion and replace uses of n with the new group
   torch::jit::Node* createSingletonFusionGroup(torch::jit::Node* n) {
     auto group = block_->owningGraph()->createWithSubgraph(kind_);
-    // propogate position information for the new node so we can always
+    // propagate position information for the new node so we can always
     // have a valid mapping
     group->insertBefore(n);
     torch::jit::Node* mergedNode = mergeNodeIntoGroup(group, n);

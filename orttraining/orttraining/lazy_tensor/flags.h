@@ -8,9 +8,9 @@ namespace lazytensor {
 // the behavior of ORT as LazyTensor's backend.
 // Most variables are for debug purpose.
 // Example:
-//   ORT_LT_CHECK_TENSOR_CONTENT=1 ORT_LT_DUMP_GRAPH=1
-//   ORT_LT_DUMP_INPUTS_OUTPUTS=1 ORT_LT_CHECK_BASELINE=1
-//   ORT_LT_RELATIVE_TOLERANCE=1e-3 python main.py
+//   LORT_CHECK_TENSOR_CONTENT=1 LORT_DUMP_GRAPH=1
+//   LORT_DUMP_INPUTS_OUTPUTS=1 LORT_CHECK_BASELINE=1
+//   LORT_RELATIVE_TOLERANCE=1e-3 python main.py
 
 // When returing true, we dump the inputs and outputs
 // when ORT (and Pytorch when ORTLTCHECKBASELINE is set to 1)
@@ -23,7 +23,7 @@ bool DumpGraph();
 // and compare its outputs with ORT's outputs.
 // Only types and shapes are compared. The user can control
 // the checking mechanism. For example, set
-// ORT_LT_CHECK_TENSOR_CONTENT=1 to compare tensor elements.
+// LORT_CHECK_TENSOR_CONTENT=1 to compare tensor elements.
 //
 // Related functions' dependency graph:
 //  CheckBaseline -> CheckTensorContent -> AbsoluteTolerance

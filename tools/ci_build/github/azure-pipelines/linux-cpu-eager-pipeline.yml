@@ -132,9 +132,9 @@ jobs:
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuildlort \
             bash -c "
-              export ORT_LT_CHECK_BASELINE=1 && \
-              export ORT_LT_DUMP_GRAPH=1 && \
-              export ORT_LT_DUMP_ATEN_OP_HISTORY=1 && \
+              export LORT_CHECK_BASELINE=1 && \
+              export LORT_DUMP_GRAPH=1 && \
+              export LORT_DUMP_ATEN_OP_HISTORY=1 && \
               export PYTHONPATH=/build/Release && \
               /opt/python/cp39-cp39/bin/python3.9 -m pip install /build/Release/dist/*.whl && \
               /opt/python/cp39-cp39/bin/python3.9 /onnxruntime_src/orttraining/orttraining/test/python/orttraining_test_lort.py"

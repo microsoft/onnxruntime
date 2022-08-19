@@ -71,18 +71,25 @@ bool Accelerator::Supported(const torch::jit::Node* node) {
     case aten::abs:
     case aten::max:
     case aten::min: {
+      if (DumpAtenOpHistory()) {
+        std::cout << "Supported op: "
+                  << ToString(*node) << std::endl;
+      }
       return true;
     }
     default: {
       if (DumpAtenOpHistory()) {
         std::cout << "Unsupported op: "
                   << ToString(*node) << std::endl;
+        // To check sub-graph in specific symbol such as prim::TensorExprGroup,
+        // uncomment and extend the following code.
+        //
+        // if (node->kind() == prim::TensorExprGroup || node->kind() == prim::FallbackGraph) {
+        //   auto subgraph = node->g(torch::jit::attr::Subgraph);
+        //   std::cout << "Node's subgraph: " << *subgraph;
+        // }
       }
 
-      if (node->kind() == prim::TensorExprGroup || node->kind() == prim::FallbackGraph) {
-        auto subgraph = node->g(torch::jit::attr::Subgraph);
-        std::cout << "Node's subgraph: " << *subgraph;
-      }
       return false;
     }
   }
@@ -171,8 +178,8 @@ void Accelerator::DebugRun(torch::jit::Stack& stack) {
   ORT_ENFORCE(CompareStack(stack, copy),
               "ORT and Pytorch must generate the same results "
               "but tensor types, shapes or content are different. "
-              "Use, e.g., ORT_LT_RELATIVE_TOLERANCE=1e-3 and "
-              "ORT_LT_ABSOLUTE_TOLERANCE=1e-4 "
+              "Use, e.g., LORT_RELATIVE_TOLERANCE=1e-3 and "
+              "LORT_ABSOLUTE_TOLERANCE=1e-4 "
               "to increase the content tolerance, if "
               "the difference is due to numerical errors.");
 }
@@ -309,7 +316,7 @@ static void InitializeSession(
   // When CUDA is enabled, some CUDA-only graph graph fusions are enabled.
   // If we don't add CUDA EP, ONNX Runtime may throw even when running MNIST.
   // Information needed to construct CUDA execution providers.
-  // Note that CUDA is enabled by setting LTC_TS_CUDAA=1 when running LazyTensor.
+  // Note that CUDA is enabled by setting LTC_TS_CUDA=1 when running LazyTensor.
   if (device.Type() == OrtDevice::GPU) {
     ORT_THROW_IF_ERROR(sess.RegisterExecutionProvider(
         CUDAExecutionProviderPool::GetInstance().GetExecutionProvider(device.Id())));
@@ -382,8 +389,6 @@ CompiledObject Accelerator::Compile(
   // Load ONNX model into session, register
   // EPs and finally initialize session.
   InitializeSession(shared_device, serialized_model, sess);
-  // Clean model file.
-  // ORT_ENFORCE(std::remove(model_path.c_str()) == 0, "Failed to remove temporary file: ", model_path);
 
   onnxruntime::RunOptions run_options;
   std::vector<std::string> feed_names;
