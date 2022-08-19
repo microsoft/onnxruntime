@@ -60,8 +60,10 @@ if (onnxruntime_ENABLE_LAZY_TENSOR)
   file(GLOB onnxruntime_lazy_tensor_extension_headers CONFIGURE_DEPENDS
     "${ORTTRAINING_ROOT}/orttraining/lazy_tensor/*.h")
 
-  set_source_files_properties(${onnxruntime_lazy_tensor_extension_srcs} PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-  set_source_files_properties(${onnxruntime_lazy_tensor_extension_headers} PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+  if(NOT MSVC)
+    set_source_files_properties(${onnxruntime_lazy_tensor_extension_srcs} PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+    set_source_files_properties(${onnxruntime_lazy_tensor_extension_headers} PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+  endif()
 
   list(APPEND onnxruntime_pybind_srcs
               ${onnxruntime_lazy_tensor_extension_srcs})
