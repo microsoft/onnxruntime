@@ -72,7 +72,7 @@ static Status AddBinaryOperator(int32_t op_type,
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input1));  // input 1
   input_indices.push_back(operand_indices.at(input2));  // input 2
 
@@ -104,7 +104,7 @@ static Status AddNnapiBatchNormalization(ModelBuilder& model_builder,
   const auto& operand_types(model_builder.GetOperandTypes());
 
   // Add Nnapi Mul
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input1));
   input_indices.push_back(operand_indices.at(input2));
 
@@ -202,7 +202,7 @@ static Status AddNnapiSqueeze(ModelBuilder& model_builder,
   const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));      // input
   input_indices.push_back(operand_indices.at(axes_name));  // axes
 
@@ -816,7 +816,7 @@ Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     LOGS_DEFAULT(VERBOSE) << "Relu Node [" << node_unit.Name() << "] fused";
     model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type);
   } else {
-    std::vector<uint32_t> input_indices;
+    InlinedVector<uint32_t> input_indices;
     input_indices.push_back(operand_indices.at(input));
     ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_RELU, input_indices,
                                                    {output}, {output_operand_type}));
@@ -1318,7 +1318,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         initializers, node_unit.Outputs()[0], node_unit.ModelPath(), y_scale, y_zero_point));
   }
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
 
   if (use_auto_pad) {
@@ -1545,7 +1545,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
                     auto_pad_type, use_nchw,
                     onnx_pads, nnapi_padding_code, use_auto_pad));
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   input_indices.push_back(operand_indices.at(weight));
   input_indices.push_back(operand_indices.at(bias));
@@ -1637,7 +1637,7 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid cast to type: ", to);
   }
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   Shape output_shape;
   ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
@@ -1671,7 +1671,7 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   int32_t blocksize = SafeInt<int32_t>(node_unit.GetNode().GetAttributes().at("blocksize").i());
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ADD_SCALAR_OPERAND(model_builder, input_indices, blocksize);
 
@@ -1747,7 +1747,7 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
   float beta = 1.f;
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ADD_SCALAR_OPERAND(model_builder, input_indices, beta);
 
@@ -1784,7 +1784,7 @@ Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, con
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));  // input
 
   Shape output_shape;
@@ -1985,7 +1985,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     bias_idx = operand_indices.at(bias);
   }
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input1));  // A
   input_indices.push_back(input_2_idx);                 // B
   input_indices.push_back(bias_idx);                    // C
@@ -2101,7 +2101,7 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     y_zero_point = 0;
   }
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   const OperandType output_operand_type(operand_types.at(input).type, output_shape, y_scale, y_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
@@ -2144,7 +2144,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   NodeAttrHelper helper(node_unit);
   const auto& inputs = node_unit.Inputs();
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   const auto& input0 = inputs[0].node_arg.Name();
   const auto node_input_size = inputs.size();
 
@@ -2292,7 +2292,7 @@ Status QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builde
   ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
   shaper.AddShape(output, output_shape);
   const OperandType output_operand_type(output_type, output_shape, scale, zero_point);
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_QUANTIZE, input_indices,
                                                  {output}, {output_operand_type}));
@@ -2335,7 +2335,7 @@ Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
   shaper.AddShape(output, output_shape);
   const OperandType output_operand_type(Type::TENSOR_FLOAT32, output_shape);
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_DEQUANTIZE, input_indices,
                                                  {output}, {output_operand_type}));
@@ -2378,7 +2378,7 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   const auto radius = (size - 1) / 2;
   alpha /= size;  // NNAPI's alpha is different than ONNX's alpha
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ADD_SCALAR_OPERAND(model_builder, input_indices, radius);
   ADD_SCALAR_OPERAND(model_builder, input_indices, bias);
@@ -2456,7 +2456,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ClipOpBuilder, unsupported input [", min, ", ", max, "].",
                            "We should not reach here, ClipOpBuilder::IsOpSupportedImpl should have caught this.");
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
                                                  {output}, {output_operand_type}));
@@ -2542,7 +2542,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   int32_t output_h = output_shape[h_idx];
   int32_t output_w = output_shape[w_idx];
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ADD_SCALAR_OPERAND(model_builder, input_indices, output_w);
   ADD_SCALAR_OPERAND(model_builder, input_indices, output_h);
@@ -2636,7 +2636,7 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   int32_t rank = static_cast<int32_t>(input1_shape.size());
   int32_t axis = static_cast<int32_t>(HandleNegativeAxis(helper.Get("axis", 0), rank));
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input1));
   ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
 
@@ -2731,7 +2731,7 @@ class MinMaxOpBuilder : public BaseOpBuilder {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "MinMaxOpBuilder, unknown op: ", op_type);
   }
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input1));  // input 1
   input_indices.push_back(operand_indices.at(input2));  // input 2
 
@@ -2774,7 +2774,7 @@ Status EluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   const OperandType output_operand_type(operand_types.at(input).type, output_shape);
   NodeAttrHelper helper(node_unit);
   const auto alpha = helper.Get("alpha", 1.0f);
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ADD_SCALAR_OPERAND(model_builder, input_indices, alpha);
   return model_builder.AddOperation(ANEURALNETWORKS_ELU, input_indices,
@@ -2883,7 +2883,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   shaper.AddShape(output, nnapi_output_shape);
   const OperandType output_operand_type(operand_types.at(input).type, nnapi_output_shape);
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
 
   // begin/end/strides of ANEURALNETWORKS_STRIDED_SLICE have the same shape
@@ -2980,7 +2980,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   const auto& inputs = node_unit.Inputs();
   const auto& outputs = node_unit.Outputs();
 
-  std::vector<uint32_t> input_indices{};
+  InlinedVector<uint32_t> input_indices{};
 
   // `data` input
   const auto& data = inputs[0].node_arg.Name();

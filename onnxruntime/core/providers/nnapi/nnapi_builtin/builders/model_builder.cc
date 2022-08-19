@@ -522,10 +522,10 @@ Status ModelBuilder::AddOperations() {
   return Status::OK();
 }
 
-Status ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_indices,
+Status ModelBuilder::AddOperation(int op, const InlinedVector<uint32_t>& input_indices,
                                   const std::vector<std::string>& output_names,
                                   const std::vector<OperandType>& output_types) {
-  std::vector<uint32_t> output_indices;
+  InlinedVector<uint32_t> output_indices;
   for (size_t i = 0; i < output_types.size(); i++) {
     uint32_t index = 0;
     ORT_RETURN_IF_ERROR(AddNewOperand(output_names[i], output_types[i], index));

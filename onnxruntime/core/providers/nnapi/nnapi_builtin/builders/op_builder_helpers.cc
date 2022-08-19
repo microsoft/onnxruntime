@@ -7,6 +7,7 @@
 
 #include "gsl/gsl"
 
+#include "core/common/inlined_containers_fwd.h"
 #include "core/common/safeint.h"
 #include "core/common/span_utils.h"
 #include "core/graph/node_arg.h"
@@ -47,7 +48,7 @@ Status AddNnapiTranspose(ModelBuilder& model_builder,
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(data_input));  // input
 
   Shape perm_dimen = {SafeInt<uint32_t>(perm.size())};
@@ -111,7 +112,7 @@ Status AddNnapiReshape(ModelBuilder& model_builder,
   const auto& operand_types = model_builder.GetOperandTypes();
 
   // Add input
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(data_input));
 
   // Add new shape
@@ -159,7 +160,7 @@ Status AddNnapiSplit(ModelBuilder& model_builder,
   };
 
   ORT_RETURN_IF_ERROR(calculate_split_output_shape(input, axis, outputs));
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ORT_RETURN_IF_ERROR(AddScalarOperand(model_builder, input_indices, axis));
   const auto count = gsl::narrow<int32_t>(outputs.size());
@@ -355,7 +356,7 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
       const auto& operand_indices = model_builder.GetOperandIndices();
       const auto& operand_types = model_builder.GetOperandTypes();
       auto& shaper = model_builder.GetShaper();
-      std::vector<uint32_t> input_indices;
+      InlinedVector<uint32_t> input_indices;
       input_indices.push_back(operand_indices.at(a));             // A
       input_indices.push_back(operand_indices.at(b_transposed));  // B'
       input_indices.push_back(operand_indices.at(bias));          // C
@@ -401,7 +402,7 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
       const auto& operand_indices = model_builder.GetOperandIndices();
       const auto& operand_types = model_builder.GetOperandTypes();
       auto& shaper = model_builder.GetShaper();
-      std::vector<uint32_t> input_indices;
+      InlinedVector<uint32_t> input_indices;
       input_indices.reserve(inputs.size() + 1);
       std::transform(inputs.begin(), inputs.end(), std::back_inserter(input_indices),
                      [&operand_indices](const std::string& input) { return operand_indices.at(input); });

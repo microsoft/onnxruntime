@@ -5,6 +5,7 @@
 #include <onnx/onnx_pb.h>
 #include <unordered_set>
 
+#include "core/common/inlined_containers_fwd.h"
 #include "core/graph/basic_types.h"
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
@@ -46,7 +47,7 @@ class ModelBuilder {
   int32_t GetNNAPIFeatureLevel() const;
 
   // Add an NNAPI operation (operator)
-  common::Status AddOperation(int op, const std::vector<uint32_t>& input_indices,
+  common::Status AddOperation(int op, const InlinedVector<uint32_t>& input_indices,
                               const std::vector<std::string>& output_names,
                               const std::vector<android::nn::wrapper::OperandType>& output_types);
 
@@ -141,9 +142,8 @@ class ModelBuilder {
 
   std::unordered_map<std::string, std::shared_ptr<IOpSupportChecker>> op_support_checkers_;
 
-
-  std::vector<uint32_t> input_index_vec_;
-  std::vector<uint32_t> output_index_vec_;
+  InlinedVector<uint32_t> input_index_vec_;
+  InlinedVector<uint32_t> output_index_vec_;
 
   // Contains all quantized operators' input and the NodeUnit(s) using the input
   // In the form of {input_name, [NodeUnit(s) using the input]}

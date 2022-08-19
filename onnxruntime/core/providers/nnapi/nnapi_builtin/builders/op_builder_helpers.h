@@ -15,7 +15,7 @@ namespace onnxruntime::nnapi::op_builder_helpers {
 
 // adds a scalar operand to the NNAPI model and appends its index to `input_indices`
 template <typename T>
-Status AddScalarOperand(ModelBuilder& model_builder, std::vector<uint32_t>& input_indices, T scalar_value) {
+Status AddScalarOperand(ModelBuilder& model_builder, InlinedVector<uint32_t>& input_indices, T scalar_value) {
   uint32_t index = 0;
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromScalar(std::move(scalar_value), index));
   input_indices.push_back(index);

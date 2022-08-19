@@ -160,10 +160,10 @@ Status Execution::SetInputBuffers(const std::vector<InputBuffer>& inputs) {
   for (size_t i = 0; i < inputs.size(); i++) {
     const auto& input(inputs[i]);
     ORT_RETURN_IF_ERROR(SetInputBuffer(static_cast<int32_t>(i), input));
-    ORT_RETURN_IF_ERROR(shaper_.UpdateShape(input.name, input.type.dimensions));
+    /* ORT_RETURN_IF_ERROR(shaper_.UpdateShape(input.name, input.type.dimensions)); */
   }
 
-  ORT_RETURN_IF_ERROR(shaper_.UpdateDynamicDimensions());
+  /* ORT_RETURN_IF_ERROR(shaper_.UpdateDynamicDimensions()); */
   return Status::OK();
 }
 
