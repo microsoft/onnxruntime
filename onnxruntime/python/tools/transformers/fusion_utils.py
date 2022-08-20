@@ -6,7 +6,7 @@ from logging import getLogger
 from typing import Tuple
 
 from numpy import array_equal, ndarray
-from onnx import TensorProto, helper, numpy_helper
+from onnx import TensorProto, NodeProto, helper, numpy_helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -82,6 +82,35 @@ class FusionUtils:
             )
         else:
             return value == expected_value
+
+    @staticmethod
+    def check_qdq_node_for_fusion(node : NodeProto, model : OnnxModel):
+        """Verify if a provided QuantizeLinear (Q) / DequantizeLinear (DQ) node is a good candidate for fusion.
+           It is a good candidate for fusion if:
+           (1) The Q/DQ node is for per-tensor quantization (per-axis quantization is not supported)
+           (2) The Q/DQ node should have constant scale
+           (3) The Q/DQ node should have a zero point of 0
+        Args:
+            node (NodeProto): a Q/DQ node to check
+        Returns:
+            bool: whether the check is passed or not
+        """
+        if not(node.op_type == "QuantizeLinear" or node.op_type == "DequantizeLinear"):
+            logger.debug(f"Provided node is not a Q/DQ node. Op Type: {node.op_type}")
+
+        if model.get_constant_value(node.input[1]) is None:
+            return False
+
+        # If the Q/DQ node has no zero point input, it is assumed to be 0 (per ONNX spec)
+        if len(node.input) != 3:
+            return True
+
+        # Zero point should be constant and should have a value of 0
+        zero_point = model.get_constant_value(node.input[2])
+        if zero_point is None or zero_point != 0:
+            return False
+        
+        return True
 
     def check_node_input_value(self, node, input_index: int, expected_value):
         """Verify that a node has expected input value
