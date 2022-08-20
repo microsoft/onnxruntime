@@ -569,7 +569,7 @@ onnxruntime::Status BindToDeviceStream(Stream* parent_stream,
   for (size_t i = 0; i < execution_plan.execution_plan.size(); ++i) {
     auto& logic_stream = execution_plan.execution_plan[i];
     if (logic_stream->steps_.size() > 0) {
-      auto create_stream_fn = stream_handle_registry.GetCreateStreamFn(logic_stream->ep_->Type());
+      auto create_stream_fn = stream_handle_registry.GetCreateStreamFn(logic_stream->device_.Type());
       // TODO: in theory, we should make current subgraph's stream depends on parent stream.
       // but in current code structure, it causing issues with the resource sharing and stream
       // lifetime. it also may cause additional cost of stream sync for single stream case.
@@ -578,14 +578,14 @@ onnxruntime::Status BindToDeviceStream(Stream* parent_stream,
         // if current logic stream is not on the same EP instance as parent stream
         // and the EP instance does have async streams (not EP like CPU)
         // throw error as we don't have the code to setup the dependency at this moment.
-        if (logic_stream->ep_ != parent_stream->provider && create_stream_fn) {
-          ORT_THROW("Subgraph has nodes running on EP: ", logic_stream->ep_->Type(),
-                    " while parent graph node running on EP: ", parent_stream->provider->Type(),
+        if (logic_stream->device_ != parent_stream->device && create_stream_fn) {
+          ORT_THROW("Subgraph has nodes running on device: ", logic_stream->device_.Type(),
+                    " while parent graph node running on device: ", parent_stream->device.Type(),
                     ", this is not supported yet.");
         }
         device_stream_map.SetDeviceStream(i, parent_stream);
       } else if (create_stream_fn) {
-        auto device_stream = create_stream_fn(logic_stream->ep_);
+        auto device_stream = create_stream_fn(logic_stream->device_);
         device_stream_map.SetDeviceStream(i, std::move(device_stream));
       } else {
         device_stream_map.SetDeviceStream(i, nullptr);

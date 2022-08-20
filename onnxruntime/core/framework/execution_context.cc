@@ -9,7 +9,8 @@ namespace onnxruntime {
 
 class DeviceStreamCollectionImpl {
  public:
-  DeviceStreamCollectionImpl(size_t num_streams) : num_streams_(num_streams) {
+  DeviceStreamCollectionImpl(size_t num_streams, const SessionState& sess_state) : 
+      num_streams_(num_streams), sess_state_(sess_state) {
     device_streams_.resize(num_streams, nullptr);
   }
 
@@ -20,15 +21,19 @@ class DeviceStreamCollectionImpl {
       }
     }
     // only clean the streams that is owned by current context
+    auto& providers = sess_state_.GetExecutionProviders();
     for (auto& stream : device_streams_containers) {
       if (stream) {
-        auto& allocators = stream->provider->GetAllocators();
-        for (auto& alloc : allocators) {
-          if (alloc->Info().alloc_type == OrtArenaAllocator) {
-            auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
-            auto* stream_aware_alloc = arena_alloc->AsStreamAwareAreana();
-            if (stream_aware_alloc) {
-              stream_aware_alloc->ReleaseStreamBuffers(stream.get());
+        for (auto& ep : providers) {
+          auto& allocators = ep->GetAllocators();
+          for (auto& alloc : allocators) {
+            if (alloc->Info().device == stream->device && 
+                alloc->Info().alloc_type == OrtArenaAllocator) {
+              auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
+              auto* stream_aware_alloc = arena_alloc->AsStreamAwareAreana();
+              if (stream_aware_alloc) {
+                stream_aware_alloc->ReleaseStreamBuffers(stream.get());
+              }
             }
           }
         }
@@ -57,10 +62,12 @@ class DeviceStreamCollectionImpl {
   size_t num_streams_;
   std::vector<Stream*> device_streams_;
   std::vector<std::unique_ptr<Stream>> device_streams_containers;
+  const SessionState& sess_state_;
 };
 
 
-DeviceStreamCollection::DeviceStreamCollection(size_t num_streams) : impl_(std::make_unique<DeviceStreamCollectionImpl>(num_streams)) {}
+DeviceStreamCollection::DeviceStreamCollection(size_t num_streams, const SessionState& sess_state) : 
+    impl_(std::make_unique<DeviceStreamCollectionImpl>(num_streams, sess_state)) {}
 
 DeviceStreamCollection::~DeviceStreamCollection() {}
 

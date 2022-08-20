@@ -561,7 +561,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     if (stream_aware_alloc && current_stream) {
       // the reused memory must from same EP
       auto wait_handle = this->session_state_.GetStreamHandleRegistryInstance().GetWaitHandle(
-          current_stream->provider->Type(), current_stream->provider->Type());
+          current_stream->device.Type(), current_stream->device.Type());
       return stream_aware_alloc->AllocOnStream(len, current_stream, wait_handle);
     } else {
       return alloc->Alloc(len);
