@@ -39,6 +39,8 @@ Status LoadKernelTypeStrResolverFromBuffer(KernelTypeStrResolver& kernel_type_st
 gsl::span<const OpIdentifier> GetRequiredOpIdentifiers() {
   using utils::MakeOpId;
   static const std::array op_identifiers{
+      // Note: these region_begin/end markers are used by tools/ci_build/reduce_op_kernels.py
+      // @@region_begin(extended_minimal_build_required_kernels)@@
       MakeOpId(kOnnxDomain, "Transpose", 1),
       MakeOpId(kOnnxDomain, "Transpose", 13),
       MakeOpId(kOnnxDomain, "Squeeze", 1),
@@ -57,6 +59,7 @@ gsl::span<const OpIdentifier> GetRequiredOpIdentifiers() {
 
       MakeOpId(kMSDomain, "QLinearConv", 1),
       MakeOpId(kMSDomain, "NhwcMaxPool", 1),
+      // @@region_end(extended_minimal_build_required_kernels)@@
   };
   return op_identifiers;
 }
