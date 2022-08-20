@@ -57,7 +57,7 @@ class MatMul : public OpKernel {
 
   TensorShape b_shape_;
   BufferUniquePtr packed_b_;
-
+  AllocatorPtr myAlloc;
   // For FusedMatMul contrib ops
   float alpha_attr_;
   int64_t trans_a_attr_;

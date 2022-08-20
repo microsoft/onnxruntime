@@ -84,42 +84,16 @@ Status MatMul::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
   if (input_idx == 0) {
     return Status::OK();
   }
-    
+
+  myAlloc = alloc;
+
   is_packed = true;
 
-#ifdef DEBUG
-    //Debug - printing the tensors
-    printf("B shape is - %lld x %lld \n", B_->Shape()[0], B_->Shape()[1]);
-
-    printf("B - \n");
-    for (int i = 0; i < B_->Shape()[0]; i++) {
-      printf("[");
-      for (int j = 0; j < B_->Shape()[1]; j++) {
-        printf("%lf, ", B_->Data<float>()[j + i * B_->Shape()[1]]);
-      }
-      printf("]\n");
-    }
-
-    return Status::OK();
-#endif
-    uint32_t flags = trans_b_attr_ != CblasNoTrans ? XNN_FLAG_TRANSPOSE_WEIGHTS:0;
+    uint32_t flags = XNN_FLAG_TRANSPOSE_WEIGHTS;
     float output_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
     float output_max = clip_min_max_ ? clip_min_max_->second : INFINITY;
     xnn_status status = xnn_status::xnn_status_uninitialized;
-#ifdef DEBUG
-    //Debug - printing the tensors
-    printf("C shape is - %lld \n", tensor.Shape()[0]);
 
-    printf("C - \n");
-    printf("[");
-    for (int i = 0; i < tensor.Shape()[0]; i++) {
-
-      printf("%f, ", tensor.Data<float>()[i]);
-      
-    }
-    printf("]\n");
-    ///
-#endif
     struct xnn_operator* p = nullptr;
     this->b_shape_ = tensor.Shape();
     status = xnn_create_fully_connected_nc_f32(
@@ -146,7 +120,7 @@ Status MatMul::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
 Status MatMul::Compute(OpKernelContext* ctx) const {
 
   //concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
-
+  printf("reched MATMUL XNNPACK \n");
   const Tensor* a = ctx->Input<Tensor>(0);
   const auto& b_shape = b_shape_;
 
@@ -162,40 +136,56 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
   if (y->Shape().Size() == 0)
     return Status::OK();
 
-  const auto* a_data = a->Data<float>();
+  //const auto* a_data = a->Data<float>();
   auto* y_data = y->MutableData<float>();
 
-  const size_t max_len = helper.OutputOffsets().size();
+  std::unique_ptr<Tensor> packed_w_;
+
+#if 0
+  if (a->Shape().NumDimensions() > 2) {
+    auto orig_shape = a->Shape();
+    std::vector<size_t> perm{2, 1, 0};
+    std::vector<int64_t> new_dims{orig_shape[2],
+                                  orig_shape[1],
+                                  orig_shape[0],
+                                  };
+
+    packed_w_ = Tensor::Create(a->DataType(), TensorShape(new_dims), myAlloc);
+
+    SingleAxisTranspose(perm, *a, *packed_w_, /*from*/ 0, /*to*/ 2);
+  }
+#endif
+
+  const size_t max_len = a->Shape().NumDimensions() > 2 ? a->Shape()[1] : 1;
   const size_t M = static_cast<size_t>(helper.M());
   const size_t N = static_cast<size_t>(helper.N());
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(trans_a);
   const size_t ldb = helper.Ldb(trans_b);
 
+  if (max_len > 1 && a->Shape().NumDimensions() > 2) {
+    printf("we got a true batch\n");
+    printf("a->Shape()[0] - %d\n", (int)a->Shape()[0]);
+    printf("a->Shape()[1] - %d\n", (int)a->Shape()[1]);
+    printf("a->Shape()[2] - %d\n", (int)a->Shape()[2]);
+    printf("y->Shape()[0] - %d\n", (int)y->Shape()[0]);
+    printf("y->Shape()[1] - %d\n", (int)y->Shape()[1]);
+    printf("y->Shape()[2] - %d\n", (int)y->Shape()[2]);
+  }
+
   xnn_status status = xnn_setup_fully_connected_nc_f32(
-        op0_.get(),
-        1,
-        a_data,
-        y_data, 
-        nullptr);
+      op0_.get(),
+      max_len,
+      //(a->Shape().NumDimensions() > 2) ? packed_w_->Data<float>() : a->Data<float>(),
+      a->Data<float>(),
+      y_data, 
+      nullptr);
 
   status = xnn_run_operator(op0_.get(), nullptr);
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
   }  
-#ifdef DEBUG
-  // Debug
-  printf("Y shape is - %lld x %lld \n", Y->Shape()[0], Y->Shape()[1]);
 
-  printf("Y - \n");
-  for (int i = 0; i < Y->Shape()[0]; i++) {
-    printf("[");
-    for (int j = 0; j < Y->Shape()[1]; j++) {
-      printf("%lf, ", Y->Data<float>()[j + i * Y->Shape()[1]]);
-    }
-    printf("]\n");
-  }
-#endif
   return Status::OK();
 }
 

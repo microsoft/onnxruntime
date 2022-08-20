@@ -15,7 +15,7 @@ namespace xnnpack {
 
 bool Gemm::IsOnnxNodeSupported(const onnxruntime::Node& node, const GraphViewer& graph) {
 
-  bool supported = true;
+  bool supported = false;
 
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
@@ -107,12 +107,15 @@ Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), OpKernel(info){
   const NodeArg& A = *input_defs[0];
   const NodeArg& B = *input_defs[1];
 
+  //printf("A Shape - %d\n", (int)A.Shape()->dim_size());
+  //printf("B Shape - %d\n", (int)B.Shape()->dim_size());
+
   if (trans_A_ != CblasNoTrans) {
     M = A.Shape()->dim_size() == 3 ? A.Shape()->dim(2).dim_value() : A.Shape()->dim(1).dim_value();
-    K = A.Shape()->dim_size() == 3 ? A.Shape()->dim(1).dim_value() : 1;
+    K = A.Shape()->dim_size() == 3 ? A.Shape()->dim(1).dim_value() : A.Shape()->dim(0).dim_value() > 1 ? A.Shape()->dim(0).dim_value(): 1;
   } else {
     K = A.Shape()->dim_size() == 3 ? A.Shape()->dim(2).dim_value() : A.Shape()->dim(1).dim_value();
-    M = A.Shape()->dim_size() == 3 ? A.Shape()->dim(1).dim_value() : 1;
+    M = A.Shape()->dim_size() == 3 ? A.Shape()->dim(1).dim_value() : A.Shape()->dim(0).dim_value() > 1 ? A.Shape()->dim(0).dim_value(): 1;
   }
 
   if (trans_B_ == CblasNoTrans) {
@@ -120,12 +123,17 @@ Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), OpKernel(info){
   } else {
     N = B.Shape()->dim_size() == 3 ? B.Shape()->dim(1).dim_value() : B.Shape()->dim(2).dim_value();
   } 
+
+  //printf("M - %d\n", (int)M);
+  //printf("N - %d\n", (int)N);
+  //printf("K - %d\n", (int)K);
+
 }
 
 Status Gemm::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
                      /*out*/ bool& is_packed,
                      /*out*/ PrePackedWeights* prepacked_weights) {
-
+  //printf("pre-pack GEMM XNNPACK\n");
   prepacked_weights = nullptr;
   is_packed = false;
 
@@ -151,9 +159,8 @@ Status Gemm::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
       }
       printf("]\n");
     }
-
-    return Status::OK();
 #endif
+    return Status::OK();
   }
   uint32_t flags = trans_B_ != CblasNoTrans ? 0:XNN_FLAG_TRANSPOSE_WEIGHTS;
 
@@ -222,7 +229,11 @@ Status Gemm::Compute(OpKernelContext* context) const {
   auto Y = context->Output(0, {M, N}); 
   
   //const TensorShape* c_shape = C != nullptr ? &C->Shape() : nullptr;
-#ifdef DEBUG
+
+  #if 0
+  //Debug - printing the tensors
+  printf("A shape is - %lld x %lld \n", A->Shape()[0], A->Shape()[1]);
+  printf("B shape is - %lld x %lld \n", this->B_->Shape()[0], this->B_->Shape()[1]);
   printf("Y shape is - %lld x %lld \n", Y->Shape()[0], Y->Shape()[1]);
 
   printf("Y - \n");
@@ -233,14 +244,15 @@ Status Gemm::Compute(OpKernelContext* context) const {
     }
     printf("]\n");
   }
-#endif
+  #endif
+  //printf("set up GEMM XNNPACK\n");
   xnn_status status = xnn_setup_fully_connected_nc_f32(
         op0_.get(),
         1,
         A->Data<float>(),
         Y->MutableData<float>(), 
         nullptr);
-
+  //printf("executing GEMM XNNPACK\n");
   status = xnn_run_operator(op0_.get(), nullptr);
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
