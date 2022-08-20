@@ -58,7 +58,7 @@ Status BiasSoftmax::ComputeInternal(OpKernelContext* ctx) const {
   int bias_broadcast_size = static_cast<int>(B_shape.Size() / element_count);
   if (is_inner_broadcast_) bias_broadcast_size = batch_count / bias_broadcast_size;
   utils::MLTypeCallDispatcher<BIAS_SOFTMAX_DISPATCH_TYPES> t_disp(X->GetElementType());
-  return t_disp.InvokeRet<Status, DispatchBiasSoftmaxImpl>(Stream(ctx), CudnnHandle(), Y, X, B, element_count, batch_count,
+  return t_disp.InvokeRet<Status, DispatchBiasSoftmaxImpl>(Stream(ctx), GetCudnnHandle(ctx), Y, X, B, element_count, batch_count,
                                                            is_inner_broadcast_, bias_broadcast_size,
                                                            X->DataType()->Size());
 }

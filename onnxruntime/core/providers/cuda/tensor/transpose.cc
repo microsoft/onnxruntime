@@ -277,7 +277,7 @@ Status Transpose::ComputeInternal(OpKernelContext* ctx) const {
   TensorShape output_shape{output_dims};
   Tensor* Y = ctx->Output(0, output_shape);
 
-  return DoTranspose(this->GetDeviceProp(), this->Stream(ctx), this->CublasHandle(), *p_perm, X, *Y);
+  return DoTranspose(this->GetDeviceProp(), this->Stream(ctx), this->GetCublasHandle(ctx), *p_perm, X, *Y);
 }
 
 }  // namespace cuda

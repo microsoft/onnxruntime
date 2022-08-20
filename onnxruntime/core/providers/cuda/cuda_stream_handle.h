@@ -9,6 +9,9 @@ using CudaStreamHandle = cudaStream_t;
 
 
 struct CudaStream : Stream {
+  cudnnHandle_t cudnn_handle_{};
+  cublasHandle_t cublas_handle_{};
+
   CudaStream(cudaStream_t stream, const IExecutionProvider* ep, bool own_flag);
 
   ~CudaStream();

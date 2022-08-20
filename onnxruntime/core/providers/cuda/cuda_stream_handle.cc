@@ -37,11 +37,20 @@ struct CudaNotification : public synchronize::Notification {
 
 CudaStream::CudaStream(cudaStream_t stream, const IExecutionProvider* ep, bool own_flag) : 
     Stream(stream, ep), own_stream_(own_flag) {
+  
+  cublasCreate(&cublas_handle_);
+  cublasSetStream(cublas_handle_, stream);
+
+  cudnnCreate(&cudnn_handle_);
+  cudnnSetStream(cudnn_handle_, stream);
 }
 
-CudaStream::~CudaStream(){
+CudaStream::~CudaStream() {
   if (handle && own_stream_)
     CUDA_CALL(cudaStreamDestroy(static_cast<cudaStream_t>(handle)));
+
+  CUBLAS_CONFIG_CALL(cublasDestroy(cublas_handle_));
+  CUDNN_CONFIG_CALL(cudnnDestroy(cudnn_handle_));
 }
 
 std::unique_ptr<synchronize::Notification> CudaStream::CreateNotification(size_t /*num_consumers*/){
