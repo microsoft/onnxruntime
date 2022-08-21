@@ -1852,8 +1852,14 @@ namespace OperatorHelper
             m_axes = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Axes);
         }
         std::vector<DimensionType> inputDimensions = shapeInformation.GetInputTensorShape(0);
+
         HandleNegativeAxes(/*inout*/ m_axes, gsl::narrow_cast<uint32_t>(inputDimensions.size()));
         std::sort(m_axes.begin(), m_axes.end());
+        if (m_axes.empty())
+        {
+            m_axes.resize(inputDimensions.size());
+            std::iota(m_axes.begin(), m_axes.end(), 0u);
+        }
     }
 
     std::vector<EdgeShapes> SqueezeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
