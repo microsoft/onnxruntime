@@ -7,8 +7,11 @@
 #include "core/util/math.h"
 
 namespace onnxruntime {
+namespace contrib {
 namespace test {
+using namespace onnxruntime::test;
 
+namespace {
 template <typename T>
 std::vector<T> _transpose_serialized_vector(std::vector<T> &input, size_t N, size_t C, size_t H, size_t W) {
     size_t input_size = input.size();
@@ -35,6 +38,8 @@ struct float_iota {
     float _value;
     float _inc;
 };
+
+}  // namespace
 
 TEST(Col2ImContribOpTest, simple4dNCHW) {
   OpTester test("Col2Im", 1, kMSDomain);
@@ -170,32 +175,6 @@ TEST(Col2ImContribOpTest, simple5dNCHWD) {
   test.Run();
 }
 
-TEST(Im2ColContribOpTest, simple) {
-  std::vector<float> input(24);
-  std::vector<float> expected_output(24);
-  std::iota(input.begin(), input.end(), float_iota(1., 1.));
-  expected_output = {1, 5, 9, 2, 6, 10, 3, 7, 11, 4, 8, 12, 13, 17, 21, 14, 18, 22, 15, 19, 23, 16, 20, 24};
-  float* actual_output = new float[24];
-  math::Im2col<float, StorageOrder::NCHW>()(
-    input.data(),
-    int64_t(2),
-    int64_t(3),
-    int64_t(4),
-    int64_t(1),
-    int64_t(4),
-    int64_t(1),
-    int64_t(1),
-    int64_t(0),
-    int64_t(0),
-    int64_t(0),
-    int64_t(0),
-    int64_t(1),
-    int64_t(1),
-    actual_output,
-    0.);
-
-    delete [] actual_output;
-}
-
 }  // namespace test
+}  // namespace contrib
 }  // namespace onnxruntime
