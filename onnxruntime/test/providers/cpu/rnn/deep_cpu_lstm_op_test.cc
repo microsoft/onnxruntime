@@ -1127,7 +1127,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLengthN
 
 //Doesn't work with CUDA 11.4 on Windows. Need investigation.
 #if defined(USE_CUDA) && defined(_WIN32)
-TEST(LSTMTest, DISABLED_ONNXRuntime_TestLSTMShorterSeqInMiddle)
+TEST(LSTMTest, DISABLED_ONNXRuntime_TestLSTMShorterSeqInMiddle) {
 #else
 TEST(LSTMTest, ONNXRuntime_TestLSTMShorterSeqInMiddle) {
 #endif
@@ -1172,7 +1172,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMShorterSeqInMiddle) {
 
 //Doesn't work with CUDA 11.4 on Windows. Need investigation.
 #if defined(USE_CUDA) && defined(_WIN32)
-TEST(LSTMTest, DISABLED_ONNXRuntime_TestLSTMZeroSeqInMiddle)
+TEST(LSTMTest, DISABLED_ONNXRuntime_TestLSTMZeroSeqInMiddle) {
 #else
 TEST(LSTMTest, ONNXRuntime_TestLSTMZeroSeqInMiddle) {
 #endif
