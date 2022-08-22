@@ -64,6 +64,7 @@
 #include "core/optimizer/unsqueeze_elimination.h"
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
+#include "core/optimizer/memory_alleviation.h"
 #endif
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -209,6 +210,13 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       const bool enable_gelu_approximation =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
 
+      const int32_t enable_gelu_recompute =
+          std::stoi(session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluRecompute, "0"));
+      const int32_t enable_dropout_recompute =
+          std::stoi(session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableDropoutRecompute, "0"));
+      const int32_t enable_tile_recompute =
+          std::stoi(session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableTileRecompute, "0"));
+
       const InlinedHashSet<std::string_view> cuda_rocm_eps = {onnxruntime::kCudaExecutionProvider,
                                                               onnxruntime::kRocmExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_cuda_rocm_eps = {onnxruntime::kCpuExecutionProvider,
@@ -267,6 +275,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       if (enable_gelu_approximation) {
         transformers.emplace_back(std::make_unique<GeluApproximation>(cpu_cuda_rocm_eps));
       }
+
+      transformers.emplace_back(std::make_unique<MemoryAlleviation>(enable_gelu_recompute,
+                                                                             enable_dropout_recompute,
+                                                                             enable_tile_recompute));
 
 #ifdef MLAS_TARGET_AMD64_IX86
       if (avx2_precision_mode) {

@@ -61,6 +61,14 @@ static const char* const kOrtSessionOptionsEnableQuantQDQCleanup = "session.enab
 // GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
 
+// Specifies a list of op types for memory footprint reduction.
+// The value should be a ","-delimited list of pair of <op type, alleviation strategy>. For example, "Gelu:1,Dropout:1,Tile:2".
+static const char* const kOrtSessionOptionsEnableGeluRecompute = "optimization.enable_gelu_recompute";
+
+static const char* const kOrtSessionOptionsEnableDropoutRecompute = "optimization.enable_dropout_recompute";
+
+static const char* const kOrtSessionOptionsEnableTileRecompute = "optimization.enable_tile_recompute";
+
 // Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "0".
 // Using device allocators means the memory allocation is made using malloc/new.
 static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "session.use_device_allocator_for_initializers";
