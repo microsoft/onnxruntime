@@ -28,6 +28,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/attention_softmax.h"
 #include "contrib_ops/cuda/bert/transformer_common.h"
+#include "contrib_ops/cuda/bert/add_bias_transpose.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -81,6 +82,7 @@ bool QkvToContext(
     const int head_size,
     const size_t element_size,
     const T* input,
+    const T* bias,
     T* output,
     T* workspace,
     const int* mask_index,
@@ -101,9 +103,21 @@ bool QkvToContext(
   const int max_threads_per_block = prop.maxThreadsPerBlock;
 
   // input should be BxSx3xNxH => scratch3: 3xBxNxSxH
-  if (!LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads,
-                      max_threads_per_block, false, input, scratch3)) {
-    return false;
+  if (bias == nullptr) {
+    if (!LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads,
+                        max_threads_per_block, false, input, scratch3)) {
+      return false;
+    }
+  } else {
+    const int format = 1;  // BxSxMxNxH
+    const bool enable_half4 = true;
+    LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
+                           sequence_length, num_heads, head_size,
+                           input, bias, scratch3,
+                           enable_half4);
+    if (!CUDA_CALL(cudaPeekAtLastError())) {
+      return false;
+    }
   }
 
   // now scratch3 has Q, K, V: each has size BxNxSxH
@@ -142,7 +156,7 @@ bool QkvToContext(
   float one = 1.0f;
   float zero = 0.f;
 
-  // For raw attention mask, the scalar if 1/sqrt(H) is moved to softmax computation.
+  // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
   float alpha = use_raw_attention_mask ? one : rsqrt_head_size;
 
   if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
@@ -208,6 +222,7 @@ bool LaunchAttentionKernel(
     int past_sequence_length,
     bool is_unidirectional,
     const void* input,
+    const void* bias,
     const int* mask_index,
     gsl::span<const int64_t> mask_index_dims,
     const void* past,
@@ -222,6 +237,7 @@ bool LaunchAttentionKernel(
   if (element_size == 2) {
     return QkvToContext(prop, cublas, stream, batch_size, sequence_length, num_heads, head_size, element_size,
                         reinterpret_cast<const half*>(input),
+                        reinterpret_cast<const half*>(bias),
                         reinterpret_cast<half*>(output),
                         reinterpret_cast<half*>(workspace),
                         mask_index,
@@ -235,6 +251,7 @@ bool LaunchAttentionKernel(
   } else {
     return QkvToContext(prop, cublas, stream, batch_size, sequence_length, num_heads, head_size, element_size,
                         reinterpret_cast<const float*>(input),
+                        reinterpret_cast<const float*>(bias),
                         reinterpret_cast<float*>(output),
                         reinterpret_cast<float*>(workspace),
                         mask_index,
