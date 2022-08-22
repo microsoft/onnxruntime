@@ -39,9 +39,11 @@ is a list of tensors, one from each model run
 
 """
 
+import logging
+import math
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Union
+from typing import Callable, Dict, List, Optional, Sequence, Union
 
 import numpy
 import onnx
@@ -50,7 +52,16 @@ from onnx import ModelProto, TensorProto, helper, numpy_helper
 import onnxruntime
 
 from .calibrate import CalibraterBase, CalibrationDataReader
-from .quant_utils import DEQUANT_OUTPUT_SUFFIX, QUANT_INPUT_SUFFIX, clone_model_with_shape_infer
+from .onnx_model import ONNXModel
+from .quant_utils import (
+    DEQUANT_OP_NAME,
+    DEQUANT_OUTPUT_SUFFIX,
+    QUANT_INPUT_SUFFIX,
+    TENSOR_NAME_QUANT_SUFFIX,
+    clone_model_with_shape_infer,
+    find_by_name,
+    load_model,
+)
 
 _TENSOR_SAVE_POSTFIX = "_ReshapedSavedOutput"
 _TENSOR_SAVE_POSTFIX_LEN = len(_TENSOR_SAVE_POSTFIX)
@@ -222,3 +233,143 @@ def create_activation_matching(
             act_values["float"] = float_acts
 
     return qdq_cmp
+
+
+def _run_dequantize_linear(
+    weight_tensor: numpy.ndarray, weight_scale: numpy.ndarray, weight_zp: numpy.ndarray, channel_axis: int
+) -> Optional[numpy.ndarray]:
+    assert weight_scale.shape == weight_zp.shape
+    if weight_zp.size == 1:
+        return (weight_tensor - weight_zp) * weight_scale
+
+    assert weight_zp.ndim == 1
+    reshape_dims = list(weight_tensor.shape)  # deep copy
+    reshape_dims[channel_axis] = 1  # only one per channel for reshape
+    channel_count = weight_tensor.shape[channel_axis]
+    dequantized_weights = None
+    for i in range(channel_count):
+        per_channel_data = weight_tensor.take(i, channel_axis)
+        dequantized_per_channel_data = (per_channel_data - weight_zp[i]) * weight_scale[i]
+        if i == 0:
+            dequantized_weights = numpy.asarray(dequantized_per_channel_data).reshape(reshape_dims)
+        else:
+            channel_weights = numpy.asarray(dequantized_per_channel_data).reshape(reshape_dims)
+            dequantized_weights = numpy.concatenate((dequantized_weights, channel_weights), channel_axis)
+
+    if dequantized_weights is None:
+        return None
+
+    dequantized_weights.reshape(weight_tensor.shape)
+    return dequantized_weights
+
+
+def create_weight_matching(float_model_path: str, qdq_model_path: str) -> Dict[str, Dict[str, numpy.ndarray]]:
+    """Comparing weight values to help debugging accuracy loss due to quantization.
+
+    This functions takes the float model and the qdq model, and provides a data structure for comparing
+    their corresponding weights to locate quantization errors
+
+    Arg:
+        float_model_path: Path points to the float point model.
+        qdq_model_path: Path points to the qdq model.
+
+    Returns:
+        Dict for comparing weight tensors. E.g.
+        ```
+        qdq_weight_cmp = create_weight_matching(float_model, qdq_model)
+        print(qdq_weight_cmp['activation1']['float'])
+        print(qdq_weight_cmp['activation1']['dequantized'])
+        ```
+    """
+    float_onnx_model = ONNXModel(load_model(Path(float_model_path), need_optimize=False))
+    qdq_onnx_model = ONNXModel(load_model(Path(qdq_model_path), need_optimize=False))
+
+    matched_weights: Dict[str, Dict[str, numpy.ndarray]] = {}
+    initializers = qdq_onnx_model.initializer()
+    for node in qdq_onnx_model.nodes():
+        if node.op_type != DEQUANT_OP_NAME:
+            continue  # Only care about DQ node
+        weight_name: str = node.input[0]
+        weight_values = find_by_name(weight_name, initializers)
+        if not weight_values:
+            continue  # Only care about DQ node with const inputs
+        if not weight_name.endswith(TENSOR_NAME_QUANT_SUFFIX):
+            logging.error(f"Model Error in '{qdq_model_path}': Dequantized tensor name '{weight_name}' not recognized!")
+            continue
+
+        axis = -1
+        for attr in node.attribute:
+            if attr.name == "axis":
+                axis = attr.i
+
+        weight_tensor = numpy_helper.to_array(weight_values)
+        weight_scale = numpy_helper.to_array(find_by_name(node.input[1], initializers))
+        if len(node.input) > 2:
+            weight_zp = numpy_helper.to_array(find_by_name(node.input[2], initializers))
+        else:
+            weight_zp = numpy.zeros(weight_scale.shape, dtype=numpy.int32)
+
+        # Perform dequantization:
+        weight_quant = _run_dequantize_linear(weight_tensor, weight_scale, weight_zp, channel_axis=axis)
+        weight_name = weight_name[: -len(TENSOR_NAME_QUANT_SUFFIX)]
+        if weight_quant is None:
+            logging.error(f"Model Error in '{qdq_model_path}': '{weight_name}' per-channel quantization on 0 channel")
+            continue
+
+        float_values = find_by_name(weight_name, float_onnx_model.initializer())
+        if not float_values:
+            logging.error(f"Model Error in '{float_model_path}': weight tensor '{weight_name}' not found!")
+            continue
+        weight_float = numpy_helper.to_array(float_values)
+        matched_weights[weight_name] = {"float": weight_float, "dequantized": weight_quant}
+
+    return matched_weights
+
+
+def compute_signal_to_quantization_noice_ratio(
+    x: Union[Sequence[numpy.ndarray], numpy.ndarray], y: Union[Sequence[numpy.ndarray], numpy.ndarray]
+) -> float:
+    if isinstance(x, numpy.ndarray):
+        xlist = [x]
+    else:
+        xlist = x
+    if isinstance(y, numpy.ndarray):
+        ylist = [y]
+    else:
+        ylist = y
+    if len(xlist) != len(ylist):
+        raise RuntimeError("Unequal number of tensors to compare!")
+
+    left = numpy.concatenate(xlist).flatten()
+    right = numpy.concatenate(ylist).flatten()
+
+    Ps = numpy.linalg.norm(left)
+    Pn = numpy.linalg.norm(left - right)
+    return 20 * math.log10(Ps / Pn)
+
+
+def compute_weight_error(
+    weights_match: Dict[str, Dict[str, numpy.ndarray]],
+    err_func: Callable[[numpy.ndarray, numpy.ndarray], float] = compute_signal_to_quantization_noice_ratio,
+) -> Dict[str, float]:
+    result: Dict[str, float] = {}
+    for weight_name, weight_match in weights_match.items():
+        result[weight_name] = err_func(weight_match["float"], weight_match["dequantized"])
+    return result
+
+
+def compute_activation_error(
+    activations_match: Dict[str, Dict[str, Sequence[numpy.ndarray]]],
+    err_func: Callable[
+        [Sequence[numpy.ndarray], Sequence[numpy.ndarray]], float
+    ] = compute_signal_to_quantization_noice_ratio,
+) -> Dict[str, Dict[str, float]]:
+    result: Dict[str, Dict[str, float]] = {}
+    for name, match in activations_match.items():
+        err_result: Dict[str, float] = {}
+        err_result["qdq_err"] = err_func(match["pre_qdq"], match["post_qdq"])
+        float_activation = match["float"]
+        if float_activation:
+            err_result["xmodel_err"] = err_func(float_activation, match["post_qdq"])
+        result[name] = err_result
+    return result

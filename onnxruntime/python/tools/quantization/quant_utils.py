@@ -18,6 +18,7 @@ QUANT_OP_NAME = "QuantizeLinear"
 QUANT_INPUT_SUFFIX = "_QuantizeLinear_Input"
 DEQUANT_OP_NAME = "DequantizeLinear"
 DEQUANT_OUTPUT_SUFFIX = "_DequantizeLinear_Output"
+TENSOR_NAME_QUANT_SUFFIX = "_quantized"
 
 
 type_to_name = {
