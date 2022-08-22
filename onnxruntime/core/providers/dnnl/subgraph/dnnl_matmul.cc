@@ -18,7 +18,7 @@ DnnlMatMul::DnnlMatMul() {}
 // "MatMulPostOps" is a OneDNN only fusion of MatMul and upto 32 elementwise or binary ops.
 //    See dnnl_subgraph_transformer.cc MatMulBinaryEltwise(...).
 // "FusedMatMul" is a ContribOperator defined here:
-//    https://github.com/microsoft/onnxruntime/blob/master/docs/ContribOperators.md#com.microsoft.FusedMatMul
+//    https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#com.microsoft.FusedMatMul
 //    Depending on its attributes "FusedMatMul" can transpose eather input to the MatMul and scale the resulting output
 void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   std::unordered_set<std::string> binary_ops = {"Add", "Div", "Mul", "Sub"};

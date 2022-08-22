@@ -54,4 +54,4 @@ ONNX Runtime Web currently supports a subset of operators in [ai.onnx](https://g
 
 ## License
 
-License information can be found [here](https://github.com/microsoft/onnxruntime/blob/master/README.md#license).
+License information can be found [here](https://github.com/microsoft/onnxruntime/blob/main/README.md#license).
