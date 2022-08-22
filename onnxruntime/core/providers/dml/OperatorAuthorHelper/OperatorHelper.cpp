@@ -721,7 +721,7 @@ namespace OperatorHelper
                 int paddings = gsl::narrow_cast<int>((inputDimensions[i + dimOffset] - 1) * stride + windowSize - m_outputShapes[0].GetShape()[i + dimOffset]);
                 paddings = std::max<int>(0, paddings);
 
-                m_kernel.startPadding[i] = m_kernel.autoPadSameUpper ? (paddings + 1) / 2 : paddings / 2;
+                m_kernel.startPadding[i] = m_kernel.autoPadSameUpper ? paddings / 2 : (paddings + 1) / 2;
                 m_kernel.endPadding[i] = paddings - m_kernel.startPadding[i];
             }
         }
