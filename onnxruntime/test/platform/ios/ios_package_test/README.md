@@ -21,4 +21,4 @@ The iOS End-to-End Test App will use CocoaPods to install the Onnx Runtime C/C++
 
 ## Build and Test iOS Framework using [build.py](../../../../../tools/ci_build/build.py)
 
-Use the [build for iOS simulator]https://onnxruntime.ai/docs/build/ios.html#cross-compile-for-ios-simulator) with `--build_apple_framework`
+Use the [build for iOS simulator](https://onnxruntime.ai/docs/build/ios.html#cross-compile-for-ios-simulator) with `--build_apple_framework`
