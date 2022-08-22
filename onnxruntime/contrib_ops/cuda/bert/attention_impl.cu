@@ -109,7 +109,7 @@ bool QkvToContext(
       return false;
     }
   } else {
-    const int format = 1; // BxSxMxNxH
+    const int format = 1;  // BxSxMxNxH
     const bool enable_half4 = true;
     LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
                            sequence_length, num_heads, head_size,
