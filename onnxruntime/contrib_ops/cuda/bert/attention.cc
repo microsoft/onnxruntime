@@ -83,20 +83,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
-  // Bias shape is (N), broadcast using B(N, M) = 1 * bias(N, 1) x ones(1, M) + 0 * B.
-  // TODO: use custom kernel of expand to improve the performance.
-  CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-      cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
-      reinterpret_cast<const CudaT*>(bias->Data<T>()), n,
-      GetConstOnes<CudaT>(m), 1,
-      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
-
   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x B.
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
       reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
       reinterpret_cast<const CudaT*>(input->Data<T>()), k,
-      &one, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    batch_size,
@@ -118,6 +110,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
           past_sequence_length,
           is_unidirectional_,
           reinterpret_cast<const void*>(gemm_buffer.get()),
+          bias->Data<T>(),
           nullptr == mask_index ? nullptr : mask_index->Data<int>(),
           nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
           nullptr == past ? nullptr : past->Data<T>(),

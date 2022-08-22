@@ -259,11 +259,13 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
                 has_key_padding_mask_)
   );
 
-  // calcualte q
+  // calculate q
   gemm_query_buffer_p = GetScratchBuffer<T>(batch_size * sequence_length * hidden_size * element_size);
   m = sequence_length * batch_size;
   n = hidden_size;
   k = hidden_size;
+
+  // TODO(tianleiwu): fuse bias and transpose
   // broadcast bias for query: (h2, S*B)
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
