@@ -1,29 +1,20 @@
+import copy
 import math
 import os
-import sys
 import subprocess
-import copy
+import sys
+
 import numpy as np
-from numpy.testing import assert_allclose
-import torch
 import onnx
+import torch
+from numpy.testing import assert_allclose
 
 import onnxruntime
-from onnxruntime.training import optim, _utils
+from onnxruntime.training import _utils, optim
 
 
 def _single_run(execution_file, scenario, checkopint_dir=None):
     cmd = [sys.executable, execution_file]
-    if scenario:
-        cmd += ["--scenario", scenario]
-    if checkopint_dir:
-        cmd += ["--checkpoint_dir", checkopint_dir]
-    assert subprocess.call(cmd) == 0
-
-
-def _distributed_run(execution_file, scenario, checkopint_dir=None):
-    ngpus = torch.cuda.device_count()
-    cmd = ["mpirun", "-n", str(ngpus), "--tag-output", sys.executable, execution_file]
     if scenario:
         cmd += ["--scenario", scenario]
     if checkopint_dir:
@@ -211,50 +202,3 @@ def _load_bart_model():
     }
 
     return model, model_desc
-
-
-def assert_all_states_close_ort(state_dict_pre_checkpoint, state_dict_post_checkpoint, reshape_states=False):
-    """Assert that the two ORTTrainer (hierarchical) state dictionaries are very close for all states"""
-
-    assert ("model" in state_dict_pre_checkpoint) == ("model" in state_dict_post_checkpoint)
-    assert ("optimizer" in state_dict_pre_checkpoint) == ("optimizer" in state_dict_post_checkpoint)
-
-    if "model" in state_dict_pre_checkpoint:
-        for model_state_key in state_dict_pre_checkpoint["model"]["full_precision"]:
-            if reshape_states:
-                assert_allclose(
-                    state_dict_pre_checkpoint["model"]["full_precision"][model_state_key],
-                    state_dict_post_checkpoint["model"]["full_precision"][model_state_key].reshape(
-                        state_dict_pre_checkpoint["model"]["full_precision"][model_state_key].shape
-                    ),
-                )
-            else:
-                assert_allclose(
-                    state_dict_pre_checkpoint["model"]["full_precision"][model_state_key],
-                    state_dict_post_checkpoint["model"]["full_precision"][model_state_key],
-                )
-
-    if "optimizer" in state_dict_pre_checkpoint:
-        for model_state_key in state_dict_pre_checkpoint["optimizer"]:
-            for optimizer_state_key in state_dict_pre_checkpoint["optimizer"][model_state_key]:
-                if reshape_states:
-                    assert_allclose(
-                        state_dict_pre_checkpoint["optimizer"][model_state_key][optimizer_state_key],
-                        state_dict_post_checkpoint["optimizer"][model_state_key][optimizer_state_key].reshape(
-                            state_dict_pre_checkpoint["optimizer"][model_state_key][optimizer_state_key].shape
-                        ),
-                    )
-                else:
-                    assert_allclose(
-                        state_dict_pre_checkpoint["optimizer"][model_state_key][optimizer_state_key],
-                        state_dict_post_checkpoint["optimizer"][model_state_key][optimizer_state_key],
-                    )
-
-
-def assert_all_states_close_pytorch(state_dict_pre_checkpoint, pytorch_model):
-    """Assert that the state_dict_pre_checkpoint state dictionary is very close to the one extracted from the pytorch model after loading"""
-
-    pytorch_model.load_state_dict(state_dict_pre_checkpoint)
-    state_dict_pytorch = pytorch_model.state_dict()
-    for key, value in state_dict_pytorch.items():
-        assert_allclose(value, state_dict_pre_checkpoint[key])
