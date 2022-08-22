@@ -22,10 +22,10 @@ class FusionQOrderedGelu(Fusion):
         """
         Fuse (quantized) Gelu subgraph into one node QOrderedGelu:
             -> quantized input  -> DQ -> Gelu -> Q ->
-        
+
         should become
             -> QOrderedGelu ->
-        """        
+        """
         gelu_children = self.model.get_children(node, input_name_to_nodes)
 
         # Should only have 1 child - QuantizeLinear

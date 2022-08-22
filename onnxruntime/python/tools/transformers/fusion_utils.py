@@ -109,7 +109,7 @@ class FusionUtils:
         zero_point = model.get_constant_value(node.input[2])
         if zero_point is None or zero_point != 0:
             return False
-        
+
         return True
 
     def check_node_input_value(self, node, input_index: int, expected_value):
