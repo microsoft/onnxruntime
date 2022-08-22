@@ -78,7 +78,7 @@ class FusionQOrderedLayerNormalization(Fusion):
                 upstream_dequantize_node.input[1],
                 node.input[1],
                 node.input[2],
-                downstream_quantize_node.input[1]
+                downstream_quantize_node.input[1],
             ],
             outputs=[downstream_quantize_node.output[0]],
             name=self.model.create_node_name("QOrderedLayerNormalization", name_prefix="QOrderedLayerNormalization"),
