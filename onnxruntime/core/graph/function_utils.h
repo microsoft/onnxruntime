@@ -14,14 +14,6 @@
 namespace onnxruntime {
 namespace function_utils {
 
-/** Create a OpSchema given a subgraph EP whant to fuse.
-* This is used when EP return fusion in GetCapability implementation.
-* @param graph The graph which host the subgraph.
-* @param nodes_to_fuse The metadata for the subgraph that EP want to fuse.
-*/
-std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
-                                                       const IndexedSubGraph& nodes_to_fuse);
-
 /** Create a OpSchema given from a local function in onnx model.
 * @param function_domain The domain of the function.
 * @param function_name The name of the function.
@@ -39,23 +31,15 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
                                                        const SchemaRegistryManager& schema_registry,
                                                        const logging::Logger& logger,
                                                        bool allow_released_opsets_only);
-/** Create a OpSchema given a EP specific op informations.
- * This is used when EP has its own operation or special fusion optimization when schema is missing.
- * Dynamic Generate schema for that op.
- * @param name  op_type
- * @param domain  it should be unique and don't clash with current domains
- * @param since_version
- * @param num_inputs  how many inputs
- * @param num_outputs  how many outputs
- * @param aggregated_list_of_types  what type limited for the first input/output
+
+/*
+ * Brief: Create a schema without type contrain (all types are allowed)
+ * This is used when EP return fusion in GetCapability implementation,
+ * @param graph The graph which host the subgraph.
+ * @param nodes_to_fuse The metadata for the subgraph that EP want to fuse.
  */
-std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
-    const std::string& name,
-    const std::string& domain,
-    int since_version,
-    int num_inputs,
-    int num_outputs,
-    std::initializer_list<const char*> aggregated_list_of_types);
+std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchemaWithAnyConstraint(
+    const IndexedSubGraph& nodes_to_fuse);
 
 /** Get the unique id for function. This is used as a key to find the
 * relevant model local function from it's container.

@@ -18,6 +18,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
+#include "core/common/inlined_containers.h"
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif
@@ -50,6 +51,10 @@ class FlatBufferBuilder;
 template <typename T>
 struct Offset;
 }  // namespace flatbuffers
+
+namespace ONNX_NAMESPACE {
+class OpSchema;
+}  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
 class Graph;
@@ -1087,8 +1092,7 @@ class Graph {
            while this is in use.
            Call FinalizeFuseSubGraph to remove them once the fused replacement node is fully created.
   */
-  Node& BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name,
-                          const std::function<const ONNX_NAMESPACE::OpSchema*(const Node&)> schema_create_func = {});
+  Node& BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
 
   /**
   If we have BeginFuseSubGraph, but somehow hit errors, such as Compile of an EP failed on thesub_graph.
@@ -1554,8 +1558,7 @@ class Graph {
   // @returns false if node_index was invalid.
   bool ReleaseNode(NodeIndex node_index);
 
-  Node& CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std::string& fused_node_name,
-                                const std::function<const ONNX_NAMESPACE::OpSchema*(const Node&)>& schema_create_func = {});
+  Node& CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   Node* NodeAtIndexImpl(NodeIndex node_index) const {
@@ -1601,7 +1604,9 @@ class Graph {
   // Currently to make the ORT in-memory graph work, we have to create a temporary op schema
   // for the fused kernel. I really don't like it. but for short-term solution, let's host
   // those schemas here.
-  InlinedVector<std::unique_ptr<ONNX_NAMESPACE::OpSchema>> fused_schemas_containers_;
+  // in some case, a fused sub-graph will happens multiple times in one model, we use a map
+  // to store reusable-schema in lookup.
+  InlinedHashMap<std::string, std::unique_ptr<ONNX_NAMESPACE::OpSchema>> fused_schemas_map_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Graph nodes.

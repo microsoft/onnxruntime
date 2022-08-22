@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -89,19 +90,6 @@ using namespace xnnpack;
 
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& /*info*/)
     : IExecutionProvider{kXnnpackExecutionProvider, true} {
-  // Create and register dynamic schema for ops,
-  // There ops are not layout sensitive and does not defined in onnxdomain
-  dynamic_schema_map_["QLinearSoftmax"] = function_utils::CreateSchema("QLinearSoftmax", kDynamicDomainByCreate, 1,
-                                                                       /* inputs */ 5, /* outputs*/ 1,
-                                                                       {"tensor(uint8)", "tensor(int8)"});
-}
-
-const ONNX_NAMESPACE::OpSchema* XnnpackExecutionProvider::GetDynamicSchema(const Node& fused_node) const {
-  const std::string& op_type = fused_node.OpType();
-  return (dynamic_schema_map_.count(op_type) > 0 &&
-          dynamic_schema_map_.at(op_type)->domain() == fused_node.Domain())
-             ? dynamic_schema_map_.at(op_type).get()
-             : nullptr;
 }
 
 // implement RegisterAllocator to test/validate sharing the CPU EP's allocator
@@ -138,6 +126,13 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
   }
 }
 
+// ops are not lay-out sensitive and does not defined in
+// onnx-domain will be created dynamicly
+static bool RequestDynamicSchema(absl::string_view op_type) {
+  const static InlinedHashSet<absl::string_view> dynamic_schema_set = {"QLinearSoftmax"};
+  return dynamic_schema_set.contains(op_type);
+}
+
 // Add Compute Capability for the second call. All target nodes have the tag of "XnnpackExecutionProvider"
 // after the first call. So we are going to do QDQ fusion in the second call
 // All nodes was collected in one sub_graph
@@ -155,7 +150,11 @@ static void AddComputeCapabilityForNodeUnit(const NodeUnit& node_unit,
       process_node(*node_i);
     }
     sub_graph->SetMetaDef(FuseQDQGroup(node_unit));
-    sub_graph->use_existing_schema = true;
+    if (RequestDynamicSchema(sub_graph->GetMetaDef()->name)) {
+      sub_graph->schema_source = SourceOfSchema::REUSE_OR_CREATE;
+    } else {
+      sub_graph->schema_source = SourceOfSchema::EXISTING_ONE;
+    }
   } else {
     process_node(node_unit.GetNode());
   }
@@ -237,7 +236,7 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
           ComputeCapability& capability = *iter->second;
           capability.sub_graph->SetMetaDef(FuseActivation(*fuse_with, node, graph));
           capability.sub_graph->nodes.push_back(node.Index());
-          capability.sub_graph->use_existing_schema = true;
+          capability.sub_graph->schema_source = SourceOfSchema::EXISTING_ONE;
         }
       }
     } else if (node_unit.GetNode().GetExecutionProviderType() == Type()) {

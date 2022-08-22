@@ -26,40 +26,6 @@ static int GetVersionForDomain(const std::string& domain, const M<std::string, i
   return it->second;
 }
 
-std::unique_ptr<ONNX_NAMESPACE::OpSchema>
-CreateSchema(const Graph& graph,
-             const IndexedSubGraph& nodes_to_fuse) {
-  const auto* meta_def = nodes_to_fuse.GetMetaDef();
-  auto op_schema = std::make_unique<ONNX_NAMESPACE::OpSchema>();
-  op_schema->SetName(meta_def->name);
-  op_schema->SetDomain(meta_def->domain);
-  op_schema->SetDoc(meta_def->doc_string);
-  op_schema->SinceVersion(meta_def->since_version);
-
-  if (meta_def->type_and_shape_inference_function) {
-    op_schema->TypeAndShapeInferenceFunction(meta_def->type_and_shape_inference_function);
-  }
-
-  int i = 0;
-
-  for (const auto& input : meta_def->inputs) {
-    const auto* input_arg = graph.GetNodeArg(input);
-    // inputs must have a type. can be inferred for outputs.
-    ORT_ENFORCE(input_arg->Type() != nullptr);
-    op_schema->Input(i, input, "", *input_arg->Type());
-    ++i;
-  }
-  i = 0;
-  for (const auto& output : meta_def->outputs) {
-    const auto* output_arg = graph.GetNodeArg(output);
-    op_schema->Output(i, output, "", *output_arg->Type());
-    ++i;
-  }
-  op_schema->Finalize();
-
-  return op_schema;
-}
-
 // Auto inferred and generate an opschema for stand-alone functions
 // TODO: revisit to see if we can eliminate typeconstraint step
 static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
@@ -198,6 +164,42 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
   }
 }
 
+std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchemaWithAnyConstraint(
+    const IndexedSubGraph& nodes_to_fuse) {
+  const auto* meta_def = nodes_to_fuse.GetMetaDef();
+
+  using ONNX_NAMESPACE::OpSchema;
+  auto op_schema = std::make_unique<OpSchema>(meta_def->name, __FILE__, __LINE__);
+  op_schema->SetDomain(meta_def->domain);
+  op_schema->SetDoc(meta_def->doc_string);
+  op_schema->SinceVersion(meta_def->since_version);
+
+  if (meta_def->type_and_shape_inference_function) {
+    op_schema->TypeAndShapeInferenceFunction(meta_def->type_and_shape_inference_function);
+  }
+  // we manually check if the node is supported in the EP, so if we ever create a node in our custom domain
+  // we know it's supported. due to that the type constraints here don't really matter - they just need to be cover
+  // all valid values. extra types for a specific input or output don't hurt.
+  op_schema->TypeConstraint("T_ANY", ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat(),
+                            "any type");
+  // match `input` and `output`, It's used when a Op dev defined a `T` constraint
+  op_schema->TypeConstraint("T", ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat(),
+                            "any type");
+
+  // relax type constrain.
+  for (size_t i = 0; i < meta_def->inputs.size(); ++i) {
+    op_schema->Input(gsl::narrow_cast<int>(i), meta_def->inputs[i], "",
+                     i == 0 ? "T" : "T_ANY", OpSchema::FormalParameterOption::Single, false);
+  }
+  for (size_t i = 0; i < meta_def->outputs.size(); i++) {
+    op_schema->Output(gsl::narrow_cast<int>(i), meta_def->outputs[i], "",
+                      i == 0 ? "T" : "T_ANY", OpSchema::FormalParameterOption::Single, false);
+  }
+  op_schema->Finalize();
+
+  return op_schema;
+}
+
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& function_domain,
                                                        const std::string& function_name,
                                                        const InlinedHashMap<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
@@ -272,44 +274,6 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
                                                                    schema_registry, ctx, options, map_copy,
                                                                    &symbolTable, &empty_map);
       });
-
-  op_schema->Finalize();
-  return op_schema;
-}
-
-std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
-    const std::string& name,
-    const std::string& domain,
-    int since_version,
-    int num_inputs,
-    int num_outputs,
-    std::initializer_list<const char*> aggregated_list_of_types) {
-  using ONNX_NAMESPACE::OpSchema;
-  std::vector<const char*> i_o_type_constraint{aggregated_list_of_types};
-  auto op_schema = std::make_unique<OpSchema>(name, __FILE__, __LINE__);
-
-  op_schema->SetDomain(domain);
-  op_schema->SetDoc("");
-  op_schema->SinceVersion(since_version);
-
-  // for simplicity we use one list that combines all the valid types for the operator inputs and outputs.
-  // we manually check if the node is supported in the EP, so if we ever create a node in our custom domain
-  // we know it's supported. due to that the type constraints here don't really matter - they just need to be cover
-  // all valid values. extra types for a specific input or output don't hurt.
-  op_schema->TypeConstraint("T", aggregated_list_of_types, "match the first input/output's type");
-  // we have to enumerate all types for the other inputs/outputs
-  op_schema->TypeConstraint("T_ANY", ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat(),
-                            " don't care the other inputs/outputs");
-
-  for (int i = 0; i < num_inputs; ++i) {
-    op_schema->Input(i, "input_" + std::to_string(i), "",
-                     i == 0 ? "T" : "T_ANY", OpSchema::FormalParameterOption::Single, i == 0);
-  }
-
-  for (int i = 0; i < num_outputs; ++i) {
-    op_schema->Output(i, "output_" + std::to_string(i), "",
-                      i == 0 ? "T" : "T_ANY", OpSchema::FormalParameterOption::Single, i == 0);
-  }
 
   op_schema->Finalize();
   return op_schema;

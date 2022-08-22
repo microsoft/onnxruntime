@@ -193,8 +193,7 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
                        IExecutionProvider::FusionStyle fusion_style,
                        const std::string& provider_type,
                        GraphPartitioner::Mode mode,
-                       int& fused_node_unique_id,
-                       std::function<const ONNX_NAMESPACE::OpSchema*(const Node&)> schema_create_func = {}) {
+                       int& fused_node_unique_id) {
   Node* result = nullptr;
 
   if (nullptr == capability.GetMetaDef()) {
@@ -261,7 +260,7 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
         } else {
           // create a fused node without copying everything to a Function body. The IndexedSubGraph will be passed
           // through to Compile via a filtered GraphViewer.
-          fused_node = &graph.BeginFuseSubGraph(capability, node_name, schema_create_func);
+          fused_node = &graph.BeginFuseSubGraph(capability, node_name);
         }
 
         fused_node->SetExecutionProviderType(provider_type);
@@ -353,8 +352,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       continue;
     }
 
-    Node* n = PlaceNode(graph, *capability->sub_graph, fusion_style, type, mode, fused_node_unique_id,
-                        [&current_ep](const Node& fused_node) { return current_ep.GetDynamicSchema(fused_node); });
+    Node* n = PlaceNode(graph, *capability->sub_graph, fusion_style, type, mode, fused_node_unique_id);
     if (n != nullptr) {
       // searching in kernel registries, if no kernel registered for the fused_node, use compile approach
       if (!KernelRegistryManager::HasImplementationOf(kernel_registry_mgr, *n, type)) {

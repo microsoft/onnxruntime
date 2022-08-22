@@ -3775,8 +3775,7 @@ bool Graph::ReleaseNode(NodeIndex index) {
   return true;
 }
 
-Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std::string& fused_node_name,
-                                     const std::function<const ONNX_NAMESPACE::OpSchema*(const Node&)>& schema_create_func) {
+Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std::string& fused_node_name) {
   const auto* func_meta_def = sub_graph.GetMetaDef();
   ORT_ENFORCE(nullptr != func_meta_def);
   std::vector<NodeArg*> input_args;
@@ -3810,24 +3809,25 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   // kernel lookup works as per usual, if not using an existing schema.
   // in an extended minimal build we do the lookup via a hash so don't need a schema.
   fused_node.SetSinceVersion(func_meta_def->since_version);
-  if (sub_graph.use_existing_schema) {
-    if (schema_create_func) {
-      fused_node.op_ = schema_create_func(fused_node);
-    }
+  if (sub_graph.schema_source == SourceOfSchema::EXISTING_ONE) {
     ORT_ENFORCE(SetOpSchemaFromRegistryForNode(fused_node),
                 "Schema was not found for fused node. Domain:", fused_node.Domain(), " OpType:", fused_node.OpType());
-  } else {
-    auto temp_schema_ptr = function_utils::CreateSchema(*this, sub_graph);
-    fused_schemas_containers_.push_back(std::move(temp_schema_ptr));
-    fused_node.op_ = fused_schemas_containers_.back().get();
+  } else {  // SourceOfSchema::REUSE_OR_CREATE
+            // Need to think about "Does The key require since_version as a component"
+    auto schema_key = onnxruntime::MakeString(sub_graph.GetMetaDef()->domain, "_",
+                                              sub_graph.GetMetaDef()->name);
+    if (!fused_schemas_map_.contains(schema_key)) {
+      fused_schemas_map_.emplace(schema_key, function_utils::CreateSchemaWithAnyConstraint(sub_graph));
+    }
+
+    fused_node.op_ = fused_schemas_map_[schema_key].get();
   }
 #endif
   return fused_node;
 }
 
-Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name,
-                               const std::function<const ONNX_NAMESPACE::OpSchema*(const Node&)> schema_create_func) {
-  Node& node = CreateFusedSubGraphNode(sub_graph, fused_node_name, schema_create_func);
+Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name) {
+  Node& node = CreateFusedSubGraphNode(sub_graph, fused_node_name);
 
   return node;
 }
@@ -3841,15 +3841,12 @@ void Graph::CancelFuseSubGraph(const Node& fused_node) {
     return;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // Remove the tempoary schema from schema container container
-  auto* temp_schema_ptr = fused_node.Op();
-  auto it = std::find_if(
-      fused_schemas_containers_.begin(), fused_schemas_containers_.end(),
-      [temp_schema_ptr](const std::unique_ptr<ONNX_NAMESPACE::OpSchema>& schema) {
-        return schema.get() == temp_schema_ptr;
-      });
-  if (it != fused_schemas_containers_.end()) {
-    fused_schemas_containers_.erase(it);
+  // Remove the temporary schema from schema container container
+  const auto* temp_schema_ptr = fused_node.Op();
+  auto schema_key = onnxruntime::MakeString(temp_schema_ptr->domain(), "_",
+                                            temp_schema_ptr->Name());
+  if (fused_schemas_map_.contains(schema_key)) {
+    fused_schemas_map_.erase(schema_key);
   }
 #endif
 
