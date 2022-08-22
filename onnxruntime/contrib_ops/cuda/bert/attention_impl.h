@@ -37,6 +37,7 @@ bool LaunchAttentionKernel(
     int past_sequence_length,                  // Sequence length in past state
     bool is_unidirectional,                    // Whether there is unidirecitonal mask.
     const void* input,                         // Input tensor
+    const void* bias,                          // Bias tensor
     const int* mask_index,                     // Attention mask raw data or index. NULL means no mask.
     gsl::span<const int64_t> mask_index_dims,  // Mask index shape
     const void* past,                          // Past state input

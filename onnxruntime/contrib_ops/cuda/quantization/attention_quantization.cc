@@ -151,7 +151,9 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   } else {
     dequant_scale = input_scale * weight_scale;
   }
+
   // scale back and bias
+  // TODO(tianleiwu): fuse Dequantize with Add bias and Transpose.
   ORT_RETURN_IF_ERROR(CudaDequantizeWithBias(Stream(),
                                              gemm_buffer_quantized.get(),
                                              reinterpret_cast<const CudaT*>(bias->Data<T>()),
@@ -178,6 +180,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
           past_sequence_length,
           is_unidirectional_,
           reinterpret_cast<const void*>(gemm_buffer.get()),
+          nullptr,  // bias has been added
           nullptr == mask_index ? nullptr : mask_index->Data<int>(),
           nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
           nullptr == past_tensor ? nullptr : past_tensor->Data<T>(),
