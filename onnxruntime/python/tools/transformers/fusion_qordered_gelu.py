@@ -72,7 +72,8 @@ class FusionQOrderedGelu(Fusion):
             inputs=[
                 upstream_dequantize_node.input[0],
                 upstream_dequantize_node.input[1],
-                downstream_quantize_node.input[1]],
+                downstream_quantize_node.input[1]
+            ],
             outputs=[downstream_quantize_node.output[0]],
             name=self.model.create_node_name("QOrderedGelu", name_prefix="QOrderedGelu"),
         )
