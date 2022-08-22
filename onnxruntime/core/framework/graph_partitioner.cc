@@ -380,8 +380,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       std::call_once(
           legacy_compile_method_warning_flag, [](std::string_view ep_type) {
             LOGS_DEFAULT(WARNING) << "Execution Provider: " << ep_type << " is still using Function style Compile API "
-                                                                          "which is deprecated and will be removed soon. Please migrate to the new Compile "
-                                                                          "API based on FilteredGraphViewer.";
+                                     "which is deprecated and will be removed soon. Please migrate to the new Compile "
+                                     "API based on FilteredGraphViewer.";
           },
           type);
       ORT_RETURN_IF_ERROR(current_ep.Compile(nodes_to_compile, node_compute_funcs));

@@ -14,7 +14,7 @@
 namespace onnxruntime {
 namespace function_utils {
 
-/** Create a OpSchema given a subgraph EP whant to fuse.
+/** Create a OpSchema given a subgraph EP want to fuse.
  * This is used when EP return fusion in GetCapability implementation.
  * @param graph The graph which host the subgraph.
  * @param nodes_to_fuse The metadata for the subgraph that EP want to fuse.
