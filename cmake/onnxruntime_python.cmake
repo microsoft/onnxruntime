@@ -28,25 +28,60 @@ if(onnxruntime_ENABLE_TRAINING)
   list(REMOVE_ITEM onnxruntime_pybind_srcs  ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_module.cc)
 endif()
 
-if (onnxruntime_ENABLE_EAGER_MODE)
+# Add Pytorch as a library.
+if (onnxruntime_ENABLE_LAZY_TENSOR OR onnxruntime_ENABLE_EAGER_MODE)
+  # Both Lazy Tensor and Eager Mode require Pytorch as a library.
   list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_PREBUILT_PYTORCH_PATH})
+  # The following line may change ${CUDA_NVCC_FLAGS} and ${CMAKE_CUDA_FLAGS},
+  # if Pytorch is built from source.
+  # For example, pytorch/cmake/public/cuda.cmake and
+  # pytorch/torch/share/cmake/Caffe2/public/cuda.cmake both defines
+  # ONNX_NAMESPACE for both CUDA_NVCC_FLAGS and CMAKE_CUDA_FLAGS.
+  # Later, this ONNX_NAMESPACE may conflicts with ONNX_NAMESPACE set by ORT.
   find_package(Torch REQUIRED)
-  find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
+  # Let's remove ONNX_NAMESPACE from Torch.
+  list(FILTER CUDA_NVCC_FLAGS EXCLUDE REGEX "-DONNX_NAMESPACE=.+")
+  string(REGEX REPLACE "-DONNX_NAMESPACE=.+ " " " CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS}")
+endif()
 
+if (onnxruntime_ENABLE_EAGER_MODE)
   file(GLOB onnxruntime_eager_extension_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_ROOT}/orttraining/eager/*.cpp"
     )
-
-  if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    list(APPEND onnxruntime_eager_extension_srcs
-              "${ORTTRAINING_ROOT}/orttraining/core/framework/torch/dlpack_python.cc")
-  endif()
 
   list(APPEND onnxruntime_pybind_srcs
               ${onnxruntime_eager_extension_srcs})
 endif()
 
+# Support ORT as a backend in Pytorch's LazyTensor.
+if (onnxruntime_ENABLE_LAZY_TENSOR)
+  file(GLOB onnxruntime_lazy_tensor_extension_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_ROOT}/orttraining/lazy_tensor/*.cc")
+  file(GLOB onnxruntime_lazy_tensor_extension_headers CONFIGURE_DEPENDS
+    "${ORTTRAINING_ROOT}/orttraining/lazy_tensor/*.h")
+
+  if(NOT MSVC)
+    set_source_files_properties(${onnxruntime_lazy_tensor_extension_srcs} PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+    set_source_files_properties(${onnxruntime_lazy_tensor_extension_headers} PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+  endif()
+
+  list(APPEND onnxruntime_pybind_srcs
+              ${onnxruntime_lazy_tensor_extension_srcs})
+endif()
+
+# onnxruntime_ENABLE_LAZY_TENSOR and onnxruntime_ENABLE_EAGER_MODE
+# need DLPack code to pass tensors cross ORT and Pytorch boundary.
+# TODO: consider making DLPack code a standalone library.
+if (onnxruntime_ENABLE_LAZY_TENSOR OR onnxruntime_ENABLE_EAGER_MODE)
+  # If DLPack code is not built, add it to ORT's pybind target.
+  if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    list(APPEND onnxruntime_pybind_srcs
+              "${ORTTRAINING_ROOT}/orttraining/core/framework/torch/dlpack_python.cc")
+  endif()
+endif()
+
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
+
 if(MSVC)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
   if(onnxruntime_ENABLE_TRAINING)
@@ -108,18 +143,28 @@ if (onnxruntime_ENABLE_TRAINING)
   target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_training)
 endif()
 
-if (onnxruntime_ENABLE_EAGER_MODE)
+# Eager mode and LazyTensor are both Pytorch's backends, so their
+# dependencies are set together below.
+if (onnxruntime_ENABLE_EAGER_MODE OR onnxruntime_ENABLE_LAZY_TENSOR)
+  # Set library dependencies shared by aforementioned backends.
+
   # todo: this is because the prebuild pytorch may use a different version of protobuf headers.
   # force the build to find the protobuf headers ort using.
-  target_include_directories(onnxruntime_pybind11_state PRIVATE "${REPO_ROOT}/cmake/external/protobuf/src")
-  target_include_directories(onnxruntime_pybind11_state PRIVATE "${TORCH_INSTALL_PREFIX}/include" "${TORCH_INSTALL_PREFIX}/include/torch/csrc/api/include")
-  find_library(LIBTORCH_LIBRARY torch PATHS "${TORCH_INSTALL_PREFIX}/lib")
-  find_library(LIBTORCH_CPU_LIBRARY torch_cpu PATHS "${TORCH_INSTALL_PREFIX}/lib")
-  find_library(LIBC10_LIBRARY c10 PATHS "${TORCH_INSTALL_PREFIX}/lib")
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager ${LIBTORCH_LIBRARY} ${LIBTORCH_CPU_LIBRARY} ${LIBC10_LIBRARY} ${TORCH_PYTHON_LIBRARY})
+  target_include_directories(onnxruntime_pybind11_state PRIVATE
+    "${REPO_ROOT}/cmake/external/protobuf/src"
+    ${TORCH_INCLUDE_DIRS})
+
+  # Explicitly link torch_python to workaround https://github.com/pytorch/pytorch/issues/38122#issuecomment-694203281
+  find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${TORCH_PYTHON_LIBRARY} ${TORCH_LIBRARIES})
+  if (onnxruntime_ENABLE_EAGER_MODE)
+    target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager)
+  endif()
+
+  # This part is eager-mode specific.
   # the ort_aten.g.cpp is generated from tools. currently it has some limitations.
   # todo: fix this
-  if (NOT MSVC)
+  if (onnxruntime_ENABLE_EAGER_MODE AND NOT MSVC)
     set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.g.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_guard.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
@@ -272,6 +317,13 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
 else()
   set(ONNXRUNTIME_SETDLOPENFLAGS_GLOBAL "")
   set(ONNXRUNTIME_SETDLOPENFLAGS_LOCAL  "")
+endif()
+
+if (onnxruntime_ENABLE_LAZY_TENSOR)
+  # Import torch so that onnxruntime's pybind can see its DLLs.
+  set(ONNXRUNTIME_IMPORT_PYTORCH_TO_RESOLVE_DLLS "import torch")
+else()
+  set(ONNXRUNTIME_IMPORT_PYTORCH_TO_RESOLVE_DLLS "")
 endif()
 
 configure_file(${ONNXRUNTIME_ROOT}/python/_pybind_state.py.in

@@ -169,6 +169,9 @@ option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
 # build eager mode
 option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
 
+# build Pytorch's LazyTensor support
+cmake_dependent_option(onnxruntime_ENABLE_LAZY_TENSOR "Enable ORT as a LazyTensor backend in Pytorch." ON "onnxruntime_ENABLE_TRAINING" OFF)
+
 # build separate library of schemas of (custom) ops used by ORT (for ONNX to MLIR translation)
 option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 
@@ -1833,7 +1836,7 @@ if (onnxruntime_USE_CUDA)
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --Werror default-stream-launch")
   endif()
   if (NOT WIN32)
-    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --compiler-options -fPIC")
+    list(APPEND CUDA_NVCC_FLAGS --compiler-options -fPIC)
   endif()
   # Options passed to cudafe
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=bad_friend_decl\"")
@@ -2041,6 +2044,22 @@ if (onnxruntime_ENABLE_EAGER_MODE)
   add_compile_definitions(ENABLE_EAGER_MODE)
   list(APPEND ONNXRUNTIME_TARGETS onnxruntime_eager)
 endif()
+
+if (onnxruntime_ENABLE_LAZY_TENSOR)
+  # To support LazyTensor, ORT needs to call Python function from C/C++.
+  # so onnxruntime_ENABLE_PYTHON is required.
+  if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
+    message(
+        FATAL_ERROR
+        "Option onnxruntime_ENABLE_LAZY_TENSOR can only be set when onnxruntime_ENABLE_TRAINING and onnxruntime_ENABLE_PYTHON are enabled")
+  endif()
+  add_compile_definitions(ENABLE_LAZY_TENSOR)
+  # TODO: In the future, we can compile LazyTensor into a standalone
+  # library target, onnxruntime_lazy_tensor, to make the buid
+  # cleaner.
+  #list(APPEND ONNXRUNTIME_TARGETS onnxruntime_lazy_tensor)
+endif()
+
 foreach(target_name ${ONNXRUNTIME_TARGETS})
   include(${target_name}.cmake)
 endforeach()

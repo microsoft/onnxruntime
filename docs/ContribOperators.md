@@ -1357,14 +1357,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Whether B should be transposed</dd>
 </dl>
 
-#### Inputs
+#### Inputs (2 - 3)
 
 <dl>
 <dt><tt>A</tt> : T</dt>
 <dd>Input tensor A. The shape of A should be (M, K) if transA is 0, or (K, M) if transA is non-zero.</dd>
 <dt><tt>B</tt> : T</dt>
 <dd>Input tensor B. The shape of B should be (K, N) if transB is 0, or (N, K) if transB is non-zero.</dd>
-<dt><tt>C</tt> : T</dt>
+<dt><tt>C</tt> (optional) : T</dt>
 <dd>Input tensor C. The shape of C should be unidirectional broadcastable to (M, N).</dd>
 </dl>
 
