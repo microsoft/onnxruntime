@@ -3812,15 +3812,21 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   if (sub_graph.schema_source == SourceOfSchema::EXISTING_ONE) {
     ORT_ENFORCE(SetOpSchemaFromRegistryForNode(fused_node),
                 "Schema was not found for fused node. Domain:", fused_node.Domain(), " OpType:", fused_node.OpType());
-  } else {  // SourceOfSchema::REUSE_OR_CREATE
-            // Need to think about "Does The key require since_version as a component"
+  } else if (SourceOfSchema::DYNAMIC_REUSABLE == sub_graph.schema_source) {
+    // Need to think about "Does The key require since_version as a component"
     auto schema_key = onnxruntime::MakeString(sub_graph.GetMetaDef()->domain, "_",
                                               sub_graph.GetMetaDef()->name);
     if (!fused_schemas_map_.contains(schema_key)) {
-      fused_schemas_map_.emplace(schema_key, function_utils::CreateSchemaWithAnyConstraint(sub_graph));
+      fused_schemas_map_.emplace(
+          schema_key,
+          function_utils::CreateSchema(*this, sub_graph, /*any_constraint_enabled=*/true));
     }
 
     fused_node.op_ = fused_schemas_map_[schema_key].get();
+  } else {
+    auto temp_schema_ptr = function_utils::CreateSchema(*this, sub_graph);
+    fused_schemas_containers_.push_back(std::move(temp_schema_ptr));
+    fused_node.op_ = fused_schemas_containers_.back().get();
   }
 #endif
   return fused_node;
@@ -3847,6 +3853,15 @@ void Graph::CancelFuseSubGraph(const Node& fused_node) {
                                             temp_schema_ptr->Name());
   if (fused_schemas_map_.contains(schema_key)) {
     fused_schemas_map_.erase(schema_key);
+  } else {
+    auto* it = std::find_if(
+        fused_schemas_containers_.begin(), fused_schemas_containers_.end(),
+        [temp_schema_ptr](const std::unique_ptr<ONNX_NAMESPACE::OpSchema>& schema) {
+          return schema.get() == temp_schema_ptr;
+        });
+    if (it != fused_schemas_containers_.end()) {
+      fused_schemas_containers_.erase(it);
+    }
   }
 #endif
 

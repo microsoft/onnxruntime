@@ -1604,6 +1604,7 @@ class Graph {
   // Currently to make the ORT in-memory graph work, we have to create a temporary op schema
   // for the fused kernel. I really don't like it. but for short-term solution, let's host
   // those schemas here.
+  InlinedVector<std::unique_ptr<ONNX_NAMESPACE::OpSchema>> fused_schemas_containers_;
   // in some case, a fused sub-graph will happens multiple times in one model, we use a map
   // to store reusable-schema in lookup.
   InlinedHashMap<std::string, std::unique_ptr<ONNX_NAMESPACE::OpSchema>> fused_schemas_map_;

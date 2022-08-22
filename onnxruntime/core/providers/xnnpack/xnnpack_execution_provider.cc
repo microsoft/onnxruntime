@@ -151,7 +151,7 @@ static void AddComputeCapabilityForNodeUnit(const NodeUnit& node_unit,
     }
     sub_graph->SetMetaDef(FuseQDQGroup(node_unit));
     if (RequestDynamicSchema(sub_graph->GetMetaDef()->name)) {
-      sub_graph->schema_source = SourceOfSchema::REUSE_OR_CREATE;
+      sub_graph->schema_source = SourceOfSchema::DYNAMIC_REUSABLE;
     } else {
       sub_graph->schema_source = SourceOfSchema::EXISTING_ONE;
     }

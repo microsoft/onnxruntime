@@ -22,8 +22,9 @@ class OpKernel;
 class OpKernelInfo;
 
 enum class SourceOfSchema : uint8_t {
+  DYNAMIC_CREATE_EVERYTIME,
+  DYNAMIC_REUSABLE,
   EXISTING_ONE,
-  REUSE_OR_CREATE,
 };
 
 /**
@@ -59,7 +60,7 @@ struct IndexedSubGraph {
 
   // Either using an existing schema or generating reusable one when fusing nodes using the MetaDef.
   // MetaDef.domain + MetaDef.name => the domain.op_type that a schema must exist for with a valid since_version.
-  SourceOfSchema schema_source{SourceOfSchema::REUSE_OR_CREATE};
+  SourceOfSchema schema_source{SourceOfSchema::DYNAMIC_CREATE_EVERYTIME};
 
   /** Set the meta definition needed to represent this subgraph as a FunctionProto
   It's needed IF AND ONLY IF there are multiple indexes contained in #nodes. */

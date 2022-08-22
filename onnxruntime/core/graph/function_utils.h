@@ -14,6 +14,17 @@
 namespace onnxruntime {
 namespace function_utils {
 
+/** Create a OpSchema given a subgraph EP whant to fuse.
+ * This is used when EP return fusion in GetCapability implementation.
+ * @param graph The graph which host the subgraph.
+ * @param nodes_to_fuse The metadata for the subgraph that EP want to fuse.
+ * @param any_constraint_enabled if true, we will set a ANY datatype as constraint,
+ * it means we allow every types.
+ */
+std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
+                                                       const IndexedSubGraph& nodes_to_fuse,
+                                                       bool any_constraint_enabled = false);
+
 /** Create a OpSchema given from a local function in onnx model.
 * @param function_domain The domain of the function.
 * @param function_name The name of the function.
@@ -31,15 +42,6 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
                                                        const SchemaRegistryManager& schema_registry,
                                                        const logging::Logger& logger,
                                                        bool allow_released_opsets_only);
-
-/*
- * Brief: Create a schema without type contrain (all types are allowed)
- * This is used when EP return fusion in GetCapability implementation,
- * @param graph The graph which host the subgraph.
- * @param nodes_to_fuse The metadata for the subgraph that EP want to fuse.
- */
-std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchemaWithAnyConstraint(
-    const IndexedSubGraph& nodes_to_fuse);
 
 /** Get the unique id for function. This is used as a key to find the
 * relevant model local function from it's container.
