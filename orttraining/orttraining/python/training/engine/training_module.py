@@ -4,7 +4,7 @@ from onnxruntime.capi import _pybind_state as C
 class TrainingModule:
     """
     Class for running Training.
-    Your models should also instantiate this class.
+    This class is a wrapper of Module Class.
     """
 
     def __init__(
@@ -29,9 +29,6 @@ class TrainingModule:
         """
         This method is responsible for creating the model and initializing the parameters.
         """
-        # Load checkpoint to state, then Pull named parameters from module_checkpoint_state to _parameters.
-        self._parameters = {}
-
         # Create session options as a default value.
         self._session_options = None
 

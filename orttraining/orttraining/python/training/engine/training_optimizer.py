@@ -3,8 +3,8 @@ from onnxruntime.capi import _pybind_state as C
 
 class TrainingOptimizer:
     """
-    This Class wrapps the Optimizer.
-    Your optimizer should also instantiate this class.
+    Class for running Optimize Step in Training.
+    This class is a wrapper of Optimizer Class.
     """
 
     def __init__(self, train_optimizer_uri, model, env=None, session_options=None, providers=None, **kwargs) -> None:
