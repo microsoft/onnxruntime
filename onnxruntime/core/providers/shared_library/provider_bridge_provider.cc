@@ -374,7 +374,7 @@ Status::Status(StatusCategory category, int code) : Status(category, code, "") {
 }
 
 StatusCategory Status::Category() const noexcept {
-  return state_->category;
+  return IsOK() ? StatusCategory::NONE : state_->category;
 }
 
 int Status::Code() const noexcept {
