@@ -110,7 +110,7 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
   const T* B_data = B == nullptr ? nullptr : B->Data<T>();
 
   auto* ort_cuda_stream = dynamic_cast<CudaStream*>(ort_stream);
-  cudnnHandle_t cudnn_handle = ort_cuda_stream ? ort_cuda_stream->cudnn_handle_: CudnnHandle();
+  cudnnHandle_t cudnn_handle = ort_cuda_stream ? ort_cuda_stream->cudnn_handle_ : DefaultCudnnHandle();
   ORT_RETURN_IF_ERROR(SetCudnnRnnWeightBias(cudnn_handle, rnn_desc, fake_x_desc, target_w_desc,
                                             reorganized_w_data.get(), W_data, R_data, B_data, cuda_stream));
 
@@ -130,7 +130,7 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
 
   if (get_W && get_R) {
     CudnnRNN tmp_rnn_desc;
-    ORT_RETURN_IF_ERROR(tmp_rnn_desc.Set(CudnnHandle(),
+    ORT_RETURN_IF_ERROR(tmp_rnn_desc.Set(DefaultCudnnHandle(),
                                          hidden_size_,
                                          RNN_NUM_LAYERS,
                                          cudnn_dropout_desc_,

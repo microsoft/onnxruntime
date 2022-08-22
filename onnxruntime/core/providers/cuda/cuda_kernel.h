@@ -152,11 +152,11 @@ class CudaKernel : public OpKernel {
     const CudaKernel* op_kernel_;
   };
 
-  inline cublasHandle_t CublasHandle() const {
+  inline cublasHandle_t DefaultCublasHandle() const {
     return provider_->PerThreadCublasHandle();
   }
 
-  inline cudnnHandle_t CudnnHandle() const {
+  inline cudnnHandle_t DefaultCudnnHandle() const {
     return provider_->PerThreadCudnnHandle();
   }
 

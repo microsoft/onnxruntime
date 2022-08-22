@@ -345,8 +345,8 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   const auto alpha = Consts<CudaT>::One;
   const auto beta = Consts<CudaT>::Zero;
   IAllocatorUniquePtr<void> workspace = GetWorkSpace(OrtStream(context));
-
-  CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(GetCudnnHandle(context),
+  auto cudnn_handle = GetCudnnHandle(context);
+  CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(cudnn_handle,
                                                 &alpha,
                                                 s_.x_tensor,
                                                 s_.x_data,
@@ -362,7 +362,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
                         GetCudnnHandle(context),
                         Stream(context));
   if (nullptr != s_.b_data) {
-    CUDNN_RETURN_IF_ERROR(cudnnAddTensor(GetCudnnHandle(context), &alpha, s_.b_tensor, s_.b_data,
+    CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnn_handle, &alpha, s_.b_tensor, s_.b_data,
                                          &alpha, s_.y_tensor, s_.y_data),
                           GetCudnnHandle(context),
                           Stream(context));

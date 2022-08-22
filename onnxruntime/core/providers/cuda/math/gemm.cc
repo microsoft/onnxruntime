@@ -110,18 +110,17 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
                              Stream(ctx));
     } else if (b_shape.NumDimensions() == 2 && b_shape[1] == 1) {
       // B is (M, 1), broadcast using Y(N,M) = 1 * ones(N,1) x B(1,M) + 0 * Y
-      CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-                                 GetCublasHandle(ctx),
-                                 CUBLAS_OP_N,
-                                 CUBLAS_OP_N,
-                                 N, M, 1,
-                                 /*alpha*/ &one,
-                                 GetConstOnes<CudaT>(N, GetCudaStreamFromContext(ctx)), N,
-                                 b_data, 1,
-                                 /*beta*/ &zero,
-                                 out_data, N, device_prop),
-                             GetCublasHandle(ctx),
-                             Stream(ctx));
+      CUBLAS_RETURN_IF_ERROR_CTX(cublasGemmHelper(
+                                     GetCublasHandle(ctx),
+                                     CUBLAS_OP_N,
+                                     CUBLAS_OP_N,
+                                     N, M, 1,
+                                     /*alpha*/ &one,
+                                     GetConstOnes<CudaT>(N, GetCudaStreamFromContext(ctx)), N,
+                                     b_data, 1,
+                                     /*beta*/ &zero,
+                                     out_data, N, device_prop),
+                                 ctx);
     } else {
       // B is (M, N), no broadcast needed.
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(out_data, b_data, M * N * sizeof(T), cudaMemcpyDeviceToDevice, Stream(ctx)));
