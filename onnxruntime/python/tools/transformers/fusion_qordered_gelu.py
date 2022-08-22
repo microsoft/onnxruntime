@@ -1,7 +1,7 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 from logging import getLogger
 from typing import Dict
@@ -20,11 +20,11 @@ class FusionQOrderedGelu(Fusion):
 
     def fuse(self, node, input_name_to_nodes: Dict, output_name_to_node: Dict):
         """
-                Fuse (quantized) Gelu subgraph into one node QOrderedGelu:
-                    -> quantized input  -> DQ -> Gelu -> Q ->
-                
-                should become
-                    -> QOrderedGelu ->
+        Fuse (quantized) Gelu subgraph into one node QOrderedGelu:
+            -> quantized input  -> DQ -> Gelu -> Q ->
+        
+        should become
+            -> QOrderedGelu ->
         """        
         gelu_children = self.model.get_children(node, input_name_to_nodes)
 
@@ -34,15 +34,13 @@ class FusionQOrderedGelu(Fusion):
 
         downstream_quantize_node = gelu_children[0]
 
-        if(not FusionUtils.check_qdq_node_for_fusion(downstream_quantize_node, self.model)):
+        if not FusionUtils.check_qdq_node_for_fusion(downstream_quantize_node, self.model):
             return
 
         # The first input to Gelu should flow through a DequantizeLinear node
         first_path_id, first_input_parent_nodes, _ = self.model.match_parent_paths(
             node,
-            [
-                (["DequantizeLinear"], [0])
-            ],
+            [(["DequantizeLinear"], [0])],
             output_name_to_node,
         )
 
@@ -51,12 +49,12 @@ class FusionQOrderedGelu(Fusion):
 
         upstream_dequantize_node = first_input_parent_nodes[0]
 
-        if(not FusionUtils.check_qdq_node_for_fusion(upstream_dequantize_node, self.model)):
+        if not FusionUtils.check_qdq_node_for_fusion(upstream_dequantize_node, self.model):
             return
 
-        # Fusion logic            
-        subgraph_nodes = [node]  #Gelu
-        subgraph_nodes.extend([downstream_quantize_node, upstream_dequantize_node])  #Relevant Q, DQ nodes
+        # Fusion logic
+        subgraph_nodes = [node]  # Gelu
+        subgraph_nodes.extend([downstream_quantize_node, upstream_dequantize_node])  # Relevant Q, DQ nodes
 
         if not self.model.is_safe_to_fuse_nodes(
             subgraph_nodes,
@@ -71,9 +69,10 @@ class FusionQOrderedGelu(Fusion):
 
         ordered_gelu_node = helper.make_node(
             "QOrderedGelu",
-            inputs=[upstream_dequantize_node.input[0], 
-                    upstream_dequantize_node.input[1],
-                    downstream_quantize_node.input[1]],
+            inputs=[
+                upstream_dequantize_node.input[0],
+                upstream_dequantize_node.input[1],
+                downstream_quantize_node.input[1]],
             outputs=[downstream_quantize_node.output[0]],
             name=self.model.create_node_name("QOrderedGelu", name_prefix="QOrderedGelu"),
         )

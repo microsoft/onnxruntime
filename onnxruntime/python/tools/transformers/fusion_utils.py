@@ -84,7 +84,7 @@ class FusionUtils:
             return value == expected_value
 
     @staticmethod
-    def check_qdq_node_for_fusion(node : NodeProto, model : OnnxModel):
+    def check_qdq_node_for_fusion(node: NodeProto, model: OnnxModel):
         """Verify if a provided QuantizeLinear (Q) / DequantizeLinear (DQ) node is a good candidate for fusion.
            It is a good candidate for fusion if:
            (1) The Q/DQ node is for per-tensor quantization (per-axis quantization is not supported)
@@ -95,7 +95,7 @@ class FusionUtils:
         Returns:
             bool: whether the check is passed or not
         """
-        if not(node.op_type == "QuantizeLinear" or node.op_type == "DequantizeLinear"):
+        if not node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
             logger.debug(f"Provided node is not a Q/DQ node. Op Type: {node.op_type}")
 
         if model.get_constant_value(node.input[1]) is None:

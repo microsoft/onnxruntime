@@ -19,15 +19,15 @@ class FusionQOrderedLayerNormalization(Fusion):
 
     def fuse(self, node, input_name_to_nodes: Dict, output_name_to_node: Dict):
         """
-                Fuse (quantized) Layer Normalization subgraph into one node QOrderedLayerNormalization:
-                    quantized input  -> DQ
-                                        |
-                                        |
-                    (other inputs)-> LayerNormalization --> Q -->
+        Fuse (quantized) Layer Normalization subgraph into one node QOrderedLayerNormalization:
+            quantized input  -> DQ
+                                |
+                                |
+            (other inputs)-> LayerNormalization --> Q -->
 
-                    should become
+            should become
 
-                    (quantized input + other inputs)->  QOrderedLayerNormalization --> Q -->
+            (quantized input + other inputs)->  QOrderedLayerNormalization --> Q -->
         """
 
         children = self.model.get_children(node, input_name_to_nodes)
@@ -38,15 +38,13 @@ class FusionQOrderedLayerNormalization(Fusion):
 
         downstream_quantize_node = children[0]
 
-        if(not FusionUtils.check_qdq_node_for_fusion(downstream_quantize_node, self.model)):
+        if not FusionUtils.check_qdq_node_for_fusion(downstream_quantize_node, self.model):
             return
 
         # The first input to LayerNormalization should flow through a DequantizeLinear node
         first_path_id, first_input_parent_nodes, _ = self.model.match_parent_paths(
             node,
-            [
-                (["DequantizeLinear"], [0])
-            ],
+            [(["DequantizeLinear"], [0])],
             output_name_to_node,
         )
 
@@ -55,12 +53,12 @@ class FusionQOrderedLayerNormalization(Fusion):
 
         upstream_dequantize_node = first_input_parent_nodes[0]
 
-        if(not FusionUtils.check_qdq_node_for_fusion(upstream_dequantize_node, self.model)):
+        if not FusionUtils.check_qdq_node_for_fusion(upstream_dequantize_node, self.model):
             return
 
         # Fusion logic
-        subgraph_nodes = [node]  #LayerNormalization
-        subgraph_nodes.extend([downstream_quantize_node, upstream_dequantize_node])  #Relevant Q, DQ nodes
+        subgraph_nodes = [node]  # LayerNormalization
+        subgraph_nodes.extend([downstream_quantize_node, upstream_dequantize_node])  # Relevant Q, DQ nodes
 
         if not self.model.is_safe_to_fuse_nodes(
             subgraph_nodes,
@@ -75,12 +73,14 @@ class FusionQOrderedLayerNormalization(Fusion):
 
         normalize_node = helper.make_node(
             "QOrderedLayerNormalization",
-            inputs=[upstream_dequantize_node.input[0], upstream_dequantize_node.input[1],
-                    node.input[1], node.input[2], 
-                    downstream_quantize_node.input[1]],
+            inputs=[
+                upstream_dequantize_node.input[0],
+                upstream_dequantize_node.input[1],
+                node.input[1],
+                node.input[2],
+                downstream_quantize_node.input[1]],
             outputs=[downstream_quantize_node.output[0]],
-            name=self.model.create_node_name("QOrderedLayerNormalization", 
-            name_prefix="QOrderedLayerNormalization"),
+            name=self.model.create_node_name("QOrderedLayerNormalization", name_prefix="QOrderedLayerNormalization"),
         )
 
         # TODO: We only support CuBlasLt order ORDER_ROW for now.
