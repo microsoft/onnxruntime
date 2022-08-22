@@ -123,7 +123,7 @@ class TestOpGemm(TestCaseTempDir):
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
         model_int8_path = "gemm_fp32.quant_{}{}.onnx".format(activation_type_str, weight_type_str)
-        # model_int8_path = Path(self._tmp_model_dir.name).joinpath(model_int8_path).as_posix()
+        model_int8_path = Path(self._tmp_model_dir.name).joinpath(model_int8_path).as_posix()
 
         data_reader.rewind()
         quantize_static(
@@ -252,7 +252,7 @@ class TestOpGemm(TestCaseTempDir):
     def test_quantize_gemm(self):
         np.random.seed(1)
         model_fp32_path = "gemm_fp32.onnx"
-        # model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
+        model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
         self.construct_model_gemm(model_fp32_path)
         data_reader = self.input_feeds(1, {"input": [5, 10]})
 

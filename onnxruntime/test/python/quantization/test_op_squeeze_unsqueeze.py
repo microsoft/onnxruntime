@@ -170,7 +170,7 @@ class TestOpSqueezeUnsqueeze(TestCaseTempDir):
         model_uint8_path = "squeezes_opset{}_{}{}.onnx".format(opset, activation_type_str, weight_type_str)
         model_uint8_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_path).as_posix()
         model_uint8_qdq_path = "squeezes_opset{}_{}{}_qdq.onnx".format(opset, activation_type_str, weight_type_str)
-        # model_uint8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_qdq_path).as_posix()
+        model_uint8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_qdq_path).as_posix()
         model_uint8_qdq_dyn_path = "squeezes_opset{}_{}{}_qdq_dyn.onnx".format(
             opset, activation_type_str, weight_type_str
         )

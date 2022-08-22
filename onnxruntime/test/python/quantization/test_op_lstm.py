@@ -83,9 +83,9 @@ class TestOpLSTM(TestCaseTempDir):
         model_int8_qop_path = "lstm_int8.qop.onnx"
         model_int8_qop_path = Path(self._tmp_model_dir.name).joinpath(model_int8_qop_path).as_posix()
         model_int8_qdq_path = "lstm_int8.qdq.onnx"
-        # model_int8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_int8_qdq_path).as_posix()
+        model_int8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_int8_qdq_path).as_posix()
         model_uint8_qdq_path = "lstm_uint8.qdq.onnx"
-        # model_uint8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_qdq_path).as_posix()
+        model_uint8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_uint8_qdq_path).as_posix()
 
         inputarr = np.random.rand(1, 3, 2).astype(np.float32)
 

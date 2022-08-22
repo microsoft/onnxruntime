@@ -50,6 +50,8 @@ java/gradle
 java/.gradle
 java/hs_*.log
 onnxruntime/python/version_info.py
+onnxruntime/core/optimizer/cqp_quantize_fusion.cc
+onnxruntime/core/optimizer/cqp_quantize_fusion.h
 /orttraining/orttraining/eager/ort_aten.g.cpp
 /orttraining/orttraining/eager/ort_customops.g.cpp
 /csharp/**/packages
