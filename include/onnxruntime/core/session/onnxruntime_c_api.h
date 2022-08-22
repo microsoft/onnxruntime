@@ -2287,7 +2287,7 @@ struct OrtApi {
   * Lifetime of the created allocator will be valid for the duration of the environment.
   * Returns an error if an allocator with the same ::OrtMemoryInfo is already registered.
   *
-  * See https://onnxruntime.ai/docs/reference/api/c-api.html for details.
+  * See https://onnxruntime.ai/docs/api/c/struct_ort_api.html for details.
   *
   * \param[in] env ::OrtEnv instance
   * \param[in] mem_info
@@ -2614,7 +2614,7 @@ struct OrtApi {
   *
   * Create the configuration of an arena that can eventually be used to define an arena based allocator's behavior.
   *
-  * Supported keys are (See https://onnxruntime.ai/docs/reference/api/c-api.html for details on what the
+  * Supported keys are (See https://onnxruntime.ai/docs/api/c/struct_ort_api.html for details on what the
   * following parameters mean and how to choose these values.):
   * "max_mem": Maximum memory that can be allocated by the arena based allocator.
   *  Use 0 for ORT to pick the best value. Default is 0.
@@ -2831,7 +2831,7 @@ struct OrtApi {
   * The behavior of this is exactly the same as OrtApi::CreateAndRegisterAllocator except
   * instead of ORT creating an allocator based on provided info, in this case
   * ORT uses the user-provided custom allocator.
-  * See https://onnxruntime.ai/docs/reference/api/c-api.html for details.
+  * See https://onnxruntime.ai/docs/api/c/struct_ort_api.html for details.
   *
   * \param[in] env
   * \param[in] allocator User provided allocator
