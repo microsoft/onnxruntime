@@ -308,7 +308,7 @@ public:
 
 struct StreamMock : public Stream {
 public:
-  StreamMock() : Stream(nullptr, nullptr) {}
+  StreamMock(const OrtDevice& device) : Stream(nullptr, device) {}
   std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override {
     return std::make_unique<NotificationMock>(this);
   }
@@ -319,7 +319,9 @@ TEST(StreamAwareArenaTest, TwoStreamAllocation) {
   StreamAwareArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30, false);
   CheckStats(&a, 0, 0, 0, 0);
 
-  StreamMock stream1, stream2;
+  OrtDevice tmp;
+
+  StreamMock stream1(tmp), stream2(tmp);
 
   auto* stream1_chunk_a = a.AllocOnStream(4096, &stream1, nullptr);
   auto* stream2_chunk_a = a.AllocOnStream(4096, &stream2, nullptr);

@@ -52,7 +52,7 @@ common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
   size_t bytes = src.SizeInBytes();
   const void* src_data = src.DataRaw();
   void* dst_data = dst.MutableDataRaw();
-  ORT_ENFORCE(stream && stream->provider);
+  ORT_ENFORCE(stream);
 
   auto& src_device = src.Location().device;
   auto& dst_device = dst.Location().device;

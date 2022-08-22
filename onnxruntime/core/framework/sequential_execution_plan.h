@@ -109,10 +109,12 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
   struct LogicStream {
     std::vector<std::unique_ptr<ExecutionStep>> steps_;
+    const OrtDevice& device_;
 #ifdef ENABLE_TRAINING
     std::vector<NodeIndex> step_node_index;
 #endif
-    const IExecutionProvider* ep_ = nullptr;
+  public:
+    LogicStream(const OrtDevice& device) : device_(device) {}
   };
 
   std::vector<std::unique_ptr<LogicStream>> execution_plan;

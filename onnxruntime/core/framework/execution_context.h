@@ -23,7 +23,7 @@ struct ReleasePlan {
 class DeviceStreamCollectionImpl;
 class DeviceStreamCollection {
  public:
-  DeviceStreamCollection(size_t num_streams);
+  DeviceStreamCollection(size_t num_streams, const SessionState& sess_state);
   ~DeviceStreamCollection();
   void SetDeviceStream(size_t, std::unique_ptr<Stream> stream);
   void SetDeviceStream(size_t, Stream* stream);
