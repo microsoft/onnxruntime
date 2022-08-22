@@ -785,7 +785,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_Slice) {
     ASSERT_EQ(shape_values[1], 1536);
   };
 
-  std::vector<int> opset_candidates{12, 13, 14, 15};
+  std::vector<int> opset_candidates{10, 11, 12, 13, 14, 15};
   for (auto opset : opset_candidates) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       std::vector<std::variant<int64_t, std::string>> shape_input_shape;
@@ -831,6 +831,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_SliceGeneratesGraphOutput)
                     [2]: (512, 1536)
                            |
                           [2]
+    This test also test when axes and step input are missing.
   */
 
   std::string slice_output_name;
@@ -864,7 +865,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_SliceGeneratesGraphOutput)
     ASSERT_EQ(shape_values[1], 1536);
   };
 
-  std::vector<int> opset_candidates{12, 13, 14, 15};
+  std::vector<int> opset_candidates{10, 11, 12, 13, 14, 15};
   for (auto opset : opset_candidates) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       std::vector<std::variant<int64_t, std::string>> shape_input_shape;
@@ -881,8 +882,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_SliceGeneratesGraphOutput)
       auto* slice_out_arg = builder.MakeOutput();
       auto* starts_input_arg = builder.MakeInitializer<int64_t>({1}, {-2});
       auto* ends_input_arg = builder.MakeInitializer<int64_t>({1}, {3});
-      auto* axes_input_arg = builder.MakeInitializer<int64_t>({1}, {0});
-      builder.AddNode("Slice", {shape_out_arg, starts_input_arg, ends_input_arg, axes_input_arg}, {slice_out_arg});
+      builder.AddNode("Slice", {shape_out_arg, starts_input_arg, ends_input_arg}, {slice_out_arg});
     };
 
     InlinedHashSet<std::string_view> compatible_eps;
@@ -948,7 +948,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_Gather) {
     }
   };
 
-  std::vector<int> opset_candidates{12, 13, 14, 15};
+  std::vector<int> opset_candidates{10, 11, 12, 13, 14, 15};
   for (auto opset : opset_candidates) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       std::vector<std::variant<int64_t, std::string>> shape_input_shape;
@@ -1055,7 +1055,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_ConcreteDimUsedBySlice) {
     }
   };
 
-  std::vector<int> opset_candidates{12, 13, 14, 15};
+  std::vector<int> opset_candidates{10, 11, 12, 13, 14, 15};
   for (auto opset : opset_candidates) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       std::vector<std::variant<int64_t, std::string>> dropout_input_shape;
@@ -1066,11 +1066,18 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_ConcreteDimUsedBySlice) {
       dropout_input_shape.push_back(512);
 
       auto* dropout_input_arg = builder.MakeSymbolicInput<float>(dropout_input_shape);
-      auto* ratio_input_arg = builder.MakeScalarInitializer<float>(0.10000000149011612f);
-      auto* mode_input_arg = builder.MakeBoolScalarInitializer(true);
+
       auto* dropout_out_arg = builder.MakeIntermediate();
       auto* mask_out_arg = builder.MakeIntermediate();
-      builder.AddNode("Dropout", {dropout_input_arg, ratio_input_arg, mode_input_arg}, {dropout_out_arg, mask_out_arg});
+      const float ratio = 0.10000000149011612f;
+      if (opset < 12) {
+        builder.AddNode("Dropout", {dropout_input_arg}, {dropout_out_arg, mask_out_arg})
+            .AddAttribute("ratio", ratio);
+      } else {
+        auto* ratio_input_arg = builder.MakeScalarInitializer<float>(ratio);
+        auto* mode_input_arg = builder.MakeBoolScalarInitializer(true);
+        builder.AddNode("Dropout", {dropout_input_arg, ratio_input_arg, mode_input_arg}, {dropout_out_arg, mask_out_arg});
+      }
 
       auto* shape_out_arg = builder.MakeIntermediate();
       // Shape before opset 15 have such schema, the test schema did not cover opset 15.
@@ -1225,7 +1232,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_ConcreteDimUsedByGatherSli
     }
   };
 
-  std::vector<int> opset_candidates{12, 13, 14, 15};
+  std::vector<int> opset_candidates{10, 11, 12, 13, 14, 15};
   for (auto opset : opset_candidates) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       std::vector<std::variant<int64_t, std::string>> reshape_input_shape;
@@ -1390,7 +1397,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_SymbolicDimUsedByGather_Co
     }
   };
 
-  std::vector<int> opset_candidates{12, 13, 14, 15};
+  std::vector<int> opset_candidates{10, 11, 12, 13, 14, 15};
   for (auto opset : opset_candidates) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       std::vector<std::variant<int64_t, std::string>> reshape_input_shape;

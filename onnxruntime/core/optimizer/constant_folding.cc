@@ -111,10 +111,12 @@ bool ConstantFoldShapeNode(Graph& graph,
   if (shape != nullptr) {
     TensorShapeVector dim_values;
     dim_values.reserve(shape->dim_size());
+    bool has_concrete_dim = false;
     for (int dim_index = 0; dim_index < shape->dim_size(); dim_index++) {
       auto dim = shape->dim(dim_index);
       if (utils::HasDimValue(dim)) {
         dim_values.push_back(dim.dim_value());
+        has_concrete_dim = true;
       } else {
         // Fill with -1 for symbolic dimension.
         dim_values.push_back(-1);
@@ -128,6 +130,10 @@ bool ConstantFoldShapeNode(Graph& graph,
       CreateInitializerFromShapeVector(graph, node, dim_values, shape_slice_start, shape_slice_length);
       nodes_to_remove.push_back(&node);
       return true;
+    }
+
+    if (!has_concrete_dim) {
+      return false;
     }
 
     // Check consumer Slice/Gather nodes to see any opportunities for constant folding.
@@ -148,24 +154,31 @@ bool ConstantFoldShapeNode(Graph& graph,
       if (graph_utils::IsSupportedOptypeVersionAndDomain(output_node, "Slice", {10, 11, 13})) {
         NodeArg* starts_input = output_node.MutableInputDefs()[1];
         NodeArg* ends_input = output_node.MutableInputDefs()[2];
-        NodeArg* axes_input = output_node.MutableInputDefs()[3];
+        NodeArg* axes_input = output_node.MutableInputDefs().size() > 3 ? output_node.MutableInputDefs()[3] : nullptr;
         NodeArg* steps_input = output_node.MutableInputDefs().size() > 4 ? output_node.MutableInputDefs()[4] : nullptr;
+
+        InlinedVector<int64_t> axes_values;
+        // We only support 1D slices currently, can be extended further to support other cases.
+        if (axes_input && !(optimizer_utils::AppendTensorFromInitializer(graph, *axes_input, axes_values, true) &&
+                            axes_values.size() == 1 && axes_values[0] == 0)) {
+          continue;
+        }
+
         InlinedVector<int64_t> steps_values;
         if (steps_input && !(optimizer_utils::AppendTensorFromInitializer(graph, *steps_input, steps_values, true) &&
                              steps_values.size() == 1 && steps_values[0] == 1)) {
           continue;
         }
 
-        InlinedVector<int64_t> starts_values, ends_values, axes_values;
+        InlinedVector<int64_t> starts_values, ends_values;
         // Try to parse int32/int64 type constant initializers.
         if (!(optimizer_utils::AppendTensorFromInitializer(graph, *starts_input, starts_values, true) &&
-              optimizer_utils::AppendTensorFromInitializer(graph, *ends_input, ends_values, true) &&
-              optimizer_utils::AppendTensorFromInitializer(graph, *axes_input, axes_values, true))) {
+              optimizer_utils::AppendTensorFromInitializer(graph, *ends_input, ends_values, true))) {
           continue;
         }
 
         // We only support 1D slices currently, can be extended further to support other cases.
-        if (!(starts_values.size() == 1 && ends_values.size() == 1 && axes_values.size() == 1 && axes_values[0] == 0)) {
+        if (!(starts_values.size() == 1 && ends_values.size() == 1)) {
           continue;
         }
 
@@ -187,7 +200,7 @@ bool ConstantFoldShapeNode(Graph& graph,
         CreateInitializerFromShapeVector(graph, output_node, dim_values, slice_start, slice_length);
         nodes_to_remove.push_back(&output_node);
 
-      } else if (graph_utils::IsSupportedOptypeVersionAndDomain(output_node, "Gather", {11, 13})) {
+      } else if (graph_utils::IsSupportedOptypeVersionAndDomain(output_node, "Gather", {1, 11, 13})) {
         NodeArg* indices_input = output_node.MutableInputDefs()[1];
         auto indices_shape = indices_input->Shape();
         if (!indices_shape || indices_shape->dim_size() > 1) {
@@ -224,7 +237,7 @@ bool ConstantFoldShapeNode(Graph& graph,
       }
     }
   }
-  return nodes_to_remove.size() > 0;  // OR concrete dim values usage can be constant folded.
+  return nodes_to_remove.size() > 0;
 }
 }  // namespace
 
