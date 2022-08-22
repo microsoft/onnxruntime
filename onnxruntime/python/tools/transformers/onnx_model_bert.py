@@ -13,9 +13,9 @@ from fusion_fastgelu import FusionFastGelu
 from fusion_gelu import FusionGelu
 from fusion_gelu_approximation import FusionGeluApproximation
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
+from fusion_options import FusionOptions
 from fusion_qordered_gelu import FusionQOrderedGelu
 from fusion_qordered_layernorm import FusionQOrderedLayerNormalization
-from fusion_options import FusionOptions
 from fusion_reshape import FusionReshape
 from fusion_shape import FusionShape
 from fusion_skiplayernorm import FusionBiasSkipLayerNormalization, FusionSkipLayerNormalization

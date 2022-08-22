@@ -6,7 +6,7 @@ from logging import getLogger
 from typing import Tuple
 
 from numpy import array_equal, ndarray
-from onnx import TensorProto, NodeProto, helper, numpy_helper
+from onnx import NodeProto, TensorProto, helper, numpy_helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
