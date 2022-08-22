@@ -26,9 +26,8 @@ __global__ void banRepeatedTokens(const int64_t* __restrict__ tokens,
   auto col = threadIdx.x;
   auto start = row * (max_predict_len) + col;
   auto cur_len = (row + 1) * (max_predict_len);
-  bool skip_this_ngram = recency_length > 0 && cur_len > recency_length
-  bool is_banned = false;
-  if (!skip_this_ngram){
+  bool skip_this_ngram = recency_length > 0 && cur_len > recency_length bool is_banned = false;
+  if (!skip_this_ngram) {
     // Each thread compares ngram starting from
     // thread index with final ngram starting from
     // step - no_repeat_ngram_size +2
@@ -38,15 +37,15 @@ __global__ void banRepeatedTokens(const int64_t* __restrict__ tokens,
     extern __shared__ int64_t tokens_shm[];
     tokens_shm[col] = tokens[start];
     if (col == blockDim.x - 1) {
-      for (int i=1; i<no_repeat_ngram_size; i++){
-        if (col+i < max_predict_len){
+      for (int i = 1; i < no_repeat_ngram_size; i++) {
+        if (col + i < max_predict_len) {
           tokens_shm[col + i] = tokens[start + i];
         }
       }
     }
   }
   __syncthreads();
-  if (!skip_this_ngram){
+  if (!skip_this_ngram) {
     for (int k = 0; k < no_repeat_ngram_size - 1; k++) {
       if (tokens_shm[col + k] != tokens_shm[check_start_pos + k]) {
         is_banned = false;

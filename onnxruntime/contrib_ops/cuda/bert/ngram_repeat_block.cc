@@ -66,7 +66,7 @@ Status NGramRepeatBlock::ComputeInternal(OpKernelContext* context) const {
       gsl::narrow_cast<int>(ngram_size_));
       gsl::narrow_cast<int>(recency_length_));
 
-  return Status::OK();
+      return Status::OK();
 }
 
 }  //namespace cuda
