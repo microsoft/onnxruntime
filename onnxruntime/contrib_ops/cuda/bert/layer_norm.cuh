@@ -144,11 +144,10 @@ __device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<
       output_v[i] = (beta != nullptr) ? gamma_v[i] * (input_v[i] - mu) * rsigma + beta_v[i] :
                                         gamma_v[i] * (input_v[i] - mu) * rsigma;
     }
-    *(reinterpret_cast<VecT*>(&output[idx])) = *reinterpret_cast<VecT*>(&output_v[0]);
+    *(reinterpret_cast<VecT*>(&output[idx])) = *output_val;
   }
 }
 
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
-

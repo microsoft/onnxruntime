@@ -3,6 +3,7 @@ import onnx
 from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import (
+    TENSOR_NAME_QUANT_SUFFIX,
     BiasToQuantize,
     QuantizedValue,
     QuantizedValueType,
@@ -168,7 +169,7 @@ class QLinearConv(QuantOperatorBase):
             quantized_bias_name = self.quantizer.quantize_bias_static(node.input[2], node.input[0], node.input[1])
             bias_present = True
 
-        qlinear_conv_output = node.output[0] + "_quantized"
+        qlinear_conv_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
         qlinear_conv_name = qlinear_conv_name = node.name + "_quant" if node.name != "" else ""
 
         kwargs = {}
