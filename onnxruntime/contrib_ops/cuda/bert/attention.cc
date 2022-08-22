@@ -41,7 +41,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* extra_add_qk = context->Input<Tensor>(5);
 
   auto& device_prop = GetDeviceProp();
-  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, past, extra_add_qk, device_prop.maxThreadsPerBlock));
+  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
+                                  weights->Shape(),
+                                  bias->Shape(),
+                                  mask_index,
+                                  past,
+                                  extra_add_qk,
+                                  device_prop.maxThreadsPerBlock));
 
   // input shape (batch_size, sequence_length, input_hidden_size)
   const auto& shape = input->Shape();
@@ -92,26 +98,32 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(input->Data<T>()), k,
       &one, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
-  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, past_sequence_length);
-  auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);
+  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
+                                                   batch_size,
+                                                   num_heads_,
+                                                   head_size,
+                                                   sequence_length,
+                                                   past_sequence_length);
+
+  auto work_space = GetScratchBuffer<void>(workSpaceSize);
   if (!LaunchAttentionKernel(
           device_prop,
           Stream(),
-          reinterpret_cast<const CudaT*>(gemm_buffer.get()),
-          nullptr == mask_index ? nullptr : mask_index->Data<int>(),
-          nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
-          output->MutableData<T>(),
+          cublas,
+          element_size,
           batch_size,
           sequence_length,
           num_heads_,
           head_size,
-          temp_buffer.get(),
-          cublas,
-          element_size,
-          is_unidirectional_,
           past_sequence_length,
+          is_unidirectional_,
+          reinterpret_cast<const void*>(gemm_buffer.get()),
+          nullptr == mask_index ? nullptr : mask_index->Data<int>(),
+          nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
           nullptr == past ? nullptr : past->Data<T>(),
           nullptr == extra_add_qk ? nullptr : extra_add_qk->Data<T>(),
+          work_space.get(),
+          output->MutableData<T>(),
           nullptr == present ? nullptr : present->MutableData<T>())) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
