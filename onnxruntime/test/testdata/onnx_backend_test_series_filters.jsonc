@@ -24,7 +24,7 @@
     // - /js/node/test/test-utils.ts
     // - /onnxruntime/test/python/onnx_backend_test_series.py
     //
-    // See also: https://github.com/microsoft/onnxruntime/blob/master/docs/How_To_Update_ONNX_Dev_Notes.md
+    // See also: https://github.com/microsoft/onnxruntime/blob/main/docs/How_To_Update_ONNX_Dev_Notes.md
     //
 
     // Tests that are failing temporarily and should be fixed
