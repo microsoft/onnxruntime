@@ -41,6 +41,7 @@ _CAST_PYTORCH_TO_ONNX = {
     "Undefined": torch.onnx.TensorProtoDataType.UNDEFINED,
 }
 
+
 def _pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
     try:
         return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
