@@ -57,7 +57,7 @@ class DataOps {
   bool unsupported_op_mode(const Node* node);
   bool type_is_supported(const NodeArg* node_arg, bool is_initializer);
   bool node_is_supported(const std::map<std::string,
-                                        std::set<std::string>>& op_map,	
+                                        std::set<std::string>>& op_map,
                          const NodeIndex node_idx);
 
  public:
