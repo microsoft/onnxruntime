@@ -59,7 +59,7 @@ class Op {
   std::unique_ptr<ICallbale> callable_;
 };
 
-// NOTE: onnxruntime's status currently do not have a StatusCode::UNSUPPORTED. Currently, we do not want to extend the
+// NOTE: onnxruntime's Status currently does not have a StatusCode::UNSUPPORTED. Currently, we do not want to extend the
 // enum. So we reuse StatusCode::INVALID_ARGUMENT for this purpose. It can be interpreted as "The input argument is not
 // valid for this specialized kernel implementation.". This semantic is crucial for the tuning mechanism.
 #define TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(condition, ...)   \

@@ -13,10 +13,10 @@
 #include <vector>
 
 #include "ck/ck.hpp"
+#include "ck/library/tensor_operation_instance/gpu/gemm.hpp"
 #include "ck/tensor_operation/gpu/device/tensor_layout.hpp"
 #include "ck/tensor_operation/gpu/device/device_gemm.hpp"
 #include "ck/tensor_operation/gpu/element/element_wise_operation.hpp"
-#include "ck/library/tensor_operation_instance/gpu/gemm.hpp"
 
 #include "python/tools/kernel_explorer/kernels/gemm.h"
 
@@ -45,7 +45,7 @@ using Nop = ck::tensor_operation::element_wise::PassThrough;
 
 // to be moved to onnxruntime once we have a monolithicly tunable gemm wrapper and it is enabled for onnxruntime
 template <typename T, typename ALayout, typename BLayout>
-auto GetCKGemmOpTypeStringAndInstances() {
+auto GetCKGemmTypeStringAndOps() {
   using CKDataType = typename DataTypeAdaptor<T>::type;
   using DeviceGemm = ck::tensor_operation::device::DeviceGemm<
       ALayout, BLayout, Row,
@@ -104,9 +104,9 @@ class CKGemm : public IKernelExplorer {
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
 
-    for (auto&& [type_string, op] : GetCKGemmOpTypeStringAndInstances<T, ALayout, BLayout>()) {
+    for (auto&& [type_string, impl] : GetCKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
       type_strings_.emplace_back(std::move(type_string));
-      impls_.emplace_back(std::move(op));
+      impls_.emplace_back(std::move(impl));
     }
     ORT_ENFORCE(!impls_.empty());
   }

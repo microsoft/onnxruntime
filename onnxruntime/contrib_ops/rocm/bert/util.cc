@@ -31,7 +31,7 @@ double Timer::Duration() {
   float time;
   // time is in ms with a resolution of 1 us
   HIP_CHECK(hipEventElapsedTime(&time, start_, end_));
-  return time;
+  return static_cast<double>(time);
 }
 
 Timer::~Timer() {

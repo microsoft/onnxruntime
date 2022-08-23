@@ -19,10 +19,10 @@ namespace onnxruntime {
 
 //#####################################################################################################################
 // In practice, VectorAddParam, VectorAddOp and VectorAddTunableOp should be tightly integrated to onnxruntime.
-// We place it here purely for demo purpose.
+// We place them here purely for demo purpose.
 //#####################################################################################################################
 
-// Extend the OpParams so that all specialization have the same parameter passing interface
+// Extend the OpParams so that all specializations have the same parameter passing interface
 template <typename T>
 struct VectorAddParams : contrib::rocm::OpParams {
   std::string Signature() const { return std::to_string(n); }
@@ -33,7 +33,7 @@ struct VectorAddParams : contrib::rocm::OpParams {
   int n;
 };
 
-// Wraps the kernel function, so that we have a unified launch interface. If the kernel has state, the state can also
+// Wrap the kernel function, so that we have a unified launch interface. If the kernel has state, the state can also
 // be managed at this level via a functor
 template <typename T, int TPB, int Vec>
 Status VectorAddOp(const VectorAddParams<T>* params) {
@@ -51,8 +51,8 @@ Status VectorAddOp(const VectorAddParams<T>* params) {
   this->ops_.emplace_back(VectorAddOp<T, threads_per_block, 4>); \
   this->ops_.emplace_back(VectorAddOp<T, threads_per_block, 8>);
 
-// A Tunable VectorAddOp is a collection of non-tunable VectorAddOps implementation that have variable performance
-// characteristic. Those implementations may be put into a C++ container for tuner selecting.
+// A Tunable VectorAddOp is a collection of non-tunable VectorAddOps implementations that have variable performance
+// characteristics. Those implementations may be put into a C++ container for tuner to select.
 template <typename T>
 class VectorAddTunableOp : public contrib::rocm::TunableOp<VectorAddParams<T>> {
  public:
@@ -77,8 +77,8 @@ class VectorAddTunableOp : public contrib::rocm::TunableOp<VectorAddParams<T>> {
 #undef ADD_OP
 
 //#####################################################################################################################
-// Following code just wraps our kernel implementation and expose them as python interface. This is what the code
-// kernel_explorer should contains.
+// Following code just wraps our kernel implementation and expose them as python interface. This is the code that
+// should be in the kernel_explorer directory.
 //#####################################################################################################################
 
 template <typename T, int TPB, int Vec>
