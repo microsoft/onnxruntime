@@ -306,7 +306,7 @@ def attribute_to_kwarg(attribute):
         raise ValueError("attribute {} does not have type specified.".format(attribute.name))
 
     # Based on attribute type definitions from AttributeProto
-    # definition in https://github.com/onnx/onnx/blob/master/onnx/onnx.proto
+    # definition in https://github.com/onnx/onnx/blob/main/onnx/onnx.proto
     if attribute.type == 1:
         value = attribute.f
     elif attribute.type == 2:
