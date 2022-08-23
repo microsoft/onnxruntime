@@ -252,7 +252,6 @@ bool LaunchTransQkv(cudaStream_t stream, const int matrix_num,
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeQKVLarge<float><<<grid, block, 0, stream>>>(head_size, reversed_bs, input, output);
     }
-
   }
   return CUDA_CALL(cudaPeekAtLastError());
 }
@@ -294,7 +293,6 @@ bool LaunchTransQkv(cudaStream_t stream, const int matrix_num,
   }
   return CUDA_CALL(cudaPeekAtLastError());
 }
-
 
 }  // namespace cuda
 }  // namespace contrib

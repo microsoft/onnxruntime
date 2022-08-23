@@ -63,7 +63,7 @@ namespace cuda {
 //    [scratch1: BxNxSxS] [scratch2: BxNxSxS]
 
 static size_t Align(size_t a) {
-  const size_t alignment = 128; // Align on a 16-byte boundary to avoid "misaligned address" error.
+  const size_t alignment = 128;  // Align on a 16-byte boundary to avoid "misaligned address" error.
   return CeilDiv(a, alignment) * alignment;
 }
 
@@ -88,7 +88,7 @@ size_t GetLongformerSoftmaxWorkspaceSize(
     size_t scratch2_size = GetScratch2Size();
     return Align(scratch1_size + scratch2_size);
   } else {
-    return static_cast<size_t>(2) * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, sequence_length);
+    return 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, sequence_length);
   }
 }
 
