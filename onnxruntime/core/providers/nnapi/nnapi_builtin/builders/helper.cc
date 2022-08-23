@@ -6,7 +6,6 @@
 #include <functional>
 #include <iostream>
 #include <numeric>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -19,7 +18,7 @@
 #include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
-#include "core/providers/shared/initializer_view/initializer_view.h"
+#include "core/optimizer/initializer.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -185,7 +184,7 @@ bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit) {
 }
 
 common::Status GetQuantizationScaleAndZeroPoint(
-    const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path&,
+    const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path& path,
     float& scale, int32_t& zero_point) {
   scale = 0.0f;
   zero_point = 0;
@@ -198,19 +197,17 @@ common::Status GetQuantizationScaleAndZeroPoint(
   const auto& quant_param = *io_def.quant_param;
   {  // get the scale
     const auto& name = quant_param.scale.Name();
-    InitializerView unpacked_tensor;
-    ORT_RETURN_IF_ERROR(unpacked_tensor.Create(*initializers.at(name)));
+    Initializer unpacked_tensor(*initializers.at(name), path);
     // The scale should be one or more floats
-    ORT_RETURN_IF(unpacked_tensor.SizeInBytes() < 4,
+    ORT_RETURN_IF(unpacked_tensor.DataAsByteSpan().size() < 4,
                   "The initializer [", name, "] should have one or more floats ",
-                  "with size no less than 4, actual size: ", unpacked_tensor.SizeInBytes());
-    scale = unpacked_tensor.DataAsSpan<float>()[0];
+                  "with size no less than 4, actual size: ", unpacked_tensor.DataAsByteSpan().size());
+    scale = unpacked_tensor.data<float>()[0];
   }
 
   if (quant_param.zero_point) {  // get the zero point if it's there
     const auto& name = quant_param.zero_point->Name();
-    InitializerView unpacked_tensor;
-    ORT_RETURN_IF_ERROR(unpacked_tensor.Create(*initializers.at(name)));
+    Initializer unpacked_tensor(*initializers.at(name), path);
     // Onnx quantization uses uint8 [int8 not yet supported], need to cast to int32_t used by NNAPI
     zero_point = static_cast<int32_t>(unpacked_tensor.DataAsByteSpan<uint8_t>()[0]);
   }

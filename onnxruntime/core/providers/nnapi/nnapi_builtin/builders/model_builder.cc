@@ -13,7 +13,7 @@
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
-#include "core/providers/shared/initializer_view/initializer_view.h"
+#include "core/optimizer/initializer.h"
 
 #include "helper.h"
 #include "op_builder.h"
@@ -291,21 +291,21 @@ Status ModelBuilder::RegisterInitializers() {
     std::tie(index, size, padded_size) = initializers[i++];
     const uint8_t* src = nullptr;
     // uint8_t data need unpack, need a holder for free memory after copy
-    InitializerView unpacked_tensor;
+
     switch (tensor.data_type()) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-        ORT_RETURN_IF_ERROR(unpacked_tensor.Create(tensor));
-        ORT_RETURN_IF_NOT(size == unpacked_tensor.SizeInBytes(),
-                          "initializer tensor: ", tensor.name(), "'s size: ",
-                          unpacked_tensor.SizeInBytes(),
-                          " should match the calculated size: ", size);
-        src = unpacked_tensor.DataAsByteSpan<uint8_t>().data();
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
         break;
+      }
         // default:
         // We should not get anything else here since we already checked in the 1st pass
     }
-
+    Initializer unpacked_tensor(tensor, graph_viewer_.ModelPath());
+    ORT_RETURN_IF_NOT(size == unpacked_tensor.DataAsByteSpan().size(),
+                      "initializer tensor: ", tensor.name(), "'s size: ",
+                      unpacked_tensor.DataAsByteSpan().size(),
+                      " should match the calculated size: ", size);
+    src = unpacked_tensor.DataAsByteSpan<uint8_t>().data();
     uint8_t* dest = nnapi_model_->mem_initializers_->GetDataPtr() + offset;
     memcpy(dest, src, size);
     ORT_RETURN_IF_ERROR(SetOperandValue(index, nnapi_model_->mem_initializers_.get(), size, offset));

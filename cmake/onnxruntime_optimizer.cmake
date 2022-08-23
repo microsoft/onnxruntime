@@ -9,6 +9,8 @@ if (onnxruntime_MINIMAL_BUILD)
   list(APPEND onnxruntime_optimizer_src_patterns
     "${ONNXRUNTIME_INCLUDE_DIR}/core/optimizer/graph_transformer.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/graph_transformer.cc"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/initializer.cc"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/initializer.h"
   )
 
   if (onnxruntime_EXTENDED_MINIMAL_BUILD)
@@ -17,8 +19,6 @@ if (onnxruntime_MINIMAL_BUILD)
       "${ONNXRUNTIME_ROOT}/core/optimizer/conv_activation_fusion.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/conv_activation_fusion.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/graph_transformer_utils.cc"
-      "${ONNXRUNTIME_ROOT}/core/optimizer/initializer.cc"
-      "${ONNXRUNTIME_ROOT}/core/optimizer/initializer.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/nhwc_transformer.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/nhwc_transformer.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/qdq_final_cleanup.cc"
