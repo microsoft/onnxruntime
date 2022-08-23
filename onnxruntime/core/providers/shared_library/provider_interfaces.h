@@ -666,13 +666,7 @@ struct ProviderHost {
   virtual bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) = 0;
   virtual bool Graph__IsInitializedTensor(const Graph* p, const std::string& tensor_name) = 0;
 
-  virtual const Graph* Graph__ParentGraph(const Graph* p) const = 0;
-  virtual Graph* Graph__MutableParentGraph(Graph* p) = 0;
   virtual const Node* Graph__ParentNode(const Graph* p) const = 0;
-  virtual Node* Graph__GetNode(Graph* p, NodeIndex node_index) noexcept = 0;
-  virtual const Node* Graph__GetNode(const Graph* p, NodeIndex node_index) const = 0;
-  virtual const NodeArg* Graph__GetNodeArg(const Graph* p, const std::string& name) const = 0;
-  virtual int Graph__MaxNodeIndex(const Graph* p) const noexcept = 0;
 
   // GraphViewer
   virtual void GraphViewer__operator_delete(GraphViewer* p) = 0;

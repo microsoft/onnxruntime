@@ -703,13 +703,7 @@ struct Graph final {
   bool GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const { return g_host->Graph__GetInitializedTensor(this, tensor_name, value); }
   bool IsInitializedTensor(const std::string& name) const { return g_host->Graph__IsInitializedTensor(this, name); }
 
-  const Graph* ParentGraph() const { return g_host->Graph__ParentGraph(this); }
-  Graph* MutableParentGraph() { return g_host->Graph__MutableParentGraph(this); }
   const Node* ParentNode() const { return g_host->Graph__ParentNode(this); }
-  Node* GetNode(NodeIndex node_index) noexcept { return g_host->Graph__GetNode(this, node_index); }
-  const Node* GetNode(NodeIndex node_index) const noexcept { return g_host->Graph__GetNode(this, node_index); }
-  const NodeArg* GetNodeArg(const std::string& name) const { return g_host->Graph__GetNodeArg(this, name); }
-  int MaxNodeIndex() const noexcept { return g_host->Graph__MaxNodeIndex(this); }
 
   PROVIDER_DISALLOW_ALL(Graph)
 };
