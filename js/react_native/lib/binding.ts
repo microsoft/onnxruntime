@@ -64,6 +64,7 @@ export declare namespace Binding {
 
   interface InferenceSession {
     loadModel(modelPath: string, options: SessionOptions): Promise<ModelLoadInfoType>;
+    loadModelFromBase64EncodedBuffer?(buffer: string, options: SessionOptions): Promise<ModelLoadInfoType>;
     run(key: string, feeds: FeedsType, fetches: FetchesType, options: RunOptions): Promise<ReturnType>;
   }
 }
