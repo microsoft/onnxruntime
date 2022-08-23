@@ -4,6 +4,8 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
+#include "core/optimizer/initializer.h"
+
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #endif
