@@ -252,7 +252,8 @@ Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form 
 ONNX_MS_OPERATOR_SET_SCHEMA(NGramRepeatBlock, 1,
                             OpSchema().SetDoc(NGramRepeatBlock_ver1_doc)
                             .Attr("ngram_size", "The NGram size.", AttributeProto::INT)
-                            .Attr("recency_length", "No repetition of n-grams are enforced at the last recency_length tokens."
+                            .Attr("recency_length"
+                            , "No repetition of n-grams are enforced at the last recency_length tokens."
                             , AttributeProto::INT, static_cast<int64_t>(0))
                             .Input(0, "input_ids", "2D input tensor with shape (batch_size, sequence_length)", "Tid")
                             .Input(1, "scores", "2D input tensor with shape (batch_size, vocab_size)", "T")
