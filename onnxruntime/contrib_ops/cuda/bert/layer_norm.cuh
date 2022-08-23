@@ -61,18 +61,21 @@ __device__ inline half2 AddHalf2(const half2 a, const half2 b) {
 }
 
 struct KeyValuePairSum {
-  __device__ inline cub::KeyValuePair<float, float> operator()(const cub::KeyValuePair<float, float>& a, const cub::KeyValuePair<float, float>& b) {
+  __device__ inline cub::KeyValuePair<float, float> operator()(const cub::KeyValuePair<float, float>& a,
+                                                               const cub::KeyValuePair<float, float>& b) {
     return cub::KeyValuePair<float, float>(a.key + b.key, a.value + b.value);
   }
 
-  __device__ inline cub::KeyValuePair<half, half> operator()(const cub::KeyValuePair<half, half>& a, const cub::KeyValuePair<half, half>& b) {
+  __device__ inline cub::KeyValuePair<half, half> operator()(const cub::KeyValuePair<half, half>& a,
+                                                             const cub::KeyValuePair<half, half>& b) {
     const half2 a2 = __halves2half2(a.key, a.value);
     const half2 b2 = __halves2half2(b.key, b.value);
     const half2 res = AddHalf2(a2, b2);
     return cub::KeyValuePair<half, half>(__low2half(res), __high2half(res));
   }
 
-  __device__ inline cub::KeyValuePair<half2, half2> operator()(const cub::KeyValuePair<half2, half2>& a, const cub::KeyValuePair<half2, half2>& b) {
+  __device__ inline cub::KeyValuePair<half2, half2> operator()(const cub::KeyValuePair<half2, half2>& a,
+                                                               const cub::KeyValuePair<half2, half2>& b) {
     return cub::KeyValuePair<half2, half2>(AddHalf2(a.key, b.key), AddHalf2(a.value, b.value));
   }
 };
@@ -139,10 +142,11 @@ __device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<
   __syncthreads();
 
   if (ILP * threadIdx.x < ld) {
-    #pragma unroll
+#pragma unroll
     for (int i = 0; i < ILP; i++) {
-      output_v[i] = (beta != nullptr) ? gamma_v[i] * (input_v[i] - mu) * rsigma + beta_v[i] :
-                                        gamma_v[i] * (input_v[i] - mu) * rsigma;
+      output_v[i] = (beta != nullptr)
+                        ? gamma_v[i] * (input_v[i] - mu) * rsigma + beta_v[i]
+                        : gamma_v[i] * (input_v[i] - mu) * rsigma;
     }
     *(reinterpret_cast<VecT*>(&output[idx])) = *output_val;
   }

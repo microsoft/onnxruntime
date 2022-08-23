@@ -210,12 +210,12 @@ class TestSaveActivations(unittest.TestCase):
         for tensor_name in tensor_names:
             self.assertGreater(
                 activations_error[tensor_name]["xmodel_err"],
-                0.1,
+                0.01,
                 f"{tensor_name} cross model error {activations_error[tensor_name]['xmodel_err']} exceeds threashold.",
             )
             self.assertGreater(
                 activations_error[tensor_name]["qdq_err"],
-                0.1,
+                0.01,
                 f"{tensor_name} qdq error {activations_error[tensor_name]['qdq_err']} exceeds threashold.",
             )
 

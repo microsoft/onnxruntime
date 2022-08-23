@@ -81,7 +81,7 @@ Status SaveRuntimeTensor(
 
   // TODO need to ensure the data is written in little-endian format...
   // e.g., with endian_utils.h:WriteLittleEndian()
-  // https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/framework/endian_utils.h
+  // https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/framework/endian_utils.h
   if constexpr (endian::native != endian::little) {
     ORT_NOT_IMPLEMENTED("checkpointing currently requires little-endian host byte order");
   }

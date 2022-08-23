@@ -5,13 +5,13 @@ This is a simple guide on how the distributed CI pipeline works and how it can b
 ### The Pipeline
 
 The distributed CI pipeline is intended for running tests that require a distributed environment (for example, tests that need to be run with ```mpirun```).
-The pipeline ```yml``` file is defined in [```tools/ci_build/github/azure-pipelines/orttraining-linux-gpu-distributed-test-ci-pipeline.yml```](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/azure-pipelines/orttraining-linux-gpu-distributed-test-ci-pipeline.yml).
+The pipeline ```yml``` file is defined in [```tools/ci_build/github/azure-pipelines/orttraining-linux-gpu-distributed-test-ci-pipeline.yml```](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/azure-pipelines/orttraining-linux-gpu-distributed-test-ci-pipeline.yml).
 The pipeline runs on every pull request commit under the [```orttraining-distributed```](https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=140&_a=summary) check.
 The flow of events in the pipeline are:
 
 1. Clone the git repository and checkout the branch that needs to run for the CI (the pull request).
 2. Build the docker container installing all dependencies that are needed for the distributed tests (for example, ```open-mpi```)
-3. Run all tests defined in the file [```orttraining/orttraining/test/python/orttraining_distributed_tests.py```](https://github.com/microsoft/onnxruntime/blob/master/orttraining/orttraining/test/python/orttraining_distributed_tests.py) through the script [```orttraining/orttraining/test/python/launch_test.py```](https://github.com/microsoft/onnxruntime/blob/master/orttraining/orttraining/test/python/launch_test.py)
+3. Run all tests defined in the file [```orttraining/orttraining/test/python/orttraining_distributed_tests.py```](https://github.com/microsoft/onnxruntime/blob/main/orttraining/orttraining/test/python/orttraining_distributed_tests.py) through the script [```orttraining/orttraining/test/python/launch_test.py```](https://github.com/microsoft/onnxruntime/blob/main/orttraining/orttraining/test/python/launch_test.py)
 4. Report the status of the tests.
 
 ## Running Locally
@@ -28,7 +28,7 @@ python orttraining_distributed_tests.py
 Follow the below steps to add new distributed tests that will run in this pipeline.
 
 1. Create a new python file that can be called as a script. Let's call this ```dummy_distributed_test.py``` as an example.
-2. Make sure this ```dummy_distributed_test.py``` can be called and executed using either ```python dummy_distributed_test.py``` or using ```mpirun -n <num_gpus> -x NCCL_DEBUG=INFO python dummy_distributed_test.py```. A real example of such a test file is [```orttraining/orttraining/test/python/orttraining_test_checkpoint.py```](https://github.com/microsoft/onnxruntime/blob/master/orttraining/orttraining/test/python/orttraining_test_checkpoint.py).
+2. Make sure this ```dummy_distributed_test.py``` can be called and executed using either ```python dummy_distributed_test.py``` or using ```mpirun -n <num_gpus> -x NCCL_DEBUG=INFO python dummy_distributed_test.py```. A real example of such a test file is [```orttraining/orttraining/test/python/orttraining_test_checkpoint.py```](https://github.com/microsoft/onnxruntime/blob/main/orttraining/orttraining/test/python/orttraining_test_checkpoint.py).
 3. Create a new function in ```orttraining/orttraining/test/python/orttraining_distributed_tests.py```
    ```python
    def run_dummy_distributed_tests(cwd, log):
