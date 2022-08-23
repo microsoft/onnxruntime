@@ -81,7 +81,7 @@ function handleItem(vm, gitContribute, gitUrlPattern) {
   if (vm.inheritance) {
     normalizeLanguageValuePairs(vm.inheritance).forEach(handleInheritance);
   }
-  
+
   common.processSeeAlso(vm);
 
   // id is used as default template's bookmark
@@ -248,19 +248,6 @@ function getTypePropertyName(type) {
     return definition.typePropertyName;
   }
 
-  return undefined;
-}
-
-function getCategory(type) {
-  var classItems = getDefinitions(classCategory);
-  if (classItems.hasOwnProperty(type)) {
-    return classCategory;
-  }
-
-  var namespaceItems = getDefinitions(namespaceCategory);
-  if (namespaceItems.hasOwnProperty(type)) {
-    return namespaceCategory;
-  }
   return undefined;
 }
 
