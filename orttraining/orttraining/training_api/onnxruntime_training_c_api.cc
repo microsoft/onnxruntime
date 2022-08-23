@@ -98,10 +98,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainStep, _Inout_ OrtTrainingSession* sess
   std::vector<OrtValue> feeds(inputs_len);
 
   for (size_t i = 0; i != inputs_len; ++i) {
-    auto& ort_value = feeds[i] = *reinterpret_cast<const ::OrtValue*>(inputs[i]);
-    if (ort_value.Fence()) {
-      ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
-    }
+    feeds[i] = *reinterpret_cast<const ::OrtValue*>(inputs[i]);
   }
 
   // Create output feed
@@ -109,8 +106,6 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainStep, _Inout_ OrtTrainingSession* sess
   for (size_t i = 0; i != outputs_len; ++i) {
     if (outputs[i] != nullptr) {
       ::OrtValue& value = *(outputs[i]);
-      if (value.Fence())
-        value.Fence()->BeforeUsingAsOutput(onnxruntime::kCpuExecutionProvider, queue_id);
       fetches[i] = value;
     }
   }
@@ -126,8 +121,6 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainStep, _Inout_ OrtTrainingSession* sess
     return onnxruntime::ToOrtStatus(status);
   for (size_t i = 0; i != outputs_len; ++i) {
     ::OrtValue& value = fetches[i];
-    if (value.Fence())
-      value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
     if (outputs[i] == nullptr) {
       outputs[i] = new OrtValue(value);
     }
@@ -147,9 +140,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::EvalStep, _In_ const OrtTrainingSession* se
   std::vector<OrtValue> feeds(inputs_len);
 
   for (size_t i = 0; i != inputs_len; ++i) {
-    auto& ort_value = feeds[i] = *reinterpret_cast<const ::OrtValue*>(inputs[i]);
-
-    if (ort_value.Fence()) ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
+    feeds[i] = *reinterpret_cast<const ::OrtValue*>(inputs[i]);
   }
 
   // Create output feed
@@ -157,8 +148,6 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::EvalStep, _In_ const OrtTrainingSession* se
   for (size_t i = 0; i != outputs_len; ++i) {
     if (outputs[i] != nullptr) {
       ::OrtValue& value = *(outputs[i]);
-      if (value.Fence())
-        value.Fence()->BeforeUsingAsOutput(onnxruntime::kCpuExecutionProvider, queue_id);
       fetches[i] = value;
     }
   }
@@ -174,8 +163,6 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::EvalStep, _In_ const OrtTrainingSession* se
     return onnxruntime::ToOrtStatus(status);
   for (size_t i = 0; i != outputs_len; ++i) {
     ::OrtValue& value = fetches[i];
-    if (value.Fence())
-      value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
     if (outputs[i] == nullptr) {
       outputs[i] = new OrtValue(value);
     }
