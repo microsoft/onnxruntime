@@ -42,7 +42,7 @@ endif()
 
 if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 12)
   message(FATAL_ERROR  "GCC Version Must Not Less than 8.0")
-else()
+endif()
 
 # Options
 option(onnxruntime_RUN_ONNX_TESTS "Enable ONNX Compatibility Testing" OFF)
