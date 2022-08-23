@@ -13,7 +13,7 @@ jobs:
 - job: ${{ parameters.JobName }}
   workspace:
     clean: all
-  timeoutInMinutes:  300
+  timeoutInMinutes:  180
   pool:
     vmImage: 'macOS-11'
   variables:
