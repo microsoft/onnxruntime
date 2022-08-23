@@ -224,8 +224,8 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
                                       1, m, n, k,
                                       (const float*)merged_qkv_alpha_.get(), input->template Data<int8_t>(), (const int8_t*)merged_qkv_weight_.get(),
                                       (const float*)merged_qkv_bias_.get(), stacked_qkv_layers,
-                                      CUBLASLT_ORDER_COL,
-                                      CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_HOST));
+                                      CUBLASLT_ORDER_COL, 
+                                      (cublasLtPointerMode_t)4)); //CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_HOST));
 
   // BxSx3xNxH => 3xBxNxSxH, treat 4 consecutive int8 as float
   LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size / sizeof(float), num_heads_,
