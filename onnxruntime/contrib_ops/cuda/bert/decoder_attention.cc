@@ -220,7 +220,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // key input: (S', B, h1)
   // weight: (h1, h2)
   // h = N*H
-  cublasHandle_t cublas = CublasHandle();
+  cublasHandle_t cublas = GetCublasHandle(context);
   constexpr size_t element_size = sizeof(T);
 
   typedef typename ToCudaType<T>::MappedType CudaT;

@@ -35,13 +35,19 @@ struct CudaNotification : public synchronize::Notification {
   cudaEvent_t event_;
 };
 
-CudaStream::CudaStream(cudaStream_t stream, const OrtDevice& device, bool own_flag) : 
-    Stream(stream, device), own_stream_(own_flag) {
+CudaStream::CudaStream(cudaStream_t stream, const OrtDevice& device, bool own_flag) : Stream(stream, device), own_stream_(own_flag) {
+  CUBLAS_CONFIG_CALL(cublasCreate(&cublas_handle_));
+  CUBLAS_CONFIG_CALL(cublasSetStream(cublas_handle_, stream));
+  CUDNN_CONFIG_CALL(cudnnCreate(&cudnn_handle_));
+  CUDNN_CONFIG_CALL(cudnnSetStream(cudnn_handle_, stream));
 }
 
-CudaStream::~CudaStream(){
+CudaStream::~CudaStream() {
   if (handle && own_stream_)
     CUDA_CALL(cudaStreamDestroy(static_cast<cudaStream_t>(handle)));
+
+  CUBLAS_CONFIG_CALL(cublasDestroy(cublas_handle_));
+  CUDNN_CONFIG_CALL(cudnnDestroy(cudnn_handle_));
 }
 
 std::unique_ptr<synchronize::Notification> CudaStream::CreateNotification(size_t /*num_consumers*/){

@@ -161,7 +161,7 @@ Status Inverse::ComputeInternal(OpKernelContext* ctx) const {
 
   utils::MLTypeCallDispatcher<float, double, MLFloat16> t_disp(input->GetElementType());
   return t_disp.InvokeRet<Status, ComputeImpl>(
-      OrtStream(ctx), Base::CublasHandle(), this, *input, *output, info, pivots, num_batches, rows);
+      OrtStream(ctx), GetCublasHandle(ctx), this, *input, *output, info, pivots, num_batches, rows);
 }
 
 }  // namespace cuda

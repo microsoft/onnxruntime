@@ -124,7 +124,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   output_shape[2] = static_cast<int64_t>(hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
-  cublasHandle_t cublas = CublasHandle();
+  cublasHandle_t cublas = GetCublasHandle(context);
   const size_t element_size = sizeof(T);
 
   // Use GEMM for fully connection.

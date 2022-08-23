@@ -18,6 +18,10 @@ struct CudaStream : Stream {
   void Flush() override;
 
   bool own_stream_{true};
+
+  cudnnHandle_t cudnn_handle_{};
+
+  cublasHandle_t cublas_handle_{};
 };
 
 void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry, const OrtDevice::DeviceType device_type, cudaStream_t external_stream, bool use_existing_stream);

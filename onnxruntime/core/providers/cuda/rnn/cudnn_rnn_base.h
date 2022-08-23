@@ -99,10 +99,11 @@ class CudnnRnnBase : public CudaKernel {
     w_data_cache_ = nullptr;
 
     size_t state_size;
-    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.CreateDescriptorIfNeeded(CudnnHandle(), nullptr));
-    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.GetCudnnDropoutStatesSize(CudnnHandle(), nullptr, state_size));
+    auto default_cudnn_handle = DefaultCudnnHandle();
+    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.CreateDescriptorIfNeeded(default_cudnn_handle, nullptr));
+    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.GetCudnnDropoutStatesSize(default_cudnn_handle, nullptr, state_size));
     state_buffer_ = GetScratchBuffer<void>(state_size, nullptr);
-    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.Set(CudnnHandle(), nullptr, state_buffer_.get(), state_size));
+    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.Set(default_cudnn_handle, nullptr, state_buffer_.get(), state_size));
 
     layout_ = info.GetAttrOrDefault("layout", static_cast<int64_t>(0));
     ORT_ENFORCE(layout_ == 0, 

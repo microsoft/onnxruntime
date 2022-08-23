@@ -71,7 +71,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, shape);
 
-  cublasHandle_t cublas = CublasHandle();
+  cublasHandle_t cublas = GetCublasHandle(context);
   cudaStream_t stream = Stream(context);
 
   constexpr size_t element_size = sizeof(T);

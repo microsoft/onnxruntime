@@ -45,12 +45,11 @@ const cudnnConvolutionFwdAlgo_t Conv<T>::kAllAlgos[] = {
     CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED,
 };
 
-cudnnStatus_t GetWorkspaceSize(const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s, cudnnConvolutionFwdAlgo_t algo,
-                               size_t* sz) {
-  return cudnnGetConvolutionForwardWorkspaceSize(s.handle, s.x_tensor, s.w_desc, s.conv_desc, s.y_tensor, algo, sz);
+cudnnStatus_t GetWorkspaceSize(cudnnHandle_t handle, const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s, cudnnConvolutionFwdAlgo_t algo, size_t* sz) {
+  return cudnnGetConvolutionForwardWorkspaceSize(handle, s.x_tensor, s.w_desc, s.conv_desc, s.y_tensor, algo, sz);
 }
 
-size_t GetMaxWorkspaceSize(const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s,
+size_t GetMaxWorkspaceSize(cudnnHandle_t handle, const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s,
                            const cudnnConvolutionFwdAlgo_t* algo, int n_algo) {
   // TODO: get maximum available size from memory areana
   size_t free, total;
@@ -61,7 +60,7 @@ size_t GetMaxWorkspaceSize(const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& 
   for (int i = 0; i < n_algo; i++) {
     cudnnStatus_t err;
     size_t sz;
-    err = GetWorkspaceSize(s, algo[i], &sz);
+    err = GetWorkspaceSize(handle, s, algo[i], &sz);
     if (CUDNN_STATUS_SUCCESS != err || sz == 0 || sz < max_ws_size || sz > free) continue;
     max_ws_size = sz;
   }
@@ -267,46 +266,46 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       switch (cudnn_conv_algo) {
         case 0: {
           static constexpr int num_algos = CUDNN_CONVOLUTION_FWD_ALGO_COUNT;
-          size_t max_ws_size = cuda_ep->GetCudnnConvUseMaxWorkspace() ? GetMaxWorkspaceSize(s_, kAllAlgos, num_algos)
+          size_t max_ws_size = cuda_ep->GetCudnnConvUseMaxWorkspace() ? GetMaxWorkspaceSize(GetCudnnHandle(context), s_, kAllAlgos, num_algos)
                                                                       : AlgoSearchWorkspaceSize;
           // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
           // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
           IAllocatorUniquePtr<void> algo_search_workspace = GetTransientScratchBuffer<void>(max_ws_size);
           CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionForwardAlgorithmEx(
-              s_.handle,
-              s_.x_tensor,
-              s_.x_data,
-              s_.w_desc,
-              s_.w_data,
-              s_.conv_desc,
-              s_.y_tensor,
-              s_.y_data,
-              1,            // requestedAlgoCount
-              &algo_count,  // returnedAlgoCount
-              &perf,
-              algo_search_workspace.get(),
-              max_ws_size),
-              s_.handle,
-              Stream(context));
+                                    GetCudnnHandle(context),
+                                    s_.x_tensor,
+                                    s_.x_data,
+                                    s_.w_desc,
+                                    s_.w_data,
+                                    s_.conv_desc,
+                                    s_.y_tensor,
+                                    s_.y_data,
+                                    1,            // requestedAlgoCount
+                                    &algo_count,  // returnedAlgoCount
+                                    &perf,
+                                    algo_search_workspace.get(),
+                                    max_ws_size),
+                                GetCudnnHandle(context),
+                                Stream(context));
           break;
         }
         case 1:
           CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionForwardAlgorithm_v7(
-              s_.handle,
-              s_.x_tensor,
-              s_.w_desc,
-              s_.conv_desc,
-              s_.y_tensor,
-              1,            // requestedAlgoCount
-              &algo_count,  // returnedAlgoCount
-              &perf),
-              s_.handle,
-              Stream(context));
+                                    GetCudnnHandle(context),
+                                    s_.x_tensor,
+                                    s_.w_desc,
+                                    s_.conv_desc,
+                                    s_.y_tensor,
+                                    1,            // requestedAlgoCount
+                                    &algo_count,  // returnedAlgoCount
+                                    &perf),
+                                GetCudnnHandle(context),
+                                Stream(context));
           break;
 
         default:
           perf.algo = kDefaultConvAlgo;
-          CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(s_, perf.algo, &perf.memory), s_.handle, Stream(context));
+          CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(GetCudnnHandle(context), s_, perf.algo, &perf.memory), GetCudnnHandle(context), Stream(context));
           if (std::is_same<T, MLFloat16>::value) {
             perf.mathType = CUDNN_TENSOR_OP_MATH;
           } else {
@@ -338,7 +337,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 template <typename T>
 Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   std::lock_guard<OrtMutex> lock(s_.mutex);
-  CUDNN_CONFIG_CALL_THROW(cudnnSetStream(s_.handle, Stream(context)));
+  auto device_stream = Stream(context);
   ORT_RETURN_IF_ERROR(UpdateState(context));
   if (s_.Y->Shape().Size() == 0) {
     return Status::OK();
@@ -346,8 +345,8 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   const auto alpha = Consts<CudaT>::One;
   const auto beta = Consts<CudaT>::Zero;
   IAllocatorUniquePtr<void> workspace = GetWorkSpace(OrtStream(context));
-
-  CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(s_.handle,
+  auto cudnn_handle = GetCudnnHandle(context);
+  CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(cudnn_handle,
                                                 &alpha,
                                                 s_.x_tensor,
                                                 s_.x_data,
@@ -360,13 +359,13 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
                                                 &beta,
                                                 s_.y_tensor,
                                                 s_.y_data),
-      s_.handle,
-      Stream(context));
+                        GetCudnnHandle(context),
+                        Stream(context));
   if (nullptr != s_.b_data) {
-    CUDNN_RETURN_IF_ERROR(cudnnAddTensor(s_.handle, &alpha, s_.b_tensor, s_.b_data,
+    CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnn_handle, &alpha, s_.b_tensor, s_.b_data,
                                          &alpha, s_.y_tensor, s_.y_data),
-        s_.handle,
-        Stream(context));
+                          GetCudnnHandle(context),
+                          Stream(context));
   }
   // To deal with asymmetric padding, we may have over-padded on one or both sides of the spatial dimensions
   // This may have lead to extra results that are unnecessary and hence we slice that off here
