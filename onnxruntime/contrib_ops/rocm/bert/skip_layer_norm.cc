@@ -4,6 +4,7 @@
 #include "core/providers/rocm/rocm_common.h"
 #include "contrib_ops/rocm/bert/skip_layer_norm.h"
 #include "contrib_ops/rocm/bert/skip_layer_norm_impl.h"
+#include "contrib_ops/rocm/bert/transformer_common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -29,6 +30,8 @@ template <typename T>
 SkipLayerNorm<T>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) : RocmKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
   ORT_ENFORCE(epsilon_ >= 0);
+  const TransformerOptions* options = TransformerOptions::GetInstance();
+  tuning_ = options->IsTuningEnabled();
 }
 
 template <typename T>
@@ -93,7 +96,6 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   int sequence_length = static_cast<int>(input_dims[1]);
   int hidden_size = static_cast<int>(input_dims[2]);
   int64_t element_count = input_dims[0] * sequence_length * hidden_size;
-  size_t element_size = sizeof(T);
   typedef typename ToHipType<T>::MappedType HipT;
 
   if (!LaunchSkipLayerNormKernel<HipT>(
@@ -107,7 +109,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
           epsilon_,
           hidden_size,
           static_cast<int>(element_count),
-          element_size)) {
+          tuning_)) {
     // Get last error to reset it to hipSuccess.
     HIP_CALL(hipGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
