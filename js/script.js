@@ -1110,10 +1110,10 @@ var validCombos = {
 
     //power
     "linux,C-API,Power,DefaultCPU":
-        "pip install onnxruntime-powerpc64le",
+        "Follow build instructions from <a href='https://onnxruntime.ai/docs/build/inferencing.html#build-instructions' target='_blank'>here</a>",
     
-     "linux,C++,Power,DefaultCPU":
-        "pip install onnxruntime-powerpc64le",
+    "linux,C++,Power,DefaultCPU":
+        "Follow build instructions from <a href='https://onnxruntime.ai/docs/build/inferencing.html#build-instructions' target='_blank'>here</a>",
     
     "linux,Python,Power,DefaultCPU":
         "pip install onnxruntime-powerpc64le",
