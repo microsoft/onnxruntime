@@ -682,7 +682,6 @@ struct ProviderHostImpl : ProviderHost {
   void Node__ToProto(const Node* p, ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) override { p->ToProto(proto, update_subgraphs); }
 
   const NodeAttributes& Node__GetAttributes(const Node* p) noexcept override { return p->GetAttributes(); }
-  NodeAttributes& Node__GetMutableAttributes(Node* p) noexcept override { return p->GetMutableAttributes(); }
   size_t Node__GetInputEdgesCount(const Node* p) noexcept override { return p->GetInputEdgesCount(); }
   size_t Node__GetOutputEdgesCount(const Node* p) noexcept override { return p->GetOutputEdgesCount(); }
 
@@ -696,12 +695,6 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<Node__EdgeIterator> Node__OutputEdgesEnd(const Node* p) noexcept override { return std::make_unique<Node__EdgeIterator_Impl>(p->OutputEdgesEnd()); }
 
   void Node__ForEachDef(const Node* p, std::function<void(const NodeArg&, bool is_input)> func, bool include_missing_optional_defs) override { p->ForEachDef(func, std::move(include_missing_optional_defs)); }
-  const std::unordered_map<std::string, gsl::not_null<Graph*>>& Node__GetAttributeNameToMutableSubgraphMap(Node* p) noexcept override {
-    return p->GetAttributeNameToMutableSubgraphMap();
-  }
-  std::unordered_map<std::string, gsl::not_null<const Graph*>> Node__GetAttributeNameToSubgraphMap(const Node* p) const override {
-    return p->GetAttributeNameToSubgraphMap();
-  }
 
   // NodeArg (wrapped)
   const std::string& NodeArg__Name(const NodeArg* p) noexcept override { return p->Name(); }
@@ -745,7 +738,6 @@ struct ProviderHostImpl : ProviderHost {
 
   NodeArg& Graph__GetOrCreateNodeArg(Graph* p, const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) override { return p->GetOrCreateNodeArg(name, p_arg_type); }
 
-  void Graph__AddOuterScopeNodeArg(Graph* p, const std::string& name) override { p->AddOuterScopeNodeArg(name); }
   const std::unordered_set<std::string>& Graph__GetOuterScopeNodeArgNames(const Graph* p) const noexcept { return p->GetOuterScopeNodeArgNames(); }
 
   Status Graph__Resolve(Graph* p) override { return p->Resolve(); }
@@ -759,7 +751,6 @@ struct ProviderHostImpl : ProviderHost {
 
   const std::vector<const NodeArg*>& Graph__GetInputs(const Graph* p) noexcept override { return p->GetInputs(); }
   bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) override { return p->GetInitializedTensor(tensor_name, value); }
-  bool Graph__IsInitializedTensor(const Graph* p, const std::string& tensor_name) override { return p->IsInitializedTensor(tensor_name); }
 
   const Node* Graph__ParentNode(const Graph* p) const override { return p->ParentNode(); }
 
