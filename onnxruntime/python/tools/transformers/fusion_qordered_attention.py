@@ -6,8 +6,6 @@
 from logging import getLogger
 from typing import Tuple
 
-from numpy import transpose
-
 from fusion_base import Fusion
 from onnx import NodeProto, helper
 from onnx_model import OnnxModel
@@ -434,8 +432,7 @@ class FusionQOrderedAttention(Fusion):
 
             attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
             attention_node.attribute.extend([helper.make_attribute("order_input", 1)])
-            #TODO: Adjust this to be ORDER_COL
-            attention_node.attribute.extend([helper.make_attribute("order_weight", 1)])
+            attention_node.attribute.extend([helper.make_attribute("order_weight", 0)])
             attention_node.attribute.extend([helper.make_attribute("order_bias", 1)])
             attention_node.attribute.extend([helper.make_attribute("order_output", 1)])
 
