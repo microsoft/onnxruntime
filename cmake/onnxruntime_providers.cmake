@@ -1530,7 +1530,6 @@ if (onnxruntime_USE_XNNPACK)
     "${ONNXRUNTIME_INCLUDE_DIR}/core/providers/xnnpack/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/xnnpack/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/xnnpack/*.cc"
-
     # utils for handling QDQ models
     "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.cc"

@@ -27,7 +27,6 @@
 #include "core/graph/op.h"
 #include "core/graph/runtime_optimization_record_container.h"
 #include "core/graph/function_utils.h"
-#include "core/optimizer/initializer.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function.h"
@@ -3324,15 +3323,16 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       // Dense tensors larger than the threshold are added to the external file.
       TensorProto* output_proto = result.add_initializer();
 
-      Initializer raw_data_init(initializer);
-      auto tensor_span = raw_data_init.DataAsByteSpan<uint8_t>();
-      if (tensor_span.size() < initializer_size_threshold) {
+      std::vector<uint8_t> raw_data;
+      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, Path(), raw_data));
+      size_t tensor_bytes_size = raw_data.size();
+      if (tensor_bytes_size < initializer_size_threshold) {
         *output_proto = initializer;
         continue;
       }
 
-      for (size_t index = 0; index != tensor_span.size(); ++index) {
-        external_stream << tensor_span[index];
+      for (size_t index = 0; index != tensor_bytes_size; ++index) {
+        external_stream << raw_data[index];
       }
 
       output_proto->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
@@ -3344,7 +3344,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       offset->set_value(std::to_string(external_offset));
       ONNX_NAMESPACE::StringStringEntryProto* length = output_proto->add_external_data();
       length->set_key("length");
-      length->set_value(std::to_string(tensor_span.size()));
+      length->set_value(std::to_string(tensor_bytes_size));
 
       output_proto->set_name(initializer.name());
       output_proto->set_data_type(initializer.data_type());
@@ -3353,7 +3353,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       }
       output_proto->set_doc_string(initializer.doc_string());
 
-      external_offset += tensor_span.size();
+      external_offset += tensor_bytes_size;
 #if !defined(DISABLE_SPARSE_TENSORS)
     }
 #endif
