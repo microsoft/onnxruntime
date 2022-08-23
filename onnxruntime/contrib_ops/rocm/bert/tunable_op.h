@@ -72,33 +72,6 @@ class Op {
 template <typename ParamsT>
 class TunableOp {
  public:
-  static bool IsSupported(Op<ParamsT>& op, const ParamsT* param) {
-    Status status = op(param);
-    if (status.Category() == common::StatusCategory::NONE && status.Code() == common::StatusCode::INVALID_ARGUMENT) {
-      return false;
-    }
-    ORT_THROW_IF_ERROR(status);
-    return true;
-  }
-
-  static void WarmUp(Op<ParamsT>& op, const ParamsT* param) {
-    const int num_iter = 4;
-    for (int i = 0; i < num_iter; i++) {
-      ORT_THROW_IF_ERROR(op(param));
-    }
-  }
-
-  static double Profile(Op<ParamsT>& op, const ParamsT* param) {
-    const int num_iter = 100;
-    Timer timer{};
-    timer.Start();
-    for (int i = 0; i < num_iter; i++) {
-      ORT_THROW_IF_ERROR(op(param));
-    }
-    timer.End();
-    return timer.Duration() / num_iter;
-  }
-
   Status operator()(const ParamsT* params) {
     int id;
     if (tuning_ == true && Condition(params)) {
@@ -126,9 +99,40 @@ class TunableOp {
   virtual ~TunableOp() = default;
 
  protected:
-  std::vector<Op<ParamsT>> ops_;
+  // set the default op to be used in non-tuning scenario
+  void SetDefaultId(int id) {
+    ORT_ENFORCE(id < ops_.size(), "TunableOp id out of bound");
+    default_id_ = id;
+  }
 
  private:
+  static void WarmUp(Op<ParamsT>& op, const ParamsT* param) {
+    const int num_iter = 4;
+    for (int i = 0; i < num_iter; i++) {
+      ORT_THROW_IF_ERROR(op(param));
+    }
+  }
+
+  static double Profile(Op<ParamsT>& op, const ParamsT* param) {
+    const int num_iter = 100;
+    Timer timer{};
+    timer.Start();
+    for (int i = 0; i < num_iter; i++) {
+      ORT_THROW_IF_ERROR(op(param));
+    }
+    timer.End();
+    return timer.Duration() / num_iter;
+  }
+
+  static bool IsSupported(Op<ParamsT>& op, const ParamsT* param) {
+    Status status = op(param);
+    if (status.Category() == common::StatusCategory::NONE && status.Code() == common::StatusCode::INVALID_ARGUMENT) {
+      return false;
+    }
+    ORT_THROW_IF_ERROR(status);
+    return true;
+  }
+
   // Whether we should tune for this input
   virtual bool Condition(const ParamsT* /*params*/) {
     return true;
@@ -153,6 +157,10 @@ class TunableOp {
     return id;
   }
 
+ protected:
+  std::vector<Op<ParamsT>> ops_;
+
+ private:
   // mapping from Signature to best impl
   std::unordered_map<std::string, int> kernel_map_;
 
