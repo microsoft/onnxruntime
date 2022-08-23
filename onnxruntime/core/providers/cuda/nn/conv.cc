@@ -249,7 +249,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context) const {
         } else {
           TensorShapeVector b_extended_dims = b_shape.AsShapeVector();
           for (auto i = b_rank; i < y_rank; ++i) {
-            ORT_ENFORCE(y_dims_cudnn[i] == 1, "Cannot append non-one dim to B");
+            ORT_RETURN_IF_NOT(y_dims_cudnn[i] == 1, "dim ", i, " of Y is ", y_dims_cudnn[i], ", cannot apply it to that dim of B");
             b_extended_dims.push_back(1);
           }
           ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_extended_dims, CudnnTensor::GetDataType<CudaT>()));
