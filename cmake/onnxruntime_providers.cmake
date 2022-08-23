@@ -109,6 +109,40 @@ file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/op_kernel_type_control_overrides.inc"
 )
 
+file(GLOB_RECURSE my_kernel_lib_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/test/providers/my_kernel_lib/*.h"
+  "${ONNXRUNTIME_ROOT}/test/providers/my_kernel_lib/*.cc"
+)
+
+add_library(my_kernel_lib SHARED ${my_kernel_lib_srcs})
+
+file(GLOB_RECURSE my_execution_provider_srcs
+  "${ONNXRUNTIME_ROOT}/test/providers/my_ep/*.h"
+  "${ONNXRUNTIME_ROOT}/test/providers/my_ep/*.cc"
+  "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
+  "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
+)
+
+onnxruntime_add_shared_library_module(my_execution_provider ${my_execution_provider_srcs})
+add_dependencies(my_execution_provider onnxruntime_providers_shared onnx my_kernel_lib ${ABSEIL_LIBS})
+target_link_libraries(my_execution_provider PRIVATE onnxruntime_providers_shared my_kernel_lib ${ABSEIL_LIBS})
+target_include_directories(my_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
+target_include_directories(my_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
+target_include_directories(my_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${ORTTRAINING_ROOT})
+target_include_directories(my_execution_provider PRIVATE "${ONNXRUNTIME_ROOT}/test/providers/my_kernel_lib")
+if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+  target_link_libraries(my_execution_provider PRIVATE Python::Python)
+endif()
+if(APPLE)
+  set_property(TARGET my_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${REPO_ROOT}/onnxruntime/test/providers/my_ep/exported_symbols.lst")
+elseif(UNIX)
+  set_property(TARGET my_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/providers/my_ep/version_script.lds -Xlinker --gc-sections -Xlinker -rpath=\\$ORIGIN")
+elseif(WIN32)
+  set_property(TARGET my_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${REPO_ROOT}/onnxruntime/test/providers/my_ep/symbols.def")
+else()
+  message(FATAL_ERROR "my_execution_provider unknown platform, need to specify shared library exports for it")
+endif()
+
 if(onnxruntime_USE_NUPHAR)
   set(PROVIDERS_NUPHAR onnxruntime_providers_nuphar)
 endif()

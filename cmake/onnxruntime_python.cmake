@@ -44,6 +44,23 @@ if (onnxruntime_ENABLE_EAGER_MODE)
 
   list(APPEND onnxruntime_pybind_srcs
               ${onnxruntime_eager_extension_srcs})
+
+  file(GLOB my_kernel_aten_backend_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/test/providers/my_aten_backend/*.cc"
+    )
+
+  add_library(my_kernel_aten_backend SHARED
+    ${my_kernel_aten_backend_src}
+    )
+
+  target_include_directories(my_kernel_aten_backend PRIVATE "/bert_ort/chenta/eager_ort/include/python3.7m")
+  target_include_directories(my_kernel_aten_backend PRIVATE ${pybind11_INCLUDE_DIRS} "${TORCH_INSTALL_PREFIX}/include" "${TORCH_INSTALL_PREFIX}/include/torch/csrc/api/include")
+  target_include_directories(my_kernel_aten_backend PRIVATE "${ONNXRUNTIME_ROOT}/test/providers/my_kernel_lib/")
+  find_library(LIBTORCH_LIBRARY torch PATHS "${TORCH_INSTALL_PREFIX}/lib")
+  find_library(LIBTORCH_CPU_LIBRARY torch_cpu PATHS "${TORCH_INSTALL_PREFIX}/lib")
+  find_library(LIBC10_LIBRARY c10 PATHS "${TORCH_INSTALL_PREFIX}/lib")
+  target_link_libraries(my_kernel_aten_backend PRIVATE my_kernel_lib ${LIBTORCH_LIBRARY} ${LIBTORCH_CPU_LIBRARY} ${LIBC10_LIBRARY} ${TORCH_PYTHON_LIBRARY})
+
 endif()
 
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
