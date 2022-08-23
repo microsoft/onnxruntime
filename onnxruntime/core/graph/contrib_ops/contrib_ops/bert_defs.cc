@@ -252,11 +252,14 @@ Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form 
 ONNX_MS_OPERATOR_SET_SCHEMA(NGramRepeatBlock, 1,
                             OpSchema().SetDoc(NGramRepeatBlock_ver1_doc)
                             .Attr("ngram_size", "The NGram size.", AttributeProto::INT)
-                            .Attr("recency_length", "Only look at the last recency_length tokens when enforcing no repetition of n-grams. Value range >=0. Default value is 0.", AttributeProto::INT, static_cast<int64_t>(0))
+                            .Attr("recency_length", "No repetition of n-grams are enforced at the last recency_length tokens."
+                            , AttributeProto::INT, static_cast<int64_t>(0))
                             .Input(0, "input_ids", "2D input tensor with shape (batch_size, sequence_length)", "Tid")
-                            .Input(1, "scores", "2D input tensor with shape (batch_size, vocab_size)", "T").Output(0, "scores_out", "2D output tensor with shape (batch_size, vocab_size)", "T")
+                            .Input(1, "scores", "2D input tensor with shape (batch_size, vocab_size)", "T")
+                            .Output(0, "scores_out", "2D output tensor with shape (batch_size, vocab_size)", "T")
                             .TypeConstraint("Tid", {"tensor(int64)"}, "Constrain indices to integer types")
-                            .TypeConstraint("T", {"tensor(float)"}, "Constrain scores input and output types to float tensors.")
+                            .TypeConstraint("T", {"tensor(float)"}
+                            , "Constrain scores input and output types to float tensors.")
                             .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
                               propagateElemTypeFromInputToOutput(ctx, 1, 0);
                               if (!hasInputShape(ctx, 1)) {
