@@ -1086,14 +1086,33 @@ void addObjectMethods(py::module& m, Environment& env, ExecutionProviderRegistra
   // There is a global var: arena_extend_strategy, which means we can't use that var name here
   // See docs/C_API.md for details on what the following parameters mean and how to choose these values
   ort_arena_cfg_binding.def(py::init([](size_t max_mem, int arena_extend_strategy_local,
-                                        int initial_chunk_size_bytes, int max_dead_bytes_per_chunk,
-                                        int initial_growth_chunk_size_bytes) {
+                                        int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
     auto ort_arena_cfg = std::make_unique<OrtArenaCfg>();
     ort_arena_cfg->max_mem = max_mem;
     ort_arena_cfg->arena_extend_strategy = arena_extend_strategy_local;
     ort_arena_cfg->initial_chunk_size_bytes = initial_chunk_size_bytes;
     ort_arena_cfg->max_dead_bytes_per_chunk = max_dead_bytes_per_chunk;
-    ort_arena_cfg->initial_growth_chunk_size_bytes = initial_growth_chunk_size_bytes;
+    return ort_arena_cfg;
+  }));
+
+  ort_arena_cfg_binding.def(py::init([](const py::dict& feeds) {
+    auto ort_arena_cfg = std::make_unique<OrtArenaCfg>();
+    for (const auto kvp : feeds) {
+      auto key = kvp.first.cast<std::string>();
+      if (strcmp(key, "max_mem") == 0) {
+        ort_arena_cfg->max_mem = static_cast<size_t>(kvp.second);
+      } else if (strcmp(key, "arena_extend_strategy") == 0) {
+        ort_arena_cfg->arena_extend_strategy = static_cast<int>(kvp.second);
+      } else if (strcmp(key, "initial_chunk_size_bytes") == 0) {
+        ort_arena_cfg->initial_chunk_size_bytes = static_cast<int>(kvp.second);
+      } else if (strcmp(key, "max_dead_bytes_per_chunk") == 0) {
+        ort_arena_cfg->max_dead_bytes_per_chunk = static_cast<int>(kvp.second);
+      } else if (strcmp(key, "initial_growth_chunk_size_bytes") == 0) {
+        ort_arena_cfg->initial_growth_chunk_size_bytes = static_cast<int>(kvp.second);
+        } else {
+        ORT_THROW("Invalid OrtArenaCfg option: ", key);
+      }
+    }
     return ort_arena_cfg;
   }));
 

@@ -1308,6 +1308,34 @@ class TestInferenceSession(unittest.TestCase):
         )
         print("Create session with customize execution provider successfully!")
 
+    def testCreateAllocator(self):
+        def verifyAllocator(allocator, expectedConfig):
+            for key in expectedConfig:
+                self.assertEqual(
+                    allocator.getattr(key),
+                    expectedConfig[key]
+                )
+
+        # Verify ordered parameter initialization
+        ort_memory_info = onnxrt.OrtArenaCfg(8, 0, 4, 2)
+        expected_allocator = {
+            "max_mem": 8,
+            "arena_extend_strategy": 0,
+            "initial_chunk_size_bytes": 4,
+            "max_dead_bytes_per_chunk": 2
+            }
+        verifyAllocator(ort_memory_info, expected_allocator)
+
+        # Verify key-value pair initialization
+        expected_kvp_allocator = {
+            "max_mem": 16,
+            "arena_extend_strategy": 1,
+            "initial_chunk_size_bytes": 8,
+            "max_dead_bytes_per_chunk": 4,
+            "initial_growth_chunk_size_bytes": 2
+            }
+        ort_kvp_memory_info = onnxrt.OrtArenaCfg(expected_kvp_allocator)
+        verifyAllocator(ort_kvp_memory_info, expected_kvp_allocator)
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
