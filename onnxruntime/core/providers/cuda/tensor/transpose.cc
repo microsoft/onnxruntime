@@ -81,7 +81,7 @@ Status TransposeWithCublas(cudaStream_t stream, cublasHandle_t cublas_handle, co
 Status Transpose::DoTranspose(const Transpose& transpose_kernel,
                               cudaStream_t stream,
                               const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output) {
-  return Transpose::DoTranspose(transpose_kernel.GetDeviceProp(), stream, transpose_kernel.CublasHandle(), permutations, input, output);
+  return Transpose::DoTranspose(transpose_kernel.GetDeviceProp(), stream, transpose_kernel.DefaultCublasHandle(), permutations, input, output);
 }
 
 Status Transpose::DoTranspose(const cudaDeviceProp& prop,
