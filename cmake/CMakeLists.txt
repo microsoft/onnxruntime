@@ -41,7 +41,7 @@ if (NOT CMAKE_BUILD_TYPE)
 endif()
 
 if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 8)
-  message(FATAL_ERROR  "GCC Version Must Not Less than 8")
+  message(FATAL_ERROR  "GCC version must not less than 8")
 endif()
 
 # Options
