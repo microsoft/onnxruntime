@@ -19,7 +19,6 @@ class DmlOperatorInstanceNormalization : public DmlOperator
         const MLOperatorKernelCreationContext& kernelCreationContext,
         int index,
         int count,
-        uint32_t destinationAxis,
         uint32_t minimumDimensionCount
         )
     {
@@ -62,7 +61,7 @@ public:
         DML_OPERATOR_DESC fusedActivationDmlDesc = fusedActivation ? fusedActivation->GetDmlDesc() : DML_OPERATOR_DESC();
 
         // Shift IN_SCALE and IN_BIAS input tensor descs {1, C, 1, 1} out of 1D tensors.
-        Shift1DInputsTensorDesc(kernelCreationContext, IN_SCALE, 2, C, inputDimensionCount);
+        Shift1DInputsTensorDesc(kernelCreationContext, IN_SCALE, 2, inputDimensionCount);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
