@@ -173,23 +173,6 @@ KernelDefBuilder& KernelDefBuilder::TypeConstraint(const char* arg_name,
   return TypeConstraint(std::string(arg_name), default_type);
 }
 
-KernelDefBuilder& KernelDefBuilder::FixedTypeConstraintForHash(
-    const std::string& arg_name,
-    const std::vector<MLDataType>& default_types_for_hash) {
-  auto& hash_type_constraints = kernel_def_->hash_type_constraints_;
-  if (!hash_type_constraints.has_value()) {
-    hash_type_constraints.emplace();
-  }
-  (*hash_type_constraints)[arg_name] = default_types_for_hash;
-  return *this;
-}
-
-KernelDefBuilder& KernelDefBuilder::FixedTypeConstraintForHash(
-    const char* arg_name,
-    const std::vector<MLDataType>& default_types_for_hash) {
-  return FixedTypeConstraintForHash(std::string{arg_name}, default_types_for_hash);
-}
-
 KernelDefBuilder& KernelDefBuilder::MayInplace(const std::vector<std::pair<int, int>>& inplaces) {
   kernel_def_->inplace_map_ = inplaces;
   return *this;

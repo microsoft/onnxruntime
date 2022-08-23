@@ -131,16 +131,10 @@ class KernelDef {
   // The data types that are supported by default for inputs/outputs.
   // Key is input/output/type constraint name defined in op schema, Value are supported types.
   // note: std::map as we need the order to be deterministic for the hash
-  // Note: default_type_constraints_ are used to calculate the kernel hash so that the hash is
-  // stable across builds with and without kernel type reduction enabled.
   std::map<std::string, std::vector<MLDataType>> default_type_constraints_;
 
   // the type constraints that are supported in this build (enabled) for the kernel
   std::map<std::string, std::vector<MLDataType>> enabled_type_constraints_;
-
-  // optional alternate type constraints to use to calculate the hash instead of default_type_constraints_
-  // note: this provides a way to update the default type constraints while preserving the hash value
-  optional<std::map<std::string, std::vector<MLDataType>>> hash_type_constraints_;
 
   // An element <i, j> means that output j reuses the memory of input i.
   std::vector<std::pair<int, int>> inplace_map_;
@@ -248,17 +242,6 @@ class KernelDefBuilder {
   */
   KernelDefBuilder& TypeConstraint(const std::string& arg_name, MLDataType default_type);
   KernelDefBuilder& TypeConstraint(const char* arg_name, MLDataType default_type);
-
-  /**
-     Specify the original set of types that this kernel supports by default to use when computing the kernel def hash.
-     The set of types supported by default may change over time, but the hash should stay the same.
-  */
-  KernelDefBuilder& FixedTypeConstraintForHash(
-      const std::string& arg_name,
-      const std::vector<MLDataType>& default_types_for_hash);
-  KernelDefBuilder& FixedTypeConstraintForHash(
-      const char* arg_name,
-      const std::vector<MLDataType>& default_types_for_hash);
 
   /**
      Inplace mapping from inputs to outputs allowed.
