@@ -46,7 +46,7 @@ jobs:
     skipComponentGovernanceDetection: true
   workspace:
     clean: all
-  pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+  pool: 'Win-CPU-2019'
   timeoutInMinutes:  300
   steps:
   - task: UsePythonVersion@0
@@ -101,10 +101,10 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
         displayName: 'Install ONNX'
 
-  # - task: NuGetToolInstaller@0
-  #   displayName: Use Nuget 5.7.0
-  #   inputs:
-  #     versionSpec: 5.7.0
+  - task: NuGetToolInstaller@0
+    displayName: Use Nuget 5.7.0
+    inputs:
+      versionSpec: 5.7.0
 
   - task: NuGetCommand@2
     displayName: 'NuGet restore'
