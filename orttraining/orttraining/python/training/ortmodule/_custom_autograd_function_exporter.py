@@ -24,25 +24,28 @@ from ._fallback import ORTModuleONNXModelException, wrap_exception
 # at all.
 BANNED_AUTOGRAD_FUNCTION_NAMES = frozenset([torch.utils.checkpoint.CheckpointFunction.__name__])
 
-
-# pylint: disable=protected-access
 # Mapping from pytorch scalar type to onnx scalar type.
 _CAST_PYTORCH_TO_ONNX = {
-    "Byte": torch._C._onnx.TensorProtoDataType.UINT8,
-    "Char": torch._C._onnx.TensorProtoDataType.INT8,
-    "Double": torch._C._onnx.TensorProtoDataType.DOUBLE,
-    "Float": torch._C._onnx.TensorProtoDataType.FLOAT,
-    "Half": torch._C._onnx.TensorProtoDataType.FLOAT16,
-    "Int": torch._C._onnx.TensorProtoDataType.INT32,
-    "Long": torch._C._onnx.TensorProtoDataType.INT64,
-    "Short": torch._C._onnx.TensorProtoDataType.INT16,
-    "Bool": torch._C._onnx.TensorProtoDataType.BOOL,
-    "ComplexFloat": torch._C._onnx.TensorProtoDataType.COMPLEX64,
-    "ComplexDouble": torch._C._onnx.TensorProtoDataType.COMPLEX128,
-    "BFloat16": torch._C._onnx.TensorProtoDataType.BFLOAT16,
-    "Undefined": torch._C._onnx.TensorProtoDataType.UNDEFINED,
+    "Byte": torch.onnx.TensorProtoDataType.UINT8,
+    "Char": torch.onnx.TensorProtoDataType.INT8,
+    "Double": torch.onnx.TensorProtoDataType.DOUBLE,
+    "Float": torch.onnx.TensorProtoDataType.FLOAT,
+    "Half": torch.onnx.TensorProtoDataType.FLOAT16,
+    "Int": torch.onnx.TensorProtoDataType.INT32,
+    "Long": torch.onnx.TensorProtoDataType.INT64,
+    "Short": torch.onnx.TensorProtoDataType.INT16,
+    "Bool": torch.onnx.TensorProtoDataType.BOOL,
+    "ComplexFloat": torch.onnx.TensorProtoDataType.COMPLEX64,
+    "ComplexDouble": torch.onnx.TensorProtoDataType.COMPLEX128,
+    "BFloat16": torch.onnx.TensorProtoDataType.BFLOAT16,
+    "Undefined": torch.onnx.TensorProtoDataType.UNDEFINED,
 }
-# pylint: enable=protected-access
+
+def _pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
+    try:
+        return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
+    except AttributeError:
+        return _CAST_PYTORCH_TO_ONNX[scalar_type]
 
 
 def _export_pt_1_10(g, n, *args, **kwargs):
@@ -96,7 +99,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             if call_type == "d":
                 # Got a tensor variable.
                 tensor_args.append(arg)
-                scalar_type = int(_CAST_PYTORCH_TO_ONNX[arg.type().scalarType()])
+                scalar_type = _pytorch_type_to_onnx(arg.type().scalarType())
                 input_tensor_types.append(scalar_type)
                 input_tensor_ranks.append(arg.type().dim())
             elif call_type == "c":
@@ -141,7 +144,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         output_tensor_ranks = []
         for arg in n.outputs():
             # Type of tensor's elements.
-            scalar_type = int(_CAST_PYTORCH_TO_ONNX[arg.type().scalarType()])
+            scalar_type = _pytorch_type_to_onnx(arg.type().scalarType())
             output_tensor_types.append(scalar_type)
             output_tensor_ranks.append(arg.type().dim())
 
