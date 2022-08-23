@@ -28,69 +28,49 @@ class FusionQOrderedGelu(Fusion):
 
             -> quantized input  -> DQ -> FastGelu -> Q ->
 
-        (or)
-
-            -> quantized input  -> DQ -> Reshape -> FastGelu -> Q ->
-
         OUTPUT PATTERN
             -> QOrderedGelu ->
-
-        (or)
-            -> Reshape -> QOrderedGelu ->
         """
         gelu_children = self.model.get_children(node, input_name_to_nodes)
 
-        # Should only have 1 child - QuantizeLinear
-        if len(gelu_children) != 1 or gelu_children[0].op_type != "QuantizeLinear":
+        # Should only have 1 child - QuantizeLinear (or) 
+        # SHould have 2 children - QuantizeLinear + Shape
+        if not ((len(gelu_children) == 1 and gelu_children[0].op_type == "QuantizeLinear") or
+           (len(gelu_children) == 2 and gelu_children[0].op_type == "QuantizeLinear" and gelu_children[1].op_type == "Shape")):
             return
 
         downstream_quantize_node = gelu_children[0]
+        downstream_shape_node = None
+
+        if len(gelu_children) == 2:
+            downstream_shape_node = gelu_children[1]
 
         if not FusionUtils.check_qdq_node_for_fusion(downstream_quantize_node, self.model):
             return
 
         # The first input to Gelu/FastGelu should flow through a DequantizeLinear node
         
-        # In GPT2, there a Reshape between the DQ node and the FastGelu node to reshape
-        # the output of the upstream Gemm. In this case, we move the DQ node below the 
-        # Reshape node and then fuse the FastGelu node.
-        dq_paths = {
-            "path1": (["DequantizeLinear"], [0]),
-            "path2": (["Reshape", "DequantizeLinear"], [0, 0]),
-        }
+        # The first input to Gelu should flow through a DequantizeLinear node
+        first_path_id, first_input_parent_nodes, _ = self.model.match_parent_paths(
+            node,
+            [(["DequantizeLinear"], [0])],
+            output_name_to_node,
+        )
 
-        dq_path = None
-        has_reshape = False
-        for k, v in dq_paths.items():
-            dq_path = self.model.match_parent_path(dq_paths, v[0], v[1])
-            if dq_path is None:
-                continue
-            if k == "path2":
-                has_reshape = True
-            break
-
-        if dq_path is None:
-            logger.debug(f"It is not safe to fuse QOrderedGelu node. Skip")
+        if first_path_id < 0:
             return
-
-        upstream_reshape_node = dq_path[0] if has_reshape else None
-        upstream_dequantize_node = dq_path[1] if has_reshape else dq_path[0]
+        
+        upstream_dequantize_node = first_input_parent_nodes[0]
 
         if not FusionUtils.check_qdq_node_for_fusion(upstream_dequantize_node, self.model):
             return
 
-        # Push Reshape node above the DQ node if it exists
-        if has_reshape:
-            """
-            -> DQ -> Reshape -> FastGelu -> Q ->
-
-            should become
-
-            -> Reshape -> DQ -> FastGelu -> Q ->            
-            """
-            self.model.replace_node_input(upstream_reshape_node, upstream_reshape_node.input[0], upstream_dequantize_node.input[0])
-            self.model.replace_node_input(upstream_dequantize_node, upstream_dequantize_node.input[0], upstream_reshape_node.output[0])
-            self.model.replace_node_input(node, node.input[0], upstream_dequantize_node.output[0])
+        # Arrange the downstream Shape's input to be fed from the 
+        # downstream QuantizeLinear node, so that fusion will 
+        # be deemed safe
+        if downstream_shape_node is not None:
+            node.output
+            self.model.replace_node_input(downstream_shape_node, downstream_shape_node.input[0], downstream_quantize_node.output[0])
 
         # Fusion logic
         subgraph_nodes = [node]  # Gelu/FastGelu
@@ -98,7 +78,7 @@ class FusionQOrderedGelu(Fusion):
 
         if not self.model.is_safe_to_fuse_nodes(
             subgraph_nodes,
-            downstream_quantize_node.output,
+            [node.output[0], downstream_quantize_node.output[0]],
             input_name_to_nodes,
             output_name_to_node,
         ):
