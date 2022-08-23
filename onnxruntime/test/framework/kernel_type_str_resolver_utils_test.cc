@@ -9,7 +9,6 @@
 #include "gtest/gtest.h"
 
 #include "core/flatbuffers/schema/ort.fbs.h"
-#include "core/graph/op_identifier_utils.h"
 #include "core/graph/schema_registry.h"
 #include "test/util/include/asserts.h"
 
@@ -19,10 +18,8 @@ static Status LoadRequiredOpsFromOpSchemas(KernelTypeStrResolver& kernel_type_st
   const auto required_op_ids = kernel_type_str_resolver_utils::GetRequiredOpIdentifiers();
   const auto schema_registry = SchemaRegistryManager{};
   for (auto op_id : required_op_ids) {
-    std::string_view domain{}, op{};
-    ONNX_NAMESPACE::OperatorSetVersion since_version{};
-    ORT_RETURN_IF_ERROR(utils::SplitOpId(op_id, domain, op, since_version));
-    const auto* op_schema = schema_registry.GetSchema(std::string{op}, since_version, std::string{domain});
+    const auto* op_schema = schema_registry.GetSchema(std::string{op_id.op_type}, op_id.since_version,
+                                                      std::string{op_id.domain});
     ORT_RETURN_IF(op_schema == nullptr, "Failed to get op schema.");
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterOpSchema(*op_schema));
   }

@@ -7,6 +7,7 @@
 
 #include "core/common/status.h"
 #include "core/framework/kernel_type_str_resolver.h"
+#include "core/graph/op_identifier.h"
 
 namespace flatbuffers {
 class DetachedBuffer;
@@ -26,7 +27,7 @@ Status LoadKernelTypeStrResolverFromBuffer(KernelTypeStrResolver& kernel_type_st
 
 // add required ops to resolver
 // TODO find better name than "required ops"
-gsl::span<const OpIdentifier> GetRequiredOpIdentifiers();
+gsl::span<const OpIdentifierWithStringViews> GetRequiredOpIdentifiers();
 
 Status AddRequiredOpsToKernelTypeStrResolver(KernelTypeStrResolver& kernel_type_str_resolver);
 

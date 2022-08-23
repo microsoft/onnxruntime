@@ -5,7 +5,10 @@
 
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
-#include "core/graph/op_identifier_utils.h"
+
+// TODO used for OpIdFromString, remove later
+#include "core/common/parse_string.h"
+#include "core/common/string_utils.h"
 
 namespace fb = flatbuffers;
 
@@ -13,9 +16,10 @@ namespace onnxruntime {
 
 Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
                                                    gsl::span<const ArgTypeAndIndex>& resolved_args) const {
-  const auto op_id = utils::MakeOpId(node);
+  const auto op_id = OpIdentifier{node.Domain(), node.OpType(), node.SinceVersion()};
   const auto op_it = op_kernel_type_str_map_.find(op_id);
-  ORT_RETURN_IF(op_it == op_kernel_type_str_map_.end(), "Failed to find op_id: ", op_id);
+  ORT_RETURN_IF(op_it == op_kernel_type_str_map_.end(),
+                "Failed to find op_id: ", op_id.domain, ':', op_id.op_type, ':', op_id.since_version);
   const auto& type_str_map = op_it->second;
   const auto type_str_it = type_str_map.find(kernel_type_str);
   ORT_RETURN_IF(type_str_it == type_str_map.end(),
@@ -28,7 +32,7 @@ Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema, bool* registered_out) {
-  auto op_id = utils::MakeOpId(op_schema);
+  auto op_id = OpIdentifier{op_schema.domain(), op_schema.Name(), op_schema.SinceVersion()};
   if (Contains(op_kernel_type_str_map_, op_id)) {
     if (registered_out) *registered_out = false;
     return Status::OK();
@@ -115,6 +119,22 @@ Status KernelTypeStrResolver::RegisterGraphNodeOpSchemas(const Graph& graph) {
   return Status::OK();
 }
 
+// TODO store OpIdentifier struct directly in ORT format
+namespace {
+constexpr auto kOpIdDelimiter = ":";
+
+std::string OpIdToString(const OpIdentifier& op_id) {
+  return MakeString(op_id.domain, kOpIdDelimiter, op_id.op_type, kOpIdDelimiter, op_id.since_version);
+}
+
+OpIdentifier OpIdFromString(std::string_view s) {
+  const auto components = utils::SplitString(s, kOpIdDelimiter, true);
+  ORT_ENFORCE(components.size() == 3);
+  const auto since_version = ParseStringWithClassicLocale<ONNX_NAMESPACE::OperatorSetVersion>(components[2]);
+  return OpIdentifier{std::string{components[0]}, std::string{components[1]}, since_version};
+}
+}
+
 Status KernelTypeStrResolver::SaveToOrtFormat(
     fb::FlatBufferBuilder& builder,
     fb::Offset<fbs::KernelTypeStrResolver>& fbs_kernel_type_str_resolver) const {
@@ -147,7 +167,7 @@ Status KernelTypeStrResolver::SaveToOrtFormat(
 
     auto fbs_op_kernel_type_str_args_entry = fbs::CreateOpIdKernelTypeStrArgsEntry(
         builder,
-        builder.CreateSharedString(op_id),
+        builder.CreateSharedString(OpIdToString(op_id)),
         builder.CreateVectorOfSortedTables(&fbs_kernel_type_str_args));
     fbs_op_kernel_type_str_args.push_back(fbs_op_kernel_type_str_args_entry);
   }
@@ -199,7 +219,8 @@ Status KernelTypeStrResolver::LoadFromOrtFormat(const fbs::KernelTypeStrResolver
                         fbs::utils::kInvalidOrtFormatModelMessage);
     }
 
-    const auto [it, inserted] = op_kernel_type_str_map.try_emplace(fbs_op_id->str(), std::move(kernel_type_str_map));
+    const auto [it, inserted] = op_kernel_type_str_map.try_emplace(OpIdFromString(fbs_op_id->str()),
+                                                                   std::move(kernel_type_str_map));
     ORT_RETURN_IF_NOT(inserted, "Duplicate entry for op id: ", it->first, ". ",
                       fbs::utils::kInvalidOrtFormatModelMessage);
   }

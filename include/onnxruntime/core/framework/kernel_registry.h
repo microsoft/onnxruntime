@@ -46,9 +46,6 @@ class KernelRegistry {
                        ProviderType exec_provider, const KernelCreateInfo** out) const;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-  // Try to find the kernel given a kernel def hash.
-  bool TryFindKernelByHash(HashValue kernel_def_hash, const KernelCreateInfo** out) const;
-
   bool IsEmpty() const { return kernel_creator_fn_map_.empty(); }
 
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
@@ -57,9 +54,6 @@ class KernelRegistry {
     return kernel_creator_fn_map_;
   }
 #endif
-
-  // Get sorted kernel def key and hash pairs.
-  KernelDefHashes ExportKernelDefHashes() const;
 
  private:
   // Check whether the types of inputs/outputs of the given node match the extra
@@ -77,7 +71,7 @@ class KernelRegistry {
                               const IKernelTypeStrResolver& kernel_type_str_resolver,
                               std::string& error_str);
 
-  static std::string GetMapKey(std::string_view op_name, std::string_view domain, const std::string_view provider) {
+  static std::string GetMapKey(std::string_view op_name, std::string_view domain, std::string_view provider) {
     std::string key(op_name);
     // use the kOnnxDomainAlias of 'ai.onnx' instead of kOnnxDomain's empty string
     key.append(1, ' ').append(domain.empty() ? kOnnxDomainAlias : domain).append(1, ' ').append(provider);
@@ -90,8 +84,5 @@ class KernelRegistry {
   // Kernel create function map from op name to kernel creation info.
   // key is opname+domain_name+provider_name
   KernelCreateMap kernel_creator_fn_map_;
-
-  // map from kernel def hash to entry in kernel_creator_fn_map_
-  std::unordered_map<HashValue, KernelCreateMap::iterator> kernel_def_hash_lookup_;
 };
 }  // namespace onnxruntime

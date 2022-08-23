@@ -3,11 +3,17 @@
 
 #include "optimizer_api.h"
 #include "optimizer_utils.h"
+
+#include <algorithm>
 #include <deque>
-#include "core/graph/graph_utils.h"
-#include "core/framework/tensorprotoutils.h"
+#include <iterator>
+#include <optional>
+
 #include "core/framework/execution_provider.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/optimizer/transpose_optimizer/layout_transformation_potentially_added_ops.h"
 #include "core/providers/cpu/tensor/transpose.h"
 
 using namespace ONNX_NAMESPACE;
@@ -640,40 +646,56 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_typ
   return node;
 }
 
-// This is a list of onnx ops and their versions which transpose_optimizer can potentially add to the graph.
-// This is needed in minimal build since opschema is not available.
-// The versions MUST be sorted due to how the model opset is matched with the most recent operator version.
-static const std::unordered_map<std::string, std::vector<int>> onnx_ops_available_versions = {
-    {"Squeeze", {1, 11, 13}},
-    {"Unsqueeze", {1, 11, 13}},
-    {"Gather", {1, 11, 13}},
-    {"Transpose", {1, 13}},
-    {"Identity", {1, 13, 14, 16}},
-};
+static std::optional<int> GetLayoutTransformationPotentiallyAddedOpSinceVersion(
+    std::string_view domain, std::string_view op_type, int opset_version) {
+  auto compare_ignoring_since_version = [](const OpIdentifierWithStringViews& a, const OpIdentifierWithStringViews& b) {
+    if (a.domain == b.domain) {
+      return a.op_type < b.op_type;
+    }
+    return a.domain < b.domain;
+  };
+
+  const auto [range_begin, range_end] =
+      std::equal_range(kLayoutTransformationPotentiallyAddedOps.begin(),
+                       kLayoutTransformationPotentiallyAddedOps.end(),
+                       OpIdentifierWithStringViews{domain, op_type, 0},
+                       compare_ignoring_since_version);
+
+  // versions are in increasing order
+  // search backwards for largest since version <= opset_version
+  const auto range_rbegin = std::make_reverse_iterator(range_end),
+             range_rend = std::make_reverse_iterator(range_begin);
+
+  const auto result =
+      std::find_if(range_rbegin, range_rend,
+                   [&opset_version](const OpIdentifierWithStringViews& a) {
+                     return a.since_version <= opset_version;
+                   });
+
+  if (result != range_rend) {
+    return result->since_version;
+  }
+
+  return std::nullopt;
+}
 
 // Based on the opset version imported for this model, returns the since version for the node.
 static int GetSinceVersionForNewOp(std::string_view op_type, std::string_view domain,
                                    const std::unordered_map<std::string, int>& domain_to_version_map) {
-  int since_version = -1;
+  // TODO do we need this check? we will also check kLayoutTransformationPotentiallyAddedOps
   ORT_ENFORCE(domain == kOnnxDomain, "Transpose optimizer is expected to add only onnx domain ops. Domain: ",
               domain, " provided for op: ", op_type);
 
-  auto opset_import_iter = domain_to_version_map.find(std::string(domain));
-  ORT_ENFORCE(opset_import_iter != domain_to_version_map.end(), "Onnx domain not found in opset imports.");
+  const auto opset_import_iter = domain_to_version_map.find(std::string(domain));
+  ORT_ENFORCE(opset_import_iter != domain_to_version_map.end(), domain, " domain not found in opset imports.");
 
-  int opset_version = opset_import_iter->second;
-  auto iter = onnx_ops_available_versions.find(std::string(op_type));
-  ORT_ENFORCE(iter != onnx_ops_available_versions.end(),
+  const int opset_version = opset_import_iter->second;
+  const auto since_version = GetLayoutTransformationPotentiallyAddedOpSinceVersion(domain, op_type, opset_version);
+  ORT_ENFORCE(since_version.has_value(),
               "Transpose Optimizer is adding an unexpected node: ", op_type,
-              "An entry for this node should be added in onnx_ops_available_versions and static_kernel_hashes map.");
+              "An entry for this node should be added in kLayoutTransformationPotentiallyAddedOps.");
 
-  for (auto version : iter->second) {
-    if (version <= opset_version) {
-      since_version = version;
-    }
-  }
-
-  return since_version;
+  return *since_version;
 }
 
 std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,

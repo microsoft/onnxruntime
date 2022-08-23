@@ -10,7 +10,6 @@
 
 #include "core/framework/kernel_type_str_resolver.h"
 #include "core/framework/session_state.h"
-#include "core/graph/op_identifier_utils.h"
 
 namespace onnxruntime {
 
@@ -224,17 +223,6 @@ Status KernelRegistry::TryFindKernel(const std::string& op_name, const std::stri
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-bool KernelRegistry::TryFindKernelByHash(HashValue kernel_def_hash, const KernelCreateInfo** out) const {
-  const auto hash_lookup_it = kernel_def_hash_lookup_.find(kernel_def_hash);
-  if (hash_lookup_it == kernel_def_hash_lookup_.end()) {
-    if (out) *out = nullptr;
-    return false;
-  }
-
-  if (out) *out = &hash_lookup_it->second->second;
-  return true;
-}
-
 Status KernelRegistry::Register(KernelDefBuilder& kernel_builder,
                                 const KernelCreateFn& kernel_creator) {
   return Register(KernelCreateInfo(kernel_builder.Build(), kernel_creator));
@@ -256,29 +244,10 @@ Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
     }
   }
 
-  // check for existing hash conflict
-  const auto kernel_def_hash = create_info.kernel_def->GetHash();
-  ORT_RETURN_IF(kernel_def_hash_lookup_.find(kernel_def_hash) != kernel_def_hash_lookup_.end(),
-                "Failed to add kernel for " + key + ": Conflict with existing kernel def hash.");
-
   // Register the kernel.
   // Ownership of the KernelDef is transferred to kernel_creator_fn_map_.
-  auto it = kernel_creator_fn_map_.emplace(key, std::move(create_info));
-  kernel_def_hash_lookup_.emplace(kernel_def_hash, it);
+  kernel_creator_fn_map_.emplace(key, std::move(create_info));
   return Status::OK();
-}
-
-KernelDefHashes KernelRegistry::ExportKernelDefHashes() const {
-  KernelDefHashes result{};
-  result.reserve(kernel_creator_fn_map_.size());
-  std::transform(
-      kernel_creator_fn_map_.begin(), kernel_creator_fn_map_.end(),
-      std::back_inserter(result),
-      [](const KernelCreateMap::value_type& kvp) {
-        return std::make_pair(kvp.first, kvp.second.kernel_def->GetHash());
-      });
-  std::sort(result.begin(), result.end());
-  return result;
 }
 
 }  // namespace onnxruntime

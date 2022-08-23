@@ -103,23 +103,4 @@ bool KernelRegistryManager::HasImplementationOf(const KernelRegistryManager& r, 
   });
 }
 
-bool KernelRegistryManager::SearchKernelRegistriesByHash(HashValue kernel_def_hash,
-                                                         const KernelCreateInfo** kernel_create_info) const {
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  for (const auto& registry : custom_kernel_registries_) {
-    if (registry->TryFindKernelByHash(kernel_def_hash, kernel_create_info)) {
-      return true;
-    }
-  }
-#endif
-
-  for (const auto& kv : provider_type_to_registry_) {
-    if (kv.second->TryFindKernelByHash(kernel_def_hash, kernel_create_info)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 }  // namespace onnxruntime

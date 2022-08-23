@@ -15,7 +15,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/common/status.h"
-#include "core/graph/basic_types.h"
+#include "core/graph/op_identifier.h"
 #include "core/graph/graph.h"
 
 namespace flatbuffers {

@@ -108,18 +108,8 @@ class KernelDef {
 
   bool IsConflict(const KernelDef& other) const;
 
-  HashValue GetHash() const noexcept {
-    // if we need to support different hash versions we can update CalculateHash to take a version number
-    // and calculate any non-default versions dynamically. we only use this during kernel lookup so
-    // it's not performance critical
-    return hash_;
-  }
-
  private:
   friend class KernelDefBuilder;
-
-  // called once by KernelDefBuilder::Build
-  void CalculateHash();
 
   // The operator name supported by <*this> kernel..
   std::string op_name_;
@@ -392,7 +382,6 @@ class KernelDefBuilder {
      Return the kernel definition, passing ownership of the KernelDef to the caller
   */
   std::unique_ptr<KernelDef> Build() {
-    kernel_def_->CalculateHash();
     return std::move(kernel_def_);
   }
 

@@ -10,7 +10,6 @@
 #include "core/common/safeint.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/allocator.h"
-#include "core/framework/kernel_def_hash_helpers.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/kernel_type_str_resolver.h"
 #include "core/framework/node_index_info.h"
@@ -18,7 +17,6 @@
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/session_state_utils.h"
 #include "core/framework/utils.h"
-#include "core/graph/op_identifier_utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 

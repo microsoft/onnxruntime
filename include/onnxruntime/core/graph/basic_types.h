@@ -33,7 +33,6 @@ using NodeArgInfo = ONNX_NAMESPACE::ValueInfoProto;
 using InitializedTensorSet = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*>;
 using ArgNameToTypeMap = std::unordered_map<std::string, ONNX_NAMESPACE::TypeProto>;
 using ProviderType = const std::string&;
-using OpIdentifier = std::string;
 
 // TODO - Evaluate switching the types below to support transparent comparators and enable
 // lookups based on gsl::cstring_span<> and std::string_view.  This would reduces allocations

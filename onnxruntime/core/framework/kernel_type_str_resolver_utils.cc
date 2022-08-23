@@ -8,8 +8,8 @@
 #include "flatbuffers/flatbuffers.h"
 
 #include "core/common/common.h"
-#include "core/graph/op_identifier_utils.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
+#include "core/optimizer/transpose_optimizer/layout_transformation_potentially_added_ops.h"
 
 namespace onnxruntime::kernel_type_str_resolver_utils {
 
@@ -36,32 +36,8 @@ Status LoadKernelTypeStrResolverFromBuffer(KernelTypeStrResolver& kernel_type_st
   return Status::OK();
 }
 
-gsl::span<const OpIdentifier> GetRequiredOpIdentifiers() {
-  using utils::MakeOpId;
-  static const std::array op_identifiers{
-      // Note: these region_begin/end markers are used by tools/ci_build/reduce_op_kernels.py
-      // @@region_begin(extended_minimal_build_required_kernels)@@
-      MakeOpId(kOnnxDomain, "Transpose", 1),
-      MakeOpId(kOnnxDomain, "Transpose", 13),
-      MakeOpId(kOnnxDomain, "Squeeze", 1),
-      MakeOpId(kOnnxDomain, "Squeeze", 11),
-      MakeOpId(kOnnxDomain, "Squeeze", 13),
-      MakeOpId(kOnnxDomain, "Unsqueeze", 1),
-      MakeOpId(kOnnxDomain, "Unsqueeze", 11),
-      MakeOpId(kOnnxDomain, "Unsqueeze", 13),
-      MakeOpId(kOnnxDomain, "Gather", 1),
-      MakeOpId(kOnnxDomain, "Gather", 11),
-      MakeOpId(kOnnxDomain, "Gather", 13),
-      MakeOpId(kOnnxDomain, "Identity", 1),
-      MakeOpId(kOnnxDomain, "Identity", 13),
-      MakeOpId(kOnnxDomain, "Identity", 14),
-      MakeOpId(kOnnxDomain, "Identity", 16),
-
-      MakeOpId(kMSDomain, "QLinearConv", 1),
-      MakeOpId(kMSDomain, "NhwcMaxPool", 1),
-      // @@region_end(extended_minimal_build_required_kernels)@@
-  };
-  return op_identifiers;
+gsl::span<const OpIdentifierWithStringViews> GetRequiredOpIdentifiers() {
+  return kLayoutTransformationPotentiallyAddedOps;
 }
 
 Status AddRequiredOpsToKernelTypeStrResolver(KernelTypeStrResolver& kernel_type_str_resolver) {
