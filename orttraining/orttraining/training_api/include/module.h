@@ -101,7 +101,7 @@ struct Module {
   std::vector<OrtValue> weights_;
   std::vector<OrtValue> gradients_;
   bool accumulate_gradient_ = false;
-  const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters_;
+  const std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters_;
 };
 
 }  // namespace api
