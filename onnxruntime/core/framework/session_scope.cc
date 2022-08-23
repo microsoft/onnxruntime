@@ -228,7 +228,7 @@ class NVTXKernelScope {
 class DumpKernelScope {
  public:
   DumpKernelScope(const SessionState& sess_state,
-                  OpKernelContextInternal & context,
+                  OpKernelContextInternal& context,
                   const Node& node,
                   size_t iteration) : sess_state_(sess_state),
                                       context_(context),
@@ -286,29 +286,12 @@ class MemSessScope {
   const ExecutionFrame& frame_;
   MemoryProfiler& profiler_;
 };
-//class MemKernelScope {
-// public:
-//  MemKernelScope(const SessionState& sess_state) : profiler_(*sess_state.GetMemoryProfiler()) {}
-//  ~MemKernelScope() {
-//    profiler_.CreateEvents(
-//        "dynamic activations_" + std::to_string(profiler_.GetMemoryInfo().GetIteration()),
-//        profiler_.GetAndIncreasePid(),
-//        MemoryInfo::MapType::DynamicActivation, "", 0);
-//  }
-//
-// private:
-//  MemoryProfiler& profiler_;
-//};
 #else
 class MemSessScope {
  public:
   MemSessScope(const SessionState&,
                const ExecutionFrame&) {}
 };
-//class MemKernelScope {
-// public:
-//  MemKernelScope(const SessionState&) {}
-//};
 #endif
 
 class ProfilerSessScope {
@@ -558,7 +541,6 @@ class KernelScopeImpl {
   ConcurrencyKernelScope concur_scope_;
   NVTXKernelScope nvtx_scope_;
   DumpKernelScope dump_scope_;
-  //MemKernelScope mem_scope_;
   TraceKernelScope trace_scope_;
   InstrumentKernelScope instrument_scope_;
   //add new kernel scope here
