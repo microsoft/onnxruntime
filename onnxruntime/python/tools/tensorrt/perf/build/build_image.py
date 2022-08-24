@@ -17,7 +17,7 @@ TRT_DOCKER_FILES = {
 }
 
 
-def run_cmd(cmd):
+def run_cmd(cmd: str) -> int:
     """
     Runs a shell command and returns the process's return code.
 
@@ -87,7 +87,7 @@ def is_valid_ver_str(version: str, min_comps: int = 0, max_comps: int = 0) -> bo
     ver_nums = version.split(".")
     num_comps = len(ver_nums)
 
-    if num_comps < min_comps > 0:
+    if num_comps < min_comps:
         return False
 
     if num_comps > max_comps > 0:
