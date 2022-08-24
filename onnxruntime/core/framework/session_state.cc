@@ -40,20 +40,36 @@ void SessionState::SetupAllocators() {
                     if (iter != allocators_.end()) {
                       // EPs could be sharing allocators so no info message unless this is a different instance.
                       // This is an expected scenario as multiple EPs may have allocators for the same device.
-                      // e.g. xnnpack and CPU EP are both CPU based.
-                      if (iter->second(memory_info.id, memory_info.mem_type) != allocator) {
-                        LOGS(logger_, INFO) << "Allocator already registered for " << allocator->Info()
-                                            << ". Ignoring allocator from " << provider.Type();
+                      // e.g. xnnpack and CPU EP are both CPU based. The bad thing in this scenario is that default
+                      // allocator (e.g. from CPU EP) can be chosen instead of specified in other EP as expected
+                      // To solve this the priority of Allocators was added to memory info
+                      // TODO(vvchernov): just now priority of Allocator of TVM EP is adjustable,
+                      // other EP's Allocator has default priority.
+                      auto cur_alloc = iter->second(memory_info.id, memory_info.mem_type);
+                      if (cur_alloc != allocator) {
+                        const OrtMemoryInfo& cur_mem_info = cur_alloc->Info();
+                        if (memory_info.alloc_prior > cur_mem_info.alloc_prior) {
+                          SetupAllocator(provider, memory_info);
+                          LOGS(logger_, INFO) << "Allocator already registered for " << cur_mem_info
+                                              << " was replaced by allocator from " << provider.Type();
+                        } else {
+                          LOGS(logger_, INFO) << "Allocator was already registered for " << cur_mem_info
+                                              << ". Ignoring allocator from " << provider.Type();
+                        }
                       }
                     } else {
-                      // slightly weird indirection to go back to the provider to get the allocator each time
-                      // it's needed in order to support scenarios such as the CUDA EP's per-thread allocator.
-                      allocators_[memory_info] = [&provider](int id, OrtMemType mem_type) {
-                        return provider.GetAllocator(id, mem_type);
-                      };
+                      SetupAllocator(provider, memory_info);
                     }
                   }
                 });
+}
+
+void SessionState::SetupAllocator(IExecutionProvider& provider, const OrtMemoryInfo& mem_info) {
+  // slightly weird indirection to go back to the provider to get the allocator each time
+  // it's needed in order to support scenarios such as the CUDA EP's per-thread allocator.
+  allocators_[mem_info] = [&provider](int id, OrtMemType mem_type) {
+    return provider.GetAllocator(id, mem_type);
+  };
 }
 
 AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noexcept {

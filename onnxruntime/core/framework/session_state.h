@@ -353,6 +353,7 @@ class SessionState {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
   void SetupAllocators();
+  void SetupAllocator(IExecutionProvider& provider, const OrtMemoryInfo& mem_info);
 
   // Populate OrtValueNameIdxMap and create the graph viewer.
   void CreateGraphInfo();
