@@ -104,7 +104,8 @@ static Status MergeShapeInfo(const std::string& output_name,
       // target.shape() was empty. 'assert' just in case that ever changes.
       assert(utils::HasShape(source) && utils::HasShape(target));
       LOGS(logger, WARNING) << "Error merging shape info for output. '" << output_name
-                            << "' source:" << utils::GetShape(source) << " target:" << utils::GetShape(target)
+                            << "' source:" << utils::GetTensorShapeFromTensorShapeProto(utils::GetShape(source))
+                            << " target:" << utils::GetTensorShapeFromTensorShapeProto(utils::GetShape(target))
                             << ". Falling back to lenient merge.";
       if (utils::HasTensorType(source)) {
         ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_tensor_type());
@@ -2413,19 +2414,25 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
           node_arg->SetShape(inferred_shape);
         }
       } else {
+        bool invalid = false;
+
         if (p_existing_shape->dim_size() != tensor_proto->dims_size()) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "Type Error: Shape of initializer ", name, " does not match. ",
-                                 *p_existing_shape, " != ", *tensor_proto);
+          invalid = true;
+        } else {
+          for (int i = 0; i < p_existing_shape->dim_size(); ++i) {
+            auto& d = p_existing_shape->dim(i);
+            if (utils::HasDimValue(d) && (d.dim_value() != tensor_proto->dims(i))) {
+              invalid = true;
+              break;
+            }
+          }
         }
 
-        for (int i = 0; i < p_existing_shape->dim_size(); ++i) {
-          auto& d = p_existing_shape->dim(i);
-          if (utils::HasDimValue(d) && (d.dim_value() != tensor_proto->dims(i))) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                   "Type Error: Shape of initializer ", name, " does not match. ",
-                                   *p_existing_shape, " != ", *tensor_proto);
-          }
+        if (invalid) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Type Error: Shape of initializer ", name, " does not match. ",
+                                 utils::GetTensorShapeFromTensorShapeProto(*p_existing_shape), " != ",
+                                 utils::GetTensorShapeFromTensorProto(*tensor_proto));
         }
       }
     }

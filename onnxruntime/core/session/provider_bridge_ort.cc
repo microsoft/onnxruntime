@@ -1137,7 +1137,7 @@ std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const c
 
 // Adapter to convert the legacy OrtCUDAProviderOptions to the latest OrtCUDAProviderOptionsV2
 OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const OrtCUDAProviderOptions* legacy_cuda_options) {
-  OrtCUDAProviderOptionsV2 cuda_options_converted;
+  OrtCUDAProviderOptionsV2 cuda_options_converted{};
 
   cuda_options_converted.device_id = legacy_cuda_options->device_id;
   cuda_options_converted.cudnn_conv_algo_search = legacy_cuda_options->cudnn_conv_algo_search;
