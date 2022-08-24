@@ -186,7 +186,7 @@ class FunctorCallback {
 
   Callable_t GetCallable() noexcept {
     CallableFactory<FunctorCallback, void, Args...> f(this);
-    return f.GetCallable<&FunctorCallback::Func>();
+    return f.template GetCallable<&FunctorCallback::Func>();
   }
 
  private:
@@ -1122,7 +1122,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     Callable_t GetCallable() noexcept {
       CallableFactory<ScheduleOnPreferredFunc, void> f(this);
-      return f.GetCallable<&ScheduleOnPreferredFunc::Func>();
+      return f.template GetCallable<&ScheduleOnPreferredFunc::Func>();
     }
 
    private:
@@ -1238,7 +1238,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     Callable_t GetCallable() noexcept {
       CallableFactory<DispatcherTask, void> f(this);
-      return f.GetCallable<&DispatcherTask::Func>();
+      return f.template GetCallable<&DispatcherTask::Func>();
     }
 
    private:
@@ -1349,7 +1349,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     Callable_t GetCallable() noexcept {
       CallableFactory<ConsistencyLoop, void, unsigned> f(this);
-      return f.GetCallable<&ConsistencyLoop::Func>();
+      return f.template GetCallable<&ConsistencyLoop::Func>();
     }
 
    private:
