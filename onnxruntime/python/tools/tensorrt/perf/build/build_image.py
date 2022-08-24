@@ -33,8 +33,6 @@ def run_cmd(cmd: List[str]) -> Optional[int]:
     escaped_cmd = " ".join(map(shlex.quote, cmd))
     print(f"[CMD] {escaped_cmd}\n")
 
-    proc_ret = 1
-
     with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8") as proc:
         lines = proc.stdout.readlines() if proc.stdout is not None else []
 
@@ -47,9 +45,7 @@ def run_cmd(cmd: List[str]) -> Optional[int]:
 
             lines = proc.stdout.readlines() if proc.stdout is not None else []
 
-        proc_ret = proc.poll()
-
-    return proc_ret
+        return proc.poll()
 
 
 def get_common_docker_build_args(args: argparse.Namespace) -> List[str]:
