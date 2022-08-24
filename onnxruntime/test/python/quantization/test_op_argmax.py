@@ -226,12 +226,6 @@ class TestOpArgMax(TestCaseTempDir):
             op_types_to_quantize=["ArgMax", "Conv"],
         )
 
-        model = onnx.load(model_t_uint8_qdq_dyn_path)
-        intermediate_layer_value_info = helper.ValueInfoProto()
-        intermediate_layer_value_info.name = "input_DequantizeLinear"
-        model.graph.output.append(intermediate_layer_value_info)
-        onnx.save(model, model_t_uint8_qdq_dyn_path)
-
         data_reader.rewind()
         quantize_dynamic(
             model_fp32_path,
@@ -242,12 +236,6 @@ class TestOpArgMax(TestCaseTempDir):
             extra_options=extra_options,
             op_types_to_quantize=["ArgMax", "Conv"],
         )
-
-        model = onnx.load(model_t_int8_qdq_dyn_path)
-        intermediate_layer_value_info = helper.ValueInfoProto()
-        intermediate_layer_value_info.name = "input_DequantizeLinear"
-        model.graph.output.append(intermediate_layer_value_info)
-        onnx.save(model, model_t_int8_qdq_dyn_path)
 
         data_reader.rewind()
         check_model_correctness(self, model_t_int8_qdq_dyn_path, model_t_uint8_qdq_dyn_path, data_reader.get_next())

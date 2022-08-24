@@ -11,7 +11,6 @@ from pathlib import Path
 
 import numpy as np
 import onnx
-from onnx import TensorProto, helper
 from op_test_utils import TestCaseTempDir, TestDataFeeds, check_model_correctness, check_op_type_count
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic
@@ -62,22 +61,22 @@ class TestOpLSTM(TestCaseTempDir):
         lstm_node = make_lstm_node(input_name, [10, 30], "qkv.weight", [30], "qkv.bias", output_name)
 
         # make graph
-        input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, [1, -1, 2])
-        output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, [1, -1, 2])
+        input_tensor = onnx.helper.make_tensor_value_info(input_name, onnx.TensorProto.FLOAT, [1, -1, 2])
+        output_tensor = onnx.helper.make_tensor_value_info(output_name, onnx.TensorProto.FLOAT, [1, -1, 2])
         graph_name = "lstm_test"
-        graph = helper.make_graph(
+        graph = onnx.helper.make_graph(
             [lstm_node],
             graph_name,
             [input_tensor],
             [output_tensor],
             initializer=initializers,
         )
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 14)])
+        model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 14)])
         model.ir_version = onnx.IR_VERSION
 
-        onnx.save(model, output_model_path)
+        onnx.save_model(model, output_model_path)
         model_inferenced = symbolic_shape_infer.SymbolicShapeInference.infer_shapes(model)
-        onnx.save(model_inferenced, output_model_path)
+        onnx.save_model(model_inferenced, output_model_path)
 
     def dynamic_lstm_quant_test(self, model_fp32_path, per_channel, reduce_range):
         model_int8_qop_path = "lstm_int8.qop.onnx"

@@ -126,6 +126,8 @@ class ONNXQuantizer:
         self.fixed_zero_name = "fixed_zero"
         # For int8 data-type, zero point is always zero (respresented by fixed_zero_point_name tensor)
         self.fixed_zero_zp_name = "fixed_zero_zp"
+        # Name of initializer with minimum quantization value for qint8 or quint8
+        self.fixed_qmin_name = "fixed_qmin"
 
         # Map of all original value names to quantized value names
         self.quantized_value_map = {}

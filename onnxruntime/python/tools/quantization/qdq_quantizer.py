@@ -13,9 +13,6 @@ from onnx import TensorProto
 from onnx import onnx_pb as onnx_proto
 from onnx.helper import make_function
 
-from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
-
-from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer
 from .quant_utils import (
     DEQUANT_OP_NAME,
@@ -88,7 +85,7 @@ class QDQQuantizer(ONNXQuantizer):
         # because those ops may be followed by nodes that require high resolution inputs.
         # Adding QDQ for those ops' output may end up with worse accuracy.
         # So, we don't recommend to add QDQ to node's output under such condition.
-        if "OpTypesToExcludeOutputQuantizatioin" in extra_options:
+        if "OpTypesToExcludeOutputQuantizatioin" in extra_options.keys():
             self.op_types_to_exclude_output_quantization = extra_options["OpTypesToExcludeOutputQuantizatioin"]
         else:
             self.op_types_to_exclude_output_quantization = (
@@ -125,9 +122,6 @@ class QDQQuantizer(ONNXQuantizer):
             if "QDQOpTypePerChannelSupportToAxis" not in extra_options
             else extra_options["QDQOpTypePerChannelSupportToAxis"]
         )
-
-        # Name of initializer with minimum quantization value for qint8 or quint8
-        self.fixed_qmin_name = "fixed_qmin"
 
         # Register the chosen dynamic subgraph compute quantization parameter function based on symmetric and qtype
         self.compute_quantization_parameters_function = self.create_dynamic_subgraph_function(
@@ -433,7 +427,7 @@ class QDQQuantizer(ONNXQuantizer):
                 inputs=[],
                 outputs=[fixed_qmin_name],
                 value=onnx.helper.make_tensor(
-                    name=input_name + "_init_" + self.fixed_qmin_name,
+                    name=input_name + "_init_" + fixed_qmin_name,
                     data_type=onnx.TensorProto.FLOAT,
                     dims=[],
                     vals=[qmin],
@@ -731,6 +725,7 @@ class QDQQuantizer(ONNXQuantizer):
             # Quantize the input
             # TODO: check if we have an input_scale initializer and decide whether to quantize bias static based off of that
             # get scale for input
+            input_scale_name = ""
             if input_name in self.quantized_value_map:
                 input_scale_name = self.quantized_value_map[input_name].scale_name
             elif input_name in self.quantization_params:

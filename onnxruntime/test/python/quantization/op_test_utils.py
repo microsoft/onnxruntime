@@ -8,7 +8,6 @@ from tabnanny import check
 
 import numpy as np
 import onnx
-from onnx import numpy_helper
 
 import onnxruntime
 from onnxruntime.quantization import CalibrationDataReader
