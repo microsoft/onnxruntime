@@ -209,12 +209,11 @@ GetQDQTestCaseFn BuildQDQResizeTestCase(const std::vector<int64_t>& input_shape,
                                         const std::string& mode = "nearest",
                                         const std::string& coordinate_transformation_mode = "half_pixel");
 
-template <typename Input1Type, typename Input2Type, typename OutputType>
+template <typename Input1Type, typename Input2Type, typename OutputType, bool IsInput2Constant>
 GetQDQTestCaseFn BuildBinaryOpTestCase(const std::vector<int64_t>& input_shape,
                                        const std::string& op_type) {
   return [input_shape, op_type](ModelTestBuilder& builder) {
     auto* input1_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
-    auto* input2_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
     auto* output_arg = builder.MakeOutput();
 
 #ifdef USE_NNAPI  // NNAPI require consistent scales for DQ -> bin_op_input and bin_op_output-> Q
@@ -232,6 +231,7 @@ GetQDQTestCaseFn BuildBinaryOpTestCase(const std::vector<int64_t>& input_shape,
     // add QDQ 1
     auto* q1_output = builder.MakeIntermediate();
     auto* dq1_output = builder.MakeIntermediate();
+
     builder.AddQuantizeLinearNode<Input1Type>(input1_arg,
                                               q_scale,
                                               std::numeric_limits<Input1Type>::max() / 2,
@@ -242,16 +242,27 @@ GetQDQTestCaseFn BuildBinaryOpTestCase(const std::vector<int64_t>& input_shape,
                                                 dq1_output);
 
     // add QDQ 2
-    auto* q2_output = builder.MakeIntermediate();
     auto* dq2_output = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<Input2Type>(input2_arg,
-                                              q_scale,
-                                              std::numeric_limits<Input2Type>::max() / 2,
-                                              q2_output);
-    builder.AddDequantizeLinearNode<Input2Type>(q2_output,
-                                                op_input_scale,
+
+    if (IsInput2Constant == false) {
+      auto* q2_output = builder.MakeIntermediate();
+      auto* input2_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+
+      builder.AddQuantizeLinearNode<Input2Type>(input2_arg,
+                                                q_scale,
                                                 std::numeric_limits<Input2Type>::max() / 2,
-                                                dq2_output);
+                                                q2_output);
+      builder.AddDequantizeLinearNode<Input2Type>(q2_output,
+                                                  op_input_scale,
+                                                  std::numeric_limits<Input2Type>::max() / 2,
+                                                  dq2_output);
+    }
+
+    else {
+      const std::vector<int64_t>& weight_shape = {input_shape.back()};
+      auto* q2_output = builder.MakeInitializer<Input2Type>(weight_shape, std::numeric_limits<Input2Type>::min(), std::numeric_limits<Input2Type>::max());
+      builder.AddDequantizeLinearNode<Input2Type>(q2_output, .003f, 12, dq2_output);
+    }
 
     // add binary operator
     auto* binary_op_output = builder.MakeIntermediate();
