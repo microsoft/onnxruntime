@@ -95,7 +95,7 @@ Status BatchNormalizationGrad<T, T1, T2>::ComputeInternal(OpKernelContext* ctx) 
   }
 
   CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationBackward(
-      CudnnHandle(),
+      GetCudnnHandle(ctx),
       cudnn_batch_norm_mode_,
       &alpha,
       &beta,
@@ -114,7 +114,7 @@ Status BatchNormalizationGrad<T, T1, T2>::ComputeInternal(OpKernelContext* ctx) 
       epsilon_,
       p_saved_mean,
       p_saved_inv_std),
-      CudnnHandle(),
+      GetCudnnHandle(ctx),
       Stream(ctx));
 
   if (std::is_same<T1, MLFloat16>::value) {

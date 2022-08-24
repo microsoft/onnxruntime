@@ -43,8 +43,8 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* segment_embedding = context->Input<Tensor>(4);  // optional. nullptr if it's distill-bert
   const Tensor* gamma = context->Input<Tensor>(5);
   const Tensor* beta = context->Input<Tensor>(6);
-  const Tensor* mask = context->Input<Tensor>(7);  // optional. nullptr if not provided
-  const Tensor* position_ids = context->Input<Tensor>(8); // optional. nullptr if not provided
+  const Tensor* mask = context->Input<Tensor>(7);          // optional. nullptr if not provided
+  const Tensor* position_ids = context->Input<Tensor>(8);  // optional. nullptr if not provided
 
   const auto& input_dims = input_ids->Shape().GetDims();
   int64_t hidden_size = word_embedding->Shape()[1];
@@ -88,6 +88,6 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-}  //namespace cuda
+}  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

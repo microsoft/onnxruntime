@@ -77,17 +77,17 @@ Status LRN<T>::ComputeInternal(OpKernelContext* context) const {
   const auto zero = Consts<CudaT>::Zero;
 
   CUDNN_RETURN_IF_ERROR(LRNCrossChannelForwardHelper(
-      CudnnHandle(),
-      norm_desc_,
-      CUDNN_LRN_CROSS_CHANNEL_DIM1,
-      &one,
-      x_tensor,
-      reinterpret_cast<const CudaT*>(X->Data<T>()),
-      &zero,
-      x_tensor,
-      reinterpret_cast<CudaT*>(Y->MutableData<T>())),
-      CudnnHandle(),
-      Stream(context));
+                            GetCudnnHandle(context),
+                            norm_desc_,
+                            CUDNN_LRN_CROSS_CHANNEL_DIM1,
+                            &one,
+                            x_tensor,
+                            reinterpret_cast<const CudaT*>(X->Data<T>()),
+                            &zero,
+                            x_tensor,
+                            reinterpret_cast<CudaT*>(Y->MutableData<T>())),
+                        GetCudnnHandle(context),
+                        Stream(context));
 
   return Status::OK();
 }

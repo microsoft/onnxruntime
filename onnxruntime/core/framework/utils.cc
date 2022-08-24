@@ -27,50 +27,6 @@
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
 
-namespace ONNX_NAMESPACE {
-std::ostream& operator<<(std::ostream& out, const TensorShapeProto& shape_proto) {
-  std::string result;
-  result.reserve(128);
-
-  result.append("{");
-  bool first = true;
-  for (auto& dim : shape_proto.dim()) {
-    if (!first) {
-      result.append(",");
-    }
-
-    if (onnxruntime::utils::HasDimValue(dim))
-      result.append(std::to_string(dim.dim_value()));
-    else if (onnxruntime::utils::HasDimParam(dim))
-      result.append(dim.dim_param());
-
-    first = false;
-  }
-  result.append("}");
-
-  return (out << result);
-}
-
-std::ostream& operator<<(std::ostream& out, const TensorProto& tensor_proto) {
-  std::string result;
-  result.reserve(128);
-
-  result.append("{");
-  bool first = true;
-  for (auto& dim : tensor_proto.dims()) {
-    if (!first) {
-      result.append(",");
-    }
-
-    result.append(std::to_string(dim));
-    first = false;
-  }
-  result.append("}");
-
-  return (out << result);
-}
-}  // namespace ONNX_NAMESPACE
-
 namespace onnxruntime {
 namespace utils {
 void* DefaultAlloc(size_t size) {
@@ -581,7 +537,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
   auto* execution_plan = session_state.GetExecutionPlan();
 
-  DeviceStreamCollection device_stream_collection(execution_plan->execution_plan.size());
+  DeviceStreamCollection device_stream_collection(execution_plan->execution_plan.size(), session_state);
 
   bool single_stream = session_state.GetExecutionPlan()->NumberOfValidStream() == 1;
   bool is_subgraph = session_state.GetGraphViewer().ParentNode() != nullptr;
@@ -591,6 +547,9 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
   //    the parent kernel will occupy a thread in thread pool. if we use multiple threads to execute subgraph, it may cause
   //    deadlock when we reach the limitation of thread pool.
   bool single_thread_mode = single_stream || is_subgraph;
+#ifdef ENABLE_TRAINING
+  single_thread_mode = true;
+#endif
 
   ORT_ENFORCE(BindToDeviceStream(parent_stream, *execution_plan, device_stream_collection, session_state.GetStreamHandleRegistryInstance()).IsOK());
   // see if we can skip copies due to the types of execution providers available
@@ -698,17 +657,11 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
-  bool single_stream = session_state.GetExecutionPlan()->NumberOfValidStream();
-  bool is_subgraph = session_state.GetGraphViewer().ParentNode() != nullptr;
-  // in following two cases, we execute the workload in main thread:
-  // 1. only have 1 stream, it could be the CPU sequential inference scenario, or GPU case when all the nodes are running on GPU.
-  // 2. execute a subgraph. Because in current implmentation, the execute of subgraph is launched through parent kernel.
-  //    the parent kernel will occupy a thread in thread pool. if we use multiple threads to execute subgraph, it may cause
-  //    deadlock when we reach the limitation of thread pool.
-  bool single_thread_mode = single_stream || is_subgraph;
+  // always use single_stream mode for training, to have a stable execution order
+  bool single_thread_mode = true;
 
   auto* execution_plan = session_state.GetExecutionPlan();
-  DeviceStreamCollection device_stream_collection(execution_plan->execution_plan.size());
+  DeviceStreamCollection device_stream_collection(execution_plan->execution_plan.size(), session_state);
 
   ORT_ENFORCE(BindToDeviceStream(parent_stream, *execution_plan, device_stream_collection, session_state.GetStreamHandleRegistryInstance()).IsOK());
   // see if we can skip copies due to the types of execution providers available

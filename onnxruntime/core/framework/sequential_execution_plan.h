@@ -109,10 +109,12 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
   struct LogicStream {
     std::vector<std::unique_ptr<ExecutionStep>> steps_;
+    const OrtDevice& device_;
 #ifdef ENABLE_TRAINING
     std::vector<NodeIndex> step_node_index;
 #endif
-    const IExecutionProvider* ep_ = nullptr;
+  public:
+    LogicStream(const OrtDevice& device) : device_(device) {}
   };
 
   std::vector<std::unique_ptr<LogicStream>> execution_plan;
@@ -139,6 +141,10 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   std::unordered_map<onnxruntime::NotificationIndex, std::vector<std::pair<size_t, size_t>>> downstream_map;
 
   size_t num_barriers{0};
+
+#ifdef ENABLE_TRAINING
+  std::vector<NodeIndex> node_execution_order_in_training;
+#endif
 
   const std::vector<AllocPlanPerValue>& GetAllocationPlan() const {
     return allocation_plan;

@@ -99,10 +99,11 @@ class CudnnRnnBase : public CudaKernel {
     w_data_cache_ = nullptr;
 
     size_t state_size;
-    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.CreateDescriptorIfNeeded(CudnnHandle(), nullptr));
-    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.GetCudnnDropoutStatesSize(CudnnHandle(), nullptr, state_size));
+    auto default_cudnn_handle = DefaultCudnnHandle();
+    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.CreateDescriptorIfNeeded(default_cudnn_handle, nullptr));
+    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.GetCudnnDropoutStatesSize(default_cudnn_handle, nullptr, state_size));
     state_buffer_ = GetScratchBuffer<void>(state_size, nullptr);
-    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.Set(CudnnHandle(), nullptr, state_buffer_.get(), state_size));
+    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.Set(default_cudnn_handle, nullptr, state_buffer_.get(), state_size));
 
     layout_ = info.GetAttrOrDefault("layout", static_cast<int64_t>(0));
     ORT_ENFORCE(layout_ == 0, 
@@ -123,12 +124,14 @@ class CudnnRnnBase : public CudaKernel {
                                void* w_data,
                                const T* W_data,
                                const T* R_data,
-                               const T* B_data) const;
+                               const T* B_data,
+                               cudaStream_t cuda_stream) const;
 
   Status ReorganizeWeights(const Tensor* W, const Tensor* R, const Tensor* B,
                            IAllocatorUniquePtr<void>& target_w_data,
                            CudnnFilterDescriptor& target_w_desc,
-                           CudnnRNN& rnn_desc) const;
+                           CudnnRNN& rnn_desc,
+                           onnxruntime::Stream* ort_stream) const;
 
   void SetWeightBias(const cudnnHandle_t handle,
                      const cudnnRNNDescriptor_t rnn_desc,
@@ -140,13 +143,15 @@ class CudnnRnnBase : public CudaKernel {
                      const int lin_layer_id,
                      const T* pos,
                      int& offset,
-                     bool is_matrix) const;
+                     bool is_matrix,
+                     cudaStream_t cuda_stream) const;
 
   void SetZeroSequences(const int64_t zero_seq_index_cache_size,
                         const std::vector<int32_t> zero_seq_index_cache,
                         T* y_data,
                         T* y_h_data,
-                        T* y_c_data) const;
+                        T* y_c_data,
+                        onnxruntime::Stream* cuda_stream) const;
 
  protected:
   // W_lin_layer_id_ & R_lin_layer_id_ are set in Constructor

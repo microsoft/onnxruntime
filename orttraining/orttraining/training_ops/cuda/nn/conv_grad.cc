@@ -255,7 +255,7 @@ class AlgoIterator {
 
 template <typename T>
 Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX,
-                                Tensor* dW) const {
+                                Tensor* dW, cudnnHandle_t cudnn_handle) const {
   const TensorShape& x_shape = x.Shape();
   auto x_dims = x_shape.AsShapeVector();
   args_.x_data = reinterpret_cast<const CudaT*>(x.template Data<T>());
@@ -346,7 +346,7 @@ Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor&
                 "Algo mode should be EXHAUSTIVE (0), HEURISTIC (1) or DEFAULT (2), but got ", algo_mode);
     args_.params.algo_mode = algo_mode;
 
-    args_.handle = CudnnHandle();
+    args_.handle = cudnn_handle;
     ORT_RETURN_IF_ERROR(args_.w_desc.Set(w_dims, args_.params.data_type));
     ORT_RETURN_IF_ERROR(args_.x_tensor.Set(x_dims, args_.params.data_type));
     ORT_RETURN_IF_ERROR(args_.y_tensor.Set(dy_dims, args_.params.data_type));
@@ -374,7 +374,7 @@ Status ConvGrad<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* dX = context->Output(0, X->Shape());
   Tensor* dW = context->Output(1, W->Shape());
   Tensor* dB = context->Output(2, {W->Shape()[0]});
-  ORT_RETURN_IF_ERROR(PrepareArgs(*X, *dY, *W, dB, dX, dW));
+  ORT_RETURN_IF_ERROR(PrepareArgs(*X, *dY, *W, dB, dX, dW, GetCudnnHandle(context)));
   if (dX) ORT_RETURN_IF_ERROR(ComputeInputGradient(context->GetComputeStream()));
   if (dW) ORT_RETURN_IF_ERROR(ComputeWeightGradient(context->GetComputeStream()));
   if (dB) ORT_RETURN_IF_ERROR(ComputeBiasGradient(context->GetComputeStream()));

@@ -24,30 +24,30 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-static inline std::string GetWaitKey(const std::string& notificaiton_ep_type, const std::string& executor_ep_type) {
-  return std::string(notificaiton_ep_type) + ":" + executor_ep_type;
+static inline std::string GetWaitKey(const OrtDevice::DeviceType notificaiton_device_type, const OrtDevice::DeviceType executor_device_type) {
+  return std::to_string(notificaiton_device_type) + ":" + std::to_string(executor_device_type);
 }
 
 class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
  public:
   // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
   // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
-  WaitNotificationFn GetWaitHandle(const std::string& notification_owner_ep_type, const std::string& executor_ep_type) const override {
-    auto it = notification_wait_map_.find(GetWaitKey(notification_owner_ep_type, executor_ep_type));
+  WaitNotificationFn GetWaitHandle(const OrtDevice::DeviceType notification_owner_device_type, const OrtDevice::DeviceType executor_device_type) const override {
+    auto it = notification_wait_map_.find(GetWaitKey(notification_owner_device_type, executor_device_type));
     return it == notification_wait_map_.end() ? nullptr : it->second;
   }
 
-  CreateStreamFn GetCreateStreamFn(const std::string& execution_provider_type) const override {
-    auto it = create_stream_map_.find(execution_provider_type);
+  CreateStreamFn GetCreateStreamFn(const OrtDevice::DeviceType device_type) const override {
+    auto it = create_stream_map_.find(device_type);
     return it == create_stream_map_.end() ? nullptr : it->second;
   }
 
-  void RegisterWaitFn(const std::string& notification_ep_type, const std::string& ep_type, WaitNotificationFn fn) override {
-    notification_wait_map_.insert({GetWaitKey(notification_ep_type, ep_type), fn});
+  void RegisterWaitFn(const OrtDevice::DeviceType notification_device_type, const OrtDevice::DeviceType device_type, WaitNotificationFn fn) override {
+    notification_wait_map_.insert({GetWaitKey(notification_device_type, device_type), fn});
   }
 
-  void RegisterCreateStreamFn(const std::string& ep_type, CreateStreamFn f) override {
-    create_stream_map_.insert({ep_type, f});
+  void RegisterCreateStreamFn(const OrtDevice::DeviceType device_type, CreateStreamFn f) override {
+    create_stream_map_.insert({device_type, f});
   }
 
   StreamCommandHandleRegistryImpl() = default;
@@ -55,7 +55,7 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
  private:
 
   InlinedHashMap<std::string, WaitNotificationFn> notification_wait_map_;
-  InlinedHashMap<std::string, CreateStreamFn> create_stream_map_;
+  InlinedHashMap<OrtDevice::DeviceType, CreateStreamFn> create_stream_map_;
 };
 
 SessionState::SessionState(Graph& graph,
@@ -628,7 +628,8 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
 
   // Try to resolve shapes for activations.
   auto& node_index_info = GetNodeIndexInfo();
-  for (auto& node_idx : graph_viewer_->GetNodesInTopologicalOrder()) {
+  auto& execution_order = exe_plan->node_execution_order_in_training;
+  for (auto& node_idx : execution_order) {
     int node_index = node_index_info.GetNodeOffset(node_idx);
     auto* node = graph_viewer_->GetNode(node_idx);
     int output_start = node_index + static_cast<int>(node->InputDefs().size()) +
@@ -692,7 +693,7 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
   }
   // TODO: add check for single stream
   // Allocate all other activations.
-  for (auto& step_index : graph_viewer_->GetNodesInTopologicalOrder()) {
+  for (auto& step_index : execution_order) {
     int node_index = node_index_info.GetNodeOffset(step_index);
     auto* node = graph_viewer_->GetNode(step_index);
     int output_start = node_index + static_cast<int>(node->InputDefs().size()) +
@@ -805,18 +806,21 @@ void SessionState::ResolveMemoryPatternFlag() {
       }
     }
 
-    // if there are nodes belong to the same EP instance be partitioned to multiple streams
+    // if there are nodes belong to the same device be partitioned to multiple streams
     // disable the memory pattern because the execution order is not fixed.
     // TODO: we can improve memory pattern to support multiple streams
     bool multi_stream = false;
-    InlinedHashSet<const IExecutionProvider*> ep_set;
+    auto cmp = [](const OrtDevice& op1, const OrtDevice& op2) {
+      return op1.Type() == op2.Type() && op1.MemType() == op2.MemType() && op1.Id() == op2.Id();
+    };
+    std::set<OrtDevice, decltype(cmp)> device_set(cmp);
     auto& streams = GetExecutionPlan()->execution_plan;
     for (auto& logic_stream : streams) {
-      if (ep_set.find(logic_stream->ep_) != ep_set.end()) {
+      if (device_set.find(logic_stream->device_) != device_set.end()) {
         multi_stream = true;
         break;
       }
-      ep_set.insert(logic_stream->ep_);
+      device_set.insert(logic_stream->device_);
     }
 
     if (multi_stream)

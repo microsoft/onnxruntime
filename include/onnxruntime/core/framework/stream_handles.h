@@ -1,7 +1,8 @@
 #pragma once
 
 #include <functional>
-#include "core/common/inlined_containers.h"
+#include <unordered_map>
+#include "core/framework/ortdevice.h"
 
 namespace onnxruntime {
 class IExecutionProvider;
@@ -20,18 +21,18 @@ struct Notification;
 
 struct Stream {
   StreamHandle handle;
-  const IExecutionProvider* provider;
+  const OrtDevice& device;
   uint64_t timestamp{0};
   // TODO: do we really need it to be a dynamic map?
-  InlinedHashMap<Stream*, uint64_t> other_stream_clock;
+  std::unordered_map<Stream*, uint64_t> other_stream_clock;
 
-  Stream(StreamHandle h, const IExecutionProvider* p) : handle(h), provider(p) {}
+  Stream(StreamHandle h, const OrtDevice& d) : handle(h), device(d) {}
 
   uint64_t BumpTimeStampAndReturn() {
     return ++timestamp;
   }
 
-  void UpdateStreamClock(const InlinedHashMap<Stream*, uint64_t>& clock) {
+  void UpdateStreamClock(const std::unordered_map<Stream*, uint64_t>& clock) {
     for (auto& kv : clock) {
       auto it = other_stream_clock.find(kv.first);
       if (it == other_stream_clock.end())
@@ -52,7 +53,7 @@ namespace synchronize {
 struct Notification {
   // which stream create this notificaiton.
   Stream* stream;
-  InlinedHashMap<Stream*, uint64_t> stream_clock_;
+  std::unordered_map<Stream*, uint64_t> stream_clock_;
 
   Notification(Stream* s) : stream(s) {}
   virtual ~Notification() {}
@@ -72,7 +73,7 @@ struct Notification {
 // in the POC, just use primitive function pointer
 // TODO: use a better way to dispatch handles.
 using WaitNotificationFn = std::function<void(Stream&, synchronize::Notification&)>;
-using CreateStreamFn = std::function<std::unique_ptr<Stream>(const IExecutionProvider*)>;
+using CreateStreamFn = std::function<std::unique_ptr<Stream>(const OrtDevice&)>;
 
 // an interface of a simple registry which hold the handles EP registered.
 // make it interface so we can pass it through shared library based execution providers
@@ -81,13 +82,13 @@ class IStreamCommandHandleRegistry {
   virtual ~IStreamCommandHandleRegistry() {}
   // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
   // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
-  virtual WaitNotificationFn GetWaitHandle(const std::string& notification_owner_ep_type, const std::string& executor_ep_type) const = 0;
+  virtual WaitNotificationFn GetWaitHandle(const OrtDevice::DeviceType notification_ower_device_type, const OrtDevice::DeviceType executor_device_type) const = 0;
 
-  virtual CreateStreamFn GetCreateStreamFn(const std::string& execution_provider_type) const = 0;
+  virtual CreateStreamFn GetCreateStreamFn(const OrtDevice::DeviceType execution_device_type) const = 0;
 
-  virtual void RegisterWaitFn(const std::string& notification_ep_type, const std::string& ep_type, WaitNotificationFn fn) = 0;
+  virtual void RegisterWaitFn(const OrtDevice::DeviceType notification_device_type, const OrtDevice::DeviceType device_type, WaitNotificationFn fn) = 0;
 
-  virtual void RegisterCreateStreamFn(const std::string& ep_type, CreateStreamFn f) = 0;
+  virtual void RegisterCreateStreamFn(const OrtDevice::DeviceType device_type, CreateStreamFn f) = 0;
 };
 
 }

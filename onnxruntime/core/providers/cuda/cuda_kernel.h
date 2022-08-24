@@ -74,10 +74,19 @@ class CudaKernel : public OpKernel {
     return stream ? static_cast<cudaStream_t>(stream->handle) : nullptr;
   }
 
+  inline cudnnHandle_t GetCudnnHandle(OpKernelContext* ctx) const {
+    auto* cuda_stream = dynamic_cast<CudaStream*>(ctx->GetComputeStream());
+    return cuda_stream ? cuda_stream->cudnn_handle_ : nullptr;
+  }
+
+  inline cublasHandle_t GetCublasHandle(OpKernelContext* ctx) const {
+    auto* cuda_stream = dynamic_cast<CudaStream*>(ctx->GetComputeStream());
+    return cuda_stream ? cuda_stream->cublas_handle_ : nullptr;
+  }
+
   inline onnxruntime::Stream* OrtStream(OpKernelContext* ctx) const {
     return ctx->GetComputeStream();
   }
-
 
   // To support cudaMemcpyAsync, the cpu memory should be allocated in pinned memory
   // and it can only be released after the copy has finished
@@ -143,11 +152,11 @@ class CudaKernel : public OpKernel {
     const CudaKernel* op_kernel_;
   };
 
-  inline cublasHandle_t CublasHandle() const {
+  inline cublasHandle_t DefaultCublasHandle() const {
     return provider_->PerThreadCublasHandle();
   }
 
-  inline cudnnHandle_t CudnnHandle() const {
+  inline cudnnHandle_t DefaultCudnnHandle() const {
     return provider_->PerThreadCudnnHandle();
   }
 

@@ -80,6 +80,7 @@ Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
       Y->template MutableData<T>(),
       TensorShape({}),
       CUDNN_REDUCE_TENSOR_ADD,
+      GetCudnnHandle(ctx),
       ctx->GetComputeStream(),
       output_dims);
 }

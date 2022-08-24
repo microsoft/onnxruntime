@@ -123,7 +123,7 @@ Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* p_op_kerne
   //     running_var = (1 - momentum_) * unbiased_batch_var + momentum_ * running_var
   // This is inconsistent with BatchNormalization Onnx spec, which uses population variance (biased).
   CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
-      CudnnHandle(),
+      GetCudnnHandle(p_op_kernel_context),
       cudnn_batch_norm_mode_,
       &alpha,
       &beta,
@@ -140,7 +140,7 @@ Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* p_op_kerne
       epsilon_,
       p_saved_mean,
       p_saved_inv_std),
-      CudnnHandle(),
+      GetCudnnHandle(p_op_kernel_context),
       Stream(p_op_kernel_context));
 
   if (std::is_same<T2, MLFloat16>::value) {

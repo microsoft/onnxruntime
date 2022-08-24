@@ -11,13 +11,6 @@
 #include "core/framework/session_state.h"
 #include "core/framework/session_options.h"
 
-namespace ONNX_NAMESPACE {
-class TensorShapeProto;
-class TensorProto;
-std::ostream& operator<<(std::ostream& out, const TensorShapeProto& shape_proto);
-std::ostream& operator<<(std::ostream& out, const TensorProto& tensor_proto);
-}  // namespace ONNX_NAMESPACE
-
 namespace onnxruntime {
 class ExecutionProviders;
 struct FeedsFetchesInfo;
