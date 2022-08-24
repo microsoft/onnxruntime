@@ -71,7 +71,7 @@ class RocBlasGemm : public IKernelExplorer {
   }
 
   void Run() override {
-    ORT_THROW_IF_ERROR(impl_(&params_));
+    ORT_THROW_IF_ERROR(op_(&params_));
   }
 
   std::vector<std::string> ListOps() const {
