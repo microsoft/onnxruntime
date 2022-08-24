@@ -25,8 +25,6 @@
 
 #include "qdq_test_utils.h"
 
-#include <iostream>
-
 #if defined(_MSC_VER)
 #pragma warning(disable : 4127)
 #endif  // #if defined(_MSC_VER)
@@ -392,7 +390,6 @@ void QDQTransformerBinaryOpTests(const std::string& op_type) {
       }
     };
 
-    const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
     TransformerTester(BuildBinaryOpTestCase<Input1Type, Input2Type, OutputType, IsInput2Constant>(input_shape, op_type),
                       check_graph,
                       TransformerLevel::Level1,
@@ -402,17 +399,16 @@ void QDQTransformerBinaryOpTests(const std::string& op_type) {
                       0.01 /*relative_per_sample_tolerance*/,
                       std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
+
   test_case({1, 12, 37});
   test_case({1, 23, 13, 13});
   test_case({1, 22, 11, 13, 15});
 }
 
-
 TEST(QDQTransformerTests, Add) {
   QDQTransformerBinaryOpTests<uint8_t, uint8_t, uint8_t, false>("Add");
   QDQTransformerBinaryOpTests<int8_t, int8_t, int8_t, false>("Add");
 }
-
 
 TEST(QDQTransformerTests, Add_Have_Different_Types) {
   QDQTransformerBinaryOpTests<uint8_t, int8_t, int8_t, false>("Add");
@@ -423,7 +419,6 @@ TEST(QDQTransformerTests, Add_Have_Different_Types) {
   QDQTransformerBinaryOpTests<int8_t, int8_t, uint8_t, false>("Add");
   QDQTransformerBinaryOpTests<uint8_t, int8_t, uint8_t, true>("Add");
 }
-
 
 TEST(QDQTransformerTests, Mul) {
   QDQTransformerBinaryOpTests<uint8_t, uint8_t, uint8_t, false>("Mul");
@@ -438,7 +433,6 @@ TEST(QDQTransformerTests, Mul_Have_Different_Types) {
   QDQTransformerBinaryOpTests<int8_t, uint8_t, int8_t, false>("Mul");
   QDQTransformerBinaryOpTests<int8_t, int8_t, uint8_t, false>("Mul");
 }
-
 
 template <typename Input1Type, typename Input2Type, typename OutputType>
 void QDQTransformerMatMulTests(bool has_output_q) {
