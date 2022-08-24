@@ -101,7 +101,7 @@ Status QOrderedAttention::PutIntoMergedWeightScale(const Tensor& tensor, Allocat
   CUBLAS_RETURN_IF_ERROR(cublasScopy(CublasHandle(), count, tensor.Data<float>(), tensor.Shape().IsScalar() ? 0 : 1, target, 1));
   ORT_ENFORCE(const_sacle_input_ > 0.0f && const_scale_qkv_layer_[qkv_index] > 0.0f,
               "input scale and respective qkv gemm scale must be positive constant!");
-  float scale = const_sacle_input_ / const_scale_qkv_layer_[qkv_index];
+  float scale = static_cast<float>((double)const_sacle_input_ / const_scale_qkv_layer_[qkv_index]);
   CUBLAS_RETURN_IF_ERROR(cublasSscal(CublasHandle(), count, &scale, target, 1));
   return Status::OK();
 }
@@ -119,7 +119,7 @@ Status QOrderedAttention::PutIntoMergedBias(const Tensor& tensor, AllocatorPtr a
   CUBLAS_RETURN_IF_ERROR(cublasScopy(CublasHandle(), count, tensor.Data<float>(), 1, target, 1));
   // Suppose bias already adjusted, may change it later.
   // ORT_ENFORCE(const_scale_qkv_layer_[qkv_index] > 0.0f, "qkv gemm scale should be positive constant at qkv_index", qkv_index);
-  // float scale = 1.0f / const_scale_qkv_layer_[qkv_index];
+  // float scale = static_cast<float>(1.0 / const_scale_qkv_layer_[qkv_index]);
   // CUBLAS_RETURN_IF_ERROR(cublasSscal(CublasHandle(), count, &scale, target, 1));
   return Status::OK();
 }
@@ -144,8 +144,8 @@ Status QOrderedAttention::PrePack(const Tensor& tensor, int input_idx, /*out*/ A
     ORT_RETURN_IF_ERROR(PutIntoMergedBias(tensor, alloc, input_idx - InputIds::Q_Bias));
   } else if (input_idx == InputIds::Scale_QK_Gemm) {
     float scale = *tensor.Data<float>();
-    float base = std::exp(scale / sqrtf(qkv_hidden_sizes_[0] / static_cast<float>(num_heads_)));
-    auto* softmax_lookup_data = alloc->Alloc(256 * 4 * sizeof(float));
+    double base = std::exp((double)scale / sqrt(qkv_hidden_sizes_[0] / static_cast<double>(num_heads_)));
+    auto* softmax_lookup_data = alloc->Alloc(256 * sizeof(float));
     softmax_lookup_ = BufferUniquePtr(softmax_lookup_data, BufferDeleter(alloc));
     BuildTableForSoftmaxPowerOf(Stream(), base, (float*)softmax_lookup_.get());
   }
@@ -253,15 +253,17 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   // BxSx3xNxH => 3xBxNxSxH, treat 4 consecutive int8 as float
   LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size / sizeof(float), num_heads_,
                  max_threads_per_block, false, (const float*)stacked_qkv_layers, (float*)tranposed_qkv_layers);
-  debug_print(tranposed_qkv_layers, m * n, hidden_size, "tranposed_qkv_layers");
+  // debug_print(tranposed_qkv_layers, m * n, hidden_size, "tranposed_qkv_layers");
 
-  const float q_mm_k_alpha = const_scale_qkv_layer_[0] * const_scale_qkv_layer_[1] / *scale_attn_scores_data;
+  const float q_mm_k_alpha = static_cast<float>((double)const_scale_qkv_layer_[0] * const_scale_qkv_layer_[1] / *scale_attn_scores_data);
   ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
                                       batch_size * num_heads_, sequence_length, sequence_length, head_size,
                                       &q_mm_k_alpha, q_layer, k_layer, batch_size * num_heads_,
                                       nullptr, nullptr, nullptr, 1, attention_scores,
                                       CUBLASLT_ORDER_COL));  // matrix B need extra transpose
   // debug_print(attention_scores, size_of_attention_scores, sequence_length, "attention_scores");
+
+  // debug_print((const float*)softmax_lookup_.get(), 256, 16, "lookup table");
 
   // the div sqrt(head_size) was processed when building the softmax lookup table
   QOrderMaskedSoftmax(stream, device_prop, attention_scores, (const float*)softmax_lookup_.get(),
@@ -270,7 +272,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   // debug_print(attention_probs, size_of_attention_scores, sequence_length, "attention_probs");
 
   float beta = 0.0f;
-  const float context_layer_alpha = *scale_attn_probs_data * const_scale_qkv_layer_[2] / *scale_output_data;
+  const float context_layer_alpha = static_cast<float>((double)*scale_attn_probs_data * const_scale_qkv_layer_[2] / *scale_output_data);
   CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedEx(CublasHandle(), CUBLAS_OP_N, CUBLAS_OP_N,
                                                     sequence_length, head_size, sequence_length, &context_layer_alpha,
                                                     v_layer, CUDA_R_8I, head_size, sequence_length * head_size,

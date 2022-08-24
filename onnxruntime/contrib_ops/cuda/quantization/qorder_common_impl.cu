@@ -662,13 +662,18 @@ void ReorderS8RowToCol32(cudaStream_t stream, const cudaDeviceProp& /* device_pr
 }
 
 __global__ void
-BuildTableForSoftmaxPowerOfKernel(const float base, float* table) {
+BuildTableForSoftmaxPowerOfKernel(const double base, float* table) {
   int g = threadIdx.x - 255;
-  table[255 + g] = powf(base, g);
+  table[255 + g] = __double2float_rn(pow(base, (double)g));
 }
 
-void BuildTableForSoftmaxPowerOf(cudaStream_t stream, const float base, float* table) {
+void BuildTableForSoftmaxPowerOf(cudaStream_t stream, const double base, float* table) {
   BuildTableForSoftmaxPowerOfKernel<<<1, 256, 0, stream>>>(base, table);
+}
+
+__device__ inline int8_t float_to_s8(const float val) {
+  float dqval = fmaxf(fminf(127.0f, val), -128.0f);
+  return static_cast<int8_t>(__float2int_rn(dqval));
 }
 
 template <int TPB>
@@ -688,10 +693,12 @@ QOrderMaskedSoftmaxKernel(const int8_t* src, const float* lookup_table, const in
   dst += block_offset;
   int offset = threadIdx.x * 4;
 
-  if (offset >= sequence_len) return;
-
-  int4 four_masks = *(const int4*)(mask_index + ((blockIdx.y * sequence_len) + offset));
-  char4 ch4 = *(const char4*)(src + offset);
+  char4 ch4 = make_char4(-128, -128, -128, -128);
+  int4 four_masks = make_int4(0, 0, 0, 0);
+  if (offset < sequence_len) {
+    four_masks = *(const int4*)(mask_index + ((blockIdx.y * sequence_len) + offset));
+    ch4 = *(const char4*)(src + offset);
+  }
   int32_t max_of_4 = max(max((int)ch4.x, (int)ch4.y), max((int)ch4.z, (int)ch4.w));
   const int32_t max_all = BlockReduceInt32(tmp_storage_int32).Reduce(max_of_4, cub::Max());
   if (threadIdx.x == 0) {
@@ -711,12 +718,13 @@ QOrderMaskedSoftmaxKernel(const int8_t* src, const float* lookup_table, const in
   }
   __syncthreads();
 
-  ch4.x = (int8_t)(epow_of_4.x * sum_reverse_block);
-  ch4.y = (int8_t)(epow_of_4.y * sum_reverse_block);
-  ch4.z = (int8_t)(epow_of_4.z * sum_reverse_block);
-  ch4.w = (int8_t)(epow_of_4.w * sum_reverse_block);
-
-  *(char4*)(dst + offset) = ch4;
+  if (offset < sequence_len) {
+    ch4.x = float_to_s8(epow_of_4.x * sum_reverse_block);
+    ch4.y = float_to_s8(epow_of_4.y * sum_reverse_block);
+    ch4.z = float_to_s8(epow_of_4.z * sum_reverse_block);
+    ch4.w = float_to_s8(epow_of_4.w * sum_reverse_block);
+    *(char4*)(dst + offset) = ch4;
+  }
 }
 
 void QOrderMaskedSoftmax(
@@ -726,31 +734,35 @@ void QOrderMaskedSoftmax(
     int8_t* dst, const float scale_dst,
     const unsigned batch, const unsigned num_heads, const unsigned sequence_len) {
   int tpb = (sequence_len + 3) / 4;
-  if (tpb <= 64) {
-    constexpr int TPB = 64;
+  if (tpb <= 32) {
+    constexpr int TPB = 32;
     dim3 threads(TPB, 1, 1);
     dim3 blocks(sequence_len * num_heads, batch, 1);
-    QOrderMaskedSoftmaxKernel<TPB><<<blocks, threads, 0, stream>>>(src, lookup_table, mask_index, dst, scale_dst, sequence_len);
+    int shared_size = sizeof(cub::BlockReduce<int32_t, TPB>::TempStorage) + sizeof(cub::BlockReduce<float, TPB>::TempStorage) + sizeof(float) + sizeof(int32_t);
+    QOrderMaskedSoftmaxKernel<TPB><<<blocks, threads, shared_size, stream>>>(src, lookup_table, mask_index, dst, scale_dst, sequence_len);
+  } else if (tpb <= 128) {
+    constexpr int TPB = 128;
+    dim3 threads(TPB, 1, 1);
+    dim3 blocks(sequence_len * num_heads, batch, 1);
+    int shared_size = sizeof(cub::BlockReduce<int32_t, TPB>::TempStorage) + sizeof(cub::BlockReduce<float, TPB>::TempStorage) + sizeof(float) + sizeof(int32_t);
+    QOrderMaskedSoftmaxKernel<TPB><<<blocks, threads, shared_size, stream>>>(src, lookup_table, mask_index, dst, scale_dst, sequence_len);
   } else if (tpb <= 256) {
     constexpr int TPB = 256;
     dim3 threads(TPB, 1, 1);
     dim3 blocks(sequence_len * num_heads, batch, 1);
-    QOrderMaskedSoftmaxKernel<TPB><<<blocks, threads, 0, stream>>>(src, lookup_table, mask_index, dst, scale_dst, sequence_len);
+    int shared_size = sizeof(cub::BlockReduce<int32_t, TPB>::TempStorage) + sizeof(cub::BlockReduce<float, TPB>::TempStorage) + sizeof(float) + sizeof(int32_t);
+    QOrderMaskedSoftmaxKernel<TPB><<<blocks, threads, shared_size, stream>>>(src, lookup_table, mask_index, dst, scale_dst, sequence_len);
   } else if (tpb <= 512) {
     constexpr int TPB = 512;
     dim3 threads(TPB, 1, 1);
     dim3 blocks(sequence_len * num_heads, batch, 1);
-    QOrderMaskedSoftmaxKernel<TPB><<<blocks, threads, 0, stream>>>(src, lookup_table, mask_index, dst, scale_dst, sequence_len);
+    int shared_size = sizeof(cub::BlockReduce<int32_t, TPB>::TempStorage) + sizeof(cub::BlockReduce<float, TPB>::TempStorage) + sizeof(float) + sizeof(int32_t);
+    QOrderMaskedSoftmaxKernel<TPB><<<blocks, threads, shared_size, stream>>>(src, lookup_table, mask_index, dst, scale_dst, sequence_len);
   } else {
     ORT_ENFORCE(tpb <= 512, "sequence length too long (> 2048)!");
   }
 }
 
-
-__device__ inline int8_t float_to_s8(const float val) {
-  float dqval = fmaxf(fminf(127.0f, val), -128.0f);
-  return static_cast<int8_t>(__float2int_rn(dqval));
-}
 
 __global__ void TransposeCtxNarrowCast(const float4* input, char4* output) {
   // Input:  BxNxSxH

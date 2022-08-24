@@ -85,7 +85,7 @@ void QOrderMaskedSoftmax(
     int8_t* dst, const float scale_dst,
     const unsigned batch, const unsigned num_heads, const unsigned sequence_len);
 
-void BuildTableForSoftmaxPowerOf(cudaStream_t stream, const float base, float* table);
+void BuildTableForSoftmaxPowerOf(cudaStream_t stream, const double base, float* table);
 
 void LaunchTransCtxNarrowCast(cudaStream_t stream, const cudaDeviceProp& device_prop,
                               const int batch_size, const int sequence_length, const int num_heads, const int head_size,
