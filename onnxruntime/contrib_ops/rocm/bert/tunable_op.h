@@ -74,7 +74,7 @@ class TunableOp {
  public:
   Status operator()(const ParamsT* params) {
     int id;
-    if (tuning_ == true && Condition(params)) {
+    if (tuning_) {
       if (kernel_map_.find(params->Signature()) == kernel_map_.end()) {
         id = FindFastest(params);
         kernel_map_.insert({params->Signature(), id});
@@ -130,11 +130,6 @@ class TunableOp {
       return false;
     }
     ORT_THROW_IF_ERROR(status);
-    return true;
-  }
-
-  // Whether we should tune for this input
-  virtual bool Condition(const ParamsT* /*params*/) {
     return true;
   }
 

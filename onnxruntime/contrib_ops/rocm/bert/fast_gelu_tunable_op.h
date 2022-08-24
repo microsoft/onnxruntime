@@ -33,6 +33,9 @@ struct FastGeluParams : OpParams {
 
 template <typename T, int ThreadsPerBlock, int VecSize>
 Status FastGeluOp(const FastGeluParams<T>* params) {
+  // TODO(anyone): Add tail handling for FastGelu
+  TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(!(params->bias_length > 0 && (params->bias_length % VecSize == 0)));
+
   hipLaunchKernelGGL((FastGeluKernelVec<T, ThreadsPerBlock, VecSize>),
                      dim3(CeilingDivision(params->input_length, ThreadsPerBlock * VecSize)),
                      dim3(ThreadsPerBlock),
@@ -62,12 +65,6 @@ class FastGeluTunableOp : public TunableOp<FastGeluParams<T>> {
     ADD_OP(384);
     ADD_OP(448);
     ADD_OP(512);
-  }
-
- private:
-  bool Condition(const FastGeluParams<T>* fast_gelu_params) override {
-    bool condition = (fast_gelu_params->bias_length > 0) && (fast_gelu_params->bias_length % 16 == 0);
-    return condition;
   }
 };
 
