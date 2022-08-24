@@ -687,13 +687,11 @@ QOrderMaskedSoftmaxKernel(const int8_t* src, const float* lookup_table, const in
   src += block_offset;
   dst += block_offset;
   int offset = threadIdx.x * 4;
-  mask_index += (blockIdx.y * sequence_len) + offset;
-  int4 four_masks = *(const int4*)(mask_index);
 
-  char4 ch4 = {-128, -128, -128, -128};
-  if (offset < sequence_len) {
-    ch4 = *(const char4*)(src + offset);
-  }
+  if (offset >= sequence_len) return;
+
+  int4 four_masks = *(const int4*)(mask_index + ((blockIdx.y * sequence_len) + offset));
+  char4 ch4 = *(const char4*)(src + offset);
   int32_t max_of_4 = max(max((int)ch4.x, (int)ch4.y), max((int)ch4.z, (int)ch4.w));
   const int32_t max_all = BlockReduceInt32(tmp_storage_int32).Reduce(max_of_4, cub::Max());
   if (threadIdx.x == 0) {
@@ -701,16 +699,12 @@ QOrderMaskedSoftmaxKernel(const int8_t* src, const float* lookup_table, const in
   }
   __syncthreads();
 
-  // TODO: bank conflick
-  float sum_of_4 = 0.0f;
-  float4 epow_of_4 = {0.0f, 0.0f, 0.0f, 0.0f};
-  if (offset < sequence_len) {
-    epow_of_4 = {four_masks.x ? lookup_table[255 - max_in_block + (int)ch4.x] : 0.0f,
-                 four_masks.y ? lookup_table[255 - max_in_block + (int)ch4.y] : 0.0f,
-                 four_masks.z ? lookup_table[255 - max_in_block + (int)ch4.z] : 0.0f,
-                 four_masks.w ? lookup_table[255 - max_in_block + (int)ch4.w] : 0.0f};
-  }
-  sum_of_4 = epow_of_4.x + epow_of_4.y + epow_of_4.z + epow_of_4.w;
+  float4 epow_of_4 = {
+      four_masks.x ? lookup_table[255 - max_in_block + (int)ch4.x] : 0.0f,
+      four_masks.y ? lookup_table[255 - max_in_block + (int)ch4.y] : 0.0f,
+      four_masks.z ? lookup_table[255 - max_in_block + (int)ch4.z] : 0.0f,
+      four_masks.w ? lookup_table[255 - max_in_block + (int)ch4.w] : 0.0f};
+  float sum_of_4 = epow_of_4.x + epow_of_4.y + epow_of_4.z + epow_of_4.w;
   const float sum_all = BlockReduceFP32(tmp_storage_fp32).Reduce(sum_of_4, cub::Sum());
   if (threadIdx.x == 0) {
     sum_reverse_block = (float)(1.0 / ((double)sum_all * scale_dst));
@@ -751,6 +745,45 @@ void QOrderMaskedSoftmax(
     ORT_ENFORCE(tpb <= 512, "sequence length too long (> 2048)!");
   }
 }
+
+
+__device__ inline int8_t float_to_s8(const float val) {
+  float dqval = fmaxf(fminf(127.0f, val), -128.0f);
+  return static_cast<int8_t>(__float2int_rn(dqval));
+}
+
+__global__ void TransposeCtxNarrowCast(const float4* input, char4* output) {
+  // Input:  BxNxSxH
+  // Output: BxSxNxH
+  int s = blockIdx.x;
+  int n = blockIdx.y;
+  int b = blockIdx.z;
+
+  int H = blockDim.x;
+  int S = gridDim.x;
+  int N = gridDim.y;
+
+  int h = threadIdx.x;
+
+  int in_offset = b * N * S * H;
+  int out_offset = in_offset;
+  in_offset += n * S * H + s * H + h;
+  float4 f4 = input[in_offset];
+  out_offset += s * N * H + n * H + h;
+  char4 c4 = {float_to_s8(f4.x), float_to_s8(f4.y), float_to_s8(f4.z), float_to_s8(f4.w)};
+  output[out_offset] = c4;
+}
+
+void LaunchTransCtxNarrowCast(cudaStream_t stream, const cudaDeviceProp& device_prop,
+                    const int batch_size, const int sequence_length, const int num_heads, const int head_size,
+                    const float* input, int8_t* output) {
+  ORT_ENFORCE(head_size % 4 == 0, "Head size must divisible by 4!");
+  ORT_ENFORCE(head_size <= (int)device_prop.maxThreadsPerBlock * 4, "head size too big for the device!");
+  const dim3 grid(sequence_length, num_heads, batch_size);
+  const dim3 block(head_size / 4, 1, 1);
+  TransposeCtxNarrowCast<<<grid, block, 0, stream>>>((const float4*)input, (char4*)output);
+}
+
 
 }  // namespace cuda
 }  // namespace contrib
