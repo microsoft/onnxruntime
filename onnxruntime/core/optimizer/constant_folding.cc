@@ -91,7 +91,7 @@ bool CanConstantFoldShape(Node& node,
   }
 
   clamped_slice_length = HandleSliceOrShape15Indices(start, end, dim_values.size());
-  for (int64_t i = start; i <= end; ++i) {
+  for (size_t i = static_cast<size_t>(start); i < static_cast<size_t>(end); ++i) {
     if (dim_values[i] == -1) {
       can_fold = false;
       break;
@@ -192,7 +192,7 @@ bool ConstantFoldShapeNode(Graph& graph,
         int64_t slice_start = starts_values[0];
         int64_t slice_end = ends_values[0];
         const size_t slice_length = HandleSliceOrShape15Indices(slice_start, slice_end, dim_values.size());
-        for (int64_t i = slice_start; i <= slice_end; ++i) {
+        for (size_t i = static_cast<size_t>(slice_start); i <= static_cast<size_t>(slice_end); ++i) {
           if (dim_values[i] == -1) {
             can_fold = false;
             break;
@@ -232,7 +232,7 @@ bool ConstantFoldShapeNode(Graph& graph,
         gather_index = gather_index < 0 ? gather_index + rank : gather_index;
         const size_t gather_indices_length = 1;
 
-        if (dim_values[gather_index] < 0) {
+        if (dim_values[static_cast<size_t>(gather_index)] < 0) {
           continue;
         }
 
