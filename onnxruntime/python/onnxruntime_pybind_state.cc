@@ -1083,7 +1083,7 @@ void addObjectMethods(py::module& m, Environment& env, ExecutionProviderRegistra
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
-  // Note: Doesn't expose initial_growth_chunk_sizes_bytes option. This constructor kept for 
+  // Note: Doesn't expose initial_growth_chunk_sizes_bytes option. This constructor kept for
   // backwards compatibility, key-value pair constructor overload exposes all options
   // There is a global var: arena_extend_strategy, which means we can't use that var name here
   // See docs/C_API.md for details on what the following parameters mean and how to choose these values
@@ -1103,7 +1103,7 @@ void addObjectMethods(py::module& m, Environment& env, ExecutionProviderRegistra
       if (key == "max_mem") {
         ort_arena_cfg->max_mem = kvp.second.cast<size_t>();
       } else if (key == "arena_extend_strategy") {
-        ort_arena_cfg->arena_extend_strategy = kvp.second.cast<int>(); 
+        ort_arena_cfg->arena_extend_strategy = kvp.second.cast<int>();
       } else if (key == "initial_chunk_size_bytes") {
         ort_arena_cfg->initial_chunk_size_bytes = kvp.second.cast<int>();
       } else if (key == "max_dead_bytes_per_chunk") {

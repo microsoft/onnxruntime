@@ -1311,9 +1311,9 @@ class TestInferenceSession(unittest.TestCase):
         print("Create session with customize execution provider successfully!")
 
     def testCreateAllocator(self):
-        def verifyAllocator(allocator, expectedConfig):
-            for key in expectedConfig:
-                val = expectedConfig[key]
+        def verifyAllocator(allocator, expected_config):
+            for key in expected_config:
+                val = expected_config[key]
                 if (key == "max_mem"):
                     self.assertEqual(
                         allocator.max_mem,
