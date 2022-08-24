@@ -7,7 +7,7 @@ import os
 import shlex
 import subprocess
 import sys
-from typing import List
+from typing import List, Optional
 
 TRT_DOCKER_FILES = {
     "8.0": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_4_tensorrt8_0",
@@ -17,7 +17,7 @@ TRT_DOCKER_FILES = {
 }
 
 
-def run_cmd(cmd: str) -> int:
+def run_cmd(cmd: List[str]) -> Optional[int]:
     """
     Runs a shell command and returns the process's return code.
 
@@ -41,7 +41,7 @@ def run_cmd(cmd: str) -> int:
             if lines:
                 sys.stdout.writelines(lines)
 
-            lines = proc.stdout.readlines()
+            lines = proc.stdout.readlines() if proc.stdout is not None else []
 
         proc_ret = proc.poll()
 
