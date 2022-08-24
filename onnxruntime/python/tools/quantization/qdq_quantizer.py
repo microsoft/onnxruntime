@@ -85,7 +85,7 @@ class QDQQuantizer(ONNXQuantizer):
         # because those ops may be followed by nodes that require high resolution inputs.
         # Adding QDQ for those ops' output may end up with worse accuracy.
         # So, we don't recommend to add QDQ to node's output under such condition.
-        if "OpTypesToExcludeOutputQuantizatioin" in extra_options.keys():
+        if extra_options != None and "OpTypesToExcludeOutputQuantizatioin" in extra_options.keys():
             self.op_types_to_exclude_output_quantization = extra_options["OpTypesToExcludeOutputQuantizatioin"]
         else:
             self.op_types_to_exclude_output_quantization = (
