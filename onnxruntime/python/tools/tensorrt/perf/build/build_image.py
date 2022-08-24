@@ -3,11 +3,18 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 import argparse
-from typing import List
 import os
 import shlex
 import subprocess
 import sys
+from typing import List
+
+TRT_DOCKER_FILES = {
+    "8.0": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_4_tensorrt8_0",
+    "8.2": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_4_tensorrt8_2",
+    "8.4": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_6_tensorrt8_4",
+    "BIN": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_tensorrt_bin",
+}
 
 
 def run_cmd(cmd):
@@ -19,20 +26,26 @@ def run_cmd(cmd):
     :return: The return code.
     """
 
-    print("[CMD] %s\n" % " ".join(map(shlex.quote, cmd)))
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8")
-    lines = []
+    escaped_cmd = " ".join(map(shlex.quote, cmd))
+    print(f"[CMD] {escaped_cmd}\n")
 
-    # Keep echoing the process's output while we have lines
-    # to print or the process has not yet exited. Note that proc.poll()
-    # returns None if the process is still running, or the returncode otherwise.
-    while lines or proc.poll() is None:
-        if lines:
-            sys.stdout.writelines(lines)
+    proc_ret = 1
 
-        lines = proc.stdout.readlines()
+    with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8") as proc:
+        lines = []
 
-    return proc.poll()
+        # Keep echoing the process's output while we have lines
+        # to print or the process has not yet exited. Note that proc.poll()
+        # returns None if the process is still running, or the returncode otherwise.
+        while lines or proc.poll() is None:
+            if lines:
+                sys.stdout.writelines(lines)
+
+            lines = proc.stdout.readlines()
+
+        proc_ret = proc.poll()
+
+    return proc_ret
 
 
 def get_common_docker_build_args(args: argparse.Namespace) -> List[str]:
@@ -44,8 +57,15 @@ def get_common_docker_build_args(args: argparse.Namespace) -> List[str]:
     :return: A list of common 'docker build' arguments.
     """
 
-    return ["--no-cache", "-t", f"{args.image_name}", "--build-arg", f"CMAKE_CUDA_ARCHITECTURES={args.cuda_arch}",
-            "--build-arg", f"ONNXRUNTIME_BRANCH={args.branch}"]
+    return [
+        "--no-cache",
+        "-t",
+        f"{args.image_name}",
+        "--build-arg",
+        f"CMAKE_CUDA_ARCHITECTURES={args.cuda_arch}",
+        "--build-arg",
+        f"ONNXRUNTIME_BRANCH={args.branch}",
+    ]
 
 
 def is_valid_ver_str(version: str, min_comps: int = 0, max_comps: int = 0) -> bool:
@@ -67,10 +87,10 @@ def is_valid_ver_str(version: str, min_comps: int = 0, max_comps: int = 0) -> bo
     ver_nums = version.split(".")
     num_comps = len(ver_nums)
 
-    if min_comps > 0 and num_comps < min_comps:
+    if num_comps < min_comps > 0:
         return False
 
-    if max_comps > 0 and num_comps > max_comps:
+    if num_comps > max_comps > 0:
         return False
 
     for num in ver_nums:
@@ -80,75 +100,96 @@ def is_valid_ver_str(version: str, min_comps: int = 0, max_comps: int = 0) -> bo
     return True
 
 
-TRT_DOCKER_FILES = {
-    "8.0": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_4_tensorrt8_0",
-    "8.2": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_4_tensorrt8_2",
-    "8.4": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_6_tensorrt8_4",
-    "BIN": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_tensorrt_bin"
-}
-
 def docker_build_trt(args: argparse.Namespace):
+    """
+    Builds a Docker image that installs TensorRT from a public repository.
 
-    if not is_valid_ver_str(args.trt_version, min_comps = 2, max_comps = 4):
-        print("[ERROR]: Invalid TensorRT version '%s'" % args.trt_version, file=sys.stderr)
-        exit(1)
+    :param args: The arguments to this script.
+    """
+
+    if not is_valid_ver_str(args.trt_version, min_comps=2, max_comps=4):
+        print(f"[ERROR]: Invalid TensorRT version '{args.trt_version}'", file=sys.stderr)
+        sys.exit(1)
 
     vers_comps = args.trt_version.split(".")
     trt_ver_key = f"{vers_comps[0]}.{vers_comps[1]}"
 
     if trt_ver_key not in TRT_DOCKER_FILES:
-        print("[ERROR]: TensorRT version '%s' is currently unsupported" % args.trt_version, file=sys.stderr)
-        exit(1)
+        print(f"[ERROR]: TensorRT version '{args.trt_version}' is currently unsupported", file=sys.stderr)
+        sys.exit(1)
 
     docker_file = TRT_DOCKER_FILES[trt_ver_key]
     docker_file_path = os.path.normpath(os.path.join(args.repo_path, docker_file))
 
     if not os.path.isfile(docker_file_path):
-        print("[ERROR]: Invalid docker file path '%s'" % str(docker_file_path), file=sys.stderr)
-        exit(1)
+        print(f"[ERROR]: Invalid docker file path '{docker_file_path}'", file=sys.stderr)
+        sys.exit(1)
 
     common_args = get_common_docker_build_args(args)
     cmd_ret = run_cmd(["docker", "build", *common_args, "-f", f"{docker_file_path}", "."])
 
     if cmd_ret != 0:
-        print("[ERROR]: docker build command failed with return code %d" % cmd_ret, file=sys.stderr)
-        exit(1)
+        print(f"[ERROR]: docker build command failed with return code {cmd_ret}", file=sys.stderr)
+        sys.exit(1)
 
 
 def docker_build_trt_bin(args: argparse.Namespace):
+    """
+    Builds a Docker image that installs TensorRT from a tar.gz package containing binaries.
+    See: https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html#installing-tar
+
+    :param args: The arguments to this script.
+    """
+
     docker_file = TRT_DOCKER_FILES["BIN"]
     docker_file_path = os.path.normpath(os.path.join(args.repo_path, docker_file))
 
     if not is_valid_ver_str(args.trt_version, 4, 4):
-        print("[ERROR]: Must specify a valid TensorRT version for binary TensorRT installs (e.g., 8.x.x.x)", file=sys.stderr)
-        exit(1)
+        print(
+            "[ERROR]: Must specify a valid TensorRT version for binary TensorRT installs (e.g., 8.x.x.x)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     if not is_valid_ver_str(args.tar_cuda_version, 2, 2):
         print("[ERROR]: Must specify a valid CUDA version for binary TensorRT installs (e.g., 11.x)", file=sys.stderr)
-        exit(1)
+        sys.exit(1)
 
     if not is_valid_ver_str(args.tar_cudnn_version, 2, 2):
         print("[ERROR]: Must specify a valid cuDNN version for binary TensorRT installs (e.g., 8.x)", file=sys.stderr)
-        exit(1)
+        sys.exit(1)
 
     if not os.path.isfile(docker_file_path):
-        print("[ERROR]: Invalid docker file path '%s'" % str(docker_file_path), file=sys.stderr)
-        exit(1)
+        print(f"[ERROR]: Invalid docker file path '{docker_file_path}'", file=sys.stderr)
+        sys.exit(1)
 
     if not args.trt_bins_dir or not os.path.isdir(args.trt_bins_dir):
-        print("[ERROR]: Invalid TensorRT bin directory '%s'" % str(args.trt_bins_dir), file=sys.stderr)
-        exit(1)
+        print(f"[ERROR]: Invalid TensorRT bin directory '{args.trt_bins_dir}'", file=sys.stderr)
+        sys.exit(1)
 
     common_args = get_common_docker_build_args(args)
-    cmd_ret = run_cmd(["docker", "build", *common_args, "--build-arg", f"TAR_TRT_VERSION={args.trt_version}",
-                       "--build-arg", f"TAR_CUDA_VERSION={args.tar_cuda_version}",
-                       "--build-arg", f"TAR_CUDNN_VERSION={args.tar_cudnn_version}",
-                       "--build-arg", f"TRT_BINS_DIR={args.trt_bins_dir}",
-                       "-f", f"{docker_file_path}", "."])
+    cmd_ret = run_cmd(
+        [
+            "docker",
+            "build",
+            *common_args,
+            "--build-arg",
+            f"TAR_TRT_VERSION={args.trt_version}",
+            "--build-arg",
+            f"TAR_CUDA_VERSION={args.tar_cuda_version}",
+            "--build-arg",
+            f"TAR_CUDNN_VERSION={args.tar_cudnn_version}",
+            "--build-arg",
+            f"TRT_BINS_DIR={args.trt_bins_dir}",
+            "-f",
+            f"{docker_file_path}",
+            ".",
+        ]
+    )
 
     if cmd_ret != 0:
-        print("[ERROR]: docker build command failed with return code %d" % cmd_ret, file=sys.stderr)
-        exit(1)
+        print(f"[ERROR]: docker build command failed with return code {cmd_ret}", file=sys.stderr)
+        sys.exit(1)
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -166,21 +207,30 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("-a", "--cuda_arch", default="75", help="CUDA architecture (e.g., 75)")
 
     # Command-line options for installing TensorRT from binaries.
-    parser.add_argument("--install_bin", action="store_true", default=False,
-                        help="Enable to install TensorRT from tar.gz binary package")
-    parser.add_argument("--tar_cuda_version", default="",
-                        help="CUDA version (e.g., 11.8) used to find TensorRT EA binary tar.gz package")
-    parser.add_argument("--tar_cudnn_version", default="",
-                        help="CUDA version (e.g., 8.6) used to find TensorRT EA binary tar.gz package")
-    parser.add_argument("--trt_bins_dir", default="",
-                        help="Directory containing TensorRT tar.gz package")
+    parser.add_argument(
+        "--install_bin",
+        action="store_true",
+        default=False,
+        help="Enable to install TensorRT from tar.gz binary package",
+    )
+    parser.add_argument(
+        "--tar_cuda_version",
+        default="",
+        help="CUDA version (e.g., 11.8) used to find TensorRT EA binary tar.gz package",
+    )
+    parser.add_argument(
+        "--tar_cudnn_version",
+        default="",
+        help="CUDA version (e.g., 8.6) used to find TensorRT EA binary tar.gz package",
+    )
+    parser.add_argument("--trt_bins_dir", default="", help="Directory containing TensorRT tar.gz package")
 
     return parser.parse_args()
 
 
 def main() -> int:
     """
-    Script entry point.
+    Script entry point. Builds an Ubuntu-based Docker image with TensorRT.
 
     :return: 0 on success, 1 on error.
     """
@@ -194,6 +244,6 @@ def main() -> int:
 
     return 0
 
+
 if __name__ == "__main__":
     main()
-
