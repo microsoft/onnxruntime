@@ -34,7 +34,6 @@
 #endif
 #include <memory>
 #include <optional>
-#include <variant>
 #include "unsupported/Eigen/CXX11/ThreadPool"
 
 #if defined(__GNUC__)
@@ -218,9 +217,6 @@ class ThreadPoolTask {
       : callable_(call) {}
 
   void operator()() const {
-    //if (!Valid()) {
-    //  DebugBreak();
-    //}
     if (callable_) {
       callable_.Invoke();
       return;
@@ -1178,16 +1174,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       Queue& q = td.queue;
       unsigned w_idx;
 
-      auto push_status = q.PushBackWithTag(fns[fn_idx].GetCallable(), pt.tag, w_idx);
       // Attempt to enqueue the task
-      //auto push_status = q.PushBackWithTag([worker_fn, par_idx, preferred_workers, &ps, this]() {
-      //  // Record the worker thread that actually runs this task.
-      //  // This will form the preferred worker for the next loop.
-      //  UpdatePreferredWorker(preferred_workers, par_idx);
-      //  worker_fn(par_idx);
-      //  ps.tasks_finished++;
-      //},
-      //                                     pt.tag, w_idx);
+      auto push_status = q.PushBackWithTag(fns[fn_idx].GetCallable(), pt.tag, w_idx);
 
       // Queue accepted the task; wake the thread that owns the queue.
       // In addition, if the queue was non-empty, attempt to wake
@@ -1392,10 +1380,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
                             Callable<void, unsigned> fn,
                             unsigned n,
                             std::ptrdiff_t block_size) override {
-    //ORT_ENFORCE(n <= num_threads_ + 1, "More work items than threads");
-    if (n > num_threads_ + 1) {
-      DebugBreak();
-    }
+    ORT_ENFORCE(n <= num_threads_ + 1, "More work items than threads");
     profiler_.LogStartAndCoreAndBlock(block_size);
     PerThread* pt = GetPerThread();
     assert(pt->leading_par_section && "RunInParallel, but not in parallel section");
@@ -1440,10 +1425,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   // For all other threads:
   //  1. run fn(...);
   void RunInParallel(Callable<void, unsigned> fn, unsigned n, std::ptrdiff_t block_size) override {
-    //ORT_ENFORCE(n <= num_threads_ + 1, "More work items than threads");
-    if (n > num_threads_ + 1) {
-      DebugBreak();
-    }
+    ORT_ENFORCE(n <= num_threads_ + 1, "More work items than threads");
     profiler_.LogStartAndCoreAndBlock(block_size);
     PerThread* pt = GetPerThread();
     ThreadPoolParallelSection ps;
