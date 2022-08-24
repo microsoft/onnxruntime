@@ -38,8 +38,9 @@ struct TVMFuncState {
 TvmSoExecutionProvider::TvmSoExecutionProvider(const TvmEPOptions& options)
     : IExecutionProvider{kTvmExecutionProvider},
       options_{options} {
-  AllocatorCreationInfo default_memory_info = {[](int) {
-                                                 return std::make_unique<TVMAllocator>();
+  int alloc_prior = options_.allocator_priority;
+  AllocatorCreationInfo default_memory_info = {[alloc_prior](int) {
+                                                 return std::make_unique<TVMAllocator>(alloc_prior);
                                                },
                                                0, false};
   allocator_ = CreateAllocator(default_memory_info);

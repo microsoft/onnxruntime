@@ -16,6 +16,7 @@ namespace tvm {
 
 namespace provider_option_names {
 constexpr const char* kExecutor = "executor";
+constexpr const char* kAllocatorPriority = "allocator_priority";
 constexpr const char* kSoFolder = "so_folder";
 constexpr const char* kCheckHash = "check_hash";
 constexpr const char* kHashFilePath = "hash_file_path";
@@ -31,6 +32,7 @@ constexpr const char* kInputShapes = "input_shapes";
 
 static const std::unordered_set<std::string> valid_keys {
   std::string{kExecutor},
+  std::string{kAllocatorPriority},
   std::string{kTarget},
   std::string{kTargetHost},
   std::string{kOptLevel},
@@ -114,6 +116,7 @@ TvmEPOptions TvmEPOptionsHelper::FromProviderOptions(const ProviderOptions& pr_o
   ORT_THROW_IF_ERROR(
     ProviderOptionsParser{}
       .AddAssignmentToReference(tvm::provider_option_names::kExecutor, options.executor)
+      .AddAssignmentToReference(tvm::provider_option_names::kAllocatorPriority, options.allocator_priority)
       .AddAssignmentToReference(tvm::provider_option_names::kSoFolder, options.so_folder)
       .AddAssignmentToReference(tvm::provider_option_names::kCheckHash, options.check_hash)
       .AddAssignmentToReference(tvm::provider_option_names::kHashFilePath, options.hash_file_path)
@@ -251,6 +254,7 @@ void TvmEPOptionsHelper::optLevelPostprocess(unsigned int& opt_level) {
 std::ostream& operator<<(std::ostream& out, const TvmEPOptions& options) {
   out << "TVM EP options:\n" <<
   "executor type: " << options.executor << "\n" <<
+  "allocator priority: " << options.allocator_priority << "\n" <<
   "so_folder: " << options.so_folder << "\n" <<
   "check_hash: " << options.check_hash << "\n" <<
   "hash_file_path: " << options.hash_file_path << "\n" <<

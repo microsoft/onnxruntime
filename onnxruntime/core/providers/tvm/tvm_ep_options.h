@@ -11,9 +11,9 @@
 
 #include "core/framework/provider_options.h"
 #include "core/framework/tensor_shape.h"
+#include "core/session/onnxruntime_c_api.h"
 
 #include "tvm_defaults.h"
-
 
 namespace onnxruntime {
 
@@ -33,6 +33,7 @@ using InputsInfoMap = std::unordered_map<size_t, TensorShapeVector>;
 // Information needed to construct an TVM execution provider.
 struct TvmEPOptions {
   std::string executor{tvm::default_executor_type};
+  int allocator_priority{OrtAllocatorPriorityHigh};
   std::string so_folder{""};
   bool check_hash = false;
   std::string hash_file_path{""};
