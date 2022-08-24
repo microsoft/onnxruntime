@@ -16,10 +16,10 @@ import numpy as np
 import onnx
 from onnx import TensorProto, helper
 from op_test_utils import (
-    TestCaseTempDir, 
-    TestDataFeeds, 
-    check_model_correctness, 
-    check_op_type_count, 
+    TestCaseTempDir,
+    TestDataFeeds,
+    check_model_correctness,
+    check_op_type_count,
     check_qtype_by_node_type,
 )
 
