@@ -1312,8 +1312,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testCreateAllocator(self):
         def verify_allocator(allocator, expected_config):
-            for key in expected_config:
-                val = expected_config[key]
+            for key, val in expected_config.items():
                 if (key == "max_mem"):
                     self.assertEqual(
                         allocator.max_mem,
