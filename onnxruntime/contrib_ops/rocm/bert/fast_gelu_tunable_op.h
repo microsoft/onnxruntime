@@ -65,6 +65,9 @@ class FastGeluTunableOp : public TunableOp<FastGeluParams<T>> {
     ADD_OP(384);
     ADD_OP(448);
     ADD_OP(512);
+
+    // NOTE: the 15-th kernel seems to be better in gerenal case, so set it as default one
+    this->SetDefaultId(15);
   }
 };
 
