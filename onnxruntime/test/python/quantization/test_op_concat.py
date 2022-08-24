@@ -96,7 +96,9 @@ class TestConcatModel(TestCaseTempDir):
         self.construct_model(model_fp32_path)
         data_reader = InputFeedsNegOneZeroOne(1, {"input": [1, 3, 15, 15]})
 
-        activation_proto_qtype = onnx.TensorProto.UINT8 if activation_type == QuantType.QUInt8 else onnx.TensorProto.INT8
+        activation_proto_qtype = (
+            onnx.TensorProto.UINT8 if activation_type == QuantType.QUInt8 else onnx.TensorProto.INT8
+        )
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
         model_q8_path = "concat_{}{}.onnx".format(activation_type_str, weight_type_str)
