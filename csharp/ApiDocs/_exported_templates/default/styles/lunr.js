@@ -15,7 +15,7 @@
  *
  * This builder object is yielded to the configuration function
  * that is passed as a parameter, allowing the list of fields
- * and other builder parameters to be customised.
+ * and other builder parameters to be customized.
  *
  * All documents _must_ be added within the passed config function.
  *
@@ -259,8 +259,8 @@ lunr.tokenizer = function (obj) {
 }
 
 /**
- * The separator used to split a string into tokens. Override this property to change the behaviour of
- * `lunr.tokenizer` behaviour when tokenizing strings. By default this splits on whitespace and hyphens.
+ * The separator used to split a string into tokens. Override this property to change the behavior of
+ * `lunr.tokenizer` behavior when tokenizing strings. By default this splits on whitespace and hyphens.
  *
  * @static
  * @see lunr.tokenizer
@@ -290,12 +290,12 @@ lunr.tokenizer.separator = /[\s\-]+/
  * should return undefined, the rest of the pipeline will not be called with
  * this token.
  *
- * For serialisation of pipelines to work, all functions used in an instance of
+ * For serialization of pipelines to work, all functions used in an instance of
  * a pipeline should be registered with lunr.Pipeline. Registered functions can
  * then be loaded. If trying to load a serialised pipeline that uses functions
  * that are not registered an error will be thrown.
  *
- * If not planning on serialising the pipeline then registering pipeline functions
+ * If not planning on serializing the pipeline then registering pipeline functions
  * is not necessary.
  *
  * @constructor
@@ -358,7 +358,7 @@ lunr.Pipeline.warnIfFunctionNotRegistered = function (fn) {
   var isRegistered = fn.label && (fn.label in this.registeredFunctions)
 
   if (!isRegistered) {
-    lunr.utils.warn('Function is not registered with pipeline. This may cause problems when serialising the index.\n', fn)
+    lunr.utils.warn('Function is not registered with pipeline. This may cause problems when serializing the index.\n', fn)
   }
 }
 
@@ -509,7 +509,7 @@ lunr.Pipeline.prototype.reset = function () {
 }
 
 /**
- * Returns a representation of the pipeline ready for serialisation.
+ * Returns a representation of the pipeline ready for serialization.
  *
  * Logs a warning if the function has not been registered.
  *
@@ -1168,7 +1168,7 @@ lunr.TokenSet = function () {
  * Keeps track of the next, auto increment, identifier to assign
  * to a new tokenSet.
  *
- * TokenSets require a unique identifier to be correctly minimised.
+ * TokenSets require a unique identifier to be correctly minimized.
  *
  * @private
  */
@@ -1463,7 +1463,7 @@ lunr.TokenSet.prototype.toString = function () {
   // to enter 'hash-mode' with many keys being added
   //
   // avoiding a for-in loop here as it leads to the function
-  // being de-optimised (at least in V8). From some simple
+  // being de-optimized (at least in V8). From some simple
   // benchmarks the performance is comparable, but allowing
   // V8 to optimize may mean easy performance wins in the future.
 
@@ -1511,7 +1511,7 @@ lunr.TokenSet.prototype.intersect = function (b) {
     // NOTE: As with the #toString method, we are using
     // Object.keys and a for loop instead of a for-in loop
     // as both of these objects enter 'hash' mode, causing
-    // the function to be de-optimised in V8
+    // the function to be de-optimized in V8
     var qEdges = Object.keys(frame.qNode.edges),
         qLen = qEdges.length,
         nEdges = Object.keys(frame.node.edges),
@@ -2226,7 +2226,7 @@ lunr.Builder.prototype.createFieldVectors = function () {
           // Converts 1.23456789 to 1.234.
           // Reducing the precision so that the vectors take up less
           // space when serialised. Doing it now so that they behave
-          // the same before and after serialisation. Also, this is
+          // the same before and after serialization. Also, this is
           // the fastest approach to reducing a number's precision in
           // JavaScript.
 
@@ -2277,9 +2277,9 @@ lunr.Builder.prototype.build = function () {
  * Applies a plugin to the index builder.
  *
  * A plugin is a function that is called with the index builder as its context.
- * Plugins can be used to customise or extend the behaviour of the index
+ * Plugins can be used to customise or extend the behavior of the index
  * in some way. A plugin is just a function, that encapsulated the custom
- * behaviour that should be applied when building the index.
+ * behavior that should be applied when building the index.
  *
  * The plugin function will be called with the index builder as its argument, additional
  * arguments can also be passed when calling use. The function will be called
@@ -2390,7 +2390,7 @@ lunr.Query = function (allFields) {
  *
  * @constant
  * @default
- * @property {number} wildcard.NONE - The term will have no wildcards inserted, this is the default behaviour
+ * @property {number} wildcard.NONE - The term will have no wildcards inserted, this is the default behavior
  * @property {number} wildcard.LEADING - Prepend the term with a wildcard, unless a leading wildcard already exists
  * @property {number} wildcard.TRAILING - Append a wildcard to the term, unless a trailing wildcard already exists
  * @see lunr.Query~Clause
@@ -2754,7 +2754,7 @@ lunr.QueryParser.parseField = function (parser) {
 
   if (parser.query.allFields.indexOf(lexeme.str) == -1) {
     var possibleFields = parser.query.allFields.map(function (f) { return "'" + f + "'" }).join(', '),
-        errorMessage = "unrecognised field '" + lexeme.str + "', possible fields: " + possibleFields
+        errorMessage = "unrecognized field '" + lexeme.str + "', possible fields: " + possibleFields
 
     throw new lunr.QueryParseError (errorMessage, lexeme.start, lexeme.end)
   }
@@ -2905,7 +2905,7 @@ lunr.QueryParser.parseBoost = function (parser) {
     } else if (typeof exports === 'object') {
       /**
        * Node. Does not work with strict CommonJS, but
-       * only CommonJS-like enviroments that support module.exports,
+       * only CommonJS-like environments that support module.exports,
        * like Node.
        */
       module.exports = factory()
