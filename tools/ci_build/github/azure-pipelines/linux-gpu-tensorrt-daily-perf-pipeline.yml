@@ -1,19 +1,9 @@
 parameters:
 
-- name: BuildORT
-  displayName: Build ORT
-  type: boolean
-  default: true
-
 - name: PostToDashboard
   displayName: Post to Dashboard
   type: boolean
   default: true
-
-- name: RunNvidiaContainer
-  displayName: Run in Nvidia Container (or set trtContainer Variable)
-  type: boolean
-  default: false
 
 - name: TrtVersion
   displayName: TensorRT Version
@@ -23,11 +13,7 @@ parameters:
   - 8.2.1.8
   - 8.0.1.6
   - 8.4.1.5
-
-- name: ConfigureEPs
-  displayName: Configure EPs (set epList variable - separate by spaces)
-  type: boolean
-  default: false
+  - 8.5.0.9
 
 - name: ModelGroups
   type: object
@@ -60,47 +46,20 @@ jobs:
   pool: 'Onnxruntime-Linux-GPU-TensorRT-Perf'
   
   variables:
-    - name: trtContainerVersion
-      ${{ if eq(parameters.RunNvidiaContainer, true)}}:
-        ${{ if eq(parameters.TrtVersion, '8.2.1.8') }}:
-          value: 21.12
-        ${{ elseif eq(parameters.TrtVersion, '8.0.1.6') }}:
-          value: 21.07
-      
-    - name: nvidia_dockerfile
-      ${{ if eq(parameters.RunNvidiaContainer, true)}}:
-        value: nvcr.io/nvidia/tensorrt:$(trtContainerVersion)-py3
-      
-
     - name: dockerfile_path
-      ${{ if eq(parameters.RunNvidiaContainer, true) }}:
-        value: dockerfiles
-      ${{ else }}:
-        value: tools/ci_build/github/linux/docker
+      value: tools/ci_build/github/linux/docker
 
     - name: dockerfile
-      ${{ if eq(parameters.RunNvidiaContainer, true) }}:
-        value: $(dockerfile_path)/Dockerfile.tensorrt
-      ${{ else }}:
-        ${{ if eq(parameters.TrtVersion, '8.4.1.5') }}:
-          value: $(dockerfile_path)/Dockerfile.ubuntu_cuda11_6_tensorrt8_4
-        ${{ elseif eq(parameters.TrtVersion, '8.2.1.8') }}:
-          value: $(dockerfile_path)/Dockerfile.ubuntu_cuda11_4_tensorrt8_2
-        ${{ elseif eq(parameters.TrtVersion, '8.0.1.6') }}:
-          value: $(dockerfile_path)/Dockerfile.ubuntu_cuda11_4_tensorrt8_0
+      ${{ if eq(parameters.TrtVersion, '8.4.1.5') }}:
+        value: $(dockerfile_path)/Dockerfile.ubuntu_cuda11_6_tensorrt8_4
+      ${{ elseif eq(parameters.TrtVersion, '8.2.1.8') }}:
+        value: $(dockerfile_path)/Dockerfile.ubuntu_cuda11_4_tensorrt8_2
+      ${{ elseif eq(parameters.TrtVersion, '8.0.1.6') }}:
+        value: $(dockerfile_path)/Dockerfile.ubuntu_cuda11_4_tensorrt8_0
 
     - name: image
-      ${{ if eq(parameters.BuildORT, true) }}:
         value: ort-$(branch)
-      ${{ else }}:
-        value: $(nvidia_dockerfile)
       
-    - name: tensorrt_version
-      ${{ if eq(parameters.RunNvidiaContainer, true) }}:
-        value: $(trtContainerVersion)
-      ${{ else }}:
-        value: ${{ parameters.TrtVersion }}
-
     - name: trtEPOptionsArg
       ${{ if not(eq(length(parameters.TrtEPOptions), 0)) }}:
         value: --trt_ep_options ${{ join(',',parameters.TrtEPOptions) }}
@@ -113,33 +72,12 @@ jobs:
       value: -a "-a -g $(optimizeGraph) -b $(bindInputs) $(trtEPOptionsArg) $(cudaEPOptionsArg)"
 
   steps:
-    - ${{ if and( eq(parameters.BuildORT, false), eq(parameters.TrtVersion, '8.2.1.8')) }}:
-      - task: DownloadPipelineArtifact@2
-        inputs:
-          buildType: 'specific'
-          project: 'Lotus'
-          preferTriggeringPipeline: true 
-          pipeline: '841'
-          runBranch: 'ref/heads/master'
-          buildVersionToDownload: 'latest'
-          allowPartiallySucceededBuilds: false
-          artifact: 'onnxruntime_gpu'
-          targetPath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-      
-      - ${{ if eq(parameters.RunNvidiaContainer, true) }}:
-        - script: 'docker pull $(nvidia_dockerfile)'
-          displayName: 'Pull Nvidia Dockerfile'
-      - ${{ else }}:
-        - script: 'Can only run pip package in Nvidia Container'
-          displayName: 'Please Re-run'
-
-    - ${{ if eq(parameters.BuildORT, true) }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -o $(Build.SourcesDirectory)/$(dockerfile) -b $(branch) -t $(tensorrt_version) -i $(image) -c 75 '
-        displayName: 'Build latest ORT Image'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -o $(Build.SourcesDirectory)/$(dockerfile) -b $(branch) -t ${{ parameters.TrtVersion }} -i $(image) -c 75 '
+      displayName: 'Build latest ORT Image'
+      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
     - ${{ each option in parameters.ModelGroups }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume) -b ${{ parameters.BuildORT }} -o ${{option}} -m $(${{option}}) -e "$(epList)" $(optional_arguments)'
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume) -b true -o ${{option}} -m $(${{option}}) -e "$(epList)" $(optional_arguments)'
         displayName: '${{option}} perf'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         
