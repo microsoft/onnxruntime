@@ -49,7 +49,7 @@ def create_bert_attention(
             ["layernorm_out"],
             "layernorm",
             axis=-1,
-            epsion=0.000009999999747378752,
+            epsilon=0.000009999999747378752,
         ),
         # q nodes
         helper.make_node("MatMul", ["layernorm_out", "matmul_q_weight"], ["matmul_q_out"], "matmul_q"),
@@ -179,7 +179,7 @@ def create_bert_attention(
             ["output"],
             "layernorm2",
             axis=-1,
-            epsion=0.000009999999747378752,
+            epsilon=0.000009999999747378752,
         ),
     ]
 
@@ -269,7 +269,7 @@ def create_tf2onnx_attention_3d(input_hidden_size=16, num_heads=4, head_size=4, 
             ["layernorm_out"],
             "layernorm",
             axis=-1,
-            epsion=0.000009999999747378752,
+            epsilon=0.000009999999747378752,
         ),
         # q nodes
         helper.make_node(
@@ -351,7 +351,7 @@ def create_tf2onnx_attention_3d(input_hidden_size=16, num_heads=4, head_size=4, 
             ["output"],
             "layernorm2",
             axis=-1,
-            epsion=0.000009999999747378752,
+            epsilon=0.000009999999747378752,
         ),
     ]
 

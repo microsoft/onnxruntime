@@ -26,7 +26,7 @@ def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_ad
             ["layernorm_input", "layer_norm_weight", "layer_norm_bias"],
             ["layernorm_out"],
             "layernorm",
-            epsion=0.000009999999747378752,
+            epsilon=0.000009999999747378752,
         ),
         # fully connection nodes
         helper.make_node(
@@ -439,7 +439,7 @@ def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_ad
             ["skip_output", "layer_norm_weight", "layer_norm_bias"],
             ["output"],
             "layernorm2",
-            epsion=0.000009999999747378752,
+            epsilon=0.000009999999747378752,
         ),
     ]
 

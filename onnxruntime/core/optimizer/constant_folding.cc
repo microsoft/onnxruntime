@@ -151,6 +151,12 @@ bool ConstantFoldShapeNode(Graph& graph,
       visited_nodes.insert(&output_node);
       ++p_ip_node;
 
+      NodeArg* data_input = output_node.MutableInputDefs()[0];
+      // Skip when shape is not used as sliced data.
+      if (data_input != node.MutableOutputDefs()[0]) {
+        continue;
+      }
+
       if (graph_utils::IsSupportedOptypeVersionAndDomain(output_node, "Slice", {10, 11, 13})) {
         NodeArg* starts_input = output_node.MutableInputDefs()[1];
         NodeArg* ends_input = output_node.MutableInputDefs()[2];
@@ -209,8 +215,10 @@ bool ConstantFoldShapeNode(Graph& graph,
         }
 
         // Try to parse int64 type constant initializers.
+        // We only support 1D slices currently, can be extended further to support other cases.
         InlinedVector<int64_t> indices_values;
-        if (!optimizer_utils::AppendTensorFromInitializer(graph, *indices_input, indices_values, true)) {
+        if (!(optimizer_utils::AppendTensorFromInitializer(graph, *indices_input, indices_values, true) &&
+              indices_values.size() == 1)) {
           continue;
         }
 
@@ -219,15 +227,14 @@ bool ConstantFoldShapeNode(Graph& graph,
           continue;
         }
 
-        // We only support 1D slices currently, can be extended further to support other cases.
-        if (!(indices_values.size() == 1 && dim_values[indices_values[0]] > 0)) {
-          continue;
-        }
-
         int64_t gather_index = indices_values[0];
         const int64_t rank = static_cast<int64_t>(dim_values.size());
         gather_index = gather_index < 0 ? gather_index + rank : gather_index;
         const size_t gather_indices_length = 1;
+
+        if (dim_values[gather_index] < 0) {
+          continue;
+        }
 
         const int gather_output_rank = 1 /* gather input data is a 1-D tensor representing a shape */ +
                                        indices_shape->dim_size() - 1;

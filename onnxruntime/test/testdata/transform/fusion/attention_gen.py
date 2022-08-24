@@ -325,7 +325,7 @@ def GenerateModel(model_name):
             ["layernorm_out"],
             "layernorm",
             axis=-1,
-            epsion=0.000009999999747378752,
+            epsilon=0.000009999999747378752,
         ),
         # q nodes
         helper.make_node("MatMul", ["layernorm_out", "matmul_q_weight"], ["matmul_q_out"], "matmul_q"),
@@ -462,7 +462,7 @@ def GenerateModel2(model_name):
             ["layernorm_out"],
             "layernorm",
             axis=-1,
-            epsion=0.000009999999960041972,
+            epsilon=0.000009999999960041972,
         ),
         # shape path
         helper.make_node("Shape", ["layernorm_out"], ["shape0_out"], "shape0"),

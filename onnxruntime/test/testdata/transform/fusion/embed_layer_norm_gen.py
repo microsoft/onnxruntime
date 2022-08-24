@@ -136,7 +136,7 @@ def GenerateNodes(model_name, has_cast, suffix=""):
             ["layernorm_out" + suffix],
             "layernorm" + suffix,
             axis=-1,
-            epsion=0.000009999999747378752,
+            epsilon=0.000009999999747378752,
         ),
         helper.make_node(
             "Cast",
@@ -369,7 +369,7 @@ def GenerateModel5(model_name):
             ["layernorm_out"],
             "layernorm",
             axis=-1,
-            epsion=0.000009999999747378752,
+            epsilon=0.000009999999747378752,
         ),
         helper.make_node("Cast", ["input_mask"], ["mask_cast_out"], "mask_cast", to=6),
         helper.make_node(
@@ -553,7 +553,7 @@ def GenerateModel6(model_name):
             ["layernorm_out"],
             "layernorm",
             axis=-1,
-            epsion=0.000009999999747378752,
+            epsilon=0.000009999999747378752,
         ),
         helper.make_node("Cast", ["input_mask"], ["mask_cast_out"], "mask_cast", to=6),
         helper.make_node(
@@ -775,7 +775,7 @@ def GenerateNodes2(attention_heads):
             ["layernorm_out"],
             "layernorm",
             axis=-1,
-            epsion=0.000009999999747378752,
+            epsilon=0.000009999999747378752,
         ),
         helper.make_node("Cast", ["input_mask"], ["mask_cast_out"], "mask_cast", to=6),
         helper.make_node(
