@@ -15,7 +15,13 @@ from pathlib import Path
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import TestCaseTempDir, TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
+from op_test_utils import (
+    TestCaseTempDir, 
+    TestDataFeeds, 
+    check_model_correctness, 
+    check_op_type_count, 
+    check_qtype_by_node_type
+)
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 

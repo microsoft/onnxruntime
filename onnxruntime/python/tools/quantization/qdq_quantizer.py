@@ -104,7 +104,6 @@ class QDQQuantizer(ONNXQuantizer):
                 ]
             )
 
-
         # We do quantization on Dequantizelinear's input to remove Quantizelinear for weight as an optimization.
         # In some cases, for example QDQ BERT model for TensorRT, QDQ should always appear as a pair.
         # Therefore, we need to disable this optimization and add qdq pair to weight.
