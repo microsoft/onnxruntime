@@ -52,7 +52,7 @@ def test_fast_gelu(x_size, bias_size):
             run_fast_gelu(x_size, bias_size, dtype, f)
 
 
-def profile_vector_add_func(batch_size, seq_len, hidden_size, dtype, func):
+def profile_fast_gelu_func(batch_size, seq_len, hidden_size, dtype, func):
     x_size = [batch_size, seq_len, hidden_size * 3]
     bias_size = hidden_size * 3
     np.random.seed(0)
