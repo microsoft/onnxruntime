@@ -25,6 +25,8 @@ ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:/code/c
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+COPY ${TRT_BINS_DIR}/TensorRT-${TAR_TRT_VERSION}.Linux.x86_64-gnu.cuda-${TAR_CUDA_VERSION}.cudnn${TAR_CUDNN_VERSION}.tar.gz /TensorRT-${TAR_TRT_VERSION}.tar.gz
+
 RUN apt-get update &&\
     apt-get install -y sudo git bash unattended-upgrades wget
 RUN unattended-upgrade
@@ -43,8 +45,6 @@ RUN pip install --upgrade pip
 RUN pip install setuptools>=41.0.0
 
 # Install TensorRT from tar.gz
-COPY ${TRT_BINS_DIR}/TensorRT-${TAR_TRT_VERSION}.Linux.x86_64-gnu.cuda-${TAR_CUDA_VERSION}.cudnn${TAR_CUDNN_VERSION}.tar.gz /TensorRT-${TAR_TRT_VERSION}.tar.gz
-
 RUN tar -xzvf /TensorRT-${TAR_TRT_VERSION}.tar.gz
 
 ENV LD_LIBRARY_PATH ${LD_LIBRARY_PATH}:/TensorRT-${TAR_TRT_VERSION}/lib

@@ -62,6 +62,9 @@ jobs:
 
   steps:
     - ${{ if eq(parameters.TrTVersion, '8.5.0.9') }}:
+      - script: 'ls -al $(trtBinsDir)'
+        displayName: 'Show available TensorRT binaries'
+
       - script: 'cp $(trtBinsDir)/TensorRT-${{ parameters.TrTVersion }}*.tar.gz $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/'
         displayName: 'Copy TensorRT .tar.gz installation packages'
 
