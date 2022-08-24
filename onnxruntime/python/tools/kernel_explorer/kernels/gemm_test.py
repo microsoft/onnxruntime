@@ -69,8 +69,8 @@ def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=Fa
     failures = {}
     print(f"m={m:<5} n={n:<5} k={k:<5} dtype={dtype} bound: {bound}")
 
-    for impl in my_gemm.ListImpls():
-        if not my_gemm.SelectImpl(impl):
+    for impl in my_gemm.ListOps():
+        if not my_gemm.SelectOp(impl):
             continue
 
         my_gemm.Run()
@@ -155,8 +155,8 @@ def profile_gemm_func(f, dtype, m, n, k):
     alpha = 1.0
     beta = 0.0
     my_gemm = f(opa, opb, m, n, k, alpha, dev_a, lda, dev_b, ldb, beta, dev_c, n)
-    for impl in my_gemm.ListImpls():
-        if not my_gemm.SelectImpl(impl):
+    for impl in my_gemm.ListOps():
+        if not my_gemm.SelectOp(impl):
             print(f"{impl:<50} {dtype} m={m:<4} k={k:<4} n={n:<4}, not supported")
             continue
         time_ms = my_gemm.Profile()

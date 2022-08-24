@@ -74,11 +74,11 @@ class RocBlasGemm : public IKernelExplorer {
     ORT_THROW_IF_ERROR(impl_(&params_));
   }
 
-  std::vector<std::string> ListImpls() const {
+  std::vector<std::string> ListOps() const {
     return {"Rocblas"};
   }
 
-  bool SelectImpl(const std::string& name) {
+  bool SelectOp(const std::string& name) {
     return name == "Rocblas";
   }
 
@@ -89,7 +89,7 @@ class RocBlasGemm : public IKernelExplorer {
   using OpT = contrib::rocm::Op<ParamsT>;
 
   ParamsT params_{};
-  OpT impl_{RocBlasGemmOp<T>};
+  OpT op_{RocBlasGemmOp<T>};
 };
 
 void InitRocBlasGemm(py::module mod) {
@@ -100,8 +100,8 @@ void InitRocBlasGemm(py::module mod) {
       .def("SetRepeats", &RocBlasGemm<float>::SetRepeats)
       .def("Profile", &RocBlasGemm<float>::Profile)
       .def("Run", &RocBlasGemm<float>::Run)
-      .def("ListImpls", &RocBlasGemm<float>::ListImpls)
-      .def("SelectImpl", &RocBlasGemm<float>::SelectImpl);
+      .def("ListOps", &RocBlasGemm<float>::ListOps)
+      .def("SelectOp", &RocBlasGemm<float>::SelectOp);
 
   // half
   py::class_<RocBlasGemm<half>>(mod, "RocblasGemm_half")
@@ -110,8 +110,8 @@ void InitRocBlasGemm(py::module mod) {
       .def("SetRepeats", &RocBlasGemm<half>::SetRepeats)
       .def("Profile", &RocBlasGemm<half>::Profile)
       .def("Run", &RocBlasGemm<half>::Run)
-      .def("ListImpls", &RocBlasGemm<half>::ListImpls)
-      .def("SelectImpl", &RocBlasGemm<half>::SelectImpl);
+      .def("ListOps", &RocBlasGemm<half>::ListOps)
+      .def("SelectOp", &RocBlasGemm<half>::SelectOp);
 }
 
 }  // namespace onnxruntime

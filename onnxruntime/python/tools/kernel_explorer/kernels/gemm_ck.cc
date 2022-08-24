@@ -106,24 +106,24 @@ class CKGemm : public IKernelExplorer {
 
     for (auto&& [type_string, impl] : GetCKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
       type_strings_.emplace_back(std::move(type_string));
-      impls_.emplace_back(std::move(impl));
+      ops_.emplace_back(std::move(impl));
     }
-    ORT_ENFORCE(!impls_.empty());
+    ORT_ENFORCE(!ops_.empty());
   }
 
   void Run() override {
-    ORT_THROW_IF_ERROR(impls_[selected_impl_](&params_));
+    ORT_THROW_IF_ERROR(ops_[selected_impl_](&params_));
   }
 
-  std::vector<std::string> ListImpls() const {
+  std::vector<std::string> ListOps() const {
     return type_strings_;
   }
 
-  bool SelectImpl(const std::string& name) {
-    for (size_t i = 0; i < impls_.size(); i++) {
+  bool SelectOp(const std::string& name) {
+    for (size_t i = 0; i < ops_.size(); i++) {
       if (type_strings_[i] == name) {
         selected_impl_ = i;
-        Status status = impls_[i](&params_);
+        Status status = ops_[i](&params_);
         return status.IsOK();
       }
     }
@@ -135,7 +135,7 @@ class CKGemm : public IKernelExplorer {
   using ParamsT = GemmParams<T>;
   using OpT = contrib::rocm::Op<ParamsT>;
   ParamsT params_;
-  std::vector<OpT> impls_;
+  std::vector<OpT> ops_;
   std::vector<std::string> type_strings_;
   size_t selected_impl_{};
 };
@@ -151,8 +151,8 @@ class CKGemm : public IKernelExplorer {
       .def("SetRepeats", &CKGemm<type, alayout, blayout>::SetRepeats)              \
       .def("Profile", &CKGemm<type, alayout, blayout>::Profile)                    \
       .def("Run", &CKGemm<type, alayout, blayout>::Run)                            \
-      .def("ListImpls", &CKGemm<type, alayout, blayout>::ListImpls)                \
-      .def("SelectImpl", &CKGemm<type, alayout, blayout>::SelectImpl);
+      .def("ListOps", &CKGemm<type, alayout, blayout>::ListOps)                    \
+      .def("SelectOp", &CKGemm<type, alayout, blayout>::SelectOp);
 
 #define REGISTER_OP_FOR_ALL_TRANSAB(type) \
   REGISTER_OP(type, Row, Row, "NN");      \
