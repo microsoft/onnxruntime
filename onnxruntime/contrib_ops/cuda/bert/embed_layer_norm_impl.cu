@@ -85,7 +85,11 @@ __global__ void MaskIndexKernel(int sequence_length, const int* mask, int* mask_
   }
 }
 
-inline bool ComputeMaskIndex(cudaStream_t stream, const int sequence_length, const int batch_size, const int* mask, int* mask_index) {
+inline bool ComputeMaskIndex(cudaStream_t stream,
+                             const int sequence_length,
+                             const int batch_size,
+                             const int* mask,
+                             int* mask_index) {
   // Mask idx is of length batch_size and assumes the valid region is contiguous starting
   // from the beginning of the sequence
 
@@ -178,7 +182,9 @@ bool EmbedSkipLayerNorm(
   const dim3 block(tpb, 1, 1);
 
   EmbedLayerNormKernel<T, tpb>
-      <<<grid, block, 0, stream>>>(hidden_size, input_ids, segment_ids, beta, gamma, word_embedding, position_embedding, segment_embedding, epsilon, output, embedding_sum, position_ids);
+      <<<grid, block, 0, stream>>>(hidden_size, input_ids, segment_ids, beta, gamma,
+                                   word_embedding, position_embedding, segment_embedding,
+                                   epsilon, output, embedding_sum, position_ids);
 
   return CUDA_CALL(cudaPeekAtLastError());
 }

@@ -141,13 +141,13 @@ Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
     // Perform the transpose
     ORT_RETURN_IF_ERROR(Transpose::DoTranspose(prop_,
                                                Stream(ctx),
-                                               CublasHandle(),
+                                               GetCublasHandle(ctx),
                                                permutation, *Y, *temp_input0));
     transposed_Y = std::move(temp_input0);
     auto temp_input1 = Tensor::Create(Y->DataType(), TensorShape(transposed_input_dims), alloc);
     ORT_RETURN_IF_ERROR(Transpose::DoTranspose(prop_,
                                                Stream(ctx),
-                                               CublasHandle(),
+                                               GetCublasHandle(ctx),
                                                permutation, *dY, *temp_input1));
     transposed_dY = std::move(temp_input1);
 
@@ -160,9 +160,9 @@ Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   const TensorShape* compute_input_shape = is_transpose_required ? &transposed_Y->Shape() : &input_shape;
   Status status;
   if (log_softmax_) {
-    status = SoftMaxGradComputeHelper<T, true>(Stream(ctx), dY_data, *compute_input_shape, Y_data, dX_data, CudnnHandle(), is_transpose_required ? static_cast<int64_t>(rank) - 1 : axis);
+    status = SoftMaxGradComputeHelper<T, true>(Stream(ctx), dY_data, *compute_input_shape, Y_data, dX_data, GetCudnnHandle(ctx), is_transpose_required ? static_cast<int64_t>(rank) - 1 : axis);
   } else {
-    status = SoftMaxGradComputeHelper<T, false>(Stream(ctx), dY_data, *compute_input_shape, Y_data, dX_data, CudnnHandle(), is_transpose_required ? static_cast<int64_t>(rank) - 1 : axis);
+    status = SoftMaxGradComputeHelper<T, false>(Stream(ctx), dY_data, *compute_input_shape, Y_data, dX_data, GetCudnnHandle(ctx), is_transpose_required ? static_cast<int64_t>(rank) - 1 : axis);
   }
 
   if (!status.IsOK()) {
@@ -173,7 +173,7 @@ Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
     // Perform the transpose to get the axes back to the original ordering
     ORT_RETURN_IF_ERROR(Transpose::DoTranspose(prop_,
                                                Stream(ctx),
-                                               CublasHandle(),
+                                               GetCublasHandle(ctx),
                                                permutation, *intermediate_output, *dX));
   }
   return Status::OK();

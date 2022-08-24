@@ -410,16 +410,16 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
 template <typename T>
 Status GreedySearchProcessLogits(
-  const OrtValue& logits,                                     // logits output of subgraph
-  transformers::IGreedySearchState<T>* greedy_state,          // state
-  transformers::ISequences* sequences,                        // sequences
-  AllocatorPtr& allocator,                                    // default allocator
-  onnxruntime::concurrency::ThreadPool* thread_pool,          // thread pool (for CPU only)
-  transformers::ILogitsProcessorList* logits_processors,      // logits processors
-  const transformers::IBeamSearchParameters* parameters,      // parameters
-  int step,                                                   // iteration counter
-  Stream* ort_stream,                                         // cuda stream (for CUDA only)
-  const transformers::IConsoleDumper* dumper) {               // tensor dumper
+    const OrtValue& logits,                                 // logits output of subgraph
+    transformers::IGreedySearchState<T>* greedy_state,      // state
+    transformers::ISequences* sequences,                    // sequences
+    AllocatorPtr& allocator,                                // default allocator
+    onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
+    transformers::ILogitsProcessorList* logits_processors,  // logits processors
+    const transformers::IBeamSearchParameters* parameters,  // parameters
+    int step,                                               // iteration counter
+    Stream* stream,                                         // cuda stream (for CUDA only)
+    const transformers::IConsoleDumper* dumper) {           // tensor dumper
   ORT_UNUSED_PARAMETER(logits_processors);
 
 #ifndef DEBUG_GENERATION
@@ -441,7 +441,7 @@ Status GreedySearchProcessLogits(
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
   auto input_length = logits_shape[1];
 
-  cudaStream_t cuda_stream = ort_stream ? reinterpret_cast<cudaStream_t>(ort_stream->handle) : nullptr;
+  cudaStream_t cuda_stream = stream ? reinterpret_cast<cudaStream_t>(stream->handle) : nullptr;
 
   // Get logits for the last token:
   //    next_token_logits = logits[:, -1, :], and the result shape is (batch_size, vocab_size)
@@ -517,12 +517,12 @@ Status GreedySearchProcessLogits(
 
   auto topk_scores = Tensor::CreateDefault();
   auto topk_indices = Tensor::CreateDefault();
-  ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, ort_stream, thread_pool,
+  ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
                            *topk_scores, *topk_indices));
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("topk_scores", *(topk_scores.get()));
-  dumper->Print("topk_indices", *(topk_indices.get()));
+  dumper->Print("topk_scores", topk_scores);
+  dumper->Print("topk_indices", topk_indices);
 #endif
 
   const int64_t* next_token_indices = topk_indices->Data<int64_t>();
