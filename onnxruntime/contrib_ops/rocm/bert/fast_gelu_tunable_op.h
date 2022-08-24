@@ -19,7 +19,7 @@ struct FastGeluParams : OpParams {
   FastGeluParams(hipStream_t stream, const T* input, const T* bias, T* output, int input_length, int bias_length) :
     OpParams(stream), input(input), bias(bias), output(output), input_length(input_length), bias_length(bias_length) {}
 
-  std::string Signature() const {
+  std::string Signature() const override {
     std::string sig = std::to_string(input_length) + "_" + std::to_string(bias_length);
     return sig;
   }

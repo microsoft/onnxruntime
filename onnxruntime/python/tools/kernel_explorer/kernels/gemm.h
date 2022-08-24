@@ -34,7 +34,7 @@ inline std::string BlasOpToString(BlasOp op) {
 // our wrappers have row-majored convention, since it is the native layout to numpy and pytorch.
 template <typename T>
 struct GemmParams : contrib::rocm::OpParams {
-  std::string Signature() const {
+  std::string Signature() const override {
     return MakeString(BlasOpToString(opa), BlasOpToString(opb), "_", m, "_", n, "_", k);
   }
 

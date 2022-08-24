@@ -25,7 +25,7 @@ namespace onnxruntime {
 // Extend the OpParams so that all specializations have the same parameter passing interface
 template <typename T>
 struct VectorAddParams : contrib::rocm::OpParams {
-  std::string Signature() const { return std::to_string(n); }
+  std::string Signature() const override { return std::to_string(n); }
 
   T* x;
   T* y;

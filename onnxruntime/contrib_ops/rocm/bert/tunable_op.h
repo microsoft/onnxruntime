@@ -25,6 +25,7 @@ namespace rocm {
 struct OpParams {
   OpParams() : stream{} {}
   explicit OpParams(hipStream_t stream) : stream(stream) {}
+  virtual std::string Signature() const = 0;
   hipStream_t stream;
 };
 
