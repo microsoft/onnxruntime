@@ -2,6 +2,10 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+"""
+Builds an Ubuntu-based Docker image with TensorRT.
+"""
+
 import argparse
 import os
 import shlex
