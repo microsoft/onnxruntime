@@ -28,9 +28,9 @@ BANNED_AUTOGRAD_FUNCTION_NAMES = set([torch.utils.checkpoint.CheckpointFunction.
 # reference (in case it is released after module exported).
 NONTENSOR_OBJECT_POINTER_STORE = {}
 
+
 def _clear_nontensor_object_references():
     NONTENSOR_OBJECT_POINTER_STORE.clear()
-
 
 
 def _export_pt_1_10(g, n, *args, **kwargs):

@@ -50,6 +50,7 @@ def enable_custom_autograd_support(to_enable=True):
         if custom_autograd_function_enabler.already_enabled is False:
             # Initialize static objects needed to run custom autograd.Function's.
             from ._custom_autograd_function_runner import call_python_backward_function, call_python_forward_function
+
             register_forward_runner(call_python_forward_function)
             register_backward_runner(call_python_backward_function)
 
