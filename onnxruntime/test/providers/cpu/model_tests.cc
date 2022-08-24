@@ -2,7 +2,10 @@
 // Licensed under the MIT License.
 
 #include <iterator>
+#include <iostream>
+#include <filesystem>
 #include <gtest/gtest.h>
+#include <string>
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -1060,11 +1063,16 @@ TEST_P(ModelTest, Run) {
 #if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE)
 #ifdef _WIN32
     paths.push_back(ORT_TSTR("..\\models"));
+    paths.push_back(ORT_TSTR("..\\js\\test\\data"));
 #else
     paths.push_back(ORT_TSTR("../models"));
 #endif
 #endif
-
+    namespace fs = std::filesystem;
+    std::string path = fs::current_path().u8string();
+    std::cout << "----------------FYI, the current directory is " << std::filesystem::current_path() << std::endl;
+    for (const auto& entry : fs::directory_iterator(path))
+      std::cout << entry.path() << std::endl;
 // TENSORRT/OpenVino has too many test failures in the single node tests
 #if !defined(_WIN32) && !defined(USE_OPENVINO)
     paths.push_back("/data/onnx");
