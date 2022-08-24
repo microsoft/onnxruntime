@@ -117,7 +117,7 @@ before running the predictions.
 
  .. code-block:: none
 
-    onnxruntime_profile__2022-08-04_19-14-32.json
+    onnxruntime_profile__2022-08-09_23-21-38.json
 
 
 
@@ -148,20 +148,20 @@ Let's see what it contains.
 
     [{'args': {},
       'cat': 'Session',
-      'dur': 95,
+      'dur': 64,
       'name': 'model_loading_array',
       'ph': 'X',
-      'pid': 3024,
-      'tid': 3024,
+      'pid': 3087,
+      'tid': 3087,
       'ts': 1},
      {'args': {},
       'cat': 'Session',
-      'dur': 308,
+      'dur': 228,
       'name': 'session_initialization',
       'ph': 'X',
-      'pid': 3024,
-      'tid': 3024,
-      'ts': 116}]
+      'pid': 3087,
+      'tid': 3087,
+      'ts': 79}]
 
 
 
@@ -169,7 +169,7 @@ Let's see what it contains.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** ( 0 minutes  0.007 seconds)
+   **Total running time of the script:** ( 0 minutes  0.005 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_profiling.py:
