@@ -2014,7 +2014,7 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   ASSERT_TRUE(api.GetCUDAProviderOptionsAsString(rel_cuda_options.get(), allocator, &cuda_options_str) == nullptr);
   std::string s;
   if (cuda_options_str != nullptr) {
-    s = std::string s(cuda_options_str, strnlen(cuda_options_str, 2048));
+    s = std::string (cuda_options_str, strnlen(cuda_options_str, 2048));
   }
   ASSERT_TRUE(s.find("device_id=0") != std::string::npos);
   ASSERT_TRUE(s.find("gpu_mem_limit=1024") != std::string::npos);
