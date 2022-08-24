@@ -20,7 +20,7 @@ from op_test_utils import (
     TestDataFeeds, 
     check_model_correctness, 
     check_op_type_count, 
-    check_qtype_by_node_type
+    check_qtype_by_node_type,
 )
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static

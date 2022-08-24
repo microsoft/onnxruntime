@@ -87,7 +87,7 @@ def check_op_type_count(testcase, model_path, **kwargs):
 def check_model_correctness(testcase, model_path_origin, model_path_to_check, inputs, rtol=1e-2, atol=0.05):
     sess_options = onnxruntime.SessionOptions()
     sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL  # TODO: ENABLE_ALL?
-    
+
     origin_sess = onnxruntime.InferenceSession(
         model_path_origin, sess_options=sess_options, providers=["CPUExecutionProvider"]
     )
