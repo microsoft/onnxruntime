@@ -5,7 +5,7 @@ stages:
   jobs:
   - template: templates/mac-ci.yml
     parameters:
-      JobName: 'Mac_CPU_Training'
+      JobName: 'Mac_CPU_Training_Debug'
       SubmoduleCheckoutMode: 'recursive'
       BuildCommand: >
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py
@@ -25,7 +25,7 @@ stages:
   jobs:
   - template: templates/mac-ci.yml
     parameters:
-      JobName: 'Mac_CPU_Training'
+      JobName: 'Mac_CPU_Training_RelWithDebInfo'
       SubmoduleCheckoutMode: 'recursive'
       BuildCommand: >
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py
