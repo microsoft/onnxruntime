@@ -32,7 +32,7 @@ class Timer {
   Timer();
   void Start();
   void End();
-  double Duration();
+  float Duration();
   ~Timer();
 
  private:
