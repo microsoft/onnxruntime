@@ -292,7 +292,7 @@ lunr.tokenizer.separator = /[\s\-]+/
  *
  * For serialization of pipelines to work, all functions used in an instance of
  * a pipeline should be registered with lunr.Pipeline. Registered functions can
- * then be loaded. If trying to load a serialised pipeline that uses functions
+ * then be loaded. If trying to load a serialized pipeline that uses functions
  * that are not registered an error will be thrown.
  *
  * If not planning on serializing the pipeline then registering pipeline functions
@@ -331,7 +331,7 @@ lunr.Pipeline.registeredFunctions = Object.create(null)
  * Register a function with the pipeline.
  *
  * Functions that are used in the pipeline should be registered if the pipeline
- * needs to be serialised, or a serialised pipeline needs to be loaded.
+ * needs to be serialized, or a serialized pipeline needs to be loaded.
  *
  * Registering a function does not add it to a pipeline, functions must still be
  * added to instances of the pipeline for them to be used when running a pipeline.
@@ -363,19 +363,19 @@ lunr.Pipeline.warnIfFunctionNotRegistered = function (fn) {
 }
 
 /**
- * Loads a previously serialised pipeline.
+ * Loads a previously serialized pipeline.
  *
  * All functions to be loaded must already be registered with lunr.Pipeline.
- * If any function from the serialised data has not been registered then an
+ * If any function from the serialized data has not been registered then an
  * error will be thrown.
  *
- * @param {Object} serialised - The serialised pipeline to load.
+ * @param {Object} serialized - The serialized pipeline to load.
  * @returns {lunr.Pipeline}
  */
-lunr.Pipeline.load = function (serialised) {
+lunr.Pipeline.load = function (serialized) {
   var pipeline = new lunr.Pipeline
 
-  serialised.forEach(function (fnName) {
+  serialized.forEach(function (fnName) {
     var fn = lunr.Pipeline.registeredFunctions[fnName]
 
     if (fn) {
@@ -1954,7 +1954,7 @@ lunr.Index.load = function (serializedIndex) {
       pipeline = lunr.Pipeline.load(serializedIndex.pipeline)
 
   if (serializedIndex.version != lunr.version) {
-    lunr.utils.warn("Version mismatch when loading serialised index. Current version of lunr '" + lunr.version + "' does not match serialized index '" + serializedIndex.version + "'")
+    lunr.utils.warn("Version mismatch when loading serialized index. Current version of lunr '" + lunr.version + "' does not match serialized index '" + serializedIndex.version + "'")
   }
 
   for (var i = 0; i < serializedVectors.length; i++) {
@@ -2225,7 +2225,7 @@ lunr.Builder.prototype.createFieldVectors = function () {
           scoreWithPrecision = Math.round(score * 1000) / 1000
           // Converts 1.23456789 to 1.234.
           // Reducing the precision so that the vectors take up less
-          // space when serialised. Doing it now so that they behave
+          // space when serialized. Doing it now so that they behave
           // the same before and after serialization. Also, this is
           // the fastest approach to reducing a number's precision in
           // JavaScript.
@@ -2277,7 +2277,7 @@ lunr.Builder.prototype.build = function () {
  * Applies a plugin to the index builder.
  *
  * A plugin is a function that is called with the index builder as its context.
- * Plugins can be used to customise or extend the behavior of the index
+ * Plugins can be used to customize or extend the behavior of the index
  * in some way. A plugin is just a function, that encapsulated the custom
  * behavior that should be applied when building the index.
  *
