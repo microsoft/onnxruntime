@@ -1804,7 +1804,9 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       Initializer unpacked_tensor(bias_tensor);
       OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, a_scale * b_scale);
       ORT_RETURN_IF_ERROR(
-          model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.DataAsByteSpan().data(), bias_operand_type));
+          model_builder.AddOperandFromPersistMemoryBuffer(
+              bias,
+              unpacked_tensor.DataAsByteSpan().data(), bias_operand_type));
 
       bias_idx = operand_indices.at(bias);
     }
@@ -2485,27 +2487,21 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
     const auto data_type = indices_tensor.data_type();
     const auto indices_shape = indices_tensor.dims();
-    uint32_t size = 1;
     Shape indices_dimen;
     indices_dimen.reserve(indices_tensor.dims_size());
     for (auto i = 0; i < indices_tensor.dims_size(); i++) {
-      size *= SafeInt<uint32_t>(indices_shape[i]);
       indices_dimen.push_back(static_cast<uint32_t>(indices_shape[i]));
     }
 
-    std::vector<int32_t> indices(size);
+    std::vector<int32_t> indices(unpacked_tensor.size());
     // see https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#type-punning-arrays for the usage of memcpy here
     if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-      for (uint32_t i = 0; i < size; i++) {
-        int64_t index_i64;
-        memcpy(&index_i64, unpacked_tensor.DataAsByteSpan().data() + i * sizeof(int64_t), sizeof(int64_t));
-        indices[i] = SafeInt<int32_t>(index_i64);
+      for (uint32_t i = 0; i < unpacked_tensor.size(); i++) {
+        indices[i] = SafeInt<int32_t>(unpacked_tensor.data<int64_t>()[i]);
       }
     } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-      for (uint32_t i = 0; i < size; i++) {
-        int32_t index;
-        memcpy(&index, unpacked_tensor.DataAsByteSpan().data() + i * sizeof(int32_t), sizeof(int32_t));
-        indices[i] = SafeInt<int32_t>(index);
+      for (uint32_t i = 0; i < unpacked_tensor.size(); i++) {
+        indices[i] = SafeInt<int32_t>(unpacked_tensor.data<int32_t>()[i]);
       }
     }
 

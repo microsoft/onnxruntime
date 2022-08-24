@@ -3,7 +3,6 @@
 
 #include "core/providers/xnnpack/nn/softmax.h"
 
-#include <optional>
 #include <utility>
 
 #include "core/framework/op_kernel.h"
