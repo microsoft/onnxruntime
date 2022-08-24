@@ -1154,7 +1154,9 @@ class TestInferenceSession(unittest.TestCase):
     def testSharedAllocatorUsingCreateAndRegisterAllocator(self):
         # Create and register an arena based allocator
 
-        # ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1) (create an OrtArenaCfg like this template if you want to use non-default parameters)
+        # To create an OrtArenaCfg using non-default parameters, use one of below templates:
+        # ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1) - Note: doesn't expose initial_growth_chunk_size_bytes option
+        # ort_arena_cfg = onnxrt.OrtArenaCfg({"max_mem": -1, ""arena_extend_strategy": 1, etc..})
         ort_memory_info = onnxrt.OrtMemoryInfo(
             "Cpu",
             onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR,
@@ -1311,10 +1313,34 @@ class TestInferenceSession(unittest.TestCase):
     def testCreateAllocator(self):
         def verifyAllocator(allocator, expectedConfig):
             for key in expectedConfig:
-                self.assertEqual(
-                    allocator.getattr(key),
-                    expectedConfig[key]
-                )
+                val = expectedConfig[key]
+                if (key == "max_mem"):
+                    self.assertEqual(
+                        allocator.max_mem,
+                        val
+                    )
+                elif (key == "arena_extend_strategy"):
+                    self.assertEqual(
+                        allocator.arena_extend_strategy,
+                        val
+                    )
+                elif (key == "initial_chunk_size_bytes"):
+                    self.assertEqual(
+                        allocator.initial_chunk_size_bytes,
+                        val
+                    )
+                elif (key == "max_dead_bytes_per_chunk"):
+                    self.assertEqual(
+                        allocator.max_dead_bytes_per_chunk,
+                        val
+                    )
+                elif (key == "initial_growth_chunk_size_bytes"):
+                    self.assertEqual(
+                        allocator.initial_growth_chunk_size_bytes,
+                        val
+                    )
+                else:
+                    raise ValueError('Invalid OrtArenaCfg option: ' + key)
 
         # Verify ordered parameter initialization
         ort_memory_info = onnxrt.OrtArenaCfg(8, 0, 4, 2)
