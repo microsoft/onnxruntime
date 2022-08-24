@@ -32,10 +32,12 @@ class FusionQOrderedLayerNormalization(Fusion):
 
         children = self.model.get_children(node, input_name_to_nodes)
 
-        # Should only have 1 child - QuantizeLinear (or) 
+        # Should only have 1 child - QuantizeLinear (or)
         # Should have 2 children - QuantizeLinear + Shape
-        if not ((len(children) == 1 and children[0].op_type == "QuantizeLinear") or
-           (len(children) == 2 and children[0].op_type == "QuantizeLinear" and children[1].op_type == "Shape")):
+        if not (
+            (len(children) == 1 and children[0].op_type == "QuantizeLinear")
+            or (len(children) == 2 and children[0].op_type == "QuantizeLinear" and children[1].op_type == "Shape")
+        ):
             return
 
         downstream_quantize_node = children[0]
@@ -75,7 +77,8 @@ class FusionQOrderedLayerNormalization(Fusion):
 
         if not self.model.is_safe_to_fuse_nodes(
             subgraph_nodes,
-            [node.output[0], downstream_quantize_node.output[0]] if downstream_shape_node is not None
+            [node.output[0], downstream_quantize_node.output[0]]
+            if downstream_shape_node is not None
             else downstream_quantize_node.output,
             input_name_to_nodes,
             output_name_to_node,
@@ -98,11 +101,13 @@ class FusionQOrderedLayerNormalization(Fusion):
             name=self.model.create_node_name("QOrderedLayerNormalization", name_prefix="QOrderedLayerNormalization"),
         )
 
-        # Arrange the downstream Shape's input to be fed from the 
-        # downstream QuantizeLinear node, so that fusion will 
+        # Arrange the downstream Shape's input to be fed from the
+        # downstream QuantizeLinear node, so that fusion will
         # be deemed safe
         if downstream_shape_node is not None:
-            self.model.replace_node_input(downstream_shape_node, downstream_shape_node.input[0], downstream_quantize_node.output[0])
+            self.model.replace_node_input(
+                downstream_shape_node, downstream_shape_node.input[0], downstream_quantize_node.output[0]
+            )
 
         # TODO: We only support CuBlasLt order ORDER_ROW for now.
         # Once we start supporting other data ordering format(s), we
