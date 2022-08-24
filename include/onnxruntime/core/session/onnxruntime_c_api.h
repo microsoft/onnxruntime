@@ -336,6 +336,12 @@ typedef enum OrtAllocatorType {
   OrtArenaAllocator = 1
 } OrtAllocatorType;
 
+typedef enum OrtAllocatorPriority {
+  OrtAllocatorPriorityLow = 0,
+  OrtAllocatorPriorityDefault = 1,
+  OrtAllocatorPriorityHigh = 2
+} OrtAllocatorPriority;
+
 /** \brief Memory types for allocated memory, execution provider specific types should be extended in each provider.
 */
 // Whenever this struct is updated, please also update the MakeKey function in onnxruntime / core / framework / execution_provider.cc

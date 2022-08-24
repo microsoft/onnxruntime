@@ -19,7 +19,8 @@ class TVMAllocator : public IAllocator {
                                                OrtAllocatorType::OrtDeviceAllocator,
                                                OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),
                                                0,
-                                               OrtMemTypeDefault)) {}
+                                               OrtMemTypeDefault,
+                                               OrtAllocatorPriorityHigh)) {}
   explicit TVMAllocator(const OrtMemoryInfo& info)
     : IAllocator(info) {
       switch (info.device.Type()) {

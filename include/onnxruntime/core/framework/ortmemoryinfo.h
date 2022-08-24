@@ -12,9 +12,11 @@ struct OrtMemoryInfo {
   OrtMemType mem_type = OrtMemTypeDefault;
   OrtAllocatorType alloc_type = OrtInvalidAllocator;
   OrtDevice device;
+  OrtAllocatorPriority alloc_prior = OrtAllocatorPriorityDefault;
 
   constexpr OrtMemoryInfo(const char* name_, OrtAllocatorType type_, OrtDevice device_ = OrtDevice(), int id_ = 0,
-                          OrtMemType mem_type_ = OrtMemTypeDefault)
+                          OrtMemType mem_type_ = OrtMemTypeDefault,
+                          OrtAllocatorPriority alloc_prior_ = OrtAllocatorPriorityDefault)
 #if ((defined(__GNUC__) && __GNUC__ > 4) || defined(__clang__))
       // this causes a spurious error in CentOS gcc 4.8 build so disable if GCC version < 5
       __attribute__((nonnull))
@@ -23,7 +25,8 @@ struct OrtMemoryInfo {
         id(id_),
         mem_type(mem_type_),
         alloc_type(type_),
-        device(device_) {
+        device(device_),
+        alloc_prior(alloc_prior_) {
   }
 
   // To make OrtMemoryInfo become a valid key in std map
@@ -59,6 +62,7 @@ struct OrtMemoryInfo {
          << " id:" << id
          << " OrtMemType:" << mem_type
          << " OrtAllocatorType:" << alloc_type
+         << " OrtAllocatorPriority:" << alloc_prior
          << " " << device.ToString()
          << "]";
     return ostr.str();
