@@ -5,13 +5,13 @@
 # --------------------------------------------------------------------------
 
 import unittest
-
 from pathlib import Path
+
 import numpy as np
 from onnx import TensorProto, helper, save
 from op_test_utils import (
-    TestCaseTempDir,
     InputFeedsNegOneZeroOne,
+    TestCaseTempDir,
     check_model_correctness,
     check_op_type_count,
     check_qtype_by_node_type,
