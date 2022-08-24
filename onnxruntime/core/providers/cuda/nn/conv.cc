@@ -337,7 +337,6 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 template <typename T>
 Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   std::lock_guard<OrtMutex> lock(s_.mutex);
-  auto device_stream = Stream(context);
   ORT_RETURN_IF_ERROR(UpdateState(context));
   if (s_.Y->Shape().Size() == 0) {
     return Status::OK();

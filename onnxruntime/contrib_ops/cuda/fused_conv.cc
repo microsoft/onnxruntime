@@ -37,7 +37,7 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
   Status ComputeInternal(OpKernelContext* context) const override {
     CUDNN_CONFIG_RETURN_IF_ERROR(status_);
     std::lock_guard<OrtMutex> lock(Base::s_.mutex);
-    auto cudnnHandle = GetCudnnHandle(context);
+    auto cudnnHandle = this->GetCudnnHandle(context);
     ORT_RETURN_IF_ERROR(Base::UpdateState(context, true));
     if (Base::s_.Y->Shape().Size() == 0) {
       return Status::OK();
