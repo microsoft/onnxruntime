@@ -4,9 +4,11 @@
 #include "conv_transpose.h"
 
 // To suppress FP static analyzer warning: https://msdata.visualstudio.com/Vienna/_workitems/edit/1944928
+// and https://msdata.visualstudio.com/Vienna/_workitems/edit/1944950
 #ifdef _WIN32
 #pragma warning(push)
 #pragma warning(disable : 26110)
+#pragma warning(disable : 26117)
 #endif
 
 namespace onnxruntime {
