@@ -44,7 +44,7 @@ def _adapt_filters_for_extended_minimal_build(
     ) as f:
         region_boundary_pattern = re.compile(r"@@region_(begin|end)\(extended_minimal_build_required_kernels\)@@")
         op_id_pattern = re.compile(
-            r'OpIdentifierWithStringViews\((?P<domain>\w+),\s+"(?P<optype>\w+)",\s+(?P<opset>\d+)\)'
+            r'OpIdentifierWithStringViews{(?P<domain>\w+),\s+"(?P<optype>\w+)",\s+(?P<opset>\d+)}'
         )
         in_region = False
         for line in f:
