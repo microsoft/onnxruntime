@@ -74,7 +74,7 @@ jobs:
       - script: 'ls -al $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/'
         displayName: 'Show copied .tar.gz packages'
 
-      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(Build.SourceBranchName) -t ${{ parameters.TrtVersion }} -a 75 --install_bin --tar_cuda_version=$(tarCudaVersion) --tar_cudnn_version=$(tarCudnnVersion) --trt_bins_dir=$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(Build.SourceBranchName) -t ${{ parameters.TrtVersion }} -a 75 --install_bin --tar_cuda_version=$(tarCudaVersion) --tar_cudnn_version=$(tarCudnnVersion) --trt_bins_dir=.'
         displayName: 'Install TensorRT from binaries and build latest ORT Image'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
     - ${{ else }}:
