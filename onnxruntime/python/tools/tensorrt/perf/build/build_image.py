@@ -32,7 +32,7 @@ def run_cmd(cmd: List[str]) -> Optional[int]:
     proc_ret = 1
 
     with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8") as proc:
-        lines = []
+        lines = proc.stdout.readlines() if proc.stdout is not None else []
 
         # Keep echoing the process's output while we have lines
         # to print or the process has not yet exited. Note that proc.poll()
