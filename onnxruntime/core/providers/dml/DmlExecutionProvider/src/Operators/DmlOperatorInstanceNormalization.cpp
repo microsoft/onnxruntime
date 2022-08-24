@@ -52,7 +52,7 @@ public:
         // batch and channel remain independent. So pass a list of axes
         // just beyond the leading batch and channel dimensions (starting
         // at axis 2 up to the last spatial dimension).
-        const size_t inputDimensionCount = m_inputTensorDescs.front().GetDimensionCount();
+        const uint32_t inputDimensionCount = m_inputTensorDescs.front().GetDimensionCount();
         std::vector<uint32_t> axes(inputDimensionCount - 2);
         std::iota(axes.begin(), axes.end(), 2u);
 
