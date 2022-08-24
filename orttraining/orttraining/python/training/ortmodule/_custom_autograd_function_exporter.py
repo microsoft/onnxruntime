@@ -24,6 +24,14 @@ from ._fallback import ORTModuleONNXModelException, ORTModuleTorchModelException
 # at all.
 BANNED_AUTOGRAD_FUNCTION_NAMES = set([torch.utils.checkpoint.CheckpointFunction.__name__])
 
+# For pointer needed for PythonOp execution, we firstly append it into a global store to hold a
+# reference (in case it is released after module exported).
+NONTENSOR_OBJECT_POINTER_STORE = {}
+
+def _clear_nontensor_object_references():
+    NONTENSOR_OBJECT_POINTER_STORE.clear()
+
+
 
 def _export_pt_1_10(g, n, *args, **kwargs):
     """
@@ -111,6 +119,8 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                     # All other inputs are accessed via "pointers".
                     input_pointer_scalar_positions.append(i)
                     input_pointer_scalars.append(id(arg))
+
+                    NONTENSOR_OBJECT_POINTER_STORE[id(arg)] = arg
             else:
                 raise wrap_exception(
                     ORTModuleONNXModelException,
