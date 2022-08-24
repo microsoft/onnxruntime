@@ -3,6 +3,8 @@
 
 #pragma once
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 #include "gsl/gsl"
 
 #include "core/common/status.h"
@@ -17,18 +19,21 @@ namespace onnxruntime::kernel_type_str_resolver_utils {
 
 using common::Status;
 
-// serialization and deserialization
+#if !defined(ORT_MINIMAL_BUILD)
+
+// TODO find better name than "required ops"
+gsl::span<const OpIdentifierWithStringViews> GetRequiredOpIdentifiers();
 
 Status SaveKernelTypeStrResolverToBuffer(const KernelTypeStrResolver& kernel_type_str_resolver,
                                          flatbuffers::DetachedBuffer& buffer, gsl::span<const uint8_t>& buffer_span);
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 Status LoadKernelTypeStrResolverFromBuffer(KernelTypeStrResolver& kernel_type_str_resolver,
                                            gsl::span<const uint8_t> buffer_span);
 
-// add required ops to resolver
-// TODO find better name than "required ops"
-gsl::span<const OpIdentifierWithStringViews> GetRequiredOpIdentifiers();
-
 Status AddRequiredOpsToKernelTypeStrResolver(KernelTypeStrResolver& kernel_type_str_resolver);
 
-}  // namespace onnxruntime::utils
+}  // namespace onnxruntime::kernel_type_str_resolver_utils
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

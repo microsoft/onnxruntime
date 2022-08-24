@@ -52,7 +52,7 @@ TEST(KernelTypeStrResolverUtilsTest, DISABLED_PrintExpectedRequiredOpsResolverBy
      << "  constexpr uint8_t kRequiredOpsKernelTypeStrResolverBytes[] = {\n      ";
   for (size_t i = 0; i < buffer_span.size(); ++i) {
     os << "0x" << std::setw(2) << static_cast<int32_t>(buffer_span[i]) << ",";
-    if (i < buffer_span.size() + 1) {
+    if (i < buffer_span.size() - 1) {
       os << ((i % kBytesPerLine == kBytesPerLine - 1) ? "\n      " : " ");
     }
   }

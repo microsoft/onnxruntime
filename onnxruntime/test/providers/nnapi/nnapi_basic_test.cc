@@ -34,7 +34,7 @@ using namespace ::onnxruntime::logging;
 namespace onnxruntime {
 namespace test {
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 namespace {
 void TestModelLoad(const ORTCHAR_T* model_file_name, const std::function<void(const Graph&)>& check_graph) {
@@ -46,6 +46,10 @@ void TestModelLoad(const ORTCHAR_T* model_file_name, const std::function<void(co
   check_graph(session_object.GetGraph());
 }
 }  // namespace
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD)
 
 // Since NNAPI EP handles Reshape and Flatten differently,
 // Please see ReshapeOpBuilder::CanSkipReshape in

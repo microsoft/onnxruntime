@@ -30,6 +30,22 @@ Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string
   return Status::OK();
 }
 
+// TODO store OpIdentifier struct directly in ORT format then remove these helpers
+namespace {
+constexpr auto kOpIdDelimiter = ":";
+
+std::string OpIdToString(const OpIdentifier& op_id) {
+  return MakeString(op_id.domain, kOpIdDelimiter, op_id.op_type, kOpIdDelimiter, op_id.since_version);
+}
+
+OpIdentifier OpIdFromString(std::string_view s) {
+  const auto components = utils::SplitString(s, kOpIdDelimiter, true);
+  ORT_ENFORCE(components.size() == 3);
+  const auto since_version = ParseStringWithClassicLocale<ONNX_NAMESPACE::OperatorSetVersion>(components[2]);
+  return OpIdentifier{std::string{components[0]}, std::string{components[1]}, since_version};
+}
+}  // namespace
+
 #if !defined(ORT_MINIMAL_BUILD)
 Status KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema, bool* registered_out) {
   auto op_id = OpIdentifier{op_schema.domain(), op_schema.Name(), op_schema.SinceVersion()};
@@ -117,22 +133,6 @@ Status KernelTypeStrResolver::RegisterGraphNodeOpSchemas(const Graph& graph) {
     }
   }
   return Status::OK();
-}
-
-// TODO store OpIdentifier struct directly in ORT format
-namespace {
-constexpr auto kOpIdDelimiter = ":";
-
-std::string OpIdToString(const OpIdentifier& op_id) {
-  return MakeString(op_id.domain, kOpIdDelimiter, op_id.op_type, kOpIdDelimiter, op_id.since_version);
-}
-
-OpIdentifier OpIdFromString(std::string_view s) {
-  const auto components = utils::SplitString(s, kOpIdDelimiter, true);
-  ORT_ENFORCE(components.size() == 3);
-  const auto since_version = ParseStringWithClassicLocale<ONNX_NAMESPACE::OperatorSetVersion>(components[2]);
-  return OpIdentifier{std::string{components[0]}, std::string{components[1]}, since_version};
-}
 }
 
 Status KernelTypeStrResolver::SaveToOrtFormat(
