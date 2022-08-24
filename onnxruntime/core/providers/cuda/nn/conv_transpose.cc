@@ -3,6 +3,12 @@
 
 #include "conv_transpose.h"
 
+// To suppress FP static analyzer warning: https://msdata.visualstudio.com/Vienna/_workitems/edit/1944928
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 26110)
+#endif
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -206,3 +212,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
