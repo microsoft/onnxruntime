@@ -1311,7 +1311,7 @@ class TestInferenceSession(unittest.TestCase):
         print("Create session with customize execution provider successfully!")
 
     def testCreateAllocator(self):
-        def verifyAllocator(allocator, expected_config):
+        def verify_allocator(allocator, expected_config):
             for key in expected_config:
                 val = expected_config[key]
                 if (key == "max_mem"):
@@ -1343,14 +1343,14 @@ class TestInferenceSession(unittest.TestCase):
                     raise ValueError('Invalid OrtArenaCfg option: ' + key)
 
         # Verify ordered parameter initialization
-        ort_memory_info = onnxrt.OrtArenaCfg(8, 0, 4, 2)
+        ort_arena_cfg = onnxrt.OrtArenaCfg(8, 0, 4, 2)
         expected_allocator = {
             "max_mem": 8,
             "arena_extend_strategy": 0,
             "initial_chunk_size_bytes": 4,
             "max_dead_bytes_per_chunk": 2
             }
-        verifyAllocator(ort_memory_info, expected_allocator)
+        verify_allocator(ort_arena_cfg, expected_allocator)
 
         # Verify key-value pair initialization
         expected_kvp_allocator = {
@@ -1360,8 +1360,8 @@ class TestInferenceSession(unittest.TestCase):
             "max_dead_bytes_per_chunk": 4,
             "initial_growth_chunk_size_bytes": 2
             }
-        ort_kvp_memory_info = onnxrt.OrtArenaCfg(expected_kvp_allocator)
-        verifyAllocator(ort_kvp_memory_info, expected_kvp_allocator)
+        ort_arena_cfg_kvp = onnxrt.OrtArenaCfg(expected_kvp_allocator)
+        verify_allocator(ort_arena_cfg_kvp, expected_kvp_allocator)
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
