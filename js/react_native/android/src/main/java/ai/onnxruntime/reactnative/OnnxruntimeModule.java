@@ -149,7 +149,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
    * @param options onnxruntime session options
    * @return model loading information, such as key, input names, and output names
    */
-  private WritableMap loadModel(byte[] modelData, ReadableMap options) throws Exception {
+  public WritableMap loadModel(byte[] modelData, ReadableMap options) throws Exception {
     SessionOptions sessionOptions = parseSessionOptions(options);
     OrtSession ortSession = ortEnvironment.createSession(modelData, sessionOptions);
     String key = getNextSessionKey();
