@@ -1,0 +1,1393 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  id: OrtMemoryInfo
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.OrtMemoryInfo.#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.OrtAllocatorType,System.Int32,Microsoft.ML.OnnxRuntime.OrtMemType)
+  - Microsoft.ML.OnnxRuntime.OrtMemoryInfo.#ctor(System.String,Microsoft.ML.OnnxRuntime.OrtAllocatorType,System.Int32,Microsoft.ML.OnnxRuntime.OrtMemType)
+  - Microsoft.ML.OnnxRuntime.OrtMemoryInfo.allocatorCPU
+  - Microsoft.ML.OnnxRuntime.OrtMemoryInfo.allocatorCUDA
+  - Microsoft.ML.OnnxRuntime.OrtMemoryInfo.allocatorCUDA_PINNED
+  - Microsoft.ML.OnnxRuntime.OrtMemoryInfo.DefaultInstance
+  - Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Equals(Microsoft.ML.OnnxRuntime.OrtMemoryInfo)
+  - Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Equals(System.Object)
+  - Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetAllocatorType
+  - Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetHashCode
+  - Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetMemoryType
+  - Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Id
+  - Microsoft.ML.OnnxRuntime.OrtMemoryInfo.IsInvalid
+  - Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Name
+  - Microsoft.ML.OnnxRuntime.OrtMemoryInfo.ReleaseHandle
+  langs:
+  - csharp
+  - vb
+  name: OrtMemoryInfo
+  nameWithType: OrtMemoryInfo
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  type: Class
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: OrtMemoryInfo
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 97
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nThis class encapsulates and most of the time owns the underlying native OrtMemoryInfo instance.\nInstance returned from OrtAllocator will not own OrtMemoryInfo, the class must be disposed\nregardless.\n\nUse this class to query and create OrtAllocator instances so you can pre-allocate memory for model\ninputs/outputs and use it for binding. Instances of the class can also used to created OrtValues bound\nto pre-allocated memory. In that case, the instance of OrtMemoryInfo contains the information about the allocator\nused to allocate the underlying memory.\n"
+  example: []
+  syntax:
+    content: 'public class OrtMemoryInfo : SafeHandle, IDisposable'
+    content.vb: >-
+      Public Class OrtMemoryInfo
+          Inherits SafeHandle
+          Implements IDisposable
+  inheritance:
+  - System.Object
+  - System.Runtime.InteropServices.SafeHandle
+  implements:
+  - System.IDisposable
+  inheritedMembers:
+  - System.Runtime.InteropServices.SafeHandle.handle
+  - System.Runtime.InteropServices.SafeHandle.DangerousAddRef(System.Boolean@)
+  - System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+  - System.Runtime.InteropServices.SafeHandle.DangerousRelease
+  - System.Runtime.InteropServices.SafeHandle.Dispose
+  - System.Runtime.InteropServices.SafeHandle.Dispose(System.Boolean)
+  - System.Runtime.InteropServices.SafeHandle.SetHandle(System.IntPtr)
+  - System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+  - System.Runtime.InteropServices.SafeHandle.IsClosed
+  - System.Object.Equals(System.Object,System.Object)
+  - System.Object.GetType
+  - System.Object.MemberwiseClone
+  - System.Object.ReferenceEquals(System.Object,System.Object)
+  - System.Object.ToString
+  modifiers.csharp:
+  - public
+  - class
+  modifiers.vb:
+  - Public
+  - Class
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.DefaultInstance
+  commentId: P:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.DefaultInstance
+  id: DefaultInstance
+  parent: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  langs:
+  - csharp
+  - vb
+  name: DefaultInstance
+  nameWithType: OrtMemoryInfo.DefaultInstance
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.DefaultInstance
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: DefaultInstance
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 114
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nDefault CPU based instance\n"
+  example: []
+  syntax:
+    content: public static OrtMemoryInfo DefaultInstance { get; }
+    parameters: []
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+      description: Singleton instance of a CpuMemoryInfo
+    content.vb: Public Shared ReadOnly Property DefaultInstance As OrtMemoryInfo
+  overload: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.DefaultInstance*
+  modifiers.csharp:
+  - public
+  - static
+  - get
+  modifiers.vb:
+  - Public
+  - Shared
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.IsInvalid
+  commentId: P:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.IsInvalid
+  id: IsInvalid
+  parent: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  langs:
+  - csharp
+  - vb
+  name: IsInvalid
+  nameWithType: OrtMemoryInfo.IsInvalid
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.IsInvalid
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: IsInvalid
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 134
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nOverrides SafeHandle.IsInvalid\n"
+  example: []
+  syntax:
+    content: public override bool IsInvalid { get; }
+    parameters: []
+    return:
+      type: System.Boolean
+      description: returns true if handle is equal to Zero
+    content.vb: Public Overrides ReadOnly Property IsInvalid As Boolean
+  overridden: System.Runtime.InteropServices.SafeHandle.IsInvalid
+  overload: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.IsInvalid*
+  modifiers.csharp:
+  - public
+  - override
+  - get
+  modifiers.vb:
+  - Public
+  - Overrides
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.allocatorCPU
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.allocatorCPU
+  id: allocatorCPU
+  parent: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  langs:
+  - csharp
+  - vb
+  name: allocatorCPU
+  nameWithType: OrtMemoryInfo.allocatorCPU
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.allocatorCPU
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: allocatorCPU
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 153
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nPredefined utf8 encoded allocator names. Use them to construct an instance of\nOrtMemoryInfo to avoid UTF-16 to UTF-8 conversion costs.\n"
+  example: []
+  syntax:
+    content: public static readonly byte[] allocatorCPU
+    return:
+      type: System.Byte[]
+    content.vb: Public Shared ReadOnly allocatorCPU As Byte()
+  modifiers.csharp:
+  - public
+  - static
+  - readonly
+  modifiers.vb:
+  - Public
+  - Shared
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.allocatorCUDA
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.allocatorCUDA
+  id: allocatorCUDA
+  parent: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  langs:
+  - csharp
+  - vb
+  name: allocatorCUDA
+  nameWithType: OrtMemoryInfo.allocatorCUDA
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.allocatorCUDA
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: allocatorCUDA
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 158
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nPredefined utf8 encoded allocator names. Use them to construct an instance of\nOrtMemoryInfo to avoid UTF-16 to UTF-8 conversion costs.\n"
+  example: []
+  syntax:
+    content: public static readonly byte[] allocatorCUDA
+    return:
+      type: System.Byte[]
+    content.vb: Public Shared ReadOnly allocatorCUDA As Byte()
+  modifiers.csharp:
+  - public
+  - static
+  - readonly
+  modifiers.vb:
+  - Public
+  - Shared
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.allocatorCUDA_PINNED
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.allocatorCUDA_PINNED
+  id: allocatorCUDA_PINNED
+  parent: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  langs:
+  - csharp
+  - vb
+  name: allocatorCUDA_PINNED
+  nameWithType: OrtMemoryInfo.allocatorCUDA_PINNED
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.allocatorCUDA_PINNED
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: allocatorCUDA_PINNED
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 163
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nPredefined utf8 encoded allocator names. Use them to construct an instance of\nOrtMemoryInfo to avoid UTF-16 to UTF-8 conversion costs.\n"
+  example: []
+  syntax:
+    content: public static readonly byte[] allocatorCUDA_PINNED
+    return:
+      type: System.Byte[]
+    content.vb: Public Shared ReadOnly allocatorCUDA_PINNED As Byte()
+  modifiers.csharp:
+  - public
+  - static
+  - readonly
+  modifiers.vb:
+  - Public
+  - Shared
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.OrtAllocatorType,System.Int32,Microsoft.ML.OnnxRuntime.OrtMemType)
+  commentId: M:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.OrtAllocatorType,System.Int32,Microsoft.ML.OnnxRuntime.OrtMemType)
+  id: '#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.OrtAllocatorType,System.Int32,Microsoft.ML.OnnxRuntime.OrtMemType)'
+  parent: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  langs:
+  - csharp
+  - vb
+  name: OrtMemoryInfo(Byte[], OrtAllocatorType, Int32, OrtMemType)
+  nameWithType: OrtMemoryInfo.OrtMemoryInfo(Byte[], OrtAllocatorType, Int32, OrtMemType)
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.OrtMemoryInfo(System.Byte[], Microsoft.ML.OnnxRuntime.OrtAllocatorType, System.Int32, Microsoft.ML.OnnxRuntime.OrtMemType)
+  type: Constructor
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: .ctor
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 175
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nCreate an instance of OrtMemoryInfo according to the specification\nMemory info instances are usually used to get a handle of a native allocator\nthat is present within the current inference session object. That, in turn, depends\nof what execution providers are available within the binary that you are using and are\nregistered with Add methods.\n"
+  example: []
+  syntax:
+    content: public OrtMemoryInfo(byte[] utf8AllocatorName, OrtAllocatorType allocatorType, int deviceId, OrtMemType memoryType)
+    parameters:
+    - id: utf8AllocatorName
+      type: System.Byte[]
+      description: Allocator name. Use of the predefined above.
+    - id: allocatorType
+      type: Microsoft.ML.OnnxRuntime.OrtAllocatorType
+      description: Allocator type
+    - id: deviceId
+      type: System.Int32
+      description: Device id
+    - id: memoryType
+      type: Microsoft.ML.OnnxRuntime.OrtMemType
+      description: Memory type
+    content.vb: Public Sub New(utf8AllocatorName As Byte(), allocatorType As OrtAllocatorType, deviceId As Integer, memoryType As OrtMemType)
+  overload: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.#ctor*
+  nameWithType.vb: OrtMemoryInfo.OrtMemoryInfo(Byte(), OrtAllocatorType, Int32, OrtMemType)
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.OrtMemoryInfo(System.Byte(), Microsoft.ML.OnnxRuntime.OrtAllocatorType, System.Int32, Microsoft.ML.OnnxRuntime.OrtMemType)
+  name.vb: OrtMemoryInfo(Byte(), OrtAllocatorType, Int32, OrtMemType)
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.#ctor(System.String,Microsoft.ML.OnnxRuntime.OrtAllocatorType,System.Int32,Microsoft.ML.OnnxRuntime.OrtMemType)
+  commentId: M:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.#ctor(System.String,Microsoft.ML.OnnxRuntime.OrtAllocatorType,System.Int32,Microsoft.ML.OnnxRuntime.OrtMemType)
+  id: '#ctor(System.String,Microsoft.ML.OnnxRuntime.OrtAllocatorType,System.Int32,Microsoft.ML.OnnxRuntime.OrtMemType)'
+  parent: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  langs:
+  - csharp
+  - vb
+  name: OrtMemoryInfo(String, OrtAllocatorType, Int32, OrtMemType)
+  nameWithType: OrtMemoryInfo.OrtMemoryInfo(String, OrtAllocatorType, Int32, OrtMemType)
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.OrtMemoryInfo(System.String, Microsoft.ML.OnnxRuntime.OrtAllocatorType, System.Int32, Microsoft.ML.OnnxRuntime.OrtMemType)
+  type: Constructor
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: .ctor
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 196
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nCreate an instance of OrtMemoryInfo according to the specification.\n"
+  example: []
+  syntax:
+    content: public OrtMemoryInfo(string allocatorName, OrtAllocatorType allocatorType, int deviceId, OrtMemType memoryType)
+    parameters:
+    - id: allocatorName
+      type: System.String
+      description: Allocator name
+    - id: allocatorType
+      type: Microsoft.ML.OnnxRuntime.OrtAllocatorType
+      description: Allocator type
+    - id: deviceId
+      type: System.Int32
+      description: Device id
+    - id: memoryType
+      type: Microsoft.ML.OnnxRuntime.OrtMemType
+      description: Memory type
+    content.vb: Public Sub New(allocatorName As String, allocatorType As OrtAllocatorType, deviceId As Integer, memoryType As OrtMemType)
+  overload: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.#ctor*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Name
+  commentId: P:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Name
+  id: Name
+  parent: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  langs:
+  - csharp
+  - vb
+  name: Name
+  nameWithType: OrtMemoryInfo.Name
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Name
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Name
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 204
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nName of the allocator associated with the OrtMemoryInfo instance\n"
+  example: []
+  syntax:
+    content: public string Name { get; }
+    parameters: []
+    return:
+      type: System.String
+    content.vb: Public ReadOnly Property Name As String
+  overload: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Name*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Id
+  commentId: P:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Id
+  id: Id
+  parent: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  langs:
+  - csharp
+  - vb
+  name: Id
+  nameWithType: OrtMemoryInfo.Id
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Id
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Id
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 218
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nReturns device ID\n"
+  example: []
+  syntax:
+    content: public int Id { get; }
+    parameters: []
+    return:
+      type: System.Int32
+      description: returns integer Id value
+    content.vb: Public ReadOnly Property Id As Integer
+  overload: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Id*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetMemoryType
+  commentId: M:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetMemoryType
+  id: GetMemoryType
+  parent: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  langs:
+  - csharp
+  - vb
+  name: GetMemoryType()
+  nameWithType: OrtMemoryInfo.GetMemoryType()
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetMemoryType()
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: GetMemoryType
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 234
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nThe below 2 are really properties but naming them is a challenge\nas names would conflict with the returned type. Also, there are native\ncalls behind them so exposing them as Get() would be appropriate.\n"
+  example: []
+  syntax:
+    content: public OrtMemType GetMemoryType()
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtMemType
+      description: OrtMemoryType for the instance
+    content.vb: Public Function GetMemoryType As OrtMemType
+  overload: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetMemoryType*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetAllocatorType
+  commentId: M:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetAllocatorType
+  id: GetAllocatorType
+  parent: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  langs:
+  - csharp
+  - vb
+  name: GetAllocatorType()
+  nameWithType: OrtMemoryInfo.GetAllocatorType()
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetAllocatorType()
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: GetAllocatorType
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 245
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nFetches allocator type from the underlying OrtAllocator\n"
+  example: []
+  syntax:
+    content: public OrtAllocatorType GetAllocatorType()
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtAllocatorType
+      description: Returns allocator type
+    content.vb: Public Function GetAllocatorType As OrtAllocatorType
+  overload: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetAllocatorType*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Equals(System.Object)
+  commentId: M:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Equals(System.Object)
+  id: Equals(System.Object)
+  parent: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  langs:
+  - csharp
+  - vb
+  name: Equals(Object)
+  nameWithType: OrtMemoryInfo.Equals(Object)
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Equals(System.Object)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Equals
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 257
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nOverrides System.Object.Equals(object)\n"
+  example: []
+  syntax:
+    content: public override bool Equals(object obj)
+    parameters:
+    - id: obj
+      type: System.Object
+      description: object to compare to
+    return:
+      type: System.Boolean
+      description: true if obj is an instance of OrtMemoryInfo and is equal to this
+    content.vb: Public Overrides Function Equals(obj As Object) As Boolean
+  overridden: System.Object.Equals(System.Object)
+  overload: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Equals*
+  modifiers.csharp:
+  - public
+  - override
+  modifiers.vb:
+  - Public
+  - Overrides
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Equals(Microsoft.ML.OnnxRuntime.OrtMemoryInfo)
+  commentId: M:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Equals(Microsoft.ML.OnnxRuntime.OrtMemoryInfo)
+  id: Equals(Microsoft.ML.OnnxRuntime.OrtMemoryInfo)
+  parent: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  langs:
+  - csharp
+  - vb
+  name: Equals(OrtMemoryInfo)
+  nameWithType: OrtMemoryInfo.Equals(OrtMemoryInfo)
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Equals(Microsoft.ML.OnnxRuntime.OrtMemoryInfo)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Equals
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 272
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nCompares this instance with another\n"
+  example: []
+  syntax:
+    content: public bool Equals(OrtMemoryInfo other)
+    parameters:
+    - id: other
+      type: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+      description: OrtMemoryInfo to compare to
+    return:
+      type: System.Boolean
+      description: true if instances are equal according to OrtCompareMemoryInfo.
+    content.vb: Public Function Equals(other As OrtMemoryInfo) As Boolean
+  overload: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Equals*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetHashCode
+  commentId: M:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetHashCode
+  id: GetHashCode
+  parent: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  langs:
+  - csharp
+  - vb
+  name: GetHashCode()
+  nameWithType: OrtMemoryInfo.GetHashCode()
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetHashCode()
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: GetHashCode
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 287
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nOverrides System.Object.GetHashCode()\n"
+  example: []
+  syntax:
+    content: public override int GetHashCode()
+    return:
+      type: System.Int32
+      description: integer hash value
+    content.vb: Public Overrides Function GetHashCode As Integer
+  overridden: System.Object.GetHashCode
+  overload: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetHashCode*
+  modifiers.csharp:
+  - public
+  - override
+  modifiers.vb:
+  - Public
+  - Overrides
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.ReleaseHandle
+  commentId: M:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.ReleaseHandle
+  id: ReleaseHandle
+  parent: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  langs:
+  - csharp
+  - vb
+  name: ReleaseHandle()
+  nameWithType: OrtMemoryInfo.ReleaseHandle()
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.ReleaseHandle()
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ReleaseHandle
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 298
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nOverrides SafeHandle.ReleaseHandle() to properly dispose of\nthe native instance of OrtMmeoryInfo\n"
+  example: []
+  syntax:
+    content: protected override bool ReleaseHandle()
+    return:
+      type: System.Boolean
+      description: always returns true
+    content.vb: Protected Overrides Function ReleaseHandle As Boolean
+  overridden: System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+  overload: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.ReleaseHandle*
+  modifiers.csharp:
+  - protected
+  - override
+  modifiers.vb:
+  - Protected
+  - Overrides
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: System.Object
+  commentId: T:System.Object
+  parent: System
+  isExternal: true
+  name: Object
+  nameWithType: Object
+  fullName: System.Object
+- uid: System.Runtime.InteropServices.SafeHandle
+  commentId: T:System.Runtime.InteropServices.SafeHandle
+  parent: System.Runtime.InteropServices
+  isExternal: true
+  name: SafeHandle
+  nameWithType: SafeHandle
+  fullName: System.Runtime.InteropServices.SafeHandle
+- uid: System.IDisposable
+  commentId: T:System.IDisposable
+  parent: System
+  isExternal: true
+  name: IDisposable
+  nameWithType: IDisposable
+  fullName: System.IDisposable
+- uid: System.Runtime.InteropServices.SafeHandle.handle
+  commentId: F:System.Runtime.InteropServices.SafeHandle.handle
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: handle
+  nameWithType: SafeHandle.handle
+  fullName: System.Runtime.InteropServices.SafeHandle.handle
+- uid: System.Runtime.InteropServices.SafeHandle.DangerousAddRef(System.Boolean@)
+  commentId: M:System.Runtime.InteropServices.SafeHandle.DangerousAddRef(System.Boolean@)
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: DangerousAddRef(Boolean)
+  nameWithType: SafeHandle.DangerousAddRef(Boolean)
+  fullName: System.Runtime.InteropServices.SafeHandle.DangerousAddRef(System.Boolean)
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.DangerousAddRef(System.Boolean@)
+    name: DangerousAddRef
+    nameWithType: SafeHandle.DangerousAddRef
+    fullName: System.Runtime.InteropServices.SafeHandle.DangerousAddRef
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Boolean
+    name: Boolean
+    nameWithType: Boolean
+    fullName: System.Boolean
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.DangerousAddRef(System.Boolean@)
+    name: DangerousAddRef
+    nameWithType: SafeHandle.DangerousAddRef
+    fullName: System.Runtime.InteropServices.SafeHandle.DangerousAddRef
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Boolean
+    name: Boolean
+    nameWithType: Boolean
+    fullName: System.Boolean
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+  commentId: M:System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: DangerousGetHandle()
+  nameWithType: SafeHandle.DangerousGetHandle()
+  fullName: System.Runtime.InteropServices.SafeHandle.DangerousGetHandle()
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+    name: DangerousGetHandle
+    nameWithType: SafeHandle.DangerousGetHandle
+    fullName: System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+    name: DangerousGetHandle
+    nameWithType: SafeHandle.DangerousGetHandle
+    fullName: System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.DangerousRelease
+  commentId: M:System.Runtime.InteropServices.SafeHandle.DangerousRelease
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: DangerousRelease()
+  nameWithType: SafeHandle.DangerousRelease()
+  fullName: System.Runtime.InteropServices.SafeHandle.DangerousRelease()
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.DangerousRelease
+    name: DangerousRelease
+    nameWithType: SafeHandle.DangerousRelease
+    fullName: System.Runtime.InteropServices.SafeHandle.DangerousRelease
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.DangerousRelease
+    name: DangerousRelease
+    nameWithType: SafeHandle.DangerousRelease
+    fullName: System.Runtime.InteropServices.SafeHandle.DangerousRelease
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.Dispose
+  commentId: M:System.Runtime.InteropServices.SafeHandle.Dispose
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: Dispose()
+  nameWithType: SafeHandle.Dispose()
+  fullName: System.Runtime.InteropServices.SafeHandle.Dispose()
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.Dispose
+    name: Dispose
+    nameWithType: SafeHandle.Dispose
+    fullName: System.Runtime.InteropServices.SafeHandle.Dispose
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.Dispose
+    name: Dispose
+    nameWithType: SafeHandle.Dispose
+    fullName: System.Runtime.InteropServices.SafeHandle.Dispose
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.Dispose(System.Boolean)
+  commentId: M:System.Runtime.InteropServices.SafeHandle.Dispose(System.Boolean)
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: Dispose(Boolean)
+  nameWithType: SafeHandle.Dispose(Boolean)
+  fullName: System.Runtime.InteropServices.SafeHandle.Dispose(System.Boolean)
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.Dispose(System.Boolean)
+    name: Dispose
+    nameWithType: SafeHandle.Dispose
+    fullName: System.Runtime.InteropServices.SafeHandle.Dispose
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Boolean
+    name: Boolean
+    nameWithType: Boolean
+    fullName: System.Boolean
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.Dispose(System.Boolean)
+    name: Dispose
+    nameWithType: SafeHandle.Dispose
+    fullName: System.Runtime.InteropServices.SafeHandle.Dispose
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Boolean
+    name: Boolean
+    nameWithType: Boolean
+    fullName: System.Boolean
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.SetHandle(System.IntPtr)
+  commentId: M:System.Runtime.InteropServices.SafeHandle.SetHandle(System.IntPtr)
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: SetHandle(IntPtr)
+  nameWithType: SafeHandle.SetHandle(IntPtr)
+  fullName: System.Runtime.InteropServices.SafeHandle.SetHandle(System.IntPtr)
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.SetHandle(System.IntPtr)
+    name: SetHandle
+    nameWithType: SafeHandle.SetHandle
+    fullName: System.Runtime.InteropServices.SafeHandle.SetHandle
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.IntPtr
+    name: IntPtr
+    nameWithType: IntPtr
+    fullName: System.IntPtr
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.SetHandle(System.IntPtr)
+    name: SetHandle
+    nameWithType: SafeHandle.SetHandle
+    fullName: System.Runtime.InteropServices.SafeHandle.SetHandle
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.IntPtr
+    name: IntPtr
+    nameWithType: IntPtr
+    fullName: System.IntPtr
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+  commentId: M:System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: SetHandleAsInvalid()
+  nameWithType: SafeHandle.SetHandleAsInvalid()
+  fullName: System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid()
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+    name: SetHandleAsInvalid
+    nameWithType: SafeHandle.SetHandleAsInvalid
+    fullName: System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+    name: SetHandleAsInvalid
+    nameWithType: SafeHandle.SetHandleAsInvalid
+    fullName: System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.IsClosed
+  commentId: P:System.Runtime.InteropServices.SafeHandle.IsClosed
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: IsClosed
+  nameWithType: SafeHandle.IsClosed
+  fullName: System.Runtime.InteropServices.SafeHandle.IsClosed
+- uid: System.Object.Equals(System.Object,System.Object)
+  commentId: M:System.Object.Equals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object, Object)
+  nameWithType: Object.Equals(Object, Object)
+  fullName: System.Object.Equals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetType
+  commentId: M:System.Object.GetType
+  parent: System.Object
+  isExternal: true
+  name: GetType()
+  nameWithType: Object.GetType()
+  fullName: System.Object.GetType()
+  spec.csharp:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.MemberwiseClone
+  commentId: M:System.Object.MemberwiseClone
+  parent: System.Object
+  isExternal: true
+  name: MemberwiseClone()
+  nameWithType: Object.MemberwiseClone()
+  fullName: System.Object.MemberwiseClone()
+  spec.csharp:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ReferenceEquals(System.Object,System.Object)
+  commentId: M:System.Object.ReferenceEquals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: ReferenceEquals(Object, Object)
+  nameWithType: Object.ReferenceEquals(Object, Object)
+  fullName: System.Object.ReferenceEquals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ToString
+  commentId: M:System.Object.ToString
+  parent: System.Object
+  isExternal: true
+  name: ToString()
+  nameWithType: Object.ToString()
+  fullName: System.Object.ToString()
+  spec.csharp:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System
+  commentId: N:System
+  isExternal: true
+  name: System
+  nameWithType: System
+  fullName: System
+- uid: System.Runtime.InteropServices
+  commentId: N:System.Runtime.InteropServices
+  isExternal: true
+  name: System.Runtime.InteropServices
+  nameWithType: System.Runtime.InteropServices
+  fullName: System.Runtime.InteropServices
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.DefaultInstance*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.DefaultInstance
+  name: DefaultInstance
+  nameWithType: OrtMemoryInfo.DefaultInstance
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.DefaultInstance
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  parent: Microsoft.ML.OnnxRuntime
+  name: OrtMemoryInfo
+  nameWithType: OrtMemoryInfo
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+- uid: System.Runtime.InteropServices.SafeHandle.IsInvalid
+  commentId: P:System.Runtime.InteropServices.SafeHandle.IsInvalid
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: IsInvalid
+  nameWithType: SafeHandle.IsInvalid
+  fullName: System.Runtime.InteropServices.SafeHandle.IsInvalid
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.IsInvalid*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.IsInvalid
+  name: IsInvalid
+  nameWithType: OrtMemoryInfo.IsInvalid
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.IsInvalid
+- uid: System.Boolean
+  commentId: T:System.Boolean
+  parent: System
+  isExternal: true
+  name: Boolean
+  nameWithType: Boolean
+  fullName: System.Boolean
+- uid: System.Byte[]
+  isExternal: true
+  name: Byte[]
+  nameWithType: Byte[]
+  fullName: System.Byte[]
+  nameWithType.vb: Byte()
+  fullName.vb: System.Byte()
+  name.vb: Byte()
+  spec.csharp:
+  - uid: System.Byte
+    name: Byte
+    nameWithType: Byte
+    fullName: System.Byte
+    isExternal: true
+  - name: '[]'
+    nameWithType: '[]'
+    fullName: '[]'
+  spec.vb:
+  - uid: System.Byte
+    name: Byte
+    nameWithType: Byte
+    fullName: System.Byte
+    isExternal: true
+  - name: ()
+    nameWithType: ()
+    fullName: ()
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.#ctor*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.#ctor
+  name: OrtMemoryInfo
+  nameWithType: OrtMemoryInfo.OrtMemoryInfo
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.OrtMemoryInfo
+- uid: Microsoft.ML.OnnxRuntime.OrtAllocatorType
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtAllocatorType
+  parent: Microsoft.ML.OnnxRuntime
+  name: OrtAllocatorType
+  nameWithType: OrtAllocatorType
+  fullName: Microsoft.ML.OnnxRuntime.OrtAllocatorType
+- uid: System.Int32
+  commentId: T:System.Int32
+  parent: System
+  isExternal: true
+  name: Int32
+  nameWithType: Int32
+  fullName: System.Int32
+- uid: Microsoft.ML.OnnxRuntime.OrtMemType
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtMemType
+  parent: Microsoft.ML.OnnxRuntime
+  name: OrtMemType
+  nameWithType: OrtMemType
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemType
+- uid: System.String
+  commentId: T:System.String
+  parent: System
+  isExternal: true
+  name: String
+  nameWithType: String
+  fullName: System.String
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Name*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Name
+  name: Name
+  nameWithType: OrtMemoryInfo.Name
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Name
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Id*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Id
+  name: Id
+  nameWithType: OrtMemoryInfo.Id
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Id
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetMemoryType*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetMemoryType
+  name: GetMemoryType
+  nameWithType: OrtMemoryInfo.GetMemoryType
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetMemoryType
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetAllocatorType*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetAllocatorType
+  name: GetAllocatorType
+  nameWithType: OrtMemoryInfo.GetAllocatorType
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetAllocatorType
+- uid: System.Object.Equals(System.Object)
+  commentId: M:System.Object.Equals(System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object)
+  nameWithType: Object.Equals(Object)
+  fullName: System.Object.Equals(System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Equals*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Equals
+  name: Equals
+  nameWithType: OrtMemoryInfo.Equals
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Equals
+- uid: System.Object.GetHashCode
+  commentId: M:System.Object.GetHashCode
+  parent: System.Object
+  isExternal: true
+  name: GetHashCode()
+  nameWithType: Object.GetHashCode()
+  fullName: System.Object.GetHashCode()
+  spec.csharp:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetHashCode*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetHashCode
+  name: GetHashCode
+  nameWithType: OrtMemoryInfo.GetHashCode
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetHashCode
+- uid: System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+  commentId: M:System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: ReleaseHandle()
+  nameWithType: SafeHandle.ReleaseHandle()
+  fullName: System.Runtime.InteropServices.SafeHandle.ReleaseHandle()
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+    name: ReleaseHandle
+    nameWithType: SafeHandle.ReleaseHandle
+    fullName: System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+    name: ReleaseHandle
+    nameWithType: SafeHandle.ReleaseHandle
+    fullName: System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.ReleaseHandle*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtMemoryInfo.ReleaseHandle
+  name: ReleaseHandle
+  nameWithType: OrtMemoryInfo.ReleaseHandle
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo.ReleaseHandle

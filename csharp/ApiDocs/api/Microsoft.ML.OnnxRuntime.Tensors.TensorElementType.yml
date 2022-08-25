@@ -1,0 +1,609 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  id: TensorElementType
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  children:
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.BFloat16
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Bool
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Complex128
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Complex64
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.DataTypeMax
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Double
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Float
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Float16
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Int16
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Int32
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Int64
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Int8
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.String
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.UInt16
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.UInt32
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.UInt64
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.UInt8
+  langs:
+  - csharp
+  - vb
+  name: TensorElementType
+  nameWithType: TensorElementType
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  type: Enum
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: TensorElementType
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 25
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nSupported Tensor DataType\n"
+  example: []
+  syntax:
+    content: public enum TensorElementType
+    content.vb: Public Enum TensorElementType
+  modifiers.csharp:
+  - public
+  - enum
+  modifiers.vb:
+  - Public
+  - Enum
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Float
+  commentId: F:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Float
+  id: Float
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  langs:
+  - csharp
+  - vb
+  name: Float
+  nameWithType: TensorElementType.Float
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Float
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Float
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 27
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  syntax:
+    content: Float = 1
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.UInt8
+  commentId: F:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.UInt8
+  id: UInt8
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  langs:
+  - csharp
+  - vb
+  name: UInt8
+  nameWithType: TensorElementType.UInt8
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.UInt8
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: UInt8
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 28
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  syntax:
+    content: UInt8 = 2
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Int8
+  commentId: F:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Int8
+  id: Int8
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  langs:
+  - csharp
+  - vb
+  name: Int8
+  nameWithType: TensorElementType.Int8
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Int8
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Int8
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 29
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  syntax:
+    content: Int8 = 3
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.UInt16
+  commentId: F:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.UInt16
+  id: UInt16
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  langs:
+  - csharp
+  - vb
+  name: UInt16
+  nameWithType: TensorElementType.UInt16
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.UInt16
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: UInt16
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 30
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  syntax:
+    content: UInt16 = 4
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Int16
+  commentId: F:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Int16
+  id: Int16
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  langs:
+  - csharp
+  - vb
+  name: Int16
+  nameWithType: TensorElementType.Int16
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Int16
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Int16
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 31
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  syntax:
+    content: Int16 = 5
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Int32
+  commentId: F:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Int32
+  id: Int32
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  langs:
+  - csharp
+  - vb
+  name: Int32
+  nameWithType: TensorElementType.Int32
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Int32
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Int32
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 32
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  syntax:
+    content: Int32 = 6
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Int64
+  commentId: F:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Int64
+  id: Int64
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  langs:
+  - csharp
+  - vb
+  name: Int64
+  nameWithType: TensorElementType.Int64
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Int64
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Int64
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 33
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  syntax:
+    content: Int64 = 7
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.String
+  commentId: F:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.String
+  id: String
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  langs:
+  - csharp
+  - vb
+  name: String
+  nameWithType: TensorElementType.String
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.String
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: String
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 34
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  syntax:
+    content: String = 8
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Bool
+  commentId: F:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Bool
+  id: Bool
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  langs:
+  - csharp
+  - vb
+  name: Bool
+  nameWithType: TensorElementType.Bool
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Bool
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Bool
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 35
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  syntax:
+    content: Bool = 9
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Float16
+  commentId: F:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Float16
+  id: Float16
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  langs:
+  - csharp
+  - vb
+  name: Float16
+  nameWithType: TensorElementType.Float16
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Float16
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Float16
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 36
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  syntax:
+    content: Float16 = 10
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Double
+  commentId: F:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Double
+  id: Double
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  langs:
+  - csharp
+  - vb
+  name: Double
+  nameWithType: TensorElementType.Double
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Double
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Double
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 37
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  syntax:
+    content: Double = 11
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.UInt32
+  commentId: F:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.UInt32
+  id: UInt32
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  langs:
+  - csharp
+  - vb
+  name: UInt32
+  nameWithType: TensorElementType.UInt32
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.UInt32
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: UInt32
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 38
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  syntax:
+    content: UInt32 = 12
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.UInt64
+  commentId: F:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.UInt64
+  id: UInt64
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  langs:
+  - csharp
+  - vb
+  name: UInt64
+  nameWithType: TensorElementType.UInt64
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.UInt64
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: UInt64
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 39
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  syntax:
+    content: UInt64 = 13
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Complex64
+  commentId: F:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Complex64
+  id: Complex64
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  langs:
+  - csharp
+  - vb
+  name: Complex64
+  nameWithType: TensorElementType.Complex64
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Complex64
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Complex64
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 40
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  syntax:
+    content: Complex64 = 14
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Complex128
+  commentId: F:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Complex128
+  id: Complex128
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  langs:
+  - csharp
+  - vb
+  name: Complex128
+  nameWithType: TensorElementType.Complex128
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.Complex128
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Complex128
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 41
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  syntax:
+    content: Complex128 = 15
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.BFloat16
+  commentId: F:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.BFloat16
+  id: BFloat16
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  langs:
+  - csharp
+  - vb
+  name: BFloat16
+  nameWithType: TensorElementType.BFloat16
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.BFloat16
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: BFloat16
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 42
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  syntax:
+    content: BFloat16 = 16
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.DataTypeMax
+  commentId: F:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.DataTypeMax
+  id: DataTypeMax
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  langs:
+  - csharp
+  - vb
+  name: DataTypeMax
+  nameWithType: TensorElementType.DataTypeMax
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.DataTypeMax
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: DataTypeMax
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 43
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  syntax:
+    content: DataTypeMax = 17
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+references:
+- uid: Microsoft.ML.OnnxRuntime.Tensors
+  commentId: N:Microsoft.ML.OnnxRuntime.Tensors
+  name: Microsoft.ML.OnnxRuntime.Tensors
+  nameWithType: Microsoft.ML.OnnxRuntime.Tensors
+  fullName: Microsoft.ML.OnnxRuntime.Tensors
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  name: TensorElementType
+  nameWithType: TensorElementType
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
