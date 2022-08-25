@@ -49,7 +49,7 @@ jobs:
     - name: branchName
       ${{ if startsWith(variables['Build.SourceBranch'], 'refs/heads/') }}:
         value: $[ replace(variables['Build.SourceBranch'], 'refs/heads/', '') ]
-      ${{ else }}
+      ${{ else }}:
         value: $(Build.SourceBranch)
 
     - name: trtEPOptionsArg
