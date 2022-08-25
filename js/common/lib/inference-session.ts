@@ -157,13 +157,14 @@ export declare namespace InferenceSession {
 
   // Currently, we have the following backends to support execution providers:
   // Backend Node.js binding: supports 'cpu' and 'cuda'.
-  // Backend WebAssembly: supports 'wasm'.
+  // Backend WebAssembly: supports 'cpu', 'wasm' and 'xnnpack'.
   // Backend ONNX.js: supports 'webgl'.
   interface ExecutionProviderOptionMap {
     cpu: CpuExecutionProviderOption;
     cuda: CudaExecutionProviderOption;
     wasm: WebAssemblyExecutionProviderOption;
     webgl: WebGLExecutionProviderOption;
+    xnnpack: XnnpackExecutionProviderOption;
   }
 
   type ExecutionProviderName = keyof ExecutionProviderOptionMap;
@@ -183,11 +184,13 @@ export declare namespace InferenceSession {
   }
   export interface WebAssemblyExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'wasm';
-    // TODO: add flags
   }
   export interface WebGLExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webgl';
     // TODO: add flags
+  }
+  export interface XnnpackExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'xnnpack';
   }
   // #endregion
 
