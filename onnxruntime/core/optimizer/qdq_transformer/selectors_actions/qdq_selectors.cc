@@ -183,10 +183,12 @@ bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   return dt_input == dt_output;
 }
 
-void VariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
+void InputVariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.num_input_defs = 1;  // set to 1 as the first input is variadic
 }
-
+void OutputVariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
+  builder.num_output_defs = 1;  // set to 1 as the first input is variadic
+}
 bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                   const Node& node,
                                   const std::vector<const Node*>& dq_nodes,

@@ -72,7 +72,14 @@ std::vector<NodeAndMoveInfo> ConvMoves() {
 
   return moves;
 }
-
+QDQReplaceWithNew SplitReplacer() {
+  NTO::NodeLocation dq{NTO::NodeType::kInput, 0};
+  NTO::NodeLocation q{NTO::NodeType::kOutput, 0};
+  std::vector<NodeAndMoveInfo> moves{
+      MoveAndAppend(dq, ArgType::kInput, 0, ArgType::kInput),
+      MoveAll(q, ArgType::kOutput)};
+  return QDQReplaceWithNew(kOnnxDomain, "Split", std::move(moves));
+}
 QDQReplaceWithNew MatMulIntToFloatReplacer() {
   NTO::NodeLocation dq1{NTO::NodeType::kInput, 0};
   NTO::NodeLocation dq2{NTO::NodeType::kInput, 1};
@@ -220,7 +227,9 @@ MatMulReplaceWithQLinear::MatMulReplaceWithQLinear()
     : matmul_int_to_float_replacer_{MatMulIntToFloatReplacer()},
       qlinear_matmul_replacer_{kOnnxDomain} {
 }
-
+Status SplitReplaceWithQLinear::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
+  return SplitReplacer().Run(graph, selected_nodes);
+}
 Status MatMulReplaceWithQLinear::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
   // if the output is empty there were no Q nodes selected, so replace with MatMulIntegerToFloat
   // otherwise replace with QLinearMatMul
@@ -293,6 +302,7 @@ Status GemmReplaceWithQuant::RunForSave(Graph& graph,
                                                          graph_modified);
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
 
 }  // namespace QDQ
 }  // namespace onnxruntime
