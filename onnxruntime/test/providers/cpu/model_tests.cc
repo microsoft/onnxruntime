@@ -1069,9 +1069,9 @@ TEST_P(ModelTest, Run) {
 #endif
 #endif
     namespace fs = std::filesystem;
-    std::string path = fs::current_path().u8string();
+    auto current_path = fs::current_path();
     std::cout << "----------------FYI, the current directory is " << std::filesystem::current_path() << std::endl;
-    for (const auto& entry : fs::directory_iterator(path))
+    for (const auto& entry : fs::directory_iterator(current_path.parent_path()))
       std::cout << entry.path() << std::endl;
 // TENSORRT/OpenVino has too many test failures in the single node tests
 #if !defined(_WIN32) && !defined(USE_OPENVINO)
