@@ -119,7 +119,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
   std::vector<std::unique_ptr<LogicStream>> execution_plan;
 
-  std::unordered_map<size_t, size_t> value_to_stream_map;
+  InlinedHashMap<size_t, size_t> value_to_stream_map;
 
   struct ReleaseAction {
     size_t value_index;
@@ -138,7 +138,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
   std::vector<size_t> notification_owners;
 
-  std::unordered_map<onnxruntime::NotificationIndex, std::vector<std::pair<size_t, size_t>>> downstream_map;
+  InlinedHashMap<onnxruntime::NotificationIndex, std::vector<std::pair<size_t, size_t>>> downstream_map;
 
   size_t num_barriers{0};
 
@@ -150,7 +150,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
     return allocation_plan;
   }
 
-  const std::unordered_map<size_t, size_t>& GetValueToStreamMap() const {
+  const InlinedHashMap<size_t, size_t>& GetValueToStreamMap() const {
     return value_to_stream_map;
   }
 
