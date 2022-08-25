@@ -113,7 +113,7 @@ class CudnnPoolingDescriptor final {
              const gsl::span<const int64_t>& pads,
              const gsl::span<const int64_t>& strides) {
     if (!desc_)
-      CUDNN_CONFIG_RETURN_IF_ERROR(cudnnCreatePoolingDescriptor(&desc_));
+      CUDNN_RETURN_IF_ERROR(cudnnCreatePoolingDescriptor(&desc_));
 
     int rank = gsl::narrow_cast<int>(kernel_shape.size());
     InlinedVector<int> window(rank);
@@ -128,7 +128,7 @@ class CudnnPoolingDescriptor final {
     for (int i = 0; i < rank; i++) {
       stride[i] = gsl::narrow_cast<int>(strides[i]);
     }
-    CUDNN_CONFIG_RETURN_IF_ERROR(SetPoolingNdDescriptorHelper(
+    CUDNN_RETURN_IF_ERROR(SetPoolingNdDescriptorHelper(
         desc_,
         mode,
         CUDNN_PROPAGATE_NAN,
@@ -212,8 +212,7 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
     IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count, OrtStream(context));
     auto temp_Y = GetScratchBuffer<float>(output_count, OrtStream(context));
     Impl_Cast<CudaT, float>(Stream(context), reinterpret_cast<const CudaT*>(x_data), temp_X.get(), input_count);
-    CUDNN_RETURN_IF_ERROR(PoolingForwardHelper(GetCudnnHandle(context), pooling_desc, &alpha, x_tensor, temp_X.get(), &beta, y_tensor, temp_Y.get()),
-                          GetCudnnHandle(context), Stream(context));
+    CUDNN_RETURN_IF_ERROR(PoolingForwardHelper(GetCudnnHandle(context), pooling_desc, &alpha, x_tensor, temp_X.get(), &beta, y_tensor, temp_Y.get()));
     Impl_Cast<float, CudaT>(Stream(context), temp_Y.get(), y_data, output_count);
   } else {
     const auto alpha = Consts<CudaT>::One;
@@ -223,8 +222,7 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_ERROR(x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
     ORT_RETURN_IF_ERROR(y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
 
-    CUDNN_RETURN_IF_ERROR(PoolingForwardHelper(GetCudnnHandle(context), pooling_desc, &alpha, x_tensor, x_data, &beta, y_tensor, y_data),
-                          GetCudnnHandle(context), Stream(context));
+    CUDNN_RETURN_IF_ERROR(PoolingForwardHelper(GetCudnnHandle(context), pooling_desc, &alpha, x_tensor, x_data, &beta, y_tensor, y_data));
   }
 
   return Status::OK();

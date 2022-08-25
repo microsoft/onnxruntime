@@ -949,7 +949,8 @@ def generate_build_tree(
             add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_VERSION", args.cuda_version)
         # TODO: this variable is not really needed
         add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_HOME", cuda_home)
-        add_default_definition(cmake_extra_defines, "onnxruntime_CUDNN_HOME", cudnn_home)
+        if cudnn_home:
+            add_default_definition(cmake_extra_defines, "onnxruntime_CUDNN_HOME", cudnn_home)
 
     if is_windows():
         if args.enable_msvc_static_runtime:
@@ -1343,7 +1344,7 @@ def setup_cuda_vars(args):
         cuda_home_valid = cuda_home is not None and os.path.exists(cuda_home)
         cudnn_home_valid = cudnn_home is not None and os.path.exists(cudnn_home)
 
-        if not cuda_home_valid or not cudnn_home_valid:
+        if not cuda_home_valid or (not is_windows() and not cudnn_home_valid):
             raise BuildError(
                 "cuda_home and cudnn_home paths must be specified and valid.",
                 "cuda_home='{}' valid={}. cudnn_home='{}' valid={}".format(

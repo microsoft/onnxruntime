@@ -86,9 +86,7 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
                               nullptr,
                               epsilon_,
                               nullptr,
-                              nullptr),
-                          GetCudnnHandle(p_op_kernel_context),
-                          Stream(p_op_kernel_context));
+                              nullptr));
   } else {
     // we use cudnnBatchNormalizationForwardTraining to compute mean/variance
     // so collapsing NC into channel
@@ -135,9 +133,7 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
                               variance.get(),
                               CUDNN_BN_MIN_EPSILON,
                               nullptr,
-                              nullptr),
-                          GetCudnnHandle(p_op_kernel_context),
-                          Stream(p_op_kernel_context));
+                              nullptr));
 
     // Y = scale * (x - mean) / sqrt (variance + epsilon) + B
     // X/Y is (N,C,H,W)
@@ -228,9 +224,7 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
                               nullptr,
                               epsilon_,
                               nullptr,
-                              nullptr),
-                          GetCudnnHandle(p_op_kernel_context),
-                          Stream(p_op_kernel_context));
+                              nullptr));
   } else {
     // we use cudnnBatchNormalizationForwardTraining to compute mean/variance
     // so collapsing NC into channel
@@ -282,9 +276,7 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
                               variance.get(),
                               CUDNN_BN_MIN_EPSILON,
                               nullptr,
-                              nullptr),
-                          GetCudnnHandle(p_op_kernel_context),
-                          Stream(p_op_kernel_context));
+                              nullptr));
 
     // Y = scale * (x - mean) / sqrt (variance + epsilon) + B
     // X/Y is (N,C,H,W)

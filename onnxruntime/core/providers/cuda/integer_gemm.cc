@@ -56,8 +56,7 @@ Status GemmInt8(int m, int n, int k,
       lda_aligned == lda ? a : a_padded.get(), CUDA_R_8I, lda_aligned,
       &beta,
       c, CUDA_R_32I, ldc, CUDA_R_32I,
-      CUBLAS_GEMM_DFALT),
-      cublas, stream);
+      CUBLAS_GEMM_DFALT));
   return Status::OK();
 }
 }  // namespace cuda

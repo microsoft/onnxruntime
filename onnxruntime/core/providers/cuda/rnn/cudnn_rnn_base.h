@@ -24,7 +24,7 @@ enum RNN_Input_Index {
 };
 
 // Onnx RNN/GRU/LSTM only support 1 layer
-const int RNN_NUM_LAYERS = 1;
+constexpr int RNN_NUM_LAYERS = 1;
 
 class CudnnRNN {
  public:
@@ -42,18 +42,18 @@ class CudnnRNN {
              cudnnDropoutDescriptor_t cudnn_dropout_desc, cudnnDirectionMode_t cudnn_direction_model,
              cudnnRNNMode_t rnn_mode, cudnnDataType_t dataType, const cudaDeviceProp& prop) {
     if (!cudnn_rnn_desc_)
-      CUDNN_CONFIG_RETURN_IF_ERROR(cudnnCreateRNNDescriptor(&cudnn_rnn_desc_));
+      CUDNN_RETURN_IF_ERROR(cudnnCreateRNNDescriptor(&cudnn_rnn_desc_));
 
-    CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetRNNDescriptor_v6(cudnnHandle,
-                                                cudnn_rnn_desc_,
-                                                gsl::narrow_cast<int>(hidden_size),
-                                                num_layers,
-                                                cudnn_dropout_desc,
-                                                CUDNN_LINEAR_INPUT,  // We can also skip the input matrix transformation
-                                                cudnn_direction_model,
-                                                rnn_mode,
-                                                CUDNN_RNN_ALGO_STANDARD,  //CUDNN_RNN_ALGO_PERSIST_STATIC, CUDNN_RNN_ALGO_PERSIST_DYNAMIC
-                                                dataType));
+    CUDNN_RETURN_IF_ERROR(cudnnSetRNNDescriptor_v6(cudnnHandle,
+                                                   cudnn_rnn_desc_,
+                                                   gsl::narrow_cast<int>(hidden_size),
+                                                   num_layers,
+                                                   cudnn_dropout_desc,
+                                                   CUDNN_LINEAR_INPUT,  // We can also skip the input matrix transformation
+                                                   cudnn_direction_model,
+                                                   rnn_mode,
+                                                   CUDNN_RNN_ALGO_STANDARD,  // CUDNN_RNN_ALGO_PERSIST_STATIC, CUDNN_RNN_ALGO_PERSIST_DYNAMIC
+                                                   dataType));
 
     if (prop.major >= 7 && dataType == CUDNN_DATA_HALF) {
       cudnnSetRNNMatrixMathType(cudnn_rnn_desc_, CUDNN_TENSOR_OP_MATH);
@@ -100,13 +100,13 @@ class CudnnRnnBase : public CudaKernel {
 
     size_t state_size;
     auto default_cudnn_handle = DefaultCudnnHandle();
-    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.CreateDescriptorIfNeeded(default_cudnn_handle, nullptr));
-    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.GetCudnnDropoutStatesSize(default_cudnn_handle, nullptr, state_size));
+    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.CreateDescriptorIfNeeded());
+    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.GetCudnnDropoutStatesSize(default_cudnn_handle, state_size));
     state_buffer_ = GetScratchBuffer<void>(state_size, nullptr);
-    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.Set(default_cudnn_handle, nullptr, state_buffer_.get(), state_size));
+    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.Set(default_cudnn_handle, state_buffer_.get(), state_size));
 
     layout_ = info.GetAttrOrDefault("layout", static_cast<int64_t>(0));
-    ORT_ENFORCE(layout_ == 0, 
+    ORT_ENFORCE(layout_ == 0,
                 "Batchwise recurrent operations (layout == 1) are not supported. If you need support create a github issue with justification.");
   }
 

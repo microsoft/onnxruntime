@@ -132,22 +132,19 @@ struct AlgoSearch<T_BwdDataPerf> {
   static constexpr auto DEFAULT_ALGO = CUDNN_CONVOLUTION_BWD_DATA_ALGO_1;
   static AlgoPerfCache<T_BwdDataPerf>& Cache() { return bwd_data_algos; }
   static Status FindAlgorithms(const ConvArgs& args, const CUDAExecutionProvider* provider,
-                               cudaStream_t stream,
                                std::vector<T_BwdDataPerf>& perf_results) {
     static const T_BwdDataAlgo algos[] = {
-        CUDNN_CONVOLUTION_BWD_DATA_ALGO_0,        CUDNN_CONVOLUTION_BWD_DATA_ALGO_1,
-        CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT,      CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING,
+        CUDNN_CONVOLUTION_BWD_DATA_ALGO_0, CUDNN_CONVOLUTION_BWD_DATA_ALGO_1,
+        CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT, CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING,
         CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD, CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED};
     static constexpr int num_algos = CUDNN_CONVOLUTION_BWD_DATA_ALGO_COUNT;
     ORT_ENFORCE(sizeof(algos) / sizeof(algos[0]) == num_algos, "Missing cuDNN convolution backward data algorithms.");
     int perf_count;
-    std::unique_ptr<T_BwdDataPerf[]> candidates(new T_BwdDataPerf[num_algos]);
-    
+    std::unique_ptr<T_BwdDataPerf[]> candidates = std::make_unique<T_BwdDataPerf[]>(num_algos);
     if (args.params.algo_mode == OrtCudnnConvAlgoSearchHeuristic) {
       CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionBackwardDataAlgorithm_v7(args.handle, args.w_desc, args.y_tensor,
                                                                         args.conv_desc, args.x_tensor, num_algos,
-                                                                        &perf_count, candidates.get()),
-                            args.handle, stream);
+                                                                        &perf_count, candidates.get()));
     } else if (args.params.algo_mode == OrtCudnnConvAlgoSearchExhaustive) {
       size_t max_workspace_size = provider->GetCudnnConvUseMaxWorkspace() ? GetMaxWorkspaceSize(args, algos, num_algos)
                                                                           : AlgoSearchWorkspaceSize;
@@ -156,8 +153,7 @@ struct AlgoSearch<T_BwdDataPerf> {
       IAllocatorUniquePtr<void> workspace = provider->GetTransientScratchBuffer<void>(max_workspace_size);
       CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
           args.handle, args.w_desc, args.w_data, args.y_tensor, args.dy_data, args.conv_desc, args.x_tensor,
-          args.dx_data, num_algos, &perf_count, candidates.get(), workspace.get(), max_workspace_size),
-          args.handle, stream);
+          args.dx_data, num_algos, &perf_count, candidates.get(), workspace.get(), max_workspace_size));
     } else {
       ORT_ENFORCE(false, "Algo mode should be EXHAUSTIVE (0) or HEURISTIC (1), but got ", args.params.algo_mode);
     }
@@ -171,7 +167,6 @@ struct AlgoSearch<T_BwdFilterPerf> {
   static constexpr auto DEFAULT_ALGO = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1;
   static AlgoPerfCache<T_BwdFilterPerf>& Cache() { return bwd_filter_algos; }
   static Status FindAlgorithms(const ConvArgs& args, const CUDAExecutionProvider* provider,
-                               cudaStream_t stream,
                                std::vector<T_BwdFilterPerf>& perf_results) {
     static const T_BwdFilterAlgo algos[] = {
         CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0,
@@ -185,13 +180,12 @@ struct AlgoSearch<T_BwdFilterPerf> {
     // NOTE: - 1 because ALGO_WINOGRAD is not implemented.
     static constexpr int num_algos = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_COUNT - 1;
     ORT_ENFORCE(sizeof(algos) / sizeof(algos[0]) == num_algos, "Missing cuDNN convolution backward filter algorithms.");
-    std::unique_ptr<T_BwdFilterPerf[]> candidates(new T_BwdFilterPerf[num_algos]);
+    std::unique_ptr<T_BwdFilterPerf[]> candidates = std::make_unique<T_BwdFilterPerf[]>(num_algos);
     int perf_count;
     if (args.params.algo_mode == OrtCudnnConvAlgoSearchHeuristic) {
       CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionBackwardFilterAlgorithm_v7(args.handle, args.x_tensor, args.y_tensor,
                                                                           args.conv_desc, args.w_desc, num_algos,
-                                                                          &perf_count, candidates.get()),
-                            args.handle, stream);
+                                                                          &perf_count, candidates.get()));
     } else if (args.params.algo_mode == OrtCudnnConvAlgoSearchExhaustive) {
       size_t max_workspace_size = provider->GetCudnnConvUseMaxWorkspace() ? GetMaxWorkspaceSize(args, algos, num_algos)
                                                                           : AlgoSearchWorkspaceSize;
@@ -200,8 +194,7 @@ struct AlgoSearch<T_BwdFilterPerf> {
       IAllocatorUniquePtr<void> workspace = provider->GetTransientScratchBuffer<void>(max_workspace_size);
       CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardFilterAlgorithmEx(
           args.handle, args.x_tensor, args.x_data, args.y_tensor, args.dy_data, args.conv_desc, args.w_desc,
-          args.dw_data, num_algos, &perf_count, candidates.get(), workspace.get(), max_workspace_size),
-          args.handle, stream);
+          args.dw_data, num_algos, &perf_count, candidates.get(), workspace.get(), max_workspace_size));
     } else {
       ORT_ENFORCE(false, "Algo mode should be EXHAUSTIVE (0) or HEURISTIC (1), but got ", args.params.algo_mode);
     }
@@ -215,7 +208,7 @@ class AlgoIterator {
  public:
   AlgoIterator(const ConvArgs& args) : args_(args) {}
 
-  static Status OnlyDefaultAlgorithm(const ConvArgs& args, cudaStream_t stream, std::vector<T_Perf>& perf_results) {
+  static Status OnlyDefaultAlgorithm(const ConvArgs& args, std::vector<T_Perf>& perf_results) {
     perf_results.resize(1);
     perf_results[0].algo = AlgoSearch<T_Perf>::DEFAULT_ALGO;
     if (args.params.data_type == CUDNN_DATA_HALF) {
@@ -223,22 +216,21 @@ class AlgoIterator {
     } else {
       perf_results[0].mathType = CUDNN_DEFAULT_MATH;
     }
-    CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(args, perf_results[0].algo, &(perf_results[0].memory)),
-        args.handle, stream);
+    CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(args, perf_results[0].algo, &(perf_results[0].memory)));
     return Status::OK();
   }
 
-  Status TryAll(const CUDAExecutionProvider* provider, cudaStream_t stream, std::function<Status(const T_Perf& perf)> f) {
+  Status TryAll(const CUDAExecutionProvider* provider, cudaStream_t /*stream*/, std::function<Status(const T_Perf& perf)> f) {
     auto& cache = AlgoSearch<T_Perf>::Cache();
-    
+
     if (T_Perf algo_perf; cache.Find(args_.params, &algo_perf) && f(algo_perf) == Status::OK()) {
       return Status::OK();
     }
 
     std::vector<T_Perf> perf_results;
     ORT_RETURN_IF_ERROR(args_.params.algo_mode == OrtCudnnConvAlgoSearchDefault
-                            ? OnlyDefaultAlgorithm(args_, stream, perf_results)
-                            : AlgoSearch<T_Perf>::FindAlgorithms(args_, provider, stream, perf_results));
+                            ? OnlyDefaultAlgorithm(args_, perf_results)
+                            : AlgoSearch<T_Perf>::FindAlgorithms(args_, provider, perf_results));
     for (auto& algo_perf : perf_results) {
       if (f(algo_perf) == Status::OK()) {
         cache.Insert(args_.params, algo_perf);
@@ -377,7 +369,7 @@ Status ConvGrad<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(PrepareArgs(*X, *dY, *W, dB, dX, dW, GetCudnnHandle(context)));
   if (dX) ORT_RETURN_IF_ERROR(ComputeInputGradient(context->GetComputeStream()));
   if (dW) ORT_RETURN_IF_ERROR(ComputeWeightGradient(context->GetComputeStream()));
-  if (dB) ORT_RETURN_IF_ERROR(ComputeBiasGradient(context->GetComputeStream()));
+  if (dB) ORT_RETURN_IF_ERROR(ComputeBiasGradient());
   return Status::OK();
 }
 
@@ -391,12 +383,10 @@ Status ConvGrad<T>::ComputeInputGradient(onnxruntime::Stream* stream) const {
         const auto one = Consts<CudaT>::One;
         const auto zero = Consts<CudaT>::Zero;
         IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(algo_perf.memory, stream);
-        CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args_.conv_desc, algo_perf.mathType),
-            args_.handle, cuda_stream);
+        CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args_.conv_desc, algo_perf.mathType));
         CUDNN_RETURN_IF_ERROR(cudnnConvolutionBackwardData(
             args_.handle, &one, args_.w_desc, args_.w_data, args_.y_tensor, args_.dy_data, args_.conv_desc,
-            algo_perf.algo, workspace.get(), algo_perf.memory, &zero, args_.x_tensor, args_.dx_data),
-            args_.handle, cuda_stream);
+            algo_perf.algo, workspace.get(), algo_perf.memory, &zero, args_.x_tensor, args_.dx_data));
         return Status::OK();
       });
 }
@@ -411,24 +401,20 @@ Status ConvGrad<T>::ComputeWeightGradient(onnxruntime::Stream* stream) const {
         const auto one = Consts<CudaT>::One;
         const auto zero = Consts<CudaT>::Zero;
         IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(algo_perf.memory, stream);
-        CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args_.conv_desc, algo_perf.mathType),
-                              args_.handle, cuda_stream);
+        CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args_.conv_desc, algo_perf.mathType));
         CUDNN_RETURN_IF_ERROR(cudnnConvolutionBackwardFilter(
             args_.handle, &one, args_.x_tensor, args_.x_data, args_.y_tensor, args_.dy_data, args_.conv_desc,
-            algo_perf.algo, workspace.get(), algo_perf.memory, &zero, args_.w_desc, args_.dw_data),
-            args_.handle, cuda_stream);
+            algo_perf.algo, workspace.get(), algo_perf.memory, &zero, args_.w_desc, args_.dw_data));
         return Status::OK();
       });
 }
 
 template <typename T>
-Status ConvGrad<T>::ComputeBiasGradient(onnxruntime::Stream* stream) const {
+Status ConvGrad<T>::ComputeBiasGradient() const {
   const auto one = Consts<CudaT>::One;
   const auto zero = Consts<CudaT>::Zero;
-  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->handle) : nullptr;
   CUDNN_RETURN_IF_ERROR(cudnnConvolutionBackwardBias(args_.handle, &one, args_.y_tensor, args_.dy_data, &zero,
-                                                     args_.b_tensor, args_.db_data),
-                        args_.handle, cuda_stream);
+                                                     args_.b_tensor, args_.db_data));
   return Status::OK();
 }
 

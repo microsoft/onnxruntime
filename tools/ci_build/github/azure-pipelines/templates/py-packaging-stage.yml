@@ -611,22 +611,22 @@ stages:
         matrix:
           Python37_GPU:
             PythonVersion: '3.7'
-            EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+            EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
             EnvSetupScript: setup_env_gpu.bat
             EP_NAME: gpu
           Python38_GPU:
             PythonVersion: '3.8'
-            EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+            EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
             EnvSetupScript: setup_env_gpu.bat
             EP_NAME: gpu
           Python39_GPU:
             PythonVersion: '3.9'
-            EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+            EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
             EnvSetupScript: setup_env_gpu.bat
             EP_NAME: gpu
           Python310_GPU:
             PythonVersion: '3.10'
-            EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+            EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
             EnvSetupScript: setup_env_gpu.bat
             EP_NAME: gpu
           Python37_dml:

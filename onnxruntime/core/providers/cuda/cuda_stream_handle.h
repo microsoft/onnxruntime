@@ -9,7 +9,7 @@ using CudaStreamHandle = cudaStream_t;
 
 
 struct CudaStream : Stream {
-  CudaStream(cudaStream_t stream, const OrtDevice& device, bool own_flag);
+  CudaStream(cudaStream_t stream, const OrtDevice& device, bool own_flag, cudnnHandle_t external_cudnn_handle, cublasHandle_t external_cublass_handle);
 
   ~CudaStream();
 
@@ -24,6 +24,11 @@ struct CudaStream : Stream {
   cublasHandle_t cublas_handle_{};
 };
 
-void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry, const OrtDevice::DeviceType device_type, cudaStream_t external_stream, bool use_existing_stream);
+void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry, 
+	const OrtDevice::DeviceType device_type, 
+	cudaStream_t external_stream, 
+	bool use_existing_stream, 
+	cudnnHandle_t external_cudnn_handle, 
+	cublasHandle_t external_cublass_handle);
 void WaitCudaNotificationOnDevice(Stream& stream, synchronize::Notification& notification);
 }

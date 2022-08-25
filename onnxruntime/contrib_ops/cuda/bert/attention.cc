@@ -88,8 +88,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
       reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
       reinterpret_cast<const CudaT*>(input->Data<T>()), k,
-      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop),
-      cublas, Stream(context));
+      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    batch_size,

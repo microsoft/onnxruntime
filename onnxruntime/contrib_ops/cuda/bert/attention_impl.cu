@@ -164,8 +164,7 @@ bool QkvToContext(
           all_sequence_length, sequence_length, head_size,
           &alpha, k, head_size, present_size_per_batch,
           q, head_size, size_per_batch,
-          &zero, scratch1, all_sequence_length, temp_matrix_size, batches, prop),
-          cublas, stream)) {
+          &zero, scratch1, all_sequence_length, temp_matrix_size, batches, prop))) {
     return false;
   }
 
@@ -202,8 +201,7 @@ bool QkvToContext(
           head_size, sequence_length, all_sequence_length,
           &one, v, head_size, present_size_per_batch,
           scratch2, all_sequence_length, temp_matrix_size,
-          &zero, scratch3, head_size, size_per_batch, batches, prop),
-          cublas, stream)) {
+          &zero, scratch3, head_size, size_per_batch, batches, prop))) {
     return false;
   }
 
@@ -389,8 +387,7 @@ bool DecoderQkvToContext(
             kv_sequence_length, sequence_length, head_size,
             &alpha, key_cache, head_size, strideA,
             q, head_size, strideB,
-            &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, prop),
-            cublas, stream)) {
+            &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, prop))) {
       return false;
     }
   } else {
@@ -399,8 +396,7 @@ bool DecoderQkvToContext(
             kv_sequence_length, sequence_length, head_size,
             &alpha, k, head_size, strideA,
             q, head_size, strideB,
-            &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, prop),
-            cublas, stream)) {
+            &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, prop))) {
       return false;
     }
   }
@@ -430,8 +426,7 @@ bool DecoderQkvToContext(
             head_size, sequence_length, kv_sequence_length,
             &one, value_cache, head_size, strideA,
             scratch2, kv_sequence_length, temp_matrix_size,
-            &zero, scratch3, head_size, strideB, BN, prop),
-            cublas, stream)) {
+            &zero, scratch3, head_size, strideB, BN, prop))) {
       return false;
     }
   } else {
@@ -440,8 +435,7 @@ bool DecoderQkvToContext(
             head_size, sequence_length, kv_sequence_length,
             &one, v, head_size, strideA,
             scratch2, kv_sequence_length, temp_matrix_size,
-            &zero, scratch3, head_size, strideB, BN, prop),
-            cublas, stream)) {
+            &zero, scratch3, head_size, strideB, BN, prop))) {
       return false;
     }
   }
