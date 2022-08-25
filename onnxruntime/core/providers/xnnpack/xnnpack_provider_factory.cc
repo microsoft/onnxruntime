@@ -28,9 +28,3 @@ std::shared_ptr<IExecutionProviderFactory> XnnpackProviderFactoryCreator::Create
 }
 
 }  // namespace onnxruntime
-
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Xnnpack, _In_ OrtSessionOptions* options) {
-  options->provider_factories.push_back(
-      onnxruntime::XnnpackProviderFactoryCreator::Create(onnxruntime::ProviderOptions{}));
-  return nullptr;
-}
