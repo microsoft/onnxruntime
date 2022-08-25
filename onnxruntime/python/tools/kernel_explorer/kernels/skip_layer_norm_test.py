@@ -35,7 +35,6 @@ def run_skip_layer_norm(batch_size, seq_len, hidden_size, dtype, func):
     epsilon = 0.0005
     y = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
 
-
     input_d = ke.DeviceArray(x)
     skip_d = ke.DeviceArray(skip)
     bias_d = ke.DeviceArray(bias)
@@ -48,24 +47,21 @@ def run_skip_layer_norm(batch_size, seq_len, hidden_size, dtype, func):
     y_d.UpdateHostNumpyArray()
 
     y_ref = skip_layer_norm(x, skip, bias, gamma, beta, epsilon)
-    print(f'y : {y}')
-    print(f'y_ref : {y_ref}')
-    np.testing.assert_allclose(y_ref, y, rtol=1e-02)
+    np.testing.assert_almost_equal(y_ref, y, decimal=1e-05)
 
 
-batch_size = [1]
-seq_len = [1]
-hidden_size = [4]
+batch_size = [1, 8, 16, 32, 64, 128]
+seq_len = [256, 384]
+hidden_size = [256, 384, 1024]
 
 
 @pytest.mark.parametrize("batch_size", batch_size)
 @pytest.mark.parametrize("seq_len", seq_len)
 @pytest.mark.parametrize("hidden_size", hidden_size)
 def test_skip_layer_norm(batch_size, seq_len, hidden_size):
-    dtypes = ["float32"]
+    dtypes = ["float32", "float16"]
     for dtype in dtypes:
         for f in dtype_to_funcs(dtype):
-            print(f'f : {f}')
             run_skip_layer_norm(batch_size, seq_len, hidden_size, dtype, f)
 
 

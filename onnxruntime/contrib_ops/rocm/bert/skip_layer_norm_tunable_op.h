@@ -40,7 +40,7 @@ struct SkipLayerNormParams : OpParams {
 
 template <typename T, int ThreadsPerBlock, int VecSize>
 Status SkipLayerNormOp(const SkipLayerNormParams<T>* params) {
-  if (params->ld <= 1024) {
+  if (params->ld <= ThreadsPerBlock * VecSize) {
     hipLaunchKernelGGL((SkipLayerNormKernelSmall<T, ThreadsPerBlock, VecSize>),
                        dim3(CeilingDivision(params->element_count, params->ld)),
                        dim3(ThreadsPerBlock),
@@ -62,9 +62,7 @@ Status SkipLayerNormOp(const SkipLayerNormParams<T>* params) {
 #define ADD_OP(threads_per_block)                                    \
   this->ops_.emplace_back(SkipLayerNormOp<T, threads_per_block, 1>); \
   this->ops_.emplace_back(SkipLayerNormOp<T, threads_per_block, 2>); \
-  this->ops_.emplace_back(SkipLayerNormOp<T, threads_per_block, 4>); \
-  this->ops_.emplace_back(SkipLayerNormOp<T, threads_per_block, 8>); \
-  this->ops_.emplace_back(SkipLayerNormOp<T, threads_per_block, 16>);
+  this->ops_.emplace_back(SkipLayerNormOp<T, threads_per_block, 4>);
 
 template <typename T>
 class SkipLayerNormTunableOp : public TunableOp<SkipLayerNormParams<T>> {
@@ -73,12 +71,8 @@ class SkipLayerNormTunableOp : public TunableOp<SkipLayerNormParams<T>> {
     ADD_OP(32);
     ADD_OP(64);
     ADD_OP(128);
-    ADD_OP(192);
     ADD_OP(256);
-    ADD_OP(320);
     ADD_OP(384);
-    ADD_OP(448);
-    ADD_OP(512);
   }
 
  private:
