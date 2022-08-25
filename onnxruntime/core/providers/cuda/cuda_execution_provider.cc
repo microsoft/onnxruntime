@@ -2523,7 +2523,20 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
 }
 
 void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
-  RegisterCudaStreamHandles(stream_handle_registry, OrtDevice::GPU, stream_, use_ep_level_unified_stream_);
+  if (use_ep_level_unified_stream_)
+    RegisterCudaStreamHandles(stream_handle_registry, 
+        OrtDevice::GPU, 
+        stream_, 
+        use_ep_level_unified_stream_,
+        GetPerThreadContext().CudnnHandle(),
+        GetPerThreadContext().CublasHandle());
+  else
+    RegisterCudaStreamHandles(stream_handle_registry,
+                              OrtDevice::GPU,
+                              stream_,
+                              use_ep_level_unified_stream_,
+                              nullptr,
+                              nullptr);
 }
 
 }  // namespace onnxruntime

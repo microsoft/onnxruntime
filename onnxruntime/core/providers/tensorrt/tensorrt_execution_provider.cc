@@ -267,6 +267,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   if (info.has_user_compute_stream) {
     external_stream_ = true;
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
+    CUBLAS_CALL(cublasCreate(&external_cublas_handle_));
+    CUBLAS_CALL(cublasSetStream(cublas_handle_, stream_));
+    CUDNN_CALL(cudnnCreate(&external_cudnn_handle_));
+    CUDNN_CALL(cudnnSetStream(external_cudnn_handle_, stream_));
   }
 
   // Get environment variables
@@ -1984,7 +1988,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 }
 
 void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
-  RegisterCudaStreamHandles(stream_handle_registry, OrtDevice::GPU, stream_, external_stream_);
+  RegisterCudaStreamHandles(stream_handle_registry, OrtDevice::GPU, stream_, external_stream_, external_cudnn_handle_, external_cublas_handle_);
 }
 
 }  // namespace onnxruntime

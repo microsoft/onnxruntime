@@ -35,19 +35,30 @@ struct CudaNotification : public synchronize::Notification {
   cudaEvent_t event_;
 };
 
-CudaStream::CudaStream(cudaStream_t stream, const OrtDevice& device, bool own_flag) : Stream(stream, device), own_stream_(own_flag) {
-  CUBLAS_CALL(cublasCreate(&cublas_handle_));
-  CUBLAS_CALL(cublasSetStream(cublas_handle_, stream));
-  CUDNN_CALL(cudnnCreate(&cudnn_handle_));
-  CUDNN_CALL(cudnnSetStream(cudnn_handle_, stream));
+CudaStream::CudaStream(cudaStream_t stream, const OrtDevice& device, bool own_flag,
+                       cudnnHandle_t external_cudnn_handle, cublasHandle_t external_cublas_handle) : Stream(stream, device), own_stream_(own_flag) {
+  if (own_flag) {
+    CUBLAS_CALL(cublasCreate(&cublas_handle_));
+    CUBLAS_CALL(cublasSetStream(cublas_handle_, stream));
+    CUDNN_CALL(cudnnCreate(&cudnn_handle_));
+    CUDNN_CALL(cudnnSetStream(cudnn_handle_, stream));
+  } else {
+    cublas_handle_ = external_cublas_handle;
+    CUBLAS_CALL(cublasSetStream(cublas_handle_, stream));
+    cudnn_handle_ = external_cudnn_handle;
+    CUDNN_CALL(cudnnSetStream(cudnn_handle_, stream));
+  }
+  
 }
 
 CudaStream::~CudaStream() {
-  if (handle && own_stream_)
-    CUDA_CALL(cudaStreamDestroy(static_cast<cudaStream_t>(handle)));
+  if (own_stream_) {
+    if (handle)
+      CUDA_CALL(cudaStreamDestroy(static_cast<cudaStream_t>(handle)));
 
-  CUBLAS_CALL(cublasDestroy(cublas_handle_));
-  CUDNN_CALL(cudnnDestroy(cudnn_handle_));
+    CUBLAS_CALL(cublasDestroy(cublas_handle_));
+    CUDNN_CALL(cudnnDestroy(cudnn_handle_));
+  }
 }
 
 std::unique_ptr<synchronize::Notification> CudaStream::CreateNotification(size_t /*num_consumers*/){
@@ -75,7 +86,12 @@ void ReleaseCUdaNotification(void* handle) {
   delete static_cast<CudaNotification*>(handle);
 }
 
-void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry, const OrtDevice::DeviceType device_type, cudaStream_t external_stream, bool use_existing_stream) {
+void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry,
+                               const OrtDevice::DeviceType device_type,
+                               cudaStream_t external_stream,
+                               bool use_existing_stream,
+                               cudnnHandle_t external_cudnn_handle,
+                               cublasHandle_t external_cublas_handle) {
   // wait cuda notification on cuda ep
   stream_handle_registry.RegisterWaitFn(device_type, device_type, WaitCudaNotificationOnDevice);
   // wait cuda notification on cpu ep
@@ -85,11 +101,11 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
       cudaStream_t stream = nullptr;
       //CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
       CUDA_CALL_THROW(cudaStreamCreate(&stream));
-      return std::make_unique<CudaStream>(stream, device, true);
+      return std::make_unique<CudaStream>(stream, device, true, nullptr, nullptr);
     });
   else
-    stream_handle_registry.RegisterCreateStreamFn(device_type, [external_stream](const OrtDevice& device) {
-      return std::make_unique<CudaStream>(external_stream, device, false);
+    stream_handle_registry.RegisterCreateStreamFn(device_type, [external_stream, external_cudnn_handle, external_cublas_handle](const OrtDevice& device) {
+      return std::make_unique<CudaStream>(external_stream, device, false, external_cudnn_handle, external_cublas_handle);
     });
 }
 

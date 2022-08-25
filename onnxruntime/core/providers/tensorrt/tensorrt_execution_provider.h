@@ -182,6 +182,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> output_info_;
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
 
+  // for external stream, we need to create its cudnn/cublass handle before cpuda EP enable cuda graph capture
+  cudnnHandle_t external_cudnn_handle_ = nullptr;
+  cublasHandle_t external_cublas_handle_ = nullptr;
+
   /**Get IndexedSubGraph based on node list of the subgraph*/
   std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index,
                                                const GraphViewer& graph) const;
