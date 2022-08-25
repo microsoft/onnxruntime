@@ -15,16 +15,19 @@ namespace onnxruntime {
 template <typename StringType>
 struct BasicOpIdentifier {
   using string_type = StringType;
+
   string_type domain;
   string_type op_type;
   int since_version;
 
-  constexpr bool operator<(const BasicOpIdentifier<StringType>& rhs) const {
-    return Tied() < rhs.Tied();
+  friend constexpr bool operator<(const BasicOpIdentifier<StringType>& lhs,
+                                  const BasicOpIdentifier<StringType>& rhs) {
+    return lhs.Tied() < rhs.Tied();
   }
 
-  constexpr bool operator==(const BasicOpIdentifier<StringType>& rhs) const {
-    return Tied() == rhs.Tied();
+  friend constexpr bool operator==(const BasicOpIdentifier<StringType>& lhs,
+                                   const BasicOpIdentifier<StringType>& rhs) {
+    return lhs.Tied() == rhs.Tied();
   }
 
   size_t GetHash() const {

@@ -180,6 +180,13 @@ table Attribute {
   graphs:[Graph];
 }
 
+/// see corresponding type in onnxruntime/core/graph/op_identifier.h
+table OpIdentifier {
+  domain:string;
+  op_type:string;
+  since_version:int32;
+}
+
 // runtime optimizations
 
 /// nodes to consider for a runtime optimization
@@ -206,6 +213,7 @@ table RuntimeOptimizationRecord {
   action_id:string;
   nodes_to_optimize_indices:NodesToOptimizeIndices;
   produced_nodes:[DeprecatedNodeIndexAndKernelDefHash] (deprecated);
+  produced_op_ids:[OpIdentifier];
 }
 
 table RuntimeOptimizationRecordContainerEntry {
@@ -262,7 +270,8 @@ table DeprecatedKernelCreateInfos {
 
 /// deprecated: no longer using kernel def hashes
 table DeprecatedSubGraphSessionState {
-  // graph_id can be used to binary search DeprecatedSubGraphSessionState in DeprecatedSessionState.sub_graph_session_states
+  // graph_id can be used to binary search DeprecatedSubGraphSessionState in
+  // DeprecatedSessionState.sub_graph_session_states
   graph_id:string (key);
 
   session_state:DeprecatedSessionState;
@@ -290,7 +299,7 @@ table KernelTypeStrArgsEntry {
 }
 
 table OpIdKernelTypeStrArgsEntry {
-  op_id:string (key);
+  op_id:OpIdentifier;  // this is effectively the key, but only scalars/strings are supported for the key attribute
   kernel_type_str_args:[KernelTypeStrArgsEntry];
 }
 

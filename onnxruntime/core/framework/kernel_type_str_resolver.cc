@@ -5,6 +5,7 @@
 
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
+#include "core/graph/op_identifier_utils.h"
 
 // TODO used for OpIdFromString, remove later
 #include "core/common/parse_string.h"
@@ -29,22 +30,6 @@ Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string
   resolved_args = type_str_it->second;
   return Status::OK();
 }
-
-// TODO store OpIdentifier struct directly in ORT format then remove these helpers
-namespace {
-constexpr auto kOpIdDelimiter = ":";
-
-std::string OpIdToString(const OpIdentifier& op_id) {
-  return MakeString(op_id.domain, kOpIdDelimiter, op_id.op_type, kOpIdDelimiter, op_id.since_version);
-}
-
-OpIdentifier OpIdFromString(std::string_view s) {
-  const auto components = utils::SplitString(s, kOpIdDelimiter, true);
-  ORT_ENFORCE(components.size() == 3);
-  const auto since_version = ParseStringWithClassicLocale<ONNX_NAMESPACE::OperatorSetVersion>(components[2]);
-  return OpIdentifier{std::string{components[0]}, std::string{components[1]}, since_version};
-}
-}  // namespace
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema, bool* registered_out) {
@@ -138,11 +123,26 @@ Status KernelTypeStrResolver::RegisterGraphNodeOpSchemas(const Graph& graph) {
 Status KernelTypeStrResolver::SaveToOrtFormat(
     fb::FlatBufferBuilder& builder,
     fb::Offset<fbs::KernelTypeStrResolver>& fbs_kernel_type_str_resolver) const {
+  // Note: For the top level map, we can't use FlatBufferBuilder::CreateVectorOfSortedTables since the key is not a
+  // scalar or string.
+  // However, sorting the entries is still desirable so that we get a deterministic saved representation.
+  // To accomplish that, we use a sorted container of iterators to access the entries.
+  InlinedVector<OpKernelTypeStrMap::const_iterator> sorted_op_kernel_type_str_map_its{};
+  sorted_op_kernel_type_str_map_its.reserve(op_kernel_type_str_map_.size());
+  for (auto it = op_kernel_type_str_map_.begin(); it != op_kernel_type_str_map_.end(); ++it) {
+    sorted_op_kernel_type_str_map_its.push_back(it);
+  }
+  std::sort(sorted_op_kernel_type_str_map_its.begin(), sorted_op_kernel_type_str_map_its.end(),
+            [](OpKernelTypeStrMap::const_iterator a, OpKernelTypeStrMap::const_iterator b) {
+              return a->first < b->first;
+            });
+
   std::vector<fb::Offset<fbs::OpIdKernelTypeStrArgsEntry>> fbs_op_kernel_type_str_args{};
   fbs_op_kernel_type_str_args.reserve(op_kernel_type_str_map_.size());
 
-  for (const auto& [op_id, kernel_type_str_map] :
-       op_kernel_type_str_map_) {
+  for (const auto op_kernel_type_str_map_it : sorted_op_kernel_type_str_map_its) {
+    const auto& [op_id, kernel_type_str_map] = *op_kernel_type_str_map_it;
+
     std::vector<fb::Offset<fbs::KernelTypeStrArgsEntry>> fbs_kernel_type_str_args{};
     fbs_kernel_type_str_args.reserve(kernel_type_str_map.size());
 
@@ -165,16 +165,19 @@ Status KernelTypeStrResolver::SaveToOrtFormat(
       fbs_kernel_type_str_args.push_back(fbs_kernel_type_str_args_entry);
     }
 
+    fb::Offset<fbs::OpIdentifier> fbs_op_id{};
+    ORT_RETURN_IF_ERROR(fbs::utils::SaveOpIdentifierOrtFormat(builder, op_id, fbs_op_id));
+
     auto fbs_op_kernel_type_str_args_entry = fbs::CreateOpIdKernelTypeStrArgsEntry(
         builder,
-        builder.CreateSharedString(OpIdToString(op_id)),
+        fbs_op_id,
         builder.CreateVectorOfSortedTables(&fbs_kernel_type_str_args));
     fbs_op_kernel_type_str_args.push_back(fbs_op_kernel_type_str_args_entry);
   }
 
   fbs_kernel_type_str_resolver = fbs::CreateKernelTypeStrResolver(
       builder,
-      builder.CreateVectorOfSortedTables(&fbs_op_kernel_type_str_args));
+      builder.CreateVector(fbs_op_kernel_type_str_args));
   return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -219,7 +222,9 @@ Status KernelTypeStrResolver::LoadFromOrtFormat(const fbs::KernelTypeStrResolver
                         fbs::utils::kInvalidOrtFormatModelMessage);
     }
 
-    const auto [it, inserted] = op_kernel_type_str_map.try_emplace(OpIdFromString(fbs_op_id->str()),
+    OpIdentifier op_id;
+    ORT_RETURN_IF_ERROR(fbs::utils::LoadOpIdentifierOrtFormat(*fbs_op_id, op_id));
+    const auto [it, inserted] = op_kernel_type_str_map.try_emplace(std::move(op_id),
                                                                    std::move(kernel_type_str_map));
     ORT_RETURN_IF_NOT(inserted, "Duplicate entry for op id: ", it->first, ". ",
                       fbs::utils::kInvalidOrtFormatModelMessage);
