@@ -28,9 +28,8 @@ Status AddNnapiTranspose(ModelBuilder& model_builder,
   if (output_shape == nullptr) {
     auto& shaper(model_builder.GetShaper());
 
-    auto calculate_transpose_output_shape = [&](const std::string& data_input,
-                                                const std::string& output,
-                                                const gsl::span<const int32_t> perm) -> Status {
+    // Calculate transpose output shape
+    {
       const Shape& input_dimen = shaper[data_input];
       ORT_RETURN_IF_NOT(perm.size() == input_dimen.size(), "Invalid perm is given!");
       size_t size = input_dimen.size();
@@ -39,9 +38,7 @@ Status AddNnapiTranspose(ModelBuilder& model_builder,
         output_dimen[i] = input_dimen[perm[i]];
 
       shaper.AddShape(output, output_dimen);
-      return Status::OK();
-    };
-    ORT_RETURN_IF_ERROR(calculate_transpose_output_shape(data_input, output, perm));
+    }
     output_shape = &shaper[output];
   }
 
@@ -69,9 +66,8 @@ Status AddNnapiReshape(ModelBuilder& model_builder,
                        const std::string& output, const Shape* output_shape) {
   if (output_shape == nullptr) {
     auto& shaper = model_builder.GetShaper();
-    auto calculate_reshape_output_shape = [&](const std::string& data_input,
-                                              const std::vector<int32_t>& shape_value,
-                                              const std::string& output) -> Status {
+    // Calculate reshape output shape
+    {
       const Shape& input_dimen = shaper[data_input];
       uint32_t input_size = Product(input_dimen);
       Shape output_dimen(shape_value.size());
@@ -102,9 +98,7 @@ Status AddNnapiReshape(ModelBuilder& model_builder,
       ORT_RETURN_IF_NOT(capacity == input_size, "Invalid shape is given!");
 
       shaper.AddShape(output, output_dimen);
-      return Status::OK();
-    };
-    ORT_RETURN_IF_ERROR(calculate_reshape_output_shape(data_input, shape_value, output));
+    }
     output_shape = &shaper[output];
   }
 
@@ -142,9 +136,8 @@ Status AddNnapiSplit(ModelBuilder& model_builder,
   const auto input_rank = shaper[input].size();
   axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_rank));
 
-  auto calculate_split_output_shape = [&](const std::string& input,
-                                          int32_t axis,
-                                          const std::vector<std::string>& outputs) -> Status {
+  // Calculate split output shape
+  {
     const auto& input_shape = shaper[input];
     const auto count = gsl::narrow<int32_t>(outputs.size());
 
@@ -156,10 +149,8 @@ Status AddNnapiSplit(ModelBuilder& model_builder,
     for (const auto& output_name : outputs) {
       shaper.AddShape(output_name, output_shape);
     }
-    return Status::OK();
-  };
+  }
 
-  ORT_RETURN_IF_ERROR(calculate_split_output_shape(input, axis, outputs));
   InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ORT_RETURN_IF_ERROR(AddScalarOperand(model_builder, input_indices, axis));
@@ -409,9 +400,8 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
       const int32_t axis = 0;
       ORT_RETURN_IF_ERROR(AddScalarOperand(model_builder, input_indices, axis));
 
-      auto calculate_concat_output_shape = [&](const std::vector<std::string>& inputs,
-                                               const std::string& output,
-                                               const int32_t axis) -> Status {
+      // Calculate_concat_output_shape
+      {
         std::vector<Shape> dimens;
         for (const auto& input_name : inputs) {
           const Shape& dimen = shaper[input_name];
@@ -430,10 +420,8 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
           }
         }
         shaper.AddShape(output, output_dimen);
-        return Status::OK();
-      };
+      }
 
-      ORT_RETURN_IF_ERROR(calculate_concat_output_shape(inputs, output, axis));
       OperandType output_operand_type = operand_types.at(inputs[0]);
       output_operand_type.SetDimensions(shaper[output]);
       ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CONCATENATION,
