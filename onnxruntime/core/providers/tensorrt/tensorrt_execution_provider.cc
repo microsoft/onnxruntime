@@ -179,6 +179,16 @@ bool CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const 
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
 }
 
+template <>
+bool CudaCall<cublasStatus_t, false>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg) {
+  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
+}
+
+template <>
+bool CudaCall<cudnnStatus_t, false>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg) {
+  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
+}
+
 class Memcpy final : public OpKernel {
  public:
   Memcpy(const OpKernelInfo& info) : OpKernel(info) {}
@@ -268,7 +278,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     external_stream_ = true;
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
     CUBLAS_CALL(cublasCreate(&external_cublas_handle_));
-    CUBLAS_CALL(cublasSetStream(cublas_handle_, stream_));
+    CUBLAS_CALL(cublasSetStream(external_cublas_handle_, stream_));
     CUDNN_CALL(cudnnCreate(&external_cudnn_handle_));
     CUDNN_CALL(cudnnSetStream(external_cudnn_handle_, stream_));
   }
@@ -456,6 +466,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
+  if (external_stream_) {
+    CUBLAS_CALL(cublasDestroy(external_cublas_handle_));
+    CUDNN_CALL(cudnnDestroy(external_cudnn_handle_));
+  }
 }
 
 AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {

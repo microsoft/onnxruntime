@@ -3,6 +3,8 @@
 
 #pragma once
 #include <ctime>
+#include <cudnn.h>
+#include <cublas_v2.h>
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
 #include "core/platform/ort_mutex.h"
