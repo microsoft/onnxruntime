@@ -10,7 +10,6 @@ import argparse
 import os
 import pty
 import shlex
-import subprocess
 import sys
 from typing import List, Optional
 
