@@ -84,8 +84,6 @@ for entry in BUILDS:
         + " "
         + entry["wasm_flags"]
     )
-    print(ROOT_DIR)
-    print(command)
     with subprocess.Popen(command, shell=True, cwd=ROOT_DIR) as p:
         p.wait()
         if not os.path.exists(os.path.join(BINARIES_DIR, entry["dir"], CONFIGURATION, entry["wasm_file_name"])) and (
@@ -116,6 +114,5 @@ for entry in JS_FILES:
 
 #### Build NPM package
 for entry in NPM_BUILD_DIR:
-    print(command)
     with subprocess.Popen(entry["command"], shell=True, cwd=entry["path"]) as p:
         p.wait()
