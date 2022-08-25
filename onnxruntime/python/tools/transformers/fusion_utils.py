@@ -98,15 +98,24 @@ class FusionUtils:
         if not node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
             logger.debug(f"Provided node is not a Q/DQ node. Op Type: {node.op_type}")
 
-        if model.get_constant_value(node.input[1]) is None:
+        scale = model.get_constant_value(node.input[1])
+
+        # Scale is not constant
+        if scale is None:
+            return False
+
+        # Not per-tensor quantization
+        if scale.ndim != 0:
             return False
 
         # If the Q/DQ node has no zero point input, it is assumed to be 0 (per ONNX spec)
-        if len(node.input) != 3:
+        if len(node.input) == 2:
             return True
 
         # Zero point should be constant and should have a value of 0
         zero_point = model.get_constant_value(node.input[2])
+
+        # Zero point is not constant or zero point is not zero
         if zero_point is None or zero_point != 0:
             return False
 
