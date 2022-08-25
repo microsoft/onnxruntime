@@ -16,6 +16,7 @@ from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationT
 from fusion_options import FusionOptions
 from fusion_qordered_gelu import FusionQOrderedGelu
 from fusion_qordered_layernorm import FusionQOrderedLayerNormalization
+from fusion_qordered_matmul import FusionQOrderedMatMul, FusionQOrderedMatMulFromGemm
 from fusion_reshape import FusionReshape
 from fusion_shape import FusionShape
 from fusion_skiplayernorm import FusionBiasSkipLayerNormalization, FusionSkipLayerNormalization
@@ -103,6 +104,13 @@ class BertOnnxModel(OnnxModel):
 
     def fuse_skip_layer_norm(self):
         fusion = FusionSkipLayerNormalization(self)
+        fusion.apply()
+
+    def fuse_qordered_mamtul(self):
+        fusion = FusionQOrderedMatMul(self)
+        fusion.apply()
+
+        fusion = FusionQOrderedMatMulFromGemm(self)
         fusion.apply()
 
     def get_graph_inputs_from_node_type(self, op_type: str, input_indices: List[int], casted: bool):
@@ -374,6 +382,11 @@ class BertOnnxModel(OnnxModel):
                 self.attention_mask.set_mask_format(options.attention_mask_format)
             self.fuse_attention()
 
+        # Perform the MatMul fusion after the Attention fusion
+        # as we don't want to fuse the MatMuls inside the Attention
+        if (options is None) or options.enable_qordered_matmul:
+            self.fuse_qordered_mamtul()
+
         self.fuse_shape()
 
         if (options is None) or options.enable_embed_layer_norm:
@@ -420,6 +433,7 @@ class BertOnnxModel(OnnxModel):
             "LayerNormalization",
             "QOrderedLayerNormalization",
             "SkipLayerNormalization",
+            "QOrderedMatMul"
         ]
         for op in ops:
             nodes = self.get_nodes_by_op_type(op)
