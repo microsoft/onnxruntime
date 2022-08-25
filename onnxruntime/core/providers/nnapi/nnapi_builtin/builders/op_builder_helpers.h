@@ -47,4 +47,7 @@ bool IsSupportedBatchMatMul(const NodeUnit& node_unit, int32_t nnapi_feature_lev
 // note: the pre-conditions of this function are checked in IsSupportedBatchMatMul()
 Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit);
 
+// performs broadcasting operation on two shapes to make them compatible
+Status PerformBroadcasting(const Shape& shape1, const Shape& shape2, Shape& output_shape);
+
 }  // namespace onnxruntime::nnapi::op_builder_helpers

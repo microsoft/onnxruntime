@@ -117,29 +117,9 @@ static Status AddNnapiBatchNormalization(ModelBuilder& model_builder,
     const Shape& shape2 = shaper[input2_name];
 
     // broadcasting support
-    bool shape1IsBigger = shape1.size() >= shape2.size();
-    auto max_shape = shape1IsBigger ? shape1 : shape2;
-    auto min_shape = shape1IsBigger ? shape2 : shape1;
-    for (int i = (int)max_shape.size() - 1,
-             j = (int)min_shape.size() - 1;
-         i >= 0 && j >= 0;
-         i--, j--) {
-      int dim_max_shape = max_shape[i];
-      int dim_min_shape = min_shape[j];
-      if (dim_max_shape != dim_min_shape) {
-        ORT_RETURN_IF_NOT(dim_max_shape == 1 || dim_min_shape == 1,
-                          "Dimensions are not compatible, dim1: ", std::to_string(dim_max_shape),
-                          "dim2: ", std::to_string(dim_min_shape));
-      }
-
-      if (dim_max_shape == 0 || dim_min_shape == 0) {
-        max_shape[i] = 0;
-      } else if (dim_max_shape < dim_min_shape) {
-        max_shape[i] = dim_min_shape;
-      }
-    }
-
-    shaper.AddShape(output_name, max_shape);
+    Shape output_shape;
+    ORT_RETURN_IF_ERROR(op_builder_helpers::PerformBroadcasting(shape1, shape2, output_shape));
+    shaper.AddShape(output_name, output_shape);
     return Status::OK();
   };
 
