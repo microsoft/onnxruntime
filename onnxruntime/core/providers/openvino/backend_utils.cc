@@ -8,7 +8,6 @@
 #include <fstream>
 
 #include "ov_interface.h"
-#include <ngraph/frontend/onnx_import/onnx.hpp>
 #include <ngraph/pass/convert_fp32_to_fp16.hpp>
 #include <ngraph/pass/constant_folding.hpp>
 #include "core/providers/shared_library/provider_api.h"

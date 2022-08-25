@@ -1382,7 +1382,7 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
     return false;
   }
 
-  //Check 3b
+  // Check 3b
   const auto opset = op_map.find(domain);
   const auto op_fun = ops_supported_as_function.find(node->OpType());
   if (opset == op_map.end()) {

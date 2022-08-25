@@ -9,7 +9,6 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "../backend_utils.h"
-#include <ngraph/frontend/onnx_import/onnx.hpp>
 #include <ngraph/pass/constant_folding.hpp>
 #include "basic_backend.h"
 #include "../backend_manager.h"
