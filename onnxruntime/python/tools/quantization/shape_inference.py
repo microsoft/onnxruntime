@@ -36,7 +36,7 @@ def quant_pre_process(
 ) -> None:
     """Shape inference and model optimization, in preparation for quantization.
 
-    Arg:
+    Args:
         input_model_path: Path to the input model file")
         output_model_path: Path to the output model file
         skip_optimization: Skip model optimization step if true. This may result in ONNX shape
