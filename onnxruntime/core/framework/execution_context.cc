@@ -9,8 +9,7 @@ namespace onnxruntime {
 
 class DeviceStreamCollectionImpl {
  public:
-  DeviceStreamCollectionImpl(size_t num_streams, const SessionState& sess_state) : 
-      num_streams_(num_streams), sess_state_(sess_state) {
+  DeviceStreamCollectionImpl(size_t num_streams, const SessionState& sess_state) : num_streams_(num_streams), sess_state_(sess_state) {
     device_streams_.resize(num_streams, nullptr);
   }
 
@@ -27,7 +26,7 @@ class DeviceStreamCollectionImpl {
         for (auto& ep : providers) {
           auto& allocators = ep->GetAllocators();
           for (auto& alloc : allocators) {
-            if (alloc->Info().device == stream->device && 
+            if (alloc->Info().device == stream->device &&
                 alloc->Info().alloc_type == OrtArenaAllocator) {
               auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
               auto* stream_aware_alloc = arena_alloc->AsStreamAwareAreana();
@@ -65,9 +64,7 @@ class DeviceStreamCollectionImpl {
   const SessionState& sess_state_;
 };
 
-
-DeviceStreamCollection::DeviceStreamCollection(size_t num_streams, const SessionState& sess_state) : 
-    impl_(std::make_unique<DeviceStreamCollectionImpl>(num_streams, sess_state)) {}
+DeviceStreamCollection::DeviceStreamCollection(size_t num_streams, const SessionState& sess_state) : impl_(std::make_unique<DeviceStreamCollectionImpl>(num_streams, sess_state)) {}
 
 DeviceStreamCollection::~DeviceStreamCollection() {}
 
@@ -109,7 +106,7 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
   for (size_t i = 0; i < notification_owners.size(); ++i) {
     auto& stream = device_streams[notification_owners[i]];
     if (stream)
-      notifications.emplace_back(std::move(stream->CreateNotification(/*TODO: calculate num of consumers*/ 0)));
+      notifications.emplace_back(stream->CreateNotification(/*TODO: calculate num of consumers*/ 0));
     else
       notifications.push_back(nullptr);
   }
@@ -164,7 +161,7 @@ void ExecutionContext::AddTask() {
 
 void ExecutionContext::WaitAll() {
   while (remain_tasks_.Get())
-   onnxruntime::concurrency::SpinPause();
+    onnxruntime::concurrency::SpinPause();
 }
 
 void ExecutionContext::SetStatus(Status& status) {
@@ -190,7 +187,6 @@ void ExecutionContext::RecycleNodeInputs(onnxruntime::NodeIndex node_index) {
 }
 
 void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
-
   if (!ctx.TaskStatus().IsOK()) {
     // already in bad status, terminate it
     ctx.CompleteTask();
@@ -229,13 +225,13 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
       });
     }
     if (!status.IsOK()) {
-      //terminate it
+      // terminate it
       ctx.SetStatus(status);
       ctx.CompleteTask();
       return;
     }
     if (!continue_flag) {
-      //break but not terminate
+      // break but not terminate
       ctx.CompleteTask();
       return;
     }
@@ -247,8 +243,8 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
 }
 
 void ScheduleDownstream(ExecutionContext& ctx,
-    onnxruntime::NotificationIndex notification_index,
-    bool single_thread_mode) {
+                        onnxruntime::NotificationIndex notification_index,
+                        bool single_thread_mode) {
   auto* ctx_ptr = &ctx;
   auto* plan = ctx.GetSessionState().GetExecutionPlan();
   auto& downstream_map = plan->downstream_map;
@@ -259,12 +255,11 @@ void ScheduleDownstream(ExecutionContext& ctx,
       // increase the task count before schedule down-stream
       ctx.AddTask();
       concurrency::ThreadPool::Schedule(tp,
-          [ctx_ptr, downstream]() {
-        RunSince(downstream.first, *ctx_ptr, downstream.second);
-      });
+                                        [ctx_ptr, downstream]() {
+                                          RunSince(downstream.first, *ctx_ptr, downstream.second);
+                                        });
     }
   }
-
 }
 
-}
+}  // namespace onnxruntime
