@@ -67,7 +67,7 @@ class ConvGrad final : public CudaKernel {
  private:
   Status ComputeWeightGradient(onnxruntime::Stream* stream) const;
   Status ComputeInputGradient(onnxruntime::Stream* stream) const;
-  Status ComputeBiasGradient(onnxruntime::Stream* stream) const;
+  Status ComputeBiasGradient() const;
 };
 
 }  // namespace cuda

@@ -87,25 +87,25 @@ Status SliceOutUnwantedOutputSection(cudaStream_t stream,
 
 template <typename T>
 Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const {
-  //set X
+  // set X
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
   const auto x_dims = x_shape.AsShapeVector();
   s_.x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   s_.element_size = X->DataType()->Size();
-  //set W
+  // set W
   const Tensor* W = context->Input<Tensor>(1);
   const TensorShape& w_shape = W->Shape();
   auto w_dims = w_shape.AsShapeVector();
   s_.w_data = reinterpret_cast<const CudaT*>(W->Data<T>());
-  //set B
+  // set B
   if (context->InputCount() >= 3) {
     const Tensor* B = context->Input<Tensor>(2);
     s_.b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
   } else {
     s_.b_data = nullptr;
   }
-  //set Z
+  // set Z
   if (context->InputCount() >= 4) {
     const Tensor* Z = context->Input<Tensor>(3);
     ORT_RETURN_IF_ERROR(s_.z_tensor.Set(Z->Shape().GetDims(), CudnnTensor::GetDataType<CudaT>()));
@@ -240,7 +240,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = b_shape[0];
       ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
-      //s_.b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
+      // s_.b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
     } else if (bias_expected) {
       TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = w_dims[0];
@@ -256,7 +256,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 
     if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
       // set math type to tensor core before algorithm search
-      if constexpr(std::is_same<T, MLFloat16>::value)
+      if constexpr (std::is_same<T, MLFloat16>::value)
         CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
 
       cudnnConvolutionFwdAlgoPerf_t perf;
@@ -272,31 +272,31 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
           // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
           IAllocatorUniquePtr<void> algo_search_workspace = GetTransientScratchBuffer<void>(max_ws_size);
           CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionForwardAlgorithmEx(
-                                    GetCudnnHandle(context),
-                                    s_.x_tensor,
-                                    s_.x_data,
-                                    s_.w_desc,
-                                    s_.w_data,
-                                    s_.conv_desc,
-                                    s_.y_tensor,
-                                    s_.y_data,
-                                    1,            // requestedAlgoCount
-                                    &algo_count,  // returnedAlgoCount
-                                    &perf,
-                                    algo_search_workspace.get(),
-                                    max_ws_size));
+              GetCudnnHandle(context),
+              s_.x_tensor,
+              s_.x_data,
+              s_.w_desc,
+              s_.w_data,
+              s_.conv_desc,
+              s_.y_tensor,
+              s_.y_data,
+              1,            // requestedAlgoCount
+              &algo_count,  // returnedAlgoCount
+              &perf,
+              algo_search_workspace.get(),
+              max_ws_size));
           break;
         }
         case 1:
           CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionForwardAlgorithm_v7(
-                                    GetCudnnHandle(context),
-                                    s_.x_tensor,
-                                    s_.w_desc,
-                                    s_.conv_desc,
-                                    s_.y_tensor,
-                                    1,            // requestedAlgoCount
-                                    &algo_count,  // returnedAlgoCount
-                                    &perf));
+              GetCudnnHandle(context),
+              s_.x_tensor,
+              s_.w_desc,
+              s_.conv_desc,
+              s_.y_tensor,
+              1,            // requestedAlgoCount
+              &algo_count,  // returnedAlgoCount
+              &perf));
           break;
 
         default:
@@ -315,7 +315,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     s_.algo = perf.algo;
     s_.workspace_bytes = perf.memory;
   } else {
-    //set Y
+    // set Y
     s_.Y = context->Output(0, s_.y_dims);
     if (s_.Y->Shape().Size() == 0) {
       return Status::OK();
@@ -333,7 +333,6 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 template <typename T>
 Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   std::lock_guard<OrtMutex> lock(s_.mutex);
-  auto device_stream = Stream(context);
   ORT_RETURN_IF_ERROR(UpdateState(context));
   if (s_.Y->Shape().Size() == 0) {
     return Status::OK();
