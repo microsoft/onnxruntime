@@ -121,9 +121,7 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
                               f_B.get(),
                               f_mean.get(),
                               f_var.get(),
-                              epsilon_),
-                          GetCudnnHandle(p_op_kernel_context),
-                          Stream(p_op_kernel_context));
+                              epsilon_));
 
     return Status::OK();
   }
@@ -155,9 +153,7 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
                               running_var_data,
                               epsilon_,
                               saved_mean_data,
-                              saved_inv_var_data),
-                          GetCudnnHandle(p_op_kernel_context),
-                          Stream(p_op_kernel_context));
+                              saved_inv_var_data));
     // in BatchNorm Forward Inference mode if only Y output present
   } else {
     CUDNN_RETURN_IF_ERROR(BatchNormalizationForwardInferenceHelper(
@@ -174,9 +170,7 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
                               b_data,
                               mean_data,
                               var_data,
-                              epsilon_),
-                          GetCudnnHandle(p_op_kernel_context),
-                          Stream(p_op_kernel_context));
+                              epsilon_));
   }
   return Status::OK();
 }

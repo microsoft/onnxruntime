@@ -170,11 +170,11 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
                                                           OrtArenaCfg* /*default_memory_arena_cfg*/) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
 
-  CUBLAS_CONFIG_CALL_TRHOW(cublasCreate(&cublas_handle_));
-  CUBLAS_CONFIG_CALL_TRHOW(cublasSetStream(cublas_handle_, stream));
+  CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
+  CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
 
-  CUDNN_CONFIG_CALL_THROW(cudnnCreate(&cudnn_handle_));
-  CUDNN_CONFIG_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
+  CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
+  CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   cuda_graph_.SetStream(stream);
@@ -188,13 +188,13 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   // here may be bad, and the destroy calls can throw.
   // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-dtor-noexcept
   try {
-    CUBLAS_CONFIG_CALL(cublasDestroy(cublas_handle_));
+    CUBLAS_CALL(cublasDestroy(cublas_handle_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cublasDestroy threw:" << ex.what();
   }
 
   try {
-    CUDNN_CONFIG_CALL(cudnnDestroy(cudnn_handle_));
+    CUDNN_CALL(cudnnDestroy(cudnn_handle_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
   }
@@ -2523,7 +2523,20 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
 }
 
 void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
-  RegisterCudaStreamHandles(stream_handle_registry, OrtDevice::GPU, stream_, use_ep_level_unified_stream_);
+  if (use_ep_level_unified_stream_)
+    RegisterCudaStreamHandles(stream_handle_registry, 
+        OrtDevice::GPU, 
+        stream_, 
+        use_ep_level_unified_stream_,
+        GetPerThreadContext().CudnnHandle(),
+        GetPerThreadContext().CublasHandle());
+  else
+    RegisterCudaStreamHandles(stream_handle_registry,
+                              OrtDevice::GPU,
+                              stream_,
+                              use_ep_level_unified_stream_,
+                              nullptr,
+                              nullptr);
 }
 
 }  // namespace onnxruntime

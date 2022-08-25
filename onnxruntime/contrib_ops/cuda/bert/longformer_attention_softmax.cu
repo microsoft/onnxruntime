@@ -32,7 +32,7 @@ using namespace onnxruntime::cuda;
 using namespace cub;
 
 #define CHECK(expr)         \
-  if (!CUBLAS_CONFIG_CALL(expr)) { \
+  if (!CUBLAS_CALL(expr)) { \
     return false;           \
   }
 

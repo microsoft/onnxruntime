@@ -1,0 +1,213 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.LogLevel
+  commentId: T:Microsoft.ML.OnnxRuntime.LogLevel
+  id: LogLevel
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.LogLevel.Error
+  - Microsoft.ML.OnnxRuntime.LogLevel.Fatal
+  - Microsoft.ML.OnnxRuntime.LogLevel.Info
+  - Microsoft.ML.OnnxRuntime.LogLevel.Verbose
+  - Microsoft.ML.OnnxRuntime.LogLevel.Warning
+  langs:
+  - csharp
+  - vb
+  name: LogLevel
+  nameWithType: LogLevel
+  fullName: Microsoft.ML.OnnxRuntime.LogLevel
+  type: Enum
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: LogLevel
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 23
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nLogging level used to specify amount of logging when\ncreating environment. The lower the value is the more logging\nwill be output. A specific value output includes everything\nthat higher values output.\n"
+  example: []
+  syntax:
+    content: public enum LogLevel
+    content.vb: Public Enum LogLevel
+  modifiers.csharp:
+  - public
+  - enum
+  modifiers.vb:
+  - Public
+  - Enum
+- uid: Microsoft.ML.OnnxRuntime.LogLevel.Verbose
+  commentId: F:Microsoft.ML.OnnxRuntime.LogLevel.Verbose
+  id: Verbose
+  parent: Microsoft.ML.OnnxRuntime.LogLevel
+  langs:
+  - csharp
+  - vb
+  name: Verbose
+  nameWithType: LogLevel.Verbose
+  fullName: Microsoft.ML.OnnxRuntime.LogLevel.Verbose
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Verbose
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 25
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: Verbose = 0
+    return:
+      type: Microsoft.ML.OnnxRuntime.LogLevel
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.LogLevel.Info
+  commentId: F:Microsoft.ML.OnnxRuntime.LogLevel.Info
+  id: Info
+  parent: Microsoft.ML.OnnxRuntime.LogLevel
+  langs:
+  - csharp
+  - vb
+  name: Info
+  nameWithType: LogLevel.Info
+  fullName: Microsoft.ML.OnnxRuntime.LogLevel.Info
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Info
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 26
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: Info = 1
+    return:
+      type: Microsoft.ML.OnnxRuntime.LogLevel
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.LogLevel.Warning
+  commentId: F:Microsoft.ML.OnnxRuntime.LogLevel.Warning
+  id: Warning
+  parent: Microsoft.ML.OnnxRuntime.LogLevel
+  langs:
+  - csharp
+  - vb
+  name: Warning
+  nameWithType: LogLevel.Warning
+  fullName: Microsoft.ML.OnnxRuntime.LogLevel.Warning
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Warning
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 27
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: Warning = 2
+    return:
+      type: Microsoft.ML.OnnxRuntime.LogLevel
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.LogLevel.Error
+  commentId: F:Microsoft.ML.OnnxRuntime.LogLevel.Error
+  id: Error
+  parent: Microsoft.ML.OnnxRuntime.LogLevel
+  langs:
+  - csharp
+  - vb
+  name: Error
+  nameWithType: LogLevel.Error
+  fullName: Microsoft.ML.OnnxRuntime.LogLevel.Error
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Error
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 28
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: Error = 3
+    return:
+      type: Microsoft.ML.OnnxRuntime.LogLevel
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.LogLevel.Fatal
+  commentId: F:Microsoft.ML.OnnxRuntime.LogLevel.Fatal
+  id: Fatal
+  parent: Microsoft.ML.OnnxRuntime.LogLevel
+  langs:
+  - csharp
+  - vb
+  name: Fatal
+  nameWithType: LogLevel.Fatal
+  fullName: Microsoft.ML.OnnxRuntime.LogLevel.Fatal
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Fatal
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 29
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: Fatal = 4
+    return:
+      type: Microsoft.ML.OnnxRuntime.LogLevel
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: Microsoft.ML.OnnxRuntime.LogLevel
+  commentId: T:Microsoft.ML.OnnxRuntime.LogLevel
+  parent: Microsoft.ML.OnnxRuntime
+  name: LogLevel
+  nameWithType: LogLevel
+  fullName: Microsoft.ML.OnnxRuntime.LogLevel

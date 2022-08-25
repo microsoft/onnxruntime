@@ -254,9 +254,9 @@ class CudnnReduceDescriptor final {
 
   Status Set(cudnnReduceTensorOp_t op, cudnnDataType_t type, cudnnReduceTensorIndices_t indices) {
     if (!desc_)
-      CUDNN_CONFIG_RETURN_IF_ERROR(cudnnCreateReduceTensorDescriptor(&desc_));
+      CUDNN_RETURN_IF_ERROR(cudnnCreateReduceTensorDescriptor(&desc_));
 
-    CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetReduceTensorDescriptor(
+    CUDNN_RETURN_IF_ERROR(cudnnSetReduceTensorDescriptor(
         desc_,
         op,
         type,

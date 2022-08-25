@@ -85,9 +85,7 @@ Status LRN<T>::ComputeInternal(OpKernelContext* context) const {
                             reinterpret_cast<const CudaT*>(X->Data<T>()),
                             &zero,
                             x_tensor,
-                            reinterpret_cast<CudaT*>(Y->MutableData<T>())),
-                        GetCudnnHandle(context),
-                        Stream(context));
+                            reinterpret_cast<CudaT*>(Y->MutableData<T>())));
 
   return Status::OK();
 }
@@ -104,9 +102,9 @@ CudnnLRNDescriptor::~CudnnLRNDescriptor() {
 
 Status CudnnLRNDescriptor::Set(uint32_t N, double alpha, double beta, double K) {
   if (!desc_)
-    CUDNN_CONFIG_RETURN_IF_ERROR(cudnnCreateLRNDescriptor(&desc_));
+    CUDNN_RETURN_IF_ERROR(cudnnCreateLRNDescriptor(&desc_));
 
-  CUDNN_CONFIG_RETURN_IF_ERROR(SetLRNDescriptorHelper(desc_, N, alpha, beta, K));
+  CUDNN_RETURN_IF_ERROR(SetLRNDescriptorHelper(desc_, N, alpha, beta, K));
   return Status::OK();
 }
 

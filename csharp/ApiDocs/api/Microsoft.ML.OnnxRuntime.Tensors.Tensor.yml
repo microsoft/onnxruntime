@@ -1,0 +1,706 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  id: Tensor
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  children:
+  - Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateFromDiagonal``1(Microsoft.ML.OnnxRuntime.Tensors.Tensor{``0})
+  - Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateFromDiagonal``1(Microsoft.ML.OnnxRuntime.Tensors.Tensor{``0},System.Int32)
+  - Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity``1(System.Int32)
+  - Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity``1(System.Int32,System.Boolean)
+  - Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity``1(System.Int32,System.Boolean,``0)
+  langs:
+  - csharp
+  - vb
+  name: Tensor
+  nameWithType: Tensor
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  type: Class
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Tensor
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 368
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nVarious methods for creating and manipulating Tensor&lt;T>\n"
+  example: []
+  syntax:
+    content: public static class Tensor
+    content.vb: Public Module Tensor
+  inheritance:
+  - System.Object
+  inheritedMembers:
+  - System.Object.Equals(System.Object)
+  - System.Object.Equals(System.Object,System.Object)
+  - System.Object.GetHashCode
+  - System.Object.GetType
+  - System.Object.MemberwiseClone
+  - System.Object.ReferenceEquals(System.Object,System.Object)
+  - System.Object.ToString
+  modifiers.csharp:
+  - public
+  - static
+  - class
+  modifiers.vb:
+  - Public
+  - Module
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity``1(System.Int32)
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity``1(System.Int32)
+  id: CreateIdentity``1(System.Int32)
+  parent: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  langs:
+  - csharp
+  - vb
+  name: CreateIdentity<T>(Int32)
+  nameWithType: Tensor.CreateIdentity<T>(Int32)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity<T>(System.Int32)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: CreateIdentity
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 376
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nCreates an identity tensor of the specified size.  An identity tensor is a two dimensional tensor with 1s in the diagonal.\n"
+  example: []
+  syntax:
+    content: public static Tensor<T> CreateIdentity<T>(int size)
+    parameters:
+    - id: size
+      type: System.Int32
+      description: Width and height of the identity tensor to create.
+    typeParameters:
+    - id: T
+      description: type contained within the Tensor.  Typically a value type such as int, double, float, etc.
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.Tensor{{T}}
+      description: a <code data-dev-comment-type="paramref" class="paramref">size</code> by <code data-dev-comment-type="paramref" class="paramref">size</code> with 1s along the diagonal and zeros elsewhere.
+    content.vb: Public Shared Function CreateIdentity(Of T)(size As Integer) As Tensor(Of T)
+  overload: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity*
+  nameWithType.vb: Tensor.CreateIdentity(Of T)(Int32)
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity(Of T)(System.Int32)
+  name.vb: CreateIdentity(Of T)(Int32)
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity``1(System.Int32,System.Boolean)
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity``1(System.Int32,System.Boolean)
+  id: CreateIdentity``1(System.Int32,System.Boolean)
+  parent: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  langs:
+  - csharp
+  - vb
+  name: CreateIdentity<T>(Int32, Boolean)
+  nameWithType: Tensor.CreateIdentity<T>(Int32, Boolean)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity<T>(System.Int32, System.Boolean)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: CreateIdentity
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 388
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nCreates an identity tensor of the specified size and layout (row vs column major).  An identity tensor is a two dimensional tensor with 1s in the diagonal.\n"
+  example: []
+  syntax:
+    content: public static Tensor<T> CreateIdentity<T>(int size, bool columMajor)
+    parameters:
+    - id: size
+      type: System.Int32
+      description: Width and height of the identity tensor to create.
+    - id: columMajor
+      type: System.Boolean
+      description: '>False to indicate that the first dimension is most minor (closest) and the last dimension is most major (farthest): row-major.  True to indicate that the last dimension is most minor (closest together) and the first dimension is most major (farthest apart): column-major.'
+    typeParameters:
+    - id: T
+      description: type contained within the Tensor.  Typically a value type such as int, double, float, etc.
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.Tensor{{T}}
+      description: a <code data-dev-comment-type="paramref" class="paramref">size</code> by <code data-dev-comment-type="paramref" class="paramref">size</code> with 1s along the diagonal and zeros elsewhere.
+    content.vb: Public Shared Function CreateIdentity(Of T)(size As Integer, columMajor As Boolean) As Tensor(Of T)
+  overload: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity*
+  nameWithType.vb: Tensor.CreateIdentity(Of T)(Int32, Boolean)
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity(Of T)(System.Int32, System.Boolean)
+  name.vb: CreateIdentity(Of T)(Int32, Boolean)
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity``1(System.Int32,System.Boolean,``0)
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity``1(System.Int32,System.Boolean,``0)
+  id: CreateIdentity``1(System.Int32,System.Boolean,``0)
+  parent: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  langs:
+  - csharp
+  - vb
+  name: CreateIdentity<T>(Int32, Boolean, T)
+  nameWithType: Tensor.CreateIdentity<T>(Int32, Boolean, T)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity<T>(System.Int32, System.Boolean, T)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: CreateIdentity
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 401
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nCreates an identity tensor of the specified size and layout (row vs column major) using the specified one value.  An identity tensor is a two dimensional tensor with 1s in the diagonal.  This may be used in case T is a type that doesn&apos;t have a known 1 value.\n"
+  example: []
+  syntax:
+    content: public static Tensor<T> CreateIdentity<T>(int size, bool columMajor, T oneValue)
+    parameters:
+    - id: size
+      type: System.Int32
+      description: Width and height of the identity tensor to create.
+    - id: columMajor
+      type: System.Boolean
+      description: '>False to indicate that the first dimension is most minor (closest) and the last dimension is most major (farthest): row-major.  True to indicate that the last dimension is most minor (closest together) and the first dimension is most major (farthest apart): column-major.'
+    - id: oneValue
+      type: '{T}'
+      description: Value of <code data-dev-comment-type="typeparamref" class="typeparamref">T</code> that is used along the diagonal.
+    typeParameters:
+    - id: T
+      description: type contained within the Tensor.  Typically a value type such as int, double, float, etc.
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.Tensor{{T}}
+      description: a <code data-dev-comment-type="paramref" class="paramref">size</code> by <code data-dev-comment-type="paramref" class="paramref">size</code> with 1s along the diagonal and zeros elsewhere.
+    content.vb: Public Shared Function CreateIdentity(Of T)(size As Integer, columMajor As Boolean, oneValue As T) As Tensor(Of T)
+  overload: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity*
+  nameWithType.vb: Tensor.CreateIdentity(Of T)(Int32, Boolean, T)
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity(Of T)(System.Int32, System.Boolean, T)
+  name.vb: CreateIdentity(Of T)(Int32, Boolean, T)
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateFromDiagonal``1(Microsoft.ML.OnnxRuntime.Tensors.Tensor{``0})
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateFromDiagonal``1(Microsoft.ML.OnnxRuntime.Tensors.Tensor{``0})
+  id: CreateFromDiagonal``1(Microsoft.ML.OnnxRuntime.Tensors.Tensor{``0})
+  parent: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  langs:
+  - csharp
+  - vb
+  name: CreateFromDiagonal<T>(Tensor<T>)
+  nameWithType: Tensor.CreateFromDiagonal<T>(Tensor<T>)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateFromDiagonal<T>(Microsoft.ML.OnnxRuntime.Tensors.Tensor<T>)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: CreateFromDiagonal
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 425
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nCreates a n+1-rank tensor using the specified n-rank diagonal.  Values not on the diagonal will be filled with zeros.\n"
+  example: []
+  syntax:
+    content: public static Tensor<T> CreateFromDiagonal<T>(Tensor<T> diagonal)
+    parameters:
+    - id: diagonal
+      type: Microsoft.ML.OnnxRuntime.Tensors.Tensor{{T}}
+      description: Tensor representing the diagonal to build the new tensor from.
+    typeParameters:
+    - id: T
+      description: type contained within the Tensor.  Typically a value type such as int, double, float, etc.
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.Tensor{{T}}
+      description: A new tensor of the same layout and order as <code data-dev-comment-type="paramref" class="paramref">diagonal</code> of one higher rank, with the values of <code data-dev-comment-type="paramref" class="paramref">diagonal</code> along the diagonal and zeros elsewhere.
+    content.vb: Public Shared Function CreateFromDiagonal(Of T)(diagonal As Tensor(Of T)) As Tensor(Of T)
+  overload: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateFromDiagonal*
+  nameWithType.vb: Tensor.CreateFromDiagonal(Of T)(Tensor(Of T))
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateFromDiagonal(Of T)(Microsoft.ML.OnnxRuntime.Tensors.Tensor(Of T))
+  name.vb: CreateFromDiagonal(Of T)(Tensor(Of T))
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateFromDiagonal``1(Microsoft.ML.OnnxRuntime.Tensors.Tensor{``0},System.Int32)
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateFromDiagonal``1(Microsoft.ML.OnnxRuntime.Tensors.Tensor{``0},System.Int32)
+  id: CreateFromDiagonal``1(Microsoft.ML.OnnxRuntime.Tensors.Tensor{``0},System.Int32)
+  parent: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  langs:
+  - csharp
+  - vb
+  name: CreateFromDiagonal<T>(Tensor<T>, Int32)
+  nameWithType: Tensor.CreateFromDiagonal<T>(Tensor<T>, Int32)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateFromDiagonal<T>(Microsoft.ML.OnnxRuntime.Tensors.Tensor<T>, System.Int32)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: CreateFromDiagonal
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 441
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nCreates a n+1-dimension tensor using the specified n-dimension diagonal at the specified offset \nfrom the center.  Values not on the diagonal will be filled with zeros.\n"
+  example: []
+  syntax:
+    content: public static Tensor<T> CreateFromDiagonal<T>(Tensor<T> diagonal, int offset)
+    parameters:
+    - id: diagonal
+      type: Microsoft.ML.OnnxRuntime.Tensors.Tensor{{T}}
+      description: Tensor representing the diagonal to build the new tensor from.
+    - id: offset
+      type: System.Int32
+      description: "Offset of diagonal to set in returned tensor.  0 for the main diagonal, \nless than zero for diagonals below, greater than zero from diagonals above."
+    typeParameters:
+    - id: T
+      description: "\ntype contained within the Tensor. Typically a value type such as int, double, float, etc."
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.Tensor{{T}}
+      description: "A new tensor of the same layout and order as <code data-dev-comment-type=\"paramref\" class=\"paramref\">diagonal</code> of one higher rank, \nwith the values of <code data-dev-comment-type=\"paramref\" class=\"paramref\">diagonal</code> along the specified diagonal and zeros elsewhere."
+    content.vb: Public Shared Function CreateFromDiagonal(Of T)(diagonal As Tensor(Of T), offset As Integer) As Tensor(Of T)
+  overload: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateFromDiagonal*
+  nameWithType.vb: Tensor.CreateFromDiagonal(Of T)(Tensor(Of T), Int32)
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateFromDiagonal(Of T)(Microsoft.ML.OnnxRuntime.Tensors.Tensor(Of T), System.Int32)
+  name.vb: CreateFromDiagonal(Of T)(Tensor(Of T), Int32)
+references:
+- uid: Microsoft.ML.OnnxRuntime.Tensors
+  commentId: N:Microsoft.ML.OnnxRuntime.Tensors
+  name: Microsoft.ML.OnnxRuntime.Tensors
+  nameWithType: Microsoft.ML.OnnxRuntime.Tensors
+  fullName: Microsoft.ML.OnnxRuntime.Tensors
+- uid: System.Object
+  commentId: T:System.Object
+  parent: System
+  isExternal: true
+  name: Object
+  nameWithType: Object
+  fullName: System.Object
+- uid: System.Object.Equals(System.Object)
+  commentId: M:System.Object.Equals(System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object)
+  nameWithType: Object.Equals(Object)
+  fullName: System.Object.Equals(System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.Equals(System.Object,System.Object)
+  commentId: M:System.Object.Equals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object, Object)
+  nameWithType: Object.Equals(Object, Object)
+  fullName: System.Object.Equals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetHashCode
+  commentId: M:System.Object.GetHashCode
+  parent: System.Object
+  isExternal: true
+  name: GetHashCode()
+  nameWithType: Object.GetHashCode()
+  fullName: System.Object.GetHashCode()
+  spec.csharp:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetType
+  commentId: M:System.Object.GetType
+  parent: System.Object
+  isExternal: true
+  name: GetType()
+  nameWithType: Object.GetType()
+  fullName: System.Object.GetType()
+  spec.csharp:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.MemberwiseClone
+  commentId: M:System.Object.MemberwiseClone
+  parent: System.Object
+  isExternal: true
+  name: MemberwiseClone()
+  nameWithType: Object.MemberwiseClone()
+  fullName: System.Object.MemberwiseClone()
+  spec.csharp:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ReferenceEquals(System.Object,System.Object)
+  commentId: M:System.Object.ReferenceEquals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: ReferenceEquals(Object, Object)
+  nameWithType: Object.ReferenceEquals(Object, Object)
+  fullName: System.Object.ReferenceEquals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ToString
+  commentId: M:System.Object.ToString
+  parent: System.Object
+  isExternal: true
+  name: ToString()
+  nameWithType: Object.ToString()
+  fullName: System.Object.ToString()
+  spec.csharp:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System
+  commentId: N:System
+  isExternal: true
+  name: System
+  nameWithType: System
+  fullName: System
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity
+  name: CreateIdentity
+  nameWithType: Tensor.CreateIdentity
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateIdentity
+- uid: System.Int32
+  commentId: T:System.Int32
+  parent: System
+  isExternal: true
+  name: Int32
+  nameWithType: Int32
+  fullName: System.Int32
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor{{T}}
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.Tensor{``0}
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  definition: Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+  name: Tensor<T>
+  nameWithType: Tensor<T>
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor<T>
+  nameWithType.vb: Tensor(Of T)
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.Tensor(Of T)
+  name.vb: Tensor(Of T)
+  spec.csharp:
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+    name: Tensor
+    nameWithType: Tensor
+    fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  - name: <
+    nameWithType: <
+    fullName: <
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+    name: Tensor
+    nameWithType: Tensor
+    fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  name: Tensor<T>
+  nameWithType: Tensor<T>
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor<T>
+  nameWithType.vb: Tensor(Of T)
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.Tensor(Of T)
+  name.vb: Tensor(Of T)
+  spec.csharp:
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+    name: Tensor
+    nameWithType: Tensor
+    fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  - name: <
+    nameWithType: <
+    fullName: <
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+    name: Tensor
+    nameWithType: Tensor
+    fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Boolean
+  commentId: T:System.Boolean
+  parent: System
+  isExternal: true
+  name: Boolean
+  nameWithType: Boolean
+  fullName: System.Boolean
+- uid: '{T}'
+  commentId: '!:T'
+  definition: T
+  name: T
+  nameWithType: T
+  fullName: T
+- uid: T
+  name: T
+  nameWithType: T
+  fullName: T
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateFromDiagonal*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateFromDiagonal
+  name: CreateFromDiagonal
+  nameWithType: Tensor.CreateFromDiagonal
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor.CreateFromDiagonal

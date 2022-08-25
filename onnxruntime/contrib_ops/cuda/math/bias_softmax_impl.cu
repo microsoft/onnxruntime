@@ -221,7 +221,7 @@ Status BiasSoftmaxImpl(cudaStream_t stream, cudnnHandle_t cudnn_handle, T* outpu
   CudnnTensor input_tensor, output_tensor;
   ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<T>()));
   ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<T>()));
-  return SoftmaxForward(cudnn_handle, stream, &alpha, input_tensor, output_data, &beta, output_tensor, output_data);
+  return SoftmaxForward(cudnn_handle, &alpha, input_tensor, output_data, &beta, output_tensor, output_data);
 }
 
 #define SPECIALIZED_BIAS_SOFTMAX_IMPL(T)                                                                          \

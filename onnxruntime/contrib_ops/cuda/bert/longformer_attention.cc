@@ -136,8 +136,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
         weights_data, n,
         input_data, k,
-        &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop),
-        cublas, stream);
+        &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
   } else {
     // q
     const CudaT* q_weight = weights_data;
@@ -146,8 +145,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
         q_weight, n,
         input_data, k,
-        &zero, q_data, n, device_prop),
-        cublas, stream);
+        &zero, q_data, n, device_prop));
     // k
     const CudaT* k_weight = q_weight + hidden_size * hidden_size;
     CudaT* k_data = q_data + batch_size * sequence_length * hidden_size;
@@ -155,8 +153,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
         k_weight, n,
         input_data, k,
-        &zero, k_data, n, device_prop),
-        cublas, stream);
+        &zero, k_data, n, device_prop));
 
     // v
     const CudaT* v_weight = k_weight + hidden_size * hidden_size;
@@ -165,8 +162,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
         v_weight, n,
         input_data, k,
-        &zero, v_data, n, device_prop),
-        cublas, stream);
+        &zero, v_data, n, device_prop));
   }
 
   // Wait for async copy of batch_global_num
@@ -199,8 +195,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
           reinterpret_cast<const CudaT*>(global_weights->Data<T>()), n,
           input_data, k,
-          &zero, global_gemm_buffer, n, device_prop),
-          cublas, stream);
+          &zero, global_gemm_buffer, n, device_prop));
     } else {
       // global q
       const CudaT* global_q_weight = global_weights_data;
@@ -210,8 +205,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
             cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
             global_q_weight, n,
             input_data, k,
-            &zero, global_q, n, device_prop),
-            cublas, stream);
+            &zero, global_q, n, device_prop));
       } else {
         CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(cublas,
                                                               CUBLAS_OP_N,
@@ -231,8 +225,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                               hidden_size,                    // ldc
                                                               max_num_global * hidden_size,   // strideC
                                                               batch_size,                     // batch count
-                                                              device_prop),
-                                                              cublas, stream);
+                                                              device_prop));
       }
       // global k
       const CudaT* global_k_weight = global_weights_data + hidden_size * hidden_size;
@@ -241,8 +234,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
           global_k_weight, n,
           input_data, k,
-          &zero, global_k, n, device_prop),
-          cublas, stream);
+          &zero, global_k, n, device_prop));
 
       // global v
       const CudaT* global_v_weight = global_k_weight + hidden_size * hidden_size;
@@ -251,8 +243,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
           global_v_weight, n,
           input_data, k,
-          &zero, global_v, n, device_prop),
-          cublas, stream);
+          &zero, global_v, n, device_prop));
     }
   }
 
