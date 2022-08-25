@@ -46,6 +46,12 @@ jobs:
   pool: 'Onnxruntime-Linux-GPU-TensorRT-Perf'
   
   variables:
+    - name: branchName
+      ${{ if startsWith(variables['Build.SourceBranch'], 'refs/heads/') }}:
+        value: $[ replace(variables['Build.SourceBranch'], 'refs/heads/', '') ]
+      ${{ else }}
+        value: $(Build.SourceBranch)
+
     - name: trtEPOptionsArg
       ${{ if not(eq(length(parameters.TrtEPOptions), 0)) }}:
         value: --trt_ep_options ${{ join(',',parameters.TrtEPOptions) }}
@@ -58,7 +64,7 @@ jobs:
       value: -a "-a -g $(optimizeGraph) -b $(bindInputs) $(trtEPOptionsArg) $(cudaEPOptionsArg)"
 
     - name: image
-      value: ort-$(Build.SourceBranch)
+      value: ort-$(branchName)
 
   steps:
     - ${{ if eq(parameters.TrTVersion, '8.5.0.9') }}:
@@ -68,11 +74,11 @@ jobs:
       - script: 'cp $(trtBinsDir)/TensorRT-${{ parameters.TrTVersion }}*.tar.gz $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/'
         displayName: 'Copy TensorRT .tar.gz package into Docker build directory'
 
-      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(Build.SourceBranch) -t ${{ parameters.TrtVersion }} -a 75 --install_bin --tar_cuda_version=$(tarCudaVersion) --tar_cudnn_version=$(tarCudnnVersion) --trt_bins_dir=.'
+      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t ${{ parameters.TrtVersion }} -a 75 --install_bin --tar_cuda_version=$(tarCudaVersion) --tar_cudnn_version=$(tarCudnnVersion) --trt_bins_dir=.'
         displayName: 'Install TensorRT from binaries and build latest ORT Image'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
     - ${{ else }}:
-      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(Build.SourceBranch) -t ${{ parameters.TrtVersion }} -a 75'
+      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t ${{ parameters.TrtVersion }} -a 75'
         displayName: 'Build latest ORT Image'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
@@ -123,7 +129,7 @@ jobs:
           inlineScript: |
             short_hash=$(git rev-parse --short HEAD) &&
             commit_date=$(git log -1 --date=iso-strict --pretty=format:%cd) &&
-            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(Build.SourceBranch) --kusto_conn $(kustoConn) --database $(database)
+            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branchName) --kusto_conn $(kustoConn) --database $(database)
     
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
