@@ -55,7 +55,7 @@ class GemmTunable : public IKernelExplorer {
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
 
-    impl_.EnableTuning();
+    op_.EnableTuning();
   }
 
   ~GemmTunable() {
@@ -64,7 +64,7 @@ class GemmTunable : public IKernelExplorer {
   }
 
   void Run() override {
-    ORT_THROW_IF_ERROR(impl_(&params_));
+    ORT_THROW_IF_ERROR(op_(&params_));
   }
 
   std::vector<std::string> ListOps() const {
@@ -80,7 +80,7 @@ class GemmTunable : public IKernelExplorer {
   ParamsT params_;
 
   // tunable is stateful, store it as an instance
-  GemmTunableOp<T, ALayout, BLayout> impl_{};
+  GemmTunableOp<T, ALayout, BLayout> op_{};
   rocblas_handle rocblas_handle_;
 };
 
