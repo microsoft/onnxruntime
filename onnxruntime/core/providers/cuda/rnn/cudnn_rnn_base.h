@@ -42,9 +42,9 @@ class CudnnRNN {
              cudnnDropoutDescriptor_t cudnn_dropout_desc, cudnnDirectionMode_t cudnn_direction_model,
              cudnnRNNMode_t rnn_mode, cudnnDataType_t dataType, const cudaDeviceProp& prop) {
     if (!cudnn_rnn_desc_)
-      CUDNN_CONFIG_RETURN_IF_ERROR(cudnnCreateRNNDescriptor(&cudnn_rnn_desc_));
+      CUDNN_RETURN_IF_ERROR(cudnnCreateRNNDescriptor(&cudnn_rnn_desc_));
 
-    CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetRNNDescriptor_v6(cudnnHandle,
+    CUDNN_RETURN_IF_ERROR(cudnnSetRNNDescriptor_v6(cudnnHandle,
                                                 cudnn_rnn_desc_,
                                                 gsl::narrow_cast<int>(hidden_size),
                                                 num_layers,
@@ -100,10 +100,10 @@ class CudnnRnnBase : public CudaKernel {
 
     size_t state_size;
     auto default_cudnn_handle = DefaultCudnnHandle();
-    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.CreateDescriptorIfNeeded(default_cudnn_handle, nullptr));
-    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.GetCudnnDropoutStatesSize(default_cudnn_handle, nullptr, state_size));
+    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.CreateDescriptorIfNeeded(default_cudnn_handle));
+    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.GetCudnnDropoutStatesSize(default_cudnn_handle, state_size));
     state_buffer_ = GetScratchBuffer<void>(state_size, nullptr);
-    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.Set(default_cudnn_handle, nullptr, state_buffer_.get(), state_size));
+    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.Set(default_cudnn_handle, state_buffer_.get(), state_size));
 
     layout_ = info.GetAttrOrDefault("layout", static_cast<int64_t>(0));
     ORT_ENFORCE(layout_ == 0, 

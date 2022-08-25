@@ -23,7 +23,7 @@ CudnnTensor::~CudnnTensor() {
 
 Status CudnnTensor::CreateTensorIfNeeded() {
   if (!tensor_)
-    CUDNN_CONFIG_RETURN_IF_ERROR(cudnnCreateTensorDescriptor(&tensor_));
+    CUDNN_RETURN_IF_ERROR(cudnnCreateTensorDescriptor(&tensor_));
   return Status::OK();
 }
 
@@ -38,13 +38,13 @@ Status CudnnTensor::Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dat
     dims[i] = gsl::narrow_cast<int>(input_dims[i]);
     strides[i] = gsl::narrow_cast<int>(pitches[i]);
   }
-  CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetTensorNdDescriptor(tensor_, dataType, static_cast<int>(rank), dims.data(), strides.data()));
+  CUDNN_RETURN_IF_ERROR(cudnnSetTensorNdDescriptor(tensor_, dataType, static_cast<int>(rank), dims.data(), strides.data()));
   return Status::OK();
 }
 
 Status CudnnTensor::Set(const CudnnTensor& x_desc, cudnnBatchNormMode_t mode) {
   ORT_RETURN_IF_ERROR(CreateTensorIfNeeded());
-  CUDNN_CONFIG_RETURN_IF_ERROR(cudnnDeriveBNTensorDescriptor(tensor_, x_desc, mode));
+  CUDNN_RETURN_IF_ERROR(cudnnDeriveBNTensorDescriptor(tensor_, x_desc, mode));
   return Status::OK();
 }
 
@@ -61,7 +61,7 @@ CudnnDataTensor::~CudnnDataTensor() {
 
 Status CudnnDataTensor::CreateTensorIfNeeded() {
   if (!tensor_)
-    CUDNN_CONFIG_RETURN_IF_ERROR(cudnnCreateRNNDataDescriptor(&tensor_));
+    CUDNN_RETURN_IF_ERROR(cudnnCreateRNNDataDescriptor(&tensor_));
   return Status::OK();
 }
 
@@ -75,7 +75,7 @@ Status CudnnDataTensor::Set(cudnnDataType_t dataType,
   // CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED works with CUDNN_RNN_PADDED_IO_ENABLED, so that it will auto fill 0 for the shorter sequences
   cudnnRNNDataLayout_t layout = CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED;
   float padding_fill = 0.0f;
-  CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetRNNDataDescriptor(tensor_, dataType, layout,
+  CUDNN_RETURN_IF_ERROR(cudnnSetRNNDataDescriptor(tensor_, dataType, layout,
                                                   static_cast<int>(max_seq_length),
                                                   static_cast<int>(batch_size),
                                                   static_cast<int>(data_size),
@@ -97,7 +97,7 @@ CudnnFilterDescriptor::~CudnnFilterDescriptor() {
 
 Status CudnnFilterDescriptor::Set(gsl::span<const int64_t> filter_dims, cudnnDataType_t data_type) {
   if (!desc_)
-    CUDNN_CONFIG_RETURN_IF_ERROR(cudnnCreateFilterDescriptor(&desc_));
+    CUDNN_RETURN_IF_ERROR(cudnnCreateFilterDescriptor(&desc_));
 
   int rank = gsl::narrow_cast<int>(filter_dims.size());
   InlinedVector<int> w_dims(rank);
@@ -105,7 +105,7 @@ Status CudnnFilterDescriptor::Set(gsl::span<const int64_t> filter_dims, cudnnDat
     w_dims[i] = gsl::narrow_cast<int>(filter_dims[i]);
   }
 
-  CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetFilterNdDescriptor(desc_,
+  CUDNN_RETURN_IF_ERROR(cudnnSetFilterNdDescriptor(desc_,
                                                    data_type,
                                                    CUDNN_TENSOR_NCHW,
                                                    rank,

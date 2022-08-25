@@ -249,12 +249,10 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   // CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED works with CUDNN_RNN_PADDED_IO_ENABLED, so that it will auto fill 0 for the shorter sequences
-  CUDNN_RETURN_IF_ERROR(cudnnSetRNNPaddingMode(rnn_desc, CUDNN_RNN_PADDED_IO_ENABLED),
-                        GetCudnnHandle(ctx), Stream(ctx));
+  CUDNN_RETURN_IF_ERROR(cudnnSetRNNPaddingMode(rnn_desc, CUDNN_RNN_PADDED_IO_ENABLED));
 
   size_t workspace_bytes;
-  CUDNN_RETURN_IF_ERROR(cudnnGetRNNWorkspaceSize(GetCudnnHandle(ctx), rnn_desc, gsl::narrow_cast<int>(seq_length), x_desc.data(), &workspace_bytes),
-                        GetCudnnHandle(ctx), Stream(ctx));
+  CUDNN_RETURN_IF_ERROR(cudnnGetRNNWorkspaceSize(GetCudnnHandle(ctx), rnn_desc, gsl::narrow_cast<int>(seq_length), x_desc.data(), &workspace_bytes));
   auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes, OrtStream(ctx));
   int32_t zero_seq_count = 0;
   std::vector<int32_t> zero_seq_index_cache(batch_size, 0);
@@ -279,8 +277,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                    y_c_desc,
                                                    y_c_data,
                                                    workspace_cuda.get(),
-                                                   workspace_bytes),
-                          GetCudnnHandle(ctx), Stream(ctx));
+                                                   workspace_bytes));
   } else {
     // cudnn doesn't support 0 sequence inside the batch, find the 0 sequence and set it to 1
     // there's a ZeroMask kernel to reset the result to 0 for the 0 sequence
@@ -328,8 +325,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                      nullptr, nullptr, nullptr, nullptr,
                                                      nullptr, nullptr, nullptr, nullptr,
                                                      workspace_cuda.get(),
-                                                     workspace_bytes),
-                          GetCudnnHandle(ctx), Stream(ctx));
+                                                     workspace_bytes));
 
     // Early terminate for this case since Y data is not required, and Y_h is obtained correctly, no need the following code to retrive Y_h from Y data.
     if (nullptr == Y) {

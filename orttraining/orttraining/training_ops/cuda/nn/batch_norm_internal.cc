@@ -139,9 +139,7 @@ Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* p_op_kerne
       p_running_var,
       epsilon_,
       p_saved_mean,
-      p_saved_inv_std),
-      GetCudnnHandle(p_op_kernel_context),
-      Stream(p_op_kernel_context));
+      p_saved_inv_std));
 
   if (std::is_same<T2, MLFloat16>::value) {
     Impl_Cast<float, CudaT2>(Stream(p_op_kernel_context), reinterpret_cast<float*>(p_running_mean), running_mean_data, C);

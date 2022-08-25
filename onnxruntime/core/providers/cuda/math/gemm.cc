@@ -91,9 +91,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
                                  b_data,
                                  0,
                                  out_data,
-                                 1),
-                             GetCublasHandle(ctx),
-                             Stream(ctx));
+                                 1));
     } else if (b_shape.NumDimensions() == 1 || b_shape[0] == 1) {
       // B is (N,) or (1, N), broadcast using Y(N,M) = 1 * B(N,1) x ones(1,M) + 0 * Y
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -105,12 +103,10 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
                                  b_data, N,
                                  GetConstOnes<CudaT>(M, GetCudaStreamFromContext(ctx)), 1,
                                  /*beta*/ &zero,
-                                 out_data, N, device_prop),
-                             GetCublasHandle(ctx),
-                             Stream(ctx));
+                                 out_data, N, device_prop));
     } else if (b_shape.NumDimensions() == 2 && b_shape[1] == 1) {
       // B is (M, 1), broadcast using Y(N,M) = 1 * ones(N,1) x B(1,M) + 0 * Y
-      CUBLAS_RETURN_IF_ERROR_CTX(cublasGemmHelper(
+      CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
                                      GetCublasHandle(ctx),
                                      CUBLAS_OP_N,
                                      CUBLAS_OP_N,
@@ -119,8 +115,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
                                      GetConstOnes<CudaT>(N, GetCudaStreamFromContext(ctx)), N,
                                      b_data, 1,
                                      /*beta*/ &zero,
-                                     out_data, N, device_prop),
-                                 ctx);
+                                     out_data, N, device_prop));
     } else {
       // B is (M, N), no broadcast needed.
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(out_data, b_data, M * N * sizeof(T), cudaMemcpyDeviceToDevice, Stream(ctx)));
@@ -143,9 +138,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
                              // ideally we need to set the output buffer contents to 0 if bias is missing,
                              // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
                              B != nullptr ? &beta : &zero,
-                             out_data, N, device_prop),
-                         GetCublasHandle(ctx),
-                         Stream(ctx));
+                             out_data, N, device_prop));
 
   return Status::OK();
 }

@@ -70,27 +70,24 @@ class CudnnDropout final {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudnnDropout);
 
-  Status GetCudnnDropoutStatesSize(const cudnnHandle_t& cudnnHandle, cudaStream_t stream, size_t& stateSize) {
-    CUDNN_RETURN_IF_ERROR(cudnnDropoutGetStatesSize(cudnnHandle, &stateSize), cudnnHandle, stream);
+  Status GetCudnnDropoutStatesSize(const cudnnHandle_t& cudnnHandle, size_t& stateSize) {
+    CUDNN_RETURN_IF_ERROR(cudnnDropoutGetStatesSize(cudnnHandle, &stateSize));
 
     return Status::OK();
   }
 
   Status Set(const cudnnHandle_t& cudnnHandle,
-             cudaStream_t stream,
              void* states,
              size_t stateSize,
              float dropout = 0.0f,
              unsigned long long seed = 1) {
-    ORT_RETURN_IF_ERROR(CreateDescriptorIfNeeded(cudnnHandle, stream));
+    ORT_RETURN_IF_ERROR(CreateDescriptorIfNeeded(cudnnHandle));
     CUDNN_RETURN_IF_ERROR(cudnnSetDropoutDescriptor(dropout_desc_,
                                                     cudnnHandle,
                                                     dropout,
                                                     states,
                                                     stateSize,
-                                                    seed),
-                          cudnnHandle,
-                          stream);
+                                                    seed));
 
     return Status::OK();
   }
@@ -105,10 +102,9 @@ class CudnnDropout final {
     return dropout_desc_;
   }
 
-  Status CreateDescriptorIfNeeded(const cudnnHandle_t& cudnnHandle,
-                                  cudaStream_t stream) {
+  Status CreateDescriptorIfNeeded(const cudnnHandle_t& cudnnHandle) {
     if (!dropout_desc_)
-      CUDNN_RETURN_IF_ERROR(cudnnCreateDropoutDescriptor(&dropout_desc_), cudnnHandle, stream);
+      CUDNN_RETURN_IF_ERROR(cudnnCreateDropoutDescriptor(&dropout_desc_));
     return Status::OK();
   }
 

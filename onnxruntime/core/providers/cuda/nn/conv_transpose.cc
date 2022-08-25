@@ -131,11 +131,11 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
         // set math type to tensor core before algorithm search
         if constexpr (std::is_same<T, MLFloat16>::value)
-          CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
+          CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
 
         cudnnConvolutionBwdDataAlgoPerf_t perf;
         int algo_count = 1;
-        CUDNN_CONFIG_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
+        CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
             GetCudnnHandle(context),
             s_.w_desc,
             w_data,
@@ -153,7 +153,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       }
 
       const auto& perf = s_.cached_benchmark_results.at(x_dims);
-      CUDNN_CONFIG_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, perf.mathType));
+      CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, perf.mathType));
       s_.algo = perf.algo;
       s_.workspace_bytes = perf.memory;
     }
@@ -179,7 +179,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
     IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes, OrtStream(context));
 
-    CUDNN_CONFIG_RETURN_IF_ERROR(
+    CUDNN_RETURN_IF_ERROR(
         cudnnConvolutionBackwardData(
             GetCudnnHandle(context),
             &alpha,
@@ -198,7 +198,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
     if (has_bias) {
       const Tensor* B = dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2);
       auto b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
-      CUDNN_CONFIG_RETURN_IF_ERROR(cudnnAddTensor(GetCudnnHandle(context), &alpha, s_.b_tensor, b_data, &alpha, s_.y_tensor, y_data));
+      CUDNN_RETURN_IF_ERROR(cudnnAddTensor(GetCudnnHandle(context), &alpha, s_.b_tensor, b_data, &alpha, s_.y_tensor, y_data));
     }
   }
 

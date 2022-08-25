@@ -146,8 +146,7 @@ struct AlgoSearch<T_BwdDataPerf> {
     if (args.params.algo_mode == OrtCudnnConvAlgoSearchHeuristic) {
       CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionBackwardDataAlgorithm_v7(args.handle, args.w_desc, args.y_tensor,
                                                                         args.conv_desc, args.x_tensor, num_algos,
-                                                                        &perf_count, candidates.get()),
-                            args.handle, stream);
+                                                                        &perf_count, candidates.get()));
     } else if (args.params.algo_mode == OrtCudnnConvAlgoSearchExhaustive) {
       size_t max_workspace_size = provider->GetCudnnConvUseMaxWorkspace() ? GetMaxWorkspaceSize(args, algos, num_algos)
                                                                           : AlgoSearchWorkspaceSize;
@@ -156,8 +155,7 @@ struct AlgoSearch<T_BwdDataPerf> {
       IAllocatorUniquePtr<void> workspace = provider->GetTransientScratchBuffer<void>(max_workspace_size);
       CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
           args.handle, args.w_desc, args.w_data, args.y_tensor, args.dy_data, args.conv_desc, args.x_tensor,
-          args.dx_data, num_algos, &perf_count, candidates.get(), workspace.get(), max_workspace_size),
-          args.handle, stream);
+          args.dx_data, num_algos, &perf_count, candidates.get(), workspace.get(), max_workspace_size));
     } else {
       ORT_ENFORCE(false, "Algo mode should be EXHAUSTIVE (0) or HEURISTIC (1), but got ", args.params.algo_mode);
     }
@@ -190,8 +188,7 @@ struct AlgoSearch<T_BwdFilterPerf> {
     if (args.params.algo_mode == OrtCudnnConvAlgoSearchHeuristic) {
       CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionBackwardFilterAlgorithm_v7(args.handle, args.x_tensor, args.y_tensor,
                                                                           args.conv_desc, args.w_desc, num_algos,
-                                                                          &perf_count, candidates.get()),
-                            args.handle, stream);
+                                                                          &perf_count, candidates.get()));
     } else if (args.params.algo_mode == OrtCudnnConvAlgoSearchExhaustive) {
       size_t max_workspace_size = provider->GetCudnnConvUseMaxWorkspace() ? GetMaxWorkspaceSize(args, algos, num_algos)
                                                                           : AlgoSearchWorkspaceSize;
@@ -200,8 +197,7 @@ struct AlgoSearch<T_BwdFilterPerf> {
       IAllocatorUniquePtr<void> workspace = provider->GetTransientScratchBuffer<void>(max_workspace_size);
       CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardFilterAlgorithmEx(
           args.handle, args.x_tensor, args.x_data, args.y_tensor, args.dy_data, args.conv_desc, args.w_desc,
-          args.dw_data, num_algos, &perf_count, candidates.get(), workspace.get(), max_workspace_size),
-          args.handle, stream);
+          args.dw_data, num_algos, &perf_count, candidates.get(), workspace.get(), max_workspace_size));
     } else {
       ORT_ENFORCE(false, "Algo mode should be EXHAUSTIVE (0) or HEURISTIC (1), but got ", args.params.algo_mode);
     }
@@ -223,8 +219,7 @@ class AlgoIterator {
     } else {
       perf_results[0].mathType = CUDNN_DEFAULT_MATH;
     }
-    CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(args, perf_results[0].algo, &(perf_results[0].memory)),
-        args.handle, stream);
+    CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(args, perf_results[0].algo, &(perf_results[0].memory)));
     return Status::OK();
   }
 
@@ -391,12 +386,10 @@ Status ConvGrad<T>::ComputeInputGradient(onnxruntime::Stream* stream) const {
         const auto one = Consts<CudaT>::One;
         const auto zero = Consts<CudaT>::Zero;
         IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(algo_perf.memory, stream);
-        CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args_.conv_desc, algo_perf.mathType),
-            args_.handle, cuda_stream);
+        CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args_.conv_desc, algo_perf.mathType));
         CUDNN_RETURN_IF_ERROR(cudnnConvolutionBackwardData(
             args_.handle, &one, args_.w_desc, args_.w_data, args_.y_tensor, args_.dy_data, args_.conv_desc,
-            algo_perf.algo, workspace.get(), algo_perf.memory, &zero, args_.x_tensor, args_.dx_data),
-            args_.handle, cuda_stream);
+            algo_perf.algo, workspace.get(), algo_perf.memory, &zero, args_.x_tensor, args_.dx_data));
         return Status::OK();
       });
 }
@@ -411,12 +404,10 @@ Status ConvGrad<T>::ComputeWeightGradient(onnxruntime::Stream* stream) const {
         const auto one = Consts<CudaT>::One;
         const auto zero = Consts<CudaT>::Zero;
         IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(algo_perf.memory, stream);
-        CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args_.conv_desc, algo_perf.mathType),
-                              args_.handle, cuda_stream);
+        CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args_.conv_desc, algo_perf.mathType));
         CUDNN_RETURN_IF_ERROR(cudnnConvolutionBackwardFilter(
             args_.handle, &one, args_.x_tensor, args_.x_data, args_.y_tensor, args_.dy_data, args_.conv_desc,
-            algo_perf.algo, workspace.get(), algo_perf.memory, &zero, args_.w_desc, args_.dw_data),
-            args_.handle, cuda_stream);
+            algo_perf.algo, workspace.get(), algo_perf.memory, &zero, args_.w_desc, args_.dw_data));
         return Status::OK();
       });
 }
@@ -427,8 +418,7 @@ Status ConvGrad<T>::ComputeBiasGradient(onnxruntime::Stream* stream) const {
   const auto zero = Consts<CudaT>::Zero;
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->handle) : nullptr;
   CUDNN_RETURN_IF_ERROR(cudnnConvolutionBackwardBias(args_.handle, &one, args_.y_tensor, args_.dy_data, &zero,
-                                                     args_.b_tensor, args_.db_data),
-                        args_.handle, cuda_stream);
+                                                     args_.b_tensor, args_.db_data));
   return Status::OK();
 }
 
