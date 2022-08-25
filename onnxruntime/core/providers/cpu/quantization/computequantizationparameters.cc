@@ -10,13 +10,29 @@
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     ComputeQuantizationParameters,
-    11,
-    uint8_t,
-    KernelDefBuilder()
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder(),
+        // .TypeConstraint("Tid", DataTypeImpl::GetTensorType<int64_t>())
+        // .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     ComputeQuantizationParameters<uint8_t>);
+
+// ONNX_CPU_OPERATOR_TYPED_KERNEL(
+//     ComputeQuantizationParameters,
+//     13,
+//     uint8_t,
+//     KernelDefBuilder(),
+//         .TypeConstraint("T2", DataTypeImpl::GetTensorType<float_t>()),
+//     ComputeQuantizationParameters<uint8_t>);
+
+// ONNX_CPU_OPERATOR_KERNEL(
+//     ComputeQuantizationParameters,
+//     13,
+//     KernelDefBuilder(),
+// )
 
 // formula is scale = (real_max - real_min) / (quant_max - quant_min)
 // and zero_point = quant_min - (real_min / scale)
