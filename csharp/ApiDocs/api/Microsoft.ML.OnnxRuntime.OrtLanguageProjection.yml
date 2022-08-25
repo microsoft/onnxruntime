@@ -1,0 +1,246 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.OrtLanguageProjection
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtLanguageProjection
+  id: OrtLanguageProjection
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_C
+  - Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_CPLUSPLUS
+  - Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_CSHARP
+  - Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_JAVA
+  - Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_PYTHON
+  - Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_WINML
+  langs:
+  - csharp
+  - vb
+  name: OrtLanguageProjection
+  nameWithType: OrtLanguageProjection
+  fullName: Microsoft.ML.OnnxRuntime.OrtLanguageProjection
+  type: Enum
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: OrtLanguageProjection
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 35
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nLanguage projection property for telemetry event for tracking the source usage of ONNXRUNTIME\n"
+  example: []
+  syntax:
+    content: public enum OrtLanguageProjection
+    content.vb: Public Enum OrtLanguageProjection
+  modifiers.csharp:
+  - public
+  - enum
+  modifiers.vb:
+  - Public
+  - Enum
+- uid: Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_C
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_C
+  id: ORT_PROJECTION_C
+  parent: Microsoft.ML.OnnxRuntime.OrtLanguageProjection
+  langs:
+  - csharp
+  - vb
+  name: ORT_PROJECTION_C
+  nameWithType: OrtLanguageProjection.ORT_PROJECTION_C
+  fullName: Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_C
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ORT_PROJECTION_C
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 37
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ORT_PROJECTION_C = 0
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtLanguageProjection
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_CPLUSPLUS
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_CPLUSPLUS
+  id: ORT_PROJECTION_CPLUSPLUS
+  parent: Microsoft.ML.OnnxRuntime.OrtLanguageProjection
+  langs:
+  - csharp
+  - vb
+  name: ORT_PROJECTION_CPLUSPLUS
+  nameWithType: OrtLanguageProjection.ORT_PROJECTION_CPLUSPLUS
+  fullName: Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_CPLUSPLUS
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ORT_PROJECTION_CPLUSPLUS
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 38
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ORT_PROJECTION_CPLUSPLUS = 1
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtLanguageProjection
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_CSHARP
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_CSHARP
+  id: ORT_PROJECTION_CSHARP
+  parent: Microsoft.ML.OnnxRuntime.OrtLanguageProjection
+  langs:
+  - csharp
+  - vb
+  name: ORT_PROJECTION_CSHARP
+  nameWithType: OrtLanguageProjection.ORT_PROJECTION_CSHARP
+  fullName: Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_CSHARP
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ORT_PROJECTION_CSHARP
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 39
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ORT_PROJECTION_CSHARP = 2
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtLanguageProjection
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_PYTHON
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_PYTHON
+  id: ORT_PROJECTION_PYTHON
+  parent: Microsoft.ML.OnnxRuntime.OrtLanguageProjection
+  langs:
+  - csharp
+  - vb
+  name: ORT_PROJECTION_PYTHON
+  nameWithType: OrtLanguageProjection.ORT_PROJECTION_PYTHON
+  fullName: Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_PYTHON
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ORT_PROJECTION_PYTHON
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 40
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ORT_PROJECTION_PYTHON = 3
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtLanguageProjection
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_JAVA
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_JAVA
+  id: ORT_PROJECTION_JAVA
+  parent: Microsoft.ML.OnnxRuntime.OrtLanguageProjection
+  langs:
+  - csharp
+  - vb
+  name: ORT_PROJECTION_JAVA
+  nameWithType: OrtLanguageProjection.ORT_PROJECTION_JAVA
+  fullName: Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_JAVA
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ORT_PROJECTION_JAVA
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 41
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ORT_PROJECTION_JAVA = 4
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtLanguageProjection
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_WINML
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_WINML
+  id: ORT_PROJECTION_WINML
+  parent: Microsoft.ML.OnnxRuntime.OrtLanguageProjection
+  langs:
+  - csharp
+  - vb
+  name: ORT_PROJECTION_WINML
+  nameWithType: OrtLanguageProjection.ORT_PROJECTION_WINML
+  fullName: Microsoft.ML.OnnxRuntime.OrtLanguageProjection.ORT_PROJECTION_WINML
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ORT_PROJECTION_WINML
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 42
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ORT_PROJECTION_WINML = 5
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtLanguageProjection
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: Microsoft.ML.OnnxRuntime.OrtLanguageProjection
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtLanguageProjection
+  parent: Microsoft.ML.OnnxRuntime
+  name: OrtLanguageProjection
+  nameWithType: OrtLanguageProjection
+  fullName: Microsoft.ML.OnnxRuntime.OrtLanguageProjection

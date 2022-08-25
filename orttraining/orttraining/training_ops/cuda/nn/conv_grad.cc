@@ -140,8 +140,7 @@ struct AlgoSearch<T_BwdDataPerf> {
     static constexpr int num_algos = CUDNN_CONVOLUTION_BWD_DATA_ALGO_COUNT;
     ORT_ENFORCE(sizeof(algos) / sizeof(algos[0]) == num_algos, "Missing cuDNN convolution backward data algorithms.");
     int perf_count;
-    std::unique_ptr<T_BwdDataPerf[]> candidates(new T_BwdDataPerf[num_algos]);
-
+    std::unique_ptr<T_BwdDataPerf[]> candidates = std::make_unique<T_BwdDataPerf[]>(num_algos);
     if (args.params.algo_mode == OrtCudnnConvAlgoSearchHeuristic) {
       CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionBackwardDataAlgorithm_v7(args.handle, args.w_desc, args.y_tensor,
                                                                         args.conv_desc, args.x_tensor, num_algos,
@@ -181,7 +180,7 @@ struct AlgoSearch<T_BwdFilterPerf> {
     // NOTE: - 1 because ALGO_WINOGRAD is not implemented.
     static constexpr int num_algos = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_COUNT - 1;
     ORT_ENFORCE(sizeof(algos) / sizeof(algos[0]) == num_algos, "Missing cuDNN convolution backward filter algorithms.");
-    std::unique_ptr<T_BwdFilterPerf[]> candidates(new T_BwdFilterPerf[num_algos]);
+    std::unique_ptr<T_BwdFilterPerf[]> candidates = std::make_unique<T_BwdFilterPerf[]>(num_algos);
     int perf_count;
     if (args.params.algo_mode == OrtCudnnConvAlgoSearchHeuristic) {
       CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionBackwardFilterAlgorithm_v7(args.handle, args.x_tensor, args.y_tensor,

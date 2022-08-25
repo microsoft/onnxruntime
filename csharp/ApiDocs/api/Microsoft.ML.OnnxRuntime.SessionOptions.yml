@@ -1,0 +1,2897 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions
+  commentId: T:Microsoft.ML.OnnxRuntime.SessionOptions
+  id: SessionOptions
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.SessionOptions.#ctor
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AddFreeDimensionOverride(System.String,System.Int64)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AddFreeDimensionOverrideByName(System.String,System.Int64)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AddInitializer(System.String,Microsoft.ML.OnnxRuntime.OrtValue)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AddSessionConfigEntry(System.String,System.String)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider(System.String,System.Collections.Generic.Dictionary{System.String,System.String})
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CoreML(Microsoft.ML.OnnxRuntime.CoreMLFlags)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CPU(System.Int32)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CUDA(Microsoft.ML.OnnxRuntime.OrtCUDAProviderOptions)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CUDA(System.Int32)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_DML(System.Int32)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Dnnl(System.Int32)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_MIGraphX(System.Int32)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nnapi(Microsoft.ML.OnnxRuntime.NnapiFlags)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nuphar(System.String)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_OpenVINO(System.String)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_ROCM(System.Int32)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tensorrt(Microsoft.ML.OnnxRuntime.OrtTensorRTProviderOptions)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tensorrt(System.Int32)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tvm(System.String)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.EnableCpuMemArena
+  - Microsoft.ML.OnnxRuntime.SessionOptions.EnableMemoryPattern
+  - Microsoft.ML.OnnxRuntime.SessionOptions.EnableProfiling
+  - Microsoft.ML.OnnxRuntime.SessionOptions.ExecutionMode
+  - Microsoft.ML.OnnxRuntime.SessionOptions.GraphOptimizationLevel
+  - Microsoft.ML.OnnxRuntime.SessionOptions.InterOpNumThreads
+  - Microsoft.ML.OnnxRuntime.SessionOptions.IntraOpNumThreads
+  - Microsoft.ML.OnnxRuntime.SessionOptions.IsInvalid
+  - Microsoft.ML.OnnxRuntime.SessionOptions.LogId
+  - Microsoft.ML.OnnxRuntime.SessionOptions.LogSeverityLevel
+  - Microsoft.ML.OnnxRuntime.SessionOptions.LogVerbosityLevel
+  - Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithCudaProvider(Microsoft.ML.OnnxRuntime.OrtCUDAProviderOptions)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithCudaProvider(System.Int32)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithNupharProvider(System.String)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithRocmProvider(System.Int32)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTensorrtProvider(Microsoft.ML.OnnxRuntime.OrtTensorRTProviderOptions)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTensorrtProvider(System.Int32)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTvmProvider(System.String)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.OptimizedModelFilePath
+  - Microsoft.ML.OnnxRuntime.SessionOptions.ProfileOutputPathPrefix
+  - Microsoft.ML.OnnxRuntime.SessionOptions.RegisterCustomOpLibrary(System.String)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.RegisterCustomOpLibraryV2(System.String,System.IntPtr@)
+  - Microsoft.ML.OnnxRuntime.SessionOptions.ReleaseHandle
+  langs:
+  - csharp
+  - vb
+  name: SessionOptions
+  nameWithType: SessionOptions
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions
+  type: Class
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: SessionOptions
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 38
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nHolds the options for creating an InferenceSession\n"
+  example: []
+  syntax:
+    content: 'public class SessionOptions : SafeHandle, IDisposable'
+    content.vb: >-
+      Public Class SessionOptions
+          Inherits SafeHandle
+          Implements IDisposable
+  inheritance:
+  - System.Object
+  - System.Runtime.InteropServices.SafeHandle
+  implements:
+  - System.IDisposable
+  inheritedMembers:
+  - System.Runtime.InteropServices.SafeHandle.handle
+  - System.Runtime.InteropServices.SafeHandle.DangerousAddRef(System.Boolean@)
+  - System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+  - System.Runtime.InteropServices.SafeHandle.DangerousRelease
+  - System.Runtime.InteropServices.SafeHandle.Dispose
+  - System.Runtime.InteropServices.SafeHandle.Dispose(System.Boolean)
+  - System.Runtime.InteropServices.SafeHandle.SetHandle(System.IntPtr)
+  - System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+  - System.Runtime.InteropServices.SafeHandle.IsClosed
+  - System.Object.Equals(System.Object)
+  - System.Object.Equals(System.Object,System.Object)
+  - System.Object.GetHashCode
+  - System.Object.GetType
+  - System.Object.MemberwiseClone
+  - System.Object.ReferenceEquals(System.Object,System.Object)
+  - System.Object.ToString
+  extensionMethods:
+  - Microsoft.ML.OnnxRuntime.SessionOptions.Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration(System.String,System.Boolean)
+  modifiers.csharp:
+  - public
+  - class
+  modifiers.vb:
+  - Public
+  - Class
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.#ctor
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.#ctor
+  id: '#ctor'
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: SessionOptions()
+  nameWithType: SessionOptions.SessionOptions()
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.SessionOptions()
+  type: Constructor
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: .ctor
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 49
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nConstructs an empty SessionOptions\n"
+  example: []
+  syntax:
+    content: public SessionOptions()
+    content.vb: Public Sub New
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.#ctor*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithCudaProvider(System.Int32)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithCudaProvider(System.Int32)
+  id: MakeSessionOptionWithCudaProvider(System.Int32)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: MakeSessionOptionWithCudaProvider(Int32)
+  nameWithType: SessionOptions.MakeSessionOptionWithCudaProvider(Int32)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithCudaProvider(System.Int32)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: MakeSessionOptionWithCudaProvider
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 61
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nA helper method to construct a SessionOptions object for CUDA execution.\nUse only if CUDA is installed and you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public static SessionOptions MakeSessionOptionWithCudaProvider(int deviceId = 0)
+    parameters:
+    - id: deviceId
+      type: System.Int32
+      description: ''
+    return:
+      type: Microsoft.ML.OnnxRuntime.SessionOptions
+      description: A SessionsOptions() object configured for execution on deviceId
+    content.vb: Public Shared Function MakeSessionOptionWithCudaProvider(deviceId As Integer = 0) As SessionOptions
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithCudaProvider*
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithCudaProvider(Microsoft.ML.OnnxRuntime.OrtCUDAProviderOptions)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithCudaProvider(Microsoft.ML.OnnxRuntime.OrtCUDAProviderOptions)
+  id: MakeSessionOptionWithCudaProvider(Microsoft.ML.OnnxRuntime.OrtCUDAProviderOptions)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: MakeSessionOptionWithCudaProvider(OrtCUDAProviderOptions)
+  nameWithType: SessionOptions.MakeSessionOptionWithCudaProvider(OrtCUDAProviderOptions)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithCudaProvider(Microsoft.ML.OnnxRuntime.OrtCUDAProviderOptions)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: MakeSessionOptionWithCudaProvider
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 75
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nA helper method to construct a SessionOptions object for CUDA execution provider.\nUse only if CUDA is installed and you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public static SessionOptions MakeSessionOptionWithCudaProvider(OrtCUDAProviderOptions cudaProviderOptions)
+    parameters:
+    - id: cudaProviderOptions
+      type: Microsoft.ML.OnnxRuntime.OrtCUDAProviderOptions
+      description: CUDA EP provider options
+    return:
+      type: Microsoft.ML.OnnxRuntime.SessionOptions
+      description: A SessionsOptions() object configured for execution on provider options
+    content.vb: Public Shared Function MakeSessionOptionWithCudaProvider(cudaProviderOptions As OrtCUDAProviderOptions) As SessionOptions
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithCudaProvider*
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTensorrtProvider(System.Int32)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTensorrtProvider(System.Int32)
+  id: MakeSessionOptionWithTensorrtProvider(System.Int32)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: MakeSessionOptionWithTensorrtProvider(Int32)
+  nameWithType: SessionOptions.MakeSessionOptionWithTensorrtProvider(Int32)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTensorrtProvider(System.Int32)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: MakeSessionOptionWithTensorrtProvider
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 97
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nA helper method to construct a SessionOptions object for TensorRT execution.\nUse only if CUDA/TensorRT are installed and you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public static SessionOptions MakeSessionOptionWithTensorrtProvider(int deviceId = 0)
+    parameters:
+    - id: deviceId
+      type: System.Int32
+      description: ''
+    return:
+      type: Microsoft.ML.OnnxRuntime.SessionOptions
+      description: A SessionsOptions() object configured for execution on deviceId
+    content.vb: Public Shared Function MakeSessionOptionWithTensorrtProvider(deviceId As Integer = 0) As SessionOptions
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTensorrtProvider*
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTensorrtProvider(Microsoft.ML.OnnxRuntime.OrtTensorRTProviderOptions)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTensorrtProvider(Microsoft.ML.OnnxRuntime.OrtTensorRTProviderOptions)
+  id: MakeSessionOptionWithTensorrtProvider(Microsoft.ML.OnnxRuntime.OrtTensorRTProviderOptions)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: MakeSessionOptionWithTensorrtProvider(OrtTensorRTProviderOptions)
+  nameWithType: SessionOptions.MakeSessionOptionWithTensorrtProvider(OrtTensorRTProviderOptions)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTensorrtProvider(Microsoft.ML.OnnxRuntime.OrtTensorRTProviderOptions)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: MakeSessionOptionWithTensorrtProvider
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 120
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nA helper method to construct a SessionOptions object for TensorRT execution provider.\nUse only if CUDA/TensorRT are installed and you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public static SessionOptions MakeSessionOptionWithTensorrtProvider(OrtTensorRTProviderOptions trtProviderOptions)
+    parameters:
+    - id: trtProviderOptions
+      type: Microsoft.ML.OnnxRuntime.OrtTensorRTProviderOptions
+      description: TensorRT EP provider options
+    return:
+      type: Microsoft.ML.OnnxRuntime.SessionOptions
+      description: A SessionsOptions() object configured for execution on provider options
+    content.vb: Public Shared Function MakeSessionOptionWithTensorrtProvider(trtProviderOptions As OrtTensorRTProviderOptions) As SessionOptions
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTensorrtProvider*
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithNupharProvider(System.String)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithNupharProvider(System.String)
+  id: MakeSessionOptionWithNupharProvider(System.String)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: MakeSessionOptionWithNupharProvider(String)
+  nameWithType: SessionOptions.MakeSessionOptionWithNupharProvider(String)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithNupharProvider(System.String)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: MakeSessionOptionWithNupharProvider
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 144
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nA helper method to construct a SessionOptions object for Nuphar execution.\nUse only if you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public static SessionOptions MakeSessionOptionWithNupharProvider(string settings = "")
+    parameters:
+    - id: settings
+      type: System.String
+      description: settings string, comprises of comma separated key:value pairs. default is empty
+    return:
+      type: Microsoft.ML.OnnxRuntime.SessionOptions
+      description: A SessionsOptions() object configured for execution with Nuphar
+    content.vb: Public Shared Function MakeSessionOptionWithNupharProvider(settings As String = "") As SessionOptions
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithNupharProvider*
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTvmProvider(System.String)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTvmProvider(System.String)
+  id: MakeSessionOptionWithTvmProvider(System.String)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: MakeSessionOptionWithTvmProvider(String)
+  nameWithType: SessionOptions.MakeSessionOptionWithTvmProvider(String)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTvmProvider(System.String)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: MakeSessionOptionWithTvmProvider
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 158
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nA helper method to construct a SessionOptions object for TVM execution.\nUse only if you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public static SessionOptions MakeSessionOptionWithTvmProvider(string settings = "")
+    parameters:
+    - id: settings
+      type: System.String
+      description: settings string, comprises of comma separated key:value pairs. default is empty
+    return:
+      type: Microsoft.ML.OnnxRuntime.SessionOptions
+      description: A SessionsOptions() object configured for execution with TVM
+    content.vb: Public Shared Function MakeSessionOptionWithTvmProvider(settings As String = "") As SessionOptions
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTvmProvider*
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithRocmProvider(System.Int32)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithRocmProvider(System.Int32)
+  id: MakeSessionOptionWithRocmProvider(System.Int32)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: MakeSessionOptionWithRocmProvider(Int32)
+  nameWithType: SessionOptions.MakeSessionOptionWithRocmProvider(Int32)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithRocmProvider(System.Int32)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: MakeSessionOptionWithRocmProvider
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 172
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nA helper method to construct a SessionOptions object for ROCM execution.\nUse only if ROCM is installed and you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public static SessionOptions MakeSessionOptionWithRocmProvider(int deviceId = 0)
+    parameters:
+    - id: deviceId
+      type: System.Int32
+      description: Device Id
+    return:
+      type: Microsoft.ML.OnnxRuntime.SessionOptions
+      description: A SessionsOptions() object configured for execution on deviceId
+    content.vb: Public Shared Function MakeSessionOptionWithRocmProvider(deviceId As Integer = 0) As SessionOptions
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithRocmProvider*
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CPU(System.Int32)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CPU(System.Int32)
+  id: AppendExecutionProvider_CPU(System.Int32)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AppendExecutionProvider_CPU(Int32)
+  nameWithType: SessionOptions.AppendExecutionProvider_CPU(Int32)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CPU(System.Int32)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AppendExecutionProvider_CPU
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 185
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nAppends CPU EP to a list of available execution providers for the session.\n"
+  example: []
+  syntax:
+    content: public void AppendExecutionProvider_CPU(int useArena = 1)
+    parameters:
+    - id: useArena
+      type: System.Int32
+      description: 1 - use arena, 0 - do not use arena
+    content.vb: Public Sub AppendExecutionProvider_CPU(useArena As Integer = 1)
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CPU*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Dnnl(System.Int32)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Dnnl(System.Int32)
+  id: AppendExecutionProvider_Dnnl(System.Int32)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AppendExecutionProvider_Dnnl(Int32)
+  nameWithType: SessionOptions.AppendExecutionProvider_Dnnl(Int32)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Dnnl(System.Int32)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AppendExecutionProvider_Dnnl
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 194
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nUse only if you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public void AppendExecutionProvider_Dnnl(int useArena = 1)
+    parameters:
+    - id: useArena
+      type: System.Int32
+      description: 1 - use allocation arena, 0 - otherwise
+    content.vb: Public Sub AppendExecutionProvider_Dnnl(useArena As Integer = 1)
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Dnnl*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CUDA(System.Int32)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CUDA(System.Int32)
+  id: AppendExecutionProvider_CUDA(System.Int32)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AppendExecutionProvider_CUDA(Int32)
+  nameWithType: SessionOptions.AppendExecutionProvider_CUDA(Int32)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CUDA(System.Int32)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AppendExecutionProvider_CUDA
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 207
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nUse only if you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public void AppendExecutionProvider_CUDA(int deviceId = 0)
+    parameters:
+    - id: deviceId
+      type: System.Int32
+      description: integer device ID
+    content.vb: Public Sub AppendExecutionProvider_CUDA(deviceId As Integer = 0)
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CUDA*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CUDA(Microsoft.ML.OnnxRuntime.OrtCUDAProviderOptions)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CUDA(Microsoft.ML.OnnxRuntime.OrtCUDAProviderOptions)
+  id: AppendExecutionProvider_CUDA(Microsoft.ML.OnnxRuntime.OrtCUDAProviderOptions)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AppendExecutionProvider_CUDA(OrtCUDAProviderOptions)
+  nameWithType: SessionOptions.AppendExecutionProvider_CUDA(OrtCUDAProviderOptions)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CUDA(Microsoft.ML.OnnxRuntime.OrtCUDAProviderOptions)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AppendExecutionProvider_CUDA
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 221
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nAppend a CUDA EP instance (based on specified configuration) to the SessionOptions instance.\nUse only if you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public void AppendExecutionProvider_CUDA(OrtCUDAProviderOptions cudaProviderOptions)
+    parameters:
+    - id: cudaProviderOptions
+      type: Microsoft.ML.OnnxRuntime.OrtCUDAProviderOptions
+      description: CUDA EP provider options
+    content.vb: Public Sub AppendExecutionProvider_CUDA(cudaProviderOptions As OrtCUDAProviderOptions)
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CUDA*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_DML(System.Int32)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_DML(System.Int32)
+  id: AppendExecutionProvider_DML(System.Int32)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AppendExecutionProvider_DML(Int32)
+  nameWithType: SessionOptions.AppendExecutionProvider_DML(Int32)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_DML(System.Int32)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AppendExecutionProvider_DML
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 234
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nUse only if you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public void AppendExecutionProvider_DML(int deviceId = 0)
+    parameters:
+    - id: deviceId
+      type: System.Int32
+      description: device identification
+    content.vb: Public Sub AppendExecutionProvider_DML(deviceId As Integer = 0)
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_DML*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_OpenVINO(System.String)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_OpenVINO(System.String)
+  id: AppendExecutionProvider_OpenVINO(System.String)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AppendExecutionProvider_OpenVINO(String)
+  nameWithType: SessionOptions.AppendExecutionProvider_OpenVINO(String)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_OpenVINO(System.String)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AppendExecutionProvider_OpenVINO
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 248
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nUse only if you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public void AppendExecutionProvider_OpenVINO(string deviceId = "")
+    parameters:
+    - id: deviceId
+      type: System.String
+      description: device identification, default empty string
+    content.vb: Public Sub AppendExecutionProvider_OpenVINO(deviceId As String = "")
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_OpenVINO*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tensorrt(System.Int32)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tensorrt(System.Int32)
+  id: AppendExecutionProvider_Tensorrt(System.Int32)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AppendExecutionProvider_Tensorrt(Int32)
+  nameWithType: SessionOptions.AppendExecutionProvider_Tensorrt(Int32)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tensorrt(System.Int32)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AppendExecutionProvider_Tensorrt
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 265
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nUse only if you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public void AppendExecutionProvider_Tensorrt(int deviceId = 0)
+    parameters:
+    - id: deviceId
+      type: System.Int32
+      description: device identification
+    content.vb: Public Sub AppendExecutionProvider_Tensorrt(deviceId As Integer = 0)
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tensorrt*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tensorrt(Microsoft.ML.OnnxRuntime.OrtTensorRTProviderOptions)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tensorrt(Microsoft.ML.OnnxRuntime.OrtTensorRTProviderOptions)
+  id: AppendExecutionProvider_Tensorrt(Microsoft.ML.OnnxRuntime.OrtTensorRTProviderOptions)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AppendExecutionProvider_Tensorrt(OrtTensorRTProviderOptions)
+  nameWithType: SessionOptions.AppendExecutionProvider_Tensorrt(OrtTensorRTProviderOptions)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tensorrt(Microsoft.ML.OnnxRuntime.OrtTensorRTProviderOptions)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AppendExecutionProvider_Tensorrt
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 279
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nAppend a TensorRT EP instance (based on specified configuration) to the SessionOptions instance.\nUse only if you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public void AppendExecutionProvider_Tensorrt(OrtTensorRTProviderOptions trtProviderOptions)
+    parameters:
+    - id: trtProviderOptions
+      type: Microsoft.ML.OnnxRuntime.OrtTensorRTProviderOptions
+      description: TensorRT EP provider options
+    content.vb: Public Sub AppendExecutionProvider_Tensorrt(trtProviderOptions As OrtTensorRTProviderOptions)
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tensorrt*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_ROCM(System.Int32)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_ROCM(System.Int32)
+  id: AppendExecutionProvider_ROCM(System.Int32)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AppendExecutionProvider_ROCM(Int32)
+  nameWithType: SessionOptions.AppendExecutionProvider_ROCM(Int32)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_ROCM(System.Int32)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AppendExecutionProvider_ROCM
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 292
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nUse only if you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public void AppendExecutionProvider_ROCM(int deviceId = 0)
+    parameters:
+    - id: deviceId
+      type: System.Int32
+      description: Device Id
+    content.vb: Public Sub AppendExecutionProvider_ROCM(deviceId As Integer = 0)
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_ROCM*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_MIGraphX(System.Int32)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_MIGraphX(System.Int32)
+  id: AppendExecutionProvider_MIGraphX(System.Int32)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AppendExecutionProvider_MIGraphX(Int32)
+  nameWithType: SessionOptions.AppendExecutionProvider_MIGraphX(Int32)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_MIGraphX(System.Int32)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AppendExecutionProvider_MIGraphX
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 306
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nUse only if you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public void AppendExecutionProvider_MIGraphX(int deviceId = 0)
+    parameters:
+    - id: deviceId
+      type: System.Int32
+      description: device identification
+    content.vb: Public Sub AppendExecutionProvider_MIGraphX(deviceId As Integer = 0)
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_MIGraphX*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nnapi(Microsoft.ML.OnnxRuntime.NnapiFlags)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nnapi(Microsoft.ML.OnnxRuntime.NnapiFlags)
+  id: AppendExecutionProvider_Nnapi(Microsoft.ML.OnnxRuntime.NnapiFlags)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AppendExecutionProvider_Nnapi(NnapiFlags)
+  nameWithType: SessionOptions.AppendExecutionProvider_Nnapi(NnapiFlags)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nnapi(Microsoft.ML.OnnxRuntime.NnapiFlags)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AppendExecutionProvider_Nnapi
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 319
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nUse only if you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public void AppendExecutionProvider_Nnapi(NnapiFlags nnapiFlags = NnapiFlags.NNAPI_FLAG_USE_NONE)
+    parameters:
+    - id: nnapiFlags
+      type: Microsoft.ML.OnnxRuntime.NnapiFlags
+      description: NNAPI specific flag mask
+    content.vb: Public Sub AppendExecutionProvider_Nnapi(nnapiFlags As NnapiFlags = NnapiFlags.NNAPI_FLAG_USE_NONE)
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nnapi*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CoreML(Microsoft.ML.OnnxRuntime.CoreMLFlags)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CoreML(Microsoft.ML.OnnxRuntime.CoreMLFlags)
+  id: AppendExecutionProvider_CoreML(Microsoft.ML.OnnxRuntime.CoreMLFlags)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AppendExecutionProvider_CoreML(CoreMLFlags)
+  nameWithType: SessionOptions.AppendExecutionProvider_CoreML(CoreMLFlags)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CoreML(Microsoft.ML.OnnxRuntime.CoreMLFlags)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AppendExecutionProvider_CoreML
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 333
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nUse only if you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public void AppendExecutionProvider_CoreML(CoreMLFlags coremlFlags = CoreMLFlags.COREML_FLAG_USE_NONE)
+    parameters:
+    - id: coremlFlags
+      type: Microsoft.ML.OnnxRuntime.CoreMLFlags
+      description: CoreML specific flags
+    content.vb: Public Sub AppendExecutionProvider_CoreML(coremlFlags As CoreMLFlags = CoreMLFlags.COREML_FLAG_USE_NONE)
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CoreML*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nuphar(System.String)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nuphar(System.String)
+  id: AppendExecutionProvider_Nuphar(System.String)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AppendExecutionProvider_Nuphar(String)
+  nameWithType: SessionOptions.AppendExecutionProvider_Nuphar(String)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nuphar(System.String)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AppendExecutionProvider_Nuphar
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 358
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nUse only if you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public void AppendExecutionProvider_Nuphar(string settings = "")
+    parameters:
+    - id: settings
+      type: System.String
+      description: string with Nuphar specific settings
+    content.vb: Public Sub AppendExecutionProvider_Nuphar(settings As String = "")
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nuphar*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tvm(System.String)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tvm(System.String)
+  id: AppendExecutionProvider_Tvm(System.String)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AppendExecutionProvider_Tvm(String)
+  nameWithType: SessionOptions.AppendExecutionProvider_Tvm(String)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tvm(System.String)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AppendExecutionProvider_Tvm
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 375
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nUse only if you have the onnxruntime package specific to this Execution Provider.\n"
+  example: []
+  syntax:
+    content: public void AppendExecutionProvider_Tvm(string settings = "")
+    parameters:
+    - id: settings
+      type: System.String
+      description: string with TVM specific settings
+    content.vb: Public Sub AppendExecutionProvider_Tvm(settings As String = "")
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tvm*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider(System.String,System.Collections.Generic.Dictionary{System.String,System.String})
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider(System.String,System.Collections.Generic.Dictionary{System.String,System.String})
+  id: AppendExecutionProvider(System.String,System.Collections.Generic.Dictionary{System.String,System.String})
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AppendExecutionProvider(String, Dictionary<String, String>)
+  nameWithType: SessionOptions.AppendExecutionProvider(String, Dictionary<String, String>)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider(System.String, System.Collections.Generic.Dictionary<System.String, System.String>)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AppendExecutionProvider
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 393
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nAppend SNPE or XNNPACK execution provider\n"
+  example: []
+  syntax:
+    content: public void AppendExecutionProvider(string providerName, Dictionary<string, string> providerOptions = null)
+    parameters:
+    - id: providerName
+      type: System.String
+      description: Execution provider to add. &apos;SNPE&apos; or &apos;XNNPACK&apos; are currently supported.
+    - id: providerOptions
+      type: System.Collections.Generic.Dictionary{System.String,System.String}
+      description: Optional key/value pairs to specify execution provider options.
+    content.vb: Public Sub AppendExecutionProvider(providerName As String, providerOptions As Dictionary(Of String, String) = Nothing)
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider*
+  nameWithType.vb: SessionOptions.AppendExecutionProvider(String, Dictionary(Of String, String))
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider(System.String, System.Collections.Generic.Dictionary(Of System.String, System.String))
+  name.vb: AppendExecutionProvider(String, Dictionary(Of String, String))
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.RegisterCustomOpLibrary(System.String)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.RegisterCustomOpLibrary(System.String)
+  id: RegisterCustomOpLibrary(System.String)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: RegisterCustomOpLibrary(String)
+  nameWithType: SessionOptions.RegisterCustomOpLibrary(String)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.RegisterCustomOpLibrary(System.String)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: RegisterCustomOpLibrary
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 432
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\n(Deprecated) Loads a DLL named &apos;libraryPath&apos; and looks for this entry point:\nOrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);\nIt then passes in the provided session options to this function along with the api base.\nDeprecated in favor of RegisterCustomOpLibraryV2() because it provides users with the library handle \nto release when all sessions relying on it are destroyed\n"
+  example: []
+  syntax:
+    content: >-
+      [Obsolete("RegisterCustomOpLibrary(...) is obsolete. Use RegisterCustomOpLibraryV2(...) instead.", false)]
+
+      public void RegisterCustomOpLibrary(string libraryPath)
+    parameters:
+    - id: libraryPath
+      type: System.String
+      description: path to the custom op library
+    content.vb: >-
+      <Obsolete("RegisterCustomOpLibrary(...) is obsolete. Use RegisterCustomOpLibraryV2(...) instead.", False)>
+
+      Public Sub RegisterCustomOpLibrary(libraryPath As String)
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.RegisterCustomOpLibrary*
+  attributes:
+  - type: System.ObsoleteAttribute
+    ctor: System.ObsoleteAttribute.#ctor(System.String,System.Boolean)
+    arguments:
+    - type: System.String
+      value: RegisterCustomOpLibrary(...) is obsolete. Use RegisterCustomOpLibraryV2(...) instead.
+    - type: System.Boolean
+      value: false
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.RegisterCustomOpLibraryV2(System.String,System.IntPtr@)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.RegisterCustomOpLibraryV2(System.String,System.IntPtr@)
+  id: RegisterCustomOpLibraryV2(System.String,System.IntPtr@)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: RegisterCustomOpLibraryV2(String, out IntPtr)
+  nameWithType: SessionOptions.RegisterCustomOpLibraryV2(String, out IntPtr)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.RegisterCustomOpLibraryV2(System.String, out System.IntPtr)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: RegisterCustomOpLibraryV2
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 454
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nLoads a DLL named &apos;libraryPath&apos; and looks for this entry point:\nOrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);\nIt then passes in the provided session options to this function along with the api base.\nThe handle to the loaded library is returned in &apos;libraryHandle&apos;.\nIt can be unloaded by the caller after all sessions using the passed in\nsession options are destroyed, or if an error occurs and it is non null.\nHint: .NET Core 3.1 has a &apos;NativeLibrary&apos; class that can be used to free the library handle\n"
+  example: []
+  syntax:
+    content: public void RegisterCustomOpLibraryV2(string libraryPath, out IntPtr libraryHandle)
+    parameters:
+    - id: libraryPath
+      type: System.String
+      description: Custom op library path
+    - id: libraryHandle
+      type: System.IntPtr
+      description: out parameter, library handle
+    content.vb: Public Sub RegisterCustomOpLibraryV2(libraryPath As String, ByRef libraryHandle As IntPtr)
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.RegisterCustomOpLibraryV2*
+  nameWithType.vb: SessionOptions.RegisterCustomOpLibraryV2(String, ByRef IntPtr)
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.SessionOptions.RegisterCustomOpLibraryV2(System.String, ByRef System.IntPtr)
+  name.vb: RegisterCustomOpLibraryV2(String, ByRef IntPtr)
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AddInitializer(System.String,Microsoft.ML.OnnxRuntime.OrtValue)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AddInitializer(System.String,Microsoft.ML.OnnxRuntime.OrtValue)
+  id: AddInitializer(System.String,Microsoft.ML.OnnxRuntime.OrtValue)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AddInitializer(String, OrtValue)
+  nameWithType: SessionOptions.AddInitializer(String, OrtValue)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AddInitializer(System.String, Microsoft.ML.OnnxRuntime.OrtValue)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AddInitializer
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 472
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nAdd a pre-allocated initializer to a session. If a model contains an initializer with a name\nthat is same as the name passed to this API call, ORT will use this initializer instance\ninstead of deserializing one from the model file. This is useful when you want to share\nthe same initializer across sessions.\n"
+  example: []
+  syntax:
+    content: public void AddInitializer(string name, OrtValue ortValue)
+    parameters:
+    - id: name
+      type: System.String
+      description: name of the initializer
+    - id: ortValue
+      type: Microsoft.ML.OnnxRuntime.OrtValue
+      description: >-
+        OrtValue containing the initializer. Lifetime of &apos;val&apos; and the underlying initializer buffer must be
+
+        managed by the user (created using the CreateTensorWithDataAsOrtValue API) and it must outlive the session object
+    content.vb: Public Sub AddInitializer(name As String, ortValue As OrtValue)
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AddInitializer*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AddSessionConfigEntry(System.String,System.String)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AddSessionConfigEntry(System.String,System.String)
+  id: AddSessionConfigEntry(System.String,System.String)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AddSessionConfigEntry(String, String)
+  nameWithType: SessionOptions.AddSessionConfigEntry(String, String)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AddSessionConfigEntry(System.String, System.String)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AddSessionConfigEntry
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 487
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nSet a single session configuration entry as a pair of strings\nIf a configuration with same key exists, this will overwrite the configuration with the given configValue\n"
+  example: []
+  syntax:
+    content: public void AddSessionConfigEntry(string configKey, string configValue)
+    parameters:
+    - id: configKey
+      type: System.String
+      description: config key name
+    - id: configValue
+      type: System.String
+      description: config key value
+    content.vb: Public Sub AddSessionConfigEntry(configKey As String, configValue As String)
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AddSessionConfigEntry*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AddFreeDimensionOverride(System.String,System.Int64)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AddFreeDimensionOverride(System.String,System.Int64)
+  id: AddFreeDimensionOverride(System.String,System.Int64)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AddFreeDimensionOverride(String, Int64)
+  nameWithType: SessionOptions.AddFreeDimensionOverride(String, Int64)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AddFreeDimensionOverride(System.String, System.Int64)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AddFreeDimensionOverride
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 503
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nOverride symbolic dimensions (by specific denotation strings) with actual values if known at session initialization time to enable\noptimizations that can take advantage of fixed values (such as memory planning, etc)\n"
+  example: []
+  syntax:
+    content: public void AddFreeDimensionOverride(string dimDenotation, long dimValue)
+    parameters:
+    - id: dimDenotation
+      type: System.String
+      description: denotation name
+    - id: dimValue
+      type: System.Int64
+      description: denotation value
+    content.vb: Public Sub AddFreeDimensionOverride(dimDenotation As String, dimValue As Long)
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AddFreeDimensionOverride*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AddFreeDimensionOverrideByName(System.String,System.Int64)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AddFreeDimensionOverrideByName(System.String,System.Int64)
+  id: AddFreeDimensionOverrideByName(System.String,System.Int64)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: AddFreeDimensionOverrideByName(String, Int64)
+  nameWithType: SessionOptions.AddFreeDimensionOverrideByName(String, Int64)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AddFreeDimensionOverrideByName(System.String, System.Int64)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: AddFreeDimensionOverrideByName
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 518
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nOverride symbolic dimensions (by specific name strings) with actual values if known at session initialization time to enable\noptimizations that can take advantage of fixed values (such as memory planning, etc)\n"
+  example: []
+  syntax:
+    content: public void AddFreeDimensionOverrideByName(string dimName, long dimValue)
+    parameters:
+    - id: dimName
+      type: System.String
+      description: dimension name
+    - id: dimValue
+      type: System.Int64
+      description: dimension value
+    content.vb: Public Sub AddFreeDimensionOverrideByName(dimName As String, dimValue As Long)
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.AddFreeDimensionOverrideByName*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.IsInvalid
+  commentId: P:Microsoft.ML.OnnxRuntime.SessionOptions.IsInvalid
+  id: IsInvalid
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: IsInvalid
+  nameWithType: SessionOptions.IsInvalid
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.IsInvalid
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: IsInvalid
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 541
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nOverrides SafeHandle.IsInvalid\n"
+  example: []
+  syntax:
+    content: public override bool IsInvalid { get; }
+    parameters: []
+    return:
+      type: System.Boolean
+      description: returns true if handle is equal to Zero
+    content.vb: Public Overrides ReadOnly Property IsInvalid As Boolean
+  overridden: System.Runtime.InteropServices.SafeHandle.IsInvalid
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.IsInvalid*
+  modifiers.csharp:
+  - public
+  - override
+  - get
+  modifiers.vb:
+  - Public
+  - Overrides
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.EnableMemoryPattern
+  commentId: P:Microsoft.ML.OnnxRuntime.SessionOptions.EnableMemoryPattern
+  id: EnableMemoryPattern
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: EnableMemoryPattern
+  nameWithType: SessionOptions.EnableMemoryPattern
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.EnableMemoryPattern
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: EnableMemoryPattern
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 547
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nEnables the use of the memory allocation patterns in the first Run() call for subsequent runs. Default = true.\n"
+  example: []
+  syntax:
+    content: public bool EnableMemoryPattern { get; set; }
+    parameters: []
+    return:
+      type: System.Boolean
+      description: returns enableMemoryPattern flag value
+    content.vb: Public Property EnableMemoryPattern As Boolean
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.EnableMemoryPattern*
+  modifiers.csharp:
+  - public
+  - get
+  - set
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.ProfileOutputPathPrefix
+  commentId: P:Microsoft.ML.OnnxRuntime.SessionOptions.ProfileOutputPathPrefix
+  id: ProfileOutputPathPrefix
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: ProfileOutputPathPrefix
+  nameWithType: SessionOptions.ProfileOutputPathPrefix
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.ProfileOutputPathPrefix
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ProfileOutputPathPrefix
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 572
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nPath prefix to use for output of profiling data\n"
+  example: []
+  syntax:
+    content: public string ProfileOutputPathPrefix { get; set; }
+    parameters: []
+    return:
+      type: System.String
+    content.vb: Public Property ProfileOutputPathPrefix As String
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.ProfileOutputPathPrefix*
+  modifiers.csharp:
+  - public
+  - get
+  - set
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.EnableProfiling
+  commentId: P:Microsoft.ML.OnnxRuntime.SessionOptions.EnableProfiling
+  id: EnableProfiling
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: EnableProfiling
+  nameWithType: SessionOptions.EnableProfiling
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.EnableProfiling
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: EnableProfiling
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 581
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nEnables profiling of InferenceSession.Run() calls. Default is false\n"
+  example: []
+  syntax:
+    content: public bool EnableProfiling { get; set; }
+    parameters: []
+    return:
+      type: System.Boolean
+      description: returns _enableProfiling flag value
+    content.vb: Public Property EnableProfiling As Boolean
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.EnableProfiling*
+  modifiers.csharp:
+  - public
+  - get
+  - set
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.OptimizedModelFilePath
+  commentId: P:Microsoft.ML.OnnxRuntime.SessionOptions.OptimizedModelFilePath
+  id: OptimizedModelFilePath
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: OptimizedModelFilePath
+  nameWithType: SessionOptions.OptimizedModelFilePath
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.OptimizedModelFilePath
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: OptimizedModelFilePath
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 607
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nSet filepath to save optimized model after graph level transformations. Default is empty, which implies saving is disabled.\n"
+  example: []
+  syntax:
+    content: public string OptimizedModelFilePath { get; set; }
+    parameters: []
+    return:
+      type: System.String
+      description: returns _optimizedModelFilePath flag value
+    content.vb: Public Property OptimizedModelFilePath As String
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.OptimizedModelFilePath*
+  modifiers.csharp:
+  - public
+  - get
+  - set
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.EnableCpuMemArena
+  commentId: P:Microsoft.ML.OnnxRuntime.SessionOptions.EnableCpuMemArena
+  id: EnableCpuMemArena
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: EnableCpuMemArena
+  nameWithType: SessionOptions.EnableCpuMemArena
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.EnableCpuMemArena
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: EnableCpuMemArena
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 628
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nEnables Arena allocator for the CPU memory allocations. Default is true.\n"
+  example: []
+  syntax:
+    content: public bool EnableCpuMemArena { get; set; }
+    parameters: []
+    return:
+      type: System.Boolean
+      description: returns _enableCpuMemArena flag value
+    content.vb: Public Property EnableCpuMemArena As Boolean
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.EnableCpuMemArena*
+  modifiers.csharp:
+  - public
+  - get
+  - set
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.LogId
+  commentId: P:Microsoft.ML.OnnxRuntime.SessionOptions.LogId
+  id: LogId
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: LogId
+  nameWithType: SessionOptions.LogId
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.LogId
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: LogId
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 654
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nLog Id to be used for the session. Default is empty string.\n"
+  example: []
+  syntax:
+    content: public string LogId { get; set; }
+    parameters: []
+    return:
+      type: System.String
+      description: returns _logId value
+    content.vb: Public Property LogId As String
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.LogId*
+  modifiers.csharp:
+  - public
+  - get
+  - set
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.LogSeverityLevel
+  commentId: P:Microsoft.ML.OnnxRuntime.SessionOptions.LogSeverityLevel
+  id: LogSeverityLevel
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: LogSeverityLevel
+  nameWithType: SessionOptions.LogSeverityLevel
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.LogSeverityLevel
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: LogSeverityLevel
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 678
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nLog Severity Level for the session logs. Default = ORT_LOGGING_LEVEL_WARNING\n"
+  example: []
+  syntax:
+    content: public OrtLoggingLevel LogSeverityLevel { get; set; }
+    parameters: []
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+      description: returns _logSeverityLevel value
+    content.vb: Public Property LogSeverityLevel As OrtLoggingLevel
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.LogSeverityLevel*
+  modifiers.csharp:
+  - public
+  - get
+  - set
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.LogVerbosityLevel
+  commentId: P:Microsoft.ML.OnnxRuntime.SessionOptions.LogVerbosityLevel
+  id: LogVerbosityLevel
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: LogVerbosityLevel
+  nameWithType: SessionOptions.LogVerbosityLevel
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.LogVerbosityLevel
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: LogVerbosityLevel
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 697
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nLog Verbosity Level for the session logs. Default = 0. Valid values are >=0.\nThis takes into effect only when the LogSeverityLevel is set to ORT_LOGGING_LEVEL_VERBOSE.\n"
+  example: []
+  syntax:
+    content: public int LogVerbosityLevel { get; set; }
+    parameters: []
+    return:
+      type: System.Int32
+      description: returns _logVerbosityLevel value
+    content.vb: Public Property LogVerbosityLevel As Integer
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.LogVerbosityLevel*
+  modifiers.csharp:
+  - public
+  - get
+  - set
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.IntraOpNumThreads
+  commentId: P:Microsoft.ML.OnnxRuntime.SessionOptions.IntraOpNumThreads
+  id: IntraOpNumThreads
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: IntraOpNumThreads
+  nameWithType: SessionOptions.IntraOpNumThreads
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.IntraOpNumThreads
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: IntraOpNumThreads
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 716
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: public int IntraOpNumThreads { get; set; }
+    parameters: []
+    return:
+      type: System.Int32
+    content.vb: Public Property IntraOpNumThreads As Integer
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.IntraOpNumThreads*
+  modifiers.csharp:
+  - public
+  - get
+  - set
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.InterOpNumThreads
+  commentId: P:Microsoft.ML.OnnxRuntime.SessionOptions.InterOpNumThreads
+  id: InterOpNumThreads
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: InterOpNumThreads
+  nameWithType: SessionOptions.InterOpNumThreads
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.InterOpNumThreads
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: InterOpNumThreads
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 736
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: public int InterOpNumThreads { get; set; }
+    parameters: []
+    return:
+      type: System.Int32
+    content.vb: Public Property InterOpNumThreads As Integer
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.InterOpNumThreads*
+  modifiers.csharp:
+  - public
+  - get
+  - set
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.GraphOptimizationLevel
+  commentId: P:Microsoft.ML.OnnxRuntime.SessionOptions.GraphOptimizationLevel
+  id: GraphOptimizationLevel
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: GraphOptimizationLevel
+  nameWithType: SessionOptions.GraphOptimizationLevel
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.GraphOptimizationLevel
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: GraphOptimizationLevel
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 754
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nSets the graph optimization level for the session. Default is set to ORT_ENABLE_ALL.\n"
+  example: []
+  syntax:
+    content: public GraphOptimizationLevel GraphOptimizationLevel { get; set; }
+    parameters: []
+    return:
+      type: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel
+      description: returns _graphOptimizationLevel value
+    content.vb: Public Property GraphOptimizationLevel As GraphOptimizationLevel
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.GraphOptimizationLevel*
+  modifiers.csharp:
+  - public
+  - get
+  - set
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.ExecutionMode
+  commentId: P:Microsoft.ML.OnnxRuntime.SessionOptions.ExecutionMode
+  id: ExecutionMode
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: ExecutionMode
+  nameWithType: SessionOptions.ExecutionMode
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.ExecutionMode
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ExecutionMode
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 773
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nSets the execution mode for the session. Default is set to ORT_SEQUENTIAL.\nSee [ONNX_Runtime_Perf_Tuning.md] for more details.\n"
+  example: []
+  syntax:
+    content: public ExecutionMode ExecutionMode { get; set; }
+    parameters: []
+    return:
+      type: Microsoft.ML.OnnxRuntime.ExecutionMode
+      description: returns _executionMode value
+    content.vb: Public Property ExecutionMode As ExecutionMode
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.ExecutionMode*
+  modifiers.csharp:
+  - public
+  - get
+  - set
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.ReleaseHandle
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.ReleaseHandle
+  id: ReleaseHandle
+  parent: Microsoft.ML.OnnxRuntime.SessionOptions
+  langs:
+  - csharp
+  - vb
+  name: ReleaseHandle()
+  nameWithType: SessionOptions.ReleaseHandle()
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.ReleaseHandle()
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ReleaseHandle
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 858
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nOverrides SafeHandle.ReleaseHandle() to properly dispose of\nthe native instance of SessionOptions\n"
+  example: []
+  syntax:
+    content: protected override bool ReleaseHandle()
+    return:
+      type: System.Boolean
+      description: always returns true
+    content.vb: Protected Overrides Function ReleaseHandle As Boolean
+  overridden: System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+  overload: Microsoft.ML.OnnxRuntime.SessionOptions.ReleaseHandle*
+  modifiers.csharp:
+  - protected
+  - override
+  modifiers.vb:
+  - Protected
+  - Overrides
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: System.Object
+  commentId: T:System.Object
+  parent: System
+  isExternal: true
+  name: Object
+  nameWithType: Object
+  fullName: System.Object
+- uid: System.Runtime.InteropServices.SafeHandle
+  commentId: T:System.Runtime.InteropServices.SafeHandle
+  parent: System.Runtime.InteropServices
+  isExternal: true
+  name: SafeHandle
+  nameWithType: SafeHandle
+  fullName: System.Runtime.InteropServices.SafeHandle
+- uid: System.IDisposable
+  commentId: T:System.IDisposable
+  parent: System
+  isExternal: true
+  name: IDisposable
+  nameWithType: IDisposable
+  fullName: System.IDisposable
+- uid: System.Runtime.InteropServices.SafeHandle.handle
+  commentId: F:System.Runtime.InteropServices.SafeHandle.handle
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: handle
+  nameWithType: SafeHandle.handle
+  fullName: System.Runtime.InteropServices.SafeHandle.handle
+- uid: System.Runtime.InteropServices.SafeHandle.DangerousAddRef(System.Boolean@)
+  commentId: M:System.Runtime.InteropServices.SafeHandle.DangerousAddRef(System.Boolean@)
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: DangerousAddRef(Boolean)
+  nameWithType: SafeHandle.DangerousAddRef(Boolean)
+  fullName: System.Runtime.InteropServices.SafeHandle.DangerousAddRef(System.Boolean)
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.DangerousAddRef(System.Boolean@)
+    name: DangerousAddRef
+    nameWithType: SafeHandle.DangerousAddRef
+    fullName: System.Runtime.InteropServices.SafeHandle.DangerousAddRef
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Boolean
+    name: Boolean
+    nameWithType: Boolean
+    fullName: System.Boolean
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.DangerousAddRef(System.Boolean@)
+    name: DangerousAddRef
+    nameWithType: SafeHandle.DangerousAddRef
+    fullName: System.Runtime.InteropServices.SafeHandle.DangerousAddRef
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Boolean
+    name: Boolean
+    nameWithType: Boolean
+    fullName: System.Boolean
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+  commentId: M:System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: DangerousGetHandle()
+  nameWithType: SafeHandle.DangerousGetHandle()
+  fullName: System.Runtime.InteropServices.SafeHandle.DangerousGetHandle()
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+    name: DangerousGetHandle
+    nameWithType: SafeHandle.DangerousGetHandle
+    fullName: System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+    name: DangerousGetHandle
+    nameWithType: SafeHandle.DangerousGetHandle
+    fullName: System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.DangerousRelease
+  commentId: M:System.Runtime.InteropServices.SafeHandle.DangerousRelease
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: DangerousRelease()
+  nameWithType: SafeHandle.DangerousRelease()
+  fullName: System.Runtime.InteropServices.SafeHandle.DangerousRelease()
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.DangerousRelease
+    name: DangerousRelease
+    nameWithType: SafeHandle.DangerousRelease
+    fullName: System.Runtime.InteropServices.SafeHandle.DangerousRelease
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.DangerousRelease
+    name: DangerousRelease
+    nameWithType: SafeHandle.DangerousRelease
+    fullName: System.Runtime.InteropServices.SafeHandle.DangerousRelease
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.Dispose
+  commentId: M:System.Runtime.InteropServices.SafeHandle.Dispose
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: Dispose()
+  nameWithType: SafeHandle.Dispose()
+  fullName: System.Runtime.InteropServices.SafeHandle.Dispose()
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.Dispose
+    name: Dispose
+    nameWithType: SafeHandle.Dispose
+    fullName: System.Runtime.InteropServices.SafeHandle.Dispose
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.Dispose
+    name: Dispose
+    nameWithType: SafeHandle.Dispose
+    fullName: System.Runtime.InteropServices.SafeHandle.Dispose
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.Dispose(System.Boolean)
+  commentId: M:System.Runtime.InteropServices.SafeHandle.Dispose(System.Boolean)
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: Dispose(Boolean)
+  nameWithType: SafeHandle.Dispose(Boolean)
+  fullName: System.Runtime.InteropServices.SafeHandle.Dispose(System.Boolean)
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.Dispose(System.Boolean)
+    name: Dispose
+    nameWithType: SafeHandle.Dispose
+    fullName: System.Runtime.InteropServices.SafeHandle.Dispose
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Boolean
+    name: Boolean
+    nameWithType: Boolean
+    fullName: System.Boolean
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.Dispose(System.Boolean)
+    name: Dispose
+    nameWithType: SafeHandle.Dispose
+    fullName: System.Runtime.InteropServices.SafeHandle.Dispose
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Boolean
+    name: Boolean
+    nameWithType: Boolean
+    fullName: System.Boolean
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.SetHandle(System.IntPtr)
+  commentId: M:System.Runtime.InteropServices.SafeHandle.SetHandle(System.IntPtr)
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: SetHandle(IntPtr)
+  nameWithType: SafeHandle.SetHandle(IntPtr)
+  fullName: System.Runtime.InteropServices.SafeHandle.SetHandle(System.IntPtr)
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.SetHandle(System.IntPtr)
+    name: SetHandle
+    nameWithType: SafeHandle.SetHandle
+    fullName: System.Runtime.InteropServices.SafeHandle.SetHandle
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.IntPtr
+    name: IntPtr
+    nameWithType: IntPtr
+    fullName: System.IntPtr
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.SetHandle(System.IntPtr)
+    name: SetHandle
+    nameWithType: SafeHandle.SetHandle
+    fullName: System.Runtime.InteropServices.SafeHandle.SetHandle
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.IntPtr
+    name: IntPtr
+    nameWithType: IntPtr
+    fullName: System.IntPtr
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+  commentId: M:System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: SetHandleAsInvalid()
+  nameWithType: SafeHandle.SetHandleAsInvalid()
+  fullName: System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid()
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+    name: SetHandleAsInvalid
+    nameWithType: SafeHandle.SetHandleAsInvalid
+    fullName: System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+    name: SetHandleAsInvalid
+    nameWithType: SafeHandle.SetHandleAsInvalid
+    fullName: System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.IsClosed
+  commentId: P:System.Runtime.InteropServices.SafeHandle.IsClosed
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: IsClosed
+  nameWithType: SafeHandle.IsClosed
+  fullName: System.Runtime.InteropServices.SafeHandle.IsClosed
+- uid: System.Object.Equals(System.Object)
+  commentId: M:System.Object.Equals(System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object)
+  nameWithType: Object.Equals(Object)
+  fullName: System.Object.Equals(System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.Equals(System.Object,System.Object)
+  commentId: M:System.Object.Equals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object, Object)
+  nameWithType: Object.Equals(Object, Object)
+  fullName: System.Object.Equals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetHashCode
+  commentId: M:System.Object.GetHashCode
+  parent: System.Object
+  isExternal: true
+  name: GetHashCode()
+  nameWithType: Object.GetHashCode()
+  fullName: System.Object.GetHashCode()
+  spec.csharp:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetType
+  commentId: M:System.Object.GetType
+  parent: System.Object
+  isExternal: true
+  name: GetType()
+  nameWithType: Object.GetType()
+  fullName: System.Object.GetType()
+  spec.csharp:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.MemberwiseClone
+  commentId: M:System.Object.MemberwiseClone
+  parent: System.Object
+  isExternal: true
+  name: MemberwiseClone()
+  nameWithType: Object.MemberwiseClone()
+  fullName: System.Object.MemberwiseClone()
+  spec.csharp:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ReferenceEquals(System.Object,System.Object)
+  commentId: M:System.Object.ReferenceEquals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: ReferenceEquals(Object, Object)
+  nameWithType: Object.ReferenceEquals(Object, Object)
+  fullName: System.Object.ReferenceEquals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ToString
+  commentId: M:System.Object.ToString
+  parent: System.Object
+  isExternal: true
+  name: ToString()
+  nameWithType: Object.ToString()
+  fullName: System.Object.ToString()
+  spec.csharp:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration(System.String,System.Boolean)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration(Microsoft.ML.OnnxRuntime.SessionOptions,System.String,System.Boolean)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptionsContainer
+  definition: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration(Microsoft.ML.OnnxRuntime.SessionOptions,System.String,System.Boolean)
+  name: ApplyConfiguration(String, Boolean)
+  nameWithType: SessionOptionsContainer.ApplyConfiguration(String, Boolean)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration(System.String, System.Boolean)
+  spec.csharp:
+  - uid: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration(System.String,System.Boolean)
+    name: ApplyConfiguration
+    nameWithType: SessionOptionsContainer.ApplyConfiguration
+    fullName: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Boolean
+    name: Boolean
+    nameWithType: Boolean
+    fullName: System.Boolean
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration(System.String,System.Boolean)
+    name: ApplyConfiguration
+    nameWithType: SessionOptionsContainer.ApplyConfiguration
+    fullName: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Boolean
+    name: Boolean
+    nameWithType: Boolean
+    fullName: System.Boolean
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System
+  commentId: N:System
+  isExternal: true
+  name: System
+  nameWithType: System
+  fullName: System
+- uid: System.Runtime.InteropServices
+  commentId: N:System.Runtime.InteropServices
+  isExternal: true
+  name: System.Runtime.InteropServices
+  nameWithType: System.Runtime.InteropServices
+  fullName: System.Runtime.InteropServices
+- uid: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration(Microsoft.ML.OnnxRuntime.SessionOptions,System.String,System.Boolean)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration(Microsoft.ML.OnnxRuntime.SessionOptions,System.String,System.Boolean)
+  isExternal: true
+  name: ApplyConfiguration(SessionOptions, String, Boolean)
+  nameWithType: SessionOptionsContainer.ApplyConfiguration(SessionOptions, String, Boolean)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration(Microsoft.ML.OnnxRuntime.SessionOptions, System.String, System.Boolean)
+  spec.csharp:
+  - uid: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration(Microsoft.ML.OnnxRuntime.SessionOptions,System.String,System.Boolean)
+    name: ApplyConfiguration
+    nameWithType: SessionOptionsContainer.ApplyConfiguration
+    fullName: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: Microsoft.ML.OnnxRuntime.SessionOptions
+    name: SessionOptions
+    nameWithType: SessionOptions
+    fullName: Microsoft.ML.OnnxRuntime.SessionOptions
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Boolean
+    name: Boolean
+    nameWithType: Boolean
+    fullName: System.Boolean
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration(Microsoft.ML.OnnxRuntime.SessionOptions,System.String,System.Boolean)
+    name: ApplyConfiguration
+    nameWithType: SessionOptionsContainer.ApplyConfiguration
+    fullName: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: Microsoft.ML.OnnxRuntime.SessionOptions
+    name: SessionOptions
+    nameWithType: SessionOptions
+    fullName: Microsoft.ML.OnnxRuntime.SessionOptions
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Boolean
+    name: Boolean
+    nameWithType: Boolean
+    fullName: System.Boolean
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.SessionOptionsContainer
+  commentId: T:Microsoft.ML.OnnxRuntime.SessionOptionsContainer
+  parent: Microsoft.ML.OnnxRuntime
+  name: SessionOptionsContainer
+  nameWithType: SessionOptionsContainer
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptionsContainer
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.#ctor*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.#ctor
+  name: SessionOptions
+  nameWithType: SessionOptions.SessionOptions
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.SessionOptions
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithCudaProvider*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithCudaProvider
+  name: MakeSessionOptionWithCudaProvider
+  nameWithType: SessionOptions.MakeSessionOptionWithCudaProvider
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithCudaProvider
+- uid: System.Int32
+  commentId: T:System.Int32
+  parent: System
+  isExternal: true
+  name: Int32
+  nameWithType: Int32
+  fullName: System.Int32
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions
+  commentId: T:Microsoft.ML.OnnxRuntime.SessionOptions
+  parent: Microsoft.ML.OnnxRuntime
+  name: SessionOptions
+  nameWithType: SessionOptions
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions
+- uid: Microsoft.ML.OnnxRuntime.OrtCUDAProviderOptions
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtCUDAProviderOptions
+  parent: Microsoft.ML.OnnxRuntime
+  name: OrtCUDAProviderOptions
+  nameWithType: OrtCUDAProviderOptions
+  fullName: Microsoft.ML.OnnxRuntime.OrtCUDAProviderOptions
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTensorrtProvider*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTensorrtProvider
+  name: MakeSessionOptionWithTensorrtProvider
+  nameWithType: SessionOptions.MakeSessionOptionWithTensorrtProvider
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTensorrtProvider
+- uid: Microsoft.ML.OnnxRuntime.OrtTensorRTProviderOptions
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtTensorRTProviderOptions
+  parent: Microsoft.ML.OnnxRuntime
+  name: OrtTensorRTProviderOptions
+  nameWithType: OrtTensorRTProviderOptions
+  fullName: Microsoft.ML.OnnxRuntime.OrtTensorRTProviderOptions
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithNupharProvider*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithNupharProvider
+  name: MakeSessionOptionWithNupharProvider
+  nameWithType: SessionOptions.MakeSessionOptionWithNupharProvider
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithNupharProvider
+- uid: System.String
+  commentId: T:System.String
+  parent: System
+  isExternal: true
+  name: String
+  nameWithType: String
+  fullName: System.String
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTvmProvider*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTvmProvider
+  name: MakeSessionOptionWithTvmProvider
+  nameWithType: SessionOptions.MakeSessionOptionWithTvmProvider
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithTvmProvider
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithRocmProvider*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithRocmProvider
+  name: MakeSessionOptionWithRocmProvider
+  nameWithType: SessionOptions.MakeSessionOptionWithRocmProvider
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithRocmProvider
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CPU*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CPU
+  name: AppendExecutionProvider_CPU
+  nameWithType: SessionOptions.AppendExecutionProvider_CPU
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CPU
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Dnnl*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Dnnl
+  name: AppendExecutionProvider_Dnnl
+  nameWithType: SessionOptions.AppendExecutionProvider_Dnnl
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Dnnl
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CUDA*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CUDA
+  name: AppendExecutionProvider_CUDA
+  nameWithType: SessionOptions.AppendExecutionProvider_CUDA
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CUDA
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_DML*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_DML
+  name: AppendExecutionProvider_DML
+  nameWithType: SessionOptions.AppendExecutionProvider_DML
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_DML
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_OpenVINO*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_OpenVINO
+  name: AppendExecutionProvider_OpenVINO
+  nameWithType: SessionOptions.AppendExecutionProvider_OpenVINO
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_OpenVINO
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tensorrt*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tensorrt
+  name: AppendExecutionProvider_Tensorrt
+  nameWithType: SessionOptions.AppendExecutionProvider_Tensorrt
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tensorrt
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_ROCM*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_ROCM
+  name: AppendExecutionProvider_ROCM
+  nameWithType: SessionOptions.AppendExecutionProvider_ROCM
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_ROCM
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_MIGraphX*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_MIGraphX
+  name: AppendExecutionProvider_MIGraphX
+  nameWithType: SessionOptions.AppendExecutionProvider_MIGraphX
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_MIGraphX
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nnapi*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nnapi
+  name: AppendExecutionProvider_Nnapi
+  nameWithType: SessionOptions.AppendExecutionProvider_Nnapi
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nnapi
+- uid: Microsoft.ML.OnnxRuntime.NnapiFlags
+  commentId: T:Microsoft.ML.OnnxRuntime.NnapiFlags
+  parent: Microsoft.ML.OnnxRuntime
+  name: NnapiFlags
+  nameWithType: NnapiFlags
+  fullName: Microsoft.ML.OnnxRuntime.NnapiFlags
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CoreML*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CoreML
+  name: AppendExecutionProvider_CoreML
+  nameWithType: SessionOptions.AppendExecutionProvider_CoreML
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_CoreML
+- uid: Microsoft.ML.OnnxRuntime.CoreMLFlags
+  commentId: T:Microsoft.ML.OnnxRuntime.CoreMLFlags
+  parent: Microsoft.ML.OnnxRuntime
+  name: CoreMLFlags
+  nameWithType: CoreMLFlags
+  fullName: Microsoft.ML.OnnxRuntime.CoreMLFlags
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nuphar*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nuphar
+  name: AppendExecutionProvider_Nuphar
+  nameWithType: SessionOptions.AppendExecutionProvider_Nuphar
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nuphar
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tvm*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tvm
+  name: AppendExecutionProvider_Tvm
+  nameWithType: SessionOptions.AppendExecutionProvider_Tvm
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Tvm
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider
+  name: AppendExecutionProvider
+  nameWithType: SessionOptions.AppendExecutionProvider
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider
+- uid: System.Collections.Generic.Dictionary{System.String,System.String}
+  commentId: T:System.Collections.Generic.Dictionary{System.String,System.String}
+  parent: System.Collections.Generic
+  definition: System.Collections.Generic.Dictionary`2
+  name: Dictionary<String, String>
+  nameWithType: Dictionary<String, String>
+  fullName: System.Collections.Generic.Dictionary<System.String, System.String>
+  nameWithType.vb: Dictionary(Of String, String)
+  fullName.vb: System.Collections.Generic.Dictionary(Of System.String, System.String)
+  name.vb: Dictionary(Of String, String)
+  spec.csharp:
+  - uid: System.Collections.Generic.Dictionary`2
+    name: Dictionary
+    nameWithType: Dictionary
+    fullName: System.Collections.Generic.Dictionary
+    isExternal: true
+  - name: <
+    nameWithType: <
+    fullName: <
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: System.Collections.Generic.Dictionary`2
+    name: Dictionary
+    nameWithType: Dictionary
+    fullName: System.Collections.Generic.Dictionary
+    isExternal: true
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Collections.Generic.Dictionary`2
+  commentId: T:System.Collections.Generic.Dictionary`2
+  isExternal: true
+  name: Dictionary<TKey, TValue>
+  nameWithType: Dictionary<TKey, TValue>
+  fullName: System.Collections.Generic.Dictionary<TKey, TValue>
+  nameWithType.vb: Dictionary(Of TKey, TValue)
+  fullName.vb: System.Collections.Generic.Dictionary(Of TKey, TValue)
+  name.vb: Dictionary(Of TKey, TValue)
+  spec.csharp:
+  - uid: System.Collections.Generic.Dictionary`2
+    name: Dictionary
+    nameWithType: Dictionary
+    fullName: System.Collections.Generic.Dictionary
+    isExternal: true
+  - name: <
+    nameWithType: <
+    fullName: <
+  - name: TKey
+    nameWithType: TKey
+    fullName: TKey
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - name: TValue
+    nameWithType: TValue
+    fullName: TValue
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: System.Collections.Generic.Dictionary`2
+    name: Dictionary
+    nameWithType: Dictionary
+    fullName: System.Collections.Generic.Dictionary
+    isExternal: true
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - name: TKey
+    nameWithType: TKey
+    fullName: TKey
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - name: TValue
+    nameWithType: TValue
+    fullName: TValue
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Collections.Generic
+  commentId: N:System.Collections.Generic
+  isExternal: true
+  name: System.Collections.Generic
+  nameWithType: System.Collections.Generic
+  fullName: System.Collections.Generic
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.RegisterCustomOpLibrary*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.RegisterCustomOpLibrary
+  name: RegisterCustomOpLibrary
+  nameWithType: SessionOptions.RegisterCustomOpLibrary
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.RegisterCustomOpLibrary
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.RegisterCustomOpLibraryV2*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.RegisterCustomOpLibraryV2
+  name: RegisterCustomOpLibraryV2
+  nameWithType: SessionOptions.RegisterCustomOpLibraryV2
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.RegisterCustomOpLibraryV2
+- uid: System.IntPtr
+  commentId: T:System.IntPtr
+  parent: System
+  isExternal: true
+  name: IntPtr
+  nameWithType: IntPtr
+  fullName: System.IntPtr
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AddInitializer*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.AddInitializer
+  name: AddInitializer
+  nameWithType: SessionOptions.AddInitializer
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AddInitializer
+- uid: Microsoft.ML.OnnxRuntime.OrtValue
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtValue
+  parent: Microsoft.ML.OnnxRuntime
+  name: OrtValue
+  nameWithType: OrtValue
+  fullName: Microsoft.ML.OnnxRuntime.OrtValue
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AddSessionConfigEntry*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.AddSessionConfigEntry
+  name: AddSessionConfigEntry
+  nameWithType: SessionOptions.AddSessionConfigEntry
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AddSessionConfigEntry
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AddFreeDimensionOverride*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.AddFreeDimensionOverride
+  name: AddFreeDimensionOverride
+  nameWithType: SessionOptions.AddFreeDimensionOverride
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AddFreeDimensionOverride
+- uid: System.Int64
+  commentId: T:System.Int64
+  parent: System
+  isExternal: true
+  name: Int64
+  nameWithType: Int64
+  fullName: System.Int64
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AddFreeDimensionOverrideByName*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.AddFreeDimensionOverrideByName
+  name: AddFreeDimensionOverrideByName
+  nameWithType: SessionOptions.AddFreeDimensionOverrideByName
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AddFreeDimensionOverrideByName
+- uid: System.Runtime.InteropServices.SafeHandle.IsInvalid
+  commentId: P:System.Runtime.InteropServices.SafeHandle.IsInvalid
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: IsInvalid
+  nameWithType: SafeHandle.IsInvalid
+  fullName: System.Runtime.InteropServices.SafeHandle.IsInvalid
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.IsInvalid*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.IsInvalid
+  name: IsInvalid
+  nameWithType: SessionOptions.IsInvalid
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.IsInvalid
+- uid: System.Boolean
+  commentId: T:System.Boolean
+  parent: System
+  isExternal: true
+  name: Boolean
+  nameWithType: Boolean
+  fullName: System.Boolean
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.EnableMemoryPattern*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.EnableMemoryPattern
+  name: EnableMemoryPattern
+  nameWithType: SessionOptions.EnableMemoryPattern
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.EnableMemoryPattern
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.ProfileOutputPathPrefix*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.ProfileOutputPathPrefix
+  name: ProfileOutputPathPrefix
+  nameWithType: SessionOptions.ProfileOutputPathPrefix
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.ProfileOutputPathPrefix
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.EnableProfiling*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.EnableProfiling
+  name: EnableProfiling
+  nameWithType: SessionOptions.EnableProfiling
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.EnableProfiling
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.OptimizedModelFilePath*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.OptimizedModelFilePath
+  name: OptimizedModelFilePath
+  nameWithType: SessionOptions.OptimizedModelFilePath
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.OptimizedModelFilePath
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.EnableCpuMemArena*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.EnableCpuMemArena
+  name: EnableCpuMemArena
+  nameWithType: SessionOptions.EnableCpuMemArena
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.EnableCpuMemArena
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.LogId*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.LogId
+  name: LogId
+  nameWithType: SessionOptions.LogId
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.LogId
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.LogSeverityLevel*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.LogSeverityLevel
+  name: LogSeverityLevel
+  nameWithType: SessionOptions.LogSeverityLevel
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.LogSeverityLevel
+- uid: Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+  parent: Microsoft.ML.OnnxRuntime
+  name: OrtLoggingLevel
+  nameWithType: OrtLoggingLevel
+  fullName: Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.LogVerbosityLevel*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.LogVerbosityLevel
+  name: LogVerbosityLevel
+  nameWithType: SessionOptions.LogVerbosityLevel
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.LogVerbosityLevel
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.IntraOpNumThreads*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.IntraOpNumThreads
+  name: IntraOpNumThreads
+  nameWithType: SessionOptions.IntraOpNumThreads
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.IntraOpNumThreads
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.InterOpNumThreads*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.InterOpNumThreads
+  name: InterOpNumThreads
+  nameWithType: SessionOptions.InterOpNumThreads
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.InterOpNumThreads
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.GraphOptimizationLevel*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.GraphOptimizationLevel
+  name: GraphOptimizationLevel
+  nameWithType: SessionOptions.GraphOptimizationLevel
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.GraphOptimizationLevel
+- uid: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel
+  commentId: T:Microsoft.ML.OnnxRuntime.GraphOptimizationLevel
+  parent: Microsoft.ML.OnnxRuntime
+  name: GraphOptimizationLevel
+  nameWithType: GraphOptimizationLevel
+  fullName: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.ExecutionMode*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.ExecutionMode
+  name: ExecutionMode
+  nameWithType: SessionOptions.ExecutionMode
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.ExecutionMode
+- uid: Microsoft.ML.OnnxRuntime.ExecutionMode
+  commentId: T:Microsoft.ML.OnnxRuntime.ExecutionMode
+  parent: Microsoft.ML.OnnxRuntime
+  name: ExecutionMode
+  nameWithType: ExecutionMode
+  fullName: Microsoft.ML.OnnxRuntime.ExecutionMode
+- uid: System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+  commentId: M:System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: ReleaseHandle()
+  nameWithType: SafeHandle.ReleaseHandle()
+  fullName: System.Runtime.InteropServices.SafeHandle.ReleaseHandle()
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+    name: ReleaseHandle
+    nameWithType: SafeHandle.ReleaseHandle
+    fullName: System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+    name: ReleaseHandle
+    nameWithType: SafeHandle.ReleaseHandle
+    fullName: System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions.ReleaseHandle*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.ReleaseHandle
+  name: ReleaseHandle
+  nameWithType: SessionOptions.ReleaseHandle
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.ReleaseHandle

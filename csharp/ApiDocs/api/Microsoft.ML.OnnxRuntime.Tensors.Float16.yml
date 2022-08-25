@@ -1,0 +1,748 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Float16
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.Float16
+  id: Float16
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  children:
+  - Microsoft.ML.OnnxRuntime.Tensors.Float16.#ctor(System.UInt16)
+  - Microsoft.ML.OnnxRuntime.Tensors.Float16.Equals(Microsoft.ML.OnnxRuntime.Tensors.Float16)
+  - Microsoft.ML.OnnxRuntime.Tensors.Float16.Equals(System.Object)
+  - Microsoft.ML.OnnxRuntime.Tensors.Float16.GetHashCode
+  - Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Equality(Microsoft.ML.OnnxRuntime.Tensors.Float16,Microsoft.ML.OnnxRuntime.Tensors.Float16)
+  - Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Implicit(Microsoft.ML.OnnxRuntime.Tensors.Float16)~System.UInt16
+  - Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Implicit(System.UInt16)~Microsoft.ML.OnnxRuntime.Tensors.Float16
+  - Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Inequality(Microsoft.ML.OnnxRuntime.Tensors.Float16,Microsoft.ML.OnnxRuntime.Tensors.Float16)
+  - Microsoft.ML.OnnxRuntime.Tensors.Float16.value
+  langs:
+  - csharp
+  - vb
+  name: Float16
+  nameWithType: Float16
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Float16
+  type: Struct
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Float16
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 54
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nThis value type represents A Float16 value\nit is blittable as defined in https://docs.microsoft.com/en-us/dotnet/framework/interop/blittable-and-non-blittable-types\nand as such, represented the same way in managed and native memories. This means that arrays of this type\ndo not have to be copied to be passed to native memory but simply pinnned and read by native code. Thus,\none can create a Tensor on top of an array of these structures and feed it directly to Onnxruntime library.\nBinary wise, it is the same as ushort[] (uint16_t in C++). However, we would like a separate type for type dispatching.\n"
+  example: []
+  syntax:
+    content: public struct Float16
+    content.vb: Public Structure Float16
+  inheritedMembers:
+  - System.ValueType.ToString
+  - System.Object.Equals(System.Object,System.Object)
+  - System.Object.GetType
+  - System.Object.ReferenceEquals(System.Object,System.Object)
+  modifiers.csharp:
+  - public
+  - struct
+  modifiers.vb:
+  - Public
+  - Structure
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Float16.value
+  commentId: F:Microsoft.ML.OnnxRuntime.Tensors.Float16.value
+  id: value
+  parent: Microsoft.ML.OnnxRuntime.Tensors.Float16
+  langs:
+  - csharp
+  - vb
+  name: value
+  nameWithType: Float16.value
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Float16.value
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: value
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 59
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nfloat16 representation bits\n"
+  example: []
+  syntax:
+    content: public ushort value
+    return:
+      type: System.UInt16
+    content.vb: Public value As UShort
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Float16.#ctor(System.UInt16)
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.Float16.#ctor(System.UInt16)
+  id: '#ctor(System.UInt16)'
+  parent: Microsoft.ML.OnnxRuntime.Tensors.Float16
+  langs:
+  - csharp
+  - vb
+  name: Float16(UInt16)
+  nameWithType: Float16.Float16(UInt16)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Float16.Float16(System.UInt16)
+  type: Constructor
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: .ctor
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 64
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nCtor\n"
+  example: []
+  syntax:
+    content: public Float16(ushort v)
+    parameters:
+    - id: v
+      type: System.UInt16
+      description: ''
+    content.vb: Public Sub New(v As UShort)
+  overload: Microsoft.ML.OnnxRuntime.Tensors.Float16.#ctor*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Implicit(Microsoft.ML.OnnxRuntime.Tensors.Float16)~System.UInt16
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Implicit(Microsoft.ML.OnnxRuntime.Tensors.Float16)~System.UInt16
+  id: op_Implicit(Microsoft.ML.OnnxRuntime.Tensors.Float16)~System.UInt16
+  parent: Microsoft.ML.OnnxRuntime.Tensors.Float16
+  langs:
+  - csharp
+  - vb
+  name: Implicit(Float16 to UInt16)
+  nameWithType: Float16.Implicit(Float16 to UInt16)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Float16.Implicit(Microsoft.ML.OnnxRuntime.Tensors.Float16 to System.UInt16)
+  type: Operator
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: op_Implicit
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 73
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nConverts to ushort\n"
+  example: []
+  syntax:
+    content: public static implicit operator ushort (Float16 f)
+    parameters:
+    - id: f
+      type: Microsoft.ML.OnnxRuntime.Tensors.Float16
+      description: instance of Float16
+    return:
+      type: System.UInt16
+      description: value member
+    content.vb: Public Shared Widening Operator CType(f As Float16) As UShort
+  overload: Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Implicit*
+  nameWithType.vb: Float16.Widening(Float16 to UInt16)
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.Float16.Widening(Microsoft.ML.OnnxRuntime.Tensors.Float16 to System.UInt16)
+  name.vb: Widening(Float16 to UInt16)
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Implicit(System.UInt16)~Microsoft.ML.OnnxRuntime.Tensors.Float16
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Implicit(System.UInt16)~Microsoft.ML.OnnxRuntime.Tensors.Float16
+  id: op_Implicit(System.UInt16)~Microsoft.ML.OnnxRuntime.Tensors.Float16
+  parent: Microsoft.ML.OnnxRuntime.Tensors.Float16
+  langs:
+  - csharp
+  - vb
+  name: Implicit(UInt16 to Float16)
+  nameWithType: Float16.Implicit(UInt16 to Float16)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Float16.Implicit(System.UInt16 to Microsoft.ML.OnnxRuntime.Tensors.Float16)
+  type: Operator
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: op_Implicit
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 79
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nConverts a 16-bit unsigned integer to a Float16.\n"
+  example: []
+  syntax:
+    content: public static implicit operator Float16(ushort value)
+    parameters:
+    - id: value
+      type: System.UInt16
+      description: A 16-bit unsigned integer.
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.Float16
+      description: A Float16 that represents the converted 16-bit unsigned integer.
+    content.vb: Public Shared Widening Operator CType(value As UShort) As Float16
+  overload: Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Implicit*
+  nameWithType.vb: Float16.Widening(UInt16 to Float16)
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.Float16.Widening(System.UInt16 to Microsoft.ML.OnnxRuntime.Tensors.Float16)
+  name.vb: Widening(UInt16 to Float16)
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Equality(Microsoft.ML.OnnxRuntime.Tensors.Float16,Microsoft.ML.OnnxRuntime.Tensors.Float16)
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Equality(Microsoft.ML.OnnxRuntime.Tensors.Float16,Microsoft.ML.OnnxRuntime.Tensors.Float16)
+  id: op_Equality(Microsoft.ML.OnnxRuntime.Tensors.Float16,Microsoft.ML.OnnxRuntime.Tensors.Float16)
+  parent: Microsoft.ML.OnnxRuntime.Tensors.Float16
+  langs:
+  - csharp
+  - vb
+  name: Equality(Float16, Float16)
+  nameWithType: Float16.Equality(Float16, Float16)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Float16.Equality(Microsoft.ML.OnnxRuntime.Tensors.Float16, Microsoft.ML.OnnxRuntime.Tensors.Float16)
+  type: Operator
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: op_Equality
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 86
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nCompares values of two Float16 for binary equality\n"
+  example: []
+  syntax:
+    content: public static bool operator ==(Float16 lhs, Float16 rhs)
+    parameters:
+    - id: lhs
+      type: Microsoft.ML.OnnxRuntime.Tensors.Float16
+      description: ''
+    - id: rhs
+      type: Microsoft.ML.OnnxRuntime.Tensors.Float16
+      description: ''
+    return:
+      type: System.Boolean
+      description: result of value comparisons
+    content.vb: Public Shared Operator =(lhs As Float16, rhs As Float16) As Boolean
+  overload: Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Equality*
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Inequality(Microsoft.ML.OnnxRuntime.Tensors.Float16,Microsoft.ML.OnnxRuntime.Tensors.Float16)
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Inequality(Microsoft.ML.OnnxRuntime.Tensors.Float16,Microsoft.ML.OnnxRuntime.Tensors.Float16)
+  id: op_Inequality(Microsoft.ML.OnnxRuntime.Tensors.Float16,Microsoft.ML.OnnxRuntime.Tensors.Float16)
+  parent: Microsoft.ML.OnnxRuntime.Tensors.Float16
+  langs:
+  - csharp
+  - vb
+  name: Inequality(Float16, Float16)
+  nameWithType: Float16.Inequality(Float16, Float16)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Float16.Inequality(Microsoft.ML.OnnxRuntime.Tensors.Float16, Microsoft.ML.OnnxRuntime.Tensors.Float16)
+  type: Operator
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: op_Inequality
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 93
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nCompares values of two Float16 for binary inequality\n"
+  example: []
+  syntax:
+    content: public static bool operator !=(Float16 lhs, Float16 rhs)
+    parameters:
+    - id: lhs
+      type: Microsoft.ML.OnnxRuntime.Tensors.Float16
+      description: ''
+    - id: rhs
+      type: Microsoft.ML.OnnxRuntime.Tensors.Float16
+      description: ''
+    return:
+      type: System.Boolean
+      description: result of value comparisons
+    content.vb: Public Shared Operator <>(lhs As Float16, rhs As Float16) As Boolean
+  overload: Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Inequality*
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Float16.Equals(Microsoft.ML.OnnxRuntime.Tensors.Float16)
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.Float16.Equals(Microsoft.ML.OnnxRuntime.Tensors.Float16)
+  id: Equals(Microsoft.ML.OnnxRuntime.Tensors.Float16)
+  parent: Microsoft.ML.OnnxRuntime.Tensors.Float16
+  langs:
+  - csharp
+  - vb
+  name: Equals(Float16)
+  nameWithType: Float16.Equals(Float16)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Float16.Equals(Microsoft.ML.OnnxRuntime.Tensors.Float16)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Equals
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 99
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nReturns a value indicating whether this instance and other Float16 represent the same value.\n"
+  example: []
+  syntax:
+    content: public bool Equals(Float16 other)
+    parameters:
+    - id: other
+      type: Microsoft.ML.OnnxRuntime.Tensors.Float16
+      description: A Float16 object to compare to this instance.
+    return:
+      type: System.Boolean
+      description: true if other.value is equal to this instance; otherwise, false.
+    content.vb: Public Function Equals(other As Float16) As Boolean
+  overload: Microsoft.ML.OnnxRuntime.Tensors.Float16.Equals*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Float16.Equals(System.Object)
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.Float16.Equals(System.Object)
+  id: Equals(System.Object)
+  parent: Microsoft.ML.OnnxRuntime.Tensors.Float16
+  langs:
+  - csharp
+  - vb
+  name: Equals(Object)
+  nameWithType: Float16.Equals(Object)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Float16.Equals(System.Object)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Equals
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 109
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nReturns a value indicating whether this instance and a specified System.Object\nrepresent the same type and value.\n"
+  example: []
+  syntax:
+    content: public override bool Equals(object obj)
+    parameters:
+    - id: obj
+      type: System.Object
+      description: An System.Object.
+    return:
+      type: System.Boolean
+      description: true if obj is Float16 and its value is equal to this instance; otherwise, false.
+    content.vb: Public Overrides Function Equals(obj As Object) As Boolean
+  overridden: System.ValueType.Equals(System.Object)
+  overload: Microsoft.ML.OnnxRuntime.Tensors.Float16.Equals*
+  modifiers.csharp:
+  - public
+  - override
+  modifiers.vb:
+  - Public
+  - Overrides
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Float16.GetHashCode
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.Float16.GetHashCode
+  id: GetHashCode
+  parent: Microsoft.ML.OnnxRuntime.Tensors.Float16
+  langs:
+  - csharp
+  - vb
+  name: GetHashCode()
+  nameWithType: Float16.GetHashCode()
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Float16.GetHashCode()
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: GetHashCode
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 123
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nReturns the hash code for this instance.\n"
+  example: []
+  syntax:
+    content: public override int GetHashCode()
+    return:
+      type: System.Int32
+      description: A 32-bit signed integer hash code.
+    content.vb: Public Overrides Function GetHashCode As Integer
+  overridden: System.ValueType.GetHashCode
+  overload: Microsoft.ML.OnnxRuntime.Tensors.Float16.GetHashCode*
+  modifiers.csharp:
+  - public
+  - override
+  modifiers.vb:
+  - Public
+  - Overrides
+references:
+- uid: Microsoft.ML.OnnxRuntime.Tensors
+  commentId: N:Microsoft.ML.OnnxRuntime.Tensors
+  name: Microsoft.ML.OnnxRuntime.Tensors
+  nameWithType: Microsoft.ML.OnnxRuntime.Tensors
+  fullName: Microsoft.ML.OnnxRuntime.Tensors
+- uid: System.ValueType.ToString
+  commentId: M:System.ValueType.ToString
+  parent: System.ValueType
+  isExternal: true
+  name: ToString()
+  nameWithType: ValueType.ToString()
+  fullName: System.ValueType.ToString()
+  spec.csharp:
+  - uid: System.ValueType.ToString
+    name: ToString
+    nameWithType: ValueType.ToString
+    fullName: System.ValueType.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.ValueType.ToString
+    name: ToString
+    nameWithType: ValueType.ToString
+    fullName: System.ValueType.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.Equals(System.Object,System.Object)
+  commentId: M:System.Object.Equals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object, Object)
+  nameWithType: Object.Equals(Object, Object)
+  fullName: System.Object.Equals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetType
+  commentId: M:System.Object.GetType
+  parent: System.Object
+  isExternal: true
+  name: GetType()
+  nameWithType: Object.GetType()
+  fullName: System.Object.GetType()
+  spec.csharp:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ReferenceEquals(System.Object,System.Object)
+  commentId: M:System.Object.ReferenceEquals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: ReferenceEquals(Object, Object)
+  nameWithType: Object.ReferenceEquals(Object, Object)
+  fullName: System.Object.ReferenceEquals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.ValueType
+  commentId: T:System.ValueType
+  parent: System
+  isExternal: true
+  name: ValueType
+  nameWithType: ValueType
+  fullName: System.ValueType
+- uid: System.Object
+  commentId: T:System.Object
+  parent: System
+  isExternal: true
+  name: Object
+  nameWithType: Object
+  fullName: System.Object
+- uid: System
+  commentId: N:System
+  isExternal: true
+  name: System
+  nameWithType: System
+  fullName: System
+- uid: System.UInt16
+  commentId: T:System.UInt16
+  parent: System
+  isExternal: true
+  name: UInt16
+  nameWithType: UInt16
+  fullName: System.UInt16
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Float16.#ctor*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.Tensors.Float16.#ctor
+  name: Float16
+  nameWithType: Float16.Float16
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Float16.Float16
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Implicit*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Implicit
+  name: Implicit
+  nameWithType: Float16.Implicit
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Float16.Implicit
+  nameWithType.vb: Float16.Widening
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.Float16.Widening
+  name.vb: Widening
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Float16
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.Float16
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  name: Float16
+  nameWithType: Float16
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Float16
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Equality*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Equality
+  name: Equality
+  nameWithType: Float16.Equality
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Float16.Equality
+- uid: System.Boolean
+  commentId: T:System.Boolean
+  parent: System
+  isExternal: true
+  name: Boolean
+  nameWithType: Boolean
+  fullName: System.Boolean
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Inequality*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.Tensors.Float16.op_Inequality
+  name: Inequality
+  nameWithType: Float16.Inequality
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Float16.Inequality
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Float16.Equals*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.Tensors.Float16.Equals
+  name: Equals
+  nameWithType: Float16.Equals
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Float16.Equals
+- uid: System.ValueType.Equals(System.Object)
+  commentId: M:System.ValueType.Equals(System.Object)
+  parent: System.ValueType
+  isExternal: true
+  name: Equals(Object)
+  nameWithType: ValueType.Equals(Object)
+  fullName: System.ValueType.Equals(System.Object)
+  spec.csharp:
+  - uid: System.ValueType.Equals(System.Object)
+    name: Equals
+    nameWithType: ValueType.Equals
+    fullName: System.ValueType.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.ValueType.Equals(System.Object)
+    name: Equals
+    nameWithType: ValueType.Equals
+    fullName: System.ValueType.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.ValueType.GetHashCode
+  commentId: M:System.ValueType.GetHashCode
+  parent: System.ValueType
+  isExternal: true
+  name: GetHashCode()
+  nameWithType: ValueType.GetHashCode()
+  fullName: System.ValueType.GetHashCode()
+  spec.csharp:
+  - uid: System.ValueType.GetHashCode
+    name: GetHashCode
+    nameWithType: ValueType.GetHashCode
+    fullName: System.ValueType.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.ValueType.GetHashCode
+    name: GetHashCode
+    nameWithType: ValueType.GetHashCode
+    fullName: System.ValueType.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Float16.GetHashCode*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.Tensors.Float16.GetHashCode
+  name: GetHashCode
+  nameWithType: Float16.GetHashCode
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Float16.GetHashCode
+- uid: System.Int32
+  commentId: T:System.Int32
+  parent: System
+  isExternal: true
+  name: Int32
+  nameWithType: Int32
+  fullName: System.Int32
