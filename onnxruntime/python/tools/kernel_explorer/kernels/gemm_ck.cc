@@ -104,15 +104,15 @@ class CKGemm : public IKernelExplorer {
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
 
-    for (auto&& [type_string, impl] : GetCKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [type_string, op] : GetCKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
       type_strings_.emplace_back(std::move(type_string));
-      ops_.emplace_back(std::move(impl));
+      ops_.emplace_back(std::move(op));
     }
     ORT_ENFORCE(!ops_.empty());
   }
 
   void Run() override {
-    ORT_THROW_IF_ERROR(ops_[selected_impl_](&params_));
+    ORT_THROW_IF_ERROR(ops_[selected_op_](&params_));
   }
 
   std::vector<std::string> ListOps() const {
@@ -122,7 +122,7 @@ class CKGemm : public IKernelExplorer {
   bool SelectOp(const std::string& name) {
     for (size_t i = 0; i < ops_.size(); i++) {
       if (type_strings_[i] == name) {
-        selected_impl_ = i;
+        selected_op_ = i;
         Status status = ops_[i](&params_);
         return status.IsOK();
       }
@@ -137,7 +137,7 @@ class CKGemm : public IKernelExplorer {
   ParamsT params_;
   std::vector<OpT> ops_;
   std::vector<std::string> type_strings_;
-  size_t selected_impl_{};
+  size_t selected_op_{};
 };
 
 #define REGISTER_OP(type, alayout, blayout, layout_string)                         \
