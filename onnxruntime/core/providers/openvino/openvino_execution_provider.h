@@ -110,8 +110,20 @@ struct OpenVINOExecutionProviderInfo {
     } else if (dev_type == "GPU_FP32") {
       device_type_ = "GPU";
       precision_ = "FP32";
+    } else if (dev_type == "GPU.0_FP32") {
+      device_type_ = "GPU.0";
+      precision_ = "FP32";
+    } else if (dev_type == "GPU.1_FP32") {
+      device_type_ = "GPU.1";
+      precision_ = "FP32";
     } else if (dev_type == "GPU_FP16") {
       device_type_ = "GPU";
+      precision_ = "FP16";
+    } else if (dev_type == "GPU.0_FP16") {
+      device_type_ = "GPU.0";
+      precision_ = "FP16";
+    } else if (dev_type == "GPU.1_FP16") {
+      device_type_ = "GPU.1";
       precision_ = "FP16";
     } else if (dev_type == "MYRIAD_FP16") {
       device_type_ = "MYRIAD";
