@@ -37,12 +37,8 @@ struct OpBuilderRegistrations {
 Status GetShapeInfoFromNodeArg(ModelBuilder& model_builder, const std::string& name, Shape& shape) {
   // can be applied to both input and output
   const auto& graph_viewer = model_builder.GetGraphViewer();
-
   const auto* node_arg = graph_viewer.GetNodeArg(name);
-  ORT_RETURN_IF(node_arg == nullptr, "Invalid node_arg for: ", name);
-
   const auto* shape_proto = node_arg->Shape();
-  ORT_RETURN_IF(shape_proto == nullptr, "shape_proto cannot be null for:", node_arg->Name());
 
   shape.reserve(shape_proto->dim_size());
   const auto& shape_dims = shape_proto->dim();
@@ -838,13 +834,8 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
   NodeAttrHelper helper(node_unit);
   auto& shaper(model_builder.GetShaper());
-
   const auto* input_node_arg = graph_viewer.GetNodeArg(input);
-  ORT_RETURN_IF(input_node_arg == nullptr, "Invalid node_arg for input: ", input);
-
   const auto* shape_proto = input_node_arg->Shape();
-  ORT_RETURN_IF(shape_proto == nullptr, "shape_proto cannot be null for: ", input_node_arg->Name());
-
   auto input_dims = static_cast<int32_t>(shape_proto->dim_size());
   std::vector<int32_t> perm = helper.Get("perm", std::vector<int32_t>());
   if (perm.empty()) {
