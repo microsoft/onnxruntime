@@ -243,7 +243,7 @@ if __name__ == "__main__":
         sys.exit()
 
     logger.info(f"input model: {args.input}")
-    logger.info(f"output model {args.output}")
+    logger.info(f"output model: {args.output}")
     quant_pre_process(
         args.input,
         args.output,
