@@ -22,12 +22,53 @@ constexpr char GROUP_ZERO_NAME[] = "group0";
 // TODO: Conolidate with frontend tooling
 const std::vector<std::string> MOMENT_STATE_NAMES{"momentum0", "momentum1"};
 
-constexpr char LearningRateName[] = "learning_rate";
-constexpr char StepName[] = "step";
-constexpr char ParamsName[] = "params";
-constexpr char GradientsName[] = "gradients";
-constexpr char FirstOrderMomentsName[] = "first_order_moments";
-constexpr char SecondOrderMomentsName[] = "second_order_moments";
+constexpr std::array<const char*, 6> AdamWOptimizerInputs = {
+    "learning_rate",
+    "step",
+    "params",
+    "gradients",
+    "first_order_moments",
+    "second_order_moments"};
+
+template <std::size_t NumInputs>
+Status GraphInputsAreExpected(const std::vector<std::string>& actual_graph_inputs,
+                              const std::array<const char*, NumInputs>& expected_graph_inputs) {
+  const auto stringify = [](const auto& container) {
+    std::string container_str("[");
+    for (const auto& val : container) {
+      container_str += std::string(val) + std::string(", ");
+    }
+    if (container_str.back() == '[') {
+      container_str.push_back(']');
+    } else {
+      container_str.pop_back();
+      container_str.back() = ']';
+    }
+
+    return container_str;
+  };
+
+  const auto construct_unexpected_input_status = [&stringify](const auto& actual_inputs, const auto& expected_inputs) {
+    std::ostringstream error_stream;
+    error_stream << "Invalid graph inputs."
+                 << "\n\tExpected: " << stringify(expected_inputs)
+                 << "\n\tActual: " << stringify(actual_inputs);
+    return Status(onnxruntime::common::StatusCategory::ONNXRUNTIME, onnxruntime::common::StatusCode::INVALID_ARGUMENT,
+                  error_stream.str());
+  };
+
+  if (actual_graph_inputs.size() != NumInputs) {
+    return construct_unexpected_input_status(actual_graph_inputs, expected_graph_inputs);
+  }
+
+  for (size_t input_idx = 0; input_idx < NumInputs; ++input_idx) {
+    if (actual_graph_inputs[input_idx] != expected_graph_inputs[input_idx]) {
+      return construct_unexpected_input_status(actual_graph_inputs, expected_graph_inputs);
+    }
+  }
+
+  return Status::OK();
+}
 
 }  // namespace
 
@@ -124,14 +165,9 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
   ORT_THROW_IF_ERROR(optim_sess_->Initialize());
 
   utils::GetGraphInputOutputNames(optim_sess_, input_names_, output_names_);
-  ORT_ENFORCE(input_names_[0] == LearningRateName);  // TODO: make this better
-  ORT_ENFORCE(input_names_[1] == StepName);          // TODO: make this better
-  ORT_ENFORCE(input_names_[2] == ParamsName);        // TODO: make this better
-  ORT_ENFORCE(input_names_[3] == GradientsName);     // TODO: make this better
 
   if (optimizer_type_ == OptimizerType::AdamW) {
-    ORT_ENFORCE(input_names_[4] == FirstOrderMomentsName);   // TODO: make this better
-    ORT_ENFORCE(input_names_[5] == SecondOrderMomentsName);  // TODO: make this better
+    ORT_THROW_IF_ERROR(GraphInputsAreExpected(input_names_, AdamWOptimizerInputs));
 
     ORT_THROW_IF_ERROR(GenerateMomentumNamedStates());
   } else {

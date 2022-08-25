@@ -14,9 +14,9 @@ namespace {
 constexpr float Epsilon = 0.000001f;
 
 template <typename T>
-T GetL2Norm(const TensorSeq* gradients) {
+T GetL2Norm(const TensorSeq& gradients) {
   T l2_norm = 0;
-  for (const auto& tensor : *gradients) {
+  for (const auto& tensor : gradients) {
     l2_norm +=
         ReduceAggregatorSumSquare<T>(tensor.Shape().Size(), *tensor.Data<T>()).aggall(tensor.Data<T>());
   }
@@ -24,26 +24,29 @@ T GetL2Norm(const TensorSeq* gradients) {
 }
 
 template <typename T>
-void ClipGradNorm(T total_norm, T max_norm, const TensorSeq** gradients) {
+void ClipGradNorm(T total_norm, T max_norm, TensorSeq& gradients) {
   const T clip_coefficient = std::min(max_norm / (total_norm + static_cast<T>(Epsilon)), static_cast<T>(1.0f));
 
-  for (const auto& grad : **gradients) {
+  for (const auto& grad : gradients) {
     auto& tensor = const_cast<Tensor&>(grad);
     MakeEigenArrayMap<T>(tensor) *= clip_coefficient;
   }
 }
 
-void PopulateOutput(AllocatorPtr alloc, const TensorSeq* gradients, TensorSeq** clipped_gradients) {
-  if (const_cast<TensorSeq*>(gradients) == *clipped_gradients) {
+void PopulateOutput(OpKernelContext* ctx, const TensorSeq* gradients, TensorSeq* clipped_gradients) {
+  if (const_cast<TensorSeq*>(gradients) == clipped_gradients) {
     return;
   }
 
-  (*clipped_gradients)->SetType(gradients->DataType());
-  (*clipped_gradients)->Reserve(gradients->Size());
+  AllocatorPtr alloc;
+  ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc).IsOK(), "InplaceClipGradNorm: Unable to get an allocator.");
+
+  clipped_gradients->SetType(gradients->DataType());
+  clipped_gradients->Reserve(gradients->Size());
   for (const auto& grad : *gradients) {
     Tensor target_tensor(grad.DataType(), grad.Shape(), alloc);
     CopyCpuTensor(&grad, &target_tensor);
-    (*clipped_gradients)->Add(std::move(target_tensor));  // Add will check for type consistency
+    clipped_gradients->Add(std::move(target_tensor));  // Add will check for type consistency
   }
 }
 
@@ -63,15 +66,14 @@ template <typename T>
 Status InplaceClipGradNorm<T>::Compute(OpKernelContext* ctx) const {
   const TensorSeq* gradients = ctx->Input<TensorSeq>(0);
 
-  const T total_norm = GetL2Norm<T>(gradients);
+  const T total_norm = GetL2Norm<T>(*gradients);
 
-  ClipGradNorm(total_norm, max_norm_, &gradients);
+  auto grads = const_cast<TensorSeq*>(gradients);
+  ClipGradNorm(total_norm, max_norm_, *grads);
 
   // Populate the output sequence tensors.
-  AllocatorPtr alloc;
-  ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc).IsOK(), "InplaceClipGradNorm: Unable to get an allocator.");
   TensorSeq* clipped_gradients = ctx->Output<TensorSeq>(0);
-  PopulateOutput(alloc, gradients, &clipped_gradients);
+  PopulateOutput(ctx, gradients, clipped_gradients);
 
   return Status::OK();
 }

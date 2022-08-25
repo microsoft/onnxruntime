@@ -123,6 +123,11 @@ class ClipGradNorm(building_blocks.Block):
         )
         onnx_model.graph.node.append(cgn_node)
 
+        # Add the output to the value info of the model.
+        onnx_model.graph.value_info.append(
+            onnx.helper.make_tensor_sequence_value_info(cgn_node_output_name, onnx.TensorProto.FLOAT, None)
+        )
+
         return cgn_node_output_name
 
 
@@ -180,7 +185,6 @@ class AdamW(model.Model):
         first_order_moments_name = "first_order_moments"
         second_order_moments_name = "second_order_moments"
         gradients_name = "gradients"
-        gradient_suffix = "_grad"
 
         trainable_parameters, _ = parameters
 

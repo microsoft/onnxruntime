@@ -52,7 +52,7 @@ void InplaceClipGradNormNoClippingTest(std::vector<std::unique_ptr<IExecutionPro
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, providers);
 }
 
-}
+}  // namespace
 
 TEST(OptimizerTest, InplaceClipGradNorm_CPU) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;

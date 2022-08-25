@@ -482,7 +482,7 @@ def test_adamw_optimizer_execution():
             "first_order_moments": [],
             "second_order_moments": [],
         }
-        for name, param in pt_model.named_parameters():
+        for _, param in pt_model.named_parameters():
             ort_inputs["params"].append(_to_numpy(copy.deepcopy(param)))
             ort_inputs["gradients"].append(_to_numpy(copy.deepcopy(param.grad)))
             ort_inputs["first_order_moments"].append(_to_numpy(torch.zeros_like(param)))
@@ -704,6 +704,7 @@ def test_grad_clipping_execution():
 
     class GradClippingModel(onnxblock.Model):
         def __init__(self, max_norm):
+            super().__init__()
             self._grad_clip = onnxblock.optim.ClipGradNorm(max_norm)
 
         def build(self, grads_name):
@@ -714,12 +715,8 @@ def test_grad_clipping_execution():
     )
 
     grad_clip = GradClippingModel(2.5)
-
-    # Note the call to build() and not to __call__() as onnx does not know
-    # how to infer the output from InplaceClipGradNorm and that will result in
-    # an error.
     with onnxblock.onnx_model(onnx_model):
-        ort_output_names = grad_clip.build("gradients")
+        ort_output_names = grad_clip("gradients")
 
     onnx_model.graph.output.append(
         onnx.helper.make_tensor_sequence_value_info(ort_output_names, onnx.TensorProto.FLOAT, None)
@@ -737,7 +734,7 @@ def test_grad_clipping_execution():
         loss.backward()
 
         ort_inputs = {"gradients": []}
-        for name, param in pt_model.named_parameters():
+        for _, param in pt_model.named_parameters():
             ort_inputs["gradients"].append(_to_numpy(copy.deepcopy(param.grad)))
 
         torch.nn.utils.clip_grad_norm_(pt_model.parameters(), 2.5)
