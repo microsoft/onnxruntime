@@ -817,7 +817,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
 #ifdef ENABLE_TRAINING_ON_DEVICE
   py::class_<onnxruntime::training::api::Module> training_module(m, "Module", R"pbdoc(Training Module Class.)pbdoc");
-  training_module.def(py::init([](const std::string model_uri, const std::string ckpt_uri) {
+  training_module.def(py::init([](const std::string model_uri, const std::string ckpt_uri, std::optional<std::string> eval_model_uri) {
                    onnxruntime::training::api::CheckpointState state;
                    auto checkpoint_to_load_path = ckpt_uri;
                    ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpoint(checkpoint_to_load_path, state));
@@ -825,13 +825,16 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                    onnxruntime::SessionOptions session_option;
                    return std::make_unique<onnxruntime::training::api::Module>(model_uri,
                                                                                state.module_checkpoint_state.named_parameters, session_option,
-                                                                               GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>());
+                                                                               GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>(), eval_model_uri);
                  }))
       .def("train_step", [](onnxruntime::training::api::Module* model, std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) -> void {
         ORT_THROW_IF_ERROR(model->TrainStep(inputs, outputs));
       })
       .def("eval_step", [](onnxruntime::training::api::Module* model, std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) -> void {
         ORT_THROW_IF_ERROR(model->EvalStep(inputs, outputs));
+      })
+      .def("parameters", [](onnxruntime::training::api::Module* model) -> std::unordered_map<std::string, std::shared_ptr<onnxruntime::training::api::Parameter>> {
+        return model->NamedParameters();
       })
       .def("reset_grad", [](onnxruntime::training::api::Module* model) -> void {
         ORT_THROW_IF_ERROR(model->ResetGrad());
@@ -846,6 +849,11 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def("optimizer_step", [](onnxruntime::training::api::Optimizer* optimizer) -> void {
         ORT_THROW_IF_ERROR(optimizer->Step());
       });
+  py::class_<onnxruntime::training::api::Parameter> parameter(m, "Parameter", R"pbdoc(Parameter Class.)pbdoc");
+  parameter.def(py::init([](const std::string name, OrtValue& data, bool requires_grad) {
+    return std::make_unique<onnxruntime::training::api::Parameter>(name,
+                                                                   data, requires_grad);
+  }));
   m.def("save_checkpoint",
         [](const std::vector<py::bytes>& trainable_tensor_protos_pybytes,
            const std::vector<py::bytes>& non_trainable_tensor_protos_pybytes,
