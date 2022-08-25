@@ -1,41 +1,17 @@
-trigger: none
-
-stages:
-- stage: Mac_CPU_Debug_Traing
-  jobs:
-  - template: templates/mac-ci.yml
-    parameters:
-      JobName: 'Mac_CPU_Training_Debug'
-      SubmoduleCheckoutMode: 'recursive'
-      BuildCommand: >
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py
-        --build_dir $(Build.BinariesDirectory)
-        --skip_submodule_sync
-        --parallel
-        --build_shared_lib
-        --config Debug
-        --enable_training
-      DoNugetPack: 'false'
-      # Enable unreleased onnx opsets in CI builds
-      # This facilitates testing the implementation for the new opsets
-      AllowReleasedOpsetOnly: '0'
-
-- stage: Mac_CPU_RelWithDebInfo_Traing
-  dependsOn: []
-  jobs:
-  - template: templates/mac-ci.yml
-    parameters:
-      JobName: 'Mac_CPU_Training_RelWithDebInfo'
-      SubmoduleCheckoutMode: 'recursive'
-      BuildCommand: >
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py
-        --build_dir $(Build.BinariesDirectory)
-        --skip_submodule_sync
-        --parallel
-        --build_shared_lib
-        --config RelWithDebInfo
-        --enable_training
-      DoNugetPack: 'false'
-      # Enable unreleased onnx opsets in CI builds
-      # This facilitates testing the implementation for the new opsets
-      AllowReleasedOpsetOnly: '0'
+jobs:
+- template: templates/mac-ci.yml
+  parameters:
+    JobName: 'Mac_CPU_Training'
+    SubmoduleCheckoutMode: 'recursive'
+    BuildCommand: >
+      python3 $(Build.SourcesDirectory)/tools/ci_build/build.py
+      --build_dir $(Build.BinariesDirectory)
+      --skip_submodule_sync
+      --parallel
+      --build_shared_lib
+      --config RelWithDebInfo
+      --enable_training
+    DoNugetPack: 'false'
+    # Enable unreleased onnx opsets in CI builds
+    # This facilitates testing the implementation for the new opsets
+    AllowReleasedOpsetOnly: '0'
