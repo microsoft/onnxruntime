@@ -8,6 +8,7 @@ Builds an Ubuntu-based Docker image with TensorRT.
 
 import argparse
 import os
+import pty
 import shlex
 import subprocess
 import sys
@@ -33,19 +34,7 @@ def run_cmd(cmd: List[str]) -> Optional[int]:
     escaped_cmd = " ".join(map(shlex.quote, cmd))
     print(f"[CMD] {escaped_cmd}\n")
 
-    with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8") as proc:
-        lines = proc.stdout.readlines() if proc.stdout is not None else []
-
-        # Keep echoing the process's output while we have lines
-        # to print or the process has not yet exited. Note that proc.poll()
-        # returns None if the process is still running, or the returncode otherwise.
-        while lines or proc.poll() is None:
-            if lines:
-                sys.stdout.writelines(lines)
-
-            lines = proc.stdout.readlines() if proc.stdout is not None else []
-
-        return proc.poll()
+    return pty.spawn(cmd)
 
 
 def get_common_docker_build_args(args: argparse.Namespace) -> List[str]:
