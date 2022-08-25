@@ -47,7 +47,10 @@ jobs:
   
   variables:
     - name: branchName
-      value: $[ replace(variables['Build.SourceBranch'], 'refs/heads/', '') ]
+      ${{ if not(eq(length(variables['ortBranchOverride']), 0)) }}:
+        value: $(ortBranchOverride)
+      ${{ else }}:
+        value: $[ replace(variables['Build.SourceBranch'], 'refs/heads/', '') ]
 
     - name: trtVersion
       ${{ if eq(parameters.TrtVersion, 'BIN') }}:
