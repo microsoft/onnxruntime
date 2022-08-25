@@ -136,7 +136,7 @@ class FusionQOrderedMatMul(Fusion):
             return
 
         x_zero_point_1 = self.model.get_constant_value(dequantize_node_1.input[2])
-        if x_zero_point_1 is None or x_zero_point_1 != 0:
+        if x_zero_point_1 is None:
             return
 
         # Make sure the upstream flow into the Residual Add node flows through a DQ node

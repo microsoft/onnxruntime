@@ -184,7 +184,7 @@ class FusionQOrderedAttention(Fusion):
             return
 
         x_zero_point_v_weight = self.model.get_constant_value(dequantize_v_matmul_weight.input[2])
-        if x_zero_point_v_weight is None or x_zero_point_v_weight != 0:
+        if x_zero_point_v_weight is None:
             return
 
         # QK nodes
@@ -285,7 +285,7 @@ class FusionQOrderedAttention(Fusion):
             return
 
         x_zero_point_q_weight = self.model.get_constant_value(dequantize_q_matmul_weight.input[2])
-        if x_zero_point_q_weight is None or x_zero_point_q_weight != 0:
+        if x_zero_point_q_weight is None:
             return
 
         # K nodes
@@ -341,7 +341,7 @@ class FusionQOrderedAttention(Fusion):
             return
 
         x_zero_point_k_weight = self.model.get_constant_value(dequantize_k_matmul_weight.input[2])
-        if x_zero_point_k_weight is None or x_zero_point_k_weight != 0:
+        if x_zero_point_k_weight is None:
             return
 
         # Mask nodes
