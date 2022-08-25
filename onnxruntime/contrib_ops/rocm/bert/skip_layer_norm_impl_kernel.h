@@ -56,23 +56,21 @@ __global__ void SkipLayerNormKernelSmall(
   const int idx = blockIdx.x * ld + threadIdx.x * ILP;  // grid_size = n / ld
 
   using VecT = aligned_vector<T, ILP>;
-
   T input_v[ILP], skip_v[ILP], bias_v[ILP];
-
-  VecT* input_val = reinterpret_cast<VecT*>(&input_v);
-  *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
-
-  VecT* skip_val = reinterpret_cast<VecT*>(&skip_v);
-  *skip_val = *reinterpret_cast<const VecT*>(&skip[idx]);
-
-  if (hasBias) {
-    VecT* bias_val = reinterpret_cast<VecT*>(&bias_v);
-    *bias_val = *reinterpret_cast<const VecT*>(&bias[threadIdx.x * ILP]);
-  }
 
   hipcub::KeyValuePair<T, T> thread_data(T(0.f), T(0.f));
 
   if (ILP * threadIdx.x < ld) {
+    VecT* input_val = reinterpret_cast<VecT*>(&input_v);
+    *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
+
+    VecT* skip_val = reinterpret_cast<VecT*>(&skip_v);
+    *skip_val = *reinterpret_cast<const VecT*>(&skip[idx]);
+
+    if (hasBias) {
+      VecT* bias_val = reinterpret_cast<VecT*>(&bias_v);
+      *bias_val = *reinterpret_cast<const VecT*>(&bias[threadIdx.x * ILP]);
+    }
     T rldval_sum = T(0.f);
     T rldvalsq_sum = T(0.f);
 #pragma unroll
