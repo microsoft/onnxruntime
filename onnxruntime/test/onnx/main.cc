@@ -627,12 +627,13 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"BERT_Squad", "test data bug"},
     {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}},
     {"constantofshape_int_zeros", "test data bug", {"onnx141", "onnx150"}},
-    {"convtranspose_autopad_same", "Implementation need to be adjusted for ONNX changes"},
+    {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.", {"onnx180", "onnx181", "onnx190"}},
     {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
     // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
     // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
     // which doesn't match the expected output that was generated with numpy.
     {"cast_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results."},
+    {"cntk_simple_seg", "Bad onnx test output caused by wrong SAME_UPPER/SAME_LOWER for ConvTranspose", {}},
     {"tf_nasnet_large", "disable temporarily"},
     {"tf_nasnet_mobile", "disable temporarily"},
     {"tf_pnasnet_large", "disable temporarily"},

@@ -15,7 +15,11 @@ __version__ = "0.1.0"
 onnx_domain = "ai.onnx"
 ms_domain = "com.microsoft"
 QUANT_OP_NAME = "QuantizeLinear"
+QUANT_INPUT_SUFFIX = "_QuantizeLinear_Input"
 DEQUANT_OP_NAME = "DequantizeLinear"
+DEQUANT_OUTPUT_SUFFIX = "_DequantizeLinear_Output"
+TENSOR_NAME_QUANT_SUFFIX = "_quantized"
+
 
 type_to_name = {
     1: "FLOAT",
@@ -366,7 +370,7 @@ def generate_identified_filename(filename: Path, identifier: str) -> Path:
     """
     Helper function to generate a identifiable filepath by concatenating the given identifier as a suffix.
     """
-    return filename.parent.joinpath(filename.stem + identifier).with_suffix(filename.suffix)
+    return filename.parent.joinpath(filename.stem + identifier + filename.suffix)
 
 
 def apply_plot(hist, hist_edges):
@@ -523,10 +527,10 @@ def model_has_infer_metadata(model):
 
 
 def load_model_with_shape_infer(model_path: Path):
-    inferred_model_path = generate_identified_filename(model_path, "-inferred")
-    onnx.shape_inference.infer_shapes_path(str(model_path), str(inferred_model_path))
-    model = onnx.load(inferred_model_path.as_posix())
-    inferred_model_path.unlink()
+    with tempfile.TemporaryDirectory() as temp_dir:
+        inferred_model_path = str(Path(temp_dir) / (model_path.stem + "-inferred.onnx"))
+        onnx.shape_inference.infer_shapes_path(str(model_path), inferred_model_path)
+        model = onnx.load(inferred_model_path)
     return model
 
 
@@ -573,7 +577,7 @@ def add_quant_suffix(tensor_name):
 
 
 def add_quant_input_suffix(tensor_name):
-    return tensor_name + "_QuantizeLinear_Input"
+    return tensor_name + QUANT_INPUT_SUFFIX
 
 
 def add_quant_output_suffix(tensor_name):
@@ -589,4 +593,4 @@ def add_dequant_input_suffix(tensor_name):
 
 
 def add_dequant_output_suffix(tensor_name):
-    return tensor_name + "_DequantizeLinear_Output"
+    return tensor_name + DEQUANT_OUTPUT_SUFFIX

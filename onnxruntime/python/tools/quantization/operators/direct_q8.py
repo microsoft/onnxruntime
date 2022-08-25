@@ -1,4 +1,4 @@
-from ..quant_utils import QuantizedValue, QuantizedValueType
+from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
@@ -22,7 +22,7 @@ class Direct8BitOp(QuantOperatorBase):
 
             quantized_output_value = QuantizedValue(
                 node.output[0],
-                node.output[0] + "_quantized",
+                node.output[0] + TENSOR_NAME_QUANT_SUFFIX,
                 quantized_input_value.scale_name,
                 quantized_input_value.zp_name,
                 quantized_input_value.value_type,
@@ -51,7 +51,7 @@ class Direct8BitOp(QuantOperatorBase):
             # Create an entry for output quantized value
             quantized_output_value = QuantizedValue(
                 node.output[0],
-                node.output[0] + "_quantized",
+                node.output[0] + TENSOR_NAME_QUANT_SUFFIX,
                 scale_names[0],
                 zero_point_names[0],
                 QuantizedValueType.Input,

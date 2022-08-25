@@ -116,6 +116,6 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-}  //namespace cuda
+}  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -9,7 +9,7 @@ ARG TRT_CONTAINER_VERSION=21.12
 FROM nvcr.io/nvidia/tensorrt:${TRT_CONTAINER_VERSION}-py3
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
-ARG ONNXRUNTIME_BRANCH=master
+ARG ONNXRUNTIME_BRANCH=main
 ARG CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80
 
 RUN apt-get update &&\
@@ -27,4 +27,4 @@ RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXR
     cd onnxruntime &&\
     /bin/sh build.sh --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"' &&\
     pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
-    cd .. 
+    cd ..

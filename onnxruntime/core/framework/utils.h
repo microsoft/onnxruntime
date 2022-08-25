@@ -13,12 +13,6 @@
 #ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"
 #endif
-namespace ONNX_NAMESPACE {
-class TensorShapeProto;
-class TensorProto;
-std::ostream& operator<<(std::ostream& out, const TensorShapeProto& shape_proto);
-std::ostream& operator<<(std::ostream& out, const TensorProto& tensor_proto);
-}  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
 class ExecutionProviders;
