@@ -21,7 +21,7 @@ ARG TAR_CUDNN_VERSION=8.6
 # Directory containing TensorRT tar.gz installation package
 ARG TRT_BINS_DIR=.
 
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:/code/cmake-3.21.0-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.21.0-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -47,10 +47,12 @@ RUN pip install setuptools>=41.0.0
 # Install TensorRT from tar.gz
 RUN tar -xzvf /TensorRT-${TAR_TRT_VERSION}.tar.gz
 
-ENV LD_LIBRARY_PATH ${LD_LIBRARY_PATH}:/TensorRT-${TAR_TRT_VERSION}/lib
-
 RUN cd /TensorRT-${TAR_TRT_VERSION}/python &&\
     python3 -m pip install tensorrt-${TAR_TRT_VERSION}-cp38-none-linux_x86_64.whl
+
+RUN cp -r /TensorRT-${TAR_TRT_VERSION}/lib/* /usr/local/lib/
+RUN cp /TensorRT-${TAR_TRT_VERSION}/include/* /usr/local/include/
+RUN cp /TensorRT-${TAR_TRT_VERSION}/bin/* /usr/local/bin/
 
 WORKDIR /code
 
@@ -58,6 +60,6 @@ WORKDIR /code
 RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
     /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh &&\
     cd onnxruntime &&\
-    /bin/sh build.sh --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /TensorRT-${TAR_TRT_VERSION}/lib --use_tensorrt_builtin_parser --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"' &&\
+    /bin/sh build.sh --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/local/lib --use_tensorrt_builtin_parser --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"' &&\
     pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
     cd .. 
