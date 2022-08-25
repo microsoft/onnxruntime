@@ -73,8 +73,7 @@ Status TransposeWithCublas(cudaStream_t stream, cublasHandle_t cublas_handle, co
                             input_data,
                             N,
                             output_data,
-                            M),
-      cublas_handle, stream);
+                            M));
   return Status::OK();
 }
 
