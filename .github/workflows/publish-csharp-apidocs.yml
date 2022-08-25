@@ -1,0 +1,42 @@
+name: Update C# API Docs Windows
+on:
+  push:
+    branches:
+      - main
+      - add-csharp-docfx
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v2
+      with:
+        dotnet-version: 6.0.x
+    - name: Restore dependencies
+      run: dotnet restore csharp/ApiDocs/ApiDocs.csproj
+    - name: Build
+      run: dotnet build csharp/ApiDocs/ApiDocs.csproj --no-restore
+    - name: Set commit ID
+      id: vars
+      run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+    - uses: actions/checkout@v2
+      with:
+        ref: gh-pages
+        clean: false
+    - name: Move API docs into target area
+      run: |
+        cd docs
+        cd api
+        mkdir csharp
+        cd ../../
+        MOVE csharp/ApiDocs/dest docs/api/csharp
+    - name: Git Checkin
+      run: git add .
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v3
+      with:
+        branch: gh-pages-pr-csharp-docs
+        base: gh-pages
+        title: '[Automated]: Update C# API docs'
+        commit-message: 'Update C# API docs to commit ${{ steps.vars.outputs.sha_short }}'
