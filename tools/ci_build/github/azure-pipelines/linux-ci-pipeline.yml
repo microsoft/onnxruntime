@@ -61,13 +61,6 @@ jobs:
               --build_java --build_nodejs --update --build --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON
       workingDirectory: $(Build.SourcesDirectory)
 
-  - script: |
-      set -ex
-      npm install typescript -g
-      npm test
-    workingDirectory: $(Build.SourcesDirectory)/js/web
-    displayName: ONNX Spec Test
-
   - task: CmdLine@2
     displayName: 'Install python deps and run java tests'
     inputs:
