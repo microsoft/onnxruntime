@@ -834,16 +834,16 @@ struct ProviderHostImpl : ProviderHost {
   const DataTransferManager& SessionState__GetDataTransferMgr(const SessionState* p) override { return p->GetDataTransferMgr(); }
 
   // Tensor (wrapped)
-  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) override { 
-    return std::make_unique<Tensor>(p_type, shape, std::move(allocator)); 
+  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) override {
+    return std::make_unique<Tensor>(p_type, shape, std::move(allocator));
   }
 
   std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset) override {
-    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset); 
+    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset);
   }
 
   std::unique_ptr<Tensor> Tensor__construct_default() override {
-    return std::make_unique<Tensor>(); 
+    return std::make_unique<Tensor>();
   }
 
   virtual void Tensor__move_assign(Tensor& lhs, Tensor&& rhs) noexcept override {
@@ -1130,7 +1130,7 @@ std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const c
 
 // Adapter to convert the legacy OrtCUDAProviderOptions to the latest OrtCUDAProviderOptionsV2
 OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const OrtCUDAProviderOptions* legacy_cuda_options) {
-  OrtCUDAProviderOptionsV2 cuda_options_converted;
+  OrtCUDAProviderOptionsV2 cuda_options_converted{};
 
   cuda_options_converted.device_id = legacy_cuda_options->device_id;
   cuda_options_converted.cudnn_conv_algo_search = legacy_cuda_options->cudnn_conv_algo_search;

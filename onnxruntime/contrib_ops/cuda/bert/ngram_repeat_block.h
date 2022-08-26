@@ -15,6 +15,7 @@ class NGramRepeatBlock final : public CudaKernel {
  public:
   NGramRepeatBlock(const OpKernelInfo& op_kernel_info);
   Status ComputeInternal(OpKernelContext* ctx) const override;
+
  private:
   int64_t ngram_size_;
 };

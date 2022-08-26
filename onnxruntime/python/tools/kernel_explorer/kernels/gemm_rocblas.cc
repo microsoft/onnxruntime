@@ -18,8 +18,28 @@ namespace py = pybind11;
 
 namespace onnxruntime {
 
+// to be moved to onnxruntime once we have a monolithicly tunable gemm wrapper and it is enabled for onnxruntime
 template <typename T>
-class RocBlasGemm : public GemmBase<T> {
+Status RocBlasGemmOp(const GemmParams<T>* params) {
+  // NOTE: rocblas assumes the storage is column-majored, swapping A and B makes it have the same interface
+  // as those with row-majored convention. That is, if you treat the storage as row-majored but view the matrices as
+  // transposed, then by using the property Transpose(A*B) = Tranpose(B)*Transpose(A), the correctness is obvious.
+  auto status = rocblasGemmHelper(
+      params->handle,
+      params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+      params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+      params->n, params->m, params->k,
+      &(params->alpha),
+      params->b, params->ldb,
+      params->a, params->lda,
+      &(params->beta),
+      params->c, params->ldc);
+  ORT_RETURN_IF(status != rocblas_status_success, rocblas_status_to_string(status));
+  return Status::OK();
+}
+
+template <typename T>
+class RocBlasGemm : public IKernelExplorer {
  public:
   RocBlasGemm(BlasOp opa, BlasOp opb,
               int64_t m, int64_t n, int64_t k,
@@ -27,11 +47,22 @@ class RocBlasGemm : public GemmBase<T> {
               DeviceArray& a, int64_t lda,
               DeviceArray& b, int64_t ldb,
               double beta,
-              DeviceArray& c, int64_t ldc)
-      : GemmBase<T>(opa, opb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc),
-        opa_(opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose),
-        opb_(opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose) {
+              DeviceArray& c, int64_t ldc) {
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
+    params_.handle = rocblas_handle_;
+    params_.opa = opa;
+    params_.opb = opb;
+    params_.m = m;
+    params_.n = n;
+    params_.k = k;
+    params_.alpha = alpha;
+    params_.a = static_cast<T*>(a.ptr());
+    params_.lda = lda;
+    params_.b = static_cast<T*>(b.ptr());
+    params_.ldb = ldb;
+    params_.beta = beta;
+    params_.c = static_cast<T*>(c.ptr());
+    params_.ldc = ldc;
   }
 
   ~RocBlasGemm() {
@@ -40,31 +71,25 @@ class RocBlasGemm : public GemmBase<T> {
   }
 
   void Run() override {
-    // NOTE: rocblas assumes the storage is column-majored, swapping A and B makes it have the same interface
-    // as those with row-majored convention. That is, if you treat the storage as row-majored but view the matrices as
-    // transposed, then by using the property Transpose(A*B) = Tranpose(B)*Transpose(A), the correctness is obvious.
-    ROCBLAS_CALL_THROW(
-        rocblasGemmHelper(this->rocblas_handle_, this->opb_, this->opa_,
-                          this->n_, this->m_, this->k_,
-                          &(this->alpha_),
-                          this->b_, this->ldb_,
-                          this->a_, this->lda_,
-                          &(this->beta_),
-                          this->c_, this->ldc_));
+    ORT_THROW_IF_ERROR(op_(&params_));
   }
 
-  std::vector<std::string> ListImpls() const override {
+  std::vector<std::string> ListOps() const {
     return {"Rocblas"};
   }
 
-  bool SelectImpl(const std::string& name) override {
+  bool SelectOp(const std::string& name) {
     return name == "Rocblas";
   }
 
  private:
   rocblas_handle rocblas_handle_;
-  rocblas_operation opa_;
-  rocblas_operation opb_;
+
+  using ParamsT = GemmParams<T>;
+  using OpT = contrib::rocm::Op<ParamsT>;
+
+  ParamsT params_{};
+  OpT op_{RocBlasGemmOp<T>};
 };
 
 void InitRocBlasGemm(py::module mod) {
@@ -75,8 +100,8 @@ void InitRocBlasGemm(py::module mod) {
       .def("SetRepeats", &RocBlasGemm<float>::SetRepeats)
       .def("Profile", &RocBlasGemm<float>::Profile)
       .def("Run", &RocBlasGemm<float>::Run)
-      .def("ListImpls", &RocBlasGemm<float>::ListImpls)
-      .def("SelectImpl", &RocBlasGemm<float>::SelectImpl);
+      .def("ListOps", &RocBlasGemm<float>::ListOps)
+      .def("SelectOp", &RocBlasGemm<float>::SelectOp);
 
   // half
   py::class_<RocBlasGemm<half>>(mod, "RocblasGemm_half")
@@ -85,8 +110,8 @@ void InitRocBlasGemm(py::module mod) {
       .def("SetRepeats", &RocBlasGemm<half>::SetRepeats)
       .def("Profile", &RocBlasGemm<half>::Profile)
       .def("Run", &RocBlasGemm<half>::Run)
-      .def("ListImpls", &RocBlasGemm<half>::ListImpls)
-      .def("SelectImpl", &RocBlasGemm<half>::SelectImpl);
+      .def("ListOps", &RocBlasGemm<half>::ListOps)
+      .def("SelectOp", &RocBlasGemm<half>::SelectOp);
 }
 
 }  // namespace onnxruntime

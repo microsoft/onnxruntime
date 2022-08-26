@@ -373,6 +373,10 @@ Status::Status(StatusCategory category, int code, const char* msg) {
 Status::Status(StatusCategory category, int code) : Status(category, code, "") {
 }
 
+StatusCategory Status::Category() const noexcept {
+  return IsOK() ? StatusCategory::NONE : state_->category;
+}
+
 int Status::Code() const noexcept {
   return IsOK() ? static_cast<int>(common::OK) : state_->code;
 }

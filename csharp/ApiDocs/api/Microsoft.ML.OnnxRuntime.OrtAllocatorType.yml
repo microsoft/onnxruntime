@@ -1,0 +1,114 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.OrtAllocatorType
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtAllocatorType
+  id: OrtAllocatorType
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.OrtAllocatorType.ArenaAllocator
+  - Microsoft.ML.OnnxRuntime.OrtAllocatorType.DeviceAllocator
+  langs:
+  - csharp
+  - vb
+  name: OrtAllocatorType
+  nameWithType: OrtAllocatorType
+  fullName: Microsoft.ML.OnnxRuntime.OrtAllocatorType
+  type: Enum
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: OrtAllocatorType
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 13
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nSee documentation for OrtAllocatorType in C API\n"
+  example: []
+  syntax:
+    content: public enum OrtAllocatorType
+    content.vb: Public Enum OrtAllocatorType
+  modifiers.csharp:
+  - public
+  - enum
+  modifiers.vb:
+  - Public
+  - Enum
+- uid: Microsoft.ML.OnnxRuntime.OrtAllocatorType.DeviceAllocator
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtAllocatorType.DeviceAllocator
+  id: DeviceAllocator
+  parent: Microsoft.ML.OnnxRuntime.OrtAllocatorType
+  langs:
+  - csharp
+  - vb
+  name: DeviceAllocator
+  nameWithType: OrtAllocatorType.DeviceAllocator
+  fullName: Microsoft.ML.OnnxRuntime.OrtAllocatorType.DeviceAllocator
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: DeviceAllocator
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 15
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: DeviceAllocator = 0
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtAllocatorType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.OrtAllocatorType.ArenaAllocator
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtAllocatorType.ArenaAllocator
+  id: ArenaAllocator
+  parent: Microsoft.ML.OnnxRuntime.OrtAllocatorType
+  langs:
+  - csharp
+  - vb
+  name: ArenaAllocator
+  nameWithType: OrtAllocatorType.ArenaAllocator
+  fullName: Microsoft.ML.OnnxRuntime.OrtAllocatorType.ArenaAllocator
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ArenaAllocator
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 16
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ArenaAllocator = 1
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtAllocatorType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: Microsoft.ML.OnnxRuntime.OrtAllocatorType
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtAllocatorType
+  parent: Microsoft.ML.OnnxRuntime
+  name: OrtAllocatorType
+  nameWithType: OrtAllocatorType
+  fullName: Microsoft.ML.OnnxRuntime.OrtAllocatorType

@@ -18,7 +18,7 @@ limitations under the License.
 */
 
 #include "core/providers/cuda/cuda_common.h"
-#include "attention_impl.h"
+#include "contrib_ops/cuda/bert/attention_impl.h"
 
 using namespace onnxruntime::cuda;
 
@@ -252,7 +252,6 @@ bool LaunchTransQkv(cudaStream_t stream, const int matrix_num,
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeQKVLarge<float><<<grid, block, 0, stream>>>(head_size, reversed_bs, input, output);
     }
-
   }
   return CUDA_CALL(cudaPeekAtLastError());
 }
@@ -294,7 +293,6 @@ bool LaunchTransQkv(cudaStream_t stream, const int matrix_num,
   }
   return CUDA_CALL(cudaPeekAtLastError());
 }
-
 
 }  // namespace cuda
 }  // namespace contrib

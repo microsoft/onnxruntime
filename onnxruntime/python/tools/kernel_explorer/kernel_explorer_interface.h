@@ -8,17 +8,9 @@
 
 using onnxruntime::contrib::rocm::Timer;
 
-// To be deleted after we remove the use of namespace onnxruntime::rocm
-// in contrib_ops/rocm/bert/fast_gelu_impl_kernel.h
-namespace onnxruntime {
-namespace rocm {
-}  // namespace rocm
-}  // namespace onnxruntime
-
-class Operator {
+/// Wrapping around Op and TunableOp
+class IKernelExplorer {
  public:
-  Operator() : stream_(0), repeats_(100) {}
-
   virtual void Run() = 0;
 
   void SetRepeats(int n) {
@@ -36,14 +28,15 @@ class Operator {
       Run();
     }
     timer.End();
-    return timer.time() / repeats_;
+    return timer.Duration() / repeats_;
   }
 
-  virtual ~Operator() {}
+  virtual ~IKernelExplorer() = default;
 
  protected:
-  hipStream_t stream_;
+  hipStream_t Stream() { return stream_; }
 
  private:
-  int repeats_;
+  hipStream_t stream_{0};
+  int repeats_{100};
 };

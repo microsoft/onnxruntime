@@ -305,8 +305,8 @@ MlasQLinearMulKernel(
     const float MinimumValue = (float)((int)std::numeric_limits<DataType>::min() - ZeroPointC);
     const float MaximumValue = (float)((int)std::numeric_limits<DataType>::max() - ZeroPointC);
 
-    auto ZeroPointAVector = vec_splats(int8_t(ZeroPointA));
-    auto ZeroPointBVector = vec_splats(int8_t(ZeroPointB));
+    auto ZeroPointAVector = vec_splats(int32_t(ZeroPointA));
+    auto ZeroPointBVector = vec_splats(int32_t(ZeroPointB));
     auto ZeroPointCVector = vec_splats(float(ZeroPointC));
 
     auto ScaleAVector = vec_splats(ScaleA);
@@ -317,87 +317,42 @@ MlasQLinearMulKernel(
     auto MaximumVector = vec_splats(MaximumValue);
 
     float ValueB;
-    __vector float ValueBVector0;
-    __vector float ValueBVector1;
-    __vector float ValueBVector2;
-    __vector float ValueBVector3;
+    __vector float ValueBVector;
 
     if (IsScalarB) {
         ValueB = ScaleB * (int32_t(InputB[0]) - ZeroPointB);
-        ValueBVector0 = vec_splats(ValueB);
-        ValueBVector1 = vec_splats(ValueB);
-        ValueBVector2 = vec_splats(ValueB);
-        ValueBVector3 = vec_splats(ValueB);
+        ValueBVector = vec_splats(ValueB);
     }
 
-    while (N >= 16) {
-        auto IntegerVector = vec_sub(vec_xl(0, (int8_t *) InputA), ZeroPointAVector);
-
-        auto ShortVectorL = vec_unpackl(IntegerVector);
-        auto ShortVectorH = vec_unpackh(IntegerVector);
-        auto IntegerVector0 = vec_unpackh(ShortVectorH);
-        auto IntegerVector1 = vec_unpackl(ShortVectorH);
-        auto IntegerVector2 = vec_unpackh(ShortVectorL);
-        auto IntegerVector3 = vec_unpackl(ShortVectorL);
-
-        auto ValueAVector0 = vec_mul(ScaleAVector, vec_ctf(IntegerVector0, 0));
-        auto ValueAVector1 = vec_mul(ScaleAVector, vec_ctf(IntegerVector1, 0));
-        auto ValueAVector2 = vec_mul(ScaleAVector, vec_ctf(IntegerVector2, 0));
-        auto ValueAVector3 = vec_mul(ScaleAVector, vec_ctf(IntegerVector3, 0));
+    while (N >= 4) {
+        __vector int32_t IntegerAVector {InputA[0], InputA[1], InputA[2], InputA[3]};
+        auto IntegerVector = vec_sub(IntegerAVector, ZeroPointAVector);
+        auto ValueAVector = vec_mul(ScaleAVector, vec_ctf(IntegerVector, 0));
 
         if (!IsScalarB) {
-            IntegerVector = vec_sub(vec_xl(0, (int8_t *) InputB), ZeroPointBVector);
-
-            auto ShortVectorL = vec_unpackl(IntegerVector);
-            auto ShortVectorH = vec_unpackh(IntegerVector);
-            auto IntegerVector0 = vec_unpackh(ShortVectorH);
-            auto IntegerVector1 = vec_unpackl(ShortVectorH);
-            auto IntegerVector2 = vec_unpackh(ShortVectorL);
-            auto IntegerVector3 = vec_unpackl(ShortVectorL);
-
-            ValueBVector0 = vec_mul(ScaleBVector, vec_ctf(IntegerVector0, 0));
-            ValueBVector1 = vec_mul(ScaleBVector, vec_ctf(IntegerVector1, 0));
-            ValueBVector2 = vec_mul(ScaleBVector, vec_ctf(IntegerVector2, 0));
-            ValueBVector3 = vec_mul(ScaleBVector, vec_ctf(IntegerVector3, 0));
+            __vector int32_t IntegerBVector {InputB[0], InputB[1], InputB[2], InputB[3]};
+            IntegerVector = vec_sub(IntegerBVector, ZeroPointBVector);
+            ValueBVector = vec_mul(ScaleBVector, vec_ctf(IntegerVector, 0));
         }
 
-        auto ValueCVector0 = vec_div(vec_mul(ValueAVector0, ValueBVector0), ScaleCVector);
-        auto ValueCVector1 = vec_div(vec_mul(ValueAVector1, ValueBVector1), ScaleCVector);
-        auto ValueCVector2 = vec_div(vec_mul(ValueAVector2, ValueBVector2), ScaleCVector);
-        auto ValueCVector3 = vec_div(vec_mul(ValueAVector3, ValueBVector3), ScaleCVector);
+        auto ValueCVector = vec_div(vec_mul(ValueAVector, ValueBVector), ScaleCVector);
+        ValueCVector = vec_min(vec_max(ValueCVector, MinimumVector), MaximumVector);
+        ValueCVector = vec_nearbyint(vec_add(ValueCVector, ZeroPointCVector));
 
-        ValueCVector0 = vec_min(vec_max(ValueCVector0, MinimumVector), MaximumVector);
-        ValueCVector1 = vec_min(vec_max(ValueCVector1, MinimumVector), MaximumVector);
-        ValueCVector2 = vec_min(vec_max(ValueCVector2, MinimumVector), MaximumVector);
-        ValueCVector3 = vec_min(vec_max(ValueCVector3, MinimumVector), MaximumVector);
+        auto IntegerValueCVector = vec_signed(ValueCVector);
+        OutputC[0] = (DataType) IntegerValueCVector[0];
+        OutputC[1] = (DataType) IntegerValueCVector[1];
+        OutputC[2] = (DataType) IntegerValueCVector[2];
+        OutputC[3] = (DataType) IntegerValueCVector[3];
 
-        ValueCVector0 = vec_nearbyint(vec_add(ValueCVector0, ZeroPointCVector));
-        ValueCVector1 = vec_nearbyint(vec_add(ValueCVector1, ZeroPointCVector));
-        ValueCVector2 = vec_nearbyint(vec_add(ValueCVector2, ZeroPointCVector));
-        ValueCVector3 = vec_nearbyint(vec_add(ValueCVector3, ZeroPointCVector));
+        OutputC += 4;
+        InputA += 4;
+        InputB += 4;
 
-        auto IntegerValueCVector0 = vec_signed(ValueCVector0);
-        auto IntegerValueCVector1 = vec_signed(ValueCVector1);
-        auto IntegerValueCVector2 = vec_signed(ValueCVector2);
-        auto IntegerValueCVector3 = vec_signed(ValueCVector3);
-
-        auto ShortVector0 = vec_pack(IntegerValueCVector0, IntegerValueCVector1);
-        auto ShortVector1 = vec_pack(IntegerValueCVector2, IntegerValueCVector3);
-        auto CharVector = vec_pack(ShortVector0, ShortVector1);
-
-        vec_xst(CharVector, 0, (int8_t *) OutputC);
-
-        OutputC += 16;
-        InputA += 16;
-        InputB += 16;
-
-        N -= 16;
+        N -= 4;
 
         // Suppress wrong GCC warnings
-        MLAS_UNREFERENCED_PARAMETER(ValueAVector0);
-        MLAS_UNREFERENCED_PARAMETER(ValueAVector1);
-        MLAS_UNREFERENCED_PARAMETER(ValueAVector2);
-        MLAS_UNREFERENCED_PARAMETER(ValueAVector3);
+        MLAS_UNREFERENCED_PARAMETER(ValueAVector);
     }
 
     while (N > 0) {
@@ -419,10 +374,7 @@ MlasQLinearMulKernel(
     // Suppress wrong GCC warnings
     MLAS_UNREFERENCED_PARAMETER(ScaleAVector);
     MLAS_UNREFERENCED_PARAMETER(ScaleBVector);
-    MLAS_UNREFERENCED_PARAMETER(ValueBVector0);
-    MLAS_UNREFERENCED_PARAMETER(ValueBVector1);
-    MLAS_UNREFERENCED_PARAMETER(ValueBVector2);
-    MLAS_UNREFERENCED_PARAMETER(ValueBVector3);
+    MLAS_UNREFERENCED_PARAMETER(ValueBVector);
 }
 
 #else

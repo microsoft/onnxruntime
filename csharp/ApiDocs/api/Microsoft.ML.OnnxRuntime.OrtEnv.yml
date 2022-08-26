@@ -1,0 +1,1025 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtEnv
+  id: OrtEnv
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.OrtEnv.CreateAndRegisterAllocator(Microsoft.ML.OnnxRuntime.OrtMemoryInfo,Microsoft.ML.OnnxRuntime.OrtArenaCfg)
+  - Microsoft.ML.OnnxRuntime.OrtEnv.DisableTelemetryEvents
+  - Microsoft.ML.OnnxRuntime.OrtEnv.EnableTelemetryEvents
+  - Microsoft.ML.OnnxRuntime.OrtEnv.GetAvailableProviders
+  - Microsoft.ML.OnnxRuntime.OrtEnv.Instance
+  - Microsoft.ML.OnnxRuntime.OrtEnv.IsInvalid
+  - Microsoft.ML.OnnxRuntime.OrtEnv.ReleaseHandle
+  langs:
+  - csharp
+  - vb
+  name: OrtEnv
+  nameWithType: OrtEnv
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv
+  type: Class
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: OrtEnv
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 48
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nThis class initializes the process-global ONNX Runtime environment instance (OrtEnv)\n"
+  example: []
+  syntax:
+    content: 'public sealed class OrtEnv : SafeHandle, IDisposable'
+    content.vb: >-
+      Public NotInheritable Class OrtEnv
+          Inherits SafeHandle
+          Implements IDisposable
+  inheritance:
+  - System.Object
+  - System.Runtime.InteropServices.SafeHandle
+  implements:
+  - System.IDisposable
+  inheritedMembers:
+  - System.Runtime.InteropServices.SafeHandle.handle
+  - System.Runtime.InteropServices.SafeHandle.DangerousAddRef(System.Boolean@)
+  - System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+  - System.Runtime.InteropServices.SafeHandle.DangerousRelease
+  - System.Runtime.InteropServices.SafeHandle.Dispose
+  - System.Runtime.InteropServices.SafeHandle.Dispose(System.Boolean)
+  - System.Runtime.InteropServices.SafeHandle.SetHandle(System.IntPtr)
+  - System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+  - System.Runtime.InteropServices.SafeHandle.IsClosed
+  - System.Object.Equals(System.Object)
+  - System.Object.Equals(System.Object,System.Object)
+  - System.Object.GetHashCode
+  - System.Object.GetType
+  - System.Object.MemberwiseClone
+  - System.Object.ReferenceEquals(System.Object,System.Object)
+  - System.Object.ToString
+  modifiers.csharp:
+  - public
+  - sealed
+  - class
+  modifiers.vb:
+  - Public
+  - NotInheritable
+  - Class
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv.Instance
+  commentId: M:Microsoft.ML.OnnxRuntime.OrtEnv.Instance
+  id: Instance
+  parent: Microsoft.ML.OnnxRuntime.OrtEnv
+  langs:
+  - csharp
+  - vb
+  name: Instance()
+  nameWithType: OrtEnv.Instance()
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv.Instance()
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Instance
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 91
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nReturns an instance of OrtEnv\nIt returns the same instance on every call - `OrtEnv` is singleton\n"
+  example: []
+  syntax:
+    content: public static OrtEnv Instance()
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtEnv
+      description: Returns a singleton instance of OrtEnv that represents native OrtEnv object
+    content.vb: Public Shared Function Instance As OrtEnv
+  overload: Microsoft.ML.OnnxRuntime.OrtEnv.Instance*
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv.EnableTelemetryEvents
+  commentId: M:Microsoft.ML.OnnxRuntime.OrtEnv.EnableTelemetryEvents
+  id: EnableTelemetryEvents
+  parent: Microsoft.ML.OnnxRuntime.OrtEnv
+  langs:
+  - csharp
+  - vb
+  name: EnableTelemetryEvents()
+  nameWithType: OrtEnv.EnableTelemetryEvents()
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv.EnableTelemetryEvents()
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: EnableTelemetryEvents
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 97
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nEnable platform telemetry collection where applicable\n(currently only official Windows ORT builds have telemetry collection capabilities)\n"
+  example: []
+  syntax:
+    content: public void EnableTelemetryEvents()
+    content.vb: Public Sub EnableTelemetryEvents
+  overload: Microsoft.ML.OnnxRuntime.OrtEnv.EnableTelemetryEvents*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv.DisableTelemetryEvents
+  commentId: M:Microsoft.ML.OnnxRuntime.OrtEnv.DisableTelemetryEvents
+  id: DisableTelemetryEvents
+  parent: Microsoft.ML.OnnxRuntime.OrtEnv
+  langs:
+  - csharp
+  - vb
+  name: DisableTelemetryEvents()
+  nameWithType: OrtEnv.DisableTelemetryEvents()
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv.DisableTelemetryEvents()
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: DisableTelemetryEvents
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 105
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nDisable platform telemetry collection\n"
+  example: []
+  syntax:
+    content: public void DisableTelemetryEvents()
+    content.vb: Public Sub DisableTelemetryEvents
+  overload: Microsoft.ML.OnnxRuntime.OrtEnv.DisableTelemetryEvents*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv.CreateAndRegisterAllocator(Microsoft.ML.OnnxRuntime.OrtMemoryInfo,Microsoft.ML.OnnxRuntime.OrtArenaCfg)
+  commentId: M:Microsoft.ML.OnnxRuntime.OrtEnv.CreateAndRegisterAllocator(Microsoft.ML.OnnxRuntime.OrtMemoryInfo,Microsoft.ML.OnnxRuntime.OrtArenaCfg)
+  id: CreateAndRegisterAllocator(Microsoft.ML.OnnxRuntime.OrtMemoryInfo,Microsoft.ML.OnnxRuntime.OrtArenaCfg)
+  parent: Microsoft.ML.OnnxRuntime.OrtEnv
+  langs:
+  - csharp
+  - vb
+  name: CreateAndRegisterAllocator(OrtMemoryInfo, OrtArenaCfg)
+  nameWithType: OrtEnv.CreateAndRegisterAllocator(OrtMemoryInfo, OrtArenaCfg)
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv.CreateAndRegisterAllocator(Microsoft.ML.OnnxRuntime.OrtMemoryInfo, Microsoft.ML.OnnxRuntime.OrtArenaCfg)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: CreateAndRegisterAllocator
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 116
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nCreate and register an allocator to the OrtEnv instance\nso as to enable sharing across all sessions using the OrtEnv instance\n<param name=\"memInfo\">OrtMemoryInfo instance to be used for allocator creation</param>\n<param name=\"arenaCfg\">OrtArenaCfg instance that will be used to define the behavior of the arena based allocator</param>\n"
+  example: []
+  syntax:
+    content: public void CreateAndRegisterAllocator(OrtMemoryInfo memInfo, OrtArenaCfg arenaCfg)
+    parameters:
+    - id: memInfo
+      type: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+    - id: arenaCfg
+      type: Microsoft.ML.OnnxRuntime.OrtArenaCfg
+    content.vb: Public Sub CreateAndRegisterAllocator(memInfo As OrtMemoryInfo, arenaCfg As OrtArenaCfg)
+  overload: Microsoft.ML.OnnxRuntime.OrtEnv.CreateAndRegisterAllocator*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv.GetAvailableProviders
+  commentId: M:Microsoft.ML.OnnxRuntime.OrtEnv.GetAvailableProviders
+  id: GetAvailableProviders
+  parent: Microsoft.ML.OnnxRuntime.OrtEnv
+  langs:
+  - csharp
+  - vb
+  name: GetAvailableProviders()
+  nameWithType: OrtEnv.GetAvailableProviders()
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv.GetAvailableProviders()
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: GetAvailableProviders
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 125
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nQueries all the execution providers supported in the native onnxruntime shared library\n"
+  example: []
+  syntax:
+    content: public string[] GetAvailableProviders()
+    return:
+      type: System.String[]
+      description: an array of strings that represent execution provider names
+    content.vb: Public Function GetAvailableProviders As String()
+  overload: Microsoft.ML.OnnxRuntime.OrtEnv.GetAvailableProviders*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv.IsInvalid
+  commentId: P:Microsoft.ML.OnnxRuntime.OrtEnv.IsInvalid
+  id: IsInvalid
+  parent: Microsoft.ML.OnnxRuntime.OrtEnv
+  langs:
+  - csharp
+  - vb
+  name: IsInvalid
+  nameWithType: OrtEnv.IsInvalid
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv.IsInvalid
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: IsInvalid
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 159
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nOverrides SafeHandle.IsInvalid\n"
+  example: []
+  syntax:
+    content: public override bool IsInvalid { get; }
+    parameters: []
+    return:
+      type: System.Boolean
+      description: returns true if handle is equal to Zero
+    content.vb: Public Overrides ReadOnly Property IsInvalid As Boolean
+  overridden: System.Runtime.InteropServices.SafeHandle.IsInvalid
+  overload: Microsoft.ML.OnnxRuntime.OrtEnv.IsInvalid*
+  modifiers.csharp:
+  - public
+  - override
+  - get
+  modifiers.vb:
+  - Public
+  - Overrides
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv.ReleaseHandle
+  commentId: M:Microsoft.ML.OnnxRuntime.OrtEnv.ReleaseHandle
+  id: ReleaseHandle
+  parent: Microsoft.ML.OnnxRuntime.OrtEnv
+  langs:
+  - csharp
+  - vb
+  name: ReleaseHandle()
+  nameWithType: OrtEnv.ReleaseHandle()
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv.ReleaseHandle()
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ReleaseHandle
+    path: ../src/Microsoft.ML.OnnxRuntime/OnnxRuntime.shared.cs
+    startLine: 172
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nOverrides SafeHandle.ReleaseHandle() to properly dispose of\nthe native instance of OrtEnv\n"
+  example: []
+  syntax:
+    content: protected override bool ReleaseHandle()
+    return:
+      type: System.Boolean
+      description: always returns true
+    content.vb: Protected Overrides Function ReleaseHandle As Boolean
+  overridden: System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+  overload: Microsoft.ML.OnnxRuntime.OrtEnv.ReleaseHandle*
+  modifiers.csharp:
+  - protected
+  - override
+  modifiers.vb:
+  - Protected
+  - Overrides
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: System.Object
+  commentId: T:System.Object
+  parent: System
+  isExternal: true
+  name: Object
+  nameWithType: Object
+  fullName: System.Object
+- uid: System.Runtime.InteropServices.SafeHandle
+  commentId: T:System.Runtime.InteropServices.SafeHandle
+  parent: System.Runtime.InteropServices
+  isExternal: true
+  name: SafeHandle
+  nameWithType: SafeHandle
+  fullName: System.Runtime.InteropServices.SafeHandle
+- uid: System.IDisposable
+  commentId: T:System.IDisposable
+  parent: System
+  isExternal: true
+  name: IDisposable
+  nameWithType: IDisposable
+  fullName: System.IDisposable
+- uid: System.Runtime.InteropServices.SafeHandle.handle
+  commentId: F:System.Runtime.InteropServices.SafeHandle.handle
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: handle
+  nameWithType: SafeHandle.handle
+  fullName: System.Runtime.InteropServices.SafeHandle.handle
+- uid: System.Runtime.InteropServices.SafeHandle.DangerousAddRef(System.Boolean@)
+  commentId: M:System.Runtime.InteropServices.SafeHandle.DangerousAddRef(System.Boolean@)
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: DangerousAddRef(Boolean)
+  nameWithType: SafeHandle.DangerousAddRef(Boolean)
+  fullName: System.Runtime.InteropServices.SafeHandle.DangerousAddRef(System.Boolean)
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.DangerousAddRef(System.Boolean@)
+    name: DangerousAddRef
+    nameWithType: SafeHandle.DangerousAddRef
+    fullName: System.Runtime.InteropServices.SafeHandle.DangerousAddRef
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Boolean
+    name: Boolean
+    nameWithType: Boolean
+    fullName: System.Boolean
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.DangerousAddRef(System.Boolean@)
+    name: DangerousAddRef
+    nameWithType: SafeHandle.DangerousAddRef
+    fullName: System.Runtime.InteropServices.SafeHandle.DangerousAddRef
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Boolean
+    name: Boolean
+    nameWithType: Boolean
+    fullName: System.Boolean
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+  commentId: M:System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: DangerousGetHandle()
+  nameWithType: SafeHandle.DangerousGetHandle()
+  fullName: System.Runtime.InteropServices.SafeHandle.DangerousGetHandle()
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+    name: DangerousGetHandle
+    nameWithType: SafeHandle.DangerousGetHandle
+    fullName: System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+    name: DangerousGetHandle
+    nameWithType: SafeHandle.DangerousGetHandle
+    fullName: System.Runtime.InteropServices.SafeHandle.DangerousGetHandle
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.DangerousRelease
+  commentId: M:System.Runtime.InteropServices.SafeHandle.DangerousRelease
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: DangerousRelease()
+  nameWithType: SafeHandle.DangerousRelease()
+  fullName: System.Runtime.InteropServices.SafeHandle.DangerousRelease()
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.DangerousRelease
+    name: DangerousRelease
+    nameWithType: SafeHandle.DangerousRelease
+    fullName: System.Runtime.InteropServices.SafeHandle.DangerousRelease
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.DangerousRelease
+    name: DangerousRelease
+    nameWithType: SafeHandle.DangerousRelease
+    fullName: System.Runtime.InteropServices.SafeHandle.DangerousRelease
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.Dispose
+  commentId: M:System.Runtime.InteropServices.SafeHandle.Dispose
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: Dispose()
+  nameWithType: SafeHandle.Dispose()
+  fullName: System.Runtime.InteropServices.SafeHandle.Dispose()
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.Dispose
+    name: Dispose
+    nameWithType: SafeHandle.Dispose
+    fullName: System.Runtime.InteropServices.SafeHandle.Dispose
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.Dispose
+    name: Dispose
+    nameWithType: SafeHandle.Dispose
+    fullName: System.Runtime.InteropServices.SafeHandle.Dispose
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.Dispose(System.Boolean)
+  commentId: M:System.Runtime.InteropServices.SafeHandle.Dispose(System.Boolean)
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: Dispose(Boolean)
+  nameWithType: SafeHandle.Dispose(Boolean)
+  fullName: System.Runtime.InteropServices.SafeHandle.Dispose(System.Boolean)
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.Dispose(System.Boolean)
+    name: Dispose
+    nameWithType: SafeHandle.Dispose
+    fullName: System.Runtime.InteropServices.SafeHandle.Dispose
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Boolean
+    name: Boolean
+    nameWithType: Boolean
+    fullName: System.Boolean
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.Dispose(System.Boolean)
+    name: Dispose
+    nameWithType: SafeHandle.Dispose
+    fullName: System.Runtime.InteropServices.SafeHandle.Dispose
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Boolean
+    name: Boolean
+    nameWithType: Boolean
+    fullName: System.Boolean
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.SetHandle(System.IntPtr)
+  commentId: M:System.Runtime.InteropServices.SafeHandle.SetHandle(System.IntPtr)
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: SetHandle(IntPtr)
+  nameWithType: SafeHandle.SetHandle(IntPtr)
+  fullName: System.Runtime.InteropServices.SafeHandle.SetHandle(System.IntPtr)
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.SetHandle(System.IntPtr)
+    name: SetHandle
+    nameWithType: SafeHandle.SetHandle
+    fullName: System.Runtime.InteropServices.SafeHandle.SetHandle
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.IntPtr
+    name: IntPtr
+    nameWithType: IntPtr
+    fullName: System.IntPtr
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.SetHandle(System.IntPtr)
+    name: SetHandle
+    nameWithType: SafeHandle.SetHandle
+    fullName: System.Runtime.InteropServices.SafeHandle.SetHandle
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.IntPtr
+    name: IntPtr
+    nameWithType: IntPtr
+    fullName: System.IntPtr
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+  commentId: M:System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: SetHandleAsInvalid()
+  nameWithType: SafeHandle.SetHandleAsInvalid()
+  fullName: System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid()
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+    name: SetHandleAsInvalid
+    nameWithType: SafeHandle.SetHandleAsInvalid
+    fullName: System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+    name: SetHandleAsInvalid
+    nameWithType: SafeHandle.SetHandleAsInvalid
+    fullName: System.Runtime.InteropServices.SafeHandle.SetHandleAsInvalid
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Runtime.InteropServices.SafeHandle.IsClosed
+  commentId: P:System.Runtime.InteropServices.SafeHandle.IsClosed
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: IsClosed
+  nameWithType: SafeHandle.IsClosed
+  fullName: System.Runtime.InteropServices.SafeHandle.IsClosed
+- uid: System.Object.Equals(System.Object)
+  commentId: M:System.Object.Equals(System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object)
+  nameWithType: Object.Equals(Object)
+  fullName: System.Object.Equals(System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.Equals(System.Object,System.Object)
+  commentId: M:System.Object.Equals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object, Object)
+  nameWithType: Object.Equals(Object, Object)
+  fullName: System.Object.Equals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetHashCode
+  commentId: M:System.Object.GetHashCode
+  parent: System.Object
+  isExternal: true
+  name: GetHashCode()
+  nameWithType: Object.GetHashCode()
+  fullName: System.Object.GetHashCode()
+  spec.csharp:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetType
+  commentId: M:System.Object.GetType
+  parent: System.Object
+  isExternal: true
+  name: GetType()
+  nameWithType: Object.GetType()
+  fullName: System.Object.GetType()
+  spec.csharp:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.MemberwiseClone
+  commentId: M:System.Object.MemberwiseClone
+  parent: System.Object
+  isExternal: true
+  name: MemberwiseClone()
+  nameWithType: Object.MemberwiseClone()
+  fullName: System.Object.MemberwiseClone()
+  spec.csharp:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ReferenceEquals(System.Object,System.Object)
+  commentId: M:System.Object.ReferenceEquals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: ReferenceEquals(Object, Object)
+  nameWithType: Object.ReferenceEquals(Object, Object)
+  fullName: System.Object.ReferenceEquals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ToString
+  commentId: M:System.Object.ToString
+  parent: System.Object
+  isExternal: true
+  name: ToString()
+  nameWithType: Object.ToString()
+  fullName: System.Object.ToString()
+  spec.csharp:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System
+  commentId: N:System
+  isExternal: true
+  name: System
+  nameWithType: System
+  fullName: System
+- uid: System.Runtime.InteropServices
+  commentId: N:System.Runtime.InteropServices
+  isExternal: true
+  name: System.Runtime.InteropServices
+  nameWithType: System.Runtime.InteropServices
+  fullName: System.Runtime.InteropServices
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv.Instance*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtEnv.Instance
+  name: Instance
+  nameWithType: OrtEnv.Instance
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv.Instance
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtEnv
+  parent: Microsoft.ML.OnnxRuntime
+  name: OrtEnv
+  nameWithType: OrtEnv
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv.EnableTelemetryEvents*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtEnv.EnableTelemetryEvents
+  name: EnableTelemetryEvents
+  nameWithType: OrtEnv.EnableTelemetryEvents
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv.EnableTelemetryEvents
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv.DisableTelemetryEvents*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtEnv.DisableTelemetryEvents
+  name: DisableTelemetryEvents
+  nameWithType: OrtEnv.DisableTelemetryEvents
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv.DisableTelemetryEvents
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv.CreateAndRegisterAllocator*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtEnv.CreateAndRegisterAllocator
+  name: CreateAndRegisterAllocator
+  nameWithType: OrtEnv.CreateAndRegisterAllocator
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv.CreateAndRegisterAllocator
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  parent: Microsoft.ML.OnnxRuntime
+  name: OrtMemoryInfo
+  nameWithType: OrtMemoryInfo
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+- uid: Microsoft.ML.OnnxRuntime.OrtArenaCfg
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtArenaCfg
+  parent: Microsoft.ML.OnnxRuntime
+  name: OrtArenaCfg
+  nameWithType: OrtArenaCfg
+  fullName: Microsoft.ML.OnnxRuntime.OrtArenaCfg
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv.GetAvailableProviders*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtEnv.GetAvailableProviders
+  name: GetAvailableProviders
+  nameWithType: OrtEnv.GetAvailableProviders
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv.GetAvailableProviders
+- uid: System.String[]
+  isExternal: true
+  name: String[]
+  nameWithType: String[]
+  fullName: System.String[]
+  nameWithType.vb: String()
+  fullName.vb: System.String()
+  name.vb: String()
+  spec.csharp:
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: '[]'
+    nameWithType: '[]'
+    fullName: '[]'
+  spec.vb:
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: ()
+    nameWithType: ()
+    fullName: ()
+- uid: System.Runtime.InteropServices.SafeHandle.IsInvalid
+  commentId: P:System.Runtime.InteropServices.SafeHandle.IsInvalid
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: IsInvalid
+  nameWithType: SafeHandle.IsInvalid
+  fullName: System.Runtime.InteropServices.SafeHandle.IsInvalid
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv.IsInvalid*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtEnv.IsInvalid
+  name: IsInvalid
+  nameWithType: OrtEnv.IsInvalid
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv.IsInvalid
+- uid: System.Boolean
+  commentId: T:System.Boolean
+  parent: System
+  isExternal: true
+  name: Boolean
+  nameWithType: Boolean
+  fullName: System.Boolean
+- uid: System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+  commentId: M:System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+  parent: System.Runtime.InteropServices.SafeHandle
+  isExternal: true
+  name: ReleaseHandle()
+  nameWithType: SafeHandle.ReleaseHandle()
+  fullName: System.Runtime.InteropServices.SafeHandle.ReleaseHandle()
+  spec.csharp:
+  - uid: System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+    name: ReleaseHandle
+    nameWithType: SafeHandle.ReleaseHandle
+    fullName: System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+    name: ReleaseHandle
+    nameWithType: SafeHandle.ReleaseHandle
+    fullName: System.Runtime.InteropServices.SafeHandle.ReleaseHandle
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv.ReleaseHandle*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtEnv.ReleaseHandle
+  name: ReleaseHandle
+  nameWithType: OrtEnv.ReleaseHandle
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv.ReleaseHandle

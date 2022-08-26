@@ -19,8 +19,6 @@ contrib_ops_excluded_files = [
     "bert/attention.cc",
     "bert/attention_impl.cu",
     "bert/attention_softmax.h",
-    "bert/decoder_attention.h",
-    "bert/decoder_attention.cc",
     "bert/embed_layer_norm.cc",
     "bert/embed_layer_norm.h",
     "bert/embed_layer_norm_impl.cu",
@@ -29,20 +27,10 @@ contrib_ops_excluded_files = [
     "bert/fast_gelu_impl.h",
     "bert/fast_gelu.cc",
     "bert/fast_gelu.h",
-    "bert/layer_norm.cuh",
     "bert/skip_layer_norm.cc",
     "bert/skip_layer_norm.h",
     "bert/skip_layer_norm_impl.cu",
     "bert/skip_layer_norm_impl.h",
-    "bert/longformer_attention.cc",
-    "bert/longformer_attention.h",
-    "bert/longformer_attention_softmax.cu",
-    "bert/longformer_attention_softmax.h",
-    "bert/longformer_attention_impl.cu",
-    "bert/longformer_attention_impl.h",
-    "bert/longformer_global_impl.cu",
-    "bert/longformer_global_impl.h",
-    "bert/transformer_cuda_common.h",
     "bert/transformer_common.h",
     "bert/transformer_common.cc",
     "math/complex_mul.cc",
@@ -199,7 +187,9 @@ def hipify(src_file_path, dst_file_path):
     if not os.path.exists(dir_name):
         os.makedirs(dir_name, exist_ok=True)
     # Run hipify-perl first, capture output
-    s = subprocess.run([get_hipify_path(), src_file_path], stdout=subprocess.PIPE, universal_newlines=True).stdout
+    s = subprocess.run(
+        [get_hipify_path(), "-roc", src_file_path], stdout=subprocess.PIPE, universal_newlines=True, check=False
+    ).stdout
 
     # Additional exact-match replacements.
     # Order matters for all of the following replacements, reglardless of appearing in logical sections.
@@ -272,6 +262,9 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace('#include "cub/util_allocator.cuh"', "#include <hipcub/util_allocator.hpp>")
     s = s.replace("#include <cub/util_type.cuh>", "#include <hipcub/backend/rocprim/util_type.hpp>")
     s = s.replace('#include "cub/util_type.cuh"', "#include <hipcub/backend/rocprim/util_type.hpp>")
+    s = s.replace("#include <cub/device/device_partition.cuh>", "#include <hipcub/device/device_partition.hpp>")
+    s = s.replace("#include <math_constants.h>", "#include <limits>")
+    s = s.replace("#include <library_types.h>", "")  # Doesn't exist
     s = s.replace("typedef half MappedType", "typedef __half MappedType")
 
     # CUBLAS -> HIPBLAS
@@ -284,6 +277,19 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace("CUBLAS", "ROCBLAS")
     s = s.replace("Cublas", "Rocblas")
     s = s.replace("cublas", "rocblas")
+
+    # Undefined ROCMRT constants -> std::numeric_limits
+    s = s.replace("ROCMRT_INF_F", "std::numeric_limits<float>::infinity()")
+
+    # HIPBLAS -> rocblas
+    s = s.replace("HIPBLAS_R_16F", "rocblas_datatype_f16_r")
+    s = s.replace("HIPBLAS_R_32F", "rocblas_datatype_f32_r")
+    s = s.replace("ROCBLAS_GEMM_DEFAULT_TENSOR_OP", "rocblas_gemm_algo_standard")
+    s = s.replace("ROCBLAS_TENSOR_OP_MATH", "0 /* CUBLAS_TENSOR_OP_MATH is deprecated */")
+
+    # compatible layer
+    s = s.replace("rocblas_gemm_strided_batched_ex", "_compat_rocblas_gemm_strided_batched_ex")
+    s = s.replace("RocblasMathModeSetter", "CompatRocblasMathModeSetter")
 
     # CURAND -> HIPRAND
     s = s.replace("CURAND", "HIPRAND")
