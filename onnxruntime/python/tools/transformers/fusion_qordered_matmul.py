@@ -316,7 +316,7 @@ class FusionQOrderedMatMulFromGemm(Fusion):
                 (["DequantizeLinear"], [1]),
             ],
             output_name_to_node,
-         )
+        )
 
         if second_path_id < 0:
             return
