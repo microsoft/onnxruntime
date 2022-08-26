@@ -647,7 +647,8 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        "--enable_rocm_profiling", action='store_true', help="enable rocm kernel profiling.")
+        "--enable_rocm_profiling", action='store_true', help="enable rocm kernel profiling."
+    )
 
     parser.add_argument("--use_xnnpack", action="store_true", help="Enable xnnpack EP.")
 
