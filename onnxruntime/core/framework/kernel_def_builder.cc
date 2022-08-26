@@ -55,7 +55,6 @@ void KernelDef::CalculateHash() {
            (uint32_t)c[2] << 16 |
            (uint32_t)c[3] << 24);
   }
- 
 
   // If we include op_since_version_end_ the hash of an existing op changes when it's superseded.
   // e.g. Unsqueeze 11 had no end version until Unsqueeze 13, at which point the existing op is changed to have
