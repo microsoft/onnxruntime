@@ -47,7 +47,7 @@ jobs:
   
   variables:
     - name: branchName
-      ${{ if not(eq(length(variables['ortBranchOverride']), 0)) }}:
+      ${{ if not(eq(variables['ortBranchOverride'], '')) }}:
         value: $(ortBranchOverride)
       ${{ else }}:
         value: $[ replace(variables['Build.SourceBranch'], 'refs/heads/', '') ]
