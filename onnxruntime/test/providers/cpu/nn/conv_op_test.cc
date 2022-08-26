@@ -752,7 +752,7 @@ TEST(ConvTest, Fuse_Conv_Bias) {
   std::vector<int64_t> B_shape{1};
 
   size_t Z_count = 1 * 1 * 28;
-  std::vector<float> Z_data(1 * 1 * 28, 1.f);
+  std::vector<float> Z_data(Z_count, 1.f);
   std::vector<int64_t> Z_shape{1, 1, 28};
 
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), X_shape, X_data, &ml_value);
@@ -799,7 +799,7 @@ TEST(ConvTest, Fuse_Conv_Bias_Slice) {
   std::vector<int64_t> B_shape{1};
 
   size_t Z_count = 1 * 1 * 4 * 2;
-  std::vector<float> Z_data(1 * 1 * 4 * 2, 1.f);
+  std::vector<float> Z_data(Z_count, 1.f);
   std::vector<int64_t> Z_shape{1, 1, 4, 2};
 
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), X_shape, X_data, &ml_value);
@@ -842,7 +842,7 @@ TEST(ConvTest, Fuse_Conv_No_Bias) {
   std::vector<int64_t> W_shape{1, 3, 5, 32};
 
   size_t Z_count = 1 * 1 * 28;
-  std::vector<float> Z_data(1 * 1 * 28, 1.f);
+  std::vector<float> Z_data(Z_count, 1.f);
   std::vector<int64_t> Z_shape{1, 1, 28};
 
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), X_shape, X_data, &ml_value);
