@@ -1526,6 +1526,22 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
   VerifyOutputs(fetches, expected_dims, expected_values);
+
+#if USE_TENSORRT
+  // previous run with graph being optimized, one of If node’s both subgraphs become empty, so TRT EP won’t assign this If node to TRT and later ORT assign it to CUDA.
+  // we also want to test graph not being optimized and TRT EP should also be able to run it and make the whole graph run on TRT. 
+  so.graph_optimization_level = TransformerLevel::Default; 
+  InferenceSession session_object_2{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object_2.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
+  status = session_object_2.Load(model_file_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object_2.Initialize();
+  ASSERT_TRUE(status.IsOK());
+  // Now run
+  status = session_object_2.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
+  VerifyOutputs(fetches, expected_dims, expected_values);
+#endif
 }
 
 TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
