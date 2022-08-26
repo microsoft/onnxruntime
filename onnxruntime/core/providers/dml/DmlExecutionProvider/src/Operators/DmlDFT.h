@@ -3,7 +3,7 @@
 #include "../MLOperatorAuthorImpl.h"
 
 // The shader header is produced using "fxc.exe dft_shader.hlsl -E DFT -T cs_5_0 -Zi /Fh"
-#include "GeneratedShaders\stockham.h"
+#include "GeneratedShaders/stockham.h"
 
 #include "../External/D3DX12/d3dx12.h"
 
@@ -66,26 +66,28 @@ private:
     ComPtr<ID3D12RootSignature> m_rootSignature;
     ComPtr<ID3D12PipelineState> m_pipelineState;
 
-    std::vector<uint32_t> inputDims_ = {};
-    std::vector<uint32_t> outputDims_ = {};
-    int64_t axis_;
-    bool is_onesided_;
-    bool inverse_;
+    std::vector<uint32_t> m_inputDims = {};
+    std::vector<uint32_t> m_outputDims = {};
+    int64_t m_axis;
+    bool m_isOnesided;
+    bool m_isInverse;
 
-    uint32_t outputDataSize_ = 0;
-    uint32_t inputDataSize_ = 0;
-    uint32_t outputIdx_ = 0;
-    uint32_t numPasses_ = 0;
+    uint32_t m_outputDataSize = 0;
+    uint32_t m_inputDataSize = 0;
+    uint32_t m_outputIdx = 0;
+    uint32_t m_numPasses = 0;
 
     // Allocate temporary buffers if needed
-    struct ResourceDesc {
+    struct ResourceDesc
+    {
         ComPtr<ID3D12Resource> Resource;
         std::array<uint32_t, 4> Sizes;
         std::array<uint32_t, 4> Strides;
     };
     std::vector<ResourceDesc> resourceLoopList_ = {};
 
-    struct LoopRange {
+    struct LoopRange
+    {
         unsigned Left;
         unsigned Right;
         unsigned End;
@@ -128,15 +130,15 @@ public:
         ORT_THROW_IF_FAILED(commandList->GetDevice(IID_ID3D12Device, &m_device));
 
 
-        ORT_THROW_IF_FAILED(context->GetAttribute("axis", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&axis_)));
+        ORT_THROW_IF_FAILED(context->GetAttribute("axis", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&m_axis)));
 
-        int64_t inverse_i;
-        ORT_THROW_IF_FAILED(context->GetAttribute("inverse", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&inverse_i)));
-        inverse_ = static_cast<bool>(inverse_i);
+        int64_t isInverseInt;
+        ORT_THROW_IF_FAILED(context->GetAttribute("inverse", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&isInverseInt)));
+        m_isInverse = static_cast<bool>(isInverseInt);
 
-        int64_t onesided_i;
-        ORT_THROW_IF_FAILED(context->GetAttribute("onesided", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&onesided_i)));
-        is_onesided_ = static_cast<bool>(onesided_i);
+        int64_t isOnesidedInt;
+        ORT_THROW_IF_FAILED(context->GetAttribute("onesided", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&isOnesidedInt)));
+        m_isOnesided = static_cast<bool>(isOnesidedInt);
 
         ComPtr<IMLOperatorTensorShapeDescription> shapeDesc;
         context->GetTensorShapeDescription(shapeDesc.GetAddressOf());
@@ -146,34 +148,31 @@ public:
         ORT_THROW_IF_FAILED(shapeDesc->GetInputTensorDimensionCount(0, &inputDimsSize));
         uint32_t outputDimsSize;
         ORT_THROW_IF_FAILED(shapeDesc->GetOutputTensorDimensionCount(0, &outputDimsSize));
-        if (inputDimsSize != outputDimsSize)
-        {
-            ORT_THROW_IF_FAILED(E_FAIL);
-        }
+        ORT_THROW_HR_IF(E_FAIL, inputDimsSize != outputDimsSize)
 
         // Get the input shape
-        inputDims_.resize(inputDimsSize);
-        ORT_THROW_IF_FAILED(shapeDesc->GetInputTensorShape(0, static_cast<uint32_t>(inputDims_.size()), inputDims_.data()));
+        m_inputDims.resize(inputDimsSize);
+        ORT_THROW_IF_FAILED(shapeDesc->GetInputTensorShape(0, static_cast<uint32_t>(m_inputDims.size()), m_inputDims.data()));
 
         // Get the output shape
-        outputDims_.resize(outputDimsSize);
-        ORT_THROW_IF_FAILED(shapeDesc->GetOutputTensorShape(0, static_cast<uint32_t>(outputDims_.size()), outputDims_.data()));
+        m_outputDims.resize(outputDimsSize);
+        ORT_THROW_IF_FAILED(shapeDesc->GetOutputTensorShape(0, static_cast<uint32_t>(m_outputDims.size()), m_outputDims.data()));
 
         // For the number of total elements in the input and output shapes
-        outputDataSize_ = std::accumulate(outputDims_.begin(), outputDims_.end(), 1, std::multiplies<uint32_t>());
-        inputDataSize_ = std::accumulate(inputDims_.begin(), inputDims_.end(), 1, std::multiplies<uint32_t>());
+        m_outputDataSize = std::accumulate(m_outputDims.begin(), m_outputDims.end(), 1, std::multiplies<uint32_t>());
+        m_inputDataSize = std::accumulate(m_inputDims.begin(), m_inputDims.end(), 1, std::multiplies<uint32_t>());
 
         // { before_dft_axis, axis, after_dft_axis, real_or_complex }
-        std::array<uint32_t, 4> reshapedInputSize = { 1, 1, 1, inputDims_.back() };
-        std::array<uint32_t, 4> reshapedOutputSize = { 1, 1, 1, outputDims_.back() };
+        std::array<uint32_t, 4> reshapedInputSize = { 1, 1, 1, m_inputDims.back() };
+        std::array<uint32_t, 4> reshapedOutputSize = { 1, 1, 1, m_outputDims.back() };
 
         size_t reshapedIndex = 0;
-        for (int i = 0; i < inputDims_.size() - 1; i++) {
-            if (i == axis_ || i == (axis_ + 1)) {
+        for (int i = 0; i < m_inputDims.size() - 1; i++) {
+            if (i == m_axis || i == (m_axis + 1)) {
                 reshapedIndex++;
             }
-            reshapedInputSize[reshapedIndex] *= inputDims_[i];
-            reshapedOutputSize[reshapedIndex] *= outputDims_[i];
+            reshapedInputSize[reshapedIndex] *= m_inputDims[i];
+            reshapedOutputSize[reshapedIndex] *= m_outputDims[i];
         }
 
         auto temporarySize = reshapedInputSize;
@@ -183,29 +182,29 @@ public:
         std::array<uint32_t, 4> reshapedInputStrides = { 1, 1, 1, 1 };
         std::array<uint32_t, 4> reshapedOutputStrides = { 1, 1, 1, 1 };
         std::array<uint32_t, 4> temporaryStrides = { 1, 1, 1, 1 };
-        for (int i = static_cast<int>(inputDims_.size()) - 2; i >= 0; i--) {
+        for (int i = static_cast<int>(m_inputDims.size()) - 2; i >= 0; i--) {
             reshapedInputStrides[i] = reshapedInputSize[i + 1] * reshapedInputStrides[i + 1];
             reshapedOutputStrides[i] = reshapedOutputSize[i + 1] * reshapedOutputStrides[i + 1];
             temporaryStrides[i] = temporarySize[i + 1] * temporaryStrides[i + 1];
         }
 
         // Get DFT Length
-        auto dftLength = inputDims_[axis_];
+        auto dftLength = m_inputDims[m_axis];
 
         // Calculate passes
-        numPasses_ = static_cast<unsigned>(log2(dftLength));
-        bool hasOnePass = numPasses_ == 1;
-        bool hasOddPasses = numPasses_ % 2;
+        m_numPasses = static_cast<unsigned>(log2(dftLength));
+        bool hasOnePass = m_numPasses == 1;
+        bool hasOddPasses = m_numPasses % 2;
         bool hasEvenPasses = !hasOddPasses;
 
         // write directly input buffer to output buffer, dont create temps
-        bool write_to_output = hasOnePass;
+        bool writeToOutput = hasOnePass;
         // First and final are input/output buffers, but all else ocillate between 2 temp buffers
-        bool occilate_between_two_temporaries = !hasOnePass && is_onesided_;
+        bool occilateBetweenTwoTemporaries = !hasOnePass && m_isOnesided;
         // First is input buffer, all else ocillate between temp and output, causing the final pass to write to the output buffer
-        bool occilate_first_output_then_temporary = hasOddPasses && !is_onesided_;
+        bool occilateFirstOutputThenTemporary = hasOddPasses && !m_isOnesided;
         // First is input buffer, all else ocillate between output and temp, causing the final pass to write to the output buffer
-        bool occilate_first_temporary_then_output = hasEvenPasses && !is_onesided_;
+        bool occilateFirstTemporaryThenOutput = hasEvenPasses && !m_isOnesided;
 
         // Create the resource loop list
         // Add the input resource to the loop list
@@ -216,7 +215,7 @@ public:
 
         // If 1 temporary should be placed first, or multiple temporaries, then
         // Add a temp in the list
-        if (occilate_first_temporary_then_output || occilate_between_two_temporaries) {
+        if (occilateFirstTemporaryThenOutput || occilateBetweenTwoTemporaries) {
             resourceLoopList_.push_back({});
             resourceLoopList_.back().Resource = CreateTemporaryResource(temporarySize);
             resourceLoopList_.back().Sizes = temporarySize;
@@ -224,7 +223,7 @@ public:
         }
 
         // If 2 temps, add another
-        if (occilate_between_two_temporaries) {
+        if (occilateBetweenTwoTemporaries) {
             resourceLoopList_.push_back({});
             resourceLoopList_.back().Resource = CreateTemporaryResource(temporarySize);
             resourceLoopList_.back().Sizes = temporarySize;
@@ -236,10 +235,10 @@ public:
         resourceLoopList_.back().Resource = nullptr;
         resourceLoopList_.back().Sizes = reshapedOutputSize;
         resourceLoopList_.back().Strides = reshapedOutputStrides;
-        outputIdx_ = static_cast<uint32_t>(resourceLoopList_.size() - 1);
+        m_outputIdx = static_cast<uint32_t>(resourceLoopList_.size() - 1);
 
         // Add the temporary after output incase of odd number of passes
-        if (occilate_first_output_then_temporary) {
+        if (occilateFirstOutputThenTemporary) {
             resourceLoopList_.push_back({});
             resourceLoopList_.back().Resource = CreateTemporaryResource(temporarySize);
             resourceLoopList_.back().Sizes = temporarySize;
@@ -247,10 +246,10 @@ public:
         }
 
         // Define the loop range
-        if (write_to_output) { loopRange_ = { 0, 1, numPasses_ }; }
-        if (occilate_between_two_temporaries) { loopRange_ = { 1, 2, numPasses_ }; }
-        if (occilate_first_output_then_temporary) { loopRange_ = { 1, 2, numPasses_ + 1 }; }
-        if (occilate_first_temporary_then_output) { loopRange_ = { 1, 2, numPasses_ + 1 }; }
+        if (writeToOutput) { loopRange_ = { 0, 1, m_numPasses }; }
+        if (occilateBetweenTwoTemporaries) { loopRange_ = { 1, 2, m_numPasses }; }
+        if (occilateFirstOutputThenTemporary) { loopRange_ = { 1, 2, m_numPasses + 1 }; }
+        if (occilateFirstTemporaryThenOutput) { loopRange_ = { 1, 2, m_numPasses + 1 }; }
 
         PrepareGpuResources();
     }
@@ -318,7 +317,8 @@ public:
             DXGI_FORMAT_UNKNOWN,
             {1, 0},
             D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS };
+            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+        };
 
         ORT_THROW_IF_FAILED(m_device->CreateCommittedResource(
             &heapProperties,
@@ -375,7 +375,7 @@ public:
             outputUnknown.As(&outputResource);
 
             auto isPowerOfTwo = [](uint32_t n) { return (n != 0) && ((n & (n - 1)) == 0); };
-            if (isPowerOfTwo(inputDims_[axis_])) {
+            if (isPowerOfTwo(m_inputDims[m_axis])) {
                 StockhamFFT(inputResource.Get(), outputResource.Get(), commandList.Get());
             }
             else {
@@ -419,13 +419,13 @@ public:
         // Dispatch in a loop
         DFTShaderConstants constants = {};
         constants.DFTIteration = 0;
-        constants.IsInverse = inverse_;
+        constants.IsInverse = m_isInverse;
 
         auto resourceLoopList = resourceLoopList_;
         resourceLoopList[0].Resource = inputResource;
-        resourceLoopList[outputIdx_].Resource = outputResource;
+        resourceLoopList[m_outputIdx].Resource = outputResource;
 
-        for (unsigned index = 0; index < numPasses_; index++) {
+        for (unsigned index = 0; index < m_numPasses; index++) {
             auto inIdx = loopRange_.CalculateIndex(index);
             auto outIdx = loopRange_.CalculateIndex(index + 1);
 
@@ -437,9 +437,9 @@ public:
             std::copy(resourceLoopList[outIdx].Sizes.begin(), resourceLoopList[outIdx].Sizes.end(), constants.OutputSizes);
             std::copy(resourceLoopList[outIdx].Strides.begin(), resourceLoopList[outIdx].Strides.end(), constants.OutputStrides);
 
-            auto isLastPass = (index == numPasses_ - 1);
-            auto isLastInversePass = isLastPass && inverse_;
-            auto dftLength = 1 << numPasses_;
+            auto isLastPass = (index == m_numPasses - 1);
+            auto isLastInversePass = isLastPass && m_isInverse;
+            auto dftLength = 1 << m_numPasses;
             constants.Scale = isLastInversePass ? (1.f / dftLength) : 1.f;
 
             auto totalElementCount =
@@ -525,8 +525,7 @@ public:
         ID3D12Resource* /*outputResource*/,
         ID3D12GraphicsCommandList* /*commandList*/)
     {
-        // Not implemented
-        throw;
+        ORT_THROW_HR(E_NOTIMPL);
     }
 };
 
@@ -538,15 +537,15 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
         {
             int64_t axis;
             ORT_THROW_IF_FAILED(context->GetAttribute("axis", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&axis)));
-            int64_t inverse_i;
-            ORT_THROW_IF_FAILED(context->GetAttribute("inverse", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&inverse_i)));
-            int64_t onesided_i;
-            ORT_THROW_IF_FAILED(context->GetAttribute("onesided", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&onesided_i)));
-            bool is_onesided = static_cast<bool>(onesided_i);
-            bool inverse = static_cast<bool>(inverse_i);
+            int64_t isInverseInt;
+            ORT_THROW_IF_FAILED(context->GetAttribute("inverse", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&isInverseInt)));
+            int64_t isOnesidedInt;
+            ORT_THROW_IF_FAILED(context->GetAttribute("onesided", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&isOnesidedInt)));
+            bool isOnesided = static_cast<bool>(isOnesidedInt);
+            bool inverse = static_cast<bool>(isInverseInt);
 
-            if (inverse && is_onesided) {
-                throw new std::exception("is_onesided and inverse attributes cannot be enabled at the same time");
+            if (inverse && isOnesided) {
+                throw new std::exception("isOnesided and inverse attributes cannot be enabled at the same time");
             }
 
             uint32_t rank;
@@ -556,13 +555,13 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
                 throw;
             }
 
-            if (context->IsInputValid(1))
-            {
-                // If dft_length is specified, then we should honor the shape.
-                // Set the output dimension to match the dft_length on the axis.
-                // If onesided this will be adjusted later on... this is not supported as of now
-                // do nothng... for some reason unset optional inputs seem to crash..
-            }
+            // if (context->IsInputValid(1))
+            // {
+            //     // If dft_length is specified, then we should honor the shape.
+            //     // Set the output dimension to match the dft_length on the axis.
+            //     // If onesided this will be adjusted later on.
+            //     // However, this is not supported as of now, so do nothing...
+            // }
 
             // In general the output shape will match the input shape exactly
             // So initialize the output shape with the input shape
@@ -578,18 +577,18 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
                 throw new std::exception(ss_str.c_str());
             }
 
-            auto axis_idx = (axis >= 0 ? axis : axis + rank);
+            auto axisIdx = (axis >= 0 ? axis : axis + rank);
 
             // When DFT is onesided, the output shape is half the size of the input shape
             // along the specified axis.
-            if (is_onesided) {
-                auto axis_dimension = outputDims.at(axis_idx);
+            if (isOnesided) {
+                auto axisDimension = outputDims.at(axisIdx);
                 // We need to update the output shape dimension along the specified axis,
                 // but sometimes the dimension will be a free dimension or be otherwise unset.
                 // Only perform inference when a input dimension value exists.
-                auto original_signal_size = axis_dimension;
-                auto half_signal_size = (original_signal_size >> 1) + 1;
-                outputDims.at(axis_idx) = half_signal_size;
+                auto originalSignalSize = axisDimension;
+                auto halfSignalSize = (originalSignalSize >> 1) + 1;
+                outputDims.at(axisIdx) = halfSignalSize;
             }
 
             ORT_THROW_IF_FAILED(context->SetOutputTensorShape(0, rank, outputDims.data()));
