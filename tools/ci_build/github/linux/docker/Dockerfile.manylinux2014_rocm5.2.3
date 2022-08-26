@@ -24,20 +24,11 @@ RUN cd /usr/local && \
     wget -q -O - https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz | tar zxf -
 ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-linux-x86_64/bin:${PATH}
 
-# # gcc
-# RUN yum install centos-release-scl && \
-#     yum install devtoolset-8-gcc* && \
-#     mv /usr/bin/gcc /usr/bin/gcc-7.3.1 && \
-#     ln -s /opt/rh/devtoolset-8/root/bin/gcc /usr/bin/gcc && \
-#     mv /usr/bin/g++ /usr/bin/g++-7.3.1 && \
-#     ln -s /opt/rh/devtoolset-8/root/bin/g++ /usr/bin/g++
-
 # rocm lib
 RUN yum install -y libpython3.8-dev python3-pip miopen-hip-devel rocblas-devel && \
     yum install -y rocrand-devel rccl-devel hipsparse-devel hipfft-devel hipcub-devel hipblas-devel rocthrust-devel
 
 # install dependencies
-# Dependencies: conda
 RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.5.11-Linux-x86_64.sh -O ~/miniconda.sh --no-check-certificate && \
     /bin/bash ~/miniconda.sh -b -p /opt/miniconda && \
     rm ~/miniconda.sh && \
@@ -46,7 +37,7 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.5.11-Linux-x86
 ENV PATH=/opt/miniconda/bin:${PATH}
 RUN pip install numpy "wheel>=0.35.1"
 
-RUN yum remove -y devtoolset\* git\* && conda remove -y cmake
+RUN yum remove -y devtoolset\* git\*
 
 ENV AUDITWHEEL_POLICY=${POLICY} AUDITWHEEL_ARCH=${PLATFORM} AUDITWHEEL_PLAT=${POLICY}_${PLATFORM}
 ENV LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 LANGUAGE=en_US.UTF-8
@@ -190,27 +181,24 @@ CMD ["/bin/bash"]
 #Build manylinux2014 docker image end
 
 ARG PYTHON_VERSION=3.7
-ARG TORCH_VERSION=1.11.0
 ARG OPSET_VERSION=15
 ARG INSTALL_DEPS_EXTRA_ARGS
 
-# #Add our own dependencies
-# ADD scripts /tmp/scripts
-# RUN cd /tmp/scripts && \
-#     /tmp/scripts/manylinux/install_centos.sh && \
-#     /tmp/scripts/install_os_deps.sh -d gpu $INSTALL_DEPS_EXTRA_ARGS && \
-#     /tmp/scripts/install_python_deps.sh -d gpu -p 3.7 -h ${TORCH_VERSION} -o 5.2.3 $INSTALL_DEPS_EXTRA_ARGS && \
-#     /tmp/scripts/install_python_deps.sh -d gpu -p 3.8 -h ${TORCH_VERSION} -o 5.2.3 $INSTALL_DEPS_EXTRA_ARGS && \
-#     /tmp/scripts/install_python_deps.sh -d gpu -p 3.9 -h ${TORCH_VERSION} -o 5.2.3 $INSTALL_DEPS_EXTRA_ARGS && \
-#      rm -rf /tmp/scripts
+#Add our own dependencies
+ADD scripts /tmp/scripts
+RUN cd /tmp/scripts && \
+    /tmp/scripts/manylinux/install_centos.sh && \
+    /tmp/scripts/install_os_deps.sh -d gpu $INSTALL_DEPS_EXTRA_ARGS && \
+    /tmp/scripts/install_python_deps.sh -d gpu -p 3.7 $INSTALL_DEPS_EXTRA_ARGS && \
+    /tmp/scripts/install_python_deps.sh -d gpu -p 3.8 $INSTALL_DEPS_EXTRA_ARGS && \
+    /tmp/scripts/install_python_deps.sh -d gpu -p 3.9 $INSTALL_DEPS_EXTRA_ARGS && \
+     rm -rf /tmp/scripts
 
 # remove protobuf to prevent ambiguity which is used for onnxruntime build
 RUN rm -fr /usr/local/bin/protoc \
            /usr/local/libproto* \
            /usr/local/include/google \
            /usr/local/lib/pkgconfig/protobuf*
-
-RUN userdel jenkins
 
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
