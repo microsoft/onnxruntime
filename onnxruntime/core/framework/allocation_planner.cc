@@ -205,6 +205,14 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
                                           LOGS(execution_context->GetLogger(), WARNING) << "Exiting due to terminate flag being set to true.";
                                           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
                                         }
+#ifdef ENABLE_TRAINING
+                                        auto* node_to_execute = execution_context->GetNodeToExecute();
+                                        if (node_to_execute) {
+                                          if (node_to_execute->count(node_idx) == 0)
+                                            continue_flag = true;
+                                          return Status::OK();
+                                        }
+#endif
                                         onnxruntime::Status status = ExecuteKernel(*execution_context, node_idx, stream_idx);
                                         continue_flag = status.IsOK();
                                         return status;

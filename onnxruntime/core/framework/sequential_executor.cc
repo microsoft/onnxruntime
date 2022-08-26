@@ -277,7 +277,7 @@ class KernelScope {
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
                                         ,
-                                        dump_context_ {session_scope_.dump_context_.iteration, kernel_.Node().Index()}
+                                        dump_context_{session_scope_.dump_context_.iteration, kernel_.Node().Index()}
 #endif
   {
 #ifdef CONCURRENCY_VISUALIZER
@@ -515,8 +515,8 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                        single_thread_mode);
 #ifdef ENABLE_TRAINING
   if (only_execute_path_to_fetches) {
-    auto* range = session_state.GetToBeExecutedRange(fetch_mlvalue_idxs);
-    ctx.SetCurrentRange(range);
+    auto* node_to_execute = session_state.GetToBeExecutedRange(fetch_mlvalue_idxs);
+    ctx.SetNodeToExecute(node_to_execute);
   }
 #else
   ORT_UNUSED_PARAMETER(only_execute_path_to_fetches);
@@ -532,7 +532,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
       // execution context is initialized with number of valid streams
       // for invalid stream (0 steps), it doesn't count in number of tasks
       // so don't need to invoke CompleteTask here
-      //ctx.CompleteTask();
+      // ctx.CompleteTask();
     } else {
       concurrency::ThreadPool::Schedule(tp, [i, &ctx]() {
         RunSince(i, ctx, 0);
