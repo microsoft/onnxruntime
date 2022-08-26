@@ -1058,6 +1058,8 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
      * (2) control flow op is supported by TRT, but not all its subgraphs supported by TRT. Don't assign this node to TRT.
      * (3) control flow op is not supported by TRT, but its subgraphs all supported by TRT. Don't assign this node to TRT.
      * (4) control flow op is not supported by TRT, and not all its subgraphs supported by TRT. Don't assign this node to TRT.
+     *
+     * For cases 2, 3, 4, even though the control flow op is not assigned to TRT, any portion of its subgraphs that can run in TRT will be still fused and assigned to TRT EP.
      */
     if (control_flow_op_set_.find(node->OpType()) != control_flow_op_set_.end()) {
       auto sub_graphs = node->GetSubgraphs();
