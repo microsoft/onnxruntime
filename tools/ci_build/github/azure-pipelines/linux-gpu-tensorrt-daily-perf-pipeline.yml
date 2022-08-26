@@ -77,7 +77,7 @@ jobs:
       - script: 'ls -al $(trtBinsDir)'
         displayName: 'Show available TensorRT .tar.gz packages'
 
-      - script: 'cp $(trtBinsDir)/TensorRT-$(trtVersion)*.tar.gz $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/'
+      - script: 'cp $(trtBinsDir)/TensorRT-$(trtVersion).Linux.x86_64-gnu.cuda-$(tarCudaVersion).cudnn$(tarCudnnVersion).tar.gz $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/'
         displayName: 'Copy TensorRT .tar.gz package into Docker build directory'
 
       - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75 --install_bin --tar_cuda_version=$(tarCudaVersion) --tar_cudnn_version=$(tarCudnnVersion) --trt_bins_dir=.'
