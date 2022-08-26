@@ -135,6 +135,15 @@ def test_ck_gemm_bert_cases(dtype, size, transab):
     _test_gemm(getattr(ke, wrapper_name), dtype, *size, *transab)
 
 
+# Tunable is basically wrapped around of rocblas and ck gemm, so no need for full tests
+@pytest.mark.parametrize("dtype", dtypes)
+@pytest.mark.parametrize("size", reduced_basic_sizes + get_bert_sizes(full=False))
+@pytest.mark.parametrize("transab", no_transabs)
+def test_gemm_tunable_bert_cases(dtype, size, transab):
+    wrapper_name = "GemmTunable_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix(transab))
+    _test_gemm(getattr(ke, wrapper_name), dtype, *size, *transab)
+
+
 def profile_gemm_func(f, dtype, m, n, k):
     a_shape = (m, k)
     b_shape = (k, n)
@@ -172,6 +181,8 @@ def profile():
             profile_gemm_func(getattr(ke, "RocblasGemm" + dtype_suffix), dtype, m, n, k)
             transab_suffix = "_" + transab_to_suffix((False, False))
             profile_gemm_func(getattr(ke, "CKGemm" + dtype_suffix + transab_suffix), dtype, m, n, k)
+            profile_gemm_func(getattr(ke, "GemmTunable" + dtype_suffix + transab_suffix), dtype, m, n, k)
+
             print()
         print()
 
