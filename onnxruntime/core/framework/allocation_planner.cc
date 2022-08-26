@@ -1893,7 +1893,7 @@ class PlannerImpl {
   }
 
   void PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
-      const std::string& partition_config_file) {
+                            const std::string& partition_config_file) {
     auto partitioner = INodePartitioner::CreateNodePartitioner(logger, partition_config_file);
     auto status = partitioner->GetStatus();
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
@@ -1916,7 +1916,7 @@ class PlannerImpl {
     // 1. create logic stream instance
     auto& execution_plan = plan_.execution_plan;
     for (size_t i = 0; i < num_logic_streams_; ++i) {
-      if (!stream_nodes_[i].empty()){
+      if (!stream_nodes_[i].empty()) {
         // get device from first node
         auto& node_index = stream_nodes_[i][0];
         auto* node = graph_viewer_.GetNode(node_index);
@@ -1973,7 +1973,20 @@ class PlannerImpl {
           ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(input->Name(), input_arg_idx));
           if (plan_.allocation_plan[input_arg_idx].location != node_device_mem_location) {
             ORT_ENFORCE(plan_.allocation_plan[input_arg_idx].location.device.Type() == OrtDevice::CPU);
-            auto* producer = graph_viewer_.GetProducerNode(input->Name());
+            const Node* producer;
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+            producer = graph_viewer_.GetProducerNode(input->Name());
+#else
+            // minimal build does not have GetProducerNode, so we manually loop the graph to find the producer.
+            for (auto& n : graph_viewer_.Nodes()) {
+              for (auto* node_input : n.InputDefs()) {
+                if (node_input->Name() == input->Name()) {
+                  producer = &n;
+                  break;
+                }
+              }
+            }
+#endif
             // whether producer in the same stream
             if (producer && std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), producer->Index()) != stream_nodes_[i].end()) {
               producers.insert(producer);
@@ -2123,10 +2136,10 @@ class PlannerImpl {
       }
     }
 #ifdef ENABLE_TRAINING
-    //6. build the node_execution_order_in_training
-    // the training memory optmization rely on a stable order how kernel get launched to calculate memory pattern
-    // so we limit training scenario to run with single stream and single thread mode
-    // the code below will simulate the execution and get the stable execution order
+    // 6. build the node_execution_order_in_training
+    //  the training memory optmization rely on a stable order how kernel get launched to calculate memory pattern
+    //  so we limit training scenario to run with single stream and single thread mode
+    //  the code below will simulate the execution and get the stable execution order
     InlinedVector<int> execution_offsets(num_logic_streams_, -1);
     InlinedHashSet<OrtValueIndex> produced_values;
 
@@ -2175,7 +2188,7 @@ class PlannerImpl {
           if (!input_def->Exists())
             continue;
           OrtValueIndex index = Index(input_def->Name());
-          if (produced_values.find(index) == produced_values.end() && 
+          if (produced_values.find(index) == produced_values.end() &&
               producable_values.find(index) != producable_values.end()) {
             input_ready = false;
             break;
@@ -2197,11 +2210,11 @@ class PlannerImpl {
           auto stream_idx = node_stream_map_[it->Index()];
           if (stream_idx != i) {
             auto node_it = std::find(stream_nodes_[stream_idx].begin(), stream_nodes_[stream_idx].end(), it->Index());
-            int offset = static_cast<int>(std::distance(stream_nodes_[stream_idx].begin(), node_it)); 
+            int offset = static_cast<int>(std::distance(stream_nodes_[stream_idx].begin(), node_it));
             process_stream(stream_idx, offset);
           }
         }
-        //move_to_next
+        // move_to_next
         execution_offsets[i]++;
       }
     };
@@ -2472,9 +2485,9 @@ void DummyPartitioner::DumpPartition() const {
   }
 }
 
-void DummyPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, 
-    const ExecutionProviders& execution_providers,
-    std::vector<std::vector<NodeIndex>>& stream_nodes) {
+void DummyPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_viewer,
+                                      const ExecutionProviders& execution_providers,
+                                      std::vector<std::vector<NodeIndex>>& stream_nodes) {
   if (!status_.IsOK()) {
     return;  // input configuration has errors, do nothing
   }

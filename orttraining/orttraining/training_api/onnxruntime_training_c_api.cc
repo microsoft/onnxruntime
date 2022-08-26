@@ -93,7 +93,6 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::TrainStep, _Inout_ OrtTrainingSession* sess
                     _Inout_updates_all_(outputs_len) OrtValue** outputs) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
-  constexpr int queue_id = 0;
 
   std::vector<OrtValue> feeds(inputs_len);
 
@@ -135,7 +134,6 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::EvalStep, _In_ const OrtTrainingSession* se
                     _Inout_updates_all_(outputs_len) OrtValue** outputs) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
-  constexpr int queue_id = 0;
 
   std::vector<OrtValue> feeds(inputs_len);
 
