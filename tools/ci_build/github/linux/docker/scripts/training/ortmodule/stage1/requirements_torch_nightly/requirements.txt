@@ -1,0 +1,3 @@
+sklearn
+transformers==v4.4.2
+wget

@@ -45,8 +45,7 @@ bool LaunchLongformerAttentionKernel(
     const size_t element_size,          // Element size of input tensor,
     bool disable_compact_memory,        // Disable compact memory kernel
     bool use_merged_qkv_weights,
-    bool use_half4
-);
+    bool use_half4);
 
 }  // namespace cuda
 }  // namespace contrib

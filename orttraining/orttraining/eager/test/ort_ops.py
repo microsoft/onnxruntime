@@ -8,7 +8,7 @@ import unittest
 import numpy as np
 import onnxruntime_pybind11_state as torch_ort
 import torch
-from parameterized import parameterized
+from parameterized import parameterized, param
 
 
 class OrtOpTests(unittest.TestCase):
@@ -210,6 +210,60 @@ class OrtOpTests(unittest.TestCase):
         ort_result_c = torch.log_softmax(ort_tensor, dim=-1)
         assert torch.allclose(cpu_result_c, ort_result_c.cpu())
         assert torch.allclose(ort_result_a.cpu(), ort_result_c.cpu())
+
+    @parameterized.expand(
+        [
+            param((2, 64, 256), 0),
+            param((2, 64, 256), 1),
+            param((2, 64, 256), -1),
+            param((4096, 1024), 0),
+            param((512, 8192), 1),
+        ]
+    )
+    def test_softmax_grad(self, input_shape, dim):
+        # The 1% tolerance used by this test is not working for any random inputs
+        # and on the other hand it is tough to come up with some tolerance value
+        # that works for any random input values. So, pin the seed value so that the
+        # random inputs used by this test are always the same.
+        torch.manual_seed(5)
+        device = self.get_device()
+        cpu_tensor = torch.nn.Parameter(torch.rand(input_shape))
+        ort_tensor = torch.nn.Parameter(cpu_tensor.detach().clone().to(device))
+        cpu_result = torch.softmax(cpu_tensor, dim=dim)
+        ort_result = torch.softmax(ort_tensor, dim=dim)
+        cpu_loss = cpu_result.pow(2).sum()
+        ort_loss = ort_result.cpu().pow(2).sum()
+        cpu_loss.backward()
+        ort_loss.backward()
+        assert torch.allclose(ort_result.cpu(), cpu_result)
+        assert torch.allclose(ort_tensor.grad.cpu(), cpu_tensor.grad, rtol=0.01)
+
+    @parameterized.expand(
+        [
+            param((2, 64, 256), 0),
+            param((2, 32, 128), 1),
+            param((2, 64, 128), -1),
+            param((1024, 8), 0),
+            param((2, 2048), 1),
+        ]
+    )
+    def test_logsoftmax_grad(self, input_shape, dim):
+        # The 5% tolerance used by this test is not working for any random inputs
+        # and on the other hand it is tough to come up with some tolerance value
+        # that works for any random input values. So, pin the seed value so that the
+        # random inputs used by this test are always the same.
+        torch.manual_seed(5)
+        device = self.get_device()
+        cpu_tensor = torch.nn.Parameter(torch.rand(input_shape))
+        ort_tensor = torch.nn.Parameter(cpu_tensor.detach().clone().to(device))
+        cpu_result = torch.log_softmax(cpu_tensor, dim=dim)
+        ort_result = torch.log_softmax(ort_tensor, dim=dim)
+        cpu_loss = cpu_result.pow(2).sum()
+        ort_loss = ort_result.cpu().pow(2).sum()
+        cpu_loss.backward()
+        ort_loss.backward()
+        assert torch.allclose(ort_result.cpu(), cpu_result)
+        assert torch.allclose(ort_tensor.grad.cpu(), cpu_tensor.grad, rtol=0.05)
 
     def test_addmm(self):
         device = self.get_device()
