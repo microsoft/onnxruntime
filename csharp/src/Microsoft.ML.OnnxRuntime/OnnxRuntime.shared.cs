@@ -54,7 +54,7 @@ namespace Microsoft.ML.OnnxRuntime
         private OrtEnv()  //Problem: it is not possible to pass any option for a Singleton
     : base(IntPtr.Zero, true)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(LogLevel.Warning, @"CSharpOnnxRuntime", out handle));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(LogLevel.Verbose, @"CSharpOnnxRuntime", out handle));
             try
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSetLanguageProjection(handle, OrtLanguageProjection.ORT_PROJECTION_CSHARP));
