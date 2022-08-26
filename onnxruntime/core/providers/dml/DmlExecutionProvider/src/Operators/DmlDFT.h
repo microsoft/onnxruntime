@@ -1,11 +1,12 @@
 #pragma once
 
 #include "../MLOperatorAuthorImpl.h"
+#include "../../../OperatorAuthorHelper/OperatorHelper.h"
+
+#include "../External/D3DX12/d3dx12.h"
 
 // The shader header is produced using "fxc.exe dft_shader.hlsl -E DFT -T cs_5_0 -Zi /Fh"
 #include "GeneratedShaders/stockham.h"
-
-#include "../External/D3DX12/d3dx12.h"
 
 #include <wrl/client.h>
 #include <wrl/implements.h>
@@ -148,7 +149,7 @@ public:
         ORT_THROW_IF_FAILED(shapeDesc->GetInputTensorDimensionCount(0, &inputDimsSize));
         uint32_t outputDimsSize;
         ORT_THROW_IF_FAILED(shapeDesc->GetOutputTensorDimensionCount(0, &outputDimsSize));
-        ORT_THROW_HR_IF(E_FAIL, inputDimsSize != outputDimsSize)
+        ORT_THROW_HR_IF(E_FAIL, inputDimsSize != outputDimsSize);
 
         // Get the input shape
         m_inputDims.resize(inputDimsSize);
@@ -555,6 +556,8 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
                 throw;
             }
 
+            auto axisIdx = OperatorHelper::HandleNegativeAxis(static_cast<int32_t>(axis), rank);
+
             // if (context->IsInputValid(1))
             // {
             //     // If dft_length is specified, then we should honor the shape.
@@ -569,15 +572,6 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
             ORT_THROW_IF_FAILED(context->GetInputTensorShape(0, rank, inputDims.data()));
             auto outputDims = inputDims;
             outputDims.back() = 2;
-
-            if (!(-(int)rank <= (int)axis && axis < rank)) {
-                std::stringstream ss;
-                ss << "axis attribute value " << axis << " is invalid for a tensor of rank " << rank;
-                auto ss_str = ss.str();
-                throw new std::exception(ss_str.c_str());
-            }
-
-            auto axisIdx = (axis >= 0 ? axis : axis + rank);
 
             // When DFT is onesided, the output shape is half the size of the input shape
             // along the specified axis.
