@@ -220,7 +220,7 @@ def assert_gradients_match_and_reset_gradient(
             pt_param.grad = None
 
 
-def assert_values_are_close(input, other, rtol=1e-05, atol=1e-06):
+def assert_values_are_close(input, other, rtol=1e-03, atol=1e-04):
     are_close = torch.allclose(input, other, rtol=rtol, atol=atol)
     if not are_close:
         abs_diff = torch.abs(input - other)
