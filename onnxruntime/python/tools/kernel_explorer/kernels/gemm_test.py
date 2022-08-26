@@ -17,6 +17,15 @@ def dtype_to_suffix(dtype):
     }[dtype]
 
 
+def transab_to_suffix(transab):
+    return {
+        (True, True): "TT",
+        (True, False): "TN",
+        (False, True): "NT",
+        (False, False): "NN",
+    }[tuple(transab)]
+
+
 def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=False):
     assert dtype in ["float32", "float16"]
 
@@ -60,8 +69,8 @@ def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=Fa
     failures = {}
     print(f"m={m:<5} n={n:<5} k={k:<5} dtype={dtype} bound: {bound}")
 
-    for impl in my_gemm.ListImpls():
-        if not my_gemm.SelectImpl(impl):
+    for impl in my_gemm.ListOps():
+        if not my_gemm.SelectOp(impl):
             continue
 
         my_gemm.Run()
@@ -122,7 +131,8 @@ no_transabs = [[False, False]]
 @pytest.mark.parametrize("size", reduced_basic_sizes + get_bert_sizes(full=False))
 @pytest.mark.parametrize("transab", no_transabs)
 def test_ck_gemm_bert_cases(dtype, size, transab):
-    _test_gemm(getattr(ke, "CKGemm_" + dtype_to_suffix(dtype)), dtype, *size, *transab)
+    wrapper_name = "CKGemm_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix(transab))
+    _test_gemm(getattr(ke, wrapper_name), dtype, *size, *transab)
 
 
 def profile_gemm_func(f, dtype, m, n, k):
@@ -145,8 +155,8 @@ def profile_gemm_func(f, dtype, m, n, k):
     alpha = 1.0
     beta = 0.0
     my_gemm = f(opa, opb, m, n, k, alpha, dev_a, lda, dev_b, ldb, beta, dev_c, n)
-    for impl in my_gemm.ListImpls():
-        if not my_gemm.SelectImpl(impl):
+    for impl in my_gemm.ListOps():
+        if not my_gemm.SelectOp(impl):
             print(f"{impl:<50} {dtype} m={m:<4} k={k:<4} n={n:<4}, not supported")
             continue
         time_ms = my_gemm.Profile()
@@ -158,9 +168,10 @@ def profile_gemm_func(f, dtype, m, n, k):
 def profile():
     for dtype in dtypes:
         for m, n, k in get_bert_sizes(full=True):
-            suffix = dtype_to_suffix(dtype)
-            profile_gemm_func(getattr(ke, "RocblasGemm_" + suffix), dtype, m, n, k)
-            profile_gemm_func(getattr(ke, "CKGemm_" + suffix), dtype, m, n, k)
+            dtype_suffix = "_" + dtype_to_suffix(dtype)
+            profile_gemm_func(getattr(ke, "RocblasGemm" + dtype_suffix), dtype, m, n, k)
+            transab_suffix = "_" + transab_to_suffix((False, False))
+            profile_gemm_func(getattr(ke, "CKGemm" + dtype_suffix + transab_suffix), dtype, m, n, k)
             print()
         print()
 
