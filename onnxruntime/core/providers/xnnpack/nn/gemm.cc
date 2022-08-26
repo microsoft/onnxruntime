@@ -209,18 +209,10 @@ Status Gemm::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
 Status Gemm::Compute(OpKernelContext* context) const {
   //concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
   const auto* A = context->Input<Tensor>(0);
-#ifdef DEBUG 
-  // Debug
-  printf("A shape is - %lld \n", A->Shape()[0]);
-
-  printf("A - \n");
-  for (int i = 0; i < A->Shape()[0]; i++) {
-    printf("[");
-    for (int j = 0; j < A->Shape()[1]; j++) {
-      printf("%lf, ", A->Data<float>()[j + i * A->Shape()[1]]);
-    }
-    printf("]\n");
-  }
+#if 0
+  FILE* fp;
+  fopen_s(&fp, "XNNPACK.log", "a+");
+  fprintf(fp, "current node id - %s\n", context->GetNodeName().c_str());
 #endif
   // if input is empty tensor, return as nothing need to be calculated and we've set the shape for the output
   if (M == 0 || N == 0)
@@ -230,25 +222,9 @@ Status Gemm::Compute(OpKernelContext* context) const {
   
   //const TensorShape* c_shape = C != nullptr ? &C->Shape() : nullptr;
 
-  #if 0
-  //Debug - printing the tensors
-  printf("A shape is - %lld x %lld \n", A->Shape()[0], A->Shape()[1]);
-  printf("B shape is - %lld x %lld \n", this->B_->Shape()[0], this->B_->Shape()[1]);
-  printf("Y shape is - %lld x %lld \n", Y->Shape()[0], Y->Shape()[1]);
-
-  printf("Y - \n");
-  for (int i = 0; i < Y->Shape()[0]; i++) {
-    printf("[");
-    for (int j = 0; j < Y->Shape()[1]; j++) {
-      printf("%lf, ", Y->Data<float>()[j + i * Y->Shape()[1]]);
-    }
-    printf("]\n");
-  }
-  #endif
-  //printf("set up GEMM XNNPACK\n");
   xnn_status status = xnn_setup_fully_connected_nc_f32(
         op0_.get(),
-        1,
+        trans_A_ != CblasNoTrans ? K : M,
         A->Data<float>(),
         Y->MutableData<float>(), 
         nullptr);
@@ -257,18 +233,49 @@ Status Gemm::Compute(OpKernelContext* context) const {
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
   }  
-#ifdef DEBUG
+#if 0
   // Debug
-  printf("Y shape is - %lld x %lld \n", Y->Shape()[0], Y->Shape()[1]);
+  // const auto* C = context->Input<Tensor>(2);
 
-  printf("Y - \n");
-  for (int i = 0; i < Y->Shape()[0]; i++) {
-    printf("[");
-    for (int j = 0; j < Y->Shape()[1]; j++) {
-      printf("%lf, ", Y->Data<float>()[j + i * Y->Shape()[1]]);
+  if (Y->Shape().NumDimensions() == 2) {
+    fprintf(fp, "\nY shape is - %lld x %lld \n", Y->Shape()[0], Y->Shape()[1]);
+    for (int i = 0; i < Y->Shape()[0]; i++) {
+      fprintf(fp, "[");
+      for (int j = 0; j < Y->Shape()[1]; j++) {
+        fprintf(fp, "%lf, ", Y->Data<float>()[j + i * Y->Shape()[1]]);
+      }
+      fprintf(fp, "]\n");
     }
-    printf("]\n");
+  } else {
+    fprintf(fp, "\nY shape is - %lld \n", Y->Shape()[0]);
+    fprintf(fp, "[");
+    for (int i = 0; i < Y->Shape()[0]; i++) {
+      fprintf(fp, "%lf, ", Y->Data<float>()[i]);
+    }
+    fprintf(fp, "]\n");
   }
+  /*
+  fprintf(fp, "\nB is packed\n");
+
+  if (C->Shape().NumDimensions() == 2) {
+    fprintf(fp, "\nC shape is - %lld x %lld \n", C->Shape()[0], C->Shape()[1]);
+    for (int i = 0; i < C->Shape()[0]; i++) {
+      fprintf(fp, "[");
+      for (int j = 0; j < C->Shape()[1]; j++) {
+        fprintf(fp, "%lf, ", C->Data<float>()[j + i * C->Shape()[1]]);
+      }
+      fprintf(fp, "]\n");
+    }
+  } else {
+    fprintf(fp, "\nC shape is - %lld \n", C->Shape()[0]);
+    fprintf(fp, "[");
+    for (int i = 0; i < C->Shape()[0]; i++) {
+      fprintf(fp, "%lf, ", C->Data<float>()[i]);
+    }
+    fprintf(fp, "]\n");
+  }*/
+
+  fclose(fp);
 #endif
   return Status::OK();
 }
