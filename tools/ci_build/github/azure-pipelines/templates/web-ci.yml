@@ -51,7 +51,7 @@ stages:
       CommitOverride: true
       BuildConfig: 'Debug'
       ExtraBuildArgs: '$(ExtraBuildArgs)'
-      PoolName: ${{ parameters.PoolName }}
+      PoolName: Big-Win-CPU-2019
 
 - stage: Build_web_Debug
   dependsOn: Build_wasm_Debug
