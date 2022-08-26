@@ -44,7 +44,7 @@ bool MatMul::IsOnnxNodeSupported(const onnxruntime::Node& node, const GraphViewe
     
     // B matrix must be constant
     if (B_arg.Exists() && graph.GetConstantInitializer(B_arg.Name(), true) == nullptr) {
-        printf("MatMul XNNPACK not supported - B must be a const\n");
+        //printf("MatMul XNNPACK not supported - B must be a const\n");
         break;
     }    
 
