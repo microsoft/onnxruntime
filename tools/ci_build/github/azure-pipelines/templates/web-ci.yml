@@ -83,7 +83,7 @@ stages:
         CommitOverride: true
         BuildConfig: 'Release'
         ExtraBuildArgs: '$(ExtraBuildArgs)'
-        PoolName: ${{ parameters.PoolName }}
+        PoolName: Big-Win-CPU-2019
         SkipPublish: true
         TimeoutInMinutes: 150
 
