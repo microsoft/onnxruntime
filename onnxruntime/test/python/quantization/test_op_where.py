@@ -20,9 +20,8 @@ from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 
 
 class TestWhereModel(unittest.TestCase):
-
     @staticmethod
-    def input_feeds_int32(n, name2shape):
+    def input_feeds_for_where(n, name2shape):
         input_data_list = []
         for i in range(n):
             inputs = {}
@@ -64,7 +63,7 @@ class TestWhereModel(unittest.TestCase):
         model_fp32_path = "where_fp32.onnx"
         input_shape = [2, 2]
         self.construct_model(model_fp32_path, input_shape)
-        data_reader = self.input_feeds_int32(
+        data_reader = self.input_feeds_for_where(
             1,
             {
                 "condition": input_shape,
@@ -97,7 +96,6 @@ class TestWhereModel(unittest.TestCase):
         check_op_type_count(self, model_uint8_path, **qnode_counts)
         qnode_io_qtypes = {
             "QuantizeLinear": [
-                ["i", 1, activation_proto_qtype],
                 ["i", 2, activation_proto_qtype],
                 ["o", 0, activation_proto_qtype],
             ]
@@ -119,13 +117,12 @@ class TestWhereModel(unittest.TestCase):
         )
         qdqnode_counts = {
             "Where": 1,
-            "QuantizeLinear": 0,
-            "DequantizeLinear": 0,
+            "QuantizeLinear": 3,
+            "DequantizeLinear": 3,
         }
         check_op_type_count(self, model_uint8_qdq_path, **qdqnode_counts)
         qnode_io_qtypes = {
             "QuantizeLinear": [
-                ["i", 1, activation_proto_qtype],
                 ["i", 2, activation_proto_qtype],
                 ["o", 0, activation_proto_qtype],
             ]
@@ -138,6 +135,13 @@ class TestWhereModel(unittest.TestCase):
         self.quantize_where_test(QuantType.QUInt8, QuantType.QUInt8, extra_options={})
         print(__name__)
 
+    def test_quantize_concat_s8s8(self):
+        self.quantize_where_test(
+            QuantType.QInt8,
+            QuantType.QInt8,
+            extra_options={"ActivationSymmetric": True},
+        )
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

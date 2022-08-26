@@ -6,9 +6,7 @@ from .qdq_base_operator import QDQOperatorBase
 
 
 class QWhere(QuantOperatorBase):
-
     def quantize(self):
-        print('Q Where')
         node = self.node
         (
             quantized_input_names,
@@ -45,11 +43,9 @@ class QWhere(QuantOperatorBase):
 
 
 class QDQWhere(QDQOperatorBase):
-
     def quantize(self):
         node = self.node
         assert node.op_type == "Where"
-        print("This is where")
         if not self.quantizer.is_tensor_quantized(node.input[1]):
             self.quantizer.quantize_tensor(node.input[1])
         if not self.quantizer.is_tensor_quantized(node.input[2]):
