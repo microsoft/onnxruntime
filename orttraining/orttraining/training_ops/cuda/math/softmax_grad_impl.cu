@@ -22,9 +22,9 @@
 
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/math/softmax_common.h"
 #include "core/providers/cuda/math/softmax_warpwise_impl.cuh"
 #include "core/providers/cuda/shared_inc/accumulation_type.h"
-#include "core/providers/cuda/shared_inc/softmax.h"
 
 namespace onnxruntime {
 namespace cuda {

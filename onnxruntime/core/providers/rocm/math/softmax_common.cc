@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/rocm/shared_inc/softmax.h"
+#include "core/providers/rocm/math/softmax_common.h"
 
 namespace onnxruntime {
 namespace rocm {

@@ -93,6 +93,7 @@ provider_excluded_files = [
     "math/matmul.cc",
     "math/softmax_impl.cu",
     "math/softmax_warpwise_impl.cuh",
+    "math/softmax_common.cc",
     "math/softmax.cc",
     "nn/conv.cc",
     "nn/conv.h",
@@ -137,7 +138,6 @@ provider_excluded_files = [
     "gpu_data_transfer.cc",
     "gpu_data_transfer.h",
     "integer_gemm.cc",
-    "softmax.cc",
     "symbols.txt",
 ]
 
