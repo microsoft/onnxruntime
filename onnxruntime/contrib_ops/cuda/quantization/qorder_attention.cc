@@ -274,7 +274,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   float beta = 0.0f;
   const float context_layer_alpha = static_cast<float>((double)*scale_attn_probs_data * const_scale_qkv_layer_[2] / *scale_output_data);
   CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedEx(CublasHandle(), CUBLAS_OP_N, CUBLAS_OP_N,
-                                                    sequence_length, head_size, sequence_length, &context_layer_alpha,
+                                                    head_size, sequence_length, sequence_length, &context_layer_alpha,
                                                     v_layer, CUDA_R_8I, head_size, sequence_length * head_size,
                                                     attention_probs, CUDA_R_8I, sequence_length, sequence_length * sequence_length,
                                                     &beta, context_layer, CUDA_R_32F, head_size, sequence_length * head_size,
