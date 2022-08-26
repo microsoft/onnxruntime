@@ -3746,6 +3746,8 @@ def test_primitive_inputs(bool_argument, int_argument, float_argument):
                 out = self.relu(out)
             return out
 
+    torch.manual_seed(0)
+
     assert type(bool_argument) is bool
     assert type(int_argument) is int
     assert type(float_argument) is float
