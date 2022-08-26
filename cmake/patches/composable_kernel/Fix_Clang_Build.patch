@@ -1,17 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 9f706207..fb444227 100644
+index 3e1174ec..f8795475 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -8,7 +8,7 @@ list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
- enable_testing()
- 
- set(ROCM_SYMLINK_LIBS OFF)
--find_package(ROCM 0.8 REQUIRED PATHS /opt/rocm)
-+find_package(ROCM 0.7 REQUIRED PATHS /opt/rocm)
- 
- include(ROCMInstallTargets)
- include(ROCMPackageConfigHelpers)
-@@ -28,6 +28,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+@@ -36,6 +36,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
  set(CMAKE_CXX_EXTENSIONS OFF)
  message("CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
  
@@ -29,7 +20,7 @@ index 9f706207..fb444227 100644
  ## OpenMP
  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
  	# workaround issue hipcc in rocm3.5 cannot find openmp
-@@ -237,9 +248,6 @@ rocm_package_setup_component(tests
+@@ -245,9 +256,6 @@ rocm_package_setup_component(tests
  )
  
  add_subdirectory(library)
@@ -39,7 +30,7 @@ index 9f706207..fb444227 100644
  
  #Create an interface target for the include only files and call it "composablekernels"
  include(CMakePackageConfigHelpers)
-@@ -265,11 +273,3 @@ rocm_install(FILES
+@@ -273,11 +281,3 @@ rocm_install(FILES
  
  set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
  set(CPACK_RPM_PACKAGE_LICENSE "MIT")
@@ -51,3 +42,17 @@ index 9f706207..fb444227 100644
 -    LDCONFIG
 -    HEADER_ONLY
 -)
+diff --git a/include/ck/ck.hpp b/include/ck/ck.hpp
+index fcaec592..8ea06421 100644
+--- a/include/ck/ck.hpp
++++ b/include/ck/ck.hpp
+@@ -126,7 +126,9 @@
+ #define CK_EXPERIMENTAL_USE_MEMCPY_FOR_BIT_CAST 1
+ 
+ // experimental feature: optimize for inter-wave scheduling policy
++#ifndef CK_EXPERIMENTAL_INTER_WAVE_SCHEDULING
+ #define CK_EXPERIMENTAL_INTER_WAVE_SCHEDULING 0
++#endif
+ #define CK_EXPERIMENTAL_INTER_WAVE_SCHEDULING_MAC_CLUSTERS 1
+ 
+ // hack: have underlying assumption that need to be satsified, otherwise it's a bug
