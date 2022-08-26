@@ -91,7 +91,7 @@ class FusionUtils:
             tensor (TensorProto): tensor to be transposed
         Returns:
             tensor (TensorProto): transposed tensor
-        """        
+        """
         if not isinstance(tensor, onnx_proto.TensorProto):
             raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
 
@@ -100,7 +100,7 @@ class FusionUtils:
 
         if tensor.raw_data:
             int32_data = numpy.reshape(numpy.frombuffer(tensor.raw_data, dtype="int8"), tensor.dims)
-            int32_transposed_data = numpy.transpose(int32_data, [1,0])
+            int32_transposed_data = numpy.transpose(int32_data, [1, 0])
             tensor.raw_data = int32_transposed_data.tobytes()
 
         else:
@@ -115,7 +115,7 @@ class FusionUtils:
             tensor (TensorProto): tensor to be normalized
         Returns:
             tensor (TensorProto): normalized tensor
-        """         
+        """
         if not isinstance(tensor, onnx_proto.TensorProto):
             raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
 

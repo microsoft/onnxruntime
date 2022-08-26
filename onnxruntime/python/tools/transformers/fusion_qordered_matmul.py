@@ -1,7 +1,7 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 from logging import getLogger
 from typing import Dict
@@ -28,8 +28,11 @@ class FusionQOrderedMatMul(Fusion):
         bias_add_node = matmul_children[0]
 
         # Atleast one of the inputs to Bias Add node must be a constant
-        bias_add_node_index = 0     
-        if self.model.get_constant_value(bias_add_node.input[0]) is None and self.model.get_constant_value(bias_add_node.input[1]) is None:
+        bias_add_node_index = 0
+        if (
+            self.model.get_constant_value(bias_add_node.input[0]) is None
+            and self.model.get_constant_value(bias_add_node.input[1]) is None
+        ):
             return
 
         if self.model.get_constant_value(bias_add_node.input[0]) is None:
@@ -40,7 +43,7 @@ class FusionQOrderedMatMul(Fusion):
         if len(bias_add_children) != 1:
             return
 
-        bias_add_child = bias_add_children[0]        
+        bias_add_child = bias_add_children[0]
 
         # Bias Add can have another Add downstream (Residual Add layer)
         residual_add_node = None
@@ -50,8 +53,7 @@ class FusionQOrderedMatMul(Fusion):
         if bias_add_child.op_type == "Add":
             residual_add_node = bias_add_child
 
-            residual_add_children = self.model.get_children(residual_add_node, 
-                                                            input_name_to_nodes)
+            residual_add_children = self.model.get_children(residual_add_node, input_name_to_nodes)
 
             if len(residual_add_children) != 1 or residual_add_children[0].op_type != "QuantizeLinear":
                 return
@@ -82,9 +84,7 @@ class FusionQOrderedMatMul(Fusion):
         if first_path_id < 0:
             first_path_id, first_input_parent_nodes, _ = self.model.match_parent_paths(
                 node,
-                [
-                    (["Reshape", "Transpose", "DequantizeLinear", "QuantizeLinear"], [0, 0, 0, 0])
-                ],
+                [(["Reshape", "Transpose", "DequantizeLinear", "QuantizeLinear"], [0, 0, 0, 0])],
                 output_name_to_node,
             )
 
@@ -93,7 +93,7 @@ class FusionQOrderedMatMul(Fusion):
 
             reshape_node_0 = first_input_parent_nodes[0]
             transpose_node_0 = first_input_parent_nodes[1]
-            dequantize_node_0 = first_input_parent_nodes[2]               
+            dequantize_node_0 = first_input_parent_nodes[2]
         else:
             dequantize_node_0 = first_input_parent_nodes[0]
 
@@ -131,7 +131,7 @@ class FusionQOrderedMatMul(Fusion):
             return
 
         # Make sure the upstream DequantizeLinear-1 has the proper zero points and scales
-        # Per-channel scales are supported for weights alone     
+        # Per-channel scales are supported for weights alone
         if not FusionUtils.check_qdq_node_for_fusion(dequantize_node_1, self.model, False):
             return
 
@@ -140,46 +140,52 @@ class FusionQOrderedMatMul(Fusion):
 
         if residual_add_node is not None:
             residual_path_id, residual_input_parent_nodes, _ = self.model.match_parent_paths(
-                residual_add_node, [(["DequantizeLinear"], [1]),], output_name_to_node
-                )
+                residual_add_node,
+                [
+                    (["DequantizeLinear"], [1]),
+                ],
+                output_name_to_node,
+            )
 
             if residual_path_id < 0:
                 return
 
             residual_add_dequantize_node = residual_input_parent_nodes[0]
 
-            # Make sure the upstream DequantizeLinear to the Residual Add has the proper zero points and scales       
-        if residual_add_dequantize_node is not None and not FusionUtils.check_qdq_node_for_fusion(residual_add_dequantize_node, self.model):
+        # Make sure the upstream DequantizeLinear to the Residual Add has the proper zero points and scales
+        if residual_add_dequantize_node is not None and not FusionUtils.check_qdq_node_for_fusion(
+            residual_add_dequantize_node, self.model
+        ):
             return
 
         # Subgraph nodes to be fused
         subgraph_nodes = [node, bias_add_node]  # MatMul + Bias Add
 
         if residual_add_node is not None:
-            subgraph_nodes.extend([residual_add_node]) # Residual Add
+            subgraph_nodes.extend([residual_add_node])  # Residual Add
 
         subgraph_nodes.extend(weight_nodes)
         subgraph_nodes.extend([downstream_quantize_node])  # Downstream Q node
 
         if not self.model.is_safe_to_fuse_nodes(
-            subgraph_nodes,
-            downstream_quantize_node.output,
-            input_name_to_nodes,
-            output_name_to_node
+            subgraph_nodes, downstream_quantize_node.output, input_name_to_nodes, output_name_to_node
         ):
             logger.debug(f"It is not safe to fuse QOrderedMatMul node. Skip")
-            return     
+            return
 
         # TODO: Adjust after QOrderedAttention
         if transpose_node_0 is not None:
             self.model.replace_node_input(transpose_node_0, transpose_node_0.input[0], dequantize_node_0.input[0])
 
         # Make inputs
-        fused_node_inputs=[reshape_node_0.output[0] if reshape_node_0 is not None else dequantize_node_0.input[0], 
-                dequantize_node_0.input[1], 
-                dequantize_node_1.input[0], dequantize_node_1.input[1], 
-                downstream_quantize_node.input[1], 
-                bias_add_node.input[bias_add_node_index]]
+        fused_node_inputs = [
+            reshape_node_0.output[0] if reshape_node_0 is not None else dequantize_node_0.input[0],
+            dequantize_node_0.input[1],
+            dequantize_node_1.input[0],
+            dequantize_node_1.input[1],
+            downstream_quantize_node.input[1],
+            bias_add_node.input[bias_add_node_index],
+        ]
 
         if residual_add_node is not None:
             fused_node_inputs.append(residual_add_dequantize_node.input[0])
@@ -213,6 +219,7 @@ class FusionQOrderedMatMul(Fusion):
         self.nodes_to_remove.extend(subgraph_nodes)
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
+
 
 class FusionQOrderedMatMulFromGemm(Fusion):
     def __init__(self, model: OnnxModel):
@@ -269,8 +276,12 @@ class FusionQOrderedMatMulFromGemm(Fusion):
 
             # DQ (input 1) -> Add ->
             residual_path_id, residual_input_parent_nodes, _ = self.model.match_parent_paths(
-                residual_add_node, [(["DequantizeLinear"], [0]),], output_name_to_node
-            )               
+                residual_add_node,
+                [
+                    (["DequantizeLinear"], [0]),
+                ],
+                output_name_to_node,
+            )             
 
             if residual_path_id < 0:
                 return
@@ -291,7 +302,8 @@ class FusionQOrderedMatMulFromGemm(Fusion):
         # Make sure the Reshape before the Gemm has the right pattern
         # feeding into the shape input
         reshape_before_gemm_shape_nodes = self.model.match_parent_path(
-            reshape_before_gemm_node, ["Concat", "Unsqueeze", "Squeeze", "Slice", "Shape"], [1, 1, 0, 0, 0])
+            reshape_before_gemm_node, ["Concat", "Unsqueeze", "Squeeze", "Slice", "Shape"], [1, 1, 0, 0, 0]
+        )
 
         if reshape_before_gemm_shape_nodes is None:
             return
@@ -299,8 +311,12 @@ class FusionQOrderedMatMulFromGemm(Fusion):
         # Make sure the second input to the Gemm is fed
         # through a DQ node and is a constant
         second_path_id, second_input_parent_nodes, _ = self.model.match_parent_paths(
-            gemm_node, [(["DequantizeLinear"], [1]),], output_name_to_node,
-        )
+            gemm_node,
+            [
+                (["DequantizeLinear"], [1]),
+            ],
+            output_name_to_node,
+         )
 
         if second_path_id < 0:
             return
@@ -320,18 +336,20 @@ class FusionQOrderedMatMulFromGemm(Fusion):
         if not FusionUtils.check_qdq_node_for_fusion(matmul_weight_dequantize_node, self.model, False):
             return
 
-        if residual_add_dequantize_node is not None and not FusionUtils.check_qdq_node_for_fusion(residual_add_dequantize_node, self.model):
+        if residual_add_dequantize_node is not None and not FusionUtils.check_qdq_node_for_fusion(
+            residual_add_dequantize_node, self.model
+        ):
             return
 
         # Subgraph nodes to be fused
         subgraph_nodes = [node]  # Downstream Reshape
-        subgraph_nodes.extend(qordered_matmul_nodes) # DQ + Reshape + Gemm + [Q + DQ+]
-        subgraph_nodes.extend(reshape_before_gemm_shape_nodes) # Reshape shape nodes
+        subgraph_nodes.extend(qordered_matmul_nodes)  # DQ + Reshape + Gemm + [Q + DQ+]
+        subgraph_nodes.extend(reshape_before_gemm_shape_nodes)  # Reshape shape nodes
 
         if residual_add_node is not None:
-            subgraph_nodes.extend([residual_add_node]) # Residual Add
+            subgraph_nodes.extend([residual_add_node])  # Residual Add
 
-        subgraph_nodes.extend([downstream_quantize_node]) # Q
+        subgraph_nodes.extend([downstream_quantize_node])  # Q
 
         if not self.model.is_safe_to_fuse_nodes(
             subgraph_nodes,
@@ -340,19 +358,23 @@ class FusionQOrderedMatMulFromGemm(Fusion):
             output_name_to_node
         ):
             logger.debug(f"It is not safe to fuse QOrderedMatMul node. Skip")
-            return     
+            return
 
         # Make inputs
-        fused_node_inputs=[upstream_dequantize_node.input[0], upstream_dequantize_node.input[1], 
-                matmul_weight_dequantize_node.input[0], matmul_weight_dequantize_node.input[1], 
-                downstream_quantize_node.input[1], 
-                gemm_node.input[2]]
+        fused_node_inputs = [
+            upstream_dequantize_node.input[0],
+            upstream_dequantize_node.input[1],
+            matmul_weight_dequantize_node.input[0],
+            matmul_weight_dequantize_node.input[1],
+            downstream_quantize_node.input[1],
+            gemm_node.input[2],
+        ]
 
         if is_residual_add_pattern:
             fused_node_inputs.append(residual_add_dequantize_node.input[0])
             fused_node_inputs.append(residual_add_dequantize_node.input[1])
 
-       # The MatMul weight 'B' and 'bias' need some post-processing
+        # The MatMul weight 'B' and 'bias' need some post-processing
         # Transpose weight 'B' from ROW to COL
         # This offline transpose is needed only while using the CUDA EP
         # TODO: Make this fusion logic EP-agnostic ?

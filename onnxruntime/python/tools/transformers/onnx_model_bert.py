@@ -433,7 +433,7 @@ class BertOnnxModel(OnnxModel):
             "LayerNormalization",
             "QOrderedLayerNormalization",
             "SkipLayerNormalization",
-            "QOrderedMatMul"
+            "QOrderedMatMul",
         ]
         for op in ops:
             nodes = self.get_nodes_by_op_type(op)
