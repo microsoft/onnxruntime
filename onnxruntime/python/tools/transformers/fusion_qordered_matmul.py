@@ -352,10 +352,7 @@ class FusionQOrderedMatMulFromGemm(Fusion):
         subgraph_nodes.extend([downstream_quantize_node])  # Q
 
         if not self.model.is_safe_to_fuse_nodes(
-            subgraph_nodes,
-            downstream_quantize_node.output,
-            input_name_to_nodes,
-            output_name_to_node
+            subgraph_nodes, downstream_quantize_node.output, input_name_to_nodes, output_name_to_node
         ):
             logger.debug(f"It is not safe to fuse QOrderedMatMul node. Skip")
             return
