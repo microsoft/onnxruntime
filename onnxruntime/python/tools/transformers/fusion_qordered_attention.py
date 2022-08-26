@@ -349,8 +349,12 @@ class FusionQOrderedAttention(Fusion):
                                                            [None, 0, 1, 0, 0])
 
         if mask_nodes is None:
-            logger.debug("fuse_qordered_attention: failed to match mask_nodes path")
-            return
+            mask_nodes =  self.model.match_parent_path(add_qk, ["Cast", "Mul", "Sub"],
+                                                            [None, None, None])
+
+            if mask_nodes is None:
+                logger.debug("fuse_qordered_attention: failed to match mask_nodes path")
+                return
 
         # Form QOrderedAttention node
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_k.input[0] == root_input:
