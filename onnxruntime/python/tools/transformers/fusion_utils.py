@@ -6,7 +6,8 @@ from logging import getLogger
 from typing import Tuple
 
 from numpy import array_equal, ndarray
-from onnx import NodeProto, TensorProto, helper, numpy_helper
+import numpy
+from onnx import NodeProto, TensorProto, helper, numpy_helper, onnx_pb as onnx_proto
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -84,10 +85,58 @@ class FusionUtils:
             return value == expected_value
 
     @staticmethod
-    def check_qdq_node_for_fusion(node: NodeProto, model: OnnxModel):
+    def transpose_2d_int8_tensor(tensor: onnx_proto.TensorProto):
+        """Transpose a 2-D INT8 TensorProto
+        Args:
+            tensor (TensorProto): tensor to be transposed
+        Returns:
+            tensor (TensorProto): transposed tensor
+        """        
+        if not isinstance(tensor, onnx_proto.TensorProto):
+            raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
+
+        if len(tensor.dims) != 2 or tensor.data_type != onnx_proto.TensorProto.INT8:
+            raise ValueError("Only INT8 2-D tensors can be transposed")
+
+        if tensor.raw_data:
+            int32_data = numpy.reshape(numpy.frombuffer(tensor.raw_data, dtype="int8"), tensor.dims)
+            int32_transposed_data = numpy.transpose(int32_data, [1,0])
+            tensor.raw_data = int32_transposed_data.tobytes()
+
+        else:
+            raise ValueError("only raw buffer supported")
+
+        return tensor
+
+    @staticmethod
+    def normalize_1d_float32_tensor(tensor: onnx_proto.TensorProto, normalization_factor: float):
+        """Scale a 1-D Float TensorProto
+        Args:
+            tensor (TensorProto): tensor to be normalized
+        Returns:
+            tensor (TensorProto): normalized tensor
+        """         
+        if not isinstance(tensor, onnx_proto.TensorProto):
+            raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
+
+        if len(tensor.dims) != 1 or tensor.data_type != onnx_proto.TensorProto.FLOAT:
+            raise ValueError("Only FLOAT32 1-D tensors can be normalized")
+
+        if tensor.raw_data:
+            float32_data = numpy.frombuffer(tensor.raw_data, dtype="float32")
+            float32_scaled_data = float32_data / normalization_factor
+            tensor.raw_data = float32_scaled_data.tobytes()
+
+        else:
+            raise ValueError("Only raw buffer supported")
+
+        return tensor
+
+    @staticmethod
+    def check_qdq_node_for_fusion(node: NodeProto, model: OnnxModel, allow_per_tensor_quantization_only=True):
         """Verify if a provided QuantizeLinear (Q) / DequantizeLinear (DQ) node is a good candidate for fusion.
            It is a good candidate for fusion if:
-           (1) The Q/DQ node is for per-tensor quantization (per-axis quantization is not supported)
+           (1) The Q/DQ node is for per-tensor quantization if allow_per_tensor_quantization_only is `True`
            (2) The Q/DQ node should have constant scale
            (3) The Q/DQ node should have a zero point of 0
         Args:
@@ -105,7 +154,7 @@ class FusionUtils:
             return False
 
         # Not per-tensor quantization
-        if scale.ndim != 0:
+        if allow_per_tensor_quantization_only and scale.ndim != 0:
             return False
 
         # If the Q/DQ node has no zero point input, it is assumed to be 0 (per ONNX spec)
@@ -116,8 +165,16 @@ class FusionUtils:
         zero_point = model.get_constant_value(node.input[2])
 
         # Zero point is not constant or zero point is not zero
-        if zero_point is None or zero_point != 0:
+        if zero_point is None:
             return False
+
+        if allow_per_tensor_quantization_only:
+            # Per tensor quantization
+            if zero_point != 0:
+                return False
+            # Per channel quantization
+            else:
+                return numpy.all(zero_point == 0)
 
         return True
 
