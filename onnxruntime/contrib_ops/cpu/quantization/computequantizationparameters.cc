@@ -10,24 +10,25 @@
 
 namespace onnxruntime {
 
-ONNX_OPERATOR_KERNEL_EX(
-    ComputeQuantizationParameters,
-    kMSDomain,
-    1,
-    kCpuExecutionProvider,
-    KernelDefBuilder(),
-        // .TypeConstraint("Tid", DataTypeImpl::GetTensorType<int64_t>())
-        // .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    ComputeQuantizationParameters<uint8_t>);
-
-// ONNX_CPU_OPERATOR_TYPED_KERNEL(
+// ONNX_OPERATOR_KERNEL_EX(
 //     ComputeQuantizationParameters,
-//     13,
-//     uint8_t,
+//     kMSDomain,
+//     1,
+//     kCpuExecutionProvider,
 //     KernelDefBuilder(),
-//         .TypeConstraint("T2", DataTypeImpl::GetTensorType<float_t>()),
+//         // .TypeConstraint("Tid", DataTypeImpl::GetTensorType<int64_t>())
+//         // .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
 //     ComputeQuantizationParameters<uint8_t>);
 
+namespace contrib{
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+    ComputeQuantizationParameters,
+    1,
+    uint8_t,
+    KernelDefBuilder(),
+        // .TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
+    ComputeQuantizationParameters<uint8_t>);
+}
 // ONNX_CPU_OPERATOR_KERNEL(
 //     ComputeQuantizationParameters,
 //     13,
