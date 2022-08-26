@@ -1,10 +1,10 @@
 jobs:
 - job: ObjCStaticAnalysis
-  
+
   pool:
     vmImage: 'macOS-11'
-  
-  timeoutInMinutes: 60
+
+  timeoutInMinutes: 90
 
   steps:
   - task: UsePythonVersion@0
