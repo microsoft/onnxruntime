@@ -5,9 +5,10 @@
 from logging import getLogger
 from typing import Tuple
 
-from numpy import array_equal, ndarray
 import numpy
-from onnx import NodeProto, TensorProto, helper, numpy_helper, onnx_pb as onnx_proto
+from numpy import array_equal, ndarray
+from onnx import NodeProto, TensorProto, helper, numpy_helper
+from onnx import onnx_pb as onnx_proto
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
