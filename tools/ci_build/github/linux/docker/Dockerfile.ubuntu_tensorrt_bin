@@ -12,11 +12,11 @@ ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=main
 ARG CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80
 
-# Version numbers used to build the name of the tar file containing TensorRT binaries.
+# Must provide version numbers used to build the name of the tar file containing TensorRT binaries.
 # See: https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html#installing-tar
-ARG TAR_TRT_VERSION=8.5.0.9
-ARG TAR_CUDA_VERSION=11.8
-ARG TAR_CUDNN_VERSION=8.6
+ARG TAR_TRT_VERSION
+ARG TAR_CUDA_VERSION
+ARG TAR_CUDNN_VERSION
 
 # Directory containing TensorRT tar.gz installation package
 ARG TRT_BINS_DIR=.
