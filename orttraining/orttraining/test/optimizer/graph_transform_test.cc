@@ -18,12 +18,14 @@
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/batchnorm_replacement.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
+#include "test/optimizer/graph_transform_test_builder.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/asserts.h"
 #include "orttraining/test/optimizer/horizontal_parallel_test_utils.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/optimizer/loss_rewriter.h"
+#include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 
 #include <random>
 
@@ -31,7 +33,7 @@ using namespace std;
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
-namespace test {
+namespace test{
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
 
@@ -72,7 +74,7 @@ TEST_F(GraphTransformationTests, BatchNormReplacement) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-  
+
   ASSERT_TRUE(graph.NumberOfNodes() == 1);
   // Make sure that BN was updated to add outputs
   ASSERT_TRUE(graph.Nodes().begin()->MutableOutputDefs().size() == 5);
@@ -121,7 +123,7 @@ TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOp
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-  
+
   ASSERT_TRUE(graph.NumberOfNodes() == 1);
   // Make sure that BN was updated to add outputs
   ASSERT_TRUE(graph.Nodes().begin()->MutableOutputDefs().size() == 5);
@@ -171,7 +173,7 @@ TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOp
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-  
+
   ASSERT_TRUE(graph.NumberOfNodes() == 1);
   // Make sure that BN was updated to add outputs
   ASSERT_TRUE(graph.Nodes().begin()->MutableOutputDefs().size() == 5);
@@ -197,6 +199,222 @@ TEST_F(GraphTransformationTests, DropoutWithZeroRatioElimination) {
 
   ASSERT_TRUE(op_to_count["Identity"] == 10);
   ASSERT_TRUE(op_to_count["Dropout"] == 2);
+}
+
+template <typename T>
+void RunSceLossGradBiasFusionTest(bool has_reshape, bool is_add_op, bool is_bias_lhs_input, bool has_weight,
+                                  bool has_ignore_index, const std::string& reduction, const logging::Logger& logger) {
+  std::string bias_op_type = is_add_op ? "Add" : "Sum";
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* dY_arg = builder.MakeInput<T>({{}});
+    auto* log_prob_arg = builder.MakeInput<T>({{8, 2}});
+    auto* index_arg = builder.MakeInput<int64_t>({{8}});
+    std::vector<NodeArg*> scegrad_inputs{dY_arg, log_prob_arg, index_arg};
+    if (has_weight || has_ignore_index) {
+      auto* weight_arg = builder.MakeInput<T>({{2}});
+      scegrad_inputs.emplace_back(weight_arg);
+    }
+    if (has_ignore_index) {
+      auto* ignore_index_arg = builder.MakeInput<int64_t>({{}});
+      scegrad_inputs.emplace_back(ignore_index_arg);
+    }
+    auto* sce_grad_out = builder.MakeIntermediate();
+    std::vector<NodeArg*> reshape_inputs;
+    std::vector<NodeArg*> reshape_outputs;
+    std::vector<NodeArg*> bias_op_inputs;
+    if (has_reshape) {
+      reshape_inputs.emplace_back(sce_grad_out);
+      auto* shape_arg = builder.MakeInput<int64_t>({{1}});
+      reshape_inputs.emplace_back(shape_arg);
+      auto* reshape_out = builder.MakeIntermediate<T>({{16}});
+      reshape_outputs.emplace_back(reshape_out);
+      auto* bias_arg = builder.MakeInput<T>({{16}});
+      if (is_bias_lhs_input) {
+        bias_op_inputs.emplace_back(bias_arg);
+        bias_op_inputs.emplace_back(reshape_out);
+      } else {
+        bias_op_inputs.emplace_back(reshape_out);
+        bias_op_inputs.emplace_back(bias_arg);
+      }
+    } else {
+      auto* bias_arg = builder.MakeInput<T>({{8, 2}});
+      if (is_bias_lhs_input) {
+        bias_op_inputs.emplace_back(bias_arg);
+        bias_op_inputs.emplace_back(sce_grad_out);
+      } else {
+        bias_op_inputs.emplace_back(sce_grad_out);
+        bias_op_inputs.emplace_back(bias_arg);
+      }
+    }
+    auto* dx_out = builder.MakeOutput();
+
+    builder.AddNode("SoftmaxCrossEntropyLossInternalGrad", scegrad_inputs, {sce_grad_out}, kMSDomain)
+        .AddAttribute("reduction", reduction);
+    if (has_reshape) {
+      builder.AddNode("Reshape", reshape_inputs, reshape_outputs);
+    }
+    builder.AddNode(bias_op_type, bias_op_inputs, {dx_out});
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.SoftmaxCrossEntropyLossInternalGrad"], 1);
+    ASSERT_EQ(CountOpsInGraph(graph)[bias_op_type], 1);
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.SoftmaxCrossEntropyLossInternalGrad"], 1);
+    ASSERT_EQ(CountOpsInGraph(graph)[bias_op_type], 0);
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "SoftmaxCrossEntropyLossInternalGrad") {
+        auto& attrs = node.GetAttributes();
+        ASSERT_TRUE(attrs.find("reduction") != attrs.end());
+        ASSERT_EQ(reduction, attrs.at("reduction").s());
+        ASSERT_EQ(6, static_cast<int>(node.InputDefs().size()));
+      }
+    }
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
+  TestGraphTransformer(build_test_case, 14, logger, std::move(transformer), TransformerLevel::Level2, 1,
+                       pre_graph_checker, post_graph_checker);
+}
+
+TEST_F(GraphTransformationTests, SceLossGradBiasFusion) {
+  RunSceLossGradBiasFusionTest<float>(false, false, false, true, true, "none", *logger_);
+  RunSceLossGradBiasFusionTest<MLFloat16>(false, false, true, true, false, "mean", *logger_);
+  RunSceLossGradBiasFusionTest<float>(false, false, false, false, false, "sum", *logger_);
+  RunSceLossGradBiasFusionTest<MLFloat16>(false, true, true, true, true, "none", *logger_);
+  RunSceLossGradBiasFusionTest<float>(false, true, false, true, false, "mean", *logger_);
+  RunSceLossGradBiasFusionTest<MLFloat16>(false, true, true, false, false, "sum", *logger_);
+  RunSceLossGradBiasFusionTest<float>(true, false, false, true, true, "none", *logger_);
+  RunSceLossGradBiasFusionTest<MLFloat16>(true, false, true, true, false, "mean", *logger_);
+  RunSceLossGradBiasFusionTest<float>(true, false, false, false, false, "sum", *logger_);
+  RunSceLossGradBiasFusionTest<MLFloat16>(true, true, true, true, true, "none", *logger_);
+  RunSceLossGradBiasFusionTest<float>(true, true, false, true, false, "mean", *logger_);
+  RunSceLossGradBiasFusionTest<MLFloat16>(true, true, true, false, false, "sum", *logger_);
+}
+
+TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.SoftmaxCrossEntropyLossInternalGrad"], 1);
+    ASSERT_EQ(CountOpsInGraph(graph)["Sum"], 1);
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.SoftmaxCrossEntropyLossInternalGrad"], 1);
+    ASSERT_EQ(CountOpsInGraph(graph)["Sum"], 1);
+  };
+
+  // Sum has more than 2 inputs.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* dY_arg = builder.MakeInput<float>({{}});
+      auto* log_prob_arg = builder.MakeInput<float>({{8, 2}});
+      auto* index_arg = builder.MakeInput<int64_t>({{8}});
+      auto* sce_grad_out = builder.MakeIntermediate();
+      auto* bias1_arg = builder.MakeInput<float>({{8, 2}});
+      auto* bias2_arg = builder.MakeInput<float>({{8, 2}});
+      auto* dx_out = builder.MakeOutput();
+      builder
+          .AddNode("SoftmaxCrossEntropyLossInternalGrad", {dY_arg, log_prob_arg, index_arg}, {sce_grad_out}, kMSDomain)
+          .AddAttribute("reduction", "sum");
+      builder.AddNode("Sum", {sce_grad_out, bias1_arg, bias2_arg}, {dx_out});
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // SceGrad has more than 1 consumers.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* dY_arg = builder.MakeInput<float>({{}});
+      auto* log_prob_arg = builder.MakeInput<float>({{8, 2}});
+      auto* index_arg = builder.MakeInput<int64_t>({{8}});
+      auto* sce_grad_out = builder.MakeIntermediate();
+      auto* bias_arg = builder.MakeInput<float>({{8, 2}});
+      auto* dx_out = builder.MakeOutput();
+      auto* identity_out = builder.MakeOutput();
+      builder
+          .AddNode("SoftmaxCrossEntropyLossInternalGrad", {dY_arg, log_prob_arg, index_arg}, {sce_grad_out}, kMSDomain)
+          .AddAttribute("reduction", "sum");
+      builder.AddNode("Sum", {sce_grad_out, bias_arg}, {dx_out});
+      builder.AddNode("Identity", {sce_grad_out}, {identity_out});
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // Sum inputs shape mismatch.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* dY_arg = builder.MakeInput<float>({{}});
+      auto* log_prob_arg = builder.MakeInput<float>({{8, 2}});
+      auto* index_arg = builder.MakeInput<int64_t>({{8}});
+      auto* sce_grad_out = builder.MakeIntermediate();
+      auto* bias_arg = builder.MakeInput<float>({{2}});
+      auto* dx_out = builder.MakeOutput();
+      builder
+          .AddNode("SoftmaxCrossEntropyLossInternalGrad", {dY_arg, log_prob_arg, index_arg}, {sce_grad_out}, kMSDomain)
+          .AddAttribute("reduction", "sum");
+      builder.AddNode("Sum", {sce_grad_out, bias_arg}, {dx_out});
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // Sum inputs shape mismatch.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* dY_arg = builder.MakeInput<float>({{}});
+      auto* log_prob_arg = builder.MakeInput<float>({{8, 1}});
+      auto* index_arg = builder.MakeInput<int64_t>({{8}});
+      auto* bias_arg = builder.MakeInput<float>({{8, 1}});
+      auto* sce_grad_out = builder.MakeIntermediate();
+      auto* shape_arg = builder.MakeInput<int64_t>({{2}});
+      auto* reshape_out = builder.MakeIntermediate<float>({{1, 8}});
+      auto* dx_out = builder.MakeOutput();
+      builder
+          .AddNode("SoftmaxCrossEntropyLossInternalGrad", {dY_arg, log_prob_arg, index_arg}, {sce_grad_out}, kMSDomain)
+          .AddAttribute("reduction", "sum");
+      builder.AddNode("Reshape", {sce_grad_out, shape_arg}, {reshape_out});
+      builder.AddNode("Sum", {reshape_out, bias_arg}, {dx_out});
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // Reshape output has more than 1 consumers.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* dY_arg = builder.MakeInput<float>({{}});
+      auto* log_prob_arg = builder.MakeInput<float>({{8, 2}});
+      auto* index_arg = builder.MakeInput<int64_t>({{8}});
+      auto* bias_arg = builder.MakeInput<float>({{16}});
+      auto* sce_grad_out = builder.MakeIntermediate();
+      auto* shape_arg = builder.MakeInput<int64_t>({{1}});
+      auto* reshape_out = builder.MakeIntermediate<float>({{16}});
+      auto* dx_out = builder.MakeOutput();
+      auto* identity_out = builder.MakeOutput();
+      builder
+          .AddNode("SoftmaxCrossEntropyLossInternalGrad", {dY_arg, log_prob_arg, index_arg}, {sce_grad_out}, kMSDomain)
+          .AddAttribute("reduction", "sum");
+      builder.AddNode("Reshape", {sce_grad_out, shape_arg}, {reshape_out});
+      builder.AddNode("Sum", {reshape_out, bias_arg}, {dx_out});
+      builder.AddNode("Identity", {reshape_out}, {identity_out});
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
 }
 
 Node* GetNodeByName(Graph& graph, std::string node_name) {

@@ -614,7 +614,7 @@ static void TestSoftmaxCrossEntropyLossInternalGrad(const std::vector<int64_t>& 
                                                     const std::vector<int64_t>& weight_dims,
                                                     const std::vector<int64_t>& dX_dims, const std::string& reduction,
                                                     const std::int64_t ignore_index = -1, const bool test_fp16 = false,
-                                                    const double error_tolerance = 1e-4) {
+                                                    const double error_tolerance = 1e-4, const bool has_bias = false) {
   CompareOpTester test("SoftmaxCrossEntropyLossInternalGrad", 1, onnxruntime::kMSDomain);
   test.AddAttribute("reduction", reduction);
 
@@ -643,8 +643,15 @@ static void TestSoftmaxCrossEntropyLossInternalGrad(const std::vector<int64_t>& 
     ConvertFloatToMLFloat16(weight_data.data(), weight_data_half.data(), int(weight_data.size()));
     test.AddInput<MLFloat16>("weight", weight_dims, weight_data_half);
 
-    if (ignore_index != -1) {
+    if (ignore_index != -1 || has_bias) {
       test.AddInput<int64_t>("ignore_index", {}, &ignore_index, 1);
+    }
+
+    if (has_bias) {
+      std::vector<float> bias_data = random.Uniform<float>(dX_dims, 0.0f, 1.0f);
+      std::vector<MLFloat16> bias_data_half(bias_data.size());
+      ConvertFloatToMLFloat16(bias_data.data(), bias_data_half.data(), int(bias_data.size()));
+      test.AddInput<MLFloat16>("bias", dX_dims, bias_data_half);
     }
 
     std::vector<MLFloat16> dX_data = FillZeros<MLFloat16>(dX_dims);
@@ -656,8 +663,13 @@ static void TestSoftmaxCrossEntropyLossInternalGrad(const std::vector<int64_t>& 
     test.AddInput<float>("log_prob", log_prob_dims, log_prob_data);
     test.AddInput<int64_t>("index", index_dims, index_data);
     test.AddInput<float>("weight", weight_dims, weight_data);
-    if (ignore_index != -1) {
+    if (ignore_index != -1 || has_bias) {
       test.AddInput<int64_t>("ignore_index", {}, &ignore_index, 1);
+    }
+
+    if (has_bias) {
+      std::vector<float> bias_data = random.Uniform<float>(dX_dims, 0.0f, 1.0f);
+      test.AddInput<float>("bias", dX_dims, bias_data);
     }
 
     std::vector<float> dX_data = FillZeros<float>(dX_dims);
@@ -681,6 +693,14 @@ TEST(CudaKernelTest, SoftmaxCrossEntropyLossInternalGrad_TinySizeTensor) {
   TestSoftmaxCrossEntropyLossInternalGrad(dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims, "mean", 0);
   TestSoftmaxCrossEntropyLossInternalGrad(dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims, "sum", 0);
   TestSoftmaxCrossEntropyLossInternalGrad({8}, log_prob_dims, index_dims, weight_dims, dX_dims, "none", 0);
+
+  // Bias.
+  TestSoftmaxCrossEntropyLossInternalGrad(dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims, "mean", -1, false, 1e-4, true);
+  TestSoftmaxCrossEntropyLossInternalGrad(dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims, "sum", -1, false, 1e-4, true);
+  TestSoftmaxCrossEntropyLossInternalGrad({8}, log_prob_dims, index_dims, weight_dims, dX_dims, "none", -1, false, 1e-4, true);
+  TestSoftmaxCrossEntropyLossInternalGrad(dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims, "mean", 0, false, 1e-4, true);
+  TestSoftmaxCrossEntropyLossInternalGrad(dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims, "sum", 0, false, 1e-4, true);
+  TestSoftmaxCrossEntropyLossInternalGrad({8}, log_prob_dims, index_dims, weight_dims, dX_dims, "none", 0, false, 1e-4, true);
 }
 
 TEST(CudaKernelTest, SoftmaxCrossEntropyLossInternalGrad_TinySizeTensor_half) {
@@ -697,6 +717,14 @@ TEST(CudaKernelTest, SoftmaxCrossEntropyLossInternalGrad_TinySizeTensor_half) {
   TestSoftmaxCrossEntropyLossInternalGrad(dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims, "mean", 0, true, 5e-2);
   TestSoftmaxCrossEntropyLossInternalGrad(dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims, "sum", 0, true, 5e-2);
   TestSoftmaxCrossEntropyLossInternalGrad({8}, log_prob_dims, index_dims, weight_dims, dX_dims, "none", 0, true, 5e-2);
+
+  // Bias.
+  TestSoftmaxCrossEntropyLossInternalGrad(dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims, "mean", -1, true, 5e-2, true);
+  TestSoftmaxCrossEntropyLossInternalGrad(dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims, "sum", -1, true, 5e-2, true);
+  TestSoftmaxCrossEntropyLossInternalGrad({8}, log_prob_dims, index_dims, weight_dims, dX_dims, "none", -1, true, 5e-2, true);
+  TestSoftmaxCrossEntropyLossInternalGrad(dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims, "mean", 0, true, 5e-2, true);
+  TestSoftmaxCrossEntropyLossInternalGrad(dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims, "sum", 0, true, 5e-2, true);
+  TestSoftmaxCrossEntropyLossInternalGrad({8}, log_prob_dims, index_dims, weight_dims, dX_dims, "none", 0, true, 5e-2, true);
 }
 
 }  // namespace test
