@@ -147,6 +147,12 @@ struct ProviderHost {
   virtual void* CPUAllocator__Alloc(CPUAllocator* p, size_t size) = 0;
   virtual void CPUAllocator__Free(CPUAllocator* p, void* allocation) = 0;
 
+  virtual unsigned int GetThreadId() = 0;
+  virtual unsigned int GetProcessId() = 0;
+
+  virtual std::string demangle(const char* name) = 0;
+  virtual std::string demangle(const std::string& name) = 0;
+
 #ifdef USE_CUDA
   virtual std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
