@@ -1,5 +1,11 @@
 trigger: none
 
+parameters:
+- name: DebugBuild
+  displayName: Debug Build?
+  type: boolean
+  default: false
+
 resources:
   repositories:
   - repository: manylinux
@@ -20,3 +26,4 @@ stages:
     docker_file: Dockerfile.manylinux2014_training_cuda11_6
     agent_pool: Onnxruntime-Linux-GPU
     upload_wheel: 'yes'
+    debug_build: ${{ parameters.DebugBuild }}
