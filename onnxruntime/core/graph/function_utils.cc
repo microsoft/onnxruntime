@@ -383,6 +383,8 @@ private:
     rename_scopes.emplace_back();
     for (auto& x : *graph.mutable_input())
       make_unique(*x.mutable_name());
+    for (auto& init : *graph.mutable_initializer())
+      make_unique(*init.mutable_name());
     for (auto& y : *graph.mutable_output())
       make_unique(*y.mutable_name());
     for (auto& n : *graph.mutable_node())
