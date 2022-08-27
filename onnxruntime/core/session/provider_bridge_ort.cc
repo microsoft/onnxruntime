@@ -215,6 +215,12 @@ struct ProviderHostImpl : ProviderHost {
 
   std::string GetEnvironmentVar(const std::string& var_name) override { return Env::Default().GetEnvironmentVar(var_name); }
 
+  unsigned int GetThreadId() override { return onnxruntime::logging::GetThreadId(); }
+  unsigned int GetProcessId() override { return onnxruntime::logging::GetProcessId(); }
+
+  std::string demangle(const char* name) override { return onnxruntime::profiling::demangle(name); }
+  std::string demangle(const std::string& name) override { return onnxruntime::profiling::demangle(name); }
+
   std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                      const std::string& provider_type,
                                                      gsl::span<const KernelRegistry* const> kernel_registries,
