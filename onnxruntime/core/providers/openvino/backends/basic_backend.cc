@@ -63,7 +63,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       #ifdef OV_API_20
         remote_context_ = new ov::intel_gpu::ocl::ClContext(global_context_.ie_core.Get(), ctx);
       #else
-        remote_context_ = InferenceEngine::gpu::make_shared_context(global_context_.ie_core.Get(), "GPU", ctx);
+        remote_context_ = InferenceEngine::gpu::make_shared_context(global_context_.ie_core.Get(), hw_target, ctx);
       #endif
       exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, remote_context_, subgraph_context_.subgraph_name);
     } else {
