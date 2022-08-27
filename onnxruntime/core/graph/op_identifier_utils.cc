@@ -23,11 +23,10 @@ Status SaveOpIdentifierOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 
 Status LoadOpIdentifierOrtFormat(const fbs::OpIdentifier& fbs_op_id,
                                  onnxruntime::OpIdentifier& op_id) {
-  const auto* fbs_domain = fbs_op_id.domain();
-  ORT_FORMAT_RETURN_IF_NULL(fbs_domain, "domain");
-  const auto* fbs_op_type = fbs_op_id.op_type();
-  ORT_FORMAT_RETURN_IF_NULL(fbs_op_type, "op_type");
-  op_id = onnxruntime::OpIdentifier{fbs_domain->str(), fbs_op_type->str(), fbs_op_id.since_version()};
+  std::string domain, op_type;
+  LoadStringFromOrtFormat(domain, fbs_op_id.domain());
+  LoadStringFromOrtFormat(op_type, fbs_op_id.op_type());
+  op_id = onnxruntime::OpIdentifier{std::move(domain), std::move(op_type), fbs_op_id.since_version()};
   return Status::OK();
 }
 

@@ -35,7 +35,7 @@ struct SatDirectApplicationContext {
 // Context to save runtime optimizations for later replay.
 struct SatRuntimeOptimizationSaveContext {
 #if !defined(ORT_MINIMAL_BUILD)
-  std::function<Status(const ONNX_NAMESPACE::OpSchema*)> record_produced_node_op_schema;
+  std::function<Status(const ONNX_NAMESPACE::OpSchema&)> record_produced_node_op_schema;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };
 

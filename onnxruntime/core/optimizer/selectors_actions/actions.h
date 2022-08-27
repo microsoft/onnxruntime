@@ -5,6 +5,8 @@
 
 #include <vector>
 
+#include "gsl/gsl"
+
 #include "core/common/common.h"
 #include "core/graph/graph_utils.h"  // TODO: Minimize usage of this given we want to use Actions in a minimal build
 #include "core/graph/runtime_optimization_record.h"
@@ -31,7 +33,7 @@ struct Action {
 #if !defined(ORT_MINIMAL_BUILD)
   // per-action saved state
   struct SavedState {
-    std::vector<const ONNX_NAMESPACE::OpSchema*> produced_node_op_schemas;
+    std::vector<gsl::not_null<const ONNX_NAMESPACE::OpSchema*>> produced_node_op_schemas;
   };
 
   // saving interface

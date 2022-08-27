@@ -2347,8 +2347,8 @@ common::Status InferenceSession::AddPredefinedTransformers(
               MinimalBuildOptimizationHandling::SaveMinimalBuildRuntimeOptimizations
                   ? SatApplyContextVariant{
                         SatRuntimeOptimizationSaveContext{
-                            [this](const ONNX_NAMESPACE::OpSchema* op_schema) mutable {
-                               saved_runtime_optimization_produced_node_op_schemas_.insert(op_schema);
+                            [this](const ONNX_NAMESPACE::OpSchema& op_schema) mutable {
+                               saved_runtime_optimization_produced_node_op_schemas_.insert(&op_schema);
                                return Status::OK();
                             }}}
                   : SatApplyContextVariant{SatDirectApplicationContext{}};

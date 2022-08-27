@@ -133,6 +133,7 @@ Status SessionState::PopulateKernelCreateInfo(const KernelRegistryManager& kerne
     const KernelCreateInfo* kci = nullptr;
     auto status = kernel_registry_manager.SearchKernelRegistry(node, &kci);
     if (!status.IsOK() && saving_ort_format) {
+      // TODO update this comment to not refer to hashes
       // if we didn't find the kernel and are saving to ORT format an EP that compiles nodes is enabled.
       // in that case we assigned the node to that EP but do not compile it into a fused node.
       // this keeps the original node and prevents level 2 and level 3 optimizers from modifying it.
@@ -1195,18 +1196,25 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // Not needed in a basic minimal build because only runtime optimizations are expected to possibly result in unused
   //   initializers and they are only enabled in an extended minimal build.
   {
-    InlinedVector<std::reference_wrapper<const std::string>> unused_initializer_names;
-    unused_initializer_names.reserve(graph_.GetAllInitializedTensors().size());
-    for (const auto& [name, tensor_proto] : graph_.GetAllInitializedTensors()) {
-      ORT_UNUSED_PARAMETER(tensor_proto);
-      int idx;
-      if (!ort_value_name_idx_map_.GetIdx(name, idx).IsOK()) {
-        unused_initializer_names.push_back(name);
+    InlinedVector<InitializedTensorSet::const_iterator> unused_initializers;
+    {
+      const auto& all_initializers = graph_.GetAllInitializedTensors();
+      unused_initializers.reserve(all_initializers.size());
+      for (auto initializer_it = all_initializers.begin(); initializer_it != all_initializers.end();
+           ++initializer_it) {
+        const auto& name = initializer_it->first;
+        int idx;
+        if (!ort_value_name_idx_map_.GetIdx(name, idx).IsOK()) {
+          unused_initializers.push_back(initializer_it);
+        }
       }
     }
 
-    for (const auto& name : unused_initializer_names) {
-      graph_.RemoveInitializedTensor(name);
+    for (const auto initializer_it : unused_initializers) {
+      // Use a copy - the underlying string will be removed by Graph::RemoveInitializedTensor() and
+      // Graph::RemoveInitializedTensor() takes its parameter by const reference.
+      const std::string name_copy = initializer_it->first;
+      graph_.RemoveInitializedTensor(name_copy);
     }
   }
 #endif  // defined(ORT_EXTENDED_MINIMAL_BUILD)

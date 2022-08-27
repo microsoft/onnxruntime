@@ -124,7 +124,8 @@ class ApiGraph final : public api::GraphRef {
                                         size_t num_outputs = 1, std::string_view domain = "") override;
 
   std::unique_ptr<api::NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type,
-                                         std::string_view domain = "") override;
+                                         std::string_view domain = "",
+                                         std::optional<int> since_version = std::nullopt) override;
   void RemoveNode(api::NodeRef& node) override;
   void RemoveInitializer(std::string_view name) override;
   std::string_view AddInitializer(api::DataType dtype, const std::vector<int64_t>& shape,
@@ -711,9 +712,10 @@ std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
 }
 
 std::unique_ptr<api::NodeRef> ApiGraph::CopyNode(const api::NodeRef& source_node, std::string_view op_type,
-                                                 std::string_view domain) {
+                                                 std::string_view domain, std::optional<int> since_version) {
+  const int new_node_since_version = since_version.has_value() ? *since_version : source_node.SinceVersion();
   Node& node = CreateNodeHelper(graph_, op_type, source_node.Inputs(),
-                                source_node.Outputs().size(), domain, source_node.SinceVersion(),
+                                source_node.Outputs().size(), domain, new_node_since_version,
                                 source_node.GetExecutionProviderType());
 
   std::unique_ptr<api::NodeRef> new_node = std::make_unique<ApiNode>(node, graph_);

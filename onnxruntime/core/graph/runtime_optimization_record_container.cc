@@ -11,10 +11,12 @@
 
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
+#include "core/graph/op_identifier_utils.h"
 
 namespace onnxruntime {
 
-#if defined(ORT_ENABLE_ADDING_RUNTIME_OPTIMIZATION_RECORDS)
+#if !defined(ORT_MINIMAL_BUILD)
+
 bool RuntimeOptimizationRecordContainer::RecordExists(const std::string& optimizer_name,
                                                       const std::string& action_id,
                                                       const NodesToOptimizeIndices& nodes_to_optimize_indices) const {
@@ -34,7 +36,8 @@ void RuntimeOptimizationRecordContainer::AddRecord(const std::string& optimizer_
   auto& optimizations = optimizer_name_to_records_[optimizer_name];
   optimizations.emplace_back(std::move(runtime_optimization_record));
 }
-#endif
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 std::vector<RuntimeOptimizationRecord> RuntimeOptimizationRecordContainer::RemoveRecordsForOptimizer(
     const std::string& optimizer_name) {
@@ -45,6 +48,8 @@ std::vector<RuntimeOptimizationRecord> RuntimeOptimizationRecordContainer::Remov
   }
   return records;
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
 
 static Status SaveRuntimeOptimizationRecordToOrtFormat(
     flatbuffers::FlatBufferBuilder& builder,
@@ -66,10 +71,21 @@ static Status SaveRuntimeOptimizationRecordToOrtFormat(
                                         nodes_to_optimize_indices.num_variadic_inputs,
                                         nodes_to_optimize_indices.num_variadic_outputs);
 
+  const auto& produced_op_ids = runtime_optimization_record.produced_op_ids;
+
+  std::vector<flatbuffers::Offset<fbs::OpIdentifier>> fbs_produced_op_id_vector;
+  fbs_produced_op_id_vector.reserve(produced_op_ids.size());
+  for (const auto& produced_op_id : produced_op_ids) {
+    flatbuffers::Offset<fbs::OpIdentifier> fbs_produced_op_id;
+    ORT_RETURN_IF_ERROR(fbs::utils::SaveOpIdentifierOrtFormat(builder, produced_op_id, fbs_produced_op_id));
+    fbs_produced_op_id_vector.push_back(fbs_produced_op_id);
+  }
+
   fbs_runtime_optimization_record =
       fbs::CreateRuntimeOptimizationRecord(builder,
                                            builder.CreateSharedString(runtime_optimization_record.action_id),
-                                           fbs_nodes_to_optimize);
+                                           fbs_nodes_to_optimize,
+                                           builder.CreateVector(fbs_produced_op_id_vector));
 
   return Status::OK();
 }
@@ -98,6 +114,8 @@ Status RuntimeOptimizationRecordContainer::SaveToOrtFormat(
   return Status::OK();
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 static Status LoadRuntimeOptimizationRecordFromOrtFormat(
     const fbs::RuntimeOptimizationRecord& fbs_runtime_optimization_record,
     RuntimeOptimizationRecord& runtime_optimization_record_out) {
@@ -110,7 +128,7 @@ static Status LoadRuntimeOptimizationRecordFromOrtFormat(
   if (const auto* fbs_nodes_to_optimize_indices = fbs_runtime_optimization_record.nodes_to_optimize_indices()) {
     if (const auto* fbs_node_indices = fbs_nodes_to_optimize_indices->node_indices()) {
       nodes_to_optimize_indices.nodes = [&]() {
-        std::vector<NodeIndex> result;
+        InlinedVector<NodeIndex> result;
         result.reserve(fbs_node_indices->size());
         std::transform(fbs_node_indices->begin(), fbs_node_indices->end(), std::back_inserter(result),
                        [](const uint32_t idx) { return static_cast<NodeIndex>(idx); });
@@ -124,6 +142,17 @@ static Status LoadRuntimeOptimizationRecordFromOrtFormat(
     nodes_to_optimize_indices.variadic_output = fbs_nodes_to_optimize_indices->has_variadic_output();
     nodes_to_optimize_indices.num_variadic_inputs = fbs_nodes_to_optimize_indices->num_variadic_inputs();
     nodes_to_optimize_indices.num_variadic_outputs = fbs_nodes_to_optimize_indices->num_variadic_outputs();
+  }
+
+  auto& produced_op_ids = runtime_optimization_record.produced_op_ids;
+  if (const auto* fbs_produced_op_ids = fbs_runtime_optimization_record.produced_op_ids()) {
+    produced_op_ids.reserve(fbs_produced_op_ids->size());
+    for (const auto* fbs_produced_op_id : *fbs_produced_op_ids) {
+      ORT_FORMAT_RETURN_IF_NULL(fbs_produced_op_id, "runtime optimization record produced op id");
+      OpIdentifier produced_op_id;
+      ORT_RETURN_IF_ERROR(fbs::utils::LoadOpIdentifierOrtFormat(*fbs_produced_op_id, produced_op_id));
+      produced_op_ids.push_back(std::move(produced_op_id));
+    }
   }
 
   runtime_optimization_record_out = std::move(runtime_optimization_record);
