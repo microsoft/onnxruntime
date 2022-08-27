@@ -82,7 +82,8 @@ class ExecutionContext {
                    const logging::Logger& sess_logger,
                    const DeviceStreamCollection& device_streams_map,
                    const bool& terminate_flag,
-                   bool single_thread_mode);
+                   bool single_thread_mode,
+                   std::shared_ptr<ExecutionFrame> reused_frame);
 
   const SessionState& GetSessionState() const;
 
@@ -153,7 +154,10 @@ class ExecutionContext {
 
  private:
   const SessionState* session_state;
-  std::unique_ptr<ExecutionFrame> frame;
+  // in ORTModule, we want to keep the frame in the training agent and share it
+  // between forward/backward passes in multiple iterations. so use a shared_ptr.
+  // TODO: find a better way to transfer the ownership
+  std::shared_ptr<ExecutionFrame> frame;
   const logging::Logger* logger;
   std::vector<std::unique_ptr<synchronize::Notification>> notifications;
   std::unique_ptr<ReleasePlan> release_plan;

@@ -13,6 +13,7 @@
 #include "core/framework/session_state.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/op_kernel_context_internal.h"
+#include "core/common/inlined_containers.h"
 
 #ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"
@@ -22,11 +23,13 @@ namespace onnxruntime {
 
 class ExecutionContext;
 class DeviceStreamCollection;
+typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
+typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
 
 onnxruntime::Status BindToDeviceStream(Stream* parent_stream,
-                                  const SequentialExecutionPlan& execution_plan,
-                                  DeviceStreamCollection& device_stream_map,
-                                  IStreamCommandHandleRegistry& stream_handle_registry);
+                                       const SequentialExecutionPlan& execution_plan,
+                                       DeviceStreamCollection& device_stream_map,
+                                       IStreamCommandHandleRegistry& stream_handle_registry);
 
 onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t stream_idx);
 

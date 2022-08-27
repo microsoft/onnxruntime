@@ -410,8 +410,15 @@ class KernelScope {
 
 onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t stream_idx) {
   auto* p_kernel = ctx.GetSessionState().GetKernel(idx);
-  // auto* intra_tp = ctx.GetSessionState().GetThreadPool();
-
+  if (p_kernel->KernelDef().OpName() == "YieldOp") {
+    // Do not execute YieldOp (it is an no-op anyways).
+    // Decrement the reference count of tensors that are not needed beyond this point.
+    // REVEIW(codemzs): The current model assumes the intermediate tensors that are exported
+    // as graph outputs are owned by ORT, the risk of caller freeing the tensor or manipulating tensor
+    // memory lingers while the tensor is used downstream after the export.
+    ctx.RecycleNodeInputs(idx);
+    return Status::OK();
+  }
   // TODO: set terminate flag from run_option
   OpKernelContextInternal kernel_ctx(ctx.GetSessionState(),
                                      *ctx.GetExecutionFrame(),
@@ -512,7 +519,8 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                        logger,
                        device_streams,
                        terminate_flag,
-                       single_thread_mode);
+                       single_thread_mode,
+                       /*reused_frame*/ nullptr);
 #ifdef ENABLE_TRAINING
   if (only_execute_path_to_fetches) {
     auto* node_to_execute = session_state.GetToBeExecutedRange(fetch_mlvalue_idxs);
@@ -608,8 +616,32 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                           bool single_thread_mode,
                                           PartialGraphExecutionState& state,
                                           const OrtValueCachePtr& cache) {
-  auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
-                                        fetch_allocators, session_state, logger, device_streams, terminate_flag);
+  auto& streams = device_streams.GetStreams();
+  std::shared_ptr<ExecutionFrame> execution_frame = state.GetExecutionFrame(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
+                                                                            fetch_allocators, session_state, &streams);
+  auto* execution_plan = session_state.GetExecutionPlan();
+  LOGS(logger, INFO) << "Number of streams: " << execution_plan->execution_plan.size();
+  int32_t valid_streams = 0;
+  for (auto& stream : execution_plan->execution_plan) {
+    if (stream && stream->steps_.size() > 0)
+      valid_streams++;
+  }
+
+  // prepare the execution context, notifications got initialized.
+  ExecutionContext ctx(session_state,
+                       valid_streams,
+                       execution_plan->notification_owners,
+                       feed_mlvalue_idxs,
+                       feeds,
+                       fetch_mlvalue_idxs,
+                       fetches,
+                       fetch_allocators,
+                       execution_plan->num_barriers,
+                       logger,
+                       device_streams,
+                       terminate_flag,
+                       single_thread_mode,
+                       execution_frame);
 
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));
 
@@ -617,8 +649,6 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
   ctx.SetSessionScope(&session_scope);
 
   ctx.SetOrtValueCache(std::move(cache));
-
-  auto* execution_plan = session_state.GetExecutionPlan();
 
   auto* tp = single_thread_mode ? nullptr : session_state.GetInterOpThreadPool();
 

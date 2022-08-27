@@ -95,12 +95,13 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
                                    const logging::Logger& sess_logger,
                                    const DeviceStreamCollection& device_streams_map,
                                    const bool& terminate_flag,
-                                   bool single_thread_mode) : session_state(&sess_state),
-                                                              logger(&sess_logger),
-                                                              device_stream_map_(device_streams_map),
-                                                              count_down_barriers_(num_barriers),
-                                                              terminate_flag_(terminate_flag),
-                                                              single_thread_mode_(single_thread_mode) {
+                                   bool single_thread_mode,
+                                   std::shared_ptr<ExecutionFrame> reused_frame) : session_state(&sess_state),
+                                                                                   logger(&sess_logger),
+                                                                                   device_stream_map_(device_streams_map),
+                                                                                   count_down_barriers_(num_barriers),
+                                                                                   terminate_flag_(terminate_flag),
+                                                                                   single_thread_mode_(single_thread_mode) {
   auto& device_streams = device_stream_map_.GetStreams();
 
   for (size_t i = 0; i < notification_owners.size(); ++i) {
@@ -111,8 +112,18 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
       notifications.push_back(nullptr);
   }
 
-  // create frame
-  frame = std::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, sess_state, &device_streams);
+  if (!reused_frame) {
+    // create frame
+    frame = std::make_shared<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, sess_state, &device_streams);
+  } else {
+#ifdef ENABLE_TRAINING
+    frame = reused_frame;
+    // this is not thread safe, but current training is runnig with single thread
+    frame->SetDeviceStreams(&device_streams);
+#else
+    ORT_THROW("Reuse execution frame is not expected in inference build");
+#endif
+  }
   // init barreris
   for (size_t i = 0; i < num_barriers; ++i) {
     count_down_barriers_[i].Set(2);
