@@ -14,7 +14,7 @@ class VulkanImage {
   VulkanImage(VulkanMemoryPool& memory_pool, const std::vector<int64_t>& dims,
               MLDataType data_type);
 
-  VulkanImage(VulkanMemoryPool& memory_pool, int w, int h, MLDataType data_type)
+  VulkanImage(VulkanMemoryPool& memory_pool, int64_t w, int64_t h, MLDataType data_type)
       : VulkanImage(memory_pool, std::vector<int64_t>{w, h}, data_type) {
   }
 

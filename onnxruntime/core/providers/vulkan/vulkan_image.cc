@@ -5,8 +5,9 @@
 
 namespace onnxruntime {
 
-static VkResult CreateImageView(const VkDevice& logical_device, VkImageView& image_view, const VkImage& image, const VkImageViewType& view_type,
-                                const VkFormat& format) {
+static VkResult CreateImageView(const VkDevice& logical_device,
+                                VkImageView& image_view, const VkImage& image,
+                                const VkImageViewType& view_type, const VkFormat& format) {
   VkImageViewCreateInfo info = {};
   info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
   info.image = image;
@@ -24,7 +25,7 @@ static VkResult CreateImageView(const VkDevice& logical_device, VkImageView& ima
 VulkanImage::VulkanImage(VulkanMemoryPool& memory_pool, const std::vector<int64_t>& image_dims,
                          MLDataType data_type)
     : logical_device_(memory_pool.GetLogicalDevice()), memory_pool_(memory_pool) {
-  if (data_type != DataTypeImpl::GetTensorType<float>()) {
+  if (data_type != DataTypeImpl::GetType<float>()) {
     ORT_THROW("Only creating float Vulkan images is currently supported");
   }
 
@@ -34,7 +35,7 @@ VulkanImage::VulkanImage(VulkanMemoryPool& memory_pool, const std::vector<int64_
     ORT_THROW("Only 1D, 2D, or 3D Vulkan images are supported for now");
   }
 
-  // Identify VkImage metadata 
+  // Identify VkImage metadata
   VkImageType image_type = VK_IMAGE_TYPE_1D;
   VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_1D;
 
@@ -84,7 +85,7 @@ VulkanImage::VulkanImage(VulkanMemoryPool& memory_pool, const std::vector<int64_
 }
 
 VulkanImage::~VulkanImage() {
-    // Free VkImageView first
+  // Free VkImageView first
   VK_CALL_RETURNS_VOID(vkDestroyImageView(logical_device_, image_and_view_.second, nullptr));
 
   // Free the VkImage via the memory pool
