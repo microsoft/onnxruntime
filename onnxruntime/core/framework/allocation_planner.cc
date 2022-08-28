@@ -1978,7 +1978,7 @@ class PlannerImpl {
             continue;
           OrtValueIndex input_arg_idx;
           ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(input->Name(), input_arg_idx));
-          if (plan_.allocation_plan[input_arg_idx].location != node_device_mem_location) {
+          if (plan_.allocation_plan[input_arg_idx].location.device != node_device_mem_location.device) {
             ORT_ENFORCE(plan_.allocation_plan[input_arg_idx].location.device.Type() == OrtDevice::CPU);
             const Node* producer;
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
