@@ -12,14 +12,12 @@
 
 namespace onnxruntime {
 
-typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
-typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
 class ExecutionContext;
 class DeviceStreamCollection;
 
 struct PartialGraphExecutionState {
  public:
-  PartialGraphExecutionState() : execution_context_(nullptr){
+  PartialGraphExecutionState() : execution_context_(nullptr), device_stream_collection_(nullptr) {
   }
 
   ~PartialGraphExecutionState() = default;
@@ -34,11 +32,11 @@ struct PartialGraphExecutionState {
 
   ExecutionContext& GetExecutionContext(gsl::span<const int>& feed_mlvalue_idxs, gsl::span<const OrtValue>& feeds,
                                         gsl::span<const int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches,
-                                      const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                      const SessionState& session_state,
-                                      const logging::Logger& sess_logger,
-                                      const DeviceStreamCollection& device_streams_map,
-                                      const bool& terminate_flag);
+                                        const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                        const SessionState& session_state,
+                                        const logging::Logger& sess_logger,
+                                        const DeviceStreamCollection& device_streams);
+  DeviceStreamCollection& GetDeviceStreamCollection(size_t num_streams, const SessionState& session_state);
 
  private:
   std::unique_ptr<ExecutionContext> execution_context_;
@@ -46,6 +44,7 @@ struct PartialGraphExecutionState {
   size_t program_counter_end_{0};
 
   std::vector<ProgramRegion> program_regions_;
+  std::unique_ptr<DeviceStreamCollection> device_stream_collection_;
 };
 }  // namespace onnxruntime
 #endif

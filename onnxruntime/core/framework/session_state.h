@@ -294,7 +294,7 @@ class SessionState {
   const NodeIndexInfo& GetNodeIndexInfo() const;
 #ifdef ENABLE_TRAINING
   void UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs);
-  const ProgramRegion* GetToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) const;
+  const InlinedHashSet<NodeIndex>* GetToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) const;
 #endif
 #if !defined(ORT_MINIMAL_BUILD)
   Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
@@ -531,9 +531,9 @@ class SessionState {
 
 #ifdef ENABLE_TRAINING
 #ifndef DISABLE_ABSEIL
-  InlinedHashMap<InlinedVector<int>, ProgramRegion> to_be_executed_range_;
+  InlinedHashMap<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
 #else
-  std::map<InlinedVector<int>, ProgramRegion> to_be_executed_range_;
+  std::map<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
 #endif
 #endif
 

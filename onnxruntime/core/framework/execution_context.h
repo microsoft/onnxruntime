@@ -35,10 +35,10 @@ class DeviceStreamCollection {
 };
 
 /*
-* LIMITATION:
-* CountDownBarrier is only for scenario that the v is set
-* to the # of consumers and each consumer calls Dec() exactly once.
-*/
+ * LIMITATION:
+ * CountDownBarrier is only for scenario that the v is set
+ * to the # of consumers and each consumer calls Dec() exactly once.
+ */
 class CountDownBarrier {
  public:
   CountDownBarrier() : v_{0} {};
@@ -70,7 +70,7 @@ typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
 // The notifications got instantiated when execution context is constructed.
 // TODO: if we merge the notifications to execution frame, we might don't need this.
 class ExecutionContext {
-public:
+ public:
   ExecutionContext(const SessionState& sess_state,
                    int32_t num_streams,
                    std::vector<size_t> notification_owners,
@@ -80,8 +80,7 @@ public:
                    const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                    size_t num_barriers,
                    const logging::Logger& sess_logger,
-                   const DeviceStreamCollection& device_streams_map,
-                   const bool& terminate_flag,
+                   const DeviceStreamCollection& device_stream_map,
                    bool single_thread_mode);
 
   const SessionState& GetSessionState() const;
@@ -92,13 +91,21 @@ public:
 
   synchronize::Notification* GetNotification(size_t idx);
 
-  const bool& TerminateFlag() const;
+  const bool* TerminateFlag() const;
+
+  void SetLogger(const logging::Logger& current_logger) {
+    logger = &current_logger;
+  }
+
+  void SetTerminateFlag(const bool* terminate_flag) {
+    terminate_flag_ = terminate_flag;
+  }
 
   const Status& TaskStatus() const;
 
   bool DecCountDownBarrier(size_t barrier_id);
 
-  bool SingleThreadMode() const { return single_thread_mode_;}
+  bool SingleThreadMode() const { return single_thread_mode_; }
 
   Stream* GetDeviceStream(size_t idx);
 
@@ -140,6 +147,15 @@ public:
   void SetCurrentRange(const ProgramRegion* range) {
     program_range_ = range;
   }
+
+  const InlinedHashSet<NodeIndex>* GetNodeToExecute() {
+    return node_to_execute_;
+  }
+
+  void SetNodeToExecute(const InlinedHashSet<NodeIndex>* node_to_execute) {
+    node_to_execute_ = node_to_execute;
+  }
+
 #endif
 
  private:
@@ -151,12 +167,15 @@ public:
   const DeviceStreamCollection& device_stream_map_;
   std::vector<CountDownBarrier> count_down_barriers_;
   CountDownBarrier remain_tasks_;
-  const bool& terminate_flag_;
+  const bool* terminate_flag_ = nullptr;
   Status task_status_{Status::OK()};
   SessionScope* session_scope_{};
 #ifdef ENABLE_TRAINING
   const ProgramRegion* program_range_{nullptr};
   OrtValueCachePtr cache_{nullptr};
+  // TODO: this is mainly for ort trainer
+  // Should we deprecate it?
+  const InlinedHashSet<NodeIndex>* node_to_execute_{nullptr};
 #endif
   const bool single_thread_mode_;
 };
@@ -165,6 +184,6 @@ using NotificationIndex = size_t;
 
 void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since);
 void ScheduleDownstream(ExecutionContext& ctx,
-    onnxruntime::NotificationIndex notification_index,
-    bool single_thread_mode);
-}
+                        onnxruntime::NotificationIndex notification_index,
+                        bool single_thread_mode);
+}  // namespace onnxruntime
