@@ -1533,7 +1533,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
   AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
 
-  SequentialPlannerContext context(ExecutionMode::ORT_SEQUENTIAL, ExecutionOrder::DEFAULT, true);
+  SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
                                                     subgraphs_kernel_create_info_maps,

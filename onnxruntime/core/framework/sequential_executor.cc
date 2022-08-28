@@ -518,9 +518,8 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                        execution_plan->num_barriers,
                        logger,
                        device_streams,
-                       terminate_flag,
-                       single_thread_mode,
-                       /*reused_frame*/ nullptr);
+                       single_thread_mode);
+  ctx.SetTerminateFlag(&terminate_flag);
 #ifdef ENABLE_TRAINING
   if (only_execute_path_to_fetches) {
     auto* node_to_execute = session_state.GetToBeExecutedRange(fetch_mlvalue_idxs);
@@ -616,32 +615,10 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                           bool single_thread_mode,
                                           PartialGraphExecutionState& state,
                                           const OrtValueCachePtr& cache) {
-  auto& streams = device_streams.GetStreams();
-  std::shared_ptr<ExecutionFrame> execution_frame = state.GetExecutionFrame(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
-                                                                            fetch_allocators, session_state, &streams);
+  auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
+                                        fetch_allocators, session_state, logger, device_streams);
+  ctx.SetTerminateFlag(&terminate_flag);
   auto* execution_plan = session_state.GetExecutionPlan();
-  LOGS(logger, INFO) << "Number of streams: " << execution_plan->execution_plan.size();
-  int32_t valid_streams = 0;
-  for (auto& stream : execution_plan->execution_plan) {
-    if (stream && stream->steps_.size() > 0)
-      valid_streams++;
-  }
-
-  // prepare the execution context, notifications got initialized.
-  ExecutionContext ctx(session_state,
-                       valid_streams,
-                       execution_plan->notification_owners,
-                       feed_mlvalue_idxs,
-                       feeds,
-                       fetch_mlvalue_idxs,
-                       fetches,
-                       fetch_allocators,
-                       execution_plan->num_barriers,
-                       logger,
-                       device_streams,
-                       terminate_flag,
-                       single_thread_mode,
-                       execution_frame);
 
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));
 
@@ -655,7 +632,9 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
   for (size_t i = 0; i < execution_plan->execution_plan.size(); ++i) {
     if (!execution_plan->execution_plan[i]->steps_.empty()) {
       concurrency::ThreadPool::Schedule(tp, [i, &ctx]() {
-        RunSince(i, ctx, 0);
+        auto* range = ctx.GetCurrentRange();
+        size_t start = !range ? 0 : range->stream_pc_range[i].first;
+        RunSince(i, ctx, start);
       });
     }
   }

@@ -38,21 +38,49 @@ ProgramRegion& PartialGraphExecutionState::GetProgramRegions(const SessionState&
   return program_regions_.back();
 }
 
-std::shared_ptr<ExecutionFrame> PartialGraphExecutionState::GetExecutionFrame(gsl::span<const int> feed_mlvalue_idxs,
-                                                                              gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
-                                                                              gsl::span<const OrtValue> fetches,
-                                                                              const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                                                              const SessionState& session_state,
-                                                                              const std::vector<Stream*>* device_streams) {
-  if (execution_frame_ == nullptr) {
-    execution_frame_ = std::make_shared<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
-                                                        fetch_allocators, session_state, device_streams);
+DeviceStreamCollection& PartialGraphExecutionState::GetDeviceStreamCollection(size_t num_streams, const SessionState& session_state) {
+  if (device_stream_collection_ == nullptr) {
+    device_stream_collection_ = std::make_unique<DeviceStreamCollection>(num_streams, session_state);
+  }
+  return *device_stream_collection_;
+}
+
+ExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::span<const int>& feed_mlvalue_idxs, gsl::span<const OrtValue>& feeds,
+                                                                  gsl::span<const int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches,
+                                                                  const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                                                  const SessionState& session_state,
+                                                                  const logging::Logger& sess_logger,
+                                                                  const DeviceStreamCollection& device_streams) {
+  if (execution_context_ == nullptr) {
+    auto* execution_plan = session_state.GetExecutionPlan();
+    LOGS(sess_logger, INFO) << "Number of streams: " << execution_plan->execution_plan.size();
+    int32_t valid_streams = 0;
+    for (auto& stream : execution_plan->execution_plan) {
+      if (stream && stream->steps_.size() > 0)
+        valid_streams++;
+    }
+
+    execution_context_ = std::make_unique<ExecutionContext>(
+        session_state,
+        valid_streams,
+        execution_plan->notification_owners,
+        feed_mlvalue_idxs,
+        feeds,
+        fetch_mlvalue_idxs,
+        fetches,
+        fetch_allocators,
+        execution_plan->num_barriers,
+        sess_logger,
+        device_streams,
+        // partial executor in training can only be run with single thread
+        true);
   } else {
-    execution_frame_->UpdateFeeds(feed_mlvalue_idxs, feeds);
-    execution_frame_->UpdateFetches(fetch_mlvalue_idxs, fetches, session_state.GetInitializedTensors());
+    execution_context_->GetExecutionFrame()->UpdateFeeds(feed_mlvalue_idxs, feeds);
+    execution_context_->GetExecutionFrame()->UpdateFetches(fetch_mlvalue_idxs, fetches, session_state.GetInitializedTensors());
+    execution_context_->SetLogger(sess_logger);
   }
 
-  return execution_frame_;
+  return *execution_context_;
 }
 
 }  // namespace onnxruntime

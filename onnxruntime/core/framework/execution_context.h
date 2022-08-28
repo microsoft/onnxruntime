@@ -80,10 +80,8 @@ class ExecutionContext {
                    const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                    size_t num_barriers,
                    const logging::Logger& sess_logger,
-                   const DeviceStreamCollection& device_streams_map,
-                   const bool& terminate_flag,
-                   bool single_thread_mode,
-                   std::shared_ptr<ExecutionFrame> reused_frame);
+                   const DeviceStreamCollection& device_stream_map,
+                   bool single_thread_mode);
 
   const SessionState& GetSessionState() const;
 
@@ -93,7 +91,15 @@ class ExecutionContext {
 
   synchronize::Notification* GetNotification(size_t idx);
 
-  const bool& TerminateFlag() const;
+  bool TerminateFlag() const;
+
+  void SetLogger(const logging::Logger& current_logger) {
+    logger = &current_logger;
+  }
+
+  void SetTerminateFlag(const bool* terminate_flag) {
+    terminate_flag_ = terminate_flag;
+  }
 
   const Status& TaskStatus() const;
 
@@ -154,17 +160,14 @@ class ExecutionContext {
 
  private:
   const SessionState* session_state;
-  // in ORTModule, we want to keep the frame in the training agent and share it
-  // between forward/backward passes in multiple iterations. so use a shared_ptr.
-  // TODO: find a better way to transfer the ownership
-  std::shared_ptr<ExecutionFrame> frame;
+  std::unique_ptr<ExecutionFrame> frame;
   const logging::Logger* logger;
   std::vector<std::unique_ptr<synchronize::Notification>> notifications;
   std::unique_ptr<ReleasePlan> release_plan;
   const DeviceStreamCollection& device_stream_map_;
   std::vector<CountDownBarrier> count_down_barriers_;
   CountDownBarrier remain_tasks_;
-  const bool& terminate_flag_;
+  const bool* terminate_flag_ = nullptr;
   Status task_status_{Status::OK()};
   SessionScope* session_scope_{};
 #ifdef ENABLE_TRAINING

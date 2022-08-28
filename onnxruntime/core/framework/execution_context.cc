@@ -93,15 +93,12 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
                                    const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                    size_t num_barriers,
                                    const logging::Logger& sess_logger,
-                                   const DeviceStreamCollection& device_streams_map,
-                                   const bool& terminate_flag,
-                                   bool single_thread_mode,
-                                   std::shared_ptr<ExecutionFrame> reused_frame) : session_state(&sess_state),
-                                                                                   logger(&sess_logger),
-                                                                                   device_stream_map_(device_streams_map),
-                                                                                   count_down_barriers_(num_barriers),
-                                                                                   terminate_flag_(terminate_flag),
-                                                                                   single_thread_mode_(single_thread_mode) {
+                                   const DeviceStreamCollection& device_stream_map,
+                                   bool single_thread_mode) : session_state(&sess_state),
+                                                              logger(&sess_logger),
+                                                              device_stream_map_(device_stream_map),
+                                                              count_down_barriers_(num_barriers),
+                                                              single_thread_mode_(single_thread_mode) {
   auto& device_streams = device_stream_map_.GetStreams();
 
   for (size_t i = 0; i < notification_owners.size(); ++i) {
@@ -112,18 +109,9 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
       notifications.push_back(nullptr);
   }
 
-  if (!reused_frame) {
-    // create frame
-    frame = std::make_shared<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, sess_state, &device_streams);
-  } else {
-#ifdef ENABLE_TRAINING
-    frame = reused_frame;
-    // this is not thread safe, but current training is runnig with single thread
-    frame->SetDeviceStreams(&device_streams);
-#else
-    ORT_THROW("Reuse execution frame is not expected in inference build");
-#endif
-  }
+  // create frame
+  frame = std::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, sess_state, &device_streams);
+
   // init barreris
   for (size_t i = 0; i < num_barriers; ++i) {
     count_down_barriers_[i].Set(2);
@@ -147,7 +135,11 @@ ExecutionFrame* ExecutionContext::GetExecutionFrame() { return frame.get(); }
 
 synchronize::Notification* ExecutionContext::GetNotification(size_t idx) { return notifications[idx].get(); }
 
-const bool& ExecutionContext::TerminateFlag() const { return terminate_flag_; }
+bool ExecutionContext::TerminateFlag() const {
+  if (!terminate_flag_)
+    ORT_THROW("Terminate flag is not set");
+  return *terminate_flag_;
+}
 
 bool ExecutionContext::DecCountDownBarrier(size_t barrier_id) {
   return count_down_barriers_[barrier_id].Dec();
@@ -213,6 +205,51 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
   if (range)
     end = std::min(end, range->stream_pc_range[stream_idx].second);
 #endif
+
+  if (since >= end && since < logic_stream->steps_.size()) {
+#ifdef ENABLE_TRAINING
+    // this is a special handle for training
+    // with ORTModule, we are partially execute the graph with a shared context.
+    // there is a case that in forward pass we want to trigger downstream which
+    // not in current range. We need to execute one step to consume the Barrier
+    // counter otherwise later in backward the downstream won't execute correctly.
+    // this is ugly, hopefully we won't need to worry about if deprecate ORTModule
+    // by Torch Dynamo.
+    if (!ctx.TaskStatus().IsOK()) {
+      ctx.CompleteTask();
+      return;
+    }
+    if (ctx.TerminateFlag()) {
+      Status status_made = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
+      ctx.SetStatus(status_made);
+      ctx.CompleteTask();
+      return;
+    }
+    bool continue_flag = true;
+    Status status;
+    ORT_TRY {
+      status = logic_stream->steps_[since]->GetStepFun()(&ctx, stream_idx, continue_flag);
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
+      });
+    }
+    if (!status.IsOK()) {
+      // terminate it
+      ctx.SetStatus(status);
+      ctx.CompleteTask();
+      return;
+    }
+    if (continue_flag) {
+      ORT_THROW("Execute the barrier step in backward range passed! this is not expected.");
+    }
+    ctx.CompleteTask();
+    return;
+#else
+    ORT_THROW("Trigger execution beyond current range is not expected in inference build");
+#endif
+  }
 
   while (since < end) {
     if (!ctx.TaskStatus().IsOK()) {

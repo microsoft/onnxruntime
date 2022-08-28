@@ -153,8 +153,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
     if (copy_tensor_pairs != nullptr) {
       copy_tensor_pairs->push_back({source_tensor, *p_output_tensor, stream});
     } else {
-      ORT_RETURN_IF_ERROR(stream ? session_state.GetDataTransferMgr().CopyTensorAsync(source_tensor, *p_output_tensor, stream) :
-                                   session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
+      ORT_RETURN_IF_ERROR(stream ? session_state.GetDataTransferMgr().CopyTensorAsync(source_tensor, *p_output_tensor, stream) : session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
     }
   } else if (source_mlvalue.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -185,8 +184,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
       if (copy_tensor_pairs != nullptr) {
         copy_tensor_pairs->push_back({*source_iter, const_cast<Tensor&>(*target_iter), stream});
       } else {
-        ORT_RETURN_IF_ERROR(stream ? session_state.GetDataTransferMgr().CopyTensorAsync(*source_iter, const_cast<Tensor&>(*target_iter), stream) :
-            session_state.GetDataTransferMgr().CopyTensor(*source_iter, const_cast<Tensor&>(*target_iter)));
+        ORT_RETURN_IF_ERROR(stream ? session_state.GetDataTransferMgr().CopyTensorAsync(*source_iter, const_cast<Tensor&>(*target_iter), stream) : session_state.GetDataTransferMgr().CopyTensor(*source_iter, const_cast<Tensor&>(*target_iter)));
       }
       ++source_iter;
       ++target_iter;
@@ -532,7 +530,6 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        ExecutionMode /*execution_mode*/, const bool& terminate_flag,
                                        const logging::Logger& logger, const bool only_execute_path_to_fetches = false,
                                        Stream* parent_stream = nullptr) {
-
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
   auto* execution_plan = session_state.GetExecutionPlan();
@@ -556,14 +553,14 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
   if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
     // no device copies are needed so simple execute
     auto ret = ExecuteThePlan(session_state,
-                                feeds_fetches_info.feeds_mlvalue_idxs, feeds,
-                                feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
-                                logger,
-                                device_stream_collection,
-                                terminate_flag,
-                                only_execute_path_to_fetches,
-                                // single thread mode
-                                single_thread_mode);
+                              feeds_fetches_info.feeds_mlvalue_idxs, feeds,
+                              feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
+                              logger,
+                              device_stream_collection,
+                              terminate_flag,
+                              only_execute_path_to_fetches,
+                              // single thread mode
+                              single_thread_mode);
     ORT_RETURN_IF_ERROR(ret);
   } else {
     auto feeds_to_use = feeds;
@@ -661,7 +658,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
   bool single_thread_mode = true;
 
   auto* execution_plan = session_state.GetExecutionPlan();
-  DeviceStreamCollection device_stream_collection(execution_plan->execution_plan.size(), session_state);
+  DeviceStreamCollection& device_stream_collection = state.GetDeviceStreamCollection(execution_plan->execution_plan.size(), session_state);
 
   ORT_ENFORCE(BindToDeviceStream(parent_stream, *execution_plan, device_stream_collection, session_state.GetStreamHandleRegistryInstance()).IsOK());
   // see if we can skip copies due to the types of execution providers available
@@ -709,15 +706,15 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
     }
 
     ORT_RETURN_IF_ERROR(PartialExecuteThePlan(session_state,
-                                     feeds_fetches_info.feeds_mlvalue_idxs, p_feeds,
-                                     feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, {},
-                                     logger,
-                                     device_stream_collection,
-                                     terminate_flag,
-                                     // single thread mode
-                                     single_thread_mode,
-                                     state,
-                                     cache));
+                                              feeds_fetches_info.feeds_mlvalue_idxs, p_feeds,
+                                              feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, {},
+                                              logger,
+                                              device_stream_collection,
+                                              terminate_flag,
+                                              // single thread mode
+                                              single_thread_mode,
+                                              state,
+                                              cache));
 
     std::vector<Stream*> fetches_streams;
     auto& value_to_stream_map = execution_plan->value_to_stream_map;
@@ -736,6 +733,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
       ORT_RETURN_IF_ERROR(CopyOutputsAcrossDevices(session_state, *p_fetches, fetches, fetch_copy_info, fetches_streams));
     }
+    // training don't want to flush the stream
   }
 
   return Status::OK();

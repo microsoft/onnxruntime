@@ -2107,17 +2107,17 @@ class PlannerImpl {
           execution_plan[i]->steps_.emplace_back(std::make_unique<ActivateNotificationStep>(notification_index));
 #ifdef ENABLE_TRAINING
           // calculate the min consmer;
-          auto& order = graph_viewer_.GetNodesInTopologicalOrder();
-          size_t distance = graph_viewer_.NumberOfNodes();
-          for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-            auto order_it = std::find(order.begin(), order.end(), it->Index());
-            size_t cur_distance = std::distance(order.begin(), order_it);
-            distance = std::min(distance, cur_distance);
-          }
-          // if node doesn't have any consumer, use the current node index
-          auto consumer_index = distance < order.size() ? order[distance] : node_index;
-          // set the notification step as the triggering part of next node.
-          execution_plan[i]->step_pc.push_back(consumer_index);
+          // auto& order = graph_viewer_.GetNodesInTopologicalOrder();
+          // size_t distance = graph_viewer_.NumberOfNodes();
+          // for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+          //   auto order_it = std::find(order.begin(), order.end(), it->Index());
+          //   size_t cur_distance = std::distance(order.begin(), order_it);
+          //   distance = std::min(distance, cur_distance);
+          // }
+          // // if node doesn't have any consumer, use the current node index
+          // auto consumer_index = distance < order.size() ? order[distance] : node_index;
+          // // set the notification step as the triggering part of next node.
+          execution_plan[i]->step_pc.push_back(node_index);
 #endif
           if (no_down_stream_notifications.find(notification_index) == no_down_stream_notifications.end()) {
             // notify downstreams
