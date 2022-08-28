@@ -260,7 +260,17 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
 
 std::string GetEnvironmentVar(const std::string& var_name);
 
+namespace profiling {
+
+  std::string demangle(const char* name);
+  std::string demangle(const std::string& name);
+
+};
+
 namespace logging {
+
+  unsigned int GetThreadId();
+  unsigned int GetProcessId();
 
 struct Category {
   static const char* onnxruntime;  ///< General output
