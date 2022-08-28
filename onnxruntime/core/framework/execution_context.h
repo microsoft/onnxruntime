@@ -91,7 +91,7 @@ class ExecutionContext {
 
   synchronize::Notification* GetNotification(size_t idx);
 
-  bool TerminateFlag() const;
+  const bool* TerminateFlag() const;
 
   void SetLogger(const logging::Logger& current_logger) {
     logger = &current_logger;

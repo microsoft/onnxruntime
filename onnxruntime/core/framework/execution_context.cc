@@ -140,10 +140,10 @@ ExecutionFrame* ExecutionContext::GetExecutionFrame() { return frame.get(); }
 
 synchronize::Notification* ExecutionContext::GetNotification(size_t idx) { return notifications[idx].get(); }
 
-bool ExecutionContext::TerminateFlag() const {
+const bool* ExecutionContext::TerminateFlag() const {
   if (!terminate_flag_)
     ORT_THROW("Terminate flag is not set");
-  return *terminate_flag_;
+  return terminate_flag_;
 }
 
 bool ExecutionContext::DecCountDownBarrier(size_t barrier_id) {
@@ -224,7 +224,7 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
       ctx.CompleteTask();
       return;
     }
-    if (ctx.TerminateFlag()) {
+    if (*ctx.TerminateFlag()) {
       Status status_made = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
       ctx.SetStatus(status_made);
       ctx.CompleteTask();
@@ -261,7 +261,7 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
       ctx.CompleteTask();
       return;
     }
-    if (ctx.TerminateFlag()) {
+    if (*ctx.TerminateFlag()) {
       Status status_made = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
       ctx.SetStatus(status_made);
       ctx.CompleteTask();

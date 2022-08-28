@@ -527,7 +527,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const FeedsFetchesManager& feeds_fetches_manager,
                                        gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                        const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                       ExecutionMode /*execution_mode*/, const bool& terminate_flag,
+                                       ExecutionMode /*execution_mode*/, const bool* terminate_flag,
                                        const logging::Logger& logger, const bool only_execute_path_to_fetches = false,
                                        Stream* parent_stream = nullptr) {
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
@@ -637,7 +637,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
 
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
-                                 execution_mode, terminate_flag, logger, only_execute_path_to_fetches, parent_stream);
+                                 execution_mode, &terminate_flag, logger, only_execute_path_to_fetches, parent_stream);
 
   return status;
 }
@@ -669,7 +669,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
                                      feeds_fetches_info.fetches_mlvalue_idxs, fetches, {},
                                      logger,
                                      device_stream_collection,
-                                     terminate_flag,
+                                     &terminate_flag,
                                      // single thread mode
                                      single_thread_mode,
                                      state,
@@ -710,7 +710,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
                                               feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, {},
                                               logger,
                                               device_stream_collection,
-                                              terminate_flag,
+                                              &terminate_flag,
                                               // single thread mode
                                               single_thread_mode,
                                               state,
@@ -743,7 +743,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
+                               ExecutionMode execution_mode, const bool* terminate_flag, const logging::Logger& logger,
                                Stream* parent_stream) {
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
                                  execution_mode, terminate_flag, logger, false, parent_stream);
