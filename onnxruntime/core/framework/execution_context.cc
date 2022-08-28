@@ -9,8 +9,12 @@ namespace onnxruntime {
 
 class DeviceStreamCollectionImpl {
  public:
-  DeviceStreamCollectionImpl(size_t num_streams, const SessionState& sess_state) : num_streams_(num_streams), sess_state_(sess_state) {
+  DeviceStreamCollectionImpl(size_t num_streams, const SessionState& sess_state) : num_streams_(num_streams) {
     device_streams_.resize(num_streams, nullptr);
+    auto& providers = sess_state.GetExecutionProviders();
+    for (auto& ep : providers) {
+      eps_.push_back(ep);
+    }
   }
 
   virtual ~DeviceStreamCollectionImpl() {
@@ -20,10 +24,9 @@ class DeviceStreamCollectionImpl {
       }
     }
     // only clean the streams that is owned by current context
-    auto& providers = sess_state_.GetExecutionProviders();
     for (auto& stream : device_streams_containers) {
       if (stream) {
-        for (auto& ep : providers) {
+        for (auto& ep : eps_) {
           auto& allocators = ep->GetAllocators();
           for (auto& alloc : allocators) {
             if (alloc->Info().device == stream->device &&
@@ -61,7 +64,9 @@ class DeviceStreamCollectionImpl {
   size_t num_streams_;
   std::vector<Stream*> device_streams_;
   std::vector<std::unique_ptr<Stream>> device_streams_containers;
-  const SessionState& sess_state_;
+  // due to training's partial execution, the device streams collection may need to be hold
+  // with a different lifetime of session state, we need to hold the reference of EPs.
+  std::vector<std::shared_ptr<IExecutionProvider>> eps_;
 };
 
 DeviceStreamCollection::DeviceStreamCollection(size_t num_streams, const SessionState& sess_state) : impl_(std::make_unique<DeviceStreamCollectionImpl>(num_streams, sess_state)) {}
