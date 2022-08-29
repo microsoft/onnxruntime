@@ -20,8 +20,8 @@ def skip_layer_norm(input, skip, bias, gamma, beta, epsilon):
     val = input + skip + bias
     u = np.mean(val, axis=(2,))
     s = np.var(val, axis=(2,))
-    y = val - u[...,None]
-    y = y / np.sqrt(s + epsilon)[...,None]
+    y = val - u[..., None]
+    y = y / np.sqrt(s + epsilon)[..., None]
     y = y * gamma + beta
     return y
 
@@ -93,8 +93,8 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func):
         seq_len,
         hidden_size,
         f,
-        f"{t*1000:.2f} us",
-        f"{(x.size*3+bias.size*3)*x.itemsize*1e3/t/1e9:.2f} GB/s",
+        f"{t * 1000:.2f} us",
+        f"{(x.size * 3 + bias.size * 3) * x.itemsize * 1e3 / t / 1e9:.2f} GB/s",
     )
 
 
