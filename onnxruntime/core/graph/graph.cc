@@ -3815,11 +3815,11 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
                              func_meta_def->domain);
 
   fused_node.SetNodeType(Node::Type::Fused);
+  fused_node.SetSinceVersion(func_meta_def->since_version);
+
 #if !defined(ORT_MINIMAL_BUILD)
   // if this is a full build create the lightweight Function implementation that provides the schema so that
   // kernel lookup works as per usual, if not using an existing schema.
-  // in an extended minimal build we do the lookup via a hash so don't need a schema.
-  fused_node.SetSinceVersion(func_meta_def->since_version);
   if (sub_graph.use_existing_schema) {
     ORT_ENFORCE(SetOpSchemaFromRegistryForNode(fused_node),
                 "Schema was not found for fused node. Domain:", fused_node.Domain(), " OpType:", fused_node.OpType());
