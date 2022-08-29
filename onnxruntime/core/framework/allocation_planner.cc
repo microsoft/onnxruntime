@@ -2065,16 +2065,15 @@ class PlannerImpl {
             // collect the inputs arguments from input node.
             // if the arguments are on same cpu device, then don't need to wait on notification
             // barrier is enough
-            auto& producer_outputs = it->OutputDefs();
             bool require_wait = false;
             for (auto* input : node->InputDefs()) {
               if (!input->Exists())
                 continue;
-              if (std::find(producer_outputs.begin(), producer_outputs.end(), input) != producer_outputs.end() &&
+              if (std::find(it->OutputDefs().begin(), it->OutputDefs().end(), input) != it->OutputDefs().end() &&
                   // for the case when we wait on a cpu tensor generated from device kernel (for example, shape kernel)
                   // we don't need to wait on notificaiton.
-                 (plan_.allocation_plan[Index(input->Name())].location.device != plan_.execution_plan[i]->device_ ||
-                  plan_.allocation_plan[Index(input->Name())].location.device.Type() != OrtDevice::CPU)){
+                  (plan_.allocation_plan[Index(input->Name())].location.device != plan_.execution_plan[i]->device_ ||
+                   plan_.allocation_plan[Index(input->Name())].location.device.Type() != OrtDevice::CPU)) {
                 require_wait = true;
                 break;
               }
