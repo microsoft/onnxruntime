@@ -189,7 +189,6 @@ def quantize_static(
         )
 
 
-
 def quantize_dynamic(
     model_input: Path,
     model_output: Path,
