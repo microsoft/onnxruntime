@@ -28,7 +28,7 @@ static int GetVersionForDomain(const std::string& domain, const M<std::string, i
 
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
     const Graph& graph,
-    const IndexedSubGraph& nodes_to_fuse, bool any_constraint_enabled) {
+    const IndexedSubGraph& nodes_to_fuse, bool allow_anytype_tensor) {
   const auto* meta_def = nodes_to_fuse.GetMetaDef();
 
   using ONNX_NAMESPACE::OpSchema;
@@ -40,7 +40,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
   if (meta_def->type_and_shape_inference_function) {
     op_schema->TypeAndShapeInferenceFunction(meta_def->type_and_shape_inference_function);
   }
-  if (any_constraint_enabled) {
+  if (allow_anytype_tensor) {
     // we manually check if the node is supported in the EP, so if we ever create a node in our custom domain
     // we know it's supported. due to that the type constraints here don't really matter - they just need to be cover
     // all valid values. extra types for a specific input or output don't hurt.
@@ -53,7 +53,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
 
   for (size_t i = 0; i < meta_def->inputs.size(); ++i) {
     const auto& input = meta_def->inputs[i];
-    if (any_constraint_enabled) {
+    if (allow_anytype_tensor) {
       op_schema->Input(gsl::narrow_cast<int>(i), input, "",
                        i == 0 ? "T" : "T_ANY", OpSchema::FormalParameterOption::Single, false);
     } else {
@@ -65,7 +65,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
   }
   for (size_t i = 0; i < meta_def->outputs.size(); i++) {
     const auto& output = meta_def->outputs[i];
-    if (any_constraint_enabled) {
+    if (allow_anytype_tensor) {
       op_schema->Output(gsl::narrow_cast<int>(i), output, "",
                         i == 0 ? "T" : "T_ANY", OpSchema::FormalParameterOption::Single, false);
     } else {

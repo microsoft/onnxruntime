@@ -52,9 +52,11 @@ template <typename T>
 struct Offset;
 }  // namespace flatbuffers
 
+#if !defined(ORT_MINIMAL_BUILD)
 namespace ONNX_NAMESPACE {
 class OpSchema;
 }  // namespace ONNX_NAMESPACE
+#endif
 
 namespace onnxruntime {
 class Graph;

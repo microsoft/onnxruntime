@@ -3824,13 +3824,12 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
     ORT_ENFORCE(SetOpSchemaFromRegistryForNode(fused_node),
                 "Schema was not found for fused node. Domain:", fused_node.Domain(), " OpType:", fused_node.OpType());
   } else if (SourceOfSchema::DYNAMIC_REUSABLE == sub_graph.schema_source) {
-    // Need to think about "Does The key require since_version as a component"
-    auto schema_key = onnxruntime::MakeString(sub_graph.GetMetaDef()->domain, "_",
+    auto schema_key = MakeString(sub_graph.GetMetaDef()->domain, "_",
                                               sub_graph.GetMetaDef()->name);
     if (!fused_schemas_map_.contains(schema_key)) {
       fused_schemas_map_.emplace(
           schema_key,
-          function_utils::CreateSchema(*this, sub_graph, /*any_constraint_enabled=*/true));
+          function_utils::CreateSchema(*this, sub_graph, /*allow_anytype_tensor=*/true));
     }
 
     fused_node.op_ = fused_schemas_map_[schema_key].get();
@@ -3865,14 +3864,13 @@ void Graph::CancelFuseSubGraph(const Node& fused_node) {
   if (fused_schemas_map_.contains(schema_key)) {
     fused_schemas_map_.erase(schema_key);
   } else {
-    auto* it = std::find_if(
-        fused_schemas_containers_.begin(), fused_schemas_containers_.end(),
-        [temp_schema_ptr](const std::unique_ptr<ONNX_NAMESPACE::OpSchema>& schema) {
-          return schema.get() == temp_schema_ptr;
-        });
-    if (it != fused_schemas_containers_.end()) {
-      fused_schemas_containers_.erase(it);
-    }
+    fused_schemas_containers_.erase(
+        std::remove_if(
+            fused_schemas_containers_.begin(), fused_schemas_containers_.end(),
+            [temp_schema_ptr](const std::unique_ptr<ONNX_NAMESPACE::OpSchema>& schema) {
+              return schema.get() == temp_schema_ptr;
+            }),
+        fused_schemas_containers_.end());
   }
 #endif
 
