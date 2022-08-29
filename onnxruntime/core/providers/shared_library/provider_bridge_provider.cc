@@ -350,7 +350,17 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
   return g_host->GetCpuPreferredNodes(graph, provider_type, kernel_registries, kernel_type_str_resolver, tentative_nodes);
 }
 
+namespace profiling {
+
+std::string demangle(const char* name) { return g_host->demangle(name); }
+std::string demangle(const std::string& name) { return g_host->demangle(name); }
+
+}  // namespace profiling
+
 namespace logging {
+
+unsigned int GetThreadId() { return g_host->GetThreadId(); }
+unsigned int GetProcessId() { return g_host->GetProcessId(); }
 
 const char* Category::onnxruntime = "onnxruntime";
 
@@ -373,6 +383,10 @@ Status::Status(StatusCategory category, int code, const char* msg) {
 }
 
 Status::Status(StatusCategory category, int code) : Status(category, code, "") {
+}
+
+StatusCategory Status::Category() const noexcept {
+  return IsOK() ? StatusCategory::NONE : state_->category;
 }
 
 int Status::Code() const noexcept {

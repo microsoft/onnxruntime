@@ -1,0 +1,256 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.NnapiFlags
+  commentId: T:Microsoft.ML.OnnxRuntime.NnapiFlags
+  id: NnapiFlags
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_CPU_DISABLED
+  - Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_CPU_ONLY
+  - Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_LAST
+  - Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_USE_FP16
+  - Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_USE_NCHW
+  - Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_USE_NONE
+  langs:
+  - csharp
+  - vb
+  name: NnapiFlags
+  nameWithType: NnapiFlags
+  fullName: Microsoft.ML.OnnxRuntime.NnapiFlags
+  type: Enum
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: NnapiFlags
+    path: ../src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+    startLine: 264
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nNNAPI flags for use with SessionOptions\n"
+  example: []
+  syntax:
+    content: >-
+      [Flags]
+
+      public enum NnapiFlags
+    content.vb: >-
+      <Flags>
+
+      Public Enum NnapiFlags
+  attributes:
+  - type: System.FlagsAttribute
+    ctor: System.FlagsAttribute.#ctor
+    arguments: []
+  modifiers.csharp:
+  - public
+  - enum
+  modifiers.vb:
+  - Public
+  - Enum
+- uid: Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_USE_NONE
+  commentId: F:Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_USE_NONE
+  id: NNAPI_FLAG_USE_NONE
+  parent: Microsoft.ML.OnnxRuntime.NnapiFlags
+  langs:
+  - csharp
+  - vb
+  name: NNAPI_FLAG_USE_NONE
+  nameWithType: NnapiFlags.NNAPI_FLAG_USE_NONE
+  fullName: Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_USE_NONE
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: NNAPI_FLAG_USE_NONE
+    path: ../src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+    startLine: 267
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: NNAPI_FLAG_USE_NONE = 0
+    return:
+      type: Microsoft.ML.OnnxRuntime.NnapiFlags
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_USE_FP16
+  commentId: F:Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_USE_FP16
+  id: NNAPI_FLAG_USE_FP16
+  parent: Microsoft.ML.OnnxRuntime.NnapiFlags
+  langs:
+  - csharp
+  - vb
+  name: NNAPI_FLAG_USE_FP16
+  nameWithType: NnapiFlags.NNAPI_FLAG_USE_FP16
+  fullName: Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_USE_FP16
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: NNAPI_FLAG_USE_FP16
+    path: ../src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+    startLine: 268
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: NNAPI_FLAG_USE_FP16 = 1
+    return:
+      type: Microsoft.ML.OnnxRuntime.NnapiFlags
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_USE_NCHW
+  commentId: F:Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_USE_NCHW
+  id: NNAPI_FLAG_USE_NCHW
+  parent: Microsoft.ML.OnnxRuntime.NnapiFlags
+  langs:
+  - csharp
+  - vb
+  name: NNAPI_FLAG_USE_NCHW
+  nameWithType: NnapiFlags.NNAPI_FLAG_USE_NCHW
+  fullName: Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_USE_NCHW
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: NNAPI_FLAG_USE_NCHW
+    path: ../src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+    startLine: 269
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: NNAPI_FLAG_USE_NCHW = 2
+    return:
+      type: Microsoft.ML.OnnxRuntime.NnapiFlags
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_CPU_DISABLED
+  commentId: F:Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_CPU_DISABLED
+  id: NNAPI_FLAG_CPU_DISABLED
+  parent: Microsoft.ML.OnnxRuntime.NnapiFlags
+  langs:
+  - csharp
+  - vb
+  name: NNAPI_FLAG_CPU_DISABLED
+  nameWithType: NnapiFlags.NNAPI_FLAG_CPU_DISABLED
+  fullName: Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_CPU_DISABLED
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: NNAPI_FLAG_CPU_DISABLED
+    path: ../src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+    startLine: 270
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: NNAPI_FLAG_CPU_DISABLED = 4
+    return:
+      type: Microsoft.ML.OnnxRuntime.NnapiFlags
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_CPU_ONLY
+  commentId: F:Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_CPU_ONLY
+  id: NNAPI_FLAG_CPU_ONLY
+  parent: Microsoft.ML.OnnxRuntime.NnapiFlags
+  langs:
+  - csharp
+  - vb
+  name: NNAPI_FLAG_CPU_ONLY
+  nameWithType: NnapiFlags.NNAPI_FLAG_CPU_ONLY
+  fullName: Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_CPU_ONLY
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: NNAPI_FLAG_CPU_ONLY
+    path: ../src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+    startLine: 271
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: NNAPI_FLAG_CPU_ONLY = 8
+    return:
+      type: Microsoft.ML.OnnxRuntime.NnapiFlags
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_LAST
+  commentId: F:Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_LAST
+  id: NNAPI_FLAG_LAST
+  parent: Microsoft.ML.OnnxRuntime.NnapiFlags
+  langs:
+  - csharp
+  - vb
+  name: NNAPI_FLAG_LAST
+  nameWithType: NnapiFlags.NNAPI_FLAG_LAST
+  fullName: Microsoft.ML.OnnxRuntime.NnapiFlags.NNAPI_FLAG_LAST
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: NNAPI_FLAG_LAST
+    path: ../src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+    startLine: 272
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: NNAPI_FLAG_LAST = 8
+    return:
+      type: Microsoft.ML.OnnxRuntime.NnapiFlags
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: Microsoft.ML.OnnxRuntime.NnapiFlags
+  commentId: T:Microsoft.ML.OnnxRuntime.NnapiFlags
+  parent: Microsoft.ML.OnnxRuntime
+  name: NnapiFlags
+  nameWithType: NnapiFlags
+  fullName: Microsoft.ML.OnnxRuntime.NnapiFlags
