@@ -38,7 +38,7 @@ def quant_pre_process(
 ) -> None:
     """Shape inference and model optimization, in preparation for quantization.
 
-    Arg:
+    Args:
         input_model_path: Path to the input model file")
         output_model_path: Path to the output model file
         skip_optimization: Skip model optimization step if true. This may result in ONNX shape
@@ -149,15 +149,17 @@ Consists of three optional steps:
 2. Model optimization.
 3. ONNX shape inference.
 
-Quantization requires tensor shape information to perform its best. Model optimization
-also improve the performance of quantization. For instance, a Convolution node followed
-by a BatchNormalization node can be merged into a single node during optimization.
-However, currently we can not quantize BatchNormalization by itself.
+Model quantization with QDQ format, i.e. inserting QuantizeLinear/DeQuantizeLinear on
+the tensor, requires tensor shape information to perform its best. Currently, shape inferencing
+works best with optimized model. As a result, it is highly recommended to run quantization
+on optimized model with shape information. This is the tool for optimization and shape
+inferencing.
 
-Unfortunately for now, model optimization can not handle large models with size
-greater than 2GB. Rerun pre-processing with `--skip_optimization' if optimization
-fails.
-"""
+Essentially this tool performs the following three (skippable) steps:
+
+1. Symbolic shape inference.
+2. Model optimization
+3. ONNX shape inference"""
     )
 
     parser.add_argument("--input", required=True, help="Path to the input model file")
