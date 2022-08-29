@@ -13,6 +13,9 @@ class AttentionQuant(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
+    def should_quantize(self):
+        return self.quantizer.should_quantize_node(self.node)
+
     def quantize(self):
         """
         parameter node: Attention node.

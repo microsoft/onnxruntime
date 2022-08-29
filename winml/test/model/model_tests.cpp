@@ -173,8 +173,6 @@ std::string GetTestDataPath() {
 static std::vector<ITestCase*> GetAllTestCases() {
   std::vector<ITestCase*> tests;
   std::vector<std::basic_string<PATH_CHAR_TYPE>> whitelistedTestCases;
-  double perSampleTolerance = 1e-3;
-  double relativePerSampleTolerance = 1e-3;
   std::unordered_set<std::basic_string<ORTCHAR_T>> allDisabledTests;
   std::vector<std::basic_string<PATH_CHAR_TYPE>> dataDirs;
   auto testDataPath = GetTestDataPath();
@@ -229,9 +227,11 @@ static std::vector<ITestCase*> GetAllTestCases() {
   };
   allDisabledTests.insert(std::begin(x86DisabledTests), std::end(x86DisabledTests));
 #endif
+// Bad onnx test output caused by previously wrong SAME_UPPER/SAME_LOWER for ConvTranspose
+allDisabledTests.insert(ORT_TSTR("cntk_simple_seg"));
 
   
-  WINML_EXPECT_NO_THROW(LoadTests(dataDirs, whitelistedTestCases, perSampleTolerance, relativePerSampleTolerance,
+  WINML_EXPECT_NO_THROW(LoadTests(dataDirs, whitelistedTestCases, TestTolerances(1e-3, 1e-3, {}, {}),
                                   allDisabledTests,
                                   [&tests](std::unique_ptr<ITestCase> l) {
                                     tests.push_back(l.get());

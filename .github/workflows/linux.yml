@@ -19,10 +19,10 @@ jobs:
            architecture: 'x64'
        - name: 'Setup TVM EP requirements'
          run: |
-           set -e -x 
+           set -e -x
            sudo apt-get update
-           sudo apt-get install -y libtinfo-dev zlib1g-dev build-essential libedit-dev libxml2-dev
+           sudo apt-get install -y libtinfo-dev zlib1g-dev build-essential libedit-dev libxml2-dev nasm
            python3 -m pip install -r ${{ github.workspace }}/tools/ci_build/github/linux/tvm/requirements.txt
        - name: 'Build and Test'
          run: |
-           python3 ${{ github.workspace }}/tools/ci_build/build.py --build_dir build --config Release --skip_submodule_sync --parallel --enable_pybind --disable_contrib_ops --disable_ml_ops --skip_onnx_tests --use_tvm --ctest_path ""
+           python3 ${{ github.workspace }}/tools/ci_build/build.py --build_dir build --config Release --skip_submodule_sync --parallel --enable_pybind --disable_contrib_ops --disable_ml_ops --skip_onnx_tests --use_tvm --use_tvm_hash --ctest_path ""

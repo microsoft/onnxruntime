@@ -13,14 +13,14 @@ namespace OperatorHelper
 
     // Convert any negative axis into an absolute axis relative to the back end.
     // So given 3 dimensions, a -1 refers to axis 2, and -3 to axis 0.
-    uint32_t HandleNegativeAxis(int32_t signedOnnxAxis, uint32_t dimCount)
+    uint32_t HandleNegativeAxis(int32_t signedOnnxAxis, uint32_t dimCount, bool validateAxis)
     {
         if (signedOnnxAxis < 0)
         {
             signedOnnxAxis += dimCount;
         }
         uint32_t absoluteAxis = gsl::narrow_cast<uint32_t>(signedOnnxAxis);
-        ML_CHECK_VALID_ARGUMENT(absoluteAxis < dimCount);
+        ML_CHECK_VALID_ARGUMENT(!validateAxis || absoluteAxis < dimCount);
         return absoluteAxis;
     }
 
@@ -721,7 +721,7 @@ namespace OperatorHelper
                 int paddings = gsl::narrow_cast<int>((inputDimensions[i + dimOffset] - 1) * stride + windowSize - m_outputShapes[0].GetShape()[i + dimOffset]);
                 paddings = std::max<int>(0, paddings);
 
-                m_kernel.startPadding[i] = m_kernel.autoPadSameUpper ? (paddings + 1) / 2 : paddings / 2;
+                m_kernel.startPadding[i] = m_kernel.autoPadSameUpper ? paddings / 2 : (paddings + 1) / 2;
                 m_kernel.endPadding[i] = paddings - m_kernel.startPadding[i];
             }
         }
@@ -1852,8 +1852,14 @@ namespace OperatorHelper
             m_axes = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Axes);
         }
         std::vector<DimensionType> inputDimensions = shapeInformation.GetInputTensorShape(0);
+
         HandleNegativeAxes(/*inout*/ m_axes, gsl::narrow_cast<uint32_t>(inputDimensions.size()));
         std::sort(m_axes.begin(), m_axes.end());
+        if (m_axes.empty())
+        {
+            m_axes.resize(inputDimensions.size());
+            std::iota(m_axes.begin(), m_axes.end(), 0u);
+        }
     }
 
     std::vector<EdgeShapes> SqueezeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1971,32 +1977,44 @@ namespace OperatorHelper
         int inferDim = -1;
 
         DimensionType inElementCount = ComputeElementCountFromDimensions(inputDimensions);
+        bool allowZero = shapeInfo.template GetOptionalAttribute<int32_t>(AttrName::AllowZero, 0);
 
-        for (int i = 0, ci = gsl::narrow_cast<int>(m_shapeDims.size()); i < ci; ++i)
+        if (allowZero)
         {
-            switch (m_shapeDims[i])
+            // Just take the shape directly (no special handling for 0).
+            for (int i = 0, ci = gsl::narrow_cast<int>(m_shapeDims.size()); i < ci; ++i)
             {
-            case -1:
-                ML_CHECK_VALID_ARGUMENT(inferDim == -1, "Only one dimension can be inferred.");
-                inferDim = i;
-                break;
-
-            case 0:
-                outputDimensions[i] = inputDimensions[i];
-                outElementCount *= outputDimensions[i];
-                break;
-
-            default:
                 outputDimensions[i] = m_shapeDims[i];
-                outElementCount *= outputDimensions[i];
-                break;
             }
         }
-
-        if (inferDim != -1)
+        else
         {
-            outputDimensions[inferDim] = inElementCount / outElementCount;
-            outElementCount *= outputDimensions[inferDim];
+            // Special handling where 0 size means to copy the corresponding input tensor dimension.
+            for (int i = 0, ci = gsl::narrow_cast<int>(m_shapeDims.size()); i < ci; ++i)
+            {
+                switch (m_shapeDims[i])
+                {
+                case -1:
+                    ML_CHECK_VALID_ARGUMENT(inferDim == -1, "Only one dimension can be inferred.");
+                    inferDim = i;
+                    break;
+
+                case 0:
+                    outputDimensions[i] = inputDimensions[i];
+                    outElementCount *= outputDimensions[i];
+                    break;
+
+                default:
+                    outputDimensions[i] = m_shapeDims[i];
+                    outElementCount *= outputDimensions[i];
+                    break;
+                }
+            }
+
+            if (inferDim != -1)
+            {
+                outputDimensions[inferDim] = inElementCount / outElementCount;
+            }
         }
         
         return { EdgeShapes(outputDimensions) };
@@ -2239,6 +2257,29 @@ namespace OperatorHelper
     std::vector<EdgeShapes> OneHotHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         return { EdgeShapes(m_outputDimensions) };
+    }
+
+    void BatchNormalizationHelper::Initialize(
+        const IKernelInformationAdapter& kernelInformation,
+        const IShapeInformationAdapter& shapeInformation
+        )
+    {
+        ML_CHECK_VALID_ARGUMENT(kernelInformation.GetInputCount() == 5);
+        ML_CHECK_VALID_ARGUMENT(kernelInformation.GetOutputCount() >= 1 && kernelInformation.GetOutputCount() <= 3);
+    }
+
+    std::vector<EdgeShapes> BatchNormalizationHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInformation) const
+    {
+        std::vector<EdgeShapes> outputDimensionsList;
+
+        outputDimensionsList.push_back(EdgeShapes(shapeInformation.GetInputTensorShape(0))); // output.shape = input.shape
+        int32_t trainingMode = shapeInformation.GetOptionalAttribute<int32_t>(AttrName::TrainingMode, 0);
+        if (trainingMode && shapeInformation.GetOutputCount() >= 3)
+        {
+            outputDimensionsList.push_back(EdgeShapes(shapeInformation.GetInputTensorShape(3))); // running_mean.shape = input_mean.shape
+            outputDimensionsList.push_back(EdgeShapes(shapeInformation.GetInputTensorShape(4))); // running_variance.shape = input_variance.shape
+        }
+        return outputDimensionsList;
     }
 
 } // namespace OperatorHelper

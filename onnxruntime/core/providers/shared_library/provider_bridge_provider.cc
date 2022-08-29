@@ -31,6 +31,7 @@
 #include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
 #include "contrib_ops/cpu/bert/longformer_attention_base.h"
 #include "contrib_ops/cpu/transformers/beam_search.h"
+#include "contrib_ops/cpu/transformers/greedy_search.h"
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op.h"
 #endif
@@ -39,6 +40,7 @@
 #ifdef ENABLE_TRAINING
 #include "orttraining/training_ops/cpu/controlflow/group.h"
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
+#include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
@@ -346,7 +348,17 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
   return g_host->GetCpuPreferredNodes(graph, provider_type, kernel_registries, tentative_nodes);
 }
 
+namespace profiling {
+
+std::string demangle(const char* name) { return g_host->demangle(name); }
+std::string demangle(const std::string& name) { return g_host->demangle(name); }
+
+}  // namespace profiling
+
 namespace logging {
+
+unsigned int GetThreadId() { return g_host->GetThreadId(); }
+unsigned int GetProcessId() { return g_host->GetProcessId(); }
 
 const char* Category::onnxruntime = "onnxruntime";
 
@@ -369,6 +381,10 @@ Status::Status(StatusCategory category, int code, const char* msg) {
 }
 
 Status::Status(StatusCategory category, int code) : Status(category, code, "") {
+}
+
+StatusCategory Status::Category() const noexcept {
+  return IsOK() ? StatusCategory::NONE : state_->category;
 }
 
 int Status::Code() const noexcept {
@@ -542,6 +558,11 @@ namespace transformers {
 void BeamSearch::Init(const OpKernelInfo& info) { g_host_cpu.BeamSearch__Init(this, info); }
 Status BeamSearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.BeamSearch__Compute(this, ctx); }
 Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.BeamSearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
+
+void GreedySearch::Init(const OpKernelInfo& info) { g_host_cpu.GreedySearch__Init(this, info); }
+Status GreedySearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.GreedySearch__Compute(this, ctx); }
+Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.GreedySearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
+
 }  // namespace transformers
 
 #ifdef ENABLE_ATEN
@@ -576,6 +597,16 @@ namespace contrib {
 Status Group::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__Group__Compute(this, context); }
 Status PassThrough::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__PassThrough__Compute(this, context); }
 Status YieldOp::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__YieldOp__Compute(this, context); }
+
+Status AdamWOptimizerBase::PrepareForCompute(OpKernelContext* ctx, AdamWOptimizerBase::Prepare& prepare) const {
+  return g_host_cpu.contrib__AdamWOptimizerBase__PrepareForCompute(this, ctx, reinterpret_cast<contrib__AdamWOptimizerBase__Prepare&>(prepare));
+}
+
+Status AdamWOptimizerBase::GenerateOutputs(OpKernelContext* ctx, size_t number_of_values,
+                                           const TensorSeq* values, TensorSeq* updated_values) const {
+  return g_host_cpu.contrib__AdamWOptimizerBase__GenerateOutputs(this, ctx, number_of_values, values, updated_values);
+}
+
 }  // namespace contrib
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP

@@ -15,7 +15,10 @@ class GptSubgraph : public Subgraph {
   GptSubgraph(
       const onnxruntime::Node& node_in,
       const std::string& attribute_name,
-      const GraphViewer& subgraph_in) : Subgraph(node_in, attribute_name, subgraph_in) {}
+      const GraphViewer& subgraph_in) : Subgraph(node_in, attribute_name, subgraph_in) {
+        first_past_input_index_ = 3;
+        first_present_output_index_ = 1;
+      }
 
   // Create inputs for first inference of subgraph.
   Status CreateInitialFeeds(
@@ -26,15 +29,24 @@ class GptSubgraph : public Subgraph {
       gsl::span<int32_t>& sequence_lengths,
       OrtValue& expanded_input_ids,
       std::vector<OrtValue>& feeds,
-      const BeamSearchDeviceHelper::CreateGptInputsFunc& create_gpt_inputs_func,
-      const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
+      const GenerationDeviceHelper::CreateGptInputsFunc& create_gpt_inputs_func,
+      const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
       IAllocatorUniquePtr<char>& buffer);
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs) override;
 
-  constexpr static int kFirstPastInputIndex = 3;
-  constexpr static int kFirstPresentOutputIndex = 1;
+  int GetFirstPastInputIndex() const {
+    return first_past_input_index_;
+  }
+
+  int GetFirstPresentOutputIndex() const {
+    return first_present_output_index_;
+  }
+
+ private:
+  int first_past_input_index_;
+  int first_present_output_index_;
 };
 
 }  // namespace transformers

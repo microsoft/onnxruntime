@@ -214,6 +214,9 @@ static Status GetInputDataType(
           initializers, *node_unit, name, scale, zero_point, ArgType::kInput));
       break;
     }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      type = Type::TENSOR_INT32;
+      break;
       // case ONNX_NAMESPACE::TensorProto_DataType_INT8:
       // We also do not consider ONNX_NAMESPACE::TensorProto_DataType_INT8 case here, since that can only
       // be input 2 of Qlinear[Conv/MatMul], which has to be an initializer tensor and will be added
@@ -521,11 +524,11 @@ Status ModelBuilder::AddOperations() {
 
 Status ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_indices,
                                   const std::vector<std::string>& output_names,
-                                  const std::vector<OperandType>& types) {
+                                  const std::vector<OperandType>& output_types) {
   std::vector<uint32_t> output_indices;
-  for (size_t i = 0; i < types.size(); i++) {
+  for (size_t i = 0; i < output_types.size(); i++) {
     uint32_t index = 0;
-    ORT_RETURN_IF_ERROR(AddNewOperand(output_names[i], types[i], index));
+    ORT_RETURN_IF_ERROR(AddNewOperand(output_names[i], output_types[i], index));
     output_indices.push_back(index);
   }
 
@@ -621,11 +624,11 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
 }
 
 int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
-  const auto& output_nodes = node_unit.GetOutputNodes();
-  if (node_unit.GetOutputNodes().size() != 1) {
+  const auto& output_def_size = node_unit.Outputs().size();
+  if (output_def_size != 1) {
     LOGS_DEFAULT(VERBOSE) << "FindActivation does not support, NodeUnit [" << node_unit.Name()
                           << "] type [" << node_unit.OpType()
-                          << "], with " << output_nodes.size() << " output nodes";
+                          << "], with " << output_def_size << " output nodes";
     return ANEURALNETWORKS_FUSED_NONE;
   }
 
@@ -653,10 +656,9 @@ int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
     return ANEURALNETWORKS_FUSED_NONE;
   }
 
-  const auto& output_node = *output_nodes[0];
   int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
   bool fuse_code_assigned_from_activation = false;
-  for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {
+  for (auto it = node_unit.OutputEdgesBegin(0), end = node_unit.OutputEdgesEnd(0); it != end; ++it) {
     const auto& dst_node = it->GetNode();
     const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
 
@@ -715,6 +717,10 @@ DataLayout ModelBuilder::GetPreferredLayout() const {
 
 const InitializedTensorSet& ModelBuilder::GetInitializerTensors() const {
   return graph_viewer_.GetAllInitializedTensors();
+}
+
+const ONNX_NAMESPACE::TensorProto* ModelBuilder::GetConstantInitializer(const std::string& name) const {
+  return graph_viewer_.GetConstantInitializer(name, true);
 }
 
 }  // namespace nnapi

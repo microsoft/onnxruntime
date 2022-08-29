@@ -8,17 +8,20 @@ import logging
 import os
 import random
 import sys
+import tempfile
 from pathlib import Path
-from typing import List
+from typing import List, Union
 
 import numpy
+import onnx
 import torch
-from transformers import T5Config
+from transformers import MT5Config, T5Config
 
 from onnxruntime import InferenceSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from torch_onnx_export_helper import torch_onnx_export
+from onnx_model import OnnxModel  # noqa: E402
+from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +29,7 @@ logger = logging.getLogger(__name__)
 class T5Encoder(torch.nn.Module):
     """T5 encoder outputs only the last hidden state"""
 
-    def __init__(self, encoder, config: T5Config):
+    def __init__(self, encoder, config: Union[T5Config, MT5Config]):
         super().__init__()
         self.encoder = encoder
         self.config = config
@@ -106,23 +109,36 @@ class T5EncoderHelper:
         )
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
-        torch_onnx_export(
-            encoder,
-            args=tuple(encoder_inputs.to_list()),
-            f=onnx_model_path,
-            export_params=True,
-            input_names=["input_ids", "attention_mask"],
-            output_names=["hidden_states"],
-            dynamic_axes={
-                "input_ids": {0: "batch_size", 1: "sequence_length"},
-                "attention_mask": {0: "batch_size", 1: "sequence_length"},
-                "hidden_states": {0: "batch_size", 1: "sequence_length"},
-            },
-            opset_version=12,
-            do_constant_folding=True,
-            use_external_data_format=use_external_data_format,
-            verbose=verbose,
-        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            temp_onnx_model_path = os.path.join(tmp_dir_name, "encoder.onnx")
+            Path(temp_onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
+            torch_onnx_export(
+                encoder,
+                args=tuple(encoder_inputs.to_list()),
+                f=temp_onnx_model_path if use_external_data_format else onnx_model_path,
+                export_params=True,
+                input_names=["input_ids", "attention_mask"],
+                output_names=["hidden_states"],
+                dynamic_axes={
+                    "input_ids": {0: "batch_size", 1: "sequence_length"},
+                    "attention_mask": {0: "batch_size", 1: "sequence_length"},
+                    "hidden_states": {0: "batch_size", 1: "sequence_length"},
+                },
+                opset_version=12,
+                do_constant_folding=True,
+                use_external_data_format=use_external_data_format,
+                verbose=verbose,
+            )
+
+            if use_external_data_format:
+                model = onnx.load_model(temp_onnx_model_path, load_external_data=True)
+                OnnxModel.save(
+                    model,
+                    onnx_model_path,
+                    save_as_external_data=True,
+                    all_tensors_to_one_file=True,
+                )
 
     @staticmethod
     def onnxruntime_inference(ort_session, inputs: T5EncoderInputs):

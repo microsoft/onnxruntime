@@ -96,10 +96,19 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
                                  TransformLayoutFunction transform_layout) {
   const auto& ep_type = current_ep.Type();
 
+  if (current_ep.GetPreferredLayout() == DataLayout::NHWC && !transform_layout) {
+    LOGS_DEFAULT(WARNING) << ep_type << " cannot be used with this model due to its ONNX opset not being supported by "
+                                        "the layout transformer.";
+    return Status::OK();
+  }
+
   {
     GraphViewer graph_viewer(graph);
     capabilities = current_ep.GetCapability(graph_viewer,
                                             kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type));
+    if (capabilities.empty()) {
+      return Status::OK();
+    }
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -124,36 +133,42 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
 
     // It is possible some new nodes are introduced during transformation. These nodes can be either existing nodes
     // which are reconstructed to update domain or completely new nodes which are necessary for layout transformation.
-    // Therefore, we re-run GetCapability so that these new nodes can be processed by this EP.
-    if (modified) {
-      const NodeIndex end_node = graph.MaxNodeIndex();
+    // we always give GetCapability the second call as long as capabilities is not empty. GetCapability have different
+    // behaviors for first/second call, the first call only tag those nodes supported by this EP and then
+    // assigned by `AssignNodes`, the second call will do some node processing and
+    // node fusion whenever ops were layout-sensitive or not.
+    // So we are calling GetCapability twice here to make things simple and finish the following procedures;
+    // 1. To process new nodes introduced by transform_layout function.
+    // 2. To do Op-fusion and graph optimization
+    // 3. QDQ node-group fusion
 
-      capabilities.clear();
-      GraphViewer graph_viewer(graph);
-      capabilities = current_ep.GetCapability(graph_viewer,
-                                              kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type));
+    const NodeIndex end_node = graph.MaxNodeIndex();
 
-      // all nodes with an index >= first_new_node with domain of kMSInternalNHWCDomain should be in the capabilities
-      InlinedHashSet<NodeIndex> new_nodes_in_capabilities;
-      for (const auto& capability : capabilities) {
-        for (auto node_index : capability->sub_graph->nodes) {
-          if (node_index >= first_new_node) {
-            new_nodes_in_capabilities.insert(node_index);
-          }
+    capabilities.clear();
+    GraphViewer graph_viewer(graph);
+    capabilities = current_ep.GetCapability(graph_viewer,
+                                            kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type));
+
+    // all nodes with an index >= first_new_node with domain of kMSInternalNHWCDomain should be in the capabilities
+    InlinedHashSet<NodeIndex> new_nodes_in_capabilities;
+    for (const auto& capability : capabilities) {
+      for (auto node_index : capability->sub_graph->nodes) {
+        if (node_index >= first_new_node) {
+          new_nodes_in_capabilities.insert(node_index);
         }
       }
+    }
 
-      for (NodeIndex idx = first_new_node; idx < end_node; ++idx) {
-        const Node* node = graph.GetNode(idx);
-        if (node != nullptr && node->Domain() == kMSInternalNHWCDomain) {
-          if (new_nodes_in_capabilities.count(node->Index()) == 0) {
-            return ORT_MAKE_STATUS(
-                ONNXRUNTIME, FAIL,
-                "Node '", node->Name(), "' OpType:", node->OpType(), " with domain:", kMSInternalNHWCDomain,
-                " was inserted using the NHWC format as requested by ", ep_type, ", but was not selected",
-                " by that EP. This means the graph is now invalid as there will not be an EP able to run the node."
-                " This could be a bug in layout transformer, or in the GetCapability implementation of the EP.");
-          }
+    for (NodeIndex idx = first_new_node; idx < end_node; ++idx) {
+      const Node* node = graph.GetNode(idx);
+      if (node != nullptr && node->Domain() == kMSInternalNHWCDomain) {
+        if (new_nodes_in_capabilities.count(node->Index()) == 0) {
+          return ORT_MAKE_STATUS(
+              ONNXRUNTIME, FAIL,
+              "Node '", node->Name(), "' OpType:", node->OpType(), " with domain:", kMSInternalNHWCDomain,
+              " was inserted using the NHWC format as requested by ", ep_type, ", but was not selected",
+              " by that EP. This means the graph is now invalid as there will not be an EP able to run the node."
+              " This could be a bug in layout transformer, or in the GetCapability implementation of the EP.");
         }
       }
     }
@@ -237,7 +252,7 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
         // Here we temporary keep the function body for DML fusion
         // Need to remove it after migrate DML to the Compile-based approach.
         // TODO2: Nuphar is out of maintain, keep it with old API temporarily.
-        // We want to deprecate Nuphar soon.
+        // We want to remove Nuphar soon.
         if (fusion_style == IExecutionProvider::FusionStyle::Function ||
             provider_type == kDmlExecutionProvider ||
             provider_type == kNupharExecutionProvider) {
@@ -331,7 +346,6 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                                          entry->sub_graph != nullptr &&
                                                          entry->sub_graph->GetMetaDef() != nullptr;
                                                 }));
-
   for (auto& capability : capabilities) {
     // in theory an EP could return an empty value...
     if (!capability || !capability->sub_graph) {
@@ -357,17 +371,17 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   // for example, it want to JIT an optimized kernel for LSTM with a given shape.
   if (!nodes_to_compile.empty()) {
     std::vector<NodeComputeInfo> node_compute_funcs;
-    // !!! The Function style fusion will be deprecated soon.
+    // !!! The Function style fusion is deprecated.
     if (fusion_style == IExecutionProvider::FusionStyle::Function) {
       // TODO: Nuphar is out of maintain. Use the old api temporarily.
-      // We want to deprecate it soon.
+      // We want to remove it soon.
       // Create a Function based node where the fused nodes have a new Graph instance.
       static std::once_flag legacy_compile_method_warning_flag;
       std::call_once(
           legacy_compile_method_warning_flag, [](std::string_view ep_type) {
-            LOGS_DEFAULT(WARNING) << "Execution Provider: " << ep_type << " is still using Funciton style Compile API, "
-                                  << " which will be deprecated soon, please migrate to the new Compile API based on "
-                                  << " FilteredGraphViewer. ";
+            LOGS_DEFAULT(WARNING) << "Execution Provider: " << ep_type << " is still using Function style Compile API "
+                                     "which is deprecated and will be removed soon. Please migrate to the new Compile "
+                                     "API based on FilteredGraphViewer.";
           },
           type);
       ORT_RETURN_IF_ERROR(current_ep.Compile(nodes_to_compile, node_compute_funcs));

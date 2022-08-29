@@ -1,0 +1,246 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.OnnxValueType
+  commentId: T:Microsoft.ML.OnnxRuntime.OnnxValueType
+  id: OnnxValueType
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_MAP
+  - Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_OPAQUE
+  - Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_SEQUENCE
+  - Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_SPARSETENSOR
+  - Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_TENSOR
+  - Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_UNKNOWN
+  langs:
+  - csharp
+  - vb
+  name: OnnxValueType
+  nameWithType: OnnxValueType
+  fullName: Microsoft.ML.OnnxRuntime.OnnxValueType
+  type: Enum
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtValue.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: OnnxValueType
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtValue.shared.cs
+    startLine: 14
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nA type of data that OrtValue encapsulates.\n"
+  example: []
+  syntax:
+    content: public enum OnnxValueType
+    content.vb: Public Enum OnnxValueType
+  modifiers.csharp:
+  - public
+  - enum
+  modifiers.vb:
+  - Public
+  - Enum
+- uid: Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_UNKNOWN
+  commentId: F:Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_UNKNOWN
+  id: ONNX_TYPE_UNKNOWN
+  parent: Microsoft.ML.OnnxRuntime.OnnxValueType
+  langs:
+  - csharp
+  - vb
+  name: ONNX_TYPE_UNKNOWN
+  nameWithType: OnnxValueType.ONNX_TYPE_UNKNOWN
+  fullName: Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_UNKNOWN
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtValue.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ONNX_TYPE_UNKNOWN
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtValue.shared.cs
+    startLine: 16
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ONNX_TYPE_UNKNOWN = 0
+    return:
+      type: Microsoft.ML.OnnxRuntime.OnnxValueType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_TENSOR
+  commentId: F:Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_TENSOR
+  id: ONNX_TYPE_TENSOR
+  parent: Microsoft.ML.OnnxRuntime.OnnxValueType
+  langs:
+  - csharp
+  - vb
+  name: ONNX_TYPE_TENSOR
+  nameWithType: OnnxValueType.ONNX_TYPE_TENSOR
+  fullName: Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_TENSOR
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtValue.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ONNX_TYPE_TENSOR
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtValue.shared.cs
+    startLine: 17
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ONNX_TYPE_TENSOR = 1
+    return:
+      type: Microsoft.ML.OnnxRuntime.OnnxValueType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_SEQUENCE
+  commentId: F:Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_SEQUENCE
+  id: ONNX_TYPE_SEQUENCE
+  parent: Microsoft.ML.OnnxRuntime.OnnxValueType
+  langs:
+  - csharp
+  - vb
+  name: ONNX_TYPE_SEQUENCE
+  nameWithType: OnnxValueType.ONNX_TYPE_SEQUENCE
+  fullName: Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_SEQUENCE
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtValue.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ONNX_TYPE_SEQUENCE
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtValue.shared.cs
+    startLine: 18
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ONNX_TYPE_SEQUENCE = 2
+    return:
+      type: Microsoft.ML.OnnxRuntime.OnnxValueType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_MAP
+  commentId: F:Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_MAP
+  id: ONNX_TYPE_MAP
+  parent: Microsoft.ML.OnnxRuntime.OnnxValueType
+  langs:
+  - csharp
+  - vb
+  name: ONNX_TYPE_MAP
+  nameWithType: OnnxValueType.ONNX_TYPE_MAP
+  fullName: Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_MAP
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtValue.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ONNX_TYPE_MAP
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtValue.shared.cs
+    startLine: 19
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ONNX_TYPE_MAP = 3
+    return:
+      type: Microsoft.ML.OnnxRuntime.OnnxValueType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_OPAQUE
+  commentId: F:Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_OPAQUE
+  id: ONNX_TYPE_OPAQUE
+  parent: Microsoft.ML.OnnxRuntime.OnnxValueType
+  langs:
+  - csharp
+  - vb
+  name: ONNX_TYPE_OPAQUE
+  nameWithType: OnnxValueType.ONNX_TYPE_OPAQUE
+  fullName: Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_OPAQUE
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtValue.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ONNX_TYPE_OPAQUE
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtValue.shared.cs
+    startLine: 20
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ONNX_TYPE_OPAQUE = 4
+    return:
+      type: Microsoft.ML.OnnxRuntime.OnnxValueType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_SPARSETENSOR
+  commentId: F:Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_SPARSETENSOR
+  id: ONNX_TYPE_SPARSETENSOR
+  parent: Microsoft.ML.OnnxRuntime.OnnxValueType
+  langs:
+  - csharp
+  - vb
+  name: ONNX_TYPE_SPARSETENSOR
+  nameWithType: OnnxValueType.ONNX_TYPE_SPARSETENSOR
+  fullName: Microsoft.ML.OnnxRuntime.OnnxValueType.ONNX_TYPE_SPARSETENSOR
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtValue.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ONNX_TYPE_SPARSETENSOR
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtValue.shared.cs
+    startLine: 21
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ONNX_TYPE_SPARSETENSOR = 5
+    return:
+      type: Microsoft.ML.OnnxRuntime.OnnxValueType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: Microsoft.ML.OnnxRuntime.OnnxValueType
+  commentId: T:Microsoft.ML.OnnxRuntime.OnnxValueType
+  parent: Microsoft.ML.OnnxRuntime
+  name: OnnxValueType
+  nameWithType: OnnxValueType
+  fullName: Microsoft.ML.OnnxRuntime.OnnxValueType

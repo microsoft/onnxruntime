@@ -13,7 +13,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cpu/containers.h"
 #include "contrib_ops/cpu/transformers/sequences.h"
-#include "contrib_ops/cpu/transformers/beam_search_shared.h"
+#include "contrib_ops/cpu/transformers/generation_shared.h"
 
 namespace onnxruntime {
 namespace contrib {

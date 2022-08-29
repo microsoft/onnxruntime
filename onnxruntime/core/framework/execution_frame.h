@@ -13,6 +13,7 @@
 #include "core/framework/iexecutor.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/node_index_info.h"
+#include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/tensor.h"
 #include "core/graph/graph_viewer.h"
@@ -22,7 +23,6 @@ namespace onnxruntime {
 class DataTransferManager;
 class SessionState;
 class OrtValueNameIdxMap;
-class OrtValuePatternPlanner;
 struct MemoryPatternGroup;
 class NodeIndexInfo;
 
@@ -32,12 +32,12 @@ class IExecutionFrame {
   // initialized until the derived class is constructed.
   IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
                   const NodeIndexInfo& node_index_info,
-                  const std::vector<int>& fetch_mlvalue_idxs);
+                  gsl::span<const int> fetch_mlvalue_idxs);
 
-  void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
+  void Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds,
             const std::unordered_map<int, OrtValue>& initializers,
             const std::function<bool(const std::string& name)>& is_initializer_sparse_func,
-            const std::vector<OrtValue>& fetches);
+            gsl::span<const OrtValue> fetches);
 
  public:
   virtual ~IExecutionFrame();
@@ -57,10 +57,11 @@ class IExecutionFrame {
 #endif
 
 #ifdef ENABLE_TRAINING
-  void UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds);
-  void UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
+  void UpdateFeeds(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds);
+  void UpdateFetches(gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
+
                      const std::unordered_map<int, OrtValue>& initializers);
-  Status GetOutputs(const std::vector<int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches);
+  Status GetOutputs(gsl::span<const int> fetch_mlvalue_idxs, std::vector<OrtValue>& fetches);
 #endif
 
   // TO DO: make it thread safe
@@ -119,20 +120,20 @@ class IExecutionFrame {
 
   // All the intermediate values for the entire graph.
   // Input and Output values are passed in by executors
-  std::vector<OrtValue> all_values_;
+  InlinedVector<OrtValue> all_values_;
 
   // perf optimization to avoid calling all_values_.size() repeatedly as the size is fixed once constructed
   const size_t all_values_size_;
 
-  std::vector<int> fetch_mlvalue_idxs_;
+  InlinedVector<int> fetch_mlvalue_idxs_;
 
   const OrtValueNameIdxMap& ort_value_idx_map_;
 };
 
 class ExecutionFrame final : public IExecutionFrame {
  public:
-  ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
-                 const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
+  ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds,
+                 gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
                  // optional custom allocators. key is index in fetches
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                  const SessionState& session_state);
@@ -148,13 +149,13 @@ class ExecutionFrame final : public IExecutionFrame {
 
   Status AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse, MLDataType element_type,
                                                 const OrtMemoryInfo& location, const TensorShape& shape,
-                                                bool create_fence = false);
+                                                bool create_fence = false, bool is_strided_tensor = false);
 
   // thread-safe
-  Status GeneratePatterns(MemoryPatternGroup* out) const;
+  Status GeneratePatterns(MemoryPatternGroup& out);
 
   bool HasMemoryPatternPlanner() const {
-    return planner_ != nullptr;
+    return planner_.has_value();
   }
 
   // This function try retrieve the inferred shapes for the given NodeArg index.
@@ -212,7 +213,7 @@ class ExecutionFrame final : public IExecutionFrame {
   const SessionState& session_state_;
 
   // map of index to custom allocator
-  std::unordered_map<int, IExecutor::CustomAllocator> custom_allocators_;
+  InlinedHashMap<int, IExecutor::CustomAllocator> custom_allocators_;
 
   // If we already have cached memory pattern on these input shapes
   // Use this mem pattern that create a big chunk for all the internal
@@ -221,16 +222,17 @@ class ExecutionFrame final : public IExecutionFrame {
 
   // If no cached memory pattern, and we enable the memory pattern optimization
   // use this planner_ to trace the memory allocation in current executor.
-  std::unique_ptr<OrtValuePatternPlanner> planner_;
+  std::optional<OrtValuePatternPlanner> planner_;
 
   // Big chunks on different locations that will be used by mem_pattern.
-  std::map<OrtMemoryInfo, BufferUniquePtr> buffers_;
+  InlinedHashMap<OrtMemoryInfo, BufferUniquePtr> buffers_;
 
   // Given the input shapes of the executed graph, ExecutionFrame tries inferring
   // all symbolic shapes. inferred_shapes_[i] is the shape of OrtValue indexed
   // by i, if the key i exists.
   // inferred_shapes_ is generated together with mem_patterns_.
-  std::unordered_map<int, TensorShape> inferred_shapes_;
+  // It is never updated after creation
+  const InlinedHashMap<int, TensorShape>* inferred_shapes_{nullptr};
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Size of virtual memory allocated before any kernel execution.

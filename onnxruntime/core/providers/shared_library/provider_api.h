@@ -171,6 +171,7 @@ class ATen;
 class Group;
 class PassThrough;
 class YieldOp;
+class AdamWOptimizerBase;
 }  // namespace contrib
 
 class UnsqueezeBase;
@@ -258,7 +259,17 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
 
 std::string GetEnvironmentVar(const std::string& var_name);
 
+namespace profiling {
+
+  std::string demangle(const char* name);
+  std::string demangle(const std::string& name);
+
+};
+
 namespace logging {
+
+  unsigned int GetThreadId();
+  unsigned int GetProcessId();
 
 struct Category {
   static const char* onnxruntime;  ///< General output
@@ -316,3 +327,4 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() { r
 
 #define LOGS_DEFAULT(severity) \
   LOGS_DEFAULT_CATEGORY(severity, ::onnxruntime::logging::Category::onnxruntime)
+

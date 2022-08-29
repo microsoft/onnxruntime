@@ -97,5 +97,28 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
   }
 }
 
+void TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case, int opset_version,
+                          const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
+                          TransformerLevel level, unsigned steps, const std::function<void(Graph&)>& pre_graph_checker,
+                          const std::function<void(Graph&)>& post_graph_checker) {
+  // Build the model for this test.
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = opset_version;
+  domain_to_version[kMSDomain] = 1;
+  Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, {}, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  ASSERT_TRUE(build_test_case);
+  build_test_case(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+  pre_graph_checker(graph);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{steps};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), level));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, level, logger));
+  post_graph_checker(graph);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

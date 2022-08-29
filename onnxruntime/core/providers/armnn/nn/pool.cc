@@ -122,8 +122,8 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> output_dims = PoolBase::pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   Tensor* Y = context->Output(0, TensorShape(output_dims));
 
-  const T* x_data = X->template Data<T>();
-  T* y_data = Y->template MutableData<T>();
+  const T* x_data = X->Data<T>();
+  T* y_data = Y->MutableData<T>();
 
   armnn::NetworkId* pNetworkId;
   PoolLayersIterator it = Pool::poolLayers.find((OpKernel*)this);
@@ -225,8 +225,8 @@ Status MaxPoolV8<T>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> output_dims = PoolBase::pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   Tensor* Y = context->Output(0, TensorShape(output_dims));
 
-  const T* x_data = X->template Data<T>();
-  T* y_data = Y->template MutableData<T>();
+  const T* x_data = X->Data<T>();
+  T* y_data = Y->MutableData<T>();
 
   armnn::NetworkId* pNetworkId;
   PoolLayersIterator it = MaxPoolV8::maxPoolLayers.find((OpKernel*)this);
@@ -341,4 +341,3 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace armnn_ep
 }  // namespace onnxruntime
-

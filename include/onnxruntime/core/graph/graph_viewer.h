@@ -187,6 +187,10 @@ class GraphViewer {
   */
   const IndexedSubGraph* GetFilterInfo() const { return filter_info_; }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const { return graph_->GetSchemaRegistry(); }
+#endif
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);
   GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info);
@@ -208,7 +212,8 @@ class GraphViewer {
   // if we're limiting the view to an IndexedSubGraph we need to create a few pieces of infrastructure that would
   // usually come from the full graph
   const IndexedSubGraph* filter_info_{nullptr};
-  std::unordered_set<NodeIndex> filtered_node_indices_;
+  using FilteredNodeSet = InlinedHashSet<NodeIndex>;
+  FilteredNodeSet filtered_node_indices_;
   std::vector<const NodeArg*> filtered_node_inputs_;
   std::vector<const NodeArg*> filtered_node_inputs_including_initializers_;
   std::vector<const NodeArg*> filtered_node_outputs_;

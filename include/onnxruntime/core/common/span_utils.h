@@ -64,4 +64,7 @@ constexpr auto AsSpan(const T (&arr)[N]) {
   return details::AsSpanImpl(arr, N);
 }
 
+template<class T>
+inline gsl::span<const T> EmptySpan() { return gsl::span<const T>(); }
+
 }

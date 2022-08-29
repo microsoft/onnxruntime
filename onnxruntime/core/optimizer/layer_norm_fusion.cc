@@ -260,7 +260,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     // Traceback the reduceMean node to find pow --> reduceMean
     Node& pow_node = *graph.GetNode(reduce_mean2_node.InputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12, 13}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12, 13, 15}) ||
         pow_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, pow_node, 1) ||
         !IsSupportedDataType(pow_node)) {
@@ -460,7 +460,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     Node& pow_node = *p_pow;
     ORT_RETURN_IF_ERROR(Recurse(pow_node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12, 13}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12, 13, 15}) ||
         !graph_utils::IsSupportedProvider(pow_node, GetCompatibleExecutionProviders()) ||
         !optimizer_utils::CheckOutputEdges(graph, pow_node, 1) ||
         graph.NodeProducesGraphOutput(pow_node) ||

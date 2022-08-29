@@ -1,10 +1,11 @@
 import cerberus
 import torch
 
-from .optim import lr_scheduler
-from .amp import loss_scaler
-from . import PropagateCastOpsStrategy
 import onnxruntime as ort
+
+from . import PropagateCastOpsStrategy
+from .amp import loss_scaler
+from .optim import lr_scheduler
 
 
 class ORTTrainerOptions(object):
@@ -291,8 +292,8 @@ class ORTTrainerOptions(object):
                         'onnx_opset_version': {
                             'type': 'integer',
                             'min' : 12,
-                            'max' : 13,
-                            'default': 12
+                            'max' :14,
+                            'default': 14
                         },
                         'enable_onnx_contrib_ops' : {
                             'type' : 'boolean',

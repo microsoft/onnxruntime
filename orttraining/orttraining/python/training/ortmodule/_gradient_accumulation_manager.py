@@ -59,9 +59,11 @@ class GradientAccumulationManager(object):
             for i in range(self._cache_start, len(forward_outputs)):
                 self.cache.insert(self._cached_node_arg_names[i - self._cache_start], forward_outputs[i])
             self._update_cache = False
-        return _utils._ortvalues_to_torch_tensor_list(
-            [forward_outputs[i] for i in range(self._cache_start)], device, c_class=True
-        )
+        ort_value_vector = C.OrtValueVector()
+        ort_value_vector.reserve(self._cache_start)
+        for i in range(self._cache_start):
+            ort_value_vector.push_back(forward_outputs[i])
+        return _utils._ortvalues_to_torch_tensor(ort_value_vector, device)  # pylint: disable=W0212
 
     def maybe_update_cache_before_run(self):
         """Update cache when model parameters are modified and optimization is enabled."""
