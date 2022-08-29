@@ -21,13 +21,25 @@ namespace onnxruntime {
 //     ComputeQuantizationParameters<uint8_t>);
 
 namespace contrib{
-ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
-    ComputeQuantizationParameters,
-    1,
-    uint8_t,
-    KernelDefBuilder(),
-        // .TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
-    ComputeQuantizationParameters<uint8_t>);
+
+// ONNX_CPU_OPERATOR_MS_KERNEL(
+//   ComputeQuantizationParameters,
+//   1,
+//   KernelDefBuilder(),
+//   ComputeQuantizationParameters
+// )
+
+#define REGISTER_CQP_KERNEL(T) \
+  ONNX_CPU_OPERATOR_TYPED_MS_KERNEL( \
+      ComputeQuantizationParameters, \
+      1, \
+      T, \
+      KernelDefBuilder(), \
+      ComputeQuantizationParameters<T>);
+
+REGISTER_CQP_KERNEL(int8_t)
+REGISTER_CQP_KERNEL(uint8_t)
+
 }
 // ONNX_CPU_OPERATOR_KERNEL(
 //     ComputeQuantizationParameters,
@@ -47,8 +59,8 @@ Status ComputeQuantizationParameters<T>::Compute(OpKernelContext* ctx) const {
 
 //   auto& y = *ctx->Output(0, x.Shape());
   std::vector<int64_t> shape({});
-  auto& y_scale = *ctx->Output(1, shape);
-  auto& y_zeropoint = *ctx->Output(2, shape);
+  auto& y_scale = *ctx->Output(0, shape);
+  auto& y_zeropoint = *ctx->Output(1, shape);
 
   float scale;
   T zero_point;

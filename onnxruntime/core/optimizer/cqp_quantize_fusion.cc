@@ -32,7 +32,6 @@ Status CQPQuantizeLinearFusion::ApplyImpl(Graph& graph, bool& modified, int grap
       continue;  // node was removed
 
     auto& quant_node = *node_ptr;
-
     ORT_RETURN_IF_ERROR(Recurse(quant_node, modified, graph_level, logger));
 
     // V ARE THE OPTYPES CORRECT V
@@ -40,6 +39,7 @@ Status CQPQuantizeLinearFusion::ApplyImpl(Graph& graph, bool& modified, int grap
         !graph_utils::IsSupportedProvider(quant_node, GetCompatibleExecutionProviders())) {
       continue;
     }
+    std::cout << "\n found a quant node \n";
 
     const Node* p_cqp_node = graph_utils::FirstParentByType(quant_node, "ComputeQuantizationParameters");
     if (p_cqp_node == nullptr) {
@@ -47,9 +47,16 @@ Status CQPQuantizeLinearFusion::ApplyImpl(Graph& graph, bool& modified, int grap
     }
 
     Node& cqp_node = *graph.GetNode(p_cqp_node->Index());
+    std::cout << "\n found a cqp node \n";
+    std::cout << cqp_node << "\n\n";
+
+    // for (auto it = cqp_node.OutputEdgesBegin(); it != cqp_node.OutputEdgesEnd(); ++it) {
+    //   std::cout << *it << "\n";
+    // }
 
     // Check Nodes' Edges count and Nodes' outputs are not in Graph output
-    if (!optimizer_utils::CheckOutputEdges(graph, cqp_node, 1)) {
+    if (!optimizer_utils::CheckOutputEdges(graph, cqp_node, 4)) {
+      std::cout << "\n is output \n";
       continue;
     }
 
@@ -59,6 +66,8 @@ Status CQPQuantizeLinearFusion::ApplyImpl(Graph& graph, bool& modified, int grap
     InlinedVector<NodeArg*> input_defs{
         cqp_node.MutableInputDefs()[0]
     };
+
+    std::cout <<"\n has input defs \n";
 
     std::string op_type = "DynamicQuantizeLinear";
     Node& fused_node = graph.AddNode(quant_node.Name(),
