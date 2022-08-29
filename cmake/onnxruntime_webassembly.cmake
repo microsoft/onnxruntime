@@ -185,10 +185,11 @@ else()
     target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)
   endif()
 
-  set(EXPORTED_RUNTIME_METHODS "['_malloc','_free','stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8']")
+  set(EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8']")
 
   set_target_properties(onnxruntime_webassembly PROPERTIES LINK_FLAGS "             \
                         -s \"EXPORTED_RUNTIME_METHODS=${EXPORTED_RUNTIME_METHODS}\" \
+                        -s \"EXPORTED_FUNCTIONS=_malloc,_free\"                     \
                         -s WASM=1                                                   \
                         -s NO_EXIT_RUNTIME=0                                        \
                         -s ALLOW_MEMORY_GROWTH=1                                    \
