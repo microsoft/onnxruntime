@@ -100,6 +100,7 @@ def run_test(
                 "mixed_precision": {"enabled": fp16, "loss_scaler": new_api_loss_scaler},
                 "debug": {
                     "deterministic_compute": True,
+                    "model_with_training_graph_after_optimization_path": "bert_training.onnx",
                 },
                 "utils": {"grad_norm_clip": True},
                 "distributed": {"allreduce_post_accumulation": True},

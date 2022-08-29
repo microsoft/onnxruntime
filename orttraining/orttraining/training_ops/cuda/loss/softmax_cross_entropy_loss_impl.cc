@@ -28,7 +28,7 @@ OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& 
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create())                                                        \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                           \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>()),                      \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>()),                     \
       Class<T, Tin>);
 
 #define REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, domain, version) \
@@ -40,7 +40,7 @@ OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& 
       kCudaExecutionProvider,                                           \
       (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>()),   \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>()),  \
       Class<T, Tin>);
 
 template <typename T, typename Tin>
@@ -263,7 +263,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
         reduction_buffer.get(),
         buffer_size));
   } else {
-    const TBuf normalize_factor = static_cast<TBuf>(1.0f);
+    constexpr TBuf normalize_factor = static_cast<TBuf>(1.0f);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(TBuf), cudaMemcpyHostToDevice, Stream(ctx)));
   }
 
@@ -316,7 +316,7 @@ INSTANTIATE_COMPUTE_SPARSE(SoftmaxCrossEntropyLossGrad, BFloat16, int64_t, kMSDo
                                     (*KernelDefBuilder::Create())                                     \
                                         .InputMemoryType(OrtMemTypeCPUInput, CpuInputIndex)           \
                                         .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-                                        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>())    \
+                                        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>())   \
                                         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
                                     ClassName<T, Tin>);
 

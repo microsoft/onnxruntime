@@ -510,6 +510,24 @@ def optimize_model(model_path: Path, opt_model_path: Path):
     _ = InferenceSession(model_path.as_posix(), sess_option, providers=["CPUExecutionProvider"])
 
 
+def add_pre_process_metadata(model):
+    """Tag the model that it went through quantization pre-processing"""
+    metadata_props = {"onnx.quant.pre_process": "onnxruntime.quant"}
+    if model.metadata_props:
+        for prop in model.metadata_props:
+            metadata_props.update({prop.key: prop.value})
+    onnx.helper.set_model_props(model, metadata_props)
+
+
+def model_has_pre_process_metadata(model):
+    """Check the model whether it went through quantization pre-processing"""
+    if model.metadata_props:
+        for prop in model.metadata_props:
+            if prop.key == "onnx.quant.pre_process" and prop.value == "onnxruntime.quant":
+                return True
+    return False
+
+
 def add_infer_metadata(model):
     metadata_props = {"onnx.infer": "onnxruntime.quant"}
     if model.metadata_props:
