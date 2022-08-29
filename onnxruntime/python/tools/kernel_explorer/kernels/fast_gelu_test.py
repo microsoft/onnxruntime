@@ -87,7 +87,7 @@ def profile():
             for sl in seq_len:
                 for hs in hidden_size:
                     for f in dtype_to_funcs(dt):
-                        profile_vector_add_func(bs, sl, hs, dt, f)
+                        profile_fast_gelu_func(bs, sl, hs, dt, f)
                     print()
 
 

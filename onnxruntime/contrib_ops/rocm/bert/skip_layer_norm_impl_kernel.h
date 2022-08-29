@@ -45,6 +45,7 @@ __global__ void SkipLayerNormKernel(
   LayerNorm<T, TPB>(thread_data, ld, offset, beta, gamma, epsilon, output);
 }
 
+// Vectorized kernel
 template <typename T, unsigned TPB, int ILP>
 __global__ void SkipLayerNormKernelVec(
     const int ld, const T* input, const T* skip, const T* beta, const T* gamma,
