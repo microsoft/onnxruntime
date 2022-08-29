@@ -139,10 +139,6 @@ class ExtendedThreadPoolInterface;
 class LoopCounter;
 class ThreadPoolParallelSection;
 
-namespace threadpool_details {
-
-}
-
 class ThreadPool {
  public:
 #ifdef _WIN32
