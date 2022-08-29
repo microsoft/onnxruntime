@@ -94,7 +94,7 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func):
         hidden_size,
         f,
         f"{t*1000:.2f} us",
-        f"{(x.size*2+bias.size)*x.itemsize*1e3/t/1e9:.2f} GB/s",
+        f"{(x.size*3+bias.size*3)*x.itemsize*1e3/t/1e9:.2f} GB/s",
     )
 
 
