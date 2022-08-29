@@ -17,11 +17,9 @@
 
 #pragma once
 
-#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
-#endif
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/op_kernel.h"
@@ -33,11 +31,12 @@ struct Col2ImAttributes {
   using Col2ImPadVector = InlinedVector<int64_t, kTensorShapeSmallBufferElementsSize * 2>;
 
   explicit Col2ImAttributes(const OpKernelInfo& info) {
-    auto status = info.GetAttrs("strides", strides);
+    // Make sure empty strides, pads or dilations are defaulted to 1 if necessary
+    ORT_ENFORCE(info.GetAttrs("strides", strides).IsOK());
     gsl::span<const int64_t> pads_span;
-    status = info.GetAttrsAsSpan("pads", pads_span);
+    ORT_ENFORCE(info.GetAttrsAsSpan("pads", pads_span).IsOK());
     pads.assign(pads_span.cbegin(), pads_span.cend());
-    status = info.GetAttrs("dilations", dilations);
+    ORT_ENFORCE(info.GetAttrs("dilations", dilations).IsOK());
   }
 
   ~Col2ImAttributes() = default;

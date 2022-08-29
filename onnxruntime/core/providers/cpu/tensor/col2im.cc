@@ -2,25 +2,20 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/col2im.h"
+#include "core/util/math_cpuonly.h"
 
-#include "core/framework/element_type_lists.h"
-#include "core/framework/TensorSeq.h"
-#include "core/providers/common.h"
-#include "core/framework/copy.h"
-#include "core/common/safeint.h"
-#include "core/providers/op_kernel_type_control.h"
 
 namespace onnxruntime {
 
-#define REGISTER_KERNEL_TYPED(T)                                                            \
+#define REGISTER_COL2IM_TYPED_KERNEL(OP_TYPE, VERSION, TYPE, KERNEL_CLASS)                  \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                           \
-      Col2Im,                                                                               \
-      1,                                                                                    \
-      T,                                                                                    \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()), \
-      Col2Im<T>);
+      OP_TYPE,                                                                     \
+      VERSION,                                                                     \
+      TYPE,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
+      KERNEL_CLASS<TYPE>);
 
-REGISTER_KERNEL_TYPED(float)
+REGISTER_COL2IM_TYPED_KERNEL(Col2Im, 1, float, Col2Im);
 
 template <typename T>
 Status Col2Im<T>::Compute(OpKernelContext* context) const {
@@ -49,13 +44,13 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
     batched_image_shape_dims.push_back(image_shape->Data<int64_t>()[i]);
     adjusted_image_shape_dims.push_back(image_shape->Data<int64_t>()[i]-adjusted_kernel_shape[i]+1);
   }
-  TensorShape batched_image_shape(batched_image_shape_dims), adjusted_image_shape(adjusted_image_shape_dims);
+  TensorShape batched_image_shape(batched_image_shape_dims);
   T* image_data = context->Output(0, batched_image_shape)->template MutableData<T>();
 
   const T* col_data = col_tensor->template Data<T>();
   for (auto image_id = 0; image_id < N; ++image_id) {
     if (image_shape->Shape()[0] == 2) {
-      math::Col2im<float, CPUMathUtil, StorageOrder::NCHW>(
+      math::Col2im<T, CPUMathUtil, StorageOrder::NCHW>(
         col_data + image_id * col_data_stride,
         C,
         image_shape->Data<int64_t>()[0],
@@ -76,7 +71,7 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
       math::Col2imNd<T, CPUMathUtil, StorageOrder::NCHW>(
         col_data + image_id * col_data_stride,
         image_shape->Data<int64_t>(),
-        adjusted_image_shape.GetDims().data(),
+        adjusted_image_shape_dims.data(),
         kernel_shape_size * C,
         image_shape_size,
         adjusted_kernel_shape.GetDims().data(),

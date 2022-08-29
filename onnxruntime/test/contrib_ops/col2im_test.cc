@@ -4,16 +4,18 @@
 #include <stdexcept>
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+
+using namespace onnxruntime::test;
 #include "core/util/math.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace test {
-using namespace onnxruntime::test;
+
 
 namespace {
 template <typename T>
-std::vector<T> _transpose_serialized_vector(std::vector<T> &input, size_t N, size_t C, size_t H, size_t W) {
+std::vector<T> TransposeSerializedVector(std::vector<T> &input, size_t N, size_t C, size_t H, size_t W) {
     size_t input_size = input.size();
     if (input_size == 0) {
         throw std::runtime_error("Invalid input");
@@ -30,15 +32,6 @@ std::vector<T> _transpose_serialized_vector(std::vector<T> &input, size_t N, siz
     return trans_vec;
 }
 
-struct float_iota {
-    explicit float_iota(float inc, float init_value = 0.0) : _value(init_value), _inc(inc) {}
-
-    operator float() const { return _value; }
-    float_iota& operator++() { _value += _inc; return *this; }
-    float _value;
-    float _inc;
-};
-
 }  // namespace
 
 TEST(Col2ImContribOpTest, simple4dNCHW) {
@@ -50,9 +43,9 @@ TEST(Col2ImContribOpTest, simple4dNCHW) {
 
   std::vector<float> input(25);
   std::vector<float> output(25);
-  std::iota(output.begin(), output.end(), float_iota(1., 1.));
+  std::iota(output.begin(), output.end(), 1.0f);
 
-  input = _transpose_serialized_vector(output, 1, 1, 5, 5);
+  input = TransposeSerializedVector(output, 1, 1, 5, 5);
   test.AddInput<float>("input", {1, 5, 5},  input);
   test.AddInput<int64_t>("image_shape", {2},  std::vector<int64_t>{5, 5});
   test.AddInput<int64_t>("block_shape", {2},  std::vector<int64_t>{1, 5});
@@ -70,8 +63,8 @@ TEST(Col2ImContribOpTest, with2Images3channelsNonSquare4dNCHW) {
 
   std::vector<float> input(120);
   std::vector<float> output(120);
-  std::iota(output.begin(), output.end(), float_iota(1., 1.));
-  input = _transpose_serialized_vector(output, 2, 3, 4, 5);
+  std::iota(output.begin(), output.end(), 1.0f);
+  input = TransposeSerializedVector(output, 2, 3, 4, 5);
   test.AddInput<float>("input", {2, 15, 4},  input);
   test.AddInput<int64_t>("image_shape", {2},  std::vector<int64_t>{4, 5});
   test.AddInput<int64_t>("block_shape", {2},  std::vector<int64_t>{1, 5});
@@ -128,8 +121,8 @@ TEST(Col2ImContribOpTest, with3channels4dNCHW) {
 
   std::vector<float> input(75);
   std::vector<float> output(75);
-  std::iota(output.begin(), output.end(), float_iota(1., 1.));
-  input = _transpose_serialized_vector(output, 1, 3, 5, 5);
+  std::iota(output.begin(), output.end(), 1.0f);
+  input = TransposeSerializedVector(output, 1, 3, 5, 5);
   test.AddInput<float>("input", {1, 15, 5},  input);
   test.AddInput<int64_t>("image_shape", {2},  std::vector<int64_t>{5, 5});
   test.AddInput<int64_t>("block_shape", {2},  std::vector<int64_t>{1, 5});
@@ -147,8 +140,8 @@ TEST(Col2ImContribOpTest, with2Images3channels4dNCHW) {
 
   std::vector<float> input(150);
   std::vector<float> output(150);
-  std::iota(output.begin(), output.end(), float_iota(1., 1.));
-  input = _transpose_serialized_vector(output, 2, 3, 5, 5);
+  std::iota(output.begin(), output.end(), 1.0f);
+  input = TransposeSerializedVector(output, 2, 3, 5, 5);
   test.AddInput<float>("input", {2, 15, 5},  input);
   test.AddInput<int64_t>("image_shape", {2},  std::vector<int64_t>{5, 5});
   test.AddInput<int64_t>("block_shape", {2},  std::vector<int64_t>{1, 5});
@@ -166,8 +159,8 @@ TEST(Col2ImContribOpTest, simple5dNCHWD) {
 
   std::vector<float> input(25);
   std::vector<float> output(25);
-  std::iota(output.begin(), output.end(), float_iota(1., 1.));
-  input = _transpose_serialized_vector(output, 1, 1, 5, 5);
+  std::iota(output.begin(), output.end(), 1.0f);
+  input = TransposeSerializedVector(output, 1, 1, 5, 5);
   test.AddInput<float>("input", {1, 5, 5},  input);
   test.AddInput<int64_t>("image_shape", {3},  std::vector<int64_t>{1, 5, 5});
   test.AddInput<int64_t>("block_shape", {3},  std::vector<int64_t>{1, 1, 5});

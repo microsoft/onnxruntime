@@ -5,12 +5,6 @@
 
 #include "core/providers/cpu/tensor/col2im_attributes.h"
 
-#include "core/common/common.h"
-#include "core/framework/op_kernel.h"
-#include "core/util/math_cpuonly.h"
-#include "core/framework/tensor.h"
-#include "core/providers/cpu/tensor/concatbase.h"
-
 namespace onnxruntime {
 
 template <typename T>
