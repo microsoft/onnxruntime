@@ -9,11 +9,13 @@ import argparse
 import logging
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 
 import onnx
 
 import onnxruntime
+from onnxruntime.quantization.quant_utils import add_pre_process_metadata
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
 logger = logging.getLogger(__name__)
@@ -50,8 +52,8 @@ def quant_pre_process(
             inferences may reduce the effectiveness of quantization, as a tensor
             with unknown shape can not be quantized.
         auto_merge: For symbolic shape inference, automatically merge symbolic dims when
-            confliction happens.
-        int_max: For symbolic shape inference, specifiy the maximum value for integer to be
+            conflict happens.
+        int_max: For symbolic shape inference, specify the maximum value for integer to be
             treated as boundless for ops like slice
         guess_output_rank: Guess output rank to be the same as input 0 for unknown ops
         verbose: Logs detailed info of inference, 0: turn off, 1: warnings, 3: detailed
@@ -83,10 +85,16 @@ def quant_pre_process(
                 model = None
 
             opt_model_path = str(temp_path / "optimized.onnx")
-            sess_option = onnxruntime.SessionOptions()
-            sess_option.optimized_model_filepath = opt_model_path
-            sess_option.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
-            _ = onnxruntime.InferenceSession(input_model_path, sess_option, providers=["CPUExecutionProvider"])
+            try:
+                sess_option = onnxruntime.SessionOptions()
+                sess_option.optimized_model_filepath = opt_model_path
+                sess_option.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
+                _ = onnxruntime.InferenceSession(input_model_path, sess_option, providers=["CPUExecutionProvider"])
+            except Exception as e:
+                logger.error(
+                    "ONNX Runtime Model Optimization Failed! Consider rerun with option `--skip_optimization'."
+                )
+                logger.error(traceback.format_exc())
 
             input_model_path = opt_model_path
 
@@ -114,15 +122,10 @@ def quant_pre_process(
             onnx.shape_inference.infer_shapes_path(input_model_path, inferred_model_path)
             model = onnx.load(inferred_model_path)
 
-            # Add inference meta data to onnx model
-            metadata_props = {"onnx.infer": "onnxruntime.quant"}
-            if model.metadata_props:
-                for p in model.metadata_props:
-                    metadata_props.update({p.key: p.value})
-            onnx.helper.set_model_props(model, metadata_props)
-
     if model is None:
         model = onnx.load(input_model_path)
+
+    add_pre_process_metadata(model)
 
     if save_as_external_data:
         onnx.save_model(
@@ -140,19 +143,21 @@ def quant_pre_process(
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        description="""Model optimizer and shape inferencer, in preparation for quantization.
+        description="""Model optimizer and shape inferencer, in preparation for quantization,
+Consists of three optional steps:
+1. Symbolic shape inference (best for transformer models).
+2. Model optimization.
+3. ONNX shape inference.
 
-Model quantization with QDQ format, i.e. inserting QuantizeLinear/DeQuantizeLinear on
-the tensor, requires tensor shape information to perform its best. Currently, shape inferencing
-works best with optimized model. As a result, it is highly recommended to run quantization
-on optimized model with shape information. This is the tool for optimization and shape
-inferencing.
+Quantization requires tensor shape information to perform its best. Model optimization
+also improve the performance of quantization. For instance, a Convolution node followed
+by a BatchNormalization node can be merged into a single node during optimization.
+However, currently we can not quantize BatchNormalization by itself.
 
-Essentially this tool performs the following three (skippable) steps:
-
-1. Symbolic shape inference.
-2. Model optimization
-3. ONNX shape inference"""
+Unfortunately for now, model optimization can not handle large models with size
+greater than 2GB. Rerun pre-processing with `--skip_optimization' if optimization
+fails.
+"""
     )
 
     parser.add_argument("--input", required=True, help="Path to the input model file")
@@ -161,8 +166,9 @@ Essentially this tool performs the following three (skippable) steps:
         "--skip_optimization",
         type=bool,
         default=False,
-        help="Skip model optimization step if true. This may result in ONNX shape"
-        " inference failure for some models.",
+        help="Skip model optimization step if true. It's a known issue that ORT"
+        " optimization has difficulty with model size greater than 2GB, rerun with"
+        " this option to get around this issue.",
     )
     parser.add_argument(
         "--skip_onnx_shape",
@@ -242,8 +248,8 @@ if __name__ == "__main__":
         logger.error("ORT model optimization does not support external data yet!")
         sys.exit()
 
-    logger.info(f"input model: {args.input}")
-    logger.info(f"output model {args.output}")
+    logger.info("input model: %s", args.input)
+    logger.info("output model: %s", args.output)
     quant_pre_process(
         args.input,
         args.output,
