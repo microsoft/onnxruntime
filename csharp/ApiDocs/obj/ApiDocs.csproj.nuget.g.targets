@@ -1,6 +1,0 @@
-﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
-<Project ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ImportGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
-    <Import Project="$(NuGetPackageRoot)docfx.console\2.59.3\build\docfx.console.targets" Condition="Exists('$(NuGetPackageRoot)docfx.console\2.59.3\build\docfx.console.targets')" />
-  </ImportGroup>
-</Project>
