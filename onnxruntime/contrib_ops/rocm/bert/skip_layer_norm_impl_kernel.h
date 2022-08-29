@@ -6,8 +6,6 @@
 #include <hip/hip_fp16.h>
 #include "contrib_ops/rocm/bert/layer_norm.cuh"
 
-using namespace onnxruntime::rocm;
-
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
@@ -47,9 +45,52 @@ __global__ void SkipLayerNormKernel(
   LayerNorm<T, TPB>(thread_data, ld, offset, beta, gamma, epsilon, output);
 }
 
+template <typename T, unsigned TPB, int ILP>
+__global__ void SkipLayerNormKernelVec(
+    const int ld, const T* input, const T* skip, const T* beta, const T* gamma,
+    const T* bias, const T epsilon, T* output, bool hasBias) {
+  const T reverse_ld = T(1.f / ld);
+  const int offset = blockIdx.x * ld;
+
+  KeyValuePairSum pair_sum;
+  // reduce x and x^2
+  hipcub::KeyValuePair<T, T> thread_data(0, 0);
+
+  using VecT = aligned_vector<T, ILP>;
+  T input_v[ILP], skip_v[ILP], bias_v[ILP], output_v[ILP];
+  if (threadIdx.x * ILP < ld) {
+    VecT* input_val = reinterpret_cast<VecT*>(&input_v);
+    VecT* skip_val = reinterpret_cast<VecT*>(&skip_v);
+    VecT* output_val = reinterpret_cast<VecT*>(&output_v);
+
+    for (int i = threadIdx.x * ILP; i < ld; i += TPB * ILP) {
+      int idx = offset + i;
+
+      *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
+      *skip_val = *reinterpret_cast<const VecT*>(&skip[idx]);
+      if (hasBias) {
+        VecT* bias_val = reinterpret_cast<VecT*>(&bias_v);
+        *bias_val = *reinterpret_cast<const VecT*>(&bias[i]);
+      }
+
+      T rldval_sum = T(0.f);
+      T rldvalsq_sum = T(0.f);
+#pragma unroll
+      for (int k = 0; k < ILP; k++) {
+        input_v[k] += hasBias ? skip_v[k] + bias_v[k] : skip_v[k];
+        const T rldval = reverse_ld * input_v[k];
+        thread_data = pair_sum(thread_data, hipcub::KeyValuePair<T, T>(rldval, rldval * input_v[k]));
+      }
+      *(reinterpret_cast<VecT*>(&output[idx])) = *reinterpret_cast<VecT*>(&input_v[0]);
+    }
+  }
+
+  LayerNormVec<T, TPB, ILP>(thread_data, ld, offset, beta, gamma, epsilon, output);
+}
+
 // Vectorized kernel
 template <typename T, unsigned TPB, int ILP>
-__global__ void SkipLayerNormKernelSmall(
+__global__ void SkipLayerNormKernelSmallVec(
     const int ld, const T* input, const T* skip, const T* beta, const T* gamma,
     const T* bias, const T epsilon, T* output, bool hasBias) {
   const T rld = T(1.f / ld);
@@ -82,7 +123,7 @@ __global__ void SkipLayerNormKernelSmall(
     }
     thread_data = hipcub::KeyValuePair<T, T>(rldval_sum, rldvalsq_sum);
   }
-  LayerNormSmall<T, TPB, ILP>(input_v, thread_data, ld, idx, beta, gamma, epsilon, output);
+  LayerNormSmallVec<T, TPB, ILP>(input_v, thread_data, ld, idx, beta, gamma, epsilon, output);
 }
 
 }  // namespace rocm

@@ -22,7 +22,7 @@ struct SkipLayerNormParams : OpParams {
                       const int element_count)
       : OpParams(stream), output(output), input(input), skip(skip), gamma(gamma), beta(beta), bias(bias), epsilon(epsilon), ld(ld), element_count(element_count) {}
 
-  std::string Signature() const {
+  std::string Signature() const override {
     std::string sig = std::to_string(ld) + "_" + std::to_string(element_count);
     return sig;
   }
@@ -40,19 +40,22 @@ struct SkipLayerNormParams : OpParams {
 
 template <typename T, int ThreadsPerBlock, int VecSize>
 Status SkipLayerNormOp(const SkipLayerNormParams<T>* params) {
+  TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(
+      !((params->ld > 0 && params->ld % VecSize == 0)));
   if (params->ld <= ThreadsPerBlock * VecSize) {
-    hipLaunchKernelGGL((SkipLayerNormKernelSmall<T, ThreadsPerBlock, VecSize>),
+    hipLaunchKernelGGL((SkipLayerNormKernelSmallVec<T, ThreadsPerBlock, VecSize>),
                        dim3(CeilingDivision(params->element_count, params->ld)),
                        dim3(ThreadsPerBlock),
                        0, params->stream, params->ld, params->input, params->skip,
                        params->beta, params->gamma, params->bias, maybe2half<T>(params->epsilon), params->output,
                        (params->bias == nullptr) ? false : true);
   } else {
-    hipLaunchKernelGGL((SkipLayerNormKernel<T, ThreadsPerBlock>),
+    hipLaunchKernelGGL((SkipLayerNormKernelVec<T, ThreadsPerBlock, VecSize>),
                        dim3(CeilingDivision(params->element_count, params->ld)),
                        dim3(ThreadsPerBlock),
                        0, params->stream, params->ld, params->input, params->skip,
-                       params->beta, params->gamma, params->bias, maybe2half<T>(params->epsilon), params->output);
+                       params->beta, params->gamma, params->bias, maybe2half<T>(params->epsilon), params->output,
+                       (params->bias == nullptr) ? false : true);
   }
   auto status = hipGetLastError();
   ORT_RETURN_IF(status != hipSuccess, ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, hipGetErrorName(status)));
@@ -73,14 +76,13 @@ class SkipLayerNormTunableOp : public TunableOp<SkipLayerNormParams<T>> {
     ADD_OP(128);
     ADD_OP(256);
     ADD_OP(384);
-  }
 
- private:
-  bool Condition(const SkipLayerNormParams<T>* skip_layer_norm_params) override {
-    bool condition = (skip_layer_norm_params->ld > 0) && (skip_layer_norm_params->ld % 16 == 0);
-    return condition;
+    // NOTE: the 3-th kernel seems to be better in gerenal case, so set it as default one
+    this->SetDefaultId(3);
   }
 };
+
+#undef ADD_OP
 
 }  // namespace rocm
 }  // namespace contrib
