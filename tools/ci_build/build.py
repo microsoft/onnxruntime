@@ -1205,8 +1205,8 @@ def generate_build_tree(
         ]
 
     if args.gen_doc:
-        if args.enable_training:
-            raise BuildError("--gen_doc is not supported along with --enable_training")
+        # if args.enable_training:
+        #     raise BuildError("--gen_doc is not supported along with --enable_training")
         add_default_definition(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "ON")
     else:
         add_default_definition(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "OFF")
