@@ -38,7 +38,7 @@ def skip_layer_norm(input_x, skip, bias, gamma, beta, epsilon):
     return output
 
 
-def run_skip_layer_norm(batch_size:int, seq_len:int, hidden_size:int, dtype:str, func):
+def run_skip_layer_norm(batch_size: int, seq_len: int, hidden_size: int, dtype: str, func):
     np.random.seed(0)
     input_x = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
     skip = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
@@ -55,8 +55,11 @@ def run_skip_layer_norm(batch_size:int, seq_len:int, hidden_size:int, dtype:str,
     beta_d = ke.DeviceArray(beta)
     y_d = ke.DeviceArray(output_y)
     my_func = getattr(ke, func)
-    my_op = my_func(y_d, input_d, skip_d, gamma_d, beta_d, bias_d, epsilon, hidden_size, batch_size * seq_len * hidden_size)
+    my_op = my_func(
+        y_d, input_d, skip_d, gamma_d, beta_d, bias_d, epsilon, hidden_size, batch_size * seq_len * hidden_size
+    )
     my_op.Run()
+
     y_d.UpdateHostNumpyArray()
 
     y_ref = skip_layer_norm(input_x, skip, bias, gamma, beta, epsilon)
@@ -90,7 +93,9 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func):
     bias_d = ke.DeviceArray(bias)
     y_d = ke.DeviceArray(output_y)
     my_func = getattr(ke, func)
-    my_op = my_func(y_d, input_d, skip_d, gamma_d, beta_d, bias_d, epsilon, hidden_size, batch_size * seq_len * hidden_size)
+    my_op = my_func(
+        y_d, input_d, skip_d, gamma_d, beta_d, bias_d, epsilon, hidden_size, batch_size * seq_len * hidden_size
+    )
     duration = my_op.Profile()
     print(
         dtype,
