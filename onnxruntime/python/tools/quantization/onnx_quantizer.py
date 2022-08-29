@@ -96,7 +96,7 @@ class ONNXQuantizer:
                 {
                     'Conv_3:0': [np.float32(0), np.float32(0.5)],
                     'Conv_4:0': [np.float32(1), np.float32(3.5)]
-                
+                }
         """
         self.tensors_range = tensors_range
         self.nodes_to_quantize = nodes_to_quantize  # specific nodes to quantize

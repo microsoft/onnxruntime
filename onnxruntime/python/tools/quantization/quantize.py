@@ -10,22 +10,6 @@ from pathlib import Path
 from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
-
-# from .quant_utils import (
-#     QuantFormat,
-#     QuantizationMode,
-#     QuantizedInitializer,
-#     QuantizedValue,
-#     QuantizedValueType,
-#     QuantType,
-#     attribute_to_kwarg,
-#     find_by_name,
-#     generate_identified_filename,
-#     get_elem_index,
-#     get_mul_node,
-#     load_model,
-# )
-# from .registry import IntegerOpsRegistry, QDQRegistry, QLinearOpsRegistry, QDQDynamicRegistry
 from .quant_utils import QuantFormat, QuantizationMode, QuantType, load_model
 from .registry import IntegerOpsRegistry, QDQDynamicRegistry, QLinearOpsRegistry
 
@@ -59,7 +43,6 @@ def quantize_static(
     optimize_model=True,
     use_external_data_format=False,
     calibrate_method=CalibrationMethod.MinMax,
-    calibration_file_path="augmented_model.onnx",  # TODO: ok to add a new argument to this?
     extra_options={},
 ):
 

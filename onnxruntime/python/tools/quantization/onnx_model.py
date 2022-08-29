@@ -6,8 +6,6 @@ import onnx.numpy_helper as onnx_numpy_helper
 
 from .quant_utils import attribute_to_kwarg, find_by_name
 
-# from transformers.onnx_model import OnnxModel as TransformerOnnxModel
-
 
 def _clean_initializers_helper(graph, model):
     """Clean unused initializers from graph.
