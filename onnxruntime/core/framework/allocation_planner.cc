@@ -2062,15 +2062,33 @@ class PlannerImpl {
             // keep node index first, will turn it to pc index later
             execution_plan[i]->step_pc.push_back(node_index);
 #endif
-            // push a wait command if has EP registered it.
-            auto wait_handle = stream_handle_registry.GetWaitHandle(
-                execution_plan[plan_.notification_owners[notfication_it->second]]->device_.Type(),
-                execution_plan[i]->device_.Type());
-            if (wait_handle) {
-              execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_index));
+            // collect the inputs arguments from input node.
+            // if the arguments are on same cpu device, then don't need to wait on notification
+            // barrier is enough
+            bool require_wait = false;
+            for (auto* input : node->InputDefs()) {
+              if (!input->Exists())
+                continue;
+              if (std::find(it->OutputDefs().begin(), it->OutputDefs().end(), input) != it->OutputDefs().end() &&
+                  // for the case when we wait on a cpu tensor generated from device kernel (for example, shape kernel)
+                  // we don't need to wait on notificaiton.
+                  (plan_.allocation_plan[Index(input->Name())].location.device != plan_.execution_plan[i]->device_ ||
+                   plan_.allocation_plan[Index(input->Name())].location.device.Type() != OrtDevice::CPU)) {
+                require_wait = true;
+                break;
+              }
+            }
+            if (require_wait) {
+              // push a wait command if has EP registered it.
+              auto wait_handle = stream_handle_registry.GetWaitHandle(
+                  execution_plan[plan_.notification_owners[notfication_it->second]]->device_.Type(),
+                  execution_plan[i]->device_.Type());
+              if (wait_handle) {
+                execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_index));
 #ifdef ENABLE_TRAINING
-              execution_plan[i]->step_pc.push_back(node_index);
+                execution_plan[i]->step_pc.push_back(node_index);
 #endif
+              }
             }
           }
         }
