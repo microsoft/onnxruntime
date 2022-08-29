@@ -1,0 +1,180 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel
+  commentId: T:Microsoft.ML.OnnxRuntime.GraphOptimizationLevel
+  id: GraphOptimizationLevel
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+  - Microsoft.ML.OnnxRuntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+  - Microsoft.ML.OnnxRuntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
+  - Microsoft.ML.OnnxRuntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+  langs:
+  - csharp
+  - vb
+  name: GraphOptimizationLevel
+  nameWithType: GraphOptimizationLevel
+  fullName: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel
+  type: Enum
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: GraphOptimizationLevel
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 15
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nGraph optimization level to use with SessionOptions\n[https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Graph_Optimizations.md]\n"
+  example: []
+  syntax:
+    content: public enum GraphOptimizationLevel
+    content.vb: Public Enum GraphOptimizationLevel
+  modifiers.csharp:
+  - public
+  - enum
+  modifiers.vb:
+  - Public
+  - Enum
+- uid: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+  commentId: F:Microsoft.ML.OnnxRuntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+  id: ORT_DISABLE_ALL
+  parent: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel
+  langs:
+  - csharp
+  - vb
+  name: ORT_DISABLE_ALL
+  nameWithType: GraphOptimizationLevel.ORT_DISABLE_ALL
+  fullName: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ORT_DISABLE_ALL
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 17
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ORT_DISABLE_ALL = 0
+    return:
+      type: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
+  commentId: F:Microsoft.ML.OnnxRuntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
+  id: ORT_ENABLE_BASIC
+  parent: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel
+  langs:
+  - csharp
+  - vb
+  name: ORT_ENABLE_BASIC
+  nameWithType: GraphOptimizationLevel.ORT_ENABLE_BASIC
+  fullName: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ORT_ENABLE_BASIC
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 18
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ORT_ENABLE_BASIC = 1
+    return:
+      type: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+  commentId: F:Microsoft.ML.OnnxRuntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+  id: ORT_ENABLE_EXTENDED
+  parent: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel
+  langs:
+  - csharp
+  - vb
+  name: ORT_ENABLE_EXTENDED
+  nameWithType: GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+  fullName: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ORT_ENABLE_EXTENDED
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 19
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ORT_ENABLE_EXTENDED = 2
+    return:
+      type: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+  commentId: F:Microsoft.ML.OnnxRuntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+  id: ORT_ENABLE_ALL
+  parent: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel
+  langs:
+  - csharp
+  - vb
+  name: ORT_ENABLE_ALL
+  nameWithType: GraphOptimizationLevel.ORT_ENABLE_ALL
+  fullName: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ORT_ENABLE_ALL
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 20
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ORT_ENABLE_ALL = 99
+    return:
+      type: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel
+  commentId: T:Microsoft.ML.OnnxRuntime.GraphOptimizationLevel
+  parent: Microsoft.ML.OnnxRuntime
+  name: GraphOptimizationLevel
+  nameWithType: GraphOptimizationLevel
+  fullName: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel

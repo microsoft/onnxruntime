@@ -1,0 +1,228 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.CoreMLFlags
+  commentId: T:Microsoft.ML.OnnxRuntime.CoreMLFlags
+  id: CoreMLFlags
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_ENABLE_ON_SUBGRAPH
+  - Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_LAST
+  - Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE
+  - Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_USE_CPU_ONLY
+  - Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_USE_NONE
+  langs:
+  - csharp
+  - vb
+  name: CoreMLFlags
+  nameWithType: CoreMLFlags
+  fullName: Microsoft.ML.OnnxRuntime.CoreMLFlags
+  type: Enum
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: CoreMLFlags
+    path: ../src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+    startLine: 250
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nCoreML flags for use with SessionOptions\n"
+  example: []
+  syntax:
+    content: >-
+      [Flags]
+
+      public enum CoreMLFlags : uint
+    content.vb: >-
+      <Flags>
+
+      Public Enum CoreMLFlags As UInteger
+  attributes:
+  - type: System.FlagsAttribute
+    ctor: System.FlagsAttribute.#ctor
+    arguments: []
+  modifiers.csharp:
+  - public
+  - enum
+  modifiers.vb:
+  - Public
+  - Enum
+- uid: Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_USE_NONE
+  commentId: F:Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_USE_NONE
+  id: COREML_FLAG_USE_NONE
+  parent: Microsoft.ML.OnnxRuntime.CoreMLFlags
+  langs:
+  - csharp
+  - vb
+  name: COREML_FLAG_USE_NONE
+  nameWithType: CoreMLFlags.COREML_FLAG_USE_NONE
+  fullName: Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_USE_NONE
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: COREML_FLAG_USE_NONE
+    path: ../src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+    startLine: 253
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: COREML_FLAG_USE_NONE = 0U
+    return:
+      type: Microsoft.ML.OnnxRuntime.CoreMLFlags
+    content.vb: COREML_FLAG_USE_NONE = 0UI
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_USE_CPU_ONLY
+  commentId: F:Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_USE_CPU_ONLY
+  id: COREML_FLAG_USE_CPU_ONLY
+  parent: Microsoft.ML.OnnxRuntime.CoreMLFlags
+  langs:
+  - csharp
+  - vb
+  name: COREML_FLAG_USE_CPU_ONLY
+  nameWithType: CoreMLFlags.COREML_FLAG_USE_CPU_ONLY
+  fullName: Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_USE_CPU_ONLY
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: COREML_FLAG_USE_CPU_ONLY
+    path: ../src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+    startLine: 254
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: COREML_FLAG_USE_CPU_ONLY = 1U
+    return:
+      type: Microsoft.ML.OnnxRuntime.CoreMLFlags
+    content.vb: COREML_FLAG_USE_CPU_ONLY = 1UI
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_ENABLE_ON_SUBGRAPH
+  commentId: F:Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_ENABLE_ON_SUBGRAPH
+  id: COREML_FLAG_ENABLE_ON_SUBGRAPH
+  parent: Microsoft.ML.OnnxRuntime.CoreMLFlags
+  langs:
+  - csharp
+  - vb
+  name: COREML_FLAG_ENABLE_ON_SUBGRAPH
+  nameWithType: CoreMLFlags.COREML_FLAG_ENABLE_ON_SUBGRAPH
+  fullName: Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_ENABLE_ON_SUBGRAPH
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: COREML_FLAG_ENABLE_ON_SUBGRAPH
+    path: ../src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+    startLine: 255
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: COREML_FLAG_ENABLE_ON_SUBGRAPH = 2U
+    return:
+      type: Microsoft.ML.OnnxRuntime.CoreMLFlags
+    content.vb: COREML_FLAG_ENABLE_ON_SUBGRAPH = 2UI
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE
+  commentId: F:Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE
+  id: COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE
+  parent: Microsoft.ML.OnnxRuntime.CoreMLFlags
+  langs:
+  - csharp
+  - vb
+  name: COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE
+  nameWithType: CoreMLFlags.COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE
+  fullName: Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE
+    path: ../src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+    startLine: 256
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE = 4U
+    return:
+      type: Microsoft.ML.OnnxRuntime.CoreMLFlags
+    content.vb: COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE = 4UI
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_LAST
+  commentId: F:Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_LAST
+  id: COREML_FLAG_LAST
+  parent: Microsoft.ML.OnnxRuntime.CoreMLFlags
+  langs:
+  - csharp
+  - vb
+  name: COREML_FLAG_LAST
+  nameWithType: CoreMLFlags.COREML_FLAG_LAST
+  fullName: Microsoft.ML.OnnxRuntime.CoreMLFlags.COREML_FLAG_LAST
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: COREML_FLAG_LAST
+    path: ../src/Microsoft.ML.OnnxRuntime/ProviderOptions.shared.cs
+    startLine: 257
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: COREML_FLAG_LAST = 4U
+    return:
+      type: Microsoft.ML.OnnxRuntime.CoreMLFlags
+    content.vb: COREML_FLAG_LAST = 4UI
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: Microsoft.ML.OnnxRuntime.CoreMLFlags
+  commentId: T:Microsoft.ML.OnnxRuntime.CoreMLFlags
+  parent: Microsoft.ML.OnnxRuntime
+  name: CoreMLFlags
+  nameWithType: CoreMLFlags
+  fullName: Microsoft.ML.OnnxRuntime.CoreMLFlags
