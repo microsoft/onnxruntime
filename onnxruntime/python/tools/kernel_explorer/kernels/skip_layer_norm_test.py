@@ -25,6 +25,7 @@ def skip_layer_norm(input, skip, bias, gamma, beta, epsilon):
     y = y * gamma + beta
     return y
 
+
 def run_skip_layer_norm(batch_size, seq_len, hidden_size, dtype, func):
     np.random.seed(0)
     x = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
@@ -75,7 +76,6 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func):
     bias = np.random.rand(hidden_size).astype(dtype)
     epsilon = 0.0005
     y = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
-
 
     input_d = ke.DeviceArray(x)
     skip_d = ke.DeviceArray(skip)
