@@ -20,7 +20,8 @@ struct SkipLayerNormParams : OpParams {
                       const T* skip, const T* gamma, const T* beta,
                       const T* bias, float epsilon, const int ld,
                       const int element_count)
-      : OpParams(stream), output(output), input(input), skip(skip), gamma(gamma), beta(beta), bias(bias), epsilon(epsilon), ld(ld), element_count(element_count) {}
+      : OpParams(stream), output(output), input(input), skip(skip), gamma(gamma), beta(beta),
+        bias(bias), epsilon(epsilon), ld(ld), element_count(element_count) {}
 
   std::string Signature() const override {
     std::string sig = std::to_string(ld) + "_" + std::to_string(element_count);

@@ -151,8 +151,6 @@ __device__ inline void LayerNormVec(
       *(reinterpret_cast<VecT*>(&output[idx])) = *reinterpret_cast<VecT*>(&output_v[0]);
     }
   }
-
-
 }
 
 template <typename T, int TPB, int ILP>

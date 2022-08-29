@@ -1,8 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <pybind11/pybind11.h>
+#include "python/tools/kernel_explorer/kernels/skip_layer_norm.h"
+
 #include <hip/hip_fp16.h>
+#include <pybind11/pybind11.h>
+
 #include "contrib_ops/rocm/bert/skip_layer_norm_impl_kernel.h"
 #include "contrib_ops/rocm/bert/skip_layer_norm_tunable_op.h"
 #include "python/tools/kernel_explorer/device_array.h"
