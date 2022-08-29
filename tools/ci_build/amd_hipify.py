@@ -129,6 +129,8 @@ provider_excluded_files = [
     "cuda_kernel.h",
     "cuda_pch.cc",
     "cuda_pch.h",
+    "cuda_profiler.cc",
+    "cuda_profiler.h",
     "cuda_provider_factory.cc",
     "cuda_provider_factory.h",
     "cuda_utils.cu",

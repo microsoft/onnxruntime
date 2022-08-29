@@ -53,7 +53,7 @@ done
 
 EXIT_CODE=1
 DEFAULT_PYTHON_VER="3.8"
-		
+
 PYTHON_VER=${PYTHON_VER:=$DEFAULT_PYTHON_VER}
 echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EXTR_PAR"
 
@@ -91,9 +91,9 @@ elif [ $BUILD_DEVICE = "gpu" ]; then
         if [[ $ORTMODULE_BUILD = true ]]; then
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -u"
         fi
-        INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -v 11.3"
+        INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -v 11.6"
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-            --docker-build-args="--build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.3.1-cudnn8-devel-${BUILD_OS} --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA} --network=host" \
+            --docker-build-args="--build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.6.2-cudnn8-devel-${BUILD_OS} --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA} --network=host" \
             --dockerfile Dockerfile.ubuntu_gpu_training --context .
 elif [[ $BUILD_DEVICE = "tensorrt"* ]]; then
         IMAGE="$BUILD_OS-cuda11.6-cudnn8.4-tensorrt8.4"
@@ -104,7 +104,7 @@ elif [[ $BUILD_DEVICE = "tensorrt"* ]]; then
             --dockerfile $DOCKER_FILE --context .
 else
         BUILD_ARGS="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.8"
-        
+
         if [ $BUILD_DEVICE = "openvino" ]; then
            IMAGE="$BUILD_OS-openvino"
            DOCKER_FILE=Dockerfile.ubuntu_openvino

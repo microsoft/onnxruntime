@@ -27,7 +27,7 @@ void Timer::End() {
   HIP_CHECK(hipEventSynchronize(end_));
 }
 
-float Timer::time() {
+float Timer::Duration() {
   float time;
   // time is in ms with a resolution of 1 us
   HIP_CHECK(hipEventElapsedTime(&time, start_, end_));

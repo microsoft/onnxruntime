@@ -1,0 +1,543 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorBase
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.TensorBase
+  id: TensorBase
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  children:
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorBase.#ctor(System.Type)
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetElementTypeInfo(Microsoft.ML.OnnxRuntime.Tensors.TensorElementType)
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetTypeInfo
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetTypeInfo(System.Type)
+  langs:
+  - csharp
+  - vb
+  name: TensorBase
+  nameWithType: TensorBase
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorBase
+  type: Class
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: TensorBase
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 282
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nThis class is a base for all Tensors. It hosts maps with type traits.\n"
+  example: []
+  syntax:
+    content: public class TensorBase
+    content.vb: Public Class TensorBase
+  inheritance:
+  - System.Object
+  derivedClasses:
+  - Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+  inheritedMembers:
+  - System.Object.Equals(System.Object)
+  - System.Object.Equals(System.Object,System.Object)
+  - System.Object.GetHashCode
+  - System.Object.GetType
+  - System.Object.MemberwiseClone
+  - System.Object.ReferenceEquals(System.Object,System.Object)
+  - System.Object.ToString
+  modifiers.csharp:
+  - public
+  - class
+  modifiers.vb:
+  - Public
+  - Class
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorBase.#ctor(System.Type)
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.TensorBase.#ctor(System.Type)
+  id: '#ctor(System.Type)'
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorBase
+  langs:
+  - csharp
+  - vb
+  name: TensorBase(Type)
+  nameWithType: TensorBase.TensorBase(Type)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorBase.TensorBase(System.Type)
+  type: Constructor
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: .ctor
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 319
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nConstructs TensorBae\n"
+  example: []
+  syntax:
+    content: protected TensorBase(Type primitiveType)
+    parameters:
+    - id: primitiveType
+      type: System.Type
+      description: primitive type the deriving class is using
+    content.vb: Protected Sub New(primitiveType As Type)
+  overload: Microsoft.ML.OnnxRuntime.Tensors.TensorBase.#ctor*
+  modifiers.csharp:
+  - protected
+  modifiers.vb:
+  - Protected
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetTypeInfo(System.Type)
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetTypeInfo(System.Type)
+  id: GetTypeInfo(System.Type)
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorBase
+  langs:
+  - csharp
+  - vb
+  name: GetTypeInfo(Type)
+  nameWithType: TensorBase.GetTypeInfo(Type)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetTypeInfo(System.Type)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: GetTypeInfo
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 336
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nQuery TensorTypeInfo by one of the supported types\n"
+  example: []
+  syntax:
+    content: public static TensorTypeInfo GetTypeInfo(Type type)
+    parameters:
+    - id: type
+      type: System.Type
+      description: ''
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorTypeInfo
+      description: TensorTypeInfo or null if not supported
+    content.vb: Public Shared Function GetTypeInfo(type As Type) As TensorTypeInfo
+  overload: Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetTypeInfo*
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetElementTypeInfo(Microsoft.ML.OnnxRuntime.Tensors.TensorElementType)
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetElementTypeInfo(Microsoft.ML.OnnxRuntime.Tensors.TensorElementType)
+  id: GetElementTypeInfo(Microsoft.ML.OnnxRuntime.Tensors.TensorElementType)
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorBase
+  langs:
+  - csharp
+  - vb
+  name: GetElementTypeInfo(TensorElementType)
+  nameWithType: TensorBase.GetElementTypeInfo(TensorElementType)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetElementTypeInfo(Microsoft.ML.OnnxRuntime.Tensors.TensorElementType)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: GetElementTypeInfo
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 348
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nQuery TensorElementTypeInfo by enum\n"
+  example: []
+  syntax:
+    content: public static TensorElementTypeInfo GetElementTypeInfo(TensorElementType elementType)
+    parameters:
+    - id: elementType
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+      description: type enum
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementTypeInfo
+      description: instance of TensorElementTypeInfo or null if not found
+    content.vb: Public Shared Function GetElementTypeInfo(elementType As TensorElementType) As TensorElementTypeInfo
+  overload: Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetElementTypeInfo*
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetTypeInfo
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetTypeInfo
+  id: GetTypeInfo
+  parent: Microsoft.ML.OnnxRuntime.Tensors.TensorBase
+  langs:
+  - csharp
+  - vb
+  name: GetTypeInfo()
+  nameWithType: TensorBase.GetTypeInfo()
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetTypeInfo()
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: GetTypeInfo
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/Tensor.shared.cs
+    startLine: 359
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nQuery TensorTypeInfo using this Tensor type\n"
+  example: []
+  syntax:
+    content: public TensorTypeInfo GetTypeInfo()
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorTypeInfo
+      description: ''
+    content.vb: Public Function GetTypeInfo As TensorTypeInfo
+  overload: Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetTypeInfo*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+references:
+- uid: Microsoft.ML.OnnxRuntime.Tensors
+  commentId: N:Microsoft.ML.OnnxRuntime.Tensors
+  name: Microsoft.ML.OnnxRuntime.Tensors
+  nameWithType: Microsoft.ML.OnnxRuntime.Tensors
+  fullName: Microsoft.ML.OnnxRuntime.Tensors
+- uid: System.Object
+  commentId: T:System.Object
+  parent: System
+  isExternal: true
+  name: Object
+  nameWithType: Object
+  fullName: System.Object
+- uid: System.Object.Equals(System.Object)
+  commentId: M:System.Object.Equals(System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object)
+  nameWithType: Object.Equals(Object)
+  fullName: System.Object.Equals(System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.Equals(System.Object,System.Object)
+  commentId: M:System.Object.Equals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object, Object)
+  nameWithType: Object.Equals(Object, Object)
+  fullName: System.Object.Equals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetHashCode
+  commentId: M:System.Object.GetHashCode
+  parent: System.Object
+  isExternal: true
+  name: GetHashCode()
+  nameWithType: Object.GetHashCode()
+  fullName: System.Object.GetHashCode()
+  spec.csharp:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetType
+  commentId: M:System.Object.GetType
+  parent: System.Object
+  isExternal: true
+  name: GetType()
+  nameWithType: Object.GetType()
+  fullName: System.Object.GetType()
+  spec.csharp:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.MemberwiseClone
+  commentId: M:System.Object.MemberwiseClone
+  parent: System.Object
+  isExternal: true
+  name: MemberwiseClone()
+  nameWithType: Object.MemberwiseClone()
+  fullName: System.Object.MemberwiseClone()
+  spec.csharp:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ReferenceEquals(System.Object,System.Object)
+  commentId: M:System.Object.ReferenceEquals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: ReferenceEquals(Object, Object)
+  nameWithType: Object.ReferenceEquals(Object, Object)
+  fullName: System.Object.ReferenceEquals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ToString
+  commentId: M:System.Object.ToString
+  parent: System.Object
+  isExternal: true
+  name: ToString()
+  nameWithType: Object.ToString()
+  fullName: System.Object.ToString()
+  spec.csharp:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System
+  commentId: N:System
+  isExternal: true
+  name: System
+  nameWithType: System
+  fullName: System
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorBase.#ctor*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.Tensors.TensorBase.#ctor
+  name: TensorBase
+  nameWithType: TensorBase.TensorBase
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorBase.TensorBase
+- uid: System.Type
+  commentId: T:System.Type
+  parent: System
+  isExternal: true
+  name: Type
+  nameWithType: Type
+  fullName: System.Type
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetTypeInfo*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetTypeInfo
+  name: GetTypeInfo
+  nameWithType: TensorBase.GetTypeInfo
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetTypeInfo
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorTypeInfo
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.TensorTypeInfo
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  name: TensorTypeInfo
+  nameWithType: TensorTypeInfo
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorTypeInfo
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetElementTypeInfo*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetElementTypeInfo
+  name: GetElementTypeInfo
+  nameWithType: TensorBase.GetElementTypeInfo
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorBase.GetElementTypeInfo
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  name: TensorElementType
+  nameWithType: TensorElementType
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementTypeInfo
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.TensorElementTypeInfo
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  name: TensorElementTypeInfo
+  nameWithType: TensorElementTypeInfo
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementTypeInfo
