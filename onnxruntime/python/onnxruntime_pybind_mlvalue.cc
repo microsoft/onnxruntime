@@ -160,14 +160,18 @@ AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
   // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
   // multi-threaded CUDA allocation work we need to maintain a per-thread CUDA allocator
 
-  static auto* id_to_allocator_map = new std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>();
+  // We are leaking this map so we do not accidentally destroy CUDA Allocator instance
+  // after we unloaded CUDA provider library. Appeasing static analysis warning and using make_unique.
+  static auto* id_to_allocator_map = std::make_unique<std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>>().release();
 
-  if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
+  auto hit = id_to_allocator_map->find(id);
+  if (hit == id_to_allocator_map->end()) {
     // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
-    id_to_allocator_map->insert({id, GetProviderInfo_CUDA().CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr)});
+    auto cuda_allocator = GetProviderInfo_CUDA().CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr);
+    hit = id_to_allocator_map->emplace(id, std::move(cuda_allocator)).first;
   }
 
-  return (*id_to_allocator_map)[id];
+  return hit->second;
 }
 
 std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {

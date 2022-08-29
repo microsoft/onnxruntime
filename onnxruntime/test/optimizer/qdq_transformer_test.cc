@@ -2506,8 +2506,8 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicDQQCleanUp) {
   auto test_case = [](bool use_matching_qdq_params) {
     // input -> Q -> DQ -> Q -> DQ -> output
     auto build_test_case = [&](ModelTestBuilder& builder) {
-      const float scale_1 = 0.05f;
-      const uint8_t zp_1 = 128;
+      constexpr float scale_1 = 0.05f;
+      constexpr uint8_t zp_1 = 128;
       auto* const input = builder.MakeInput<float>({1, 2, 4}, -1.0f, 1.0f);
       auto* const dq_1_out = AddQDQNodePair<uint8_t>(builder, input, scale_1, zp_1);
 
@@ -2550,8 +2550,8 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_GraphInputToOutput) {
   auto test_case = [](bool is_q_dq) {
     // create model with input -> Q/DQ pair -> output
     auto build_test_case = [&](ModelTestBuilder& builder) {
-      const float scale = 0.05f;
-      const uint8_t zp = 128;
+      constexpr float scale = 0.05f;
+      constexpr uint8_t zp = 128;
       NodeArg* input = is_q_dq ? builder.MakeInput<float>({1, 2, 4}, -1.f, 1.f)
                                : builder.MakeInput<uint8_t>({1, 2, 4},
                                                             std::numeric_limits<uint8_t>::min(),
