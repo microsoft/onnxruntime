@@ -31,8 +31,6 @@ namespace fbs {
 struct KernelTypeStrResolver;
 }  // namespace fbs
 
-using common::Status;
-
 using ArgTypeAndIndex = std::pair<ArgType, size_t>;
 using KernelTypeStrToArgsMap = InlinedHashMap<std::string, InlinedVector<ArgTypeAndIndex>>;
 using OpKernelTypeStrMap = InlinedHashMap<OpIdentifier, KernelTypeStrToArgsMap>;

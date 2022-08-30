@@ -17,8 +17,6 @@ class DetachedBuffer;
 
 namespace onnxruntime::kernel_type_str_resolver_utils {
 
-using common::Status;
-
 #if !defined(ORT_MINIMAL_BUILD)
 
 gsl::span<const OpIdentifierWithStringViews> GetLayoutTransformationRequiredOpIdentifiers();

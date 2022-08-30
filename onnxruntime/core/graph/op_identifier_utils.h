@@ -16,8 +16,6 @@ struct Offset;
 
 namespace onnxruntime {
 
-using common::Status;
-
 namespace fbs {
 
 struct OpIdentifier;
