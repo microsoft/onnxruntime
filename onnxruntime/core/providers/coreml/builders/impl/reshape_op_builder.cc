@@ -85,7 +85,7 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
 
   const auto& perm_tensor = *initializers.at(perm_name);
   Initializer unpacked_tensor(perm_tensor);
-  const int64_t* raw_perm = unpacked_tensor.data<int64_t>();
+  auto raw_perm = unpacked_tensor.DataAsSpan<int64_t>();
   const auto& perm_dims = perm_tensor.dims();
   if (perm_dims.empty() || perm_dims[0] == 0) {
     LOGS(logger, VERBOSE) << "New shape of reshape cannot be empty";

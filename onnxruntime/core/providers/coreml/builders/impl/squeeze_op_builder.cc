@@ -50,12 +50,10 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
       const auto& initializers(model_builder.GetInitializerTensors());
       const auto& axes_tensor = *initializers.at(node.InputDefs()[1]->Name());
       Initializer unpacked_tensor(axes_tensor);
-      const int64_t* raw_axes = unpacked_tensor.data<int64_t>();
+      auto raw_axes = unpacked_tensor.DataAsSpan<int64_t>();
       const auto size = SafeInt<size_t>(axes_tensor.dims()[0]);
-      axes.resize(size);
-      for (size_t i = 0; i < size; i++) {
-        axes[i] = raw_axes[i];
-      }
+      axes.reserve(size);
+      axes.insert(axes.end(), raw_axes.begin(), raw_axes.end());
     }
   } else {
     NodeAttrHelper helper(node);

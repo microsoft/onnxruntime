@@ -69,7 +69,7 @@ Status AddPReluWeight(ModelBuilder& model_builder, const Node& node,
     const auto num_channels = x_shape[x_shape.size() - 3];
 
     Initializer unpacked_tensor(slope_tensor);
-    float value = unpacked_tensor.data<float>()[0];
+    float value = unpacked_tensor.DataAsSpan<float>()[0];
 
     auto& weight_values = *prelu.mutable_alpha()->mutable_floatvalue();
     weight_values.Clear();

@@ -55,7 +55,7 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 static Status GetTensorFloatDataTransposed(const ONNX_NAMESPACE::TensorProto& tensor,
                                            std::vector<float>& transposed_data) {
   Initializer unpacked_tensor(tensor);
-  const float* src_data = unpacked_tensor.data<float>();
+  auto src_data = unpacked_tensor.DataAsSpan<float>();
   const auto& tensor_shape = tensor.dims();
   auto x_t = SafeInt<size_t>(tensor_shape[0]);
   auto y_t = SafeInt<size_t>(tensor_shape[1]);

@@ -57,6 +57,11 @@ class Initializer final {
     return data_.Data<T>();
   }
 
+  template <typename T>
+  auto DataAsSpan() const {
+    return data_.DataAsSpan<T>();
+  }
+
   gsl::span<const uint8_t> DataAsByteSpan() const {
     return gsl::make_span(reinterpret_cast<const uint8_t*>(data_.DataRaw()), data_.SizeInBytes());
   }
