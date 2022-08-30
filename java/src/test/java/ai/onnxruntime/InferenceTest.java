@@ -622,6 +622,7 @@ public class InferenceTest {
   public void testXNNPACK() throws OrtException {
     runProvider(OrtProvider.XNNPACK);
   }
+
   private void runProvider(OrtProvider provider) throws OrtException {
     EnumSet<OrtProvider> providers = OrtEnvironment.getAvailableProviders();
     assertTrue(providers.size() > 1);

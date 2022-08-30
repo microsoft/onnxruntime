@@ -1109,8 +1109,7 @@ public class OrtSession implements AutoCloseable {
     private native void addCoreML(long apiHandle, long nativeHandle, int coreMLFlags)
         throws OrtException;
 
-    private native void addXnnpack(long apiHandle, long nativeHandle)
-        throws OrtException;
+    private native void addXnnpack(long apiHandle, long nativeHandle) throws OrtException;
   }
 
   /** Used to control logging and termination of a call to {@link OrtSession#run}. */
