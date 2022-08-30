@@ -17,6 +17,7 @@
 #include "core/common/status.h"
 #include "core/graph/op_identifier.h"
 #include "core/graph/graph.h"
+#include "core/platform/ort_mutex.h"
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -94,8 +95,9 @@ class AutoRegisteringKernelTypeStrResolver : public IKernelTypeStrResolver {
 
  private:
   // used as a cache when resolving
-  // TODO thread-safety? it may change even through const functions
+  // since the cache may be modified with a const instance, ensure that access to the cache is thread-safe
   mutable KernelTypeStrResolver resolver_;
+  mutable OrtMutex resolver_mutex_;
 };
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

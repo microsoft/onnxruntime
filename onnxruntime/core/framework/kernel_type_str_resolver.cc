@@ -3,13 +3,11 @@
 
 #include "core/framework/kernel_type_str_resolver.h"
 
+#include <mutex>  // for std::lock_guard
+
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/graph/op_identifier_utils.h"
-
-// TODO used for OpIdFromString, remove later
-#include "core/common/parse_string.h"
-#include "core/common/string_utils.h"
 
 namespace fb = flatbuffers;
 
@@ -242,6 +240,7 @@ void KernelTypeStrResolver::Merge(KernelTypeStrResolver& src) {
 Status AutoRegisteringKernelTypeStrResolver::ResolveKernelTypeStr(
     const Node& node, std::string_view kernel_type_str,
     gsl::span<const ArgTypeAndIndex>& resolved_args) const {
+  std::lock_guard lock{resolver_mutex_};
   ORT_RETURN_IF_ERROR(resolver_.RegisterNodeOpSchema(node));
   ORT_RETURN_IF_ERROR(resolver_.ResolveKernelTypeStr(node, kernel_type_str, resolved_args));
   return Status::OK();
