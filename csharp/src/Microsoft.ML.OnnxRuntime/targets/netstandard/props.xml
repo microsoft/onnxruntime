@@ -53,7 +53,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-	<!-- x64 -->
+    <!-- x64 -->
     <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime.dll"
           Condition="'$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')">
       <Link>onnxruntime.dll</Link>
@@ -117,7 +117,7 @@
       <Visible>false</Visible>
     </None>
 
-	<!-- arm64 -->
+    <!-- arm64 -->
     <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime.dll"
           Condition="'$(PlatformTarget)' == 'ARM64'">
       <Link>onnxruntime.dll</Link>
@@ -132,7 +132,7 @@
       <Visible>false</Visible>
     </None>
 
-	<!-- arm -->
+    <!-- arm -->
     <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm\native\onnxruntime.dll"
           Condition="'$(PlatformTarget)' == 'ARM'">
       <Link>onnxruntime.dll</Link>
@@ -147,7 +147,7 @@
       <Visible>false</Visible>
     </None>
 	
-	<!-- x86 -->	
+    <!-- x86 -->	
     <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\onnxruntime.dll"
           Condition="('$(PlatformTarget)' == 'x86' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' == 'true'))">
       <Link>onnxruntime.dll</Link>
