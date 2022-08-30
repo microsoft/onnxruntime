@@ -18,7 +18,6 @@ std::array<int64_t, 4> VulkanTensor::TensorShapeFormat(const Tensor* input) {
   int64_t H = -1;
   int64_t W = -1;
 
-  // Only NCHW format is supported
   if (rank >= 3) {
     N = tensor_shape[0];
     C = tensor_shape[1];
