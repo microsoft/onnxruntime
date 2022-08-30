@@ -57,7 +57,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 var state = new CheckpointState(checkpointPath);
                 cleanUp.Add(state);
-                Assert.NotNull(state);                
+                Assert.NotNull(state);
                 string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
 
                 var trainingSession = new TrainingSession(state, trainingPath);
@@ -162,11 +162,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
                 var trainingSession = new TrainingSession(state, trainingPath);
                 cleanUp.Add(trainingSession);
-                
+
                 // Save checkpoint
                 string savedCheckpointPath = Path.Combine(Directory.GetCurrentDirectory(), "saved_checkpoint.ckpt");
                 trainingSession.SaveCheckpoint(savedCheckpointPath, false);
-                
+
                 // Load checkpoint and run train step
                 var loadedState = new CheckpointState(savedCheckpointPath);
                 cleanUp.Add(loadedState);
@@ -273,7 +273,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 cleanUp.Add(trainingSession);
 
                 float learningRate = 0.1f;
-                trainingSession.RegisterLinearLRScheduler(2,4,learningRate);
+                trainingSession.RegisterLinearLRScheduler(2, 4, learningRate);
                 RunTrainStep(trainingSession);
                 trainingSession.OptimizerStep();
                 trainingSession.SchedulerStep();

@@ -1715,14 +1715,5 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtReleasePrepackedWeightsContainer OrtReleasePrepackedWeightsContainer;
 
 #endregion
-
-
-        public static byte[] GetPlatformSerializedString(string str)
-        {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                return System.Text.Encoding.Unicode.GetBytes(str + Char.MinValue);
-            else
-                return System.Text.Encoding.UTF8.GetBytes(str + Char.MinValue);
-        }
     } //class NativeMethods
 } //namespace

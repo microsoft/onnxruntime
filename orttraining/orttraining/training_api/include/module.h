@@ -86,16 +86,16 @@ struct Module {
   Status GetStateDict(ModuleCheckpointState& module_checkpoint_states);
 
   // Returns the output count for training graph
-  size_t GetTrainModelOutputCount() const noexcept;
+  size_t GetTrainingModelOutputCount() const noexcept;
 
   // Returns the output count for eval graph
   size_t GetEvalModelOutputCount() const noexcept;
 
   // Returns the output names for train graph
-  void GetTrainModelOutputName(size_t& index, std::string& name) const;
+  std::string GetTrainingModelOutputName(size_t index) const;
 
   // Returns the output names for eval graph
-  void GetEvalModelOutputName(size_t& index, std::string& name) const;
+  std::string GetEvalModelOutputName(size_t index) const;
 
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};

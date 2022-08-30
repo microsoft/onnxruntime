@@ -5,7 +5,8 @@ using System;
 using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
-    {
+{
+#if __ENABLE_TRAINING_ON_DEVICE__
         // OrtTrainingApi  (onnxruntime_training_c_api.cc)
         [StructLayout(LayoutKind.Sequential)]
         public struct OrtTrainingApi
@@ -13,9 +14,9 @@ namespace Microsoft.ML.OnnxRuntime
             public IntPtr LoadCheckpoint;
             public IntPtr SaveCheckpoint;
             public IntPtr CreateTrainingSession;
-            public IntPtr TrainingSessionGetTrainModelOutputCount;
+            public IntPtr TrainingSessionGetTrainingModelOutputCount;
             public IntPtr TrainingSessionGetEvalModelOutputCount;
-            public IntPtr TrainingSessionGetTrainModelOutputName;
+            public IntPtr TrainingSessionGetTrainingModelOutputName;
             public IntPtr TrainingSessionGetEvalModelOutputName;
             public IntPtr ResetGrad;
             public IntPtr TrainStep;
@@ -57,9 +58,9 @@ namespace Microsoft.ML.OnnxRuntime
                     OrtLoadCheckpoint = (DOrtLoadCheckpoint)Marshal.GetDelegateForFunctionPointer(trainingApi_.LoadCheckpoint, typeof(DOrtLoadCheckpoint));
                     OrtSaveCheckpoint = (DOrtSaveCheckpoint)Marshal.GetDelegateForFunctionPointer(trainingApi_.SaveCheckpoint, typeof(DOrtSaveCheckpoint));
                     OrtCreateTrainingSession = (DOrtCreateTrainingSession)Marshal.GetDelegateForFunctionPointer(trainingApi_.CreateTrainingSession, typeof(DOrtCreateTrainingSession));
-                    OrtGetTrainModelOutputCount = (DOrtGetTrainModelOutputCount)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainingSessionGetTrainModelOutputCount, typeof(DOrtGetTrainModelOutputCount));
+                    OrtGetTrainingModelOutputCount = (DOrtGetTrainingModelOutputCount)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainingSessionGetTrainingModelOutputCount, typeof(DOrtGetTrainingModelOutputCount));
                     OrtGetEvalModelOutputCount = (DOrtGetEvalModelOutputCount)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainingSessionGetEvalModelOutputCount, typeof(DOrtGetEvalModelOutputCount));
-                    OrtGetTrainModelOutputName = (DOrtGetTrainModelOutputName)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainingSessionGetTrainModelOutputName, typeof(DOrtGetTrainModelOutputName));
+                    OrtGetTrainingModelOutputName = (DOrtGetTrainingModelOutputName)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainingSessionGetTrainingModelOutputName, typeof(DOrtGetTrainingModelOutputName));
                     OrtGetEvalModelOutputName = (DOrtGetEvalModelOutputName)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainingSessionGetEvalModelOutputName, typeof(DOrtGetEvalModelOutputName));
                     OrtResetGrad = (DOrtResetGrad)Marshal.GetDelegateForFunctionPointer(trainingApi_.ResetGrad, typeof(DOrtResetGrad));
                     OrtTrainStep = (DOrtTrainStep)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainStep, typeof(DOrtTrainStep));
@@ -75,12 +76,12 @@ namespace Microsoft.ML.OnnxRuntime
 
             }
 
-            #region TrainingSession API
+#region TrainingSession API
 
             /// <summary>
             /// Creates an instance of OrtSession with provided parameters
             /// </summary>
-            /// <param name="checkpointPath">UTF-8 bytes corresponding to checkpoint string path</param>
+            /// <param name="checkpointPath">checkpoint string path</param>
             /// <param name="checkpointState">(Output) Loaded OrtCheckpointState instance</param>
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /* OrtStatus* */DOrtLoadCheckpoint(
@@ -92,7 +93,7 @@ namespace Microsoft.ML.OnnxRuntime
             /// <summary>
             /// Creates an instance of OrtSession with provided parameters
             /// </summary>
-            /// <param name="checkpointPath">UTF-8 bytes corresponding to checkpoint string path</param>
+            /// <param name="checkpointPath">checkpoint string path</param>
             /// <param name="checkpointState">(Output) Loaded OrtCheckpointState instance</param>
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /* OrtStatus* */DOrtSaveCheckpoint(
@@ -108,9 +109,9 @@ namespace Microsoft.ML.OnnxRuntime
             /// <param name="environment">Native OrtEnv instance</param>
             /// <param name="sessionOptions">Native SessionOptions instance</param>
             /// <param name="checkpointState">Loaded OrtCheckpointState instance</param>
-            /// <param name="trainModelPath">UTF-8 bytes corresponding to model string path</param>
-            /// <param name="evalModelPath">UTF-8 bytes corresponding to model string path</param>
-            /// <param name="optimizerModelPath">UTF-8 bytes corresponding to model string path</param>
+            /// <param name="trainModelPath">model string path</param>
+            /// <param name="evalModelPath">model string path</param>
+            /// <param name="optimizerModelPath">model string path</param>
             /// <param name="session">(Output) Created native OrtTrainingSession instance</param>
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /* OrtStatus* */DOrtCreateTrainingSession(
@@ -126,11 +127,11 @@ namespace Microsoft.ML.OnnxRuntime
 
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTrainModelOutputCount(
+            public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTrainingModelOutputCount(
                                                     IntPtr /*(OrtSession*)*/ session,
                                                     out UIntPtr count);
 
-            public static DOrtGetTrainModelOutputCount OrtGetTrainModelOutputCount;
+            public static DOrtGetTrainingModelOutputCount OrtGetTrainingModelOutputCount;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /*(OrtStatus*)*/ DOrtGetEvalModelOutputCount(
@@ -140,13 +141,13 @@ namespace Microsoft.ML.OnnxRuntime
             public static DOrtGetEvalModelOutputCount OrtGetEvalModelOutputCount;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTrainModelOutputName(
+            public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTrainingModelOutputName(
                                                     IntPtr /*(OrtSession*)*/ session,
                                                     UIntPtr index,
                                                     IntPtr /*(OrtAllocator*)*/ allocator,
                                                     out IntPtr /*(char**)*/name);
 
-            public static DOrtGetTrainModelOutputName OrtGetTrainModelOutputName;
+            public static DOrtGetTrainingModelOutputName OrtGetTrainingModelOutputName;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /*(OrtStatus*)*/ DOrtGetEvalModelOutputName(
@@ -234,15 +235,7 @@ namespace Microsoft.ML.OnnxRuntime
             public delegate void DOrtReleaseCheckpointState(IntPtr /*(OrtSession*)*/session);
             public static DOrtReleaseCheckpointState OrtReleaseCheckpointState;
 
-            #endregion TrainingSession API
-
-            public static byte[] GetPlatformSerializedString(string str)
-            {
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                    return System.Text.Encoding.Unicode.GetBytes(str + Char.MinValue);
-                else
-                    return System.Text.Encoding.UTF8.GetBytes(str + Char.MinValue);
-            }
+#endregion TrainingSession API
 
             public static bool TrainingEnabled()
             {
@@ -253,4 +246,5 @@ namespace Microsoft.ML.OnnxRuntime
                 return true;
             }
         } //class NativeTrainingMethods
-    } //namespace
+#endif
+} //namespace

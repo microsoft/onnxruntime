@@ -76,7 +76,7 @@ struct OrtTrainingApi {
   * \snippet{doc} snippets.dox OrtStatus Return Value
   *
   */
-  ORT_API2_STATUS(TrainingSessionGetTrainModelOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
+  ORT_API2_STATUS(TrainingSessionGetTrainingModelOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
 
   /** \brief Retrieves the number of user outputs in the eval model.
   *
@@ -91,7 +91,7 @@ struct OrtTrainingApi {
   */
   ORT_API2_STATUS(TrainingSessionGetEvalModelOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
 
-  ORT_API2_STATUS(TrainingSessionGetTrainModelOutputName, _In_ const OrtSession* sess, size_t index, _Inout_ OrtAllocator* allocator, _Outptr_ char** output);
+  ORT_API2_STATUS(TrainingSessionGetTrainingModelOutputName, _In_ const OrtSession* sess, size_t index, _Inout_ OrtAllocator* allocator, _Outptr_ char** output);
 
   ORT_API2_STATUS(TrainingSessionGetEvalModelOutputName, _In_ const OrtSession* sess, size_t index, _Inout_ OrtAllocator* allocator, _Outptr_ char** output);
 
@@ -168,7 +168,7 @@ struct OrtTrainingApi {
   */
   ORT_API2_STATUS(SetLearningRate, _Inout_ OrtTrainingSession* sess, _In_ float learning_rate);
 
-  /** \brief Gets the cuttent learning rate for this training session.
+  /** \brief Gets the current learning rate for this training session.
   *
   * This function allows users to get the learning rate for the training session. The current
   * learning rate is maintained by the training session

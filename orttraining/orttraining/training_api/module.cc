@@ -186,7 +186,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
   }
 }
 
-size_t Module::GetTrainModelOutputCount() const noexcept {
+size_t Module::GetTrainingModelOutputCount() const noexcept {
   return train_output_names_.size();
 }
 
@@ -194,14 +194,14 @@ size_t Module::GetEvalModelOutputCount() const noexcept {
   return eval_output_names_.size();
 }
 
-void Module::GetTrainModelOutputName(size_t& index, std::string& name) const {
-  ORT_ENFORCE(index < train_output_names_.size(), "Train output name index out of range");
-  name = train_output_names_.at(index);
+std::string Module::GetTrainingModelOutputName(size_t index) const {
+  ORT_ENFORCE(index < train_output_names_.size(), "Train output name index out of range. Expected in range [0-", train_output_names_.size(), "). Actual: ", index);
+  return train_output_names_.at(index);
 }
 
-void Module::GetEvalModelOutputName(size_t& index, std::string& name) const {
-  ORT_ENFORCE(index < train_output_names_.size(), "Train output name index out of range");
-  name = eval_output_names_.at(index);
+std::string Module::GetEvalModelOutputName(size_t index) const {
+  ORT_ENFORCE(index < eval_output_names_.size(), "Eval output name index out of range. Expected in range [0-", eval_output_names_.size(), "). Actual: ", index);
+  return eval_output_names_.at(index);
 }
 
 std::vector<std::shared_ptr<Parameter>> Module::Parameters() const {

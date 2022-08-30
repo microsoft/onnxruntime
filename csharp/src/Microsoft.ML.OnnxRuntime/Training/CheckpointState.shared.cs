@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
+#if __ENABLE_TRAINING_ON_DEVICE__
     /// <summary>
     ///  Holds the Checkpoint State as generated/consumed by on-device training APIs
     /// </summary>
@@ -48,10 +49,14 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="checkpointPath"> absolute path to checkpoint</param>
         private void LoadCheckpoint(string checkpointPath)
         {
-            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtLoadCheckpoint(NativeMethods.GetPlatformSerializedString(checkpointPath), out handle));
+            var checkpointPathBytes = NativeOnnxValueHelper.GetPlatformSerializedString(checkpointPath);
+            using (PinnedGCHandle pinnedTrainHandle = new PinnedGCHandle(GCHandle.Alloc(checkpointPathBytes, GCHandleType.Pinned)))
+            {
+                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtLoadCheckpoint(checkpointPathBytes, out handle));
+            }
         }
 
-        #region SafeHandle
+#region SafeHandle
         /// <summary>
         /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
         /// the native instance of CheckpointState
@@ -64,6 +69,7 @@ namespace Microsoft.ML.OnnxRuntime
             return true;
         }
 
-        #endregion
+#endregion
     }
+#endif
 }

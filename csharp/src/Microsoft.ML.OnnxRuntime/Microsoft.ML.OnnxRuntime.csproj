@@ -4,19 +4,19 @@
     <OrtPackageId Condition="'$(OrtPackageId)' == ''">Microsoft.ML.OnnxRuntime</OrtPackageId>
   </PropertyGroup>
 
-  <!--
+  <!-- 
   Temporary setup until official Visual Studio 2022 release supports .net6, as the CIs require the official release.
   We will be able to build all targets with VS once that happens.
-
+ 
   Until then, we need to build the pre-.net6 targets with VS and the .net6 targets with dotnet.
-
+  
   The pre-.net6 Xamarin targets are optional and only included if the machine has the required workloads.
 
   We have 3 scenarios
     1) Build pre-net6 targets with VS - SelectedTargets=PreNet6
     2) Build net6 targets - SelectedTargets=Net6
     3) Run 'Pack' target to create nuget package from combination of 1 and 2 - SelectedTargets=All
-
+  
   Default is PreNet6 so that existing projects and CI builds will do the same thing unless explicitly updated.
   -->
   <PropertyGroup>
@@ -24,15 +24,19 @@
     <BaseTargets>netstandard1.1;netstandard2.0;net5.0;netcoreapp3.1</BaseTargets>
   </PropertyGroup>
 
-  <!-- only set the Xamarin mobile targets if we're building an ORT package,
+  <!-- only set the Xamarin mobile targets if we're building an ORT package, 
        and only if the mobile workloads are installed -->
-  <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR&#xD;&#xA;                             '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu') AND&#xD;&#xA;                             Exists('$(MSBuildExtensionsPath)\Xamarin\Android') AND&#xD;&#xA;                             Exists('$(MSBuildExtensionsPath)\Xamarin\iOS')">
+  <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR 
+                             '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu') AND 
+                             Exists('$(MSBuildExtensionsPath)\Xamarin\Android') AND 
+                             Exists('$(MSBuildExtensionsPath)\Xamarin\iOS')">
     <XamarinTargets>xamarinios10;monoandroid11.0</XamarinTargets>
   </PropertyGroup>
 
   <!-- only set the .net6 targets if we're building an ORT package.
        we can add .net6 support to other packages later as needed -->
-  <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR&#xD;&#xA;                             '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu')">
+  <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR 
+                             '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu')">
     <Net6Targets>net6.0;net6.0-android;net6.0-ios;net6.0-macos</Net6Targets>
   </PropertyGroup>
 
@@ -60,7 +64,7 @@
     <!--internal build related properties-->
     <OnnxRuntimeRoot>$(ProjectDir)..\..\..</OnnxRuntimeRoot>
     <OnnxRuntimeCsharpRoot>$(OnnxRuntimeRoot)\csharp</OnnxRuntimeCsharpRoot>
-    <TargetArchitecture Condition=" '$(TargetArchitecture)' == '' ">x64</TargetArchitecture>
+    <TargetArchitecture Condition=" '$(TargetArchitecture)' == '' ">x64</TargetArchitecture>  
 
     <RootNamespace>Microsoft.ML.OnnxRuntime</RootNamespace>
     <AssemblyName>Microsoft.ML.OnnxRuntime</AssemblyName>
@@ -68,8 +72,11 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <DebugType>portable</DebugType>
 
+    <!-- Training build property. With Visual Studio, change to true to enable. -->
+    <OnDeviceTraining Condition="'$(OnDeviceTraining)' == ''">false</OnDeviceTraining>
+
     <!--- The package name is always hardcoded as the package created by this project only contains managed assemblies -->
-    <!--- The parameter OrtPackageId is only used for some conditional logic below -->
+    <!--- The parameter OrtPackageId is only used for some conditional logic below -->    
     <PackageId>Microsoft.ML.OnnxRuntime.Managed</PackageId>
     <Authors>Microsoft</Authors>
     <PackageVersion Condition=" '$(PackageVersion)' == '' And '$(Configuration)' == 'Debug' ">1.0.0</PackageVersion>
@@ -98,23 +105,27 @@
     <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
 
-    <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild>
-    <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild>
+    <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild> 
+    <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild> 
     <IsMacOSBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsMacOSBuild>
 
-    <!-- $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) gives better results than
+    <!-- $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) gives better results than 
          $(TargetPlatformIdentifier). See https://github.com/dotnet/msbuild/issues/7359
          Note there are slight differences in casing (e.g. macos vs macOS), so if we ever
          change to use $(TargetPlatformIdentifier) we need to adjust for that.
-
+         
     -->
-    <IsXamarinTarget Condition="$(TargetFramework.StartsWith('xamarinios')) OR&#xD;&#xA;                                $(TargetFramework.StartsWith('monoandroid'))">true</IsXamarinTarget>
-    <IsAndroidTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' OR&#xD;&#xA;                                $(TargetFramework.StartsWith('monoandroid'))">true</IsAndroidTarget>
-    <IsIOSTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios' OR&#xD;&#xA;                            $(TargetFramework.StartsWith('xamarinios'))">true</IsIOSTarget>
-    <IsMacTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'macos' OR&#xD;&#xA;                            $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">true</IsMacTarget>
+    <IsXamarinTarget Condition="$(TargetFramework.StartsWith('xamarinios')) OR 
+                                $(TargetFramework.StartsWith('monoandroid'))">true</IsXamarinTarget>
+    <IsAndroidTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' OR 
+                                $(TargetFramework.StartsWith('monoandroid'))">true</IsAndroidTarget>
+    <IsIOSTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios' OR 
+                            $(TargetFramework.StartsWith('xamarinios'))">true</IsIOSTarget>
+    <IsMacTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'macos' OR
+                            $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">true</IsMacTarget>
   </PropertyGroup>
 
-  <!--
+  <!-- 
     Properties that depend on the system we're building on.
   -->
   <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
@@ -135,7 +146,7 @@
       <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
   </PropertyGroup>
 
-  <!--
+  <!-- 
     Properties that depend on the target framework.
   -->
   <PropertyGroup Condition="'$(IsIOSTarget)'=='true' OR '$(IsAndroidTarget)'=='true'">
@@ -159,12 +170,21 @@
        macOS before attempting to enable CoreML. This includes net5.0, netcoreapp3.1, net6.0
        NOTE: $(TargetFrameworkIdentitier) may not be set yet, so we need to call GetTargetFrameworkIdentifier
   -->
-  <PropertyGroup Condition="$([MSBuild]::GetTargetFrameworkIdentifier('$(TargetFramework)'))=='.NETCoreApp' AND&#xD;&#xA;                            $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)'))==''">
+  <PropertyGroup Condition="$([MSBuild]::GetTargetFrameworkIdentifier('$(TargetFramework)'))=='.NETCoreApp' AND
+                            $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)'))==''">
     <OrtConstants>$(OrtConstants);__ENABLE_COREML__</OrtConstants>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(IsXamarinTarget)'=='true'">
     <OrtConstants>$(OrtConstants);__XAMARIN__</OrtConstants>
+  </PropertyGroup>
+
+  <!-- Enable training APIs for the build. The native package must be
+       a training build with build flags 'enable_training' and
+       'enable_training_on_device' set.
+  -->
+  <PropertyGroup Condition="'$(OnDeviceTraining)' == 'true'">
+    <OrtConstants>$(OrtConstants);__ENABLE_TRAINING_ON_DEVICE__</OrtConstants>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -184,24 +204,106 @@
   -->
 
   <ItemGroup>
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_*.h" PackagePath="\build\native\include" Pack="false" CopyToOutputDirectory="Never" Visible="false" />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cpu\cpu_provider_factory.h" PackagePath="\build\native\include" Pack="false" CopyToOutputDirectory="Never" Visible="false" />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\dml\dml_provider_factory.h" Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'" PackagePath="\build\native\include" Pack="false" CopyToOutputDirectory="Never" Visible="false" />
-    <None Include="$(NativeBuildOutputDir)\libonnxruntime.so" Condition="Exists('$(NativeBuildOutputDir)\libonnxruntime.so')" PackagePath="\runtimes\linux-$(TargetArchitecture)\native" Pack="false" CopyToOutputDirectory="Never" Visible="false" />
-    <None Include="$(NativeBuildOutputDir)\onnxruntime.lib" Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.lib')" PackagePath="\runtimes\win-$(TargetArchitecture)\native" Pack="false" CopyToOutputDirectory="Never" Visible="false" />
-    <None Include="$(NativeBuildOutputDir)\onnxruntime.dll" Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.dll')" PackagePath="\runtimes\win-$(TargetArchitecture)\native" Pack="false" CopyToOutputDirectory="PreserveNewest" Visible="false" />
-    <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb" Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')" PackagePath="\runtimes\win-$(TargetArchitecture)\native" Pack="false" CopyToOutputDirectory="PreserveNewest" Visible="false" />
-    <None Include="$(NativeBuildOutputDir)\dnnl.dll" Condition="Exists('$(NativeBuildOutputDir)\dnnl.dll')" PackagePath="\runtimes\win-$(TargetArchitecture)\native" Pack="false" CopyToOutputDirectory="PreserveNewest" Visible="false" />
-    <None Include="$(NativeBuildOutputDir)\mklml.dll" Condition="Exists('$(NativeBuildOutputDir)\mklml.dll')" PackagePath="\runtimes\win-$(TargetArchitecture)\native" Pack="false" CopyToOutputDirectory="PreserveNewest" Visible="false" />
-    <None Include="$(NativeBuildOutputDir)\libiomp5md.dll" Condition="Exists('$(NativeBuildOutputDir)\libiomp5md.dll')" PackagePath="\runtimes\win-$(TargetArchitecture)\native" Pack="false" CopyToOutputDirectory="PreserveNewest" Visible="false" />
-    <None Include="$(NativeBuildOutputDir)\tvm.dll" Condition="Exists('$(NativeBuildOutputDir)\tvm.dll')" PackagePath="\runtimes\win-$(TargetArchitecture)\native" Pack="false" CopyToOutputDirectory="PreserveNewest" Visible="false" />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE.txt;$(OnnxRuntimeCsharpRoot)\..\ThirdPartyNotices.txt;$(OnnxRuntimeCsharpRoot)\..\ORT_icon_for_light_bg.png;$(OnnxRuntimeCsharpRoot)\..\docs\Privacy.md" PackagePath="\" Pack="true" Visible="false" />
-    <None Include="targets\netstandard\$(PackageId).targets" PackagePath="build\netstandard1.1\$(PackageId).targets;build\netstandard2.0\$(PackageId).targets" Pack="true" Visible="false" />
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_*.h"
+          PackagePath="\build\native\include"
+          Pack="false"
+          CopyToOutputDirectory="Never"
+          Visible="false"
+    />
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cpu\cpu_provider_factory.h"
+          PackagePath="\build\native\include"
+          Pack="false"
+          CopyToOutputDirectory="Never"
+          Visible="false"
+    />
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\dml\dml_provider_factory.h"
+          Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'"
+          PackagePath="\build\native\include"
+          Pack="false"
+          CopyToOutputDirectory="Never"
+          Visible="false"
+    />
+    <None Include="$(NativeBuildOutputDir)\libonnxruntime.so"
+          Condition="Exists('$(NativeBuildOutputDir)\libonnxruntime.so')"
+          PackagePath="\runtimes\linux-$(TargetArchitecture)\native"
+          Pack="false"
+          CopyToOutputDirectory="Never"
+          Visible="false"
+    />
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.lib"
+          Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.lib')"
+          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          Pack="false"
+          CopyToOutputDirectory="Never"
+          Visible="false"
+    />
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.dll"
+          Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.dll')"
+          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          Pack="false"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false"
+    />
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb"
+          Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')"
+          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          Pack="false"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false"
+    />
+    <None Include="$(NativeBuildOutputDir)\dnnl.dll"
+          Condition="Exists('$(NativeBuildOutputDir)\dnnl.dll')"
+          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          Pack="false"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false"
+    />
+    <None Include="$(NativeBuildOutputDir)\mklml.dll"
+          Condition="Exists('$(NativeBuildOutputDir)\mklml.dll')"
+          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          Pack="false"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false"
+    />
+    <None Include="$(NativeBuildOutputDir)\libiomp5md.dll"
+          Condition="Exists('$(NativeBuildOutputDir)\libiomp5md.dll')"
+          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          Pack="false"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false"
+    />
+    <None Include="$(NativeBuildOutputDir)\tvm.dll"
+          Condition="Exists('$(NativeBuildOutputDir)\tvm.dll')"
+          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          Pack="false"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false"
+    />
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE.txt;$(OnnxRuntimeCsharpRoot)\..\ThirdPartyNotices.txt;$(OnnxRuntimeCsharpRoot)\..\ORT_icon_for_light_bg.png;$(OnnxRuntimeCsharpRoot)\..\docs\Privacy.md"
+          PackagePath="\"
+          Pack="true"
+          Visible="false"
+    />
+    <None Include="targets\netstandard\$(PackageId).targets"
+          PackagePath="build\netstandard1.1\$(PackageId).targets;build\netstandard2.0\$(PackageId).targets"
+          Pack="true"
+          Visible="false" 
+    />
 
     <!-- Some tools to be packaged in nightly build only, should not be released -->
     <!-- These are copied to the runtimes folder for convenience of loading with the dlls -->
-    <None Include="$(NativeBuildOutputDir)\onnxruntime_perf_test.exe" Condition="('$(IsReleaseBuild)' != 'true') And ($(TargetArchitecture)=='x64') And Exists('$(NativeBuildOutputDir)\onnxruntime_perf_test.exe')" PackagePath="\runtimes\win-$(TargetArchitecture)\native" Pack="false" Visible="false" />
-    <None Include="$(NativeBuildOutputDir)\onnx_test_runner.exe" Condition="('$(IsReleaseBuild)' != 'true') And ($(TargetArchitecture)=='x64') And Exists('$(NativeBuildOutputDir)\onnx_test_runner.exe')" PackagePath="\runtimes\win-$(TargetArchitecture)\native" Pack="false" Visible="false" />
+    <None Include="$(NativeBuildOutputDir)\onnxruntime_perf_test.exe"
+          Condition="('$(IsReleaseBuild)' != 'true') And ($(TargetArchitecture)=='x64') And Exists('$(NativeBuildOutputDir)\onnxruntime_perf_test.exe')"
+          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          Pack="false"
+          Visible="false"
+    />
+    <None Include="$(NativeBuildOutputDir)\onnx_test_runner.exe"
+          Condition="('$(IsReleaseBuild)' != 'true') And ($(TargetArchitecture)=='x64') And Exists('$(NativeBuildOutputDir)\onnx_test_runner.exe')"
+          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          Pack="false"
+          Visible="false"
+    />
   </ItemGroup>
 
   <ItemGroup>
@@ -239,32 +341,10 @@
   </Target>
 
   <Target Name="CopyPackage" AfterTargets="Pack">
-    <Copy SourceFiles="$(OutputPath)\$(PackageId).$(PackageVersion).nupkg" DestinationFolder="$(NativeBuildOutputDir)" />
+    <Copy
+      SourceFiles="$(OutputPath)\$(PackageId).$(PackageVersion).nupkg"
+      DestinationFolder="$(NativeBuildOutputDir)"
+    />
   </Target>
-
-  <ItemGroup>
-    <None Remove="TrainingSession.shared.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Remove="CheckpointState.shared.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Remove="TrainingSession.shared.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Update="CheckpointState.shared.cs" Link="Training\CheckpointState.shared.cs" />
-    <Compile Update="TrainingSession.shared.cs" Link="Training\TrainingSession.shared.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Remove="Training\NativeTrainingMethods.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Include="Training\NativeTrainingMethods.cs" />
-  </ItemGroup>
-
+  
 </Project>

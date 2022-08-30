@@ -18,6 +18,9 @@
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
     <!-- end -->
     <DefineConstants>__NET_CORE_APP__;$(DefineConstants)</DefineConstants>
+
+    <!-- Training build property. With Visual Studio, change to true to enable. -->
+    <OnDeviceTraining Condition="'$(OnDeviceTraining)' == ''">false</OnDeviceTraining>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
@@ -67,10 +70,6 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-    <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\training_api\**\*.*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </None>
     <BuildEnvVars Include="OnnxRuntimeBuildDirectory=$(OnnxRuntimeBuildDirectory)" />
   </ItemGroup>
 
@@ -96,6 +95,16 @@
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Tensors\ArrayTensorExtensionsTests.cs">
       <Link>ArrayTensorExtensionsTests.cs</Link>
     </Compile>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(OnDeviceTraining)' == 'true'">
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\TrainingTest.cs">
+      <Link>TrainingTest.cs</Link>
+    </Compile>
+    <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\training_api\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
   </ItemGroup>
 
   <ItemGroup>

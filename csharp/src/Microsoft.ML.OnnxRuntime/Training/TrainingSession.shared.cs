@@ -4,9 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
+#if __ENABLE_TRAINING_ON_DEVICE__
     enum LRScheduler
     {
         None = 0,
@@ -24,7 +26,7 @@ namespace Microsoft.ML.OnnxRuntime
     public class TrainingSession : IDisposable
     {
         /// <summary>
-        /// A pointer to a underlying native instance of OrtSession
+        /// A pointer to a underlying native instance of OrtTrainingSession
         /// </summary>
         private IntPtr _nativeHandle;
 
@@ -38,7 +40,7 @@ namespace Microsoft.ML.OnnxRuntime
         private LRScheduler _scheduler = LRScheduler.None;
         private bool _disposed = false;
 
-        #region Public API
+    #region Public API
 
         /// <summary>
         /// Creates TrainingSession from the model and checkpoint in <paramref name="state"/>.
@@ -49,7 +51,16 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="optimizerModelPath">Specify path to optimizer model graph.</param>
         public TrainingSession(CheckpointState state, string trainModelPath, string evalModelPath, string optimizerModelPath)
         {
-            Init(null, state, NativeMethods.GetPlatformSerializedString(trainModelPath), NativeMethods.GetPlatformSerializedString(evalModelPath), NativeMethods.GetPlatformSerializedString(optimizerModelPath));
+            var trainBytes = NativeOnnxValueHelper.GetPlatformSerializedString(trainModelPath);
+            var evalBytes = NativeOnnxValueHelper.GetPlatformSerializedString(evalModelPath);
+            var optimizerBytes = NativeOnnxValueHelper.GetPlatformSerializedString(optimizerModelPath);
+            using (PinnedGCHandle pinnedTrainHandle = new PinnedGCHandle(GCHandle.Alloc(trainBytes, GCHandleType.Pinned)),
+                   pinnedEvalHandle = new PinnedGCHandle(GCHandle.Alloc(evalBytes, GCHandleType.Pinned)),
+                   pinnedOptimHandle = new PinnedGCHandle(GCHandle.Alloc(optimizerBytes, GCHandleType.Pinned)))
+            {
+                Init(null, state, trainBytes, evalBytes, optimizerBytes);
+            }
+            
         }
 
         /// <summary>
@@ -60,7 +71,13 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="optimizerModelPath">Specify path to optimizer model graph.</param>
         public TrainingSession(CheckpointState state, string trainModelPath, string optimizerModelPath)
         {
-            Init(null, state, NativeMethods.GetPlatformSerializedString(trainModelPath), null, NativeMethods.GetPlatformSerializedString(optimizerModelPath));
+            var trainBytes = NativeOnnxValueHelper.GetPlatformSerializedString(trainModelPath);
+            var optimizerBytes = NativeOnnxValueHelper.GetPlatformSerializedString(optimizerModelPath);
+            using (PinnedGCHandle pinnedTrainHandle = new PinnedGCHandle(GCHandle.Alloc(trainBytes, GCHandleType.Pinned)),
+                   pinnedOptimHandle = new PinnedGCHandle(GCHandle.Alloc(optimizerBytes, GCHandleType.Pinned)))
+            {
+                Init(null, state, trainBytes, null, optimizerBytes);
+            }
         }
 
         /// <summary>
@@ -70,7 +87,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="trainModelPath">Specify path to training model graph.</param>
         public TrainingSession(CheckpointState state, string trainModelPath)
         {
-            Init(null, state, NativeMethods.GetPlatformSerializedString(trainModelPath), null, null);
+            var trainBytes = NativeOnnxValueHelper.GetPlatformSerializedString(trainModelPath);
+            using (PinnedGCHandle pinnedTrainHandle = new PinnedGCHandle(GCHandle.Alloc(trainBytes, GCHandleType.Pinned)))
+            {
+                Init(null, state, trainBytes, null, null);
+            }
         }
 
 
@@ -84,7 +105,15 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="optimizerModelPath">Specify path to optimizer model graph.</param>
         public TrainingSession(SessionOptions options, CheckpointState state, string trainModelPath, string evalModelPath, string optimizerModelPath)
         {
-            Init(options, state, NativeMethods.GetPlatformSerializedString(trainModelPath), NativeMethods.GetPlatformSerializedString(evalModelPath), NativeMethods.GetPlatformSerializedString(optimizerModelPath));
+            var trainBytes = NativeOnnxValueHelper.GetPlatformSerializedString(trainModelPath);
+            var evalBytes = NativeOnnxValueHelper.GetPlatformSerializedString(evalModelPath);
+            var optimizerBytes = NativeOnnxValueHelper.GetPlatformSerializedString(optimizerModelPath);
+            using (PinnedGCHandle pinnedTrainHandle = new PinnedGCHandle(GCHandle.Alloc(trainBytes, GCHandleType.Pinned)),
+                   pinnedEvalHandle = new PinnedGCHandle(GCHandle.Alloc(evalBytes, GCHandleType.Pinned)),
+                   pinnedOptimHandle = new PinnedGCHandle(GCHandle.Alloc(optimizerBytes, GCHandleType.Pinned)))
+            {
+                Init(options, state, trainBytes, evalBytes, optimizerBytes);
+            }
         }
 
         /// <summary>
@@ -332,11 +361,15 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="saveOptimizerState">SFlag indicating whether to save optimizer state or not.</param>
         public void SaveCheckpoint(string path, bool saveOptimizerState = false)
         {
-            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtSaveCheckpoint(NativeMethods.GetPlatformSerializedString(path),_nativeHandle, saveOptimizerState));
+            var checkpointPathBytes = NativeOnnxValueHelper.GetPlatformSerializedString(path);
+            using (PinnedGCHandle pinnedTrainHandle = new PinnedGCHandle(GCHandle.Alloc(checkpointPathBytes, GCHandleType.Pinned)))
+            {
+                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtSaveCheckpoint(checkpointPathBytes, _nativeHandle, saveOptimizerState));
+            }
         }
 
-        #endregion
-        #region private methods
+    #endregion
+    #region private methods
 
         private void Init(SessionOptions sessOptions, CheckpointState state, byte[] trainModelPath, byte[] evalModelPath, byte[] optimizerModelPath)
         {
@@ -357,7 +390,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                                                      evalModelPath, optimizerModelPath, out _nativeHandle));
 
                 UIntPtr outputCount = UIntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetTrainModelOutputCount(_nativeHandle, out outputCount));
+                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetTrainingModelOutputCount(_nativeHandle, out outputCount));
                 _trainOutputCount = outputCount.ToUInt64();
 
                 // get all the output names and metadata
@@ -380,9 +413,11 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 _builtInRunOptions = new RunOptions();  // create a default built-in run option, and avoid creating a new one every run() call
-            } catch
+            }
+            catch (Exception)
             {
-                Dispose();
+                DisposeHelper(true);
+                throw;
             }
         }
 
@@ -392,13 +427,16 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr nameHandle;
             string str = null;
             if (training)
-            { NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetTrainModelOutputName(
+            { 
+                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetTrainingModelOutputName(
                                            _nativeHandle,
                                            (UIntPtr)index,
                                            allocator.Pointer,
                                            out nameHandle));
-            } else
-            { NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetEvalModelOutputName(
+            } 
+            else
+            { 
+                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetEvalModelOutputName(
                                            _nativeHandle,
                                            (UIntPtr)index,
                                            allocator.Pointer,
@@ -439,17 +477,16 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        #endregion
+    #endregion
 
-        #region IDisposable
+    #region IDisposable
 
         /// <summary>
-        /// Finalizer. to cleanup session in case it runs
-        /// and the user forgets to Dispose() of the session
+        /// Finalizer.
         /// </summary>
         ~TrainingSession()
         {
-            Dispose(false);
+            DisposeHelper(false);
         }
 
         /// <summary>
@@ -457,7 +494,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void Dispose()
         {
-            Dispose(true);
+            DisposeHelper(true);
             GC.SuppressFinalize(this);
         }
 
@@ -465,7 +502,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// IDisposable implementation
         /// </summary>
         /// <param name="disposing">true if invoked from Dispose() method</param>
-        protected virtual void Dispose(bool disposing)
+        protected virtual void DisposeHelper(bool disposing)
         {
             if (_disposed)
             {
@@ -474,7 +511,6 @@ namespace Microsoft.ML.OnnxRuntime
 
             if (disposing)
             {
-                // cleanup managed resources
                 if (_builtInSessionOptions != null)
                 {
                     _builtInSessionOptions.Dispose();
@@ -497,6 +533,7 @@ namespace Microsoft.ML.OnnxRuntime
             _disposed = true;
         }
 
-        #endregion
+    #endregion
     }
+#endif
 }

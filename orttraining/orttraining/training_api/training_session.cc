@@ -24,6 +24,7 @@ TrainingSession::TrainingSession(const Environment& session_env,
 Status TrainingSession::RegisterScheduler(
     const std::function<std::unique_ptr<LRSchedulerBase>(std::shared_ptr<Optimizer>)>& get_scheduler,
     std::optional<float> initial_lr) {
+  ORT_RETURN_IF_NOT(optimizer_, "No optimizer session initialized.");
   scheduler_ = std::move(get_scheduler(optimizer_));
   ORT_RETURN_IF_NOT(scheduler_, "The provided instance of the learning rate scheduler is a nullptr.");
 
@@ -34,20 +35,20 @@ Status TrainingSession::RegisterScheduler(
   return Status::OK();
 }
 
-size_t TrainingSession::GetTrainModelOutputCount() const noexcept {
-  return module_->GetTrainModelOutputCount();
+size_t TrainingSession::GetTrainingModelOutputCount() const noexcept {
+  return module_->GetTrainingModelOutputCount();
 }
 
 size_t TrainingSession::GetEvalModelOutputCount() const noexcept {
   return module_->GetEvalModelOutputCount();
 }
 
-void TrainingSession::GetTrainModelOutputName(size_t& index, std::string& name) const noexcept {
-  return module_->GetTrainModelOutputName(index, name);
+std::string TrainingSession::GetTrainingModelOutputName(size_t index) const noexcept {
+  return module_->GetTrainingModelOutputName(index);
 }
 
-void TrainingSession::GetEvalModelOutputName(size_t& index, std::string& name) const noexcept {
-  return module_->GetEvalModelOutputName(index, name);
+std::string TrainingSession::GetEvalModelOutputName(size_t index) const noexcept {
+  return module_->GetEvalModelOutputName(index);
 }
 
 Status TrainingSession::TrainStep(const RunOptions&,
@@ -67,6 +68,7 @@ Status TrainingSession::ResetGrad() {
 }
 
 Status TrainingSession::OptimizerStep(const RunOptions&) {
+  ORT_RETURN_IF_NOT(optimizer_, "No optimizer session initialized.");
   return optimizer_->Step();
 }
 
@@ -86,7 +88,7 @@ Status TrainingSession::SetLearningRate(float learning_rate) noexcept {
   return Status::OK();
 }
 
-float TrainingSession::GetLearningRate() {
+float TrainingSession::GetLearningRate() const {
   ORT_ENFORCE(optimizer_, "No optimizer session initialized.");
   return optimizer_->GetLearningRate();
 }

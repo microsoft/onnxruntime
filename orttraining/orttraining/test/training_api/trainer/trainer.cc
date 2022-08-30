@@ -214,6 +214,8 @@ void InitSyntheticDataLoader(
       sample.AddInt32Input(labels_shape, 0, 1);
       data_loader.AddSyntheticSampleBatch(std::move(sample));
     }
+  } else {
+    std::runtime_error("unknown synthetic_input_type: " + params.synthetic_input_type);
   }
 }
 
@@ -253,7 +255,7 @@ int RunTraining(const TestRunnerParameters& params) {
       &session));
 
   size_t train_mode_output_count, eval_mode_output_count = 0;
-  ORT_RETURN_ON_ERROR(g_ort_training_api->TrainingSessionGetTrainModelOutputCount(session, &train_mode_output_count));
+  ORT_RETURN_ON_ERROR(g_ort_training_api->TrainingSessionGetTrainingModelOutputCount(session, &train_mode_output_count));
 
   if (do_eval) {
     ORT_RETURN_ON_ERROR(g_ort_training_api->TrainingSessionGetEvalModelOutputCount(session, &eval_mode_output_count));

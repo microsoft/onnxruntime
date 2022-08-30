@@ -27,8 +27,12 @@
 #include "core/session/provider_bridge_ort.h"
 #include "core/util/math.h"
 #include "core/framework/sparse_utils.h"
-#include "core/common/string_helper.h"
 #include "core/graph/graph_proto_serializer.h"
+
+#if defined(USE_TENSORRT) || defined(USE_CUDA)
+// warning C4505: 'onnxruntime::StrDup': unreferenced function with internal linkage has been removed
+#include "core/common/string_helper.h"
+#endif
 
 #ifdef ENABLE_TRAINING
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -834,16 +838,16 @@ struct ProviderHostImpl : ProviderHost {
   const DataTransferManager& SessionState__GetDataTransferMgr(const SessionState* p) override { return p->GetDataTransferMgr(); }
 
   // Tensor (wrapped)
-  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) override { 
-    return std::make_unique<Tensor>(p_type, shape, std::move(allocator)); 
+  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) override {
+    return std::make_unique<Tensor>(p_type, shape, std::move(allocator));
   }
 
   std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset) override {
-    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset); 
+    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset);
   }
 
   std::unique_ptr<Tensor> Tensor__construct_default() override {
-    return std::make_unique<Tensor>(); 
+    return std::make_unique<Tensor>();
   }
 
   virtual void Tensor__move_assign(Tensor& lhs, Tensor&& rhs) noexcept override {

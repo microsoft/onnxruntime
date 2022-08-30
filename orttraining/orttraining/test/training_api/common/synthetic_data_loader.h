@@ -17,14 +17,7 @@
 
 #include <memory>
 #include <utility>
-#ifdef _WIN32
-#pragma warning(push)
-#pragma warning(disable : 4189)
-#endif
 #include <variant>
-#ifdef _WIN32
-#pragma warning(pop)
-#endif
 #include <vector>
 
 namespace onnxruntime {
