@@ -176,7 +176,7 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                              " doesn't have valid type: ", tensor.data_type());
   }
   Initializer unpacked_tensor(tensor, model_builder.GetGraphViewer().ModelPath());
-  src = unpacked_tensor.DataAsByteSpan<uint8_t>().data();
+  src = unpacked_tensor.DataAsByteSpan().data();
   const auto out_t = shape[0], in_t = shape[1],
              h_t = shape[2], w_t = shape[3];
   Shape dest_shape;
@@ -256,7 +256,8 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
                              " doesn't have valid type: ", tensor.data_type());
   }
   Initializer unpacked_tensor(tensor, model_builder.GetGraphViewer().ModelPath());
-  src = unpacked_tensor.DataAsByteSpan<uint8_t>().data();
+  // could be float/u8 s8, so we have to use raw data here.
+  src = unpacked_tensor.DataAsByteSpan().data();
   const auto x_t = shape[0], y_t = shape[1];
   Shape dest_shape = {y_t, x_t};
   OperandType operand_type = source_operand_type;
@@ -1377,7 +1378,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     Initializer unpacked_tensor(bias_tensor);
     OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, x_scale * w_scale);
     ORT_RETURN_IF_ERROR(
-        model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.DataAsByteSpan().data(), bias_operand_type));
+        model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data<int32_t>(), bias_operand_type));
   }
 
   const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
@@ -1806,7 +1807,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       ORT_RETURN_IF_ERROR(
           model_builder.AddOperandFromPersistMemoryBuffer(
               bias,
-              unpacked_tensor.DataAsByteSpan().data(), bias_operand_type));
+              unpacked_tensor.data<int32_t>(), bias_operand_type));
 
       bias_idx = operand_indices.at(bias);
     }
@@ -2813,28 +2814,12 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   ORT_RETURN_IF_NOT(pads_initializer, "pads must be a constant");
 
   Initializer pads_initializer_raw_data(*pads_initializer);
-  auto pads_tensor_span = pads_initializer_raw_data.DataAsByteSpan<uint8_t>();
   // assume pads_initializer has int64 data, per ONNX spec
-  ORT_RETURN_IF_NOT(pads_tensor_span.size() == 2 * data_rank * sizeof(int64_t),
-                    "Expected pads initializer size in bytes: ", 2 * data_rank * sizeof(int64_t),
-                    ", actual: ", pads_tensor_span.size());
-
   std::vector<int32_t> converted_pads_data{};
   converted_pads_data.reserve(2 * data_rank);
-
-  auto copy_and_convert = [](const void* raw_i64_src,
-                             std::back_insert_iterator<decltype(converted_pads_data)> i32_dst) {
-    int64_t i64;
-    memcpy(&i64, raw_i64_src, sizeof(i64));
-    *i32_dst = SafeInt<int32_t>(i64);
-  };
-
   for (size_t i = 0; i < data_rank; ++i) {
-    copy_and_convert(&pads_tensor_span[i * sizeof(int64_t)],
-                     std::back_inserter(converted_pads_data));
-
-    copy_and_convert(&pads_tensor_span[(i + data_rank) * sizeof(int64_t)],
-                     std::back_inserter(converted_pads_data));
+    converted_pads_data.push_back(pads_initializer_raw_data.data<int64_t>()[i]);
+    converted_pads_data.push_back(pads_initializer_raw_data.data<int64_t>()[i + data_rank]);
   }
 
   const Shape converted_pads_shape{data_rank, 2};
@@ -2850,12 +2835,6 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
     const auto* constant_value_initializer = model_builder.GetConstantInitializer(constant_value);
     ORT_RETURN_IF_NOT(constant_value_initializer, "constant_value must be a constant");
     Initializer pad_value_raw_data_init(*constant_value_initializer);
-    auto pad_value_raw_data = pad_value_raw_data_init.DataAsByteSpan<uint8_t>();
-    // assume constant_value_initializer has float data
-    // ONNX spec says it matches `data` input type, and op support checker limits that to float
-    ORT_RETURN_IF_NOT(pad_value_raw_data.size() == sizeof(float),
-                      "Expected constant_value initializer size in bytes: ", sizeof(float),
-                      ", actual size: ", pad_value_raw_data.size());
     pad_value = pad_value_raw_data_init.data<float>()[0];
   }
 

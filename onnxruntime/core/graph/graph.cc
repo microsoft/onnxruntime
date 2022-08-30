@@ -10,6 +10,7 @@
 #include <stack>
 #include <queue>
 
+#include "core/common/common.h"
 #include "gsl/gsl"
 #include "core/common/logging/logging.h"
 #include "core/common/inlined_containers.h"
@@ -167,6 +168,20 @@ static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
     shape->add_dim()->set_dim_value(dim);
 
   return t;
+}
+
+static std::string GenerateSchemaKey(const IndexedSubGraph* subgraph_ptr,
+                                     const ONNX_NAMESPACE::OpSchema* schema_ptr) {
+  ORT_ENFORCE(subgraph_ptr || schema_ptr, " both subgraph_ptr and schema_ptr are null_ptr");
+  if (subgraph_ptr) {
+    return MakeString(subgraph_ptr->GetMetaDef()->domain, "_",
+                      subgraph_ptr->GetMetaDef()->name, "_",
+                      subgraph_ptr->GetMetaDef()->since_version);
+  } else {
+    return MakeString(schema_ptr->domain(), "_",
+                      schema_ptr->Name(), "_",
+                      schema_ptr->since_version());
+  }
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -3820,23 +3835,24 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   // kernel lookup works as per usual, if not using an existing schema.
   // in an extended minimal build we do the lookup via a hash so don't need a schema.
   fused_node.SetSinceVersion(func_meta_def->since_version);
-  if (sub_graph.schema_source == SourceOfSchema::EXISTING_ONE) {
+  if (sub_graph.schema_source == IndexedSubGraph::SourceOfSchema::EXISTING) {
     ORT_ENFORCE(SetOpSchemaFromRegistryForNode(fused_node),
                 "Schema was not found for fused node. Domain:", fused_node.Domain(), " OpType:", fused_node.OpType());
-  } else if (SourceOfSchema::DYNAMIC_REUSABLE == sub_graph.schema_source) {
-    auto schema_key = MakeString(sub_graph.GetMetaDef()->domain, "_",
-                                              sub_graph.GetMetaDef()->name);
-    if (!fused_schemas_map_.contains(schema_key)) {
-      fused_schemas_map_.emplace(
-          schema_key,
-          function_utils::CreateSchema(*this, sub_graph, /*allow_anytype_tensor=*/true));
-    }
-
-    fused_node.op_ = fused_schemas_map_[schema_key].get();
   } else {
-    auto temp_schema_ptr = function_utils::CreateSchema(*this, sub_graph);
-    fused_schemas_containers_.push_back(std::move(temp_schema_ptr));
-    fused_node.op_ = fused_schemas_containers_.back().get();
+    if (IndexedSubGraph::SourceOfSchema::REUSE_OR_CREATE == sub_graph.schema_source) {
+      auto schema_key = GenerateSchemaKey(&sub_graph, nullptr);
+      if (!reusable_fused_schema_map_.contains(schema_key)) {
+        fused_schemas_containers_.push_back(
+            function_utils::CreateSchema(*this, sub_graph, /*allow_anytype_tensor=*/true));
+        reusable_fused_schema_map_.emplace(schema_key, *fused_schemas_containers_.back());
+      }
+
+      fused_node.op_ = &(reusable_fused_schema_map_.at(schema_key).get());
+    }
+    else {
+      fused_schemas_containers_.push_back(function_utils::CreateSchema(*this, sub_graph));
+      fused_node.op_ = fused_schemas_containers_.back().get();
+    }
   }
 #endif
   return fused_node;
@@ -3859,18 +3875,15 @@ void Graph::CancelFuseSubGraph(const Node& fused_node) {
 #if !defined(ORT_MINIMAL_BUILD)
   // Remove the temporary schema from schema container container
   const auto* temp_schema_ptr = fused_node.Op();
-  auto schema_key = onnxruntime::MakeString(temp_schema_ptr->domain(), "_",
-                                            temp_schema_ptr->Name());
-  if (fused_schemas_map_.contains(schema_key)) {
-    fused_schemas_map_.erase(schema_key);
-  } else {
-    fused_schemas_containers_.erase(
-        std::remove_if(
-            fused_schemas_containers_.begin(), fused_schemas_containers_.end(),
-            [temp_schema_ptr](const std::unique_ptr<ONNX_NAMESPACE::OpSchema>& schema) {
-              return schema.get() == temp_schema_ptr;
-            }),
-        fused_schemas_containers_.end());
+  auto it = std::find_if(
+      fused_schemas_containers_.begin(), fused_schemas_containers_.end(),
+      [temp_schema_ptr](const std::unique_ptr<ONNX_NAMESPACE::OpSchema>& schema) {
+        return schema.get() == temp_schema_ptr;
+      });
+  if (it != fused_schemas_containers_.end()) {
+    // remove reference first, otherwise we will be trapped into UB
+    reusable_fused_schema_map_.erase(GenerateSchemaKey(nullptr, temp_schema_ptr));
+    fused_schemas_containers_.erase(it);
   }
 #endif
 

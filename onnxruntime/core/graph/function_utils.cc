@@ -41,9 +41,11 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
     op_schema->TypeAndShapeInferenceFunction(meta_def->type_and_shape_inference_function);
   }
   if (allow_anytype_tensor) {
-    // we manually check if the node is supported in the EP, so if we ever create a node in our custom domain
-    // we know it's supported. due to that the type constraints here don't really matter - they just need to be cover
-    // all valid values. extra types for a specific input or output don't hurt.
+    // if CreateSchema is used to create a schema with the 'any' type constraint,
+    // the caller (EP or otherwise) must manually check any constraints.
+    // A EP or function calls `CreateSchema` with flag allow_anytype_tensor=true, should check a node carefully
+    // whether all constraints are satisfied. Once created, this schema will match all corresponding registered kernels
+    // whenever input/output type is.
     op_schema->TypeConstraint("T_ANY", ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat(),
                               "any type");
     // match `input` and `output`, It's used when a Op dev defined a `T` constraint

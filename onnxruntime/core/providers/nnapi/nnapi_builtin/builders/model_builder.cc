@@ -305,7 +305,7 @@ Status ModelBuilder::RegisterInitializers() {
                       "initializer tensor: ", tensor.name(), "'s size: ",
                       unpacked_tensor.DataAsByteSpan().size(),
                       " should match the calculated size: ", size);
-    src = unpacked_tensor.DataAsByteSpan<uint8_t>().data();
+    src = unpacked_tensor.DataAsByteSpan().data();
     uint8_t* dest = nnapi_model_->mem_initializers_->GetDataPtr() + offset;
     memcpy(dest, src, size);
     ORT_RETURN_IF_ERROR(SetOperandValue(index, nnapi_model_->mem_initializers_.get(), size, offset));

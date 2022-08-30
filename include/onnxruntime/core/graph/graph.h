@@ -52,11 +52,6 @@ template <typename T>
 struct Offset;
 }  // namespace flatbuffers
 
-#if !defined(ORT_MINIMAL_BUILD)
-namespace ONNX_NAMESPACE {
-class OpSchema;
-}  // namespace ONNX_NAMESPACE
-#endif
 
 namespace onnxruntime {
 class Graph;
@@ -1614,7 +1609,7 @@ class Graph {
   InlinedVector<std::unique_ptr<ONNX_NAMESPACE::OpSchema>> fused_schemas_containers_;
   // in some case, a fused sub-graph will happens multiple times in one model, we use a map
   // to store reusable-schema in lookup.
-  InlinedHashMap<std::string, std::unique_ptr<ONNX_NAMESPACE::OpSchema>> fused_schemas_map_;
+  InlinedHashMap<std::string, std::reference_wrapper<ONNX_NAMESPACE::OpSchema>> reusable_fused_schema_map_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Graph nodes.

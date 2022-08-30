@@ -126,8 +126,8 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
   }
 }
 
-// ops are not lay-out sensitive and does not defined in
-// onnx-domain will be created dynamicly
+// For ops are not lay-out sensitive and does not defined in
+// onnx-domain, it will be created dynamicly
 static bool RequestDynamicSchema(absl::string_view op_type) {
   static const InlinedHashSet<absl::string_view> dynamic_schema_set = {"QLinearSoftmax"};
   return dynamic_schema_set.contains(op_type);
@@ -151,9 +151,9 @@ static void AddComputeCapabilityForNodeUnit(const NodeUnit& node_unit,
     }
     sub_graph->SetMetaDef(FuseQDQGroup(node_unit));
     if (RequestDynamicSchema(sub_graph->GetMetaDef()->name)) {
-      sub_graph->schema_source = SourceOfSchema::DYNAMIC_REUSABLE;
+      sub_graph->schema_source = IndexedSubGraph::SourceOfSchema::REUSE_OR_CREATE;
     } else {
-      sub_graph->schema_source = SourceOfSchema::EXISTING_ONE;
+      sub_graph->schema_source = IndexedSubGraph::SourceOfSchema::EXISTING;
     }
   } else {
     process_node(node_unit.GetNode());
@@ -236,7 +236,7 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
           ComputeCapability& capability = *iter->second;
           capability.sub_graph->SetMetaDef(FuseActivation(*fuse_with, node, graph));
           capability.sub_graph->nodes.push_back(node.Index());
-          capability.sub_graph->schema_source = SourceOfSchema::EXISTING_ONE;
+          capability.sub_graph->schema_source = IndexedSubGraph::SourceOfSchema::EXISTING;
         }
       }
     } else if (node_unit.GetNode().GetExecutionProviderType() == Type()) {

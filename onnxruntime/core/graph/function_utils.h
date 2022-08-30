@@ -19,7 +19,7 @@ namespace function_utils {
  * @param graph The graph which host the subgraph.
  * @param nodes_to_fuse The metadata for the subgraph that EP want to fuse.
  * @param allow_anytype_tensor if true, we will set a ANY datatype as constraint,
- * it means we allow every types.
+ * it means we allow every tensor types //all_tensor_types_with_bfloat.
  */
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
                                                        const IndexedSubGraph& nodes_to_fuse,
