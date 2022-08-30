@@ -34,28 +34,6 @@ struct OpBuilderRegistrations {
   ORT_RETURN_IF_ERROR(onnxruntime::nnapi::op_builder_helpers::AddScalarOperand( \
       model_builder, input_indices, scalar_value))
 
-Status GetShapeInfoFromNodeArg(ModelBuilder& model_builder, const std::string& name, Shape& shape) {
-  // can be applied to both input and output
-  const auto& graph_viewer = model_builder.GetGraphViewer();
-  const auto* node_arg = graph_viewer.GetNodeArg(name);
-  const auto* shape_proto = node_arg->Shape();
-
-  shape.reserve(shape_proto->dim_size());
-  const auto& shape_dims = shape_proto->dim();
-  for (int i = 0; i < shape_dims.size(); i++) {
-    auto& shape_dim = shape_dims.Get(i);
-    // shape_dim here can possibly have dim_param, but as dynamic shape is not supported in NNAPI for now
-    // (checked already in BaseOpSupportChecker), call dim_value here only.
-    shape.push_back(SafeInt<uint32_t>(shape_dim.dim_value()));
-  }
-  // If we have an empty shape, (scalar input), we need to make it as {1} as
-  // nnapi will treat empty shape as dynamic ranking and onnx does not support that
-  if (shape_proto->dim_size() == 0) {
-    shape.push_back(1);
-  }
-  return Status::OK();
-}
-
 static Status AddBinaryOperator(int32_t op_type,
                                 ModelBuilder& model_builder,
                                 const std::string& input1, const std::string& input2,
@@ -76,8 +54,7 @@ static Status AddBinaryOperator(int32_t op_type,
     ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
   }
 
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
   const OperandType output_operand_type(operand_types.at(input1).type, output_shape,
                                         output_scale, output_zero_point);
@@ -153,8 +130,7 @@ static Status AddNnapiSqueeze(ModelBuilder& model_builder,
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
 
-  Shape input_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, input, input_shape));
+  Shape input_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), input);
   auto input_dims = input_shape.size();
   for (auto& axis : axes) {
     axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_dims));
@@ -183,8 +159,7 @@ static Status AddNnapiSqueeze(ModelBuilder& model_builder,
   input_indices.push_back(operand_indices.at(axes_name));  // axes
 
   // Shape inference calculation for squeeze
-  Shape input_dimen;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, input, input_dimen));
+  Shape input_dimen = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), input);
   int32_t input_size = static_cast<int32_t>(input_dimen.size());
   std::unordered_set<int32_t> axes_to_be_squeezed;
 
@@ -782,8 +757,7 @@ Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   const OperandType output_operand_type(operand_types.at(input).type, output_shape);
   shaper.AddShape(output, output_shape);
 
@@ -855,8 +829,7 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   }
 
   std::string perm_name = model_builder.GetUniqueName(node_unit.Name() + input + "perm");
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
   ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiTranspose(model_builder, input, perm_name, perm, output, &output_shape));
 
@@ -971,10 +944,8 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
-  Shape input_shape;
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, input, input_shape));
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape input_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), input);
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
 
   const auto input_rank = input_shape.size();
@@ -1010,8 +981,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   const int64_t* raw_shape = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
   const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
 
-  Shape input_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, input, input_shape));
+  Shape input_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), input);
   std::vector<int32_t> shape(size);
   for (uint32_t i = 0; i < size; i++) {
     int32_t dim = SafeInt<int32_t>(raw_shape[i]);
@@ -1058,8 +1028,7 @@ Status UnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   std::vector<int32_t> axes;
   ORT_RETURN_IF_ERROR(GetAxesForSqueezeAndUnSqueeze(model_builder, node_unit, axes));
 
-  Shape input_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, input, input_shape));
+  Shape input_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), input);
   auto input_dims = input_shape.size();
   std::vector<int32_t> shape;
   const auto size = SafeInt<uint32_t>(input_dims + axes.size());  // "output rank"
@@ -1157,8 +1126,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
     // input shape {N, C}       ==> tensor_a/b's shape {size}
     // input shape {N, C, H}    ==> tensor_a/b's shape {size, 1}
     // input shape {N, C, H, W} ==> tensor_a/b's shape {size, 1, 1}
-    Shape input_shape;
-    ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, input, input_shape));
+    Shape input_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), input);
     const auto input_rank = input_shape.size();
     for (size_t i = 2; i < input_rank; i++)
       tensor_a_dimen.push_back(1);
@@ -1241,8 +1209,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   std::vector<int32_t> onnx_pads, onnx_strides, kernel_shape;
   bool use_auto_pad = false;
   int32_t nnapi_padding_code = ANEURALNETWORKS_PADDING_VALID;
-  Shape input_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, input, input_shape));
+  Shape input_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), input);
   if (is_average_pool || op_type == "MaxPool") {
     const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
     kernel_shape = helper.Get("kernel_shape", std::vector<int32_t>{0, 0});
@@ -1311,8 +1278,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
 
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
 
   const OperandType output_operand_type(operand_types.at(input).type, output_shape, y_scale, y_zero_point);
@@ -1505,8 +1471,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
   bool use_auto_pad = false;
   int32_t nnapi_padding_code = ANEURALNETWORKS_PADDING_SAME;
-  Shape input_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, input, input_shape));
+  Shape input_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), input);
   const auto& kernel_shape = shaper[weight];
   const auto weight_size_y = kernel_shape[1];
   const auto weight_size_x = kernel_shape[2];
@@ -1568,8 +1533,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     operationCode = ANEURALNETWORKS_DEPTHWISE_CONV_2D;
   }
 
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
 
   const OperandType output_operand_type(operand_types.at(input).type, output_shape, y_scale, y_zero_point);
@@ -1610,8 +1574,7 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   const OperandType output_operand_type(type, output_shape);
   shaper.AddShape(output, output_shape);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CAST, input_indices, {output},
@@ -1651,8 +1614,7 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
 
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
   const OperandType output_operand_type(operand_types.at(input).type, output_shape);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_DEPTH_TO_SPACE, input_indices, {output},
@@ -1727,8 +1689,7 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
     ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
   }
 
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
   const OperandType output_operand_type(operand_types.at(input).type, output_shape, y_scale, y_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SOFTMAX, input_indices,
@@ -1758,8 +1719,7 @@ Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, con
   InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));  // input
 
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   const OperandType output_operand_type(operand_types.at(input).type, output_shape);
   shaper.AddShape(output, output_shape);
   model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type);
@@ -1963,8 +1923,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   int32_t fuse_code = model_builder.FindActivation(node_unit);
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
 
   const OperandType output_operand_type(operand_types.at(input1).type, output_shape, y_scale, y_zero_point);
@@ -2026,8 +1985,7 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
 
   bool is_qlinear_sigmoid = op_type == "QLinearSigmoid";
@@ -2185,16 +2143,14 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
         y_scale, y_zero_point));
   }
 
-  Shape input_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, input0, input_shape));
+  Shape input_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), input0);
   int32_t rank = static_cast<int32_t>(input_shape.size());
   int32_t axis = static_cast<int32_t>(HandleNegativeAxis(helper.Get("axis", 1), rank));
 
   ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
 
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
 
   OperandType output_operand_type(operand_types.at(input0).type, output_shape, y_scale, y_zero_point);
@@ -2259,8 +2215,7 @@ Status QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builde
       model_builder.GetInitializerTensors(), node_unit.Outputs()[0], node_unit.ModelPath(), scale, zero_point));
 
   Type output_type = Type::TENSOR_QUANT8_ASYMM;
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
   const OperandType output_operand_type(output_type, output_shape, scale, zero_point);
   InlinedVector<uint32_t> input_indices;
@@ -2301,8 +2256,7 @@ Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
   ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, scale, zero_point));
 
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
   const OperandType output_operand_type(Type::TENSOR_FLOAT32, output_shape);
 
@@ -2365,8 +2319,7 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
     ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
   }
 
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
   const OperandType output_operand_type(operand_types.at(input).type, output_shape);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_LOCAL_RESPONSE_NORMALIZATION, input_indices,
@@ -2403,8 +2356,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
   const OperandType output_operand_type(operand_types.at(input).type, output_shape);
 
@@ -2506,8 +2458,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   int h_idx = use_nchw ? 2 : 1;
   int w_idx = use_nchw ? 3 : 2;
 
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
 
   int32_t output_h = output_shape[h_idx];
@@ -2602,8 +2553,7 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
   NodeAttrHelper helper(node_unit);
-  Shape input1_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, input1, input1_shape));
+  Shape input1_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), input1);
   int32_t rank = static_cast<int32_t>(input1_shape.size());
   int32_t axis = static_cast<int32_t>(HandleNegativeAxis(helper.Get("axis", 0), rank));
 
@@ -2651,8 +2601,7 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   }
   input_indices.push_back(operand_indices.at(input2));
 
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
 
   const OperandType output_operand_type(operand_types.at(input1).type, output_shape);
@@ -2706,8 +2655,7 @@ class MinMaxOpBuilder : public BaseOpBuilder {
   input_indices.push_back(operand_indices.at(input1));  // input 1
   input_indices.push_back(operand_indices.at(input2));  // input 2
 
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
   const OperandType output_operand_type(operand_types.at(input1).type, output_shape);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
@@ -2739,8 +2687,7 @@ Status EluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
   const OperandType output_operand_type(operand_types.at(input).type, output_shape);
   NodeAttrHelper helper(node_unit);
@@ -2782,8 +2729,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& inputs = node_unit.Inputs();
-  Shape input_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, inputs[0].node_arg.Name(), input_shape));
+  Shape input_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), inputs[0].node_arg.Name());
   TensorShapeVector input_shape_64(input_shape.cbegin(), input_shape.cend());
   SliceOp::PrepareForComputeMetadata compute_metadata(input_shape_64);
 
@@ -2960,8 +2906,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   // `pads` input
   // convert from [begin_1, begin_2, ..., end_1, end_2, ...] to [begin_1, end_1, begin_2, end_2, ...]
   // convert from int64_t to int32_t
-  Shape data_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, data, data_shape));
+  Shape data_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), data);
   const uint32_t data_rank = SafeInt<uint32_t>(data_shape.size());
 
   const auto& pads = inputs[1].node_arg.Name();
@@ -3019,8 +2964,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   ADD_SCALAR_OPERAND(model_builder, input_indices, pad_value);
 
   const auto& output = outputs[0].node_arg.Name();
-  Shape output_shape;
-  ORT_RETURN_IF_ERROR(GetShapeInfoFromNodeArg(model_builder, output, output_shape));
+  Shape output_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), output);
   shaper.AddShape(output, output_shape);
 
   const OperandType output_operand_type{operand_types.at(data).type, output_shape};

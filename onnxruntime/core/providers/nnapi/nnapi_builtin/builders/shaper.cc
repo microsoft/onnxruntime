@@ -1,12 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
 
 #include "shaper.h"
 
 namespace onnxruntime {
 namespace nnapi {
+
+Shaper::Shaper(const GraphViewer& graph_viewer)
+    : graph_viewer_(&graph_viewer) {}
 
 void Shaper::AddShape(const std::string& name, const Shape& shape) {
   shape_map_[name] = shape;

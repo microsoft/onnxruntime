@@ -144,6 +144,9 @@ bool GetType(const NodeArg& node_arg, int32_t& type);
 // Get the output shape of Flatten Op
 void GetFlattenOutputShape(const NodeUnit& node_unit, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2);
 
+// Get the shape information from NodeArg
+Shape GetShapeInfoFromNodeArg(const GraphViewer& graph_viewer, const std::string& name);
+
 // If a node is supported by NNAPI
 bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer, const OpSupportCheckParams& params);
 

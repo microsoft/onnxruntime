@@ -24,7 +24,7 @@ namespace onnxruntime {
 namespace nnapi {
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
-    : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer) {}
+    : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer), shaper_(Shaper(graph_viewer)) {}
 
 int32_t ModelBuilder::GetNNAPIFeatureLevel() const {
   return nnapi_ ? static_cast<int32_t>(nnapi_->nnapi_runtime_feature_level) : 0;
