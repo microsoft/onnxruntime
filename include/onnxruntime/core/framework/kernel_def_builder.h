@@ -170,9 +170,6 @@ class KernelDef {
   OrtMemType default_inputs_mem_type_{OrtMemTypeDefault};
   // Default memory type for all outputs
   OrtMemType default_outputs_mem_type_{OrtMemTypeDefault};
-
-  // hash of kernel definition for lookup in minimal build
-  HashValue hash_ = 0;
 };
 
 class KernelDefBuilder {

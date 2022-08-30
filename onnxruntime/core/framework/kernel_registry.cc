@@ -63,7 +63,7 @@ bool MatchKernelDefTypes(const Node& node,
     ORT_THROW_IF_ERROR(kernel_type_str_resolver.ResolveKernelTypeStr(node, kernel_type_str,
                                                                      constraint_args));
 
-    for (const auto [arg_type, formal_arg_idx] : constraint_args) {
+    for (const auto& [arg_type, formal_arg_idx] : constraint_args) {
       const NodeArg* arg;
       if (arg_type == ArgType::kInput) {
         if (formal_arg_idx >= actual_input_arg_counts.size() ||
@@ -71,7 +71,7 @@ bool MatchKernelDefTypes(const Node& node,
           arg = nullptr;
         } else {
           const auto first_arg_idx = actual_input_arg_offsets[formal_arg_idx];
-          ORT_ENFORCE(first_arg_idx < actual_inputs.size());
+          ORT_ENFORCE(static_cast<size_t>(first_arg_idx) < actual_inputs.size());
           arg = actual_inputs[first_arg_idx];
         }
       } else {
