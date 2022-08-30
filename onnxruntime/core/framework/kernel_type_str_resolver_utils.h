@@ -21,8 +21,7 @@ using common::Status;
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-// TODO find better name than "required ops"
-gsl::span<const OpIdentifierWithStringViews> GetRequiredOpIdentifiers();
+gsl::span<const OpIdentifierWithStringViews> GetLayoutTransformationRequiredOpIdentifiers();
 
 Status SaveKernelTypeStrResolverToBuffer(const KernelTypeStrResolver& kernel_type_str_resolver,
                                          flatbuffers::DetachedBuffer& buffer, gsl::span<const uint8_t>& buffer_span);
@@ -32,7 +31,7 @@ Status SaveKernelTypeStrResolverToBuffer(const KernelTypeStrResolver& kernel_typ
 Status LoadKernelTypeStrResolverFromBuffer(KernelTypeStrResolver& kernel_type_str_resolver,
                                            gsl::span<const uint8_t> buffer_span);
 
-Status AddRequiredOpsToKernelTypeStrResolver(KernelTypeStrResolver& kernel_type_str_resolver);
+Status AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(KernelTypeStrResolver& kernel_type_str_resolver);
 
 }  // namespace onnxruntime::kernel_type_str_resolver_utils
 

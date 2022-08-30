@@ -44,6 +44,7 @@ class KernelRegistryManager {
   // RegisterKernelRegistry(B);
   // Then B > A > providers
   void RegisterKernelRegistry(std::shared_ptr<KernelRegistry> kernel_registry);
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
   /**
    * Search kernel registry by provider type.
@@ -60,7 +61,6 @@ class KernelRegistryManager {
     if (iter != provider_type_to_registry_.end()) result.push_back(iter->second.get());
     return result;
   }
-#endif
 
   // This function assumes the node is already assigned to an execution provider
   // Don't call this function before graph partition is done

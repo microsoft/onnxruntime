@@ -15,7 +15,7 @@
 namespace onnxruntime::test {
 
 static Status LoadRequiredOpsFromOpSchemas(KernelTypeStrResolver& kernel_type_str_resolver) {
-  const auto required_op_ids = kernel_type_str_resolver_utils::GetRequiredOpIdentifiers();
+  const auto required_op_ids = kernel_type_str_resolver_utils::GetLayoutTransformationRequiredOpIdentifiers();
   const auto schema_registry = SchemaRegistryManager{};
   for (auto op_id : required_op_ids) {
     const auto* op_schema = schema_registry.GetSchema(std::string{op_id.op_type}, op_id.since_version,
@@ -31,13 +31,14 @@ TEST(KernelTypeStrResolverUtilsTest, VerifyRequiredOpsResolver) {
   ASSERT_STATUS_OK(LoadRequiredOpsFromOpSchemas(expected_resolver));
 
   KernelTypeStrResolver actual_resolver;
-  ASSERT_STATUS_OK(kernel_type_str_resolver_utils::AddRequiredOpsToKernelTypeStrResolver(actual_resolver));
+  ASSERT_STATUS_OK(
+      kernel_type_str_resolver_utils::AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(actual_resolver));
 
   ASSERT_EQ(actual_resolver.GetOpKernelTypeStrMap(), expected_resolver.GetOpKernelTypeStrMap());
 }
 
 // run this test manually to output a hard-coded byte array
-TEST(KernelTypeStrResolverUtilsTest, DISABLED_PrintExpectedRequiredOpsResolverByteArray) {
+TEST(KernelTypeStrResolverUtilsTest, DISABLED_PrintExpectedLayoutTransformationRequiredOpsResolverByteArray) {
   KernelTypeStrResolver expected_resolver;
   ASSERT_STATUS_OK(LoadRequiredOpsFromOpSchemas(expected_resolver));
 
@@ -49,7 +50,7 @@ TEST(KernelTypeStrResolverUtilsTest, DISABLED_PrintExpectedRequiredOpsResolverBy
   constexpr size_t kBytesPerLine = 16;
   std::ostringstream os;
   os << std::hex << std::setfill('0')
-     << "  constexpr uint8_t kRequiredOpsKernelTypeStrResolverBytes[] = {\n      ";
+     << "  constexpr uint8_t kLayoutTransformationRequiredOpsKernelTypeStrResolverBytes[] = {\n      ";
   for (size_t i = 0; i < buffer_span.size(); ++i) {
     os << "0x" << std::setw(2) << static_cast<int32_t>(buffer_span[i]) << ",";
     if (i < buffer_span.size() - 1) {

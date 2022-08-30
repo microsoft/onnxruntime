@@ -1061,7 +1061,11 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
       fbs_kernel_type_str_resolver != nullptr) {
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.LoadFromOrtFormat(*fbs_kernel_type_str_resolver));
   }
-  ORT_RETURN_IF_ERROR(kernel_type_str_resolver_utils::AddRequiredOpsToKernelTypeStrResolver(kernel_type_str_resolver));
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  ORT_RETURN_IF_ERROR(
+      kernel_type_str_resolver_utils::AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(
+          kernel_type_str_resolver));
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   kernel_registry_manager_.SetKernelTypeStrResolver(std::move(kernel_type_str_resolver));
 
   is_model_loaded_ = true;
@@ -1135,10 +1139,14 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                const ExecutionProviders& providers,
                                KernelRegistryManager& kernel_registry_manager,
                                SessionState& session_state) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // only provide NCWH to NHWC layout transformer if supported
   TransformLayoutFunction transform_layout_fn = layout_transformer::IsSupportedOpset(graph)
                                                     ? layout_transformer::TransformLayoutForEP
                                                     : nullptr;
+#else   // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  TransformLayoutFunction transform_layout_fn{};
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph,

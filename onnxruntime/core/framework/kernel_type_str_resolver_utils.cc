@@ -5,8 +5,6 @@
 
 #include "core/framework/kernel_type_str_resolver_utils.h"
 
-#include <array>
-
 #include "flatbuffers/flatbuffers.h"
 
 #include "core/common/common.h"
@@ -19,7 +17,7 @@ static constexpr auto* kStandaloneKernelTypeStrResolverFileIdentifier = "ktsr";
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-gsl::span<const OpIdentifierWithStringViews> GetRequiredOpIdentifiers() {
+gsl::span<const OpIdentifierWithStringViews> GetLayoutTransformationRequiredOpIdentifiers() {
   return kLayoutTransformationPotentiallyAddedOps;
 }
 
@@ -46,14 +44,14 @@ Status LoadKernelTypeStrResolverFromBuffer(KernelTypeStrResolver& kernel_type_st
   return Status::OK();
 }
 
-Status AddRequiredOpsToKernelTypeStrResolver(KernelTypeStrResolver& kernel_type_str_resolver) {
+Status AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(KernelTypeStrResolver& kernel_type_str_resolver) {
   KernelTypeStrResolver resolver_with_required_ops{};
 
   // to generate kRequiredOpsKernelTypeStrResolverBytes, run the test:
-  //   KernelTypeStrResolverUtilsTest.DISABLED_PrintExpectedRequiredOpsResolverByteArray
+  //   KernelTypeStrResolverUtilsTest.DISABLED_PrintExpectedLayoutTransformationRequiredOpsResolverByteArray
 
   // clang-format off
-  constexpr uint8_t kRequiredOpsKernelTypeStrResolverBytes[] = {
+  constexpr uint8_t kLayoutTransformationRequiredOpsKernelTypeStrResolverBytes[] = {
       0x10, 0x00, 0x00, 0x00, 0x6b, 0x74, 0x73, 0x72, 0x00, 0x00, 0x06, 0x00, 0x08, 0x00, 0x04, 0x00,
       0x06, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x11, 0x00, 0x00, 0x00, 0xe4, 0x06, 0x00, 0x00,
       0x78, 0x06, 0x00, 0x00, 0x0c, 0x06, 0x00, 0x00, 0xb0, 0x05, 0x00, 0x00, 0x64, 0x05, 0x00, 0x00,
@@ -182,7 +180,7 @@ Status AddRequiredOpsToKernelTypeStrResolver(KernelTypeStrResolver& kernel_type_
   // clang-format on
 
   ORT_RETURN_IF_ERROR(LoadKernelTypeStrResolverFromBuffer(resolver_with_required_ops,
-                                                          gsl::make_span(kRequiredOpsKernelTypeStrResolverBytes)));
+                                                          kLayoutTransformationRequiredOpsKernelTypeStrResolverBytes));
   kernel_type_str_resolver.Merge(resolver_with_required_ops);
   return Status::OK();
 }

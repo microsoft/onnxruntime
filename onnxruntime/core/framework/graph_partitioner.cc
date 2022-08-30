@@ -50,6 +50,8 @@ static void BuildFusedKernelDef(KernelDefBuilder& builder, const onnxruntime::No
 }
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 // minimal KernelDef based on MetaDef instead of a Function based node
 static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph::MetaDef& metadef,
                                 const std::string& provider_type) {
@@ -58,8 +60,6 @@ static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph
       .SinceVersion(metadef.since_version)
       .Provider(provider_type);
 }
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 /// <summary>
 /// Check if a node can be placed on a specific provider. If yes, then set the nodes execution provider.
@@ -88,6 +88,8 @@ static bool TryAssignNodes(Graph& graph, const IndexedSubGraph& capability,
   return true;
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 static bool TryAssignSingleNode(Graph& graph,
                                 const IndexedSubGraph& indexed_sub_graph,
                                 const std::string& provider_type) {
@@ -104,8 +106,6 @@ static bool TryAssignSingleNode(Graph& graph,
 
   return false;
 };
-
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_registry_mgr,
                                  IExecutionProvider& current_ep, GraphPartitioner::Mode mode,
@@ -171,8 +171,8 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
     capabilities.clear();
     GraphViewer graph_viewer(graph);
     capabilities = current_ep.GetCapability(graph_viewer,
-                                              kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type),
-                                              kernel_registry_mgr.GetKernelTypeStrResolver());
+                                            kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type),
+                                            kernel_registry_mgr.GetKernelTypeStrResolver());
     remove_empty_capabilities(capabilities);
 
     // all nodes with an index >= first_new_node with domain of kMSInternalNHWCDomain should be in the capabilities
@@ -199,6 +199,8 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
       }
     }
   }
+#else   // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  ORT_UNUSED_PARAMETER(mode);
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   return Status::OK();
@@ -394,8 +396,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       std::call_once(
           legacy_compile_method_warning_flag, [](std::string_view ep_type) {
             LOGS_DEFAULT(WARNING) << "Execution Provider: " << ep_type << " is still using Function style Compile API "
-                                     "which is deprecated and will be removed soon. Please migrate to the new Compile "
-                                     "API based on FilteredGraphViewer.";
+                                                                          "which is deprecated and will be removed soon. Please migrate to the new Compile "
+                                                                          "API based on FilteredGraphViewer.";
           },
           type);
       ORT_RETURN_IF_ERROR(current_ep.Compile(nodes_to_compile, node_compute_funcs));
@@ -560,14 +562,12 @@ Status GraphPartitioner::PartitionOnnxFormatModel(Graph& graph, FuncManager& fun
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
+static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_params,
                                           KernelRegistryManager& kernel_registry_mgr,
-                                          KernelRegistry& fused_kernel_registry,
-                                          IExecutionProvider& current_ep,
-                                          int& fused_node_unique_id,
-                                          TransformLayoutFunction transform_layout_function) {
+                                          IExecutionProvider& current_ep) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
+  auto& graph = partition_params.graph.get();
   if (graph.NumberOfNodes() == 0) {
     return Status::OK();
   }
@@ -575,17 +575,25 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   // recurse into nested graphs first to partition bottom up.
   for (auto& node : graph.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
-      Graph* subgraph = entry.second;
-      ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(*subgraph, func_mgr, kernel_registry_mgr, fused_kernel_registry,
-                                                      current_ep, fused_node_unique_id,
-                                                      transform_layout_function));
+      auto& subgraph = *entry.second;
+      PartitionParams subgraph_partition_params = partition_params;
+      subgraph_partition_params.graph = std::ref(subgraph);
+      ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(subgraph_partition_params, kernel_registry_mgr, current_ep));
     }
   }
 
   const std::string& type = current_ep.Type();
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+  TransformLayoutFunction transform_layout_function =
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+      partition_params.transform_layout_function
+#else
+      {}
+#endif
+      ;
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(graph, kernel_registry_mgr, current_ep,
-                                         GraphPartitioner::Mode::kOrtFormatLoad, capabilities, transform_layout_function));
+                                         GraphPartitioner::Mode::kOrtFormatLoad, capabilities,
+                                         transform_layout_function));
   if (capabilities.empty()) {
     return Status::OK();
   }
@@ -608,7 +616,7 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     } else {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       std::ostringstream oss;
-      oss << type << "_" << metadef->name << "_" << fused_node_unique_id++;
+      oss << type << "_" << metadef->name << "_" << partition_params.fused_node_unique_id++;
       const std::string node_name = oss.str();
 
       Node& fused_node = graph.BeginFuseSubGraph(indexed_sub_graph, node_name);
@@ -635,6 +643,7 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            single_node_compute_func));
 
     ORT_RETURN_IF(single_node_compute_func.empty(), "single_node_compute_func should have 1 element.");
+    auto& func_mgr = partition_params.func_mgr.get();
     ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(node.Name(), std::move(single_node_compute_func[0])));
 
     const ComputeCapability& cur_capability = compilation_entry.capability;
@@ -645,6 +654,7 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     BuildFusedKernelDef(builder, metadef, type);
     auto kernel_def = builder.Build();
 
+    auto& fused_kernel_registry = partition_params.fused_kernel_registry.get();
     ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(
         KernelCreateInfo(std::move(kernel_def),
                          [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
@@ -660,15 +670,10 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 }
 
 // Simplified partitioning where custom EPs may produce compiled nodes.
-Status GraphPartitioner::PartitionOrtFormatModel(
-    Graph& graph, FuncManager& func_mgr,
-    KernelRegistry& fused_kernel_registry,
-    int& fused_node_unique_id,
-    TransformLayoutFunction transform_layout_function) const {
+Status GraphPartitioner::PartitionOrtFormatModel(const PartitionParams& partition_params) const {
   // process full graph with each EP
   for (const auto& ep : providers_) {
-    ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(graph, func_mgr, kernel_registry_mgr_, fused_kernel_registry,
-                                                    *ep, fused_node_unique_id, transform_layout_function));
+    ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(partition_params, kernel_registry_mgr_, *ep));
   }
 
   return Status::OK();
@@ -688,12 +693,14 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
   }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // fused_kernel_registry is preparing the kernels created on the fly for fused sub graph.
   // It is only visible for current session.
   std::shared_ptr<KernelRegistry> fused_kernel_registry = std::make_shared<KernelRegistry>();
 
   // we make sure each fused node name is unique across the entire model for clarity
   int fused_node_unique_id = 0;
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   if (mode == Mode::kNormal || mode == Mode::kAssignOnly) {
 #if !defined(ORT_MINIMAL_BUILD)
@@ -703,12 +710,29 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ONNX models are not supported in this build.");
 #endif  //! defined(ORT_MINIMAL_BUILD)
   } else {
-    ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(graph, func_mgr, *fused_kernel_registry,
-                                                fused_node_unique_id, transform_layout_function));
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+    PartitionParams partition_params{
+        std::ref(graph),
+        std::ref(func_mgr),
+        std::ref(*fused_kernel_registry),
+        std::ref(fused_node_unique_id),
+        transform_layout_function,
+    };
+#else
+    ORT_UNUSED_PARAMETER(func_mgr);
+    PartitionParams partition_params{
+        std::ref(graph),
+    };
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+    ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(partition_params));
   }
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   if (!fused_kernel_registry->IsEmpty()) {
     kernel_registry_mgr_.RegisterKernelRegistry(fused_kernel_registry);
   }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   return Status::OK();
 }

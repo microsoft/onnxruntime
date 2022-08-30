@@ -3,15 +3,17 @@
 
 #pragma once
 
+#include <functional>
+
 #include "core/common/common.h"
-#include "core/graph/graph_viewer.h"
+#include "core/graph/graph.h"
+#include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/fuse_nodes_funcs.h"
 
 namespace onnxruntime {
 
 class ExecutionProviders;
-class KernelRegistry;
 class KernelRegistryManager;
 using TransformLayoutFunction = std::function<Status(Graph& graph, bool& modified, IExecutionProvider& current_ep)>;
 
@@ -23,14 +25,14 @@ class GraphPartitioner {
     kOrtFormatLoad = 2  // loading ORT format model. Partition with compiling EPs, GraphViewer based Compile.
   };
 
-  //The order of providers represents the user preference.
+  // The order of providers represents the user preference.
   GraphPartitioner(KernelRegistryManager& kernel_registry_mgr, const ExecutionProviders& providers)
       : kernel_registry_mgr_(kernel_registry_mgr),
         providers_(providers) {
   }
 
   // Run partitioning.
-  Status Partition(Graph& graph, FuncManager& func_mgr, 
+  Status Partition(Graph& graph, FuncManager& func_mgr,
                    TransformLayoutFunction transform_layout_function,
                    Mode mode = Mode::kNormal) const;
 
@@ -43,10 +45,21 @@ class GraphPartitioner {
                                   int& fused_node_unique_id, TransformLayoutFunction transform_layout_function) const;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-  Status PartitionOrtFormatModel(Graph& graph, FuncManager& func_mgr, KernelRegistry& fused_kernel_registry,
-                                 int& fused_node_unique_id, TransformLayoutFunction transform_layout_function) const;
+  Status PartitionOrtFormatModel(const struct PartitionParams& partition_params) const;
 
   KernelRegistryManager& kernel_registry_mgr_;
   const ExecutionProviders& providers_;
 };
+
+struct PartitionParams {
+  std::reference_wrapper<Graph> graph;
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  std::reference_wrapper<FuncManager> func_mgr;
+  std::reference_wrapper<KernelRegistry> fused_kernel_registry;
+  std::reference_wrapper<int> fused_node_unique_id;
+  TransformLayoutFunction transform_layout_function;
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+};
+
 }  // namespace onnxruntime
