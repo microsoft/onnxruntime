@@ -127,7 +127,6 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
         false);
 
     return CreateAllocator(default_memory_info);
-
   } else {
     AllocatorCreationInfo default_memory_info(
         [](OrtDevice::DeviceId id) {
@@ -274,6 +273,16 @@ std::unique_ptr<profiling::EpProfiler> CUDAExecutionProvider::GetProfiler() {
   return std::make_unique<profiling::CudaProfiler>();
 }
 
+// Suppressing warning "C26816: The pointer points to memory allocated on the stack." for
+// CUDAExecutionProvider::GetPerThreadContext().
+// While CUDAExecutionProvider::GetPerThreadContext() does return the result of dereferencing a local
+// std::shared_ptr<PerThreadContext>, the underlying PerThreadContext is owned by the CUDA EP and is not local to this
+// function.
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 26816)
+#endif
+
 CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadContext() const {
   const auto& per_thread_context_cache = PerThreadContextCache();
 
@@ -311,6 +320,10 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
 
   return *context;
 }
+
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
 
 void CUDAExecutionProvider::ReleasePerThreadContext() const {
   const auto& per_thread_context_cache = PerThreadContextCache();
