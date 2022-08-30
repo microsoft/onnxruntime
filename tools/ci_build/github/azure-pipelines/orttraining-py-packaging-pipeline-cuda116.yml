@@ -9,7 +9,7 @@ parameters:
 - name: WindowsBuild
   displayName: Windows Build?
   type: boolean
-  default: false
+  default: true
 
 resources:
   repositories:
