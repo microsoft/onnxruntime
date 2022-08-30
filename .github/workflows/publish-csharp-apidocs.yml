@@ -28,9 +28,7 @@ jobs:
       run: |
         rm -r -fo docs/api/csharp
         MOVE csharp/ApiDocs/csharp docs/api
-        rm -r -fo csharp/ApiDocs/obj
-        rm -r -fo csharp/ApiDocs/bin
-        rm -r -fo csharp/ApiDocs/log.txt
+        rm -r -fo csharp/ApiDocs
         rm -r -fo csharp/src
     - name: Git Checkin
       run: git add .
