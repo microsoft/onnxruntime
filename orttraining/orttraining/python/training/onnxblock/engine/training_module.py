@@ -9,9 +9,11 @@ class TrainingModule:
     Class for running Training.
     This class is a wrapper of Module Class.
     """
+
     training: bool
+
     def __init__(
-        self, train_model_uri, ckpt_uri, eval_model_uri=None, env=None, session_options=None, providers=None, **kwargs
+        self, train_model_uri, ckpt_uri, eval_model_uri=None, session_options=None, providers=None, **kwargs
     ) -> None:
         """
         Initializes Model for Training.
@@ -23,7 +25,6 @@ class TrainingModule:
         self._train_model_uri = train_model_uri
         self._ckpt_uri = ckpt_uri
         self._eval_model_uri = eval_model_uri
-        self._env = env
         self._session_options = session_options
         if providers is None:
             self._providers = C.get_available_providers()
@@ -32,10 +33,10 @@ class TrainingModule:
 
     def __call__(self, *input):
 
-        if(self.training):
-            self._model.train_step(*input,self.fetches)
-        elif(self.training == False):
-            self._model.eval_step(*input,self.fetches)
+        if self.training:
+            self._model.train_step(*input, self.fetches)
+        elif self.training == False:
+            self._model.eval_step(*input, self.fetches)
 
         return self.fetches[0].numpy()
 
@@ -49,10 +50,10 @@ class TrainingModule:
         # Create session options as a default value.
         self._env = None
         # Module is not exposed yet
-        model = C.Module(self._train_model_uri, self._ckpt_uri, self._eval_model_uri = eval_model_uri)
+        model = C.Module(self._train_model_uri, self._ckpt_uri, self._eval_model_uri)
         self._model = model
 
-    def train(self, mode : bool = True):
+    def train(self, mode: bool = True):
         """Sets the TrainingModule in training mode.
 
         This has any effect only on TrainingModule Class.
@@ -96,10 +97,16 @@ class TrainingModule:
         """
         return self._model.parameters()
 
+    def save_checkpoint(self, ckpt_uri):
+        """
+        Saves the checkpoint.
+        """
+        return self._model.save_checkpoint(ckpt_uri)
+
     def loss(self):
         """
         Returns the loss value.
         """
-        if(len(self.fetches) == 0):
+        if len(self.fetches) == 0:
             raise ValueError("You should run a train step before calling this function.")
         return self.fetches[0].numpy()

@@ -838,6 +838,12 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       })
       .def("reset_grad", [](onnxruntime::training::api::Module* model) -> void {
         ORT_THROW_IF_ERROR(model->ResetGrad());
+      })
+      .def("save_checkpoint", [](onnxruntime::training::api::Module* model, const std::string& checkpoint_path) -> void {
+        onnxruntime::training::api::CheckpointState state;
+        ORT_THROW_IF_ERROR(model->GetStateDict(state.module_checkpoint_state));
+        ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(state,
+                                                                      ToPathString(checkpoint_path)));
       });
   py::class_<onnxruntime::training::api::Optimizer> training_optimizer(m, "Optimizer", R"pbdoc(Training Optimizer Class.)pbdoc");
   training_optimizer.def(py::init([](const std::string optimizer_model_uri, onnxruntime::training::api::Module* model) {
@@ -848,6 +854,17 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                     }))
       .def("optimizer_step", [](onnxruntime::training::api::Optimizer* optimizer) -> void {
         ORT_THROW_IF_ERROR(optimizer->Step());
+      })
+      .def("save_checkpoint", [](onnxruntime::training::api::Optimizer* optimizer, const std::string& checkpoint_path) -> void {
+        onnxruntime::training::api::CheckpointState state;
+        ORT_THROW_IF_ERROR(optimizer->GetStateDict(state.optimizer_checkpoint_state));
+        ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(state,
+                                                                      ToPathString(checkpoint_path)));
+      })
+      .def("load_checkpoint", [](onnxruntime::training::api::Optimizer* optimizer, const std::string& checkpoint_path) -> void {
+        onnxruntime::training::api::CheckpointState state;
+        ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpoint(checkpoint_path, state));
+        ORT_THROW_IF_ERROR(optimizer->LoadStateDict(state.optimizer_checkpoint_state));
       });
   py::class_<onnxruntime::training::api::Parameter> parameter(m, "Parameter", R"pbdoc(Parameter Class.)pbdoc");
   parameter.def(py::init([](const std::string name, OrtValue& data, bool requires_grad) {

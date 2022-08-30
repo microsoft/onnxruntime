@@ -40,3 +40,15 @@ class TrainingOptimizer:
         Run Optimizer Step.
         """
         return self._optimizer.optimizer_step()
+
+    def save_checkpoint(self, ckpt_uri):
+        """
+        Saves the checkpoint.
+        """
+        return self._optimizer.save_checkpoint(ckpt_uri)
+
+    def load_checkpoint(self, ckpt_uri):
+        """
+        Loads the checkpoint.
+        """
+        return self._optimizer.load_checkpoint(ckpt_uri)
