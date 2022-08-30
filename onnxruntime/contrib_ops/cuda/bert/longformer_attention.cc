@@ -256,7 +256,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                              window_,
                                                              disable_compact_memory);
   auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize, OrtStream(context));
-  if (!LaunchLongformerAttentionKernel(
+  ORT_RETURN_IF_ERROR(LaunchLongformerAttentionKernel(
           device_prop,
           cublas,
           stream,
@@ -280,11 +280,8 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           element_size,
           disable_compact_memory,
           use_merged_qkv_weights,
-          use_half4_)) {
-    // Get last error to reset it to cudaSuccess.
-    CUDA_CALL(cudaGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
+          use_half4_))
+    ;
 
   // Defer release of pinned memory since cudaStreamSynchronize is not used here and kernel need access the buffer.
   this->AddDeferredReleaseCPUPtr(pinned_buffer.release(), GetCudaStreamFromContext(context));

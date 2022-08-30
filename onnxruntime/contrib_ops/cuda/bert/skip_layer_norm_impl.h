@@ -2,13 +2,14 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
 template <typename T>
-bool LaunchSkipLayerNormKernel(
+Status LaunchSkipLayerNormKernel(
     cudaStream_t stream,
     T* output,          // output tensor
     const T* input,     // input tensor

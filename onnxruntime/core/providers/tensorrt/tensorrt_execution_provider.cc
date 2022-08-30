@@ -19,7 +19,7 @@
 #include <limits>
 #include <map>
 #include <memory>
-//TODO: find a better way to share this
+// TODO: find a better way to share this
 #include "core/providers/cuda/cuda_stream_handle.h"
 
 #ifdef _WIN32
@@ -34,10 +34,7 @@
 #define LIBFUNC(lib, fn) dlsym((lib), (fn))
 #endif
 
-#define CUDA_RETURN_IF_ERROR(expr)               \
-  ORT_RETURN_IF_ERROR(CUDA_CALL(expr)            \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error executing ", #expr))
+#define CUDA_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUDA_CALL(expr))
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
@@ -170,12 +167,12 @@ void Impl_Cast(
 }  // namespace cuda
 
 template <>
-bool CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
+Status CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
   return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
 }
 
 template <>
-bool CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
+void CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
 }
 
@@ -470,6 +467,9 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
     CUBLAS_CALL(cublasDestroy(external_cublas_handle_));
     CUDNN_CALL(cudnnDestroy(external_cudnn_handle_));
   }
+  if (!external_stream_ && stream_) {
+    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
+  }
 }
 
 AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
@@ -571,8 +571,7 @@ bool TensorrtExecutionProvider::IsSubGraphOfControlFlowOp(const GraphViewer& gra
   return false;
 }
 
-
-// Check whether all the nodes of the graph are assigned to specific ep 
+// Check whether all the nodes of the graph are assigned to specific ep
 bool TensorrtExecutionProvider::AllNodesAssignedToSpecificEP(const GraphViewer& graph, const std::string& provider_type) const {
   const int number_of_ort_nodes = graph.NumberOfNodes();
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
@@ -591,11 +590,11 @@ bool TensorrtExecutionProvider::AllNodesAssignedToSpecificEP(const GraphViewer& 
 // Check whether all the nodes of subgraph are supported
 bool TensorrtExecutionProvider::IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const {
   int number_of_trt_nodes = 0;
-    for (const auto& group : supported_nodes_vector) {
+  for (const auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
       number_of_trt_nodes += static_cast<int>(group.first.size());
-      }
     }
+  }
 
   return number_of_trt_nodes == number_of_ort_nodes;
 }
@@ -1058,7 +1057,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     const auto& node = graph.GetNode(node_index[index]);
 
     /* If current node is control flow op, we take different approach based on following four cases:
-     * 
+     *
      * (1) control flow op is supported by TRT, and its subgraphs are all supported by TRT. Assign this node to TRT.
      * (2) control flow op is supported by TRT, but not all its subgraphs supported by TRT. Don't assign this node to TRT.
      * (3) control flow op is not supported by TRT, but its subgraphs all supported by TRT. Don't assign this node to TRT.
@@ -1077,7 +1076,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
           }
         }
         if (!all_subgraphs_are_supported) {
-        // if not all its subgraphs are supported, we need to exclude this control flow op
+          // if not all its subgraphs are supported, we need to exclude this control flow op
           continue;
         }
       }
@@ -1153,7 +1152,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
     if (all_subgraphs_are_supported) {
       // We want the subgraph nodes to be assigned to TRT EP but don't want them to be fused until later at the control flow op level.
-      // Simply request the subgraph nodes with a single ComputeCapability for each with no MetaDef (i.e. what the default implementation for IExecutionProvider::GetCapability does). 
+      // Simply request the subgraph nodes with a single ComputeCapability for each with no MetaDef (i.e. what the default implementation for IExecutionProvider::GetCapability does).
       for (const auto& group : supported_nodes_vector) {
         if (!group.first.empty()) {
           for (const auto& index : group.first) {
@@ -1165,8 +1164,8 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       }
       LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
       return result;
-    }    
-  } 
+    }
+  }
 
   int number_of_trt_nodes = 0;
   for (const auto& group : supported_nodes_vector) {
@@ -1467,7 +1466,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
     // Release function state
     compute_info.release_state_func = [](FunctionState state) {
-        delete static_cast<TensorrtFuncState*>(state);
+      delete static_cast<TensorrtFuncState*>(state);
     };
 
     // Create compute function
@@ -1823,7 +1822,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             const bool status = trt_context->setBindingDimensions(binding_index, dimensions);
             if (!status) {
               ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                                  "TensorRT EP cannot set the dynamic dimensions of a binding"));
+                                                 "TensorRT EP cannot set the dynamic dimensions of a binding"));
             }
           }
         }

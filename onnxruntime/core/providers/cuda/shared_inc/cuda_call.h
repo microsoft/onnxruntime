@@ -2,19 +2,18 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <mutex>
+#include "core/common/common.h"
 #include "core/providers/cuda/cuda_pch.h"
 
 namespace onnxruntime {
-
-class OrtMutex;
 
 // -----------------------------------------------------------------------
 // Error handling
 // -----------------------------------------------------------------------
 
 template <typename ERRTYPE, bool THRW>
-bool CudaCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg = "");
+std::conditional_t<THRW, void, Status> CudaCall(
+    ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg = "");
 
 #define CUDA_CALL(expr) (CudaCall<cudaError, false>((expr), #expr, "CUDA", cudaSuccess))
 #define CUBLAS_CALL(expr) (CudaCall<cublasStatus_t, false>((expr), #expr, "CUBLAS", CUBLAS_STATUS_SUCCESS))

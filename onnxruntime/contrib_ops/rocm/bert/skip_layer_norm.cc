@@ -96,7 +96,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   size_t element_size = sizeof(T);
   typedef typename ToHipType<T>::MappedType HipT;
 
-  if (!LaunchSkipLayerNormKernel<HipT>(
+  return LaunchSkipLayerNormKernel<HipT>(
           Stream(),
           reinterpret_cast<HipT*>(output->MutableData<T>()),
           reinterpret_cast<const HipT*>(input->Data<T>()),
@@ -107,13 +107,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
           epsilon_,
           hidden_size,
           static_cast<int>(element_count),
-          element_size)) {
-    // Get last error to reset it to hipSuccess.
-    HIP_CALL(hipGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
-
-  return Status::OK();
+          element_size);
 }
 
 }  // namespace rocm

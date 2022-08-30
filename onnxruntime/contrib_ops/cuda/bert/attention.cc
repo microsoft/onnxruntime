@@ -98,30 +98,26 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    past_sequence_length);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize, OrtStream(context));
-  if (!LaunchAttentionKernel(
-          device_prop,
-          Stream(context),
-          cublas,
-          element_size,
-          batch_size,
-          sequence_length,
-          num_heads_,
-          head_size,
-          past_sequence_length,
-          is_unidirectional_,
-          reinterpret_cast<const void*>(gemm_buffer.get()),
-          bias->Data<T>(),
-          nullptr == mask_index ? nullptr : mask_index->Data<int>(),
-          nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
-          nullptr == past ? nullptr : past->Data<T>(),
-          nullptr == extra_add_qk ? nullptr : extra_add_qk->Data<T>(),
-          work_space.get(),
-          output->MutableData<T>(),
-          nullptr == present ? nullptr : present->MutableData<T>())) {
-    // Get last error to reset it to cudaSuccess.
-    CUDA_CALL(cudaGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
+  ORT_RETURN_IF_ERROR(LaunchAttentionKernel(
+      device_prop,
+      Stream(context),
+      cublas,
+      element_size,
+      batch_size,
+      sequence_length,
+      num_heads_,
+      head_size,
+      past_sequence_length,
+      is_unidirectional_,
+      reinterpret_cast<const void*>(gemm_buffer.get()),
+      bias->Data<T>(),
+      nullptr == mask_index ? nullptr : mask_index->Data<int>(),
+      nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
+      nullptr == past ? nullptr : past->Data<T>(),
+      nullptr == extra_add_qk ? nullptr : extra_add_qk->Data<T>(),
+      work_space.get(),
+      output->MutableData<T>(),
+      nullptr == present ? nullptr : present->MutableData<T>()));
 
   return Status::OK();
 }

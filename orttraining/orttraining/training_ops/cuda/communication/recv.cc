@@ -90,11 +90,11 @@ void Recv::ReceiveData(
     assert(tensor_offset_in_bytes + tensor->SizeInBytes() <= aggregated_aligned_tensor_bytes);
     // Copy data out from buffer.
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-    CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
-                              tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(context)));
+    CUDA_CALL_THROW(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
+                                    tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(context)));
 #else
-    CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
-                              tensor->SizeInBytes(), cudaMemcpyHostToDevice, Stream(context)));
+    CUDA_CALL_THROW(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
+                                    tensor->SizeInBytes(), cudaMemcpyHostToDevice, Stream(context)));
 #endif
 
 #ifndef NDEBUG
