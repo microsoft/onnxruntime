@@ -49,7 +49,7 @@ uint3 DecomposeIndex(uint index)
 
     uint3 idx = uint3(0, 0, 0);
     idx.x = index / (OutputSizes[1] * OutputSizes[2]);
-    idx.y = temp / OutputSizes[2]; // This corresponds to the s1'th element of the dft 
+    idx.y = temp / OutputSizes[2]; // This corresponds to the s1'th element of the dft
     idx.z = temp % OutputSizes[2];
     return idx;
 }
@@ -70,7 +70,7 @@ void DFT(uint3 dtid : SV_DispatchThreadId)
         uint2 inputEvenOddIndexPair = uint2(0, 0);
         uint3 idx = DecomposeIndex(index);
         inputEvenOddIndexPair.x = (idx.y >> DFTIteration) * halfN + (idx.y % halfN);
-        inputEvenOddIndexPair.y = inputEvenOddIndexPair.x + (inputLength / 2);
+        inputEvenOddIndexPair.y = inputEvenOddIndexPair.x + halfInputLength;
 
         // Create full index for even and odd values
         uint3 inputEvenIdx = uint3(idx.x, inputEvenOddIndexPair.x, idx.z);
@@ -86,8 +86,8 @@ void DFT(uint3 dtid : SV_DispatchThreadId)
         static const float PI = 3.14159265f;
         static const float TAU = PI * 2;
         bool isInverse = IsInverse == 1;
-        const float inverse_switch = isInverse ? 1.f : -1.f;
-        float theta = inverse_switch * TAU * (float)k / (float)N;
+        const float inverseMultiplier = isInverse ? 1.f : -1.f;
+        float theta = inverseMultiplier * TAU * (float)k / (float)N;
         float2 w = float2(cos(theta), sin(theta));
 
         uint2 outputIndex = ComputeDestIndex(index);
