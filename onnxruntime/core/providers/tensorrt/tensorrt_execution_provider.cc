@@ -6,6 +6,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_execution_provider_utils.h"
@@ -275,7 +276,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     external_stream_ = true;
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
     ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasCreate(&external_cublas_handle_)));
-    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasSetStream(external_cublas_handle_, stream_))_;
+    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasSetStream(external_cublas_handle_, stream_)));
     ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnCreate(&external_cudnn_handle_)));
     ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnSetStream(external_cudnn_handle_, stream_)));
   }
