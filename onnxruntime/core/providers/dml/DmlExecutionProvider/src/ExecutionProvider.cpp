@@ -87,7 +87,7 @@ namespace Dml
     ExecutionProvider::GetCapability(
         const onnxruntime::GraphViewer& graph,
         const std::vector<const onnxruntime::KernelRegistry*>& kernel_registries,
-        const KernelTypeStrResolver& kernel_type_str_resolver) const
+        const onnxruntime::IKernelTypeStrResolver& kernel_type_str_resolver) const
     {
 #ifdef ENABLE_GRAPH_COMPILATION
         return m_impl->GetCapability(graph, kernel_registries, kernel_type_str_resolver);
@@ -523,7 +523,7 @@ namespace Dml
     ExecutionProviderImpl::GetCapability(
         const onnxruntime::GraphViewer& graph,
         const std::vector<const onnxruntime::KernelRegistry*>& registries,
-        const KernelTypeStrResolver& kernel_type_str_resolver) const
+        const onnxruntime::IKernelTypeStrResolver& kernel_type_str_resolver) const
     {
         std::string partitionKernelPrefix = std::to_string(m_partitionKernelPrefixVal++) + "_";
         uint32_t deviceDataTypeMask = GetSupportedDeviceDataTypeMask();

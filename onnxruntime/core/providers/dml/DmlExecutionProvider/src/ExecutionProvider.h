@@ -84,7 +84,7 @@ namespace Dml
         GetCapability(
             const onnxruntime::GraphViewer& graph,
             const std::vector<const onnxruntime::KernelRegistry*>& registries,
-            const IKernelTypeStrResolver& kernel_type_str_resolver
+            const onnxruntime::IKernelTypeStrResolver& kernel_type_str_resolver
             ) const;
 
         uint32_t GetSupportedDeviceDataTypeMask() const;
