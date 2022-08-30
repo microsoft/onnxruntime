@@ -124,7 +124,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
 
 Status OptimizerExecutionFrame::Info::TryFindKernel(const Node* node, const KernelCreateInfo** out) const {
   std::shared_ptr<KernelRegistry> kernel_registry = execution_provider_.GetKernelRegistry();
-  const auto kernel_type_str_resolver = KernelTypeStrResolver::CreateFromNodeOpSchema(*node);
+  const AutoRegisteringKernelTypeStrResolver kernel_type_str_resolver{};
   return kernel_registry->TryFindKernel(*node, execution_provider_.Type(), kernel_type_str_resolver, out);
 }
 
@@ -136,7 +136,7 @@ static Status TryCreateKernel(const Node& node,
                               FuncManager& funcs_mgr,
                               const DataTransferManager& data_transfer_mgr,
                               /*out*/ std::unique_ptr<OpKernel>& op_kernel) {
-  const auto kernel_type_str_resolver = KernelTypeStrResolver::CreateFromNodeOpSchema(node);
+  const AutoRegisteringKernelTypeStrResolver kernel_type_str_resolver{};
   const KernelCreateInfo* kernel_create_info = nullptr;
   ORT_RETURN_IF_ERROR(kernel_registry.TryFindKernel(node, execution_provider.Type(), kernel_type_str_resolver,
                                                     &kernel_create_info));

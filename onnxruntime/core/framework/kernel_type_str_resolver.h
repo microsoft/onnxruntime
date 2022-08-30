@@ -59,19 +59,7 @@ class KernelTypeStrResolver : public IKernelTypeStrResolver {
 
   Status RegisterNodeOpSchema(const Node& node);
 
-  static KernelTypeStrResolver CreateFromNodeOpSchema(const Node& node) {
-    KernelTypeStrResolver k{};
-    ORT_THROW_IF_ERROR(k.RegisterNodeOpSchema(node));
-    return k;
-  }
-
   Status RegisterGraphNodeOpSchemas(const Graph& graph);
-
-  static KernelTypeStrResolver CreateFromGraphNodeOpSchemas(const Graph& graph) {
-    KernelTypeStrResolver k{};
-    ORT_THROW_IF_ERROR(k.RegisterGraphNodeOpSchemas(graph));
-    return k;
-  }
 
   Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                          flatbuffers::Offset<fbs::KernelTypeStrResolver>& fbs_kernel_type_str_resolver) const;

@@ -85,7 +85,7 @@ namespace Dml
         // graph while iterating over it
         std::vector<NodeToAdd> nodesToAdd;
 
-        const auto kernel_type_str_resolver = onnxruntime::KernelTypeStrResolver::CreateFromGraphNodeOpSchemas(*graph);
+        const auto kernel_type_str_resolver = onnxruntime::AutoRegisteringKernelTypeStrResolver{};
 
         for (auto& node : graph->Nodes())
         {

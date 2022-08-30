@@ -1128,7 +1128,7 @@ void OpTester::Run(
           continue;
 
         bool valid = true;
-        const auto kernel_type_str_resolver = KernelTypeStrResolver::CreateFromGraphNodeOpSchemas(graph);
+        const AutoRegisteringKernelTypeStrResolver kernel_type_str_resolver{};
 
         // set execution provider for all nodes in the graph
         for (auto& node : graph.Nodes()) {
