@@ -1349,10 +1349,16 @@ common::Status InferenceSession::Initialize() {
                                                                          saving_ort_format,
                                                                          minimal_build_optimization_handling));
 
+      auto record_runtime_optimization_produced_op_schema = [this](const ONNX_NAMESPACE::OpSchema& op_schema) {
+        saved_runtime_optimization_produced_node_op_schemas_.insert(&op_schema);
+        return Status::OK();
+      };
+
       // add predefined transformers
       ORT_RETURN_IF_ERROR_SESSIONID_(AddPredefinedTransformers(graph_transformation_mgr_,
                                                                session_options_.graph_optimization_level,
-                                                               minimal_build_optimization_handling));
+                                                               minimal_build_optimization_handling,
+                                                               record_runtime_optimization_produced_op_schema));
 
       // apply any transformations to the main graph and any subgraphs
       ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
@@ -2335,7 +2341,8 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
 common::Status InferenceSession::AddPredefinedTransformers(
     GraphTransformerManager& transformer_manager,
     TransformerLevel graph_optimization_level,
-    MinimalBuildOptimizationHandling minimal_build_optimization_handling) {
+    MinimalBuildOptimizationHandling minimal_build_optimization_handling,
+    RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn) const {
   const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
@@ -2352,13 +2359,9 @@ common::Status InferenceSession::AddPredefinedTransformers(
         } else {
           const auto sat_context =
               minimal_build_optimization_handling ==
-              MinimalBuildOptimizationHandling::SaveMinimalBuildRuntimeOptimizations
-                  ? SatApplyContextVariant{
-                        SatRuntimeOptimizationSaveContext{
-                            [this](const ONNX_NAMESPACE::OpSchema& op_schema) mutable {
-                               saved_runtime_optimization_produced_node_op_schemas_.insert(&op_schema);
-                               return Status::OK();
-                            }}}
+                      MinimalBuildOptimizationHandling::SaveMinimalBuildRuntimeOptimizations
+                  ? SatApplyContextVariant{SatRuntimeOptimizationSaveContext{
+                        record_runtime_optimization_produced_op_schema_fn}}
                   : SatApplyContextVariant{SatDirectApplicationContext{}};
           return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
                                                                       optimizers_to_disable_);
