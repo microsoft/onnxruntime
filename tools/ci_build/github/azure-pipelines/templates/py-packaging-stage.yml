@@ -865,7 +865,7 @@ stages:
 
   - ${{ if eq(parameters.enable_mac_silicon, true) }}:
     - job: MacOS_silicon_py_Wheels
-      timeoutInMinutes: 90
+      timeoutInMinutes: 120
       workspace:
         clean: all
       pool:
