@@ -8,7 +8,11 @@
 #include <unordered_map>
 #include <vector>
 
+#include "gsl/gsl"
+
 #include "core/common/status.h"
+#include "core/common/safeint.h"
+#include "helper.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -17,10 +21,14 @@ class Shaper {
  public:
   using Shape = std::vector<uint32_t>;
 
+  Shaper(const GraphViewer& graph_viewer);
+
   void AddShape(const std::string& name, const Shape& shape);
+
   inline const Shape& operator[](const std::string& key) const {
     return shape_map_.at(key);
   }
+
   // If the shape of certain input is dynamic
   // Use the following 2 functions to update the particular shape
   // and calculate the new output shape
@@ -31,6 +39,8 @@ class Shaper {
  private:
   std::unordered_map<std::string, Shape> shape_map_;
   std::vector<std::function<common::Status(Shaper&)>> shape_ops_;
+
+  gsl::not_null<const GraphViewer*> graph_viewer_;
 };
 
 }  // namespace nnapi

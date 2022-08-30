@@ -123,7 +123,7 @@ class Model {
   std::unordered_map<std::string, android::nn::wrapper::OperandType> operand_types_;
   std::unordered_set<std::string> scalar_outputs_;
 
-  Shaper shaper_;
+  std::optional<Shaper> shaper_;
 
   std::unordered_map<std::string, size_t> input_map_;
   std::unordered_map<std::string, size_t> output_map_;
