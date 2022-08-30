@@ -122,6 +122,8 @@ class InferenceSession {
     OnlyApplyMinimalBuildOptimizations,
   };
 
+  using RecordRuntimeOptimizationProducedNodeOpSchemaFn = std::function<Status(const ONNX_NAMESPACE::OpSchema&)>;
+
 #endif
 
   /**
@@ -629,8 +631,6 @@ class InferenceSession {
   void ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  using RecordRuntimeOptimizationProducedNodeOpSchemaFn = std::function<Status(const ONNX_NAMESPACE::OpSchema&)>;
-
   virtual common::Status AddPredefinedTransformers(
       GraphTransformerManager& transformer_manager,
       TransformerLevel graph_optimization_level,
