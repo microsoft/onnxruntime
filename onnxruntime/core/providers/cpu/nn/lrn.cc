@@ -66,8 +66,8 @@ Status LRN<float>::Compute(OpKernelContext* context) const {
   const int image_size = C * H * W;
   const int pre_pad = (size_ - 1) / 2;
 
-  const auto* Xdata = X->template Data<float>();
-  auto* Ydata = Y->template MutableData<float>();
+  const auto* Xdata = X->Data<float>();
+  auto* Ydata = Y->MutableData<float>();
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));

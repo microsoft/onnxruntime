@@ -98,12 +98,12 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   if (!LaunchSkipLayerNormKernel<CudaT>(
           Stream(),
-          reinterpret_cast<CudaT*>(output->template MutableData<T>()),
-          reinterpret_cast<const CudaT*>(input->template Data<T>()),
-          reinterpret_cast<const CudaT*>(skip->template Data<T>()),
-          reinterpret_cast<const CudaT*>(gamma->template Data<T>()),
-          (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->template Data<T>()) : nullptr,
-          (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->template Data<T>()) : nullptr,
+          reinterpret_cast<CudaT*>(output->MutableData<T>()),
+          reinterpret_cast<const CudaT*>(input->Data<T>()),
+          reinterpret_cast<const CudaT*>(skip->Data<T>()),
+          reinterpret_cast<const CudaT*>(gamma->Data<T>()),
+          (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->Data<T>()) : nullptr,
+          (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,
           epsilon_,
           hidden_size,
           static_cast<int>(element_count),
@@ -116,7 +116,6 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-}  //namespace cuda
+}  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
-

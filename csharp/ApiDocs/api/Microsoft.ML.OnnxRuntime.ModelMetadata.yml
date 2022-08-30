@@ -1,0 +1,780 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.ModelMetadata
+  commentId: T:Microsoft.ML.OnnxRuntime.ModelMetadata
+  id: ModelMetadata
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.ModelMetadata.CustomMetadataMap
+  - Microsoft.ML.OnnxRuntime.ModelMetadata.Description
+  - Microsoft.ML.OnnxRuntime.ModelMetadata.Domain
+  - Microsoft.ML.OnnxRuntime.ModelMetadata.GraphDescription
+  - Microsoft.ML.OnnxRuntime.ModelMetadata.GraphName
+  - Microsoft.ML.OnnxRuntime.ModelMetadata.ProducerName
+  - Microsoft.ML.OnnxRuntime.ModelMetadata.Version
+  langs:
+  - csharp
+  - vb
+  name: ModelMetadata
+  nameWithType: ModelMetadata
+  fullName: Microsoft.ML.OnnxRuntime.ModelMetadata
+  type: Class
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ModelMetadata
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 1161
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nA class that queries and caches model metadata and exposes\nit as properties\n"
+  example: []
+  syntax:
+    content: public class ModelMetadata
+    content.vb: Public Class ModelMetadata
+  inheritance:
+  - System.Object
+  inheritedMembers:
+  - System.Object.Equals(System.Object)
+  - System.Object.Equals(System.Object,System.Object)
+  - System.Object.GetHashCode
+  - System.Object.GetType
+  - System.Object.MemberwiseClone
+  - System.Object.ReferenceEquals(System.Object,System.Object)
+  - System.Object.ToString
+  modifiers.csharp:
+  - public
+  - class
+  modifiers.vb:
+  - Public
+  - Class
+- uid: Microsoft.ML.OnnxRuntime.ModelMetadata.ProducerName
+  commentId: P:Microsoft.ML.OnnxRuntime.ModelMetadata.ProducerName
+  id: ProducerName
+  parent: Microsoft.ML.OnnxRuntime.ModelMetadata
+  langs:
+  - csharp
+  - vb
+  name: ProducerName
+  nameWithType: ModelMetadata.ProducerName
+  fullName: Microsoft.ML.OnnxRuntime.ModelMetadata.ProducerName
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ProducerName
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 1279
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nProducer name string\n"
+  example: []
+  syntax:
+    content: public string ProducerName { get; }
+    parameters: []
+    return:
+      type: System.String
+      description: producer name string
+    content.vb: Public ReadOnly Property ProducerName As String
+  overload: Microsoft.ML.OnnxRuntime.ModelMetadata.ProducerName*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.ModelMetadata.GraphName
+  commentId: P:Microsoft.ML.OnnxRuntime.ModelMetadata.GraphName
+  id: GraphName
+  parent: Microsoft.ML.OnnxRuntime.ModelMetadata
+  langs:
+  - csharp
+  - vb
+  name: GraphName
+  nameWithType: ModelMetadata.GraphName
+  fullName: Microsoft.ML.OnnxRuntime.ModelMetadata.GraphName
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: GraphName
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 1291
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nGraph name for this model\n"
+  example: []
+  syntax:
+    content: public string GraphName { get; }
+    parameters: []
+    return:
+      type: System.String
+      description: graph name string
+    content.vb: Public ReadOnly Property GraphName As String
+  overload: Microsoft.ML.OnnxRuntime.ModelMetadata.GraphName*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.ModelMetadata.Domain
+  commentId: P:Microsoft.ML.OnnxRuntime.ModelMetadata.Domain
+  id: Domain
+  parent: Microsoft.ML.OnnxRuntime.ModelMetadata
+  langs:
+  - csharp
+  - vb
+  name: Domain
+  nameWithType: ModelMetadata.Domain
+  fullName: Microsoft.ML.OnnxRuntime.ModelMetadata.Domain
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Domain
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 1303
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nDomain for this model\n"
+  example: []
+  syntax:
+    content: public string Domain { get; }
+    parameters: []
+    return:
+      type: System.String
+      description: domain name string
+    content.vb: Public ReadOnly Property Domain As String
+  overload: Microsoft.ML.OnnxRuntime.ModelMetadata.Domain*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.ModelMetadata.Description
+  commentId: P:Microsoft.ML.OnnxRuntime.ModelMetadata.Description
+  id: Description
+  parent: Microsoft.ML.OnnxRuntime.ModelMetadata
+  langs:
+  - csharp
+  - vb
+  name: Description
+  nameWithType: ModelMetadata.Description
+  fullName: Microsoft.ML.OnnxRuntime.ModelMetadata.Description
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Description
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 1315
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nUnstructured model description\n"
+  example: []
+  syntax:
+    content: public string Description { get; }
+    parameters: []
+    return:
+      type: System.String
+      description: description string
+    content.vb: Public ReadOnly Property Description As String
+  overload: Microsoft.ML.OnnxRuntime.ModelMetadata.Description*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.ModelMetadata.GraphDescription
+  commentId: P:Microsoft.ML.OnnxRuntime.ModelMetadata.GraphDescription
+  id: GraphDescription
+  parent: Microsoft.ML.OnnxRuntime.ModelMetadata
+  langs:
+  - csharp
+  - vb
+  name: GraphDescription
+  nameWithType: ModelMetadata.GraphDescription
+  fullName: Microsoft.ML.OnnxRuntime.ModelMetadata.GraphDescription
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: GraphDescription
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 1327
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nUnstructured graph description\n"
+  example: []
+  syntax:
+    content: public string GraphDescription { get; }
+    parameters: []
+    return:
+      type: System.String
+      description: description string
+    content.vb: Public ReadOnly Property GraphDescription As String
+  overload: Microsoft.ML.OnnxRuntime.ModelMetadata.GraphDescription*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.ModelMetadata.Version
+  commentId: P:Microsoft.ML.OnnxRuntime.ModelMetadata.Version
+  id: Version
+  parent: Microsoft.ML.OnnxRuntime.ModelMetadata
+  langs:
+  - csharp
+  - vb
+  name: Version
+  nameWithType: ModelMetadata.Version
+  fullName: Microsoft.ML.OnnxRuntime.ModelMetadata.Version
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Version
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 1339
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nVersion number\n"
+  example: []
+  syntax:
+    content: public long Version { get; }
+    parameters: []
+    return:
+      type: System.Int64
+      description: long version integer
+    content.vb: Public ReadOnly Property Version As Long
+  overload: Microsoft.ML.OnnxRuntime.ModelMetadata.Version*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.ModelMetadata.CustomMetadataMap
+  commentId: P:Microsoft.ML.OnnxRuntime.ModelMetadata.CustomMetadataMap
+  id: CustomMetadataMap
+  parent: Microsoft.ML.OnnxRuntime.ModelMetadata
+  langs:
+  - csharp
+  - vb
+  name: CustomMetadataMap
+  nameWithType: ModelMetadata.CustomMetadataMap
+  fullName: Microsoft.ML.OnnxRuntime.ModelMetadata.CustomMetadataMap
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: CustomMetadataMap
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 1351
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: public Dictionary<string, string> CustomMetadataMap { get; }
+    parameters: []
+    return:
+      type: System.Collections.Generic.Dictionary{System.String,System.String}
+    content.vb: Public ReadOnly Property CustomMetadataMap As Dictionary(Of String, String)
+  overload: Microsoft.ML.OnnxRuntime.ModelMetadata.CustomMetadataMap*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: System.Object
+  commentId: T:System.Object
+  parent: System
+  isExternal: true
+  name: Object
+  nameWithType: Object
+  fullName: System.Object
+- uid: System.Object.Equals(System.Object)
+  commentId: M:System.Object.Equals(System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object)
+  nameWithType: Object.Equals(Object)
+  fullName: System.Object.Equals(System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.Equals(System.Object,System.Object)
+  commentId: M:System.Object.Equals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object, Object)
+  nameWithType: Object.Equals(Object, Object)
+  fullName: System.Object.Equals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetHashCode
+  commentId: M:System.Object.GetHashCode
+  parent: System.Object
+  isExternal: true
+  name: GetHashCode()
+  nameWithType: Object.GetHashCode()
+  fullName: System.Object.GetHashCode()
+  spec.csharp:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetType
+  commentId: M:System.Object.GetType
+  parent: System.Object
+  isExternal: true
+  name: GetType()
+  nameWithType: Object.GetType()
+  fullName: System.Object.GetType()
+  spec.csharp:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.MemberwiseClone
+  commentId: M:System.Object.MemberwiseClone
+  parent: System.Object
+  isExternal: true
+  name: MemberwiseClone()
+  nameWithType: Object.MemberwiseClone()
+  fullName: System.Object.MemberwiseClone()
+  spec.csharp:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ReferenceEquals(System.Object,System.Object)
+  commentId: M:System.Object.ReferenceEquals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: ReferenceEquals(Object, Object)
+  nameWithType: Object.ReferenceEquals(Object, Object)
+  fullName: System.Object.ReferenceEquals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ToString
+  commentId: M:System.Object.ToString
+  parent: System.Object
+  isExternal: true
+  name: ToString()
+  nameWithType: Object.ToString()
+  fullName: System.Object.ToString()
+  spec.csharp:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System
+  commentId: N:System
+  isExternal: true
+  name: System
+  nameWithType: System
+  fullName: System
+- uid: Microsoft.ML.OnnxRuntime.ModelMetadata.ProducerName*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.ModelMetadata.ProducerName
+  name: ProducerName
+  nameWithType: ModelMetadata.ProducerName
+  fullName: Microsoft.ML.OnnxRuntime.ModelMetadata.ProducerName
+- uid: System.String
+  commentId: T:System.String
+  parent: System
+  isExternal: true
+  name: String
+  nameWithType: String
+  fullName: System.String
+- uid: Microsoft.ML.OnnxRuntime.ModelMetadata.GraphName*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.ModelMetadata.GraphName
+  name: GraphName
+  nameWithType: ModelMetadata.GraphName
+  fullName: Microsoft.ML.OnnxRuntime.ModelMetadata.GraphName
+- uid: Microsoft.ML.OnnxRuntime.ModelMetadata.Domain*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.ModelMetadata.Domain
+  name: Domain
+  nameWithType: ModelMetadata.Domain
+  fullName: Microsoft.ML.OnnxRuntime.ModelMetadata.Domain
+- uid: Microsoft.ML.OnnxRuntime.ModelMetadata.Description*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.ModelMetadata.Description
+  name: Description
+  nameWithType: ModelMetadata.Description
+  fullName: Microsoft.ML.OnnxRuntime.ModelMetadata.Description
+- uid: Microsoft.ML.OnnxRuntime.ModelMetadata.GraphDescription*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.ModelMetadata.GraphDescription
+  name: GraphDescription
+  nameWithType: ModelMetadata.GraphDescription
+  fullName: Microsoft.ML.OnnxRuntime.ModelMetadata.GraphDescription
+- uid: Microsoft.ML.OnnxRuntime.ModelMetadata.Version*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.ModelMetadata.Version
+  name: Version
+  nameWithType: ModelMetadata.Version
+  fullName: Microsoft.ML.OnnxRuntime.ModelMetadata.Version
+- uid: System.Int64
+  commentId: T:System.Int64
+  parent: System
+  isExternal: true
+  name: Int64
+  nameWithType: Int64
+  fullName: System.Int64
+- uid: Microsoft.ML.OnnxRuntime.ModelMetadata.CustomMetadataMap*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.ModelMetadata.CustomMetadataMap
+  name: CustomMetadataMap
+  nameWithType: ModelMetadata.CustomMetadataMap
+  fullName: Microsoft.ML.OnnxRuntime.ModelMetadata.CustomMetadataMap
+- uid: System.Collections.Generic.Dictionary{System.String,System.String}
+  commentId: T:System.Collections.Generic.Dictionary{System.String,System.String}
+  parent: System.Collections.Generic
+  definition: System.Collections.Generic.Dictionary`2
+  name: Dictionary<String, String>
+  nameWithType: Dictionary<String, String>
+  fullName: System.Collections.Generic.Dictionary<System.String, System.String>
+  nameWithType.vb: Dictionary(Of String, String)
+  fullName.vb: System.Collections.Generic.Dictionary(Of System.String, System.String)
+  name.vb: Dictionary(Of String, String)
+  spec.csharp:
+  - uid: System.Collections.Generic.Dictionary`2
+    name: Dictionary
+    nameWithType: Dictionary
+    fullName: System.Collections.Generic.Dictionary
+    isExternal: true
+  - name: <
+    nameWithType: <
+    fullName: <
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: System.Collections.Generic.Dictionary`2
+    name: Dictionary
+    nameWithType: Dictionary
+    fullName: System.Collections.Generic.Dictionary
+    isExternal: true
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Collections.Generic.Dictionary`2
+  commentId: T:System.Collections.Generic.Dictionary`2
+  isExternal: true
+  name: Dictionary<TKey, TValue>
+  nameWithType: Dictionary<TKey, TValue>
+  fullName: System.Collections.Generic.Dictionary<TKey, TValue>
+  nameWithType.vb: Dictionary(Of TKey, TValue)
+  fullName.vb: System.Collections.Generic.Dictionary(Of TKey, TValue)
+  name.vb: Dictionary(Of TKey, TValue)
+  spec.csharp:
+  - uid: System.Collections.Generic.Dictionary`2
+    name: Dictionary
+    nameWithType: Dictionary
+    fullName: System.Collections.Generic.Dictionary
+    isExternal: true
+  - name: <
+    nameWithType: <
+    fullName: <
+  - name: TKey
+    nameWithType: TKey
+    fullName: TKey
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - name: TValue
+    nameWithType: TValue
+    fullName: TValue
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: System.Collections.Generic.Dictionary`2
+    name: Dictionary
+    nameWithType: Dictionary
+    fullName: System.Collections.Generic.Dictionary
+    isExternal: true
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - name: TKey
+    nameWithType: TKey
+    fullName: TKey
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - name: TValue
+    nameWithType: TValue
+    fullName: TValue
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Collections.Generic
+  commentId: N:System.Collections.Generic
+  isExternal: true
+  name: System.Collections.Generic
+  nameWithType: System.Collections.Generic
+  fullName: System.Collections.Generic

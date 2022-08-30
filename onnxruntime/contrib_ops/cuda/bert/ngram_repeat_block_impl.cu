@@ -33,8 +33,8 @@ __global__ void banRepeatedTokens(const int64_t* __restrict__ tokens,
   extern __shared__ int64_t tokens_shm[];
   tokens_shm[col] = tokens[start];
   if (col == blockDim.x - 1) {
-    for (int i=1; i<no_repeat_ngram_size; i++){
-      if (col+i < max_predict_len){
+    for (int i = 1; i < no_repeat_ngram_size; i++) {
+      if (col + i < max_predict_len) {
         tokens_shm[col + i] = tokens[start + i];
       }
     }
