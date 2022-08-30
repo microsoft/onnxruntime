@@ -361,7 +361,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* new_key_cache(context->Output(1, new_cache_shape));
   Tensor* new_value_cache(context->Output(2, new_cache_shape));
 
-  if (!LaunchDecoderAttentionKernel(
+  return LaunchDecoderAttentionKernel(
           device_prop,
           stream,
           cublas,
@@ -384,13 +384,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
           workspace_p.get(),
           output->MutableData<T>(),
           nullptr == new_key_cache ? nullptr : new_key_cache->MutableData<T>(),
-          nullptr == new_value_cache ? nullptr : new_value_cache->MutableData<T>())) {
-    // Get last error to reset it to cudaSuccess.
-    CUDA_CALL(cudaGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
-
-  return Status::OK();
+          nullptr == new_value_cache ? nullptr : new_value_cache->MutableData<T>());
 }
 
 }  // namespace cuda
