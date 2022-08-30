@@ -227,7 +227,7 @@ MatMulReplaceWithQLinear::MatMulReplaceWithQLinear()
     : matmul_int_to_float_replacer_{MatMulIntToFloatReplacer()},
       qlinear_matmul_replacer_{kOnnxDomain} {
 }
-Status SplitReplaceWithQLinear::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
+Status SplitReplaceWithQuant::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
   return SplitReplacer().Run(graph, selected_nodes);
 }
 Status MatMulReplaceWithQLinear::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {

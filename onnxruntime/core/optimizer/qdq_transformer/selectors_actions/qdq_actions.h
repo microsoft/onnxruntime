@@ -60,7 +60,7 @@ struct ConvReplaceWithQLinear : ReplaceWithQLinear {
   ConvReplaceWithQLinear();
 };
 
-struct SplitReplaceWithQLinear : public Action {
+struct SplitReplaceWithQuant : public Action {
 
   Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
 };
