@@ -3,10 +3,9 @@ on:
   push:
     branches:
       - main
-      - csharp-doc-update
 jobs:
   publish:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
     - name: Setup .NET
@@ -26,10 +25,10 @@ jobs:
         clean: false
     - name: Move API docs into target area
       run: |
-        rm -r -fo docs/api/csharp
-        MOVE csharp/ApiDocs/csharp docs/api
-        rm -r -fo csharp/ApiDocs
-        rm -r -fo csharp/src
+        rm -rf docs/api/csharp
+        mv csharp/ApiDocs/csharp docs/api
+        rm -r csharp/ApiDocs
+        rm -r csharp/src
     - name: Git Checkin
       run: git add .
     - name: Create Pull Request
