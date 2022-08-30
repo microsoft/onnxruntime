@@ -630,7 +630,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addXnn
   checkOrtStatus(jniEnv, api, api->SessionOptionsAppendExecutionProvider(options, "XNNPACK", 0, 0, 0));
 #else
   (void)apiHandle;
-  (void)handle;
+  (void)optionsHandle;
   throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), "This binary was not compiled with Xnnapck support.");
 #endif
 }
