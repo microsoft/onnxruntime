@@ -622,12 +622,12 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addROC
  * Signature: (JILjava/lang/String)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addXnnpack(
-    JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+    JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle) {
   (void)jobj;
 #ifdef USE_XNNPACK
   const OrtApi* api = (const OrtApi*)apiHandle;
   OrtSessionOptions* options = (OrtSessionOptions*)optionsHandle;
-  checkOrtStatus(jniEnv, api, api->SessionOptionsAppendExecutionProvider(options, 0, 0, 0));
+  checkOrtStatus(jniEnv, api, api->SessionOptionsAppendExecutionProvider(options, "XNNPACK", 0, 0, 0));
 #else
   (void)apiHandle;
   (void)handle;
