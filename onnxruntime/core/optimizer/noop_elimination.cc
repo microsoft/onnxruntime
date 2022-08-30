@@ -14,13 +14,13 @@ namespace onnxruntime {
 
 /**
   Eliminate no op node - handling Add op for now
-  Add example: 
+  Add example:
 
       X     0
-       \   /   
+       \   /
         Add
          |
-         Y    
+         Y
  */
 Status NoopElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
   if (graph_utils::RemoveNode(graph, node)) {
@@ -61,27 +61,27 @@ bool NoopElimination::SatisfyCondition(const Graph& graph, const Node& node, con
   }
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      if (*add_init.data<float>() != 0.f) {
+      if (add_init.DataAsSpan<float>()[0] != 0.f) {
         return false;
       }
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      if (math::halfToFloat(add_init.data<MLFloat16>()->val) != 0.f) {
+      if (math::halfToFloat(add_init.DataAsSpan<MLFloat16>()[0].val) != 0.f) {
         return false;
       }
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      if (*add_init.data<double>() != static_cast<double>(0.f)) {
+      if (add_init.DataAsSpan<double>()[0] != static_cast<double>(0.f)) {
         return false;
       }
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      if (*add_init.data<int32_t>() != static_cast<int32_t>(0)) {
+      if (add_init.DataAsSpan<int32_t>()[0] != static_cast<int32_t>(0)) {
         return false;
       }
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      if (*add_init.data<int64_t>() != static_cast<int64_t>(0)) {
+      if (add_init.DataAsSpan<int64_t>()[0] != static_cast<int64_t>(0)) {
         return false;
       }
       break;

@@ -335,7 +335,7 @@ TensorQuantType GetTensorQuantType(const NodeUnit& node_unit, int32_t io_index,
         // default 0 for zero-point if zero_dim == 0
         if (zero_tensor != nullptr) {
           Initializer zp_val(*zero_tensor, node_unit.ModelPath());
-          auto zero_points = zp_val.data<int8_t>();
+          auto zero_points = zp_val.DataAsSpan<int8_t>();
           for (int64_t i = 0; i < zp_val.size(); i++) {
             if (zero_points[i] != 0) {
               LOGS_DEFAULT(VERBOSE) << "only support 0 as zero point for per-channel quantization, "

@@ -286,20 +286,9 @@ Status ModelBuilder::RegisterInitializers() {
     if (Contains(skipped_initializers_, tensor.name()))
       continue;
 
-    uint32_t index;
-    size_t size, padded_size;
-    std::tie(index, size, padded_size) = initializers[i++];
+    auto [index, size, padded_size] = initializers[i++];
     const uint8_t* src = nullptr;
-    // uint8_t data need unpack, need a holder for free memory after copy
-
-    switch (tensor.data_type()) {
-      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
-        break;
-      }
-        // default:
-        // We should not get anything else here since we already checked in the 1st pass
-    }
+    // TensorProto_DataType_UINT8 or TensorProto_DataType_FLOAT:
     Initializer unpacked_tensor(tensor, graph_viewer_.ModelPath());
     ORT_RETURN_IF_NOT(size == unpacked_tensor.DataAsByteSpan().size(),
                       "initializer tensor: ", tensor.name(), "'s size: ",

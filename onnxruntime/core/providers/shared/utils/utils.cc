@@ -53,7 +53,7 @@ bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
         return false;
       }
       Initializer unpacked_tensor(*initializers.at(min_name));
-      min = unpacked_tensor.data<float>()[0];
+      min = unpacked_tensor.DataAsSpan<float>()[0];
     }
 
     if (node.InputDefs().size() > 2) {  // we have input max
@@ -63,7 +63,7 @@ bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
         return false;
       }
       Initializer unpacked_tensor(*initializers.at(max_name));
-      max = unpacked_tensor.data<float>()[0];
+      max = unpacked_tensor.DataAsSpan<float>()[0];
     }
   }
 

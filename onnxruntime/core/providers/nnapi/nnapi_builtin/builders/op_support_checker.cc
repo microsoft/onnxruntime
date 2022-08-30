@@ -186,7 +186,7 @@ static bool IsQuantizationZeroPointSupported(const InitializedTensorSet& initial
     }
     Initializer unpacked_tensor(zero_tensor, model_path);
     // Verify all onnx weight zero point(s) are 0(s)
-    const int8_t* zero_points = unpacked_tensor.data<int8_t>();
+    auto zero_points = unpacked_tensor.DataAsSpan<int8_t>();
     for (int64_t i = 0; i < unpacked_tensor.size(); i++) {
       if (zero_points[i] != 0) {
         LOGS_DEFAULT(VERBOSE) << "u8s8 Qlinear[Conv/MatMul]  only support 0 as zero point, "
@@ -724,7 +724,7 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
 
   const auto& perm_tensor = *initializers.at(perm_name);
   Initializer unpacked_tensor(perm_tensor);
-  const int64_t* raw_perm = unpacked_tensor.data<int64_t>();
+  auto raw_perm = unpacked_tensor.DataAsSpan<int64_t>();
   const auto perm_size = SafeInt<uint32_t>(perm_tensor.dims()[0]);
 
   NodeAttrHelper helper(node_unit);
@@ -1984,7 +1984,7 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
     if (inputs.size() == 3) {  // we are using scales
       const auto& scales_tensor = *initializers.at(inputs[2].node_arg.Name());
       Initializer unpacked_tensor(scales_tensor);
-      const float* scales_data = unpacked_tensor.data<float>();
+      auto scales_data = unpacked_tensor.DataAsSpan<float>();
       float scale_n = scales_data[0];
       float scale_c = IsNodeLayoutNHWC(node_unit) ? scales_data[3] : scales_data[1];
       if (scale_n != 1.0f || scale_c != 1.0f) {
@@ -1999,7 +1999,7 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
       const auto& sizes_tensor = *initializers.at(sizes_name);
       Initializer unpacked_tensor(sizes_tensor);
       int channel_idx = IsNodeLayoutNHWC(node_unit) ? 3 : 1;
-      const int64_t* sizes_data = unpacked_tensor.data<int64_t>();
+      auto sizes_data = unpacked_tensor.DataAsSpan<int64_t>();
       uint32_t size_n = SafeInt<uint32_t>(sizes_data[0]);
       uint32_t size_c = SafeInt<uint32_t>(sizes_data[channel_idx]);
       if (size_n != input_shape[0] || size_c != input_shape[channel_idx]) {
@@ -2329,7 +2329,7 @@ bool PadOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initiali
 
     const ONNX_NAMESPACE::TensorProto& pads_initializer = *pads_initializer_it->second;
     Initializer unpacked_tensor(pads_initializer);
-    const auto* tensor_data = unpacked_tensor.data<int64_t>();
+    auto tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
     for (int64_t i = 0; i < unpacked_tensor.size(); i++) {
       if (tensor_data[i] < 0) {
         LOGS_DEFAULT(VERBOSE) << "Negative pad value is not supported: pads["

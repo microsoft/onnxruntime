@@ -128,7 +128,7 @@ static Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const N
       const auto& initializers(model_builder.GetInitializerTensors());
       const auto& axes_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
       Initializer unpacked_tensor(axes_tensor);
-      const int64_t* raw_axes = unpacked_tensor.data<int64_t>();
+      auto raw_axes = unpacked_tensor.DataAsSpan<int64_t>();
       const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
       axes.resize(size);
       for (uint32_t i = 0; i < size; i++) {
@@ -416,9 +416,9 @@ static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
 
   // We need to copy the 1d scales array for per-channel quantization
   Initializer unpacked_tensor(scale_tensor);
-  const float* scales = unpacked_tensor.data<float>();
+  auto scales = unpacked_tensor.DataAsSpan<float>();
   const size_t scales_size = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
-  std::vector<float> scales_vec(scales, scales + scales_size);
+  std::vector<float> scales_vec(scales.begin(), scales.begin() + scales_size);
   w_scales = onnxruntime::make_optional(std::move(scales_vec));
   return Status::OK();
 }
@@ -885,7 +885,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
   const auto& shape_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
   Initializer unpacked_tensor(shape_tensor);
-  const int64_t* raw_shape = unpacked_tensor.data<int64_t>();
+  auto raw_shape = unpacked_tensor.DataAsSpan<int64_t>();
   const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
 
   Shape input_shape = shaper[input];
@@ -1002,10 +1002,10 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   Initializer unpacked_mean_tensor(mean_tensor);
   Initializer unpacked_var_tensor(var_tensor);
 
-  const float* scale_data = unpacked_scale_tensor.data<float>();
-  const float* bias_data = unpacked_bias_tensor.data<float>();
-  const float* mean_data = unpacked_mean_tensor.data<float>();
-  const float* var_data = unpacked_var_tensor.data<float>();
+  auto scale_data = unpacked_scale_tensor.DataAsSpan<float>();
+  auto bias_data = unpacked_bias_tensor.DataAsSpan<float>();
+  auto mean_data = unpacked_mean_tensor.DataAsSpan<float>();
+  auto var_data = unpacked_var_tensor.DataAsSpan<float>();
 
   for (int64_t i = 0; i < size; i++) {
     a.push_back(scale_data[i] / sqrt(var_data[i] + eps));
@@ -1378,7 +1378,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     Initializer unpacked_tensor(bias_tensor);
     OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, x_scale * w_scale);
     ORT_RETURN_IF_ERROR(
-        model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data<int32_t>(), bias_operand_type));
+        model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.DataAsSpan<int32_t>().data(), bias_operand_type));
   }
 
   const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
@@ -1807,7 +1807,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       ORT_RETURN_IF_ERROR(
           model_builder.AddOperandFromPersistMemoryBuffer(
               bias,
-              unpacked_tensor.data<int32_t>(), bias_operand_type));
+              unpacked_tensor.DataAsSpan<int32_t>().data(), bias_operand_type));
 
       bias_idx = operand_indices.at(bias);
     }
@@ -2366,14 +2366,14 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     const auto& scales_name = inputs[2].node_arg.Name();
     const auto& scales_tensor = *initializers.at(scales_name);
     Initializer unpacked_tensor(scales_tensor);
-    const float* scales_data = unpacked_tensor.data<float>();
+    auto scales_data = unpacked_tensor.DataAsSpan<float>();
     ORT_RETURN_IF_ERROR(
         shaper.ResizeUsingScales(input, scales_data[h_idx], scales_data[w_idx], use_nchw, output));
   } else {  // we are using sizes
     const auto& sizes_name = inputs[3].node_arg.Name();
     const auto& sizes_tensor = *initializers.at(sizes_name);
     Initializer unpacked_tensor(sizes_tensor);
-    const int64_t* sizes_data = unpacked_tensor.data<int64_t>();
+    auto sizes_data = unpacked_tensor.DataAsSpan<int64_t>();
     ORT_RETURN_IF_ERROR(
         shaper.ResizeUsingOutputSizes(input, SafeInt<uint32_t>(sizes_data[h_idx]), SafeInt<uint32_t>(sizes_data[w_idx]), use_nchw, output));
   }
@@ -2498,11 +2498,11 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     // see https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#type-punning-arrays for the usage of memcpy here
     if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
       for (uint32_t i = 0; i < unpacked_tensor.size(); i++) {
-        indices[i] = SafeInt<int32_t>(unpacked_tensor.data<int64_t>()[i]);
+        indices[i] = SafeInt<int32_t>(unpacked_tensor.DataAsSpan<int64_t>()[i]);
       }
     } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
       for (uint32_t i = 0; i < unpacked_tensor.size(); i++) {
-        indices[i] = SafeInt<int32_t>(unpacked_tensor.data<int32_t>()[i]);
+        indices[i] = SafeInt<int32_t>(unpacked_tensor.DataAsSpan<int32_t>()[i]);
       }
     }
 
@@ -2661,13 +2661,12 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
       const auto& tensor = *initializers.at(input_name);
       Initializer unpacked_tensor(tensor, model_builder.GetGraphViewer().ModelPath());
       const auto data_type = tensor.data_type();
-      size_t size = unpacked_tensor.size();
       if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-        const int64_t* tensor_data = unpacked_tensor.data<int64_t>();
-        data.insert(data.end(), tensor_data, tensor_data + size);
+        auto tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
+        data.insert(data.end(), tensor_data.begin(), tensor_data.end());
       } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-        const int32_t* tensor_data = unpacked_tensor.data<int32_t>();
-        data.insert(data.end(), tensor_data, tensor_data + size);
+        auto tensor_data = unpacked_tensor.DataAsSpan<int32_t>();
+        data.insert(data.end(), tensor_data.begin(), tensor_data.end());
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "Data type for starts and ends inputs' is not supported in this build. Got ",
@@ -2818,8 +2817,8 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   std::vector<int32_t> converted_pads_data{};
   converted_pads_data.reserve(2 * data_rank);
   for (size_t i = 0; i < data_rank; ++i) {
-    converted_pads_data.push_back(pads_initializer_raw_data.data<int64_t>()[i]);
-    converted_pads_data.push_back(pads_initializer_raw_data.data<int64_t>()[i + data_rank]);
+    converted_pads_data.push_back(pads_initializer_raw_data.DataAsSpan<int64_t>()[i]);
+    converted_pads_data.push_back(pads_initializer_raw_data.DataAsSpan<int64_t>()[i + data_rank]);
   }
 
   const Shape converted_pads_shape{data_rank, 2};
@@ -2835,7 +2834,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
     const auto* constant_value_initializer = model_builder.GetConstantInitializer(constant_value);
     ORT_RETURN_IF_NOT(constant_value_initializer, "constant_value must be a constant");
     Initializer pad_value_raw_data_init(*constant_value_initializer);
-    pad_value = pad_value_raw_data_init.data<float>()[0];
+    pad_value = pad_value_raw_data_init.DataAsSpan<float>()[0];
   }
 
   ADD_SCALAR_OPERAND(model_builder, input_indices, pad_value);

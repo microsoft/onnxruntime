@@ -52,7 +52,6 @@ template <typename T>
 struct Offset;
 }  // namespace flatbuffers
 
-
 namespace onnxruntime {
 class Graph;
 struct IndexedSubGraph;

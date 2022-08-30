@@ -199,14 +199,14 @@ common::Status GetQuantizationScaleAndZeroPoint(
     const auto& name = quant_param.scale.Name();
     Initializer unpacked_tensor(*initializers.at(name), model_path);
     // The scale should be one or more floats
-    scale = unpacked_tensor.data<float>()[0];
+    scale = unpacked_tensor.DataAsSpan<float>()[0];
   }
 
   if (quant_param.zero_point) {  // get the zero point if it's there
     const auto& name = quant_param.zero_point->Name();
     Initializer unpacked_tensor(*initializers.at(name), model_path);
     // Onnx quantization uses uint8 [int8 not yet supported], need to cast to int32_t used by NNAPI
-    zero_point = static_cast<int32_t>(unpacked_tensor.data<uint8_t>()[0]);
+    zero_point = static_cast<int32_t>(unpacked_tensor.DataAsSpan<uint8_t>()[0]);
   }
 
   return Status::OK();

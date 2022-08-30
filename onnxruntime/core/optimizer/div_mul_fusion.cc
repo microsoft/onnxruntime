@@ -46,27 +46,27 @@ bool DivMulFusion::SatisfyCondition(const Graph& graph, const Node& node, const 
   }
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      if (*div_A.data<float>() != 1.f) {
+      if (div_A.DataAsSpan<float>()[0] != 1.f) {
         return false;
       }
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      if (math::halfToFloat(div_A.data<MLFloat16>()->val) != 1.f) {
+      if (math::halfToFloat(div_A.DataAsSpan<MLFloat16>()[0].val) != 1.f) {
         return false;
       }
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      if (*div_A.data<double>() != static_cast<double>(1.f)) {
+      if (div_A.DataAsSpan<double>()[0] != static_cast<double>(1.f)) {
         return false;
       }
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      if (*div_A.data<int32_t>() != static_cast<int32_t>(1)) {
+      if (div_A.DataAsSpan<int32_t>()[0] != static_cast<int32_t>(1)) {
         return false;
       }
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      if (*div_A.data<int64_t>() != static_cast<int64_t>(1)) {
+      if (div_A.DataAsSpan<int64_t>()[0] != static_cast<int64_t>(1)) {
         return false;
       }
       break;

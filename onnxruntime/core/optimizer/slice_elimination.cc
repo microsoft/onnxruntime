@@ -63,11 +63,11 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node, cons
         [&graph](const ONNX_NAMESPACE::TensorProto* initializer) -> InlinedVector<int64_t> {
       Initializer init(*initializer, graph.ModelPath());
       if (initializer->data_type() == ONNX_NAMESPACE::TensorProto::INT32) {
-        int32_t* init_data = init.data<int32_t>();
-        return InlinedVector<int64_t>(init_data, init_data + init.size());
+        auto init_data = init.DataAsSpan<int32_t>();
+        return InlinedVector<int64_t>(init_data.begin(), init_data.end());
       } else if (initializer->data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
-        int64_t* init_data = init.data<int64_t>();
-        return InlinedVector<int64_t>(init_data, init_data + init.size());
+        auto init_data = init.DataAsSpan<int64_t>();
+        return InlinedVector<int64_t>(init_data.begin(), init_data.end());
       }
       return {};
     };

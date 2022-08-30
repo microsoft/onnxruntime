@@ -15,8 +15,8 @@ namespace onnxruntime {
  * @brief Given a QuantizeLinear and DequantizeLinear pair with type int8_t,
  *        Convert them to uint8_t
  * @param graph
- * @param q_node 
- * @param dq_node 
+ * @param q_node
+ * @param dq_node
  * @return whether conversion happened
 */
 static bool QDQ_S8_to_U8(Graph& graph, Node& q_node, Node& dq_node) {
@@ -50,8 +50,8 @@ static bool QDQ_S8_to_U8(Graph& graph, Node& q_node, Node& dq_node) {
     return false;
   }
 
-  uint8_t q_zp_value = *q_zero_point.data<int8_t>() + 128;
-  uint8_t dq_zp_value = *dq_zero_point.data<int8_t>() + 128;
+  uint8_t q_zp_value = q_zero_point.DataAsSpan<int8_t>()[0] + 128;
+  uint8_t dq_zp_value = dq_zero_point.DataAsSpan<int8_t>()[0] + 128;
 
   if (q_zp_value != dq_zp_value) {
     return false;  // zero points for Q and DQ are expected to be same

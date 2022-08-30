@@ -55,7 +55,7 @@ bool IsQDQPairSupported(
 
   return q_zp.data_type() == dq_zp.data_type() &&
          q_zp.DataAsByteSpan() == dq_zp.DataAsByteSpan() &&
-         *q_scale.data<float>() == *dq_scale.data<float>();
+         q_scale.DataAsSpan<float>() == dq_scale.DataAsSpan<float>();
 }
 
 bool IsDQSupported(const Node& dq_node, const GetConstantInitializerFn& get_const_initializer) {

@@ -59,17 +59,17 @@ Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
       Initializer i(*initializer, graph.ModelPath());
       switch (data_type) {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-          if (*i.data<float>() < 0.f) {
+          if (i.DataAsSpan<float>()[0] < 0.f) {
             replace_min = true;
           }
           break;
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-          if (math::halfToFloat(i.data<MLFloat16>()->val) < 0.f) {
+          if (math::halfToFloat(i.DataAsSpan<MLFloat16>()[0].val) < 0.f) {
             replace_min = true;
           }
           break;
         case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
-          if (i.data<BFloat16>()->ToFloat() < 0.f) {
+          if (i.DataAsSpan<BFloat16>()[0].ToFloat() < 0.f) {
             replace_min = true;
           }
           break;

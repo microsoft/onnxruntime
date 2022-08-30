@@ -30,12 +30,12 @@ bool IsQuantSoftmaxSupported(const NodeUnit& node_unit, const GraphViewer& graph
     // qdq models converted from other framework
     auto [scale_tensor, zero_tensor] = GetQuantizationZeroPointAndScale(graph, node_unit.Outputs()[0]);
     Initializer q_scale(*scale_tensor, node_unit.ModelPath());
-    if (fabs(q_scale.data<float>()[0] - 1.0f / 256.0f) > 0.0001f) {
+    if (fabs(q_scale.DataAsSpan<float>()[0] - 1.0f / 256.0f) > 0.0001f) {
       break;
     }
     if (zero_tensor) {
       Initializer q_zp(*zero_tensor, node_unit.ModelPath());
-      if (q_zp.DataAsByteSpan()[0] != 0) {
+      if (q_zp.DataAsSpan<uint8_t>()[0] != 0) {
         break;
       }
     }
