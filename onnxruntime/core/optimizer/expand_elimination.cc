@@ -41,7 +41,7 @@ bool ExpandElimination::SatisfyCondition(const Graph& graph, const Node& node, c
     return false;
   }
 
-  auto target_shapes = initializer->DataAsSpan<int64_t>();
+  const int64_t* target_shapes = initializer->data<int64_t>();
 
   // Check the dimensions starting at the trailing dimension.
   int i = input_shape->dim_size() - 1;
@@ -67,7 +67,7 @@ bool ExpandElimination::SatisfyCondition(const Graph& graph, const Node& node, c
     --j;
   }
 
-
+  
   return true;
 }
 

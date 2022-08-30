@@ -48,7 +48,7 @@ inline bool Int8TensorProto2Uint8(
   // TensorProto. This require coordination with onnx side.
 
   Initializer temp(*src, graph.ModelPath());
-  int8_t* p = temp.MutableDataAsSpan<int8_t>().data();
+  int8_t* p = temp.data<int8_t>();
   bool should_convert = false;
   for (int i = 0; i < temp.size(); i++) {
     if (*p < -64 || *p > 64) {
@@ -58,7 +58,7 @@ inline bool Int8TensorProto2Uint8(
     p++;
   }
   if (force || should_convert) {
-    dst.set_raw_data(temp.MutableDataAsSpan<int8_t>().data(), size_t(temp.size()));
+    dst.set_raw_data(temp.data<int8_t>(), size_t(temp.size()));
     return true;
   }
   return false;
@@ -66,8 +66,8 @@ inline bool Int8TensorProto2Uint8(
 
 /**
  * @brief If the op_node has an single int8_t const weight tensor, convert it to uint8_t
- * @param graph
- * @param op_node
+ * @param graph 
+ * @param op_node 
  * @param weights_idx     input index of the weight tensor
  * @param weight_zp_idx   input index of the weight zero point tensor
  * @return true when conversion happened.

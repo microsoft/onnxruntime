@@ -31,7 +31,7 @@ static bool GetQConstantLowerUpper(const Graph& graph, const Node& node, float& 
       s_initializer.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     return false;
   }
-  const float scale = s_initializer.DataAsSpan<float>()[0];
+  const float scale = s_initializer.data<float>()[0];
 
   constexpr size_t zp_idx = 2;
   const NodeArg* zp_input = input_defs[zp_idx];
@@ -48,13 +48,13 @@ static bool GetQConstantLowerUpper(const Graph& graph, const Node& node, float& 
 
   switch (zp_initializer.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
-      const int8_t zero_point = zp_initializer.DataAsSpan<int8_t>()[0];
+      const int8_t zero_point = zp_initializer.data<int8_t>()[0];
       lower = scale * (-128 - zero_point);
       upper = scale * (127 - zero_point);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
-      const uint8_t zero_point = zp_initializer.DataAsSpan<uint8_t>()[0];
+      const uint8_t zero_point = zp_initializer.data<uint8_t>()[0];
       lower = scale * (0 - zero_point);
       upper = scale * (255 - zero_point);
       break;

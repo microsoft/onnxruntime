@@ -419,9 +419,9 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
     // Reorder the weights tensor statically.
     if (reorder_filter_OIHWBo) {
-      MlasReorderFilterOIHWBo(conv_W_dims.data(), conv_W.DataAsSpan<float>().data(), reordered_filter.data());
+      MlasReorderFilterOIHWBo(conv_W_dims.data(), conv_W.data<float>(), reordered_filter.data());
     } else {
-      MlasReorderFilterOIHWBiBo(conv_W_dims.data(), conv_W.DataAsSpan<float>().data(), reordered_filter.data());
+      MlasReorderFilterOIHWBiBo(conv_W_dims.data(), conv_W.data<float>(), reordered_filter.data());
     }
 
     ONNX_NAMESPACE::TensorProto nchwc_conv_W_tensor_proto;
@@ -452,7 +452,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
       InlinedVector<float> aligned_bias(gsl::narrow<size_t>(nchwc_output_channels));
       ORT_ENFORCE(output_channels <= nchwc_output_channels, "Buffer overflow");
-      std::copy_n(conv_B.MutableDataAsSpan<float>().data(), output_channels, aligned_bias.data());
+      std::copy_n(conv_B.data<float>(), output_channels, aligned_bias.data());
 
       ONNX_NAMESPACE::TensorProto nchwc_conv_B_tensor_proto;
 
@@ -878,7 +878,7 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
 
   InlinedVector<float> padded_buffer(gsl::narrow<size_t>(nchwc_channels));
 
-  std::copy_n(bn_scale.MutableDataAsSpan<float>().data(), channels, padded_buffer.data());
+  std::copy_n(bn_scale.data<float>(), channels, padded_buffer.data());
 
   ONNX_NAMESPACE::TensorProto nchwc_conv_W_tensor_proto;
   nchwc_conv_W_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
@@ -891,7 +891,7 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
 
   auto* nchwc_conv_W_arg = &graph_utils::AddInitializer(graph_, nchwc_conv_W_tensor_proto);
 
-  std::copy_n(bn_B.MutableDataAsSpan<float>().data(), channels, padded_buffer.data());
+  std::copy_n(bn_B.data<float>(), channels, padded_buffer.data());
 
   ONNX_NAMESPACE::TensorProto nchwc_conv_B_tensor_proto;
   nchwc_conv_B_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
@@ -1042,7 +1042,7 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
     }
 
     Initializer sizes{*sizes_tensor_proto, graph_.ModelPath()};
-    auto sizes_data = sizes.DataAsSpan<int64_t>();
+    auto* sizes_data = sizes.data<int64_t>();
 
     // The sizes data can only be used if the input shape is static and the
     // effective scaling must be an integer.
@@ -1072,7 +1072,7 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
     }
 
     Initializer scales{*scales_tensor_proto, graph_.ModelPath()};
-    auto scales_data = scales.DataAsSpan<float>();
+    auto* scales_data = scales.data<float>();
 
     // Cast the scales to integers and verify that the scales are positive and
     // round trip back to floating point.

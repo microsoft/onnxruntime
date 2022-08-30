@@ -50,11 +50,10 @@ void MergeWeights(const T* q, const T* k, const T* v, std::vector<T>& result, in
 
 // Merge 2-D weights (q, k and v) by concatenating them row by row.
 template <typename T>
-void MergeMatMulWeights(gsl::span<const T> q_weight, gsl::span<const T> k_weight, gsl::span<const T> v_weight,
-                        std::vector<T>& result, int64_t hidden_size) {
-  const T* q = q_weight.data();
-  const T* k = k_weight.data();
-  const T* v = v_weight.data();
+void MergeMatMulWeights(const T* q_weight, const T* k_weight, const T* v_weight, std::vector<T>& result, int64_t hidden_size) {
+  const T* q = q_weight;
+  const T* k = k_weight;
+  const T* v = v_weight;
   for (int64_t i = 0; i < hidden_size; i++, q += hidden_size, k += hidden_size, v += hidden_size) {
     MergeWeights(q, k, v, result, hidden_size);
   }
@@ -117,27 +116,27 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
   const int64_t element_count = 3 * hidden_size * (is_matmul ? hidden_size : 1);
 
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    auto q_weight = q_initializer.DataAsSpan<float>();
-    auto k_weight = k_initializer.DataAsSpan<float>();
-    auto v_weight = v_initializer.DataAsSpan<float>();
+    const float* q_weight = q_initializer.data<float>();
+    const float* k_weight = k_initializer.data<float>();
+    const float* v_weight = v_initializer.data<float>();
     std::vector<float> result;
     result.reserve(gsl::narrow<size_t>(element_count));
     if (is_matmul) {
       MergeMatMulWeights<float>(q_weight, k_weight, v_weight, result, hidden_size);
     } else {
-      MergeWeights<float>(q_weight.data(), k_weight.data(), v_weight.data(), result, hidden_size);
+      MergeWeights<float>(q_weight, k_weight, v_weight, result, hidden_size);
     }
     initializer.set_raw_data(result.data(), gsl::narrow<size_t>(element_count) * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
-    auto q_weight = q_initializer.DataAsSpan<MLFloat16>();
-    auto k_weight = k_initializer.DataAsSpan<MLFloat16>();
-    auto v_weight = v_initializer.DataAsSpan<MLFloat16>();
+    const MLFloat16* q_weight = q_initializer.data<MLFloat16>();
+    const MLFloat16* k_weight = k_initializer.data<MLFloat16>();
+    const MLFloat16* v_weight = v_initializer.data<MLFloat16>();
     std::vector<MLFloat16> result;
     result.reserve(gsl::narrow<size_t>(element_count));
     if (is_matmul) {
       MergeMatMulWeights<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size);
     } else {
-      MergeWeights<MLFloat16>(q_weight.data(), k_weight.data(), v_weight.data(), result, hidden_size);
+      MergeWeights<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size);
     }
     initializer.set_raw_data(result.data(), gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
   }

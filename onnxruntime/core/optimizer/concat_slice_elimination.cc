@@ -85,11 +85,11 @@ static bool GetSliceInfo(const Graph& graph,
         [&graph](const ONNX_NAMESPACE::TensorProto* initializer) -> InlinedVector<int64_t> {
       Initializer init(*initializer, graph.ModelPath());
       if (initializer->data_type() == ONNX_NAMESPACE::TensorProto::INT32) {
-        auto init_data = init.DataAsSpan<int32_t>();
-        return InlinedVector<int64_t>(init_data.begin(), init_data.end());
+        int32_t* init_data = init.data<int32_t>();
+        return InlinedVector<int64_t>(init_data, init_data + init.size());
       } else if (initializer->data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
-        auto init_data = init.DataAsSpan<int64_t>();
-        return InlinedVector<int64_t>(init_data.begin(), init_data.end());
+        int64_t* init_data = init.data<int64_t>();
+        return InlinedVector<int64_t>(init_data, init_data + init.size());
       }
       return {};
     };
@@ -143,19 +143,19 @@ static bool GetSliceInfo(const Graph& graph,
 
 /**
 Apply Concat Slice Elimination transform. This transform removes the redundant
-Concat + Slice pattern if the concat and slice axis is 0 and we are slicing the same
+Concat + Slice pattern if the concat and slice axis is 0 and we are slicing the same 
 sizes as the inputs to concat.
 
 Before transform:
-ip_0(l0)               -- >Slice [0, l0] ---> op0
-      \               |
+ip_0(l0)               -- >Slice [0, l0] ---> op0  
+      \               | 
 ip_1(l1)-- Concat(axis=0) -->Slice [q, l0+l1]---> op1
-      /               |
+      /               | 
 ip_2(l2)                -->Slice [l0+l1, :]---> op2
 
 After transform:
-ip_0 ---> op0
-
+ip_0 ---> op0  
+      
 ip_1 ---> op1
 
 ip_2 ---> op2

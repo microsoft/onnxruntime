@@ -48,13 +48,13 @@ class Initializer final {
   }
 
   template <typename T>
-  auto MutableDataAsSpan() {
-    return data_.MutableDataAsSpan<T>();
+  T* data() {
+    return data_.MutableData<T>();
   }
 
   template <typename T>
-  auto DataAsSpan() const {
-    return data_.DataAsSpan<T>();
+  const T* data() const {
+    return data_.Data<T>();
   }
 
   gsl::span<const uint8_t> DataAsByteSpan() const {
