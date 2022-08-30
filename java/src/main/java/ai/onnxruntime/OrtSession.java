@@ -990,7 +990,6 @@ public class OrtSession implements AutoCloseable {
     /**
      * Adds Xnnpack as an execution backend.
      *
-     * @param flags The flags which control the CoreML configuration.
      * @throws OrtException If there was an error in native code.
      */
     public void addXnnpack() throws OrtException {
