@@ -22,6 +22,10 @@ struct CudaStream : Stream {
   cudnnHandle_t cudnn_handle_{};
 
   cublasHandle_t cublas_handle_{};
+
+  cudnnHandle_t GetCudnnHandle();
+
+  cublasHandle_t GetCublasHandle();
 };
 
 void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry, 

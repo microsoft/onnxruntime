@@ -76,12 +76,14 @@ class CudaKernel : public OpKernel {
 
   inline cudnnHandle_t GetCudnnHandle(OpKernelContext* ctx) const {
     auto* cuda_stream = dynamic_cast<CudaStream*>(ctx->GetComputeStream());
-    return cuda_stream ? cuda_stream->cudnn_handle_ : nullptr;
+    //return cuda_stream ? cuda_stream->cudnn_handle_ : nullptr;
+    return cuda_stream->GetCudnnHandle();
   }
 
   inline cublasHandle_t GetCublasHandle(OpKernelContext* ctx) const {
     auto* cuda_stream = dynamic_cast<CudaStream*>(ctx->GetComputeStream());
-    return cuda_stream ? cuda_stream->cublas_handle_ : nullptr;
+    //return cuda_stream ? cuda_stream->cublas_handle_ : nullptr;
+    return cuda_stream->GetCublasHandle();
   }
 
   inline onnxruntime::Stream* OrtStream(OpKernelContext* ctx) const {

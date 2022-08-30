@@ -45,7 +45,7 @@ Status GemmInt8(int m, int n, int k,
   }
 
   auto* ort_cuda_stream = dynamic_cast<CudaStream*>(ort_stream);
-  auto cublas = ort_cuda_stream->cublas_handle_;
+  auto cublas = ort_cuda_stream->GetCublasHandle();
 
   CUBLAS_RETURN_IF_ERROR(cublasGemmEx(
       cublas,
