@@ -47,7 +47,7 @@ Status LaunchFastGeluKernel(hipStream_t stream, int input_length, int bias_lengt
     op.EnableTuning();
   }
   FastGeluParams<T> op_params(stream, input, bias, output, input_length, bias_length);
-  return op(&op_params).IsOK();
+  return op(&op_params);
 }
 
 template Status LaunchFastGeluKernel<float>(hipStream_t stream, int input_length, int bias_length,
