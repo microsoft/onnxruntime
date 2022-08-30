@@ -279,7 +279,7 @@ __global__ void SoftmaxKernel(const int all_sequence_length, const int sequence_
 }
 
 template <typename T>
-bool ComputeSoftmax(
+Status ComputeSoftmax(
     hipStream_t stream,
     const int all_sequence_length, const int sequence_length, const int batch_size, const int num_heads,
     const T* add_before_softmax, const T* input, T* output, bool is_unidirectional) {
@@ -388,7 +388,7 @@ __global__ void SoftmaxWithRawMaskSmallKernel(const int all_sequence_length,
 }
 
 template <typename T>
-bool ComputeSoftmaxWithMask1D(
+Status ComputeSoftmaxWithMask1D(
     hipStream_t stream,
     const int all_sequence_length, const int sequence_length, const int batch_size, const int num_heads,
     const int* mask_index, const int* mask_start,
@@ -438,7 +438,7 @@ bool ComputeSoftmaxWithMask1D(
 }
 
 template <typename T>
-bool ComputeSoftmaxWithRawMask(hipStream_t stream,
+Status ComputeSoftmaxWithRawMask(hipStream_t stream,
                                const int all_sequence_length,
                                const int sequence_length,
                                const int batch_size,

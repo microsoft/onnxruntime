@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #pragma once
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-bool LaunchEmbedLayerNormKernel(cudaStream_t stream,
+Status LaunchEmbedLayerNormKernel(cudaStream_t stream,
                                 void* output,                    // output tensor
                                 void* mask_index,                // output mask index
                                 const int* input_ids,            // input word IDs
