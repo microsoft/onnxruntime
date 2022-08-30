@@ -142,7 +142,7 @@ TEST_P(ModelTest, Run) {
       {"BERT_Squad", "test data bug"},
       {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}},
       {"constantofshape_int_zeros", "test data bug", {"onnx141", "onnx150"}},
-      {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
+      {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {}},
       // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
       // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
       // which doesn't match the expected output that was generated with numpy.
@@ -188,7 +188,7 @@ TEST_P(ModelTest, Run) {
       {"castlike_FLOAT_to_BFLOAT16_expanded", "type error", {}},
       {"castlike_FLOAT_to_STRING", "type error", {}},
       {"castlike_FLOAT_to_STRING_expanded", "type error", {}},
-      {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.", {"onnx180", "onnx181", "onnx190"}},
+      {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.", {}},
       {"gru_batchwise", "type error", {}},
       {"lstm_batchwise", "type error", {}},
       {"optional_get_element", "type error", {}},
@@ -202,6 +202,7 @@ TEST_P(ModelTest, Run) {
       {"shape_start_1_end_negative_1", "type error", {}},
       {"shape_start_negative_1", "type error", {}},
       {"simple_rnn_batchwise", "type error", {}},
+      {"mod_float_mixed_sign_example", "fmod attribute must be true for floating point types", {}},
 #ifdef ENABLE_TRAINING
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.
       {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
@@ -1064,19 +1065,13 @@ TEST_P(ModelTest, Run) {
 #if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE)
 #ifdef _WIN32
     paths.push_back(ORT_TSTR("..\\models"));
-    paths.push_back(ORT_TSTR("..\\js\\test\\data"));
+    paths.push_back(ORT_TSTR("..\\webmodels"));
 #else
     paths.push_back(ORT_TSTR("../models"));
+    paths.push_back(ORT_TSTR("../webmodels"));
 #endif
 #endif
-    namespace fs = std::filesystem;
-    auto current_path = fs::current_path();
-    std::cout << "----------------FYI, the current directory is " << std::filesystem::current_path() << std::endl;
-    for (const auto& entry : fs::directory_iterator(current_path.parent_path()))
-      std::cout << entry.path() << std::endl;
-    std::cout << "----------------FYI, the current directory is " << std::endl;
-    for (const auto& entry : fs::directory_iterator("../models"))
-      std::cout << entry.path() << std::endl;
+
 // TENSORRT/OpenVino has too many test failures in the single node tests
 #if !defined(_WIN32) && !defined(USE_OPENVINO)
     paths.push_back("/data/onnx");
