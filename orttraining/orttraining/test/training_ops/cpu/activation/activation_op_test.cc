@@ -84,7 +84,7 @@ constexpr float TanhGrad(float dy, float y) {
   return dy * (1 - y * y);
 }
 
-constexpr float QuickGeluGrad(float dy, float x, float alpha) {
+float QuickGeluGrad(float dy, float x, float alpha) {
   float v = x * alpha;
   float sigmoid = v >= 0 ? 1.f / (1.f + std::exp(-v)) : 1.f - 1.f / (1 + std::exp(v));
   return dy * sigmoid * (1 + v * (1 - sigmoid));
