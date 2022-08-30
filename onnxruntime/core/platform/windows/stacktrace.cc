@@ -10,7 +10,7 @@
 #include <DbgHelp.h>
 
 #include "core/common/logging/logging.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 

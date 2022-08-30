@@ -6,7 +6,7 @@
 
 #include <memory>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"

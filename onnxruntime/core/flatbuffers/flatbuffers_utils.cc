@@ -7,7 +7,7 @@
 #include "core/common/common.h"
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

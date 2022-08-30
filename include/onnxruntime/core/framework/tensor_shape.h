@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <string>
 #include <cstring>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 #include "onnxruntime_config.h"
 
 #ifndef DISABLE_ABSEIL

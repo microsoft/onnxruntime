@@ -12,7 +12,7 @@
 #include <vector>
 #include <string>
 #include <map>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 #include <unordered_map>
 #include <unordered_set>
 #include <stddef.h>
@@ -317,4 +317,3 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() { r
 
 #define LOGS_DEFAULT(severity) \
   LOGS_DEFAULT_CATEGORY(severity, ::onnxruntime::logging::Category::onnxruntime)
-

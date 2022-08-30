@@ -15,7 +15,7 @@
 
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
-#include "gsl/gsl-lite.hpp"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace contrib {

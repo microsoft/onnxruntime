@@ -19,7 +19,7 @@
 #include "core/util/math.h"
 
 #include <algorithm>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 #include "core/mlas/inc/mlas.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic push

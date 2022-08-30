@@ -28,7 +28,7 @@
 #pragma warning(pop)
 #endif
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"

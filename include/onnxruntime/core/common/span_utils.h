@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 // Inspired by Fekir's Blog https://fekir.info/post/span-the-missing-constructor/
@@ -11,15 +11,15 @@ namespace onnxruntime {
 
 // Use AsSpan for less typing on any container including initializer list to create a span
 // (unnamed, untyped initializer list does not automatically convert to gsl::span).
-// {1, 2, 3} as such does not have a type 
+// {1, 2, 3} as such does not have a type
 // (see https://scottmeyers.blogspot.com/2014/03/if-braced-initializers-have-no-type-why.html)
-// 
+//
 //   Example: AsSpan({1, 2, 3}) results in gsl::span<const int>
-// 
+//
 // The above would deduce to std::initializer_list<int> and the result is gsl::span<const int>
 //
 // AsSpan<int64_t>({1, 2, 3}) produces gsl::span<const int64_t>
-// 
+//
 // We can also do std::array<int64_t, 3>{1, 2, 3} that can be automatically converted to span
 // without memory allocation.
 //
@@ -38,7 +38,7 @@ template <class C>
 constexpr auto AsSpan(C& c) {
   return details::AsSpanImpl(c.data(), c.size());
 }
- 
+
 template <class C>
 constexpr auto AsSpan(const C& c) {
   return details::AsSpanImpl(c.data(), c.size());

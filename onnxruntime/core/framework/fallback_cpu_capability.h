@@ -6,7 +6,7 @@
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/kernel_registry.h"
 #include "core/graph/graph_viewer.h"
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 

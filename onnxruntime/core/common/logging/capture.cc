@@ -3,7 +3,7 @@
 
 #include "core/common/logging/capture.h"
 #include "core/common/logging/logging.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace logging {

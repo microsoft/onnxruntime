@@ -9,7 +9,7 @@
 #include "core/providers/nuphar/runtime/compute_ctx.h"
 #include "core/providers/nuphar/runtime/utils.h"
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include <tvm/tvm.h>
 
 namespace onnxruntime {

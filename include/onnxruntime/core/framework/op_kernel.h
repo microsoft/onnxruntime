@@ -30,7 +30,7 @@
 #endif
 #include "onnx/onnx_pb.h"
 #include "onnx/onnx-operators_pb.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 namespace onnxruntime {
 class OpKernelContext;
 }

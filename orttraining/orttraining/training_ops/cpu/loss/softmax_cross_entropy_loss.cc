@@ -11,7 +11,7 @@
 #include "core/providers/cpu/controlflow/scan_utils.h"
 #include "orttraining/training_ops/cpu/loss/cross_entropy.h"
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -107,7 +107,7 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
     ORT_ENFORCE(p_ignore_index->Shape().IsScalar(), "ignore_index should be a scalar.");
     ignore_index = *(p_ignore_index->template Data<int64_t>());
   }
-  
+
   const TensorShape logit_shape{logit.Shape()};
   const TensorShape label_shape{label.Shape()};
   VerifyLogitWeightAndLabelShape(logit_shape, label_shape, p_weight ? &p_weight->Shape() : nullptr);

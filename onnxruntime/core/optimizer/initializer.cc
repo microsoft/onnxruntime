@@ -3,7 +3,7 @@
 
 #include "core/optimizer/initializer.h"
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/common/path.h"
 #include "core/framework/tensorprotoutils.h"

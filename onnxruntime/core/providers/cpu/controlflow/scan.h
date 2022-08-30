@@ -3,7 +3,7 @@
 
 #pragma once
 #include <functional>
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"

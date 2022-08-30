@@ -7,7 +7,7 @@
 #include <unordered_set>
 #include <string>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/framework/murmurhash3.h"
 

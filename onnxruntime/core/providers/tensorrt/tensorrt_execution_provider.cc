@@ -13,7 +13,7 @@
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "cuda_runtime_api.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include <unordered_map>
 #include <utility>
 #include <limits>
@@ -567,7 +567,7 @@ bool TensorrtExecutionProvider::IsSubGraphOfControlFlowOp(const GraphViewer& gra
 }
 
 
-// Check whether all the nodes of the graph are assigned to specific ep 
+// Check whether all the nodes of the graph are assigned to specific ep
 bool TensorrtExecutionProvider::AllNodesAssignedToSpecificEP(const GraphViewer& graph, const std::string& provider_type) const {
   const int number_of_ort_nodes = graph.NumberOfNodes();
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
@@ -1053,7 +1053,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     const auto& node = graph.GetNode(node_index[index]);
 
     /* If current node is control flow op, we take different approach based on following four cases:
-     * 
+     *
      * (1) control flow op is supported by TRT, and its subgraphs are all supported by TRT. Assign this node to TRT.
      * (2) control flow op is supported by TRT, but not all its subgraphs supported by TRT. Don't assign this node to TRT.
      * (3) control flow op is not supported by TRT, but its subgraphs all supported by TRT. Don't assign this node to TRT.
@@ -1148,7 +1148,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
     if (all_subgraphs_are_supported) {
       // We want the subgraph nodes to be assigned to TRT EP but don't want them to be fused until later at the control flow op level.
-      // Simply request the subgraph nodes with a single ComputeCapability for each with no MetaDef (i.e. what the default implementation for IExecutionProvider::GetCapability does). 
+      // Simply request the subgraph nodes with a single ComputeCapability for each with no MetaDef (i.e. what the default implementation for IExecutionProvider::GetCapability does).
       for (const auto& group : supported_nodes_vector) {
         if (!group.first.empty()) {
           for (const auto& index : group.first) {
@@ -1160,8 +1160,8 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       }
       LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
       return result;
-    }    
-  } 
+    }
+  }
 
   int number_of_trt_nodes = 0;
   for (const auto& group : supported_nodes_vector) {

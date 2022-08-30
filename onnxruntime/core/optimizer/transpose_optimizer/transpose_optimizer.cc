@@ -4,7 +4,7 @@
 #include "optimizer_api.h"
 
 #include <algorithm>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 #include <iostream>
 #include <unordered_map>
 #include <unordered_set>

@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor_shape.h"

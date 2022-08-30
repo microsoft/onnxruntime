@@ -10,7 +10,7 @@
 #include "core/providers/rocm/shared_inc/rocm_call.h"
 #include "core/providers/rocm/shared_inc/fast_divmod.h"
 #include "core/util/math.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace rocm {

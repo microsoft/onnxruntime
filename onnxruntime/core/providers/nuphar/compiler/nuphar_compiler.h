@@ -12,7 +12,7 @@
 #include "core/providers/nuphar/compiler/traverse_shape_infer.h"
 #include "core/framework/op_kernel.h"
 #include "core/graph/graph.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include <algorithm>
 #include <tvm/build_module.h>

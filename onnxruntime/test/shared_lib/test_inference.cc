@@ -26,7 +26,7 @@
 #include "test_fixture.h"
 #include "utils.h"
 #include "custom_op_utils.h"
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 #ifdef _WIN32
 #include <Windows.h>

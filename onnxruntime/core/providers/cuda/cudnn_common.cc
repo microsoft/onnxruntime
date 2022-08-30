@@ -3,7 +3,7 @@
 
 #include "cudnn_common.h"
 #include "core/common/inlined_containers.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "shared_inc/cuda_call.h"
 #include "core/providers/cpu/tensor/utils.h"
 

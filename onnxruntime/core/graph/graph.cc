@@ -10,7 +10,7 @@
 #include <stack>
 #include <queue>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "core/common/logging/logging.h"
 #include "core/common/inlined_containers.h"
 #include "core/flatbuffers/flatbuffers_utils.h"

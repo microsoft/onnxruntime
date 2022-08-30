@@ -15,7 +15,7 @@ limitations under the License.
 // Portions Copyright (c) Microsoft Corporation
 
 #include "core/platform/env.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 

@@ -3,7 +3,7 @@
 
 #pragma once
 #include <functional>
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/providers/cpu/controlflow/utils.h"
 

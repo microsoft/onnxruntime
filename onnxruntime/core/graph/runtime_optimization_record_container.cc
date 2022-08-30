@@ -7,7 +7,7 @@
 
 #include <algorithm>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/schema/ort.fbs.h"

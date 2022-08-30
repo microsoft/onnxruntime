@@ -9,7 +9,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test_allocator.h"
 
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"

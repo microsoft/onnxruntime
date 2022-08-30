@@ -8,7 +8,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 #include "core/common/logging/logging.h"
 #include "core/common/optional.h"

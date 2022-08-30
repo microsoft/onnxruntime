@@ -7,7 +7,7 @@
 #include "core/codegen/common/profile.h"
 #include "core/codegen/passes/utils/ort_tvm_utils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include <tvm/tvm.h>
 
 namespace onnxruntime {

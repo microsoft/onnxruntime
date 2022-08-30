@@ -7,7 +7,7 @@
 
 #include "boost/mp11.hpp"
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/common/common.h"
 #include "core/common/type_list.h"

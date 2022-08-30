@@ -12,7 +12,7 @@
 #include "core/platform/env.h"
 #include "core/providers/common.h"
 #include "core/providers/nuphar/scripts/NUPHAR_CACHE_VERSION"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include <topi/detail/extern.h>
 #include <tvm/ir_pass.h>
 #define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING  // required by VS 2019

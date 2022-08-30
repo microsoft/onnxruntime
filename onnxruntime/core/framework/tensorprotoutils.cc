@@ -6,7 +6,7 @@
 #include <memory>
 #include <algorithm>
 #include <limits>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 #include "core/common/logging/logging.h"
 #include "core/graph/onnx_protobuf.h"

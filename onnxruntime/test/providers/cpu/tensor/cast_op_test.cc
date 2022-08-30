@@ -5,7 +5,7 @@
 
 #include "boost/mp11.hpp"
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "gtest/gtest.h"
 

@@ -11,7 +11,7 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
 
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace contrib {

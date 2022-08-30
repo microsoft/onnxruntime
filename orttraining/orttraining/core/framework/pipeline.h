@@ -12,7 +12,7 @@
 #include <thread>
 #include <unordered_map>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "core/framework/ort_value.h"
 

@@ -10,7 +10,7 @@
 #endif
 
 #include <vector>
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "contrib_ops/cpu/transformers/logits_processor.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
 

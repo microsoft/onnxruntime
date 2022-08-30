@@ -7,7 +7,7 @@
 #include "core/codegen/common/common.h"
 #include "core/graph/graph.h"
 #include "core/providers/nuphar/common/analysis/analysis.h"
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace nuphar {

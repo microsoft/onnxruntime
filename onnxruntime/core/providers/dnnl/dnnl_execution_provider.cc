@@ -14,7 +14,7 @@
 
 #include <iomanip>
 #include <fstream>
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 
@@ -64,7 +64,7 @@ DNNLExecutionProvider::~DNNLExecutionProvider() {
 std::vector<std::vector<NodeIndex>> DNNLExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer) const {
   std::vector<std::vector<size_t>> supported_node_vecs;
   std::vector<size_t> supported_node_vec;
-  
+
   std::unordered_map<std::string,int> all_nodes_count;
   std::unordered_map<std::string,int> supported_nodes_count;
 
@@ -119,7 +119,7 @@ std::vector<std::vector<NodeIndex>> DNNLExecutionProvider::GetSupportedNodes(con
     LOGS_DEFAULT(ERROR) << "Total coverge: " << support_counts << ":" << all_counts
                           << " percentage: " << (float)support_counts / (float)all_counts;
   }
-  
+
 
   return supported_node_vecs;
 }

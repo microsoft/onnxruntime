@@ -8,7 +8,7 @@
 #endif
 
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 #endif
 
 #include "core/common/common.h"

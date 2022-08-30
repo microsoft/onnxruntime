@@ -3,7 +3,7 @@
 
 #include "core/providers/cpu/tensor/split.h"
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"

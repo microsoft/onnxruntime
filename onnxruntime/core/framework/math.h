@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 #include "core/framework/tensor.h"
 #include "core/util/math_cpuonly.h"

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace contrib {

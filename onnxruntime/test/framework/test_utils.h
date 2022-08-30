@@ -10,7 +10,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/framework/ort_value.h"
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #ifdef USE_CUDA
 #include "core/providers/providers.h"

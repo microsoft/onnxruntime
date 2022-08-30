@@ -23,7 +23,7 @@
 #include "core/framework/TensorSeq.h"
 #include "core/providers/utils.h"
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)

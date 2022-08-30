@@ -13,7 +13,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function_template.h"
 #endif
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 namespace flatbuffers {
 class FlatBufferBuilder;

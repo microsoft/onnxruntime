@@ -6,7 +6,7 @@
 #include <random>
 #include <type_traits>
 
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 #include "gtest/gtest.h"
 
