@@ -2,14 +2,16 @@
 // Licensed under the MIT License.
 
 #include "core/framework/graph_partitioner.h"
+
+#include <functional>
+
+#include "core/framework/compute_capability.h"
+#include "core/framework/execution_providers.h"
+#include "core/framework/func_kernel.h"
 #include "core/framework/kernel_registry_manager.h"
+#include "core/framework/kernel_registry.h"
 #include "core/graph/function.h"
 #include "core/graph/graph_viewer.h"
-#include "core/framework/compute_capability.h"
-#include "core/framework/kernel_registry_manager.h"
-#include "core/framework/execution_providers.h"
-#include "core/framework/kernel_registry.h"
-#include "core/framework/func_kernel.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 //#define COUNT_NON_CUDA_OPS
@@ -38,8 +40,23 @@ class NonCudaOps {
 NonCudaOps non_cuda;
 #endif
 
-using namespace ::onnxruntime::common;
 namespace onnxruntime {
+
+namespace {
+
+// contains some common parameters used by the partitioning helper functions
+struct PartitionParams {
+  std::reference_wrapper<Graph> graph;
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  std::reference_wrapper<FuncManager> func_mgr;
+  std::reference_wrapper<KernelRegistry> fused_kernel_registry;
+  std::reference_wrapper<int> fused_node_unique_id;
+  TransformLayoutFunction transform_layout_function;
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+};
+}  // namespace
+
 #if !defined(ORT_MINIMAL_BUILD)
 static void BuildFusedKernelDef(KernelDefBuilder& builder, const onnxruntime::Node& node) {
   auto schema = node.Op();
@@ -533,16 +550,21 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
   return Status::OK();
 }
 
-Status GraphPartitioner::PartitionOnnxFormatModel(Graph& graph, FuncManager& func_mgr,
-                                                  KernelRegistry& fused_kernel_registry, Mode mode,
-                                                  int& fused_node_unique_id,
-                                                  TransformLayoutFunction transform_layout_function) const {
+static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, GraphPartitioner::Mode mode,
+                                       const ExecutionProviders& execution_providers,
+                                       KernelRegistryManager& kernel_registry_manager) {
   bool modified_graph = false;
+
+  auto& graph = partition_params.graph.get();
+  auto& func_mgr = partition_params.func_mgr.get();
+  auto& fused_kernel_registry = partition_params.fused_kernel_registry.get();
+  auto& fused_node_unique_id = partition_params.fused_node_unique_id.get();
+  auto transform_layout_function = partition_params.transform_layout_function;
 
   do {
     // process full graph with each EP
-    for (const auto& ep : providers_) {
-      ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(graph, func_mgr, kernel_registry_mgr_,
+    for (const auto& ep : execution_providers) {
+      ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(graph, func_mgr, kernel_registry_manager,
                                                        fused_kernel_registry, *ep, mode, fused_node_unique_id,
                                                        transform_layout_function));
     }
@@ -588,7 +610,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       partition_params.transform_layout_function
 #else
-      {}
+  {}
 #endif
       ;
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(graph, kernel_registry_mgr, current_ep,
@@ -670,10 +692,12 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
 }
 
 // Simplified partitioning where custom EPs may produce compiled nodes.
-Status GraphPartitioner::PartitionOrtFormatModel(const PartitionParams& partition_params) const {
+static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
+                                      const ExecutionProviders& execution_providers,
+                                      KernelRegistryManager& kernel_registry_manager) {
   // process full graph with each EP
-  for (const auto& ep : providers_) {
-    ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(partition_params, kernel_registry_mgr_, *ep));
+  for (const auto& ep : execution_providers) {
+    ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(partition_params, kernel_registry_manager, *ep));
   }
 
   return Status::OK();
@@ -690,42 +714,45 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
   // 3. CPU execution provider is expected to be able to run any node and is the last one in execution provider
   //    preference.
   if (providers_.Empty()) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
   // fused_kernel_registry is preparing the kernels created on the fly for fused sub graph.
   // It is only visible for current session.
   std::shared_ptr<KernelRegistry> fused_kernel_registry = std::make_shared<KernelRegistry>();
 
   // we make sure each fused node name is unique across the entire model for clarity
   int fused_node_unique_id = 0;
+
+  PartitionParams partition_params{
+      std::ref(graph),
+      std::ref(func_mgr),
+      std::ref(*fused_kernel_registry),
+      std::ref(fused_node_unique_id),
+      transform_layout_function,
+  };
+
+#else  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+  ORT_UNUSED_PARAMETER(func_mgr);
+  PartitionParams partition_params{
+      std::ref(graph),
+  };
+
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   if (mode == Mode::kNormal || mode == Mode::kAssignOnly) {
 #if !defined(ORT_MINIMAL_BUILD)
-    ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(graph, func_mgr, *fused_kernel_registry, mode,
-                                                 fused_node_unique_id, transform_layout_function));
+    ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode,
+                                                 providers_, kernel_registry_mgr_));
 #else
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ONNX models are not supported in this build.");
 #endif  //! defined(ORT_MINIMAL_BUILD)
   } else {
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-    PartitionParams partition_params{
-        std::ref(graph),
-        std::ref(func_mgr),
-        std::ref(*fused_kernel_registry),
-        std::ref(fused_node_unique_id),
-        transform_layout_function,
-    };
-#else
-    ORT_UNUSED_PARAMETER(func_mgr);
-    PartitionParams partition_params{
-        std::ref(graph),
-    };
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
-    ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(partition_params));
+    ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(partition_params,
+                                                providers_, kernel_registry_mgr_));
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -736,4 +763,5 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 
   return Status::OK();
 }
+
 }  // namespace onnxruntime
