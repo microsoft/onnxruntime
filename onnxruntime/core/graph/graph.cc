@@ -3838,21 +3838,18 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   if (sub_graph.schema_source == IndexedSubGraph::SourceOfSchema::EXISTING) {
     ORT_ENFORCE(SetOpSchemaFromRegistryForNode(fused_node),
                 "Schema was not found for fused node. Domain:", fused_node.Domain(), " OpType:", fused_node.OpType());
-  } else {
-    if (IndexedSubGraph::SourceOfSchema::REUSE_OR_CREATE == sub_graph.schema_source) {
-      auto schema_key = GenerateSchemaKey(&sub_graph, nullptr);
-      if (!reusable_fused_schema_map_.contains(schema_key)) {
-        fused_schemas_containers_.push_back(
-            function_utils::CreateSchema(*this, sub_graph, /*allow_anytype_tensor=*/true));
-        reusable_fused_schema_map_.emplace(schema_key, *fused_schemas_containers_.back());
-      }
+  } else if (IndexedSubGraph::SourceOfSchema::REUSE_OR_CREATE == sub_graph.schema_source) {
+    auto schema_key = GenerateSchemaKey(&sub_graph, nullptr);
+    if (!reusable_fused_schema_map_.contains(schema_key)) {
+      fused_schemas_containers_.push_back(
+          function_utils::CreateSchema(*this, sub_graph, /*allow_anytype_tensor=*/true));
+      reusable_fused_schema_map_.emplace(schema_key, *fused_schemas_containers_.back());
+    }
 
-      fused_node.op_ = &(reusable_fused_schema_map_.at(schema_key).get());
-    }
-    else {
-      fused_schemas_containers_.push_back(function_utils::CreateSchema(*this, sub_graph));
-      fused_node.op_ = fused_schemas_containers_.back().get();
-    }
+    fused_node.op_ = &(reusable_fused_schema_map_.at(schema_key).get());
+  } else {
+    fused_schemas_containers_.push_back(function_utils::CreateSchema(*this, sub_graph));
+    fused_node.op_ = fused_schemas_containers_.back().get();
   }
 #endif
   return fused_node;

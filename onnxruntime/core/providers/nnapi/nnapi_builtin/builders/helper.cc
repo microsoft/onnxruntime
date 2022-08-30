@@ -206,7 +206,7 @@ common::Status GetQuantizationScaleAndZeroPoint(
     const auto& name = quant_param.zero_point->Name();
     Initializer unpacked_tensor(*initializers.at(name), model_path);
     // Onnx quantization uses uint8 [int8 not yet supported], need to cast to int32_t used by NNAPI
-    zero_point = static_cast<int32_t>(unpacked_tensor.DataAsSpan<uint8_t>()[0]);
+    zero_point = static_cast<int32_t>(unpacked_tensor.DataAsByteSpan()[0]);
   }
 
   return Status::OK();

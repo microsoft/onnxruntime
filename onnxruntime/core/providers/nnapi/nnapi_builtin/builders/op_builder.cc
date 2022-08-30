@@ -1378,7 +1378,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     Initializer unpacked_tensor(bias_tensor);
     OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, x_scale * w_scale);
     ORT_RETURN_IF_ERROR(
-        model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.DataAsSpan<int32_t>().data(), bias_operand_type));
+        model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data<int32_t>(), bias_operand_type));
   }
 
   const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
@@ -1807,7 +1807,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       ORT_RETURN_IF_ERROR(
           model_builder.AddOperandFromPersistMemoryBuffer(
               bias,
-              unpacked_tensor.DataAsSpan<int32_t>().data(), bias_operand_type));
+              unpacked_tensor.data<int32_t>(), bias_operand_type));
 
       bias_idx = operand_indices.at(bias);
     }
