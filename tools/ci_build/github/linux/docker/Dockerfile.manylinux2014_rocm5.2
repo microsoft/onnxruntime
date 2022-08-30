@@ -162,7 +162,6 @@ CMD ["/bin/bash"]
 #Build manylinux2014 docker image end
 
 ARG PYTHON_VERSION=3.7
-ARG TORCH_VERSION=1.11.0
 ARG OPSET_VERSION=15
 ARG INSTALL_DEPS_EXTRA_ARGS
 
@@ -171,9 +170,9 @@ ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && \
     /tmp/scripts/manylinux/install_centos.sh && \
     /tmp/scripts/install_os_deps.sh -d gpu $INSTALL_DEPS_EXTRA_ARGS && \
-    /tmp/scripts/install_python_deps.sh -d gpu -p 3.7 -h ${TORCH_VERSION} -o 5.2 $INSTALL_DEPS_EXTRA_ARGS && \
-    /tmp/scripts/install_python_deps.sh -d gpu -p 3.8 -h ${TORCH_VERSION} -o 5.2 $INSTALL_DEPS_EXTRA_ARGS && \
-    /tmp/scripts/install_python_deps.sh -d gpu -p 3.9 -h ${TORCH_VERSION} -o 5.2 $INSTALL_DEPS_EXTRA_ARGS && \
+    /tmp/scripts/install_python_deps.sh -d gpu -p 3.7 $INSTALL_DEPS_EXTRA_ARGS && \
+    /tmp/scripts/install_python_deps.sh -d gpu -p 3.8 $INSTALL_DEPS_EXTRA_ARGS && \
+    /tmp/scripts/install_python_deps.sh -d gpu -p 3.9 $INSTALL_DEPS_EXTRA_ARGS && \
      rm -rf /tmp/scripts
 
 # remove protobuf to prevent ambiguity which is used for onnxruntime build
