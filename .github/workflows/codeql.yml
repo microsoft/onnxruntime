@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [ 'cpp', 'csharp', 'java', 'javascript', 'python' ]
+        language: [ 'csharp', 'java', 'javascript', 'python' ]
         # CodeQL supports [ 'cpp', 'csharp', 'go', 'java', 'javascript', 'python', 'ruby' ]
         # Learn more about CodeQL language support at https://aka.ms/codeql-docs/language-support
 
@@ -52,11 +52,6 @@ jobs:
     - if: ${{ matrix.language != 'cpp' }}
       name: Autobuild
       uses: github/codeql-action/autobuild@v2
-
-    - if: ${{ matrix.language == 'cpp' }}
-      run: |
-        pip install ninja
-        ./build.sh --cmake_generator Ninja --config Debug --skip_submodule_sync --build_shared_lib --parallel --skip_tests --minimal_build --disable_exceptions --enable_training_ops
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v2
