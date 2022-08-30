@@ -617,6 +617,11 @@ public class InferenceTest {
     runProvider(OrtProvider.DNNL);
   }
 
+  @Test
+  @EnabledIfSystemProperty(named = "USE_XNNPACK", matches = "1")
+  public void testXNNPACK() throws OrtException {
+    runProvider(OrtProvider.XNNPACK);
+  }
   private void runProvider(OrtProvider provider) throws OrtException {
     EnumSet<OrtProvider> providers = OrtEnvironment.getAvailableProviders();
     assertTrue(providers.size() > 1);
@@ -1514,6 +1519,9 @@ public class InferenceTest {
           break;
         case CORE_ML:
           options.addCoreML();
+          break;
+        case XNNPACK:
+          options.addXnnpack();
           break;
         case NUPHAR:
           options.addNuphar(true, "");

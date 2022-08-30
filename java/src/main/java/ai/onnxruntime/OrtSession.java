@@ -987,6 +987,17 @@ public class OrtSession implements AutoCloseable {
       addCoreML(OnnxRuntime.ortApiHandle, nativeHandle, OrtFlags.aggregateToInt(flags));
     }
 
+    /**
+     * Adds Xnnpack as an execution backend.
+     *
+     * @param flags The flags which control the CoreML configuration.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addXnnpack() throws OrtException {
+      checkClosed();
+      addXnnpack(OnnxRuntime.ortApiHandle, nativeHandle);
+    }
+
     private native void setExecutionMode(long apiHandle, long nativeHandle, int mode)
         throws OrtException;
 
@@ -1097,6 +1108,9 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     private native void addCoreML(long apiHandle, long nativeHandle, int coreMLFlags)
+        throws OrtException;
+
+    private native void addXnnpack(long apiHandle, long nativeHandle)
         throws OrtException;
   }
 
