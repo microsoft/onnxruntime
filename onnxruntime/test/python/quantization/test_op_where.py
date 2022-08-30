@@ -7,16 +7,15 @@
 import unittest
 
 import numpy as np
-from onnx import TensorProto, helper, numpy_helper, save
+from onnx import TensorProto, helper, save
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
+
 from op_test_utils import (
     TestDataFeeds,
-    InputFeedsNegOneZeroOne,
     check_model_correctness,
     check_op_type_count,
     check_qtype_by_node_type,
 )
-
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 
 
 class TestWhereModel(unittest.TestCase):
