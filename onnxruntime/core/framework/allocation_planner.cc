@@ -1936,7 +1936,9 @@ class PlannerImpl {
         execution_plan.emplace_back(nullptr);
       }
     }
-    // 2. for each node, if any of its consumer partitioned to another stream, generate a notification
+    // 2. determing following things:
+    //    a. which node need to generate notification
+    //    b. which node need to trigger downstream
     size_t num_trigger_points = 0;
     InlinedHashMap<NodeIndex, size_t> node_to_trigger_points;
     size_t num_notifications = 0;
@@ -1945,90 +1947,41 @@ class PlannerImpl {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-          if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()) {
-            node_to_trigger_points[node_index] = num_trigger_points++;
-
-            bool requires_notification = false;
-            for (auto* output : node->OutputDefs()) {
-              if (output->Exists()) {
-                OrtValueIndex output_arg_idx;
-                ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(output->Name(), output_arg_idx));
-                if (std::find(it->InputDefs().begin(), it->InputDefs().end(), output) != it->InputDefs().end() &&
-                    plan_.allocation_plan[output_arg_idx].location.device.Type() != OrtDevice::CPU) {
-                  requires_notification = true;
-                  break;
-                }
-              }
-            }
-            if (requires_notification) {
-              node_to_notification[node_index] = num_notifications++;
-            }
+          // if the output node is not in the same stream, generate a trigger point
+          if (node_stream_map_[it->Index()] != i) {
+            node_to_trigger_points[node_index] = num_trigger_points;
+            num_trigger_points++;
             break;
           }
         }
       }
     }
-    // if any node outputs sit on non-device memory, and its consumer is in the same stream
-    // we also need to generate a notification.
-    // for example, in stream A we have:
-    //  ..., MemCpyToHost(...host_data_ptr), ....., Reshape(...., host_data_ptr)
-    // Before launch Reshape kernel, we need to make sure the MemCpyToHost is done.
-    // So we need to make the stream A like:
-    // ..., MemCpyToHost(...host_data_ptr), Activate(N1), ....., Wait(N1), Reshape(...., host_data_ptr)
-    // key: the consumer of non-device tensor
-    // value: the list of in-stream notification indices that current nodes depends on.
-    InlinedHashMap<NodeIndex, InlinedVector<NotificationIndex>> in_stream_sync_nodes_to_notification;
-    InlinedHashSet<NotificationIndex> no_down_stream_notifications;
-    // TODO: for current ORT, the only possibility of this In-Stream wait is wait on CPU tensors.
-    // Need to fix it in the future if we have other cases.
-    const OrtDevice::DeviceType non_device_type = OrtDevice::CPU;
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
-
-        onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
-        const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
-        auto& node_device_mem_location = ep->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info();
-
-        InlinedHashSet<const Node*> producers;
-        for (auto* input : node->InputDefs()) {
-          if (!input->Exists())
-            continue;
-          OrtValueIndex input_arg_idx;
-          ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(input->Name(), input_arg_idx));
-          if (plan_.allocation_plan[input_arg_idx].location.device != node_device_mem_location.device) {
-            ORT_ENFORCE(plan_.allocation_plan[input_arg_idx].location.device.Type() == OrtDevice::CPU);
-            const Node* producer;
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-            producer = graph_viewer_.GetProducerNode(input->Name());
-#else
-            // minimal build does not have GetProducerNode, so we manually loop the graph to find the producer.
-            for (auto& n : graph_viewer_.Nodes()) {
-              for (auto* node_input : n.InputDefs()) {
-                if (node_input->Name() == input->Name()) {
-                  producer = &n;
+        for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+          bool requires_notification = false;
+          for (auto* output : node->OutputDefs()) {
+            if (output->Exists()) {
+              if (std::find(it->InputDefs().begin(), it->InputDefs().end(), output) != it->InputDefs().end()) {
+                OrtValueIndex output_arg_idx;
+                ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(output->Name(), output_arg_idx));
+                // there are two cases we need notification:
+                // 1. the consumer is not in the same stream, and it consumes a non-cpu tensor
+                // 2. the consumer is in the same stream, but it consumer a CPU tensor.
+                //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
+                //    in this case, the FIFO can't gurantee the cpu tensor is ready when resize kernel is launching
+                if ((node_stream_map_[it->Index()] != i && plan_.allocation_plan[output_arg_idx].location.device.Type() != OrtDevice::CPU) ||
+                    (node_stream_map_[it->Index()] == i && plan_.allocation_plan[output_arg_idx].location.device.Type() == OrtDevice::CPU)) {
+                  requires_notification = true;
                   break;
                 }
               }
             }
-#endif
-            // whether producer in the same stream
-            if (producer && std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), producer->Index()) != stream_nodes_[i].end()) {
-              producers.insert(producer);
-            }
           }
-        }
-        if (!producers.empty()) {
-          for (auto* producer : producers) {
-            auto it = node_to_notification.find(producer->Index());
-            if (it != node_to_notification.end()) {
-              // the producer already have a notification
-              in_stream_sync_nodes_to_notification[node_index].push_back(it->second);
-            } else {
-              node_to_notification[producer->Index()] = num_notifications;
-              no_down_stream_notifications.insert(num_notifications);
-              in_stream_sync_nodes_to_notification[node_index].push_back(num_notifications++);
-            }
+          if (requires_notification) {
+            node_to_notification[node_index] = num_notifications;
+            num_notifications++;
           }
         }
       }
@@ -2062,10 +2015,9 @@ class PlannerImpl {
           // add dependency for current logic stream
           dependence_graph_[node_index].insert(stream_nodes_[i][j - 1]);
         }
-        // auto cur_stream_idx = node_stream_map_[node_index];
-        //  check if any producer is not in current stream, if yes, create a wait
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
+          //  check whether we need to add barrier
           if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()) {
             // find the trigger_point_id
             auto trigger_point_it = node_to_trigger_points.find(it->Index());
@@ -2080,11 +2032,28 @@ class PlannerImpl {
             // keep node index first, will turn it to pc index later
             execution_plan[i]->step_pc.push_back(node_index);
 #endif
-            // collect the inputs arguments from input node.
-            // if the arguments are on same cpu device, then don't need to wait on notification
-            // barrier is enough
-            auto notification_it = node_to_notification.find(it->Index());
-            if (notification_it != node_to_notification.end()) {
+          }
+          // check whether we need to wait on notification
+          auto notification_it = node_to_notification.find(it->Index());
+          if (notification_it != node_to_notification.end()) {
+            bool requires_wait = false;
+            // two cases need wait:
+            // a. the tensor is on CPU and we are in the same stream
+            // b. the tensor is on GPU and we are not in the same stream
+            for (auto* input_args : node->InputDefs()) {
+              if (input_args->Exists()) {
+                if (std::find(it->OutputDefs().begin(), it->OutputDefs().end(), input_args) != it->OutputDefs().end()) {
+                  OrtValueIndex input_arg_idx;
+                  ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(input_args->Name(), input_arg_idx));
+                  if ((node_stream_map_[it->Index()] == i && plan_.allocation_plan[input_arg_idx].location.device.Type() == OrtDevice::CPU) ||
+                      (node_stream_map_[it->Index()] != i && plan_.allocation_plan[input_arg_idx].location.device.Type() != OrtDevice::CPU)) {
+                    requires_wait = true;
+                    break;
+                  }
+                }
+              }
+            }
+            if (requires_wait) {
               // push a wait command if has EP registered it.
               auto wait_handle = stream_handle_registry.GetWaitHandle(
                   execution_plan[plan_.notification_owners[notification_it->second]]->device_.Type(),
@@ -2095,22 +2064,6 @@ class PlannerImpl {
                 execution_plan[i]->step_pc.push_back(node_index);
 #endif
               }
-            }
-          }
-        }
-        // wait for in_stream notification if any
-        auto in_stream_notificaiton_it = in_stream_sync_nodes_to_notification.find(node->Index());
-        if (in_stream_notificaiton_it != in_stream_sync_nodes_to_notification.end()) {
-          for (auto& notification_idx : in_stream_notificaiton_it->second) {
-            // we don't need barrier for in-stream wait
-            auto wait_handle = stream_handle_registry.GetWaitHandle(
-                execution_plan[plan_.notification_owners[notification_idx]]->device_.Type(),
-                non_device_type);
-            if (wait_handle) {
-              execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_idx));
-#ifdef ENABLE_TRAINING
-              execution_plan[i]->step_pc.push_back(node_index);
-#endif
             }
           }
         }
@@ -2133,6 +2086,7 @@ class PlannerImpl {
           execution_plan[i]->step_pc.push_back(node_index);
 #endif
         }
+        // check if any trigger point generated by this node, if yes, push a trigger
         auto trigger_point_it = node_to_trigger_points.find(node_index);
         if (trigger_point_it != node_to_trigger_points.end()) {
           // notify downstreams
