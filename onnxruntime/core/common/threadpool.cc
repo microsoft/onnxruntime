@@ -417,24 +417,32 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
     // Split the work across threads in the pool.  Each work item will run a loop claiming iterations,
     // hence we need at most one for each thread, even if the number of blocks of iterations is larger.
 
-    std::ptrdiff_t B = block_size;
-    ///////////////////////////////// reset block size by small_core_ratio ////////////////////////////
-    if (IsSmallCore()) {
-      B = std::max(1LL, block_size / small_core_ratio_);
-    }
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    //std::ptrdiff_t B = block_size;
+    /////////////////////////////////// reset block size by small_core_ratio ////////////////////////////
+    //if (IsSmallCore()) {
+    //  B = std::max(1LL, block_size / small_core_ratio_);
+    //}
+    /////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    auto num_blocks = total / B;
+    auto num_blocks = total / block_size;
     auto num_threads_inc_main = NumThreads() + 1;
     int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(num_threads_inc_main), num_blocks));
     assert(num_work_items > 0);
 
-    LoopCounter lc(total, d_of_p, B);
+    LoopCounter lc(total, d_of_p, block_size);
     std::function<void(unsigned)> run_work = [&](unsigned idx) {
       unsigned my_home_shard = lc.GetHomeShard(idx);
       unsigned my_shard = my_home_shard;
       uint64_t my_iter_start, my_iter_end;
-      while (lc.ClaimIterations(my_home_shard, my_shard, my_iter_start, my_iter_end, B)) {
+      ///////////////////////////////// reset block size by small_core_ratio ////////////////////////////
+      std::ptrdiff_t B = block_size;
+      if (IsSmallCore()) {
+        B = std::max(1LL, block_size / small_core_ratio_);
+        /*std::cout << std::this_thread::get_id() << " run on small core with reduced block size - "
+                  << B << " : " << block_size << std::endl;*/
+      }
+      /////////////////////////////////////////////////////////////////////////////////////////////////////
+      while (lc.ClaimIterations(my_home_shard, my_shard, my_iter_start, my_iter_end, B/*block_size*/)) {
         fn(static_cast<std::ptrdiff_t>(my_iter_start),
            static_cast<std::ptrdiff_t>(my_iter_end));
       }
