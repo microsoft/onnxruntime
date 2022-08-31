@@ -8,7 +8,7 @@ name: "CodeQL"
 
 on:
   push:
-    branches: [ "main", gh-pages, nuget_pkg, rel-*, rel-1905 ]
+    branches: [ "main", nuget_pkg, rel-* ]
   pull_request:
     # The branches below must be a subset of the branches above
     branches: [ "main" ]
@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [ 'csharp', 'java', 'javascript', 'python' ]
+        language: [ 'java', 'javascript', 'python' ]
         # CodeQL supports [ 'cpp', 'csharp', 'go', 'java', 'javascript', 'python', 'ruby' ]
         # Learn more about CodeQL language support at https://aka.ms/codeql-docs/language-support
 
