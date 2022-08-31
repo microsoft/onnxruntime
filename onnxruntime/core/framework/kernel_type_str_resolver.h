@@ -36,15 +36,15 @@ using KernelTypeStrToArgsMap = InlinedHashMap<std::string, InlinedVector<ArgType
 using OpKernelTypeStrMap = InlinedHashMap<OpIdentifier, KernelTypeStrToArgsMap>;
 
 class IKernelTypeStrResolver {
-public:
- /**
-  * Resolves an op's kernel type string to its associated arguments.
-  * @param node The op's node.
-  * @param kernel_type_str The op kernel type string.
-  * @param[out] resolved_args The op arguments associated with kernel_type_str.
-  */
- virtual Status ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
-                                     gsl::span<const ArgTypeAndIndex>& resolved_args) const = 0;
+ public:
+  /**
+   * Resolves an op's kernel type string to its associated arguments.
+   * @param node The op's node.
+   * @param kernel_type_str The op kernel type string.
+   * @param[out] resolved_args The op arguments associated with kernel_type_str.
+   */
+  virtual Status ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
+                                      gsl::span<const ArgTypeAndIndex>& resolved_args) const = 0;
 };
 
 class KernelTypeStrResolver : public IKernelTypeStrResolver {
