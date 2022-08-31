@@ -40,7 +40,7 @@ class ModelBuilder {
     CPU_ONLY,      // use CPU only
   };
 
-  ModelBuilder(const GraphViewer& graph_viewer);
+  ModelBuilder(std::unique_ptr<Model> model, const GraphViewer& graph_viewer);
 
   common::Status Compile(std::unique_ptr<Model>& model);
 
@@ -94,7 +94,7 @@ class ModelBuilder {
       android::nn::wrapper::ExecutePreference pref) { exe_pref_ = pref; }
 
   // Accessors for members
-  Shaper& GetShaper() { return nnapi_model_->shaper_; }
+  Shaper& GetShaper() { return nnapi_model_->GetShaper(); }
 
   const std::unordered_map<std::string, uint32_t>&
   GetOperandIndices() const { return operand_indices_; }

@@ -148,6 +148,8 @@ class Model {
 
   void SetShaper(const Shaper& shaper) { shaper_ = shaper; }
 
+  Shaper& GetShaper() { return shaper_; }
+
   int32_t GetNNAPIFeatureLevel() const;
 };
 

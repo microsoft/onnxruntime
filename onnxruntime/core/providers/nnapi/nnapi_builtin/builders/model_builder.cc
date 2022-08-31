@@ -23,8 +23,8 @@ using namespace android::nn::wrapper;
 namespace onnxruntime {
 namespace nnapi {
 
-ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
-    : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer) {}
+ModelBuilder::ModelBuilder(std::unique_ptr<Model> model, const GraphViewer& graph_viewer)
+    : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer), nnapi_model_(std::move(model)) {}
 
 int32_t ModelBuilder::GetNNAPIFeatureLevel() const {
   return nnapi_ ? static_cast<int32_t>(nnapi_->nnapi_runtime_feature_level) : 0;
@@ -53,7 +53,7 @@ void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
 }
 
 Status ModelBuilder::Prepare() {
-  nnapi_model_ = std::make_unique<Model>(graph_viewer_);
+  // nnapi_model_ = std::make_unique<Model>(graph_viewer_);
   RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksModel_create(&nnapi_model_->model_));
   ORT_RETURN_IF_ERROR(GetTargetDevices());
   PreprocessNodeUnits();
@@ -262,7 +262,7 @@ Status ModelBuilder::RegisterInitializers() {
     ORT_RETURN_IF_ERROR(
         GetInputDataType(GetInitializerTensors(), all_quantized_op_inputs_,
                          name, tensor.data_type(), shape, operand_type));
-    nnapi_model_->shaper_.AddShape(name, operand_type.dimensions);
+    nnapi_model_->GetShaper().AddShape(name, operand_type.dimensions);
 
     uint32_t index = 0;
     ORT_RETURN_IF_ERROR(AddNewOperand(name, operand_type, index));
@@ -352,7 +352,7 @@ Status ModelBuilder::RegisterModelInputs() {
                            input_name, type_proto->tensor_type().elem_type(), shape, operand_type));
     }
 
-    nnapi_model_->shaper_.AddShape(input_name, operand_type.dimensions);
+    nnapi_model_->GetShaper().AddShape(input_name, operand_type.dimensions);
 
     uint32_t index = 0;
     ORT_RETURN_IF_ERROR(AddNewOperand(input_name, operand_type, index));
@@ -377,7 +377,7 @@ Status ModelBuilder::RegisterModelOutputs() {
     ORT_RETURN_IF(shape_proto == nullptr, "shape_proto cannot be null for output: ", output_name);
     if (shape_proto->dim_size() == 0) {
       // In NNAPI scalar output must have {1} shape
-      const auto& output_shape = nnapi_model_->shaper_[output_name];
+      const auto& output_shape = nnapi_model_->GetShaper()[output_name];
       ORT_RETURN_IF_NOT(output_shape.size() == 1 && output_shape[0] == 1,
                         "scalar output [", output_name, "] must have {1} shape, ",
                         " actual shape, ", Shape2String(output_shape));
@@ -455,7 +455,7 @@ Status ModelBuilder::SetOperandValue(uint32_t index,
 Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
     const std::string& name, const void* buffer,
     const android::nn::wrapper::OperandType& operand_type) {
-  nnapi_model_->shaper_.AddShape(name, operand_type.dimensions);
+  nnapi_model_->GetShaper().AddShape(name, operand_type.dimensions);
   uint32_t index = 0;
   ORT_RETURN_IF_ERROR(AddNewOperand(name, operand_type, index));
   const size_t size = operand_type.GetOperandBlobByteSize();
