@@ -94,7 +94,7 @@ Which of these methods you use depends on your configuration. Saving and loading
 
 Saving the trained parameters of the model (the state dictionary, or state_dict) is more flexible than the first approach as long as you have access to the original model code.
 
-There are two main reasons why you may choose to use a different approach than native PyTorch to perform inference on your model. The first is that you must running in an environment that contains a Python runtime and the PyTorch libraries and associated dependencies. If you want to run on an environemnt, such as web or mobile or specialized hardware, running PyTorch inference with native PyTorch will not work. The second is performance. Out of the box, PyTorch is mostly a research tool and the resulting model may not give the performance that your application needs.
+There are two main reasons why you may choose to use a different approach than native PyTorch to perform inference on your model. The first is that you must running in an environment that contains a Python runtime and the PyTorch libraries and associated dependencies. If you want to run on an environemnt, such as web or mobile or specialized hardware, running PyTorch inference with native PyTorch will not work. The second is performance. Out of the box, PyTorch model may not give the performance that your application needs.
 
 ## Inference with TorchScript
 
@@ -131,7 +131,7 @@ model.eval()
 ...
 ```
 
-Whilst you do not need to have a Python runtime in your environment to perform inference on your PyTorch model using the TorchScript approach, you do need to install the PyTorch cpp binaries and these may be too large for your environment. You may not also get the performance you need for you application.
+Whilst you do not need to have a Python runtime in your environment to perform inference on your PyTorch model using the TorchScript approach, you do need to install the libtorch binaries and these may be too large for your environment. You may not also get the performance you need for you application.
 
 ## Inference with ONNXRuntime
 
