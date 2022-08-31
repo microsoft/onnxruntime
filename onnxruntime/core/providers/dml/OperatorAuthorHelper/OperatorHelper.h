@@ -1339,6 +1339,7 @@ using ShapeInferenceHelper_BatchNormalization15 = BatchNormalizationHelper;
 
 using ShapeInferenceHelper_LRN = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MeanVarianceNormalization = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_LayerNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LpNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_RNN = RecurrentHelper;
 using ShapeInferenceHelper_GRU = RecurrentHelper;
