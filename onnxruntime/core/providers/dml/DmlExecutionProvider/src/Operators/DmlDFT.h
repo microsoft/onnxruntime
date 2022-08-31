@@ -716,7 +716,7 @@ public:
             factory.Get(),
             shareInferrer.Get(),
             nullptr,
-            true, // isInternalOperator
+            false, // isInternalOperator
             false, // alias
             false, // supportsGraph
             nullptr,
