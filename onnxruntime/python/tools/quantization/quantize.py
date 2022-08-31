@@ -109,7 +109,7 @@ class StaticQuantConfig:
 
 
 class DynamicQuantConfig:
-    def __int__(
+    def __init__(
         self,
         op_types_to_quantize=None,
         per_channel=False,
