@@ -40,6 +40,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
   if (meta_def->type_and_shape_inference_function) {
     op_schema->TypeAndShapeInferenceFunction(meta_def->type_and_shape_inference_function);
   }
+
   if (allow_anytype_tensor) {
     // if CreateSchema is used to create a schema with the 'any' type constraint,
     // the caller (EP or otherwise) must manually check any constraints.
@@ -47,33 +48,25 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
     // whether all constraints are satisfied. Once created, this schema will match all corresponding registered kernels
     // whenever input/output type is.
     op_schema->TypeConstraint("T_ANY", ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat(),
-                              "any type");
-    // match `input` and `output`, It's used when a Op dev defined a `T` constraint
-    op_schema->TypeConstraint("T", ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat(),
-                              "any type");
+                              "all_tensor_types_with_bfloat");
   }
 
-  for (size_t i = 0; i < meta_def->inputs.size(); ++i) {
-    const auto& input = meta_def->inputs[i];
-    if (allow_anytype_tensor) {
-      op_schema->Input(gsl::narrow_cast<int>(i), input, "",
-                       i == 0 ? "T" : "T_ANY", OpSchema::FormalParameterOption::Single, false);
-    } else {
-      auto input_arg = graph.GetNodeArg(input);
-      // inputs must have a type. can be inferred for outputs.
-      ORT_ENFORCE(input_arg->Type() != nullptr);
-      op_schema->Input(gsl::narrow_cast<int>(i), input, "", *input_arg->Type());
-    }
+  int i = 0;
+  for (const auto& input : meta_def->inputs) {
+    const auto *input_arg = graph.GetNodeArg(input);
+    // inputs must have a type. can be inferred for outputs.
+    ORT_ENFORCE(input_arg->Type() != nullptr);
+    op_schema->Input(i, input, "",
+                     allow_anytype_tensor ? "T_ANY" : *input_arg->Type(),
+                     OpSchema::FormalParameterOption::Single, /*is_homogeneous=*/false);
   }
-  for (size_t i = 0; i < meta_def->outputs.size(); i++) {
-    const auto& output = meta_def->outputs[i];
-    if (allow_anytype_tensor) {
-      op_schema->Output(gsl::narrow_cast<int>(i), output, "",
-                        i == 0 ? "T" : "T_ANY", OpSchema::FormalParameterOption::Single, false);
-    } else {
-      const auto* output_arg = graph.GetNodeArg(output);
-      op_schema->Output(gsl::narrow_cast<int>(i), output, "", *output_arg->Type());
-    }
+
+  i = 0;
+  for (const auto& output : meta_def->outputs) {
+    const auto* output_arg = graph.GetNodeArg(output);
+    op_schema->Output(i, output, "",
+                      allow_anytype_tensor ? "T_ANY" : *output_arg->Type(),
+                      OpSchema::FormalParameterOption::Single, /*is_homogeneous=*/false);
   }
   op_schema->Finalize();
 

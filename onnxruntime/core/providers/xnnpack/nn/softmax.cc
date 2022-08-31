@@ -231,7 +231,7 @@ ONNX_OPERATOR_KERNEL_EX(Softmax, kOnnxDomain, 13, kXnnpackExecutionProvider,
                         Softmax);
 
 ONNX_OPERATOR_KERNEL_EX(QLinearSoftmax, kDynamicDomainByCreate, 1, kXnnpackExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
+                        KernelDefBuilder(),  // .TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>())
                         Softmax);
 
 }  // namespace xnnpack

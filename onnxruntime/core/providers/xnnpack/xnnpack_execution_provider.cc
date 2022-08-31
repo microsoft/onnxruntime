@@ -128,9 +128,11 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
 
 // For ops are not lay-out sensitive and does not defined in
 // onnx-domain, it will be created dynamicly
-static bool RequestDynamicSchema(absl::string_view op_type) {
+static bool RequestDynamicSchema(const NodeUnit& node_unit) {
   static const InlinedHashSet<absl::string_view> dynamic_schema_set = {"QLinearSoftmax"};
-  return dynamic_schema_set.contains(op_type);
+  std::string key = node_unit.UnitType() == NodeUnit::Type::QDQGroup
+                                                ? "QLinear" + node_unit.OpType() : node_unit.OpType();
+  return dynamic_schema_set.contains(key);
 }
 
 // Add Compute Capability for the second call. All target nodes have the tag of "XnnpackExecutionProvider"
@@ -150,13 +152,14 @@ static void AddComputeCapabilityForNodeUnit(const NodeUnit& node_unit,
       process_node(*node_i);
     }
     sub_graph->SetMetaDef(FuseQDQGroup(node_unit));
-    if (RequestDynamicSchema(sub_graph->GetMetaDef()->name)) {
-      sub_graph->schema_source = IndexedSubGraph::SourceOfSchema::REUSE_OR_CREATE;
-    } else {
-      sub_graph->schema_source = IndexedSubGraph::SourceOfSchema::EXISTING;
-    }
   } else {
     process_node(node_unit.GetNode());
+  }
+
+  if (RequestDynamicSchema(node_unit)) {
+    sub_graph->schema_source = IndexedSubGraph::SourceOfSchema::REUSE_OR_CREATE;
+  } else {
+    sub_graph->schema_source = IndexedSubGraph::SourceOfSchema::EXISTING;
   }
   adder(std::move(sub_graph));
 }
