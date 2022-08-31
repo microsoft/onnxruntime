@@ -72,6 +72,7 @@ std::vector<NodeAndMoveInfo> ConvMoves() {
 
   return moves;
 }
+
 QDQReplaceWithNew SplitReplacer() {
   NTO::NodeLocation dq{NTO::NodeType::kInput, 0};
   NTO::NodeLocation q{NTO::NodeType::kOutput, 0};
@@ -80,6 +81,7 @@ QDQReplaceWithNew SplitReplacer() {
       MoveAll(q, ArgType::kOutput)};
   return QDQReplaceWithNew(kOnnxDomain, "Split", std::move(moves));
 }
+
 QDQReplaceWithNew MatMulIntToFloatReplacer() {
   NTO::NodeLocation dq1{NTO::NodeType::kInput, 0};
   NTO::NodeLocation dq2{NTO::NodeType::kInput, 1};
