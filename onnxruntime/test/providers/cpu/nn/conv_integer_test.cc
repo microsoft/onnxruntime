@@ -25,6 +25,7 @@ TEST(ConvIntegerTest, WithoutPadding_2D_u8u8) {
                            24, 28});
   test.Run();
 }
+<<<<<<< HEAD
 TEST(ConvIntegerTest, WithoutPadding_2D_u8s8) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 3, 3};
@@ -44,6 +45,9 @@ TEST(ConvIntegerTest, WithoutPadding_2D_u8s8) {
                            24, 28});
   test.Run();
 }
+=======
+
+>>>>>>> main
 TEST(ConvIntegerTest, WithPadding_2D_u8u8) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 3, 3};
@@ -66,6 +70,7 @@ TEST(ConvIntegerTest, WithPadding_2D_u8u8) {
                            7, 15, 17, 9});
   test.Run();
 }
+<<<<<<< HEAD
 TEST(ConvIntegerTest, WithPadding_2D_u8s8) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 3, 3};
@@ -88,6 +93,9 @@ TEST(ConvIntegerTest, WithPadding_2D_u8s8) {
                            7, 15, 17, 9});
   test.Run();
 }
+=======
+
+>>>>>>> main
 TEST(ConvIntegerTest, WithGroup_2D_u8u8) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 3, 3, 3};
@@ -129,6 +137,7 @@ TEST(ConvIntegerTest, WithGroup_2D_u8u8) {
                            150, 281, 292, 135});
   test.Run();
 }
+<<<<<<< HEAD
 TEST(ConvIntegerTest, WithGroup_2D_u8s8) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 3, 3, 3};
@@ -170,6 +179,9 @@ TEST(ConvIntegerTest, WithGroup_2D_u8s8) {
                            150, 281, 292, 135});
   test.Run();
 }
+=======
+
+>>>>>>> main
 TEST(ConvIntegerTest, WithPadding_3D_u8u8) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 3, 3, 3};
@@ -212,6 +224,7 @@ TEST(ConvIntegerTest, WithPadding_3D_u8u8) {
                            25, 51, 53, 27});
   test.Run();
 }
+<<<<<<< HEAD
 TEST(ConvIntegerTest, WithPadding_3D_u8s8) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 3, 3, 3};
@@ -254,6 +267,9 @@ TEST(ConvIntegerTest, WithPadding_3D_u8s8) {
                            25, 51, 53, 27});
   test.Run();
 }
+=======
+
+>>>>>>> main
 TEST(ConvIntegerTest, Pointwise_2D_u8u8) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 3, 3};
@@ -272,7 +288,12 @@ TEST(ConvIntegerTest, Pointwise_2D_u8u8) {
                            28, 32, 36});
   test.Run();
 }
+<<<<<<< HEAD
 TEST(ConvIntegerTest, Pointwise_3D_u8s8) {
+=======
+
+TEST(ConvIntegerTest, Pointwise_3D_u8u8) {
+>>>>>>> main
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 3, 3, 3};
   test.AddInput<uint8_t>("x", x_dims,
@@ -286,9 +307,15 @@ TEST(ConvIntegerTest, Pointwise_3D_u8s8) {
                           23, 24, 25,
                           26, 27, 28});
   std::vector<int64_t> w_dims{1, 1, 1, 1, 1};
+<<<<<<< HEAD
   test.AddInput<int8_t>("w", w_dims, {-16});
   test.AddInput<uint8_t>("x_zero_point", {}, {1});
   test.AddInput<int8_t>("w_zero_point", {}, {-20});
+=======
+  test.AddInput<uint8_t>("w", w_dims, {5});
+  test.AddInput<uint8_t>("x_zero_point", {}, {1});
+  test.AddInput<uint8_t>("w_zero_point", {}, {1});
+>>>>>>> main
   std::vector<int64_t> y_dims{1, 1, 3, 3, 3};
   test.AddOutput<int32_t>("y", y_dims,
                           {4, 8, 12,
@@ -302,6 +329,10 @@ TEST(ConvIntegerTest, Pointwise_3D_u8s8) {
                            100, 104, 108});
   test.Run();
 }
+<<<<<<< HEAD
+=======
+
+>>>>>>> main
 TEST(ConvIntegerTest, WithStride2_2D_u8u8) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 7, 7};
@@ -331,6 +362,7 @@ TEST(ConvIntegerTest, WithStride2_2D_u8u8) {
   // Exercise the (stride_w = 2) path inside Math::Im2col.
   test.Run();
 }
+<<<<<<< HEAD
 TEST(ConvIntegerTest, WithStride2_2D_u8s8) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 7, 7};
@@ -360,6 +392,9 @@ TEST(ConvIntegerTest, WithStride2_2D_u8s8) {
   // Exercise the (stride_w = 2) path inside Math::Im2col.
   test.Run();
 }
+=======
+
+>>>>>>> main
 TEST(ConvIntegerTest, WithStride3_2D_u8u8) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 7, 7};
@@ -384,6 +419,7 @@ TEST(ConvIntegerTest, WithStride3_2D_u8u8) {
   test.AddOutput<int32_t>("y", y_dims,
                           {0, 8, 20,
                            80, 330, 375,
+<<<<<<< HEAD
                            200, 780, 825});
   // Exercise the (stride_w > 2) path inside Math::Im2col.
   test.Run();
@@ -412,6 +448,8 @@ TEST(ConvIntegerTest, WithStride3_2D_u8s8) {
   test.AddOutput<int32_t>("y", y_dims,
                           {0, 8, 20,
                            80, 330, 375,
+=======
+>>>>>>> main
                            200, 780, 825});
   // Exercise the (stride_w > 2) path inside Math::Im2col.
   test.Run();

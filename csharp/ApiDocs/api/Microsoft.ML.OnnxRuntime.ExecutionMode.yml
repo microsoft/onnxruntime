@@ -1,0 +1,114 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.ExecutionMode
+  commentId: T:Microsoft.ML.OnnxRuntime.ExecutionMode
+  id: ExecutionMode
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.ExecutionMode.ORT_PARALLEL
+  - Microsoft.ML.OnnxRuntime.ExecutionMode.ORT_SEQUENTIAL
+  langs:
+  - csharp
+  - vb
+  name: ExecutionMode
+  nameWithType: ExecutionMode
+  fullName: Microsoft.ML.OnnxRuntime.ExecutionMode
+  type: Enum
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ExecutionMode
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 29
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nControls whether you want to execute operators in the graph sequentially or in parallel.\nUsually when the model has many branches, setting this option to ExecutionMode.ORT_PARALLEL\nwill give you better performance.\nSee [ONNX_Runtime_Perf_Tuning.md] for more details.\n"
+  example: []
+  syntax:
+    content: public enum ExecutionMode
+    content.vb: Public Enum ExecutionMode
+  modifiers.csharp:
+  - public
+  - enum
+  modifiers.vb:
+  - Public
+  - Enum
+- uid: Microsoft.ML.OnnxRuntime.ExecutionMode.ORT_SEQUENTIAL
+  commentId: F:Microsoft.ML.OnnxRuntime.ExecutionMode.ORT_SEQUENTIAL
+  id: ORT_SEQUENTIAL
+  parent: Microsoft.ML.OnnxRuntime.ExecutionMode
+  langs:
+  - csharp
+  - vb
+  name: ORT_SEQUENTIAL
+  nameWithType: ExecutionMode.ORT_SEQUENTIAL
+  fullName: Microsoft.ML.OnnxRuntime.ExecutionMode.ORT_SEQUENTIAL
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ORT_SEQUENTIAL
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 31
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ORT_SEQUENTIAL = 0
+    return:
+      type: Microsoft.ML.OnnxRuntime.ExecutionMode
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.ExecutionMode.ORT_PARALLEL
+  commentId: F:Microsoft.ML.OnnxRuntime.ExecutionMode.ORT_PARALLEL
+  id: ORT_PARALLEL
+  parent: Microsoft.ML.OnnxRuntime.ExecutionMode
+  langs:
+  - csharp
+  - vb
+  name: ORT_PARALLEL
+  nameWithType: ExecutionMode.ORT_PARALLEL
+  fullName: Microsoft.ML.OnnxRuntime.ExecutionMode.ORT_PARALLEL
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ORT_PARALLEL
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptions.shared.cs
+    startLine: 32
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ORT_PARALLEL = 1
+    return:
+      type: Microsoft.ML.OnnxRuntime.ExecutionMode
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: Microsoft.ML.OnnxRuntime.ExecutionMode
+  commentId: T:Microsoft.ML.OnnxRuntime.ExecutionMode
+  parent: Microsoft.ML.OnnxRuntime
+  name: ExecutionMode
+  nameWithType: ExecutionMode
+  fullName: Microsoft.ML.OnnxRuntime.ExecutionMode

@@ -48,7 +48,7 @@ struct OrtMemoryInfo {
     auto h = std::hash<int>()(alloc_type);
     HashCombine(std::hash<int>()(mem_type), h);
     HashCombine(std::hash<int>()(id), h);
-    HashCombine(std::hash<const char*>()(name), h);
+    HashCombine(std::hash<std::string>()(name), h);
     return h;
   }
 

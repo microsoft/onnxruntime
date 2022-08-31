@@ -36,9 +36,10 @@ static void RunAttentionTest(
 ) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
   bool enable_cpu = false;
 
-  if (enable_cpu || enable_cuda) {
+  if (enable_cpu || enable_cuda || enable_rocm) {
     OpTester tester("DecoderAttention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
 
@@ -99,11 +100,14 @@ static void RunAttentionTest(
       tester.AddOutput<float>("new_value_cache", output_cache_dims, *new_value_cache);
     }
 
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     if (enable_cuda) {
-      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultCudaExecutionProvider());
-      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
+    if (enable_rocm) {
+      execution_providers.push_back(DefaultRocmExecutionProvider());
+    }
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
 

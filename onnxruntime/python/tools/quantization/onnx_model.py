@@ -1,9 +1,88 @@
-import itertools
 from pathlib import Path
 
 import onnx
+import onnx.helper as onnx_helper
+import onnx.numpy_helper as onnx_numpy_helper
 
 from .quant_utils import attribute_to_kwarg, find_by_name
+
+
+def _clean_initializers_helper(graph, model):
+    """Clean unused initializers from graph.
+
+    Returns:
+        A cleaned graph without unused initializers
+        A list of tensor names, which are not produced by this graph and its subgraphes
+    """
+    requesting_tensor_names = set()
+    requesting_tensor_names.update(input_name for node in graph.node for input_name in node.input if input_name)
+    requesting_tensor_names.update(g_out.name for g_out in graph.output if g_out.name)
+
+    new_nodes = []
+    for node in graph.node:
+        new_node = node
+        graph_attrs = [
+            attr
+            for attr in node.attribute
+            if attr.type == onnx.AttributeProto.GRAPH or attr.type == onnx.AttributeProto.GRAPHS
+        ]
+        if graph_attrs:
+            kwargs = {}
+            for attr in node.attribute:
+                new_attribute = {}
+                if attr.type == onnx.AttributeProto.GRAPH:
+                    (
+                        cleaned_sub_graph,
+                        sub_requesting_tensor_names,
+                    ) = _clean_initializers_helper(attr.g, model)
+                    new_attribute = {attr.name: cleaned_sub_graph}
+                    requesting_tensor_names.update(sub_requesting_tensor_names)
+                elif attr.type == onnx.AttributeProto.GRAPHS:
+                    cleaned_graphes = []
+                    for subgraph in attr.graphs:
+                        (
+                            cleaned_sub_graph,
+                            sub_requesting_tensor_names,
+                        ) = _clean_initializers_helper(subgraph, model)
+                        cleaned_graphes.append(cleaned_sub_graph)
+                        requesting_tensor_names.update(sub_requesting_tensor_names)
+                    new_attribute = {attr.name: cleaned_graphes}
+                else:
+                    new_attribute = attribute_to_kwarg(attr)
+                kwargs.update(new_attribute)
+            new_node = onnx_helper.make_node(node.op_type, node.input, node.output, name=node.name, **kwargs)
+        new_nodes.append(new_node)
+
+    graph.ClearField("node")
+    graph.node.extend(new_nodes)
+
+    requesting_tensor_names.difference_update(output for node in graph.node for output in node.output)
+
+    unused_initializer = []
+    for initializer in graph.initializer:
+        if initializer.name in requesting_tensor_names:
+            requesting_tensor_names.remove(initializer.name)
+        else:
+            # mark it to remove, remove here directly will cause mis-behavier
+            unused_initializer.append(initializer)
+
+    name_to_input = {input.name: input for input in graph.input}
+    for initializer in unused_initializer:
+        graph.initializer.remove(initializer)
+        if initializer.name in name_to_input:
+            try:
+                graph.input.remove(name_to_input[initializer.name])
+            except StopIteration:
+                if model.ir_version < 4:
+                    print(
+                        "Warning: invalid weight name {} found in the graph (not a graph input)".format(
+                            initializer.name
+                        )
+                    )
+
+    requesting_tensor_names.difference_update(input.name for input in graph.input)
+
+    return graph, requesting_tensor_names
 
 
 class ONNXModel:
@@ -124,9 +203,11 @@ class ONNXModel:
         return output_name_to_node[input]
 
     def find_node_by_name(self, node_name, new_nodes_list, graph):
-        """
-        Find out if a node exists in a graph or a node is in the
-        new set of nodes created during quantization. Return the node found.
+        """Find out if a node exists in a graph or a node is in the
+        new set of nodes created during quantization.
+
+        Returns:
+            The node found or None.
         """
         graph_nodes_list = list(graph.node)  # deep copy
         graph_nodes_list.extend(new_nodes_list)
@@ -160,7 +241,6 @@ class ONNXModel:
         for node in graph.node:
             graph_attrs = [attr for attr in node.attribute if attr.type == 5 or attr.type == 10]
             if len(graph_attrs):
-                node_name = node.name
                 kwargs = {}
                 for attr in node.attribute:
                     if attr.type == 5:
@@ -175,7 +255,7 @@ class ONNXModel:
                     else:
                         kv = attribute_to_kwarg(attr)
                     kwargs.update(kv)
-                node = onnx.helper.make_node(node.op_type, node.input, node.output, name=node.name, **kwargs)
+                node = onnx_helper.make_node(node.op_type, node.input, node.output, name=node.name, **kwargs)
 
             if node.op_type == "Gemm":
                 alpha = 1.0
@@ -184,21 +264,21 @@ class ONNXModel:
                 transB = 0
                 for attr in node.attribute:
                     if attr.name == "alpha":
-                        alpha = onnx.helper.get_attribute_value(attr)
+                        alpha = onnx_helper.get_attribute_value(attr)
                     elif attr.name == "beta":
-                        beta = onnx.helper.get_attribute_value(attr)
+                        beta = onnx_helper.get_attribute_value(attr)
                     elif attr.name == "transA":
-                        transA = onnx.helper.get_attribute_value(attr)
+                        transA = onnx_helper.get_attribute_value(attr)
                     elif attr.name == "transB":
-                        transB = onnx.helper.get_attribute_value(attr)
+                        transB = onnx_helper.get_attribute_value(attr)
                 if alpha == 1.0 and beta == 1.0 and transA == 0:
                     inputB = node.input[1]
                     if transB == 1:
                         B, Bs_graph = ONNXModel.__get_initializer(node.input[1], graph_path)
                         if B:
                             # assume B is not used by any other node
-                            B_array = onnx.numpy_helper.to_array(B)
-                            B_trans = onnx.numpy_helper.from_array(B_array.T)
+                            B_array = onnx_numpy_helper.to_array(B)
+                            B_trans = onnx_numpy_helper.from_array(B_array.T)
                             B_trans.name = B.name
                             Bs_graph.initializer.remove(B)
                             for input in Bs_graph.input:
@@ -208,7 +288,7 @@ class ONNXModel:
                             Bs_graph.initializer.extend([B_trans])
                         else:
                             inputB += "_Transposed"
-                            transpose_node = onnx.helper.make_node(
+                            transpose_node = onnx_helper.make_node(
                                 "Transpose",
                                 inputs=[node.input[1]],
                                 outputs=[inputB],
@@ -216,7 +296,7 @@ class ONNXModel:
                             )
                             new_nodes.append(transpose_node)
 
-                    matmul_node = onnx.helper.make_node(
+                    matmul_node = onnx_helper.make_node(
                         "MatMul",
                         inputs=[node.input[0], inputB],
                         outputs=[node.output[0] + ("_MatMul" if len(node.input) > 2 else "")],
@@ -225,7 +305,7 @@ class ONNXModel:
                     new_nodes.append(matmul_node)
 
                     if len(node.input) > 2:
-                        add_node = onnx.helper.make_node(
+                        add_node = onnx_helper.make_node(
                             "Add",
                             inputs=[node.output[0] + "_MatMul", node.input[2]],
                             outputs=node.output,
@@ -318,6 +398,12 @@ class ONNXModel:
                 return True
         return False
 
+    def is_graph_input(self, tensor_name: str) -> bool:
+        for input in self.model.graph.input:
+            if input.name == tensor_name:
+                return True
+        return False
+
     # TODO:use OnnxModel.graph_topological_sort(self.model.graph) from transformers.onnx_model
     # Currently it breaks Openvino/Linux training gpu pipeline so hold off for 1.8 release
     def topological_sort(self):
@@ -369,3 +455,6 @@ class ONNXModel:
         assert end == len(self.graph().node), "Graph is not a DAG"
         self.graph().ClearField("node")
         self.graph().node.extend(sorted_nodes)
+
+    def clean_initializers(self):
+        return _clean_initializers_helper(self.graph(), self.model)

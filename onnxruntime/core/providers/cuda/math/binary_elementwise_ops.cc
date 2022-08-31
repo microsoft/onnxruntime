@@ -465,6 +465,69 @@ Status Pow::ComputeInternal(OpKernelContext* context) const {
   return s;
 }
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Mod, kOnnxDomain, 10, 12, kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T",
+                        BuildKernelDefConstraints<int32_t, int64_t, uint32_t, uint64_t, float, double, MLFloat16>()),
+    Mod);
+
+ONNX_OPERATOR_KERNEL_EX(Mod, kOnnxDomain, 13, kCudaExecutionProvider,
+                        (*KernelDefBuilder::Create())
+                            .TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, uint32_t, uint64_t, float,
+                                                                           double, MLFloat16, BFloat16>()),
+                        Mod);
+
+Status Mod::ComputeInternal(OpKernelContext* context) const {
+  namespace on = ONNX_NAMESPACE;
+  BinaryElementwisePreparation prepare;
+  ORT_RETURN_IF_ERROR(Prepare(context, &prepare));
+  auto element_type = prepare.lhs_tensor->GetElementType();
+  ORT_ENFORCE(fmod_ || element_type == on::TensorProto_DataType_INT32 ||
+                  element_type == on::TensorProto_DataType_INT64 || element_type == on::TensorProto_DataType_UINT32 ||
+                  element_type == on::TensorProto_DataType_UINT64,
+              "Non-fmod can support integer types only.");
+#define CASE_MOD_ELEMENT_TYPE(name, onnx_type, data_type)                                                           \
+  case onnx_type: {                                                                                                 \
+    Impl_##name<typename ToCudaType<data_type>::MappedType>(                                                        \
+        Stream(), prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides,                             \
+        reinterpret_cast<const typename ToCudaType<data_type>::MappedType*>(prepare.lhs_tensor->Data<data_type>()), \
+        &prepare.rhs_padded_strides,                                                                                \
+        reinterpret_cast<const typename ToCudaType<data_type>::MappedType*>(prepare.rhs_tensor->Data<data_type>()), \
+        &prepare.fdm_output_strides, prepare.fdm_H, prepare.fdm_C,                                                  \
+        reinterpret_cast<typename ToCudaType<data_type>::MappedType*>(                                              \
+            prepare.output_tensor->MutableData<data_type>()),                                                       \
+        prepare.output_tensor->Shape().Size());                                                                     \
+  } break
+  if (fmod_) {
+    switch (element_type) {
+      CASE_MOD_ELEMENT_TYPE(Fmod, on::TensorProto_DataType_INT32, int32_t);
+      CASE_MOD_ELEMENT_TYPE(Fmod, on::TensorProto_DataType_INT64, int64_t);
+      CASE_MOD_ELEMENT_TYPE(Fmod, on::TensorProto_DataType_UINT32, uint32_t);
+      CASE_MOD_ELEMENT_TYPE(Fmod, on::TensorProto_DataType_UINT64, uint64_t);
+      CASE_MOD_ELEMENT_TYPE(Fmod, on::TensorProto_DataType_FLOAT, float);
+      CASE_MOD_ELEMENT_TYPE(Fmod, on::TensorProto_DataType_DOUBLE, double);
+      CASE_MOD_ELEMENT_TYPE(Fmod, on::TensorProto_DataType_FLOAT16, MLFloat16);
+      CASE_MOD_ELEMENT_TYPE(Fmod, on::TensorProto_DataType_BFLOAT16, BFloat16);
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Unsupported element type: ", DataTypeImpl::ToString(prepare.lhs_tensor->DataType()));
+    }
+  } else {
+    switch (element_type) {
+      CASE_MOD_ELEMENT_TYPE(Mod, on::TensorProto_DataType_INT32, int32_t);
+      CASE_MOD_ELEMENT_TYPE(Mod, on::TensorProto_DataType_INT64, int64_t);
+      CASE_MOD_ELEMENT_TYPE(Mod, on::TensorProto_DataType_UINT32, uint32_t);
+      CASE_MOD_ELEMENT_TYPE(Mod, on::TensorProto_DataType_UINT64, uint64_t);
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Unsupported element type: ", DataTypeImpl::ToString(prepare.lhs_tensor->DataType()));
+    }
+  }
+#undef CASE_MOD_ELEMENT_TYPE
+  return Status::OK();
+}
+
 //Greater op output tensor type is bool, so it cannot directly fit in the macros
 //for other elementwise ops
 template <typename T, typename CudaT>

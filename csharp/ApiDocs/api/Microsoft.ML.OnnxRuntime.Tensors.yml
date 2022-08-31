@@ -1,0 +1,150 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.Tensors
+  commentId: N:Microsoft.ML.OnnxRuntime.Tensors
+  id: Microsoft.ML.OnnxRuntime.Tensors
+  children:
+  - Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions
+  - Microsoft.ML.OnnxRuntime.Tensors.BFloat16
+  - Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1
+  - Microsoft.ML.OnnxRuntime.Tensors.Float16
+  - Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  - Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorBase
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorElementTypeInfo
+  - Microsoft.ML.OnnxRuntime.Tensors.TensorTypeInfo
+  langs:
+  - csharp
+  - vb
+  name: Microsoft.ML.OnnxRuntime.Tensors
+  nameWithType: Microsoft.ML.OnnxRuntime.Tensors
+  fullName: Microsoft.ML.OnnxRuntime.Tensors
+  type: Namespace
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+references:
+- uid: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions
+  name: ArrayTensorExtensions
+  nameWithType: ArrayTensorExtensions
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions
+- uid: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1
+  name: DenseTensor<T>
+  nameWithType: DenseTensor<T>
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor<T>
+  nameWithType.vb: DenseTensor(Of T)
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor(Of T)
+  name.vb: DenseTensor(Of T)
+  spec.csharp:
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1
+    name: DenseTensor
+    nameWithType: DenseTensor
+    fullName: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor
+  - name: <
+    nameWithType: <
+    fullName: <
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1
+    name: DenseTensor
+    nameWithType: DenseTensor
+    fullName: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  name: TensorElementType
+  nameWithType: TensorElementType
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Float16
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.Float16
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  name: Float16
+  nameWithType: Float16
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Float16
+- uid: Microsoft.ML.OnnxRuntime.Tensors.BFloat16
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.BFloat16
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  name: BFloat16
+  nameWithType: BFloat16
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.BFloat16
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorTypeInfo
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.TensorTypeInfo
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  name: TensorTypeInfo
+  nameWithType: TensorTypeInfo
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorTypeInfo
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementTypeInfo
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.TensorElementTypeInfo
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  name: TensorElementTypeInfo
+  nameWithType: TensorElementTypeInfo
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementTypeInfo
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorBase
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.TensorBase
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  name: TensorBase
+  nameWithType: TensorBase
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorBase
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  name: Tensor
+  nameWithType: Tensor
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  name: Tensor<T>
+  nameWithType: Tensor<T>
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor<T>
+  nameWithType.vb: Tensor(Of T)
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.Tensor(Of T)
+  name.vb: Tensor(Of T)
+  spec.csharp:
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+    name: Tensor
+    nameWithType: Tensor
+    fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  - name: <
+    nameWithType: <
+    fullName: <
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+    name: Tensor
+    nameWithType: Tensor
+    fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.Tensors
+  commentId: N:Microsoft.ML.OnnxRuntime.Tensors
+  name: Microsoft.ML.OnnxRuntime.Tensors
+  nameWithType: Microsoft.ML.OnnxRuntime.Tensors
+  fullName: Microsoft.ML.OnnxRuntime.Tensors

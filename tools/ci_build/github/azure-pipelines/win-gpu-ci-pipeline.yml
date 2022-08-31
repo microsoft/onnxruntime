@@ -13,7 +13,7 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --gen_doc validate --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=52
+        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4"  --gen_doc validate --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=52
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
@@ -32,7 +32,7 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --enable_training --use_cuda --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --skip_onnx_tests --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=52
+        additionalBuildFlags: --enable_pybind --enable_training --use_cuda --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --skip_onnx_tests --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=52
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo

@@ -54,18 +54,13 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   int64_t bias_length = (nullptr == bias) ? 0 : bias->Shape().Size();
   typedef typename ToHipType<T>::MappedType HipT;
 
-  if (!LaunchFastGeluKernel<HipT>(Stream(),
+  return LaunchFastGeluKernel<HipT>(Stream(),
                                   static_cast<int>(input_length),
                                   static_cast<int>(bias_length),
                                   reinterpret_cast<const HipT*>(input->Data<T>()),
                                   (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr,
                                   reinterpret_cast<HipT*>(output->MutableData<T>()),
-                                  tuning_)) {
-    HIP_CALL(hipGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
-
-  return Status::OK();
+                                  tuning_);
 }
 
 }  // namespace rocm

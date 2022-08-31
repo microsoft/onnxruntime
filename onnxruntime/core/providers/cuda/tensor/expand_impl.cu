@@ -59,7 +59,7 @@ __global__ void ExpandKernel(
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      // compute indexes with broadcasting rules: https://github.com/onnx/onnx/blob/master/docs/Broadcasting.md
+      // compute indexes with broadcasting rules: https://github.com/onnx/onnx/blob/main/docs/Broadcasting.md
       CUDA_LONG index = 0;
       CUDA_LONG offset = id;
 #pragma unroll
