@@ -606,13 +606,11 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
 
   const std::string& type = current_ep.Type();
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
-  TransformLayoutFunction transform_layout_function =
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-      partition_params.transform_layout_function
+  TransformLayoutFunction transform_layout_function = partition_params.transform_layout_function;
 #else
-  {}
+  TransformLayoutFunction transform_layout_function{};
 #endif
-      ;
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(graph, kernel_registry_mgr, current_ep,
                                          GraphPartitioner::Mode::kOrtFormatLoad, capabilities,
                                          transform_layout_function));
@@ -737,6 +735,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 #else  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   ORT_UNUSED_PARAMETER(func_mgr);
+  ORT_UNUSED_PARAMETER(transform_layout_function);
   PartitionParams partition_params{
       std::ref(graph),
   };
