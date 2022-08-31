@@ -303,6 +303,5 @@ Status GemmReplaceWithQuant::RunForSave(Graph& graph,
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-
 }  // namespace QDQ
 }  // namespace onnxruntime
