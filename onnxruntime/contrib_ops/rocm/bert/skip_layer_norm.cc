@@ -93,21 +93,19 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   int sequence_length = static_cast<int>(input_dims[1]);
   int hidden_size = static_cast<int>(input_dims[2]);
   int64_t element_count = input_dims[0] * sequence_length * hidden_size;
-  size_t element_size = sizeof(T);
   typedef typename ToHipType<T>::MappedType HipT;
 
   return LaunchSkipLayerNormKernel<HipT>(
-          Stream(),
-          reinterpret_cast<HipT*>(output->MutableData<T>()),
-          reinterpret_cast<const HipT*>(input->Data<T>()),
-          reinterpret_cast<const HipT*>(skip->Data<T>()),
-          reinterpret_cast<const HipT*>(gamma->Data<T>()),
-          (beta != nullptr) ? reinterpret_cast<const HipT*>(beta->Data<T>()) : nullptr,
-          (bias != nullptr) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr,
-          epsilon_,
-          hidden_size,
-          static_cast<int>(element_count),
-          element_size);
+      Stream(),
+      reinterpret_cast<HipT*>(output->MutableData<T>()),
+      reinterpret_cast<const HipT*>(input->Data<T>()),
+      reinterpret_cast<const HipT*>(skip->Data<T>()),
+      reinterpret_cast<const HipT*>(gamma->Data<T>()),
+      (beta != nullptr) ? reinterpret_cast<const HipT*>(beta->Data<T>()) : nullptr,
+      (bias != nullptr) ? reinterpret_cast<const HipT*>(bias->Data<T>()) : nullptr,
+      epsilon_,
+      hidden_size,
+      static_cast<int>(element_count));
 }
 
 }  // namespace rocm

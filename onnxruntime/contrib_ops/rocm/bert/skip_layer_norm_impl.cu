@@ -28,9 +28,11 @@ limitations under the License.
 // Copyright (c) Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 
-#include <hip/hip_fp16.h>
-#include "contrib_ops/rocm/bert/layer_norm.cuh"
 #include "contrib_ops/rocm/bert/skip_layer_norm_impl.h"
+
+#include <hip/hip_fp16.h>
+
+#include "contrib_ops/rocm/bert/skip_layer_norm_impl_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -114,8 +116,7 @@ __global__ void SkipLayerNormKernelSmall(
 template <typename T>
 Status LaunchSkipLayerNormKernel(
     hipStream_t stream, T* output, const T* input, const T* skip, const T* gamma,
-    const T* beta, const T* bias, float epsilon, const int ld, const int element_count,
-    size_t element_size) {
+    const T* beta, const T* bias, float epsilon, const int ld, const int element_count) {
   // this must be true because n is the total size of the tensor
   assert(element_count % ld == 0);
   bool hasBias = (bias == nullptr) ? false : true;
@@ -180,12 +181,12 @@ Status LaunchSkipLayerNormKernel(
 template Status LaunchSkipLayerNormKernel<float>(hipStream_t stream, float* output, const float* input,
                                                  const float* skip, const float* gamma, const float* beta,
                                                  const float* bias, float epsilon, const int ld,
-                                                 const int element_count, size_t element_size);
+                                                 const int element_count);
 
 template Status LaunchSkipLayerNormKernel<half>(hipStream_t stream, half* output, const half* input,
                                                 const half* skip, const half* gamma, const half* beta,
                                                 const half* bias, float epsilon, const int ld,
-                                                const int element_count, size_t element_size);
+                                                const int element_count);
 
 }  // namespace rocm
 }  // namespace contrib
