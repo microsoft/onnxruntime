@@ -287,9 +287,7 @@ Shape GetShapeInfoFromNodeArg(const GraphViewer& graph_viewer, const std::string
   const auto* shape_proto = node_arg->Shape();
 
   shape.reserve(shape_proto->dim_size());
-  const auto& shape_dims = shape_proto->dim();
-  for (int i = 0; i < shape_dims.size(); i++) {
-    auto& shape_dim = shape_dims.Get(i);
+  for (const auto& shape_dim : shape_proto->dim()) {
     // shape_dim here can possibly have dim_param, but as dynamic shape is not supported in NNAPI for now
     // (checked already in BaseOpSupportChecker), call dim_value here only.
     shape.push_back(SafeInt<uint32_t>(shape_dim.dim_value()));

@@ -57,6 +57,7 @@ class Model {
 #endif
 
  public:
+  Model(const GraphViewer& graph_viewer);
   ~Model();
   Model(const Model&) = delete;
   Model& operator=(const Model&) = delete;
@@ -123,7 +124,7 @@ class Model {
   std::unordered_map<std::string, android::nn::wrapper::OperandType> operand_types_;
   std::unordered_set<std::string> scalar_outputs_;
 
-  std::optional<Shaper> shaper_;
+  Shaper shaper_;
 
   std::unordered_map<std::string, size_t> input_map_;
   std::unordered_map<std::string, size_t> output_map_;

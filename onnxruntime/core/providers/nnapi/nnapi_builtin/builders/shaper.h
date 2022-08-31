@@ -26,7 +26,12 @@ class Shaper {
   void AddShape(const std::string& name, const Shape& shape);
 
   inline const Shape& operator[](const std::string& key) const {
-    return shape_map_.at(key);
+    if (shape_map_.find(key) != shape_map_.end()) {
+      return shape_map_.at(key);
+    }
+
+    static const auto shape = GetShapeInfoFromNodeArg(*graph_viewer_, key);
+    return shape;
   }
 
   // If the shape of certain input is dynamic

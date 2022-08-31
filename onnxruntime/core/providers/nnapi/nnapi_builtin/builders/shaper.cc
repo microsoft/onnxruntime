@@ -17,7 +17,7 @@ void Shaper::AddShape(const std::string& name, const Shape& shape) {
 }
 
 Status Shaper::UpdateShape(const std::string& name, const Shape& new_shape) {
-  const Shape& old_shape = shape_map_.at(name);
+  const Shape& old_shape = (*this)[name];
   if (old_shape != new_shape) {
     ORT_RETURN_IF_NOT(Product(old_shape) == 0 || !old_shape.empty(),
                       "The shape should be same size or old shape has size 0 (dynamic shape)");

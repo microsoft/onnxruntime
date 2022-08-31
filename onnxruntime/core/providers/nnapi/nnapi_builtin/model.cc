@@ -18,7 +18,7 @@ namespace nnapi {
 
 #pragma region Model
 
-Model::Model() : nnapi_(NnApiImplementation()) {}
+Model::Model(const GraphViewer& graph_viewer) : nnapi_(NnApiImplementation()), shaper_{graph_viewer} {};
 
 Model::~Model() {
   nnapi_->ANeuralNetworksCompilation_free(compilation_);
@@ -99,7 +99,7 @@ Status Model::PrepareForExecution(std::unique_ptr<Execution>& execution) {
   RETURN_STATUS_ON_ERROR(
       nnapi_->ANeuralNetworksExecution_create(compilation_, &nnapi_execution));
 
-  execution.reset(new Execution(*nnapi_execution, *shaper_));
+  execution.reset(new Execution(*nnapi_execution, shaper_));
   return Status::OK();
 }
 
