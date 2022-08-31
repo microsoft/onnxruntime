@@ -252,7 +252,7 @@ struct OrtTrainingApi {
   *
   */
   ORT_API2_STATUS(CopyParametersToBuffer, _Inout_ OrtTrainingSession* sess,
-                    _Inout_ OrtValue& parameters_buffer, bool trainable_only);
+                    _Inout_ OrtValue* parameters_buffer, bool trainable_only);
 
   /** \brief Copy parameter values from contiguous buffer held by parameters_buffer onto parameters
   *
@@ -271,7 +271,7 @@ struct OrtTrainingApi {
   *
   */
   ORT_API2_STATUS(CopyBufferToParameters, _Inout_ OrtTrainingSession* sess,
-                    _Inout_ OrtValue& parameters_buffer, bool trainable_only);
+                    _Inout_ OrtValue* parameters_buffer, bool trainable_only);
 
   /** \brief Frees up the memory used up by the training session.
   *

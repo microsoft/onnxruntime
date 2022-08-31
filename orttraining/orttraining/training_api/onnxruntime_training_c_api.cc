@@ -288,20 +288,26 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::GetParametersSize, _Inout_ OrtTrainingSessi
 }
 
 ORT_API_STATUS_IMPL(OrtTrainingApis::CopyParametersToBuffer, _Inout_ OrtTrainingSession* sess,
-                    _Inout_ OrtValue& parameters_buffer, bool trainable_only) {
+                    _Inout_ OrtValue* parameters_buffer, bool trainable_only) {
   API_IMPL_BEGIN
+  if (parameters_buffer == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "parameters_buffer is null.");
+  }
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(session->CopyParametersToBuffer(parameters_buffer, trainable_only));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->CopyParametersToBuffer(*parameters_buffer, trainable_only));
   
   return nullptr;
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtTrainingApis::CopyBufferToParameters, _Inout_ OrtTrainingSession* sess,
-                    _Inout_ OrtValue& parameters_buffer, bool trainable_only) {
+                    _Inout_ OrtValue* parameters_buffer, bool trainable_only) {
   API_IMPL_BEGIN
+  if (parameters_buffer == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "parameters_buffer is null.");
+  }
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(session->CopyBufferToParameters(parameters_buffer, trainable_only));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->CopyBufferToParameters(*parameters_buffer, trainable_only));
 
   return nullptr;
   API_IMPL_END

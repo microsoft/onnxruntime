@@ -43,10 +43,10 @@ ORT_API_STATUS_IMPL(GetParametersSize, _Inout_ OrtTrainingSession* sess,
                     _Out_ size_t* out, bool trainable_only);
 
 ORT_API_STATUS_IMPL(CopyParametersToBuffer, _Inout_ OrtTrainingSession* sess,
-                    _Inout_ OrtValue& parameters_buffer, bool trainable_only);
+                    _Inout_ OrtValue* parameters_buffer, bool trainable_only);
 
 ORT_API_STATUS_IMPL(CopyBufferToParameters, _Inout_ OrtTrainingSession* sess,
-                    _Inout_ OrtValue& parameters_buffer, bool trainable_only);
+                    _Inout_ OrtValue* parameters_buffer, bool trainable_only);
 
 ORT_API(void, ReleaseCheckpointState, _Frees_ptr_opt_ OrtCheckpointState* session);
 
