@@ -154,11 +154,10 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
         true,
         {default_memory_arena_cfg ? *default_memory_arena_cfg
                                   : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1)},
-        //make it stream aware
+        // make it stream aware
         true,
         // enable cross stream sharing?
-        false
-        );
+        false);
 
     // CUDA malloc/free is expensive so always use an arena
     return CreateAllocator(default_memory_info);
@@ -237,13 +236,12 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
     if (info.external_allocator_info.UseExternalAllocator()) {
       use_ep_level_unified_stream_ = true;
       stream_ = nullptr;
-    } else if (info.enable_cuda_graph){
+    } else if (info.enable_cuda_graph) {
       // current cuda graph implementation only works with single stream
       // use EP level unified stream for all the reqeust
       CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
       use_ep_level_unified_stream_ = true;
-    }
-    else {
+    } else {
       stream_ = nullptr;
     }
   }
@@ -366,7 +364,7 @@ AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) co
       // here is a hack to return another allocator instance.
       // need to fix this in the future.
       return CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
-                                            info_.external_allocator_info, info_.default_memory_arena_cfg);
+                                 info_.external_allocator_info, info_.default_memory_arena_cfg);
     }
   }
 
@@ -407,7 +405,7 @@ Status CUDAExecutionProvider::OnRunStart() {
       }
     }
   }
-  //create per thread context cache
+  // create per thread context cache
   auto& per_thread_context_cache = GetPerThreadContext();
   if (IsGraphCaptureEnabled() && per_thread_context_cache.IsGraphCaptureAllowed() && !per_thread_context_cache.IsGraphCaptured()) {
     LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
@@ -2526,19 +2524,19 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
 
 void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
   if (use_ep_level_unified_stream_)
-    RegisterCudaStreamHandles(stream_handle_registry, 
-        OrtDevice::GPU, 
-        stream_, 
-        use_ep_level_unified_stream_,
-        GetPerThreadContext().CudnnHandle(),
-        GetPerThreadContext().CublasHandle());
+    RegisterCudaStreamHandles(stream_handle_registry,
+                              OrtDevice::GPU,
+                              stream_,
+                              use_ep_level_unified_stream_,
+                              GetPerThreadContext().CudnnHandle(),
+                              GetPerThreadContext().CublasHandle());
   else
     RegisterCudaStreamHandles(stream_handle_registry,
                               OrtDevice::GPU,
                               stream_,
                               use_ep_level_unified_stream_,
-                              nullptr,
-                              nullptr);
+                              GetPerThreadContext().CudnnHandle(),
+                              GetPerThreadContext().CublasHandle());
 }
 
 }  // namespace onnxruntime
