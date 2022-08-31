@@ -69,7 +69,7 @@ struct BFloat16 {
       val = static_cast<uint16_t>((U32 + rounding_bias) >> 16);
     }
 #else
-    ORT_IF_CONSTEXPR(endian::native == endian::little) {
+    if constexpr(endian::native == endian::little) {
       std::memcpy(&val, reinterpret_cast<char*>(&v) + sizeof(uint16_t), sizeof(uint16_t));
     }
     else {
@@ -93,7 +93,7 @@ struct BFloat16 {
     float result;
     char* const first = reinterpret_cast<char*>(&result);
     char* const second = first + sizeof(uint16_t);
-    ORT_IF_CONSTEXPR(endian::native == endian::little) {
+    if constexpr(endian::native == endian::little) {
       std::memset(first, 0, sizeof(uint16_t));
       std::memcpy(second, &val, sizeof(uint16_t));
     }

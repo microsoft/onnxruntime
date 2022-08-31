@@ -7,7 +7,7 @@ FROM ubuntu:18.04
 
 ARG DEVICE=CPU_FP32
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
-ARG ONNXRUNTIME_BRANCH=master
+ARG ONNXRUNTIME_BRANCH=main
 
 WORKDIR /code
 ARG MY_ROOT=/code

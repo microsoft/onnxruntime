@@ -8,6 +8,7 @@
 #include "core/providers/rocm/rocm_fence.h"
 #include "core/providers/rocm/rocm_fwd.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
+#include "core/providers/rocm/rocm_profiler.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/rocm/rocm_contrib_kernels.h"
@@ -141,13 +142,13 @@ ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
   // here may be bad, and the destroy calls can throw.
   // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-dtor-noexcept
   try {
-    ROCBLAS_CALL(rocblas_destroy_handle(rocblas_handle_));
+    ROCBLAS_CALL_THROW(rocblas_destroy_handle(rocblas_handle_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "rocblas_destroy_handle threw:" << ex.what();
   }
 
   try {
-    MIOPEN_CALL(miopenDestroy(miopen_handle_));
+    MIOPEN_CALL_THROW(miopenDestroy(miopen_handle_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "miopenDestroy threw:" << ex.what();
   }
@@ -210,8 +211,12 @@ ROCMExecutionProvider::~ROCMExecutionProvider() {
   }
 
   if (!external_stream_ && stream_) {
-    HIP_CALL(hipStreamDestroy(stream_));
+    HIP_CALL_THROW(hipStreamDestroy(stream_));
   }
+}
+
+std::unique_ptr<profiling::EpProfiler> ROCMExecutionProvider::GetProfiler() {
+  return std::make_unique<profiling::RocmProfiler>();
 }
 
 ROCMExecutionProvider::PerThreadContext& ROCMExecutionProvider::GetPerThreadContext() const {
@@ -746,6 +751,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 10, double, ThresholdedRelu);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 10, MLFloat16, ThresholdedRelu);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 10, 10, TopK);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 10, 12, Mod);
 
 // opset 11
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 11, float, ArgMax);
@@ -1130,6 +1136,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, BFloat16, Tanh);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, BFloat16, Gemm);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, BFloat16, ReduceSum);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, Mod);
 
 // OpSet 14
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 14, CumSum);
@@ -1652,6 +1659,7 @@ static Status RegisterRocmKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 10, uint8_t, QuantizeLinear)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 10, int8_t, DequantizeLinear)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 10, uint8_t, DequantizeLinear)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 10, 12, Mod)>,
 
       // opset 11
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 11, float, ArgMax)>,
@@ -2046,6 +2054,7 @@ static Status RegisterRocmKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, BFloat16, Tanh)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, BFloat16, Gemm)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, BFloat16, ReduceSum)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, Mod)>,
 
       // OpSet 14
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 14, CumSum)>,

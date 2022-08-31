@@ -17,6 +17,7 @@ from .operators.pad import QPad
 from .operators.pooling import QLinearPool
 from .operators.qdq_base_operator import QDQOperatorBase
 from .operators.resize import QDQResize, QResize
+from .operators.softmax import QDQSoftmax, QLinearSoftmax
 from .operators.split import QDQSplit, QSplit
 from .quant_utils import QuantizationMode
 
@@ -55,6 +56,7 @@ QLinearOpsRegistry = {
     "Resize": QResize,
     "AveragePool": QLinearPool,
     "Concat": QLinearConcat,
+    "Softmax": QLinearSoftmax,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)
 
@@ -73,6 +75,7 @@ QDQRegistry = {
     "MatMul": QDQMatMul,
     "Split": QDQSplit,
     "Gather": QDQGather,
+    "Softmax": QDQSoftmax,
 }
 
 
