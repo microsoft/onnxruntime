@@ -48,18 +48,112 @@ The picture below shows the equivalent representation with the QOperator and QDQ
 ![Changes to nodes from basic and extended optimizations](../../images/QDQ_Format.png)
 
 ## Quantizing an ONNX model
-There are two ways of quantizing a model: dynamic and static.
 
-* **Dynamic quantization**: This method calculates the quantization parameters (scale and zero point) for activations dynamically.
+ONNX Runtime provides python APIs for converting 32-bit floating point model to an 8-bit integer
+model, a.k.a. quantization. These APIs include pre-processing, dynamic/static quantization, and
+debugging.
 
-* **Static quantization**: leverages calibration data to calculate the quantization parameters of activations. Our quantization tool supports three calibration methods: MinMax, Entropy and Percentile. Please refer to [`calibrate.py`](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/calibrate.py) for details.
-
-### Quantization API
+### Pre-processing
 {: .no_toc}
 
-Quantization has two main APIs, corresponding to the two quantization methods: `quantize_dynamic()` and `quantize_static()`.
+Pre-processing is to transform a float32 model to prepare it for quantization. It consists
+of the following three optional steps:
 
-Please refer to [quantize.py](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/quantize.py) for the quantization options for each method.
+1. Symbolic shape inference. This is best suited for transformer models.
+2. Model optimization: This step uses ONNX Runtime native library to rewrite the
+computation graph, including merging computation nodes, eliminating redundancies
+to improve runtime efficiency.
+3. ONNX shape inference.
+
+The goal of these steps is to improve quantization quality. Our quantization tool
+works best when the tensor's shape is known. Both symbolic shape inference and
+ONNX shape inference help figure out tensor shapes. Symbolic shape inference works
+best with transformer based models, and ONNX shape inference works with other
+models.
+
+Model optimization performs certain operator fusion that makes quantization tool's
+job easier. For instance, a Convolution operator followed by BatchNormalization
+can be fused into one during the optimization, which can be quantized very efficiently.
+
+Unfortunately, a known issue in ONNX Runtime is that model optimization can not output
+a model size greater than 2GB. So for large models, optimization must be skipped.
+
+Pre-processing API is in Python module `onnxruntime.quantization.shape_inference`,
+function `quant_pre_process()`. See
+[`shape_inference.py`](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/shape_inference.py).
+To read about additional options and finer controls available to pre-processing,
+run the following command:
+
+```console
+python -m onnxruntime.quantization.shape_inference --help
+```
+
+Model optimization may also be performed during quantization. However, this is *NOT* recommended,
+even though it's the default behavior due to historical reasons. Model optimization during
+quantization creates difficulties for debugging quantization caused accuracy losses, which will
+be discussed in [later sections](#qdqdebug). So, it is best to perform model optimization during
+pre-processing instead of during quantization.
+
+
+### Dynamic Quantization
+{: .no_toc}
+
+There are two ways of quantizing a model: dynamic and static. Dynamic quantization calculates the
+quantization parameters (scale and zero point) for activations dynamically. These calculations
+increase the cost of inference, while usually achieve higher accuracy comparing to static ones.
+
+Python API for dynamic quantization is in module `onnxruntime.quantization.quantize`, function `quantize_dynamic()`
+
+### Static Quantization
+{: .no_toc}
+
+Static quantization method first runs the model using a set of inputs called calibration data.
+During these runs, we compute the quantization parameters for each activations. These quantization
+parameters are written as constants to the quantized model and used for all inputs. Our
+quantization tool supports three calibration methods: MinMax, Entropy and Percentile. Please refer
+to
+[`calibrate.py`](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/calibrate.py)
+for details.
+
+Python API for static quantization is in module `onnxruntime.quantization.quantize`, function
+`quantize_static()`.
+Please refer to [quantize.py](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/quantize.py)
+for details.
+
+### <a name="qdqdebug"></a>Quantization Debugging
+
+Quantization is not a loss-less transformation. It may negatively affect a model's accuracy. A
+solution to this problem is to compare the weights and activations tensors of the original
+computation graph vs those of the quantized one, identify where they differ most, and avoid
+quantizing these tensors, or choose another quantization/calibration method. This is called
+quantization debugging. To facilitate this process, we provide Python APIs for matching
+weights and activation tensors between a float32 model and its quantized counterpart.
+
+API for debugging is in module `onnxruntime.quantization.qdq_loss_debug`, which has the following
+functions:
+
+- Function `create_weight_matching()`. It takes a float32 model and its quantized model, and output
+  a dictionary that matches the corresponding weights between these two models.
+- Function `modify_model_output_intermediate_tensors()`. It takes a float32 or quantized model, and
+  augment it to save all its activations.
+- Function `collect_activations()`. It takes a model augmented by
+  `modify_model_output_intermediate_tensors()`, and an input data reader, runs the augmented model
+  to collect all the activations.
+- Function `create_activation_matching()`. You can imagine that you run
+  `collect_activations(modify_model_output_intermediate_tensors())` on both the float32 and its
+  quantized model, to collect two sets of activations. This function takes these two set of
+  activations, and matches up corresponding ones, so that they can be easily compared by the user.
+
+In summary, ONNX Runtimes provides Python APIs for matching up corresponding weights and activation
+tensors between a float32 model and its quantized counterpart. This allows the user to easily
+compare them to locate where are the biggest differences.
+
+Model optimization during quantization creates difficulties for this debugging process though,
+since it may changes the computation graph in a significant way, resulting in a quantized model
+that is drastically different from the original. This makes it hard to match up corresponding
+tensors from the two models. As a result, we recommend performing model optimization during
+pre-processing instead of the quantization process.
+
 
 #### Example
 {: .no_toc }
