@@ -31,21 +31,19 @@ constexpr std::array<const char*, 6> AdamWOptimizerInputs = {
     "second_order_moments"};
 
 template <std::size_t NumInputs>
-Status GraphInputsAreExpected(const std::vector<std::string>& actual_graph_inputs,
+Status GraphInputsAreExpected(const gsl::span<std::string> actual_graph_inputs,
                               const std::array<const char*, NumInputs>& expected_graph_inputs) {
   const auto stringify = [](const auto& container) {
-    std::string container_str("[");
+    if (container.empty()) {
+      return std::string("[]");
+    }
+    std::ostringstream container_stream("[");
     for (const auto& val : container) {
-      container_str += std::string(val) + std::string(", ");
+      container_stream << val << ", ";
     }
-    if (container_str.back() == '[') {
-      container_str.push_back(']');
-    } else {
-      container_str.pop_back();
-      container_str.back() = ']';
-    }
+    container_stream << "\b\b]";
 
-    return container_str;
+    return container_stream.str();
   };
 
   const auto construct_unexpected_input_status = [&stringify](const auto& actual_inputs, const auto& expected_inputs) {
