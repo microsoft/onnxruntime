@@ -181,7 +181,7 @@ bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   for (size_t q_idx = 1; q_idx < q_nodes.size(); q_idx++) {
-    if (dt_output != q_nodes[q_idx]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type()) {
+    if (dt_output != q_nodes[q_idx]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type()) {
       return false;
     }
   }

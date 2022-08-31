@@ -269,6 +269,7 @@ GetQDQTestCaseFn BuildBinaryOpTestCase(const std::vector<int64_t>& input_shape,
                                                 output_arg);
   };
 }
+
 template <typename InputType, typename OutputType>
 GetQDQTestCaseFn BuildQDQSplitTestCase(
     const std::vector<int64_t>& input_shape,
@@ -300,6 +301,7 @@ GetQDQTestCaseFn BuildQDQSplitTestCase(
     builder.AddQuantizeLinearNode<OutputType>(split_output_3, .003f, q_zp, q_split_output_3);
   };
 }
+
 template <typename InputType, typename OutputType>
 GetQDQTestCaseFn BuildQDQTransposeTestCase(
     const std::vector<int64_t>& input_shape,
