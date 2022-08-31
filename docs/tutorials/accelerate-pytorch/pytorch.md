@@ -179,6 +179,8 @@ You can also improve the performance of the ONNX model by quantizing it.
 
 If the application is running in constrained environments, such as mobile and edge you can build a reduced size runtime, based on the model or models that the application runs.
 
+To started in your language and environment of choice, see [Get started with ONNX Runtime](../../get-started/)
+
 ## Further reading
 
 ### Convert model to ONNX
