@@ -220,7 +220,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
   sample.AddFloatInput(fc2_bias_shape);
   data_loader.AddSyntheticSampleBatch(std::move(sample));
 
-  std::vector<OrtValue*> all_weights_values;
+  std::vector<Ort::Value> all_weights_values;
   data_loader.GetNextSampleBatch(all_weights_values);
   ASSERT_EQ(all_weights_values.size(), 4);
   NameMLValMap name_to_ort_value{
