@@ -2024,6 +2024,13 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   ASSERT_TRUE(s.find("cudnn_conv_use_max_workspace=1") != std::string::npos);
   ASSERT_TRUE(s.find("cudnn_conv1d_pad_to_nc1d") != std::string::npos);
 
+  // Update the non-string objects of OrtCUDAProviderOptionsV2
+  OrtArenaCfg* arena_cfg = nullptr;
+  ASSERT_TRUE(api.CreateArenaCfg(1024, 1, 256, 128, &arena_cfg) == nullptr);
+  std::unique_ptr<OrtArenaCfg, decltype(api.ReleaseArenaCfg)> mem_arena_cfg(arena_cfg, api.ReleaseArenaCfg);
+  ASSERT_EQ(api.UpdateCUDAProviderArenaCfg(rel_cuda_options, mem_arena_cfg), nullptr);
+  ASSERT_EQ(rel_cuda_options.default_memory_arena.max_mem, 1024);
+
   ASSERT_TRUE(api.AllocatorFree(allocator, (void*)cuda_options_str) == nullptr);
 
   Ort::SessionOptions session_options;

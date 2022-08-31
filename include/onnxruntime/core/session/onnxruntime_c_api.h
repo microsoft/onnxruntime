@@ -3296,7 +3296,7 @@ struct OrtApi {
   * \since Version 1.13.
   */
   ORT_API2_STATUS(UpdateCUDAProviderArenaCfg, _Inout_ OrtCUDAProviderOptionsV2* cuda_options,
-                  const* OrtArenaCfg memory_arena_cfg);
+                  _In_ const OrtArenaCfg* arena_cfg);
 
       /** \brief Set compute stream in a CUDA Execution Provider.
   *
@@ -3311,7 +3311,7 @@ struct OrtApi {
   * \since Version 1.13.
   */
   ORT_API2_STATUS(UpdateCUDAProviderComputeStream, _Inout_ OrtCUDAProviderOptionsV2* cuda_options,
-                  const* void* compute_stream);
+                  _In_ const void* compute_stream);
 
   /**
   * Get serialized CUDA provider options string.
