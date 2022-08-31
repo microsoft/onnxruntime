@@ -73,8 +73,9 @@ __global__ void SkipLayerNormKernel(
 
 // Vectorized kernel
 template <typename T, unsigned TPB, int ILP>
-__global__ void SkipLayerNormKernelSmall(const int ld, const T* input, const T* skip, const T* beta, const T* gamma,
-                                         const T* bias, const T epsilon, T* output, bool hasBias) {
+__global__ void SkipLayerNormKernelSmall(
+    const int ld, const T* input, const T* skip, const T* beta, const T* gamma,
+    const T* bias, const T epsilon, T* output, bool hasBias) {
   const T rld = T(1.f / ld);
   const int idx = blockIdx.x * ld + threadIdx.x * ILP;  // grid_size = n / ld
 
