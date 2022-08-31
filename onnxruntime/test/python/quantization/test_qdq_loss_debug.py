@@ -179,6 +179,7 @@ class TestSaveActivations(unittest.TestCase):
             reduce_range=False,
             activation_type=QuantType.QInt8,
             weight_type=QuantType.QInt8,
+            optimize_model=False,
         )
 
         data_reader.rewind()
@@ -236,6 +237,7 @@ class TestSaveActivations(unittest.TestCase):
             reduce_range=False,
             activation_type=QuantType.QInt8,
             weight_type=QuantType.QInt8,
+            optimize_model=False,
         )
 
         # Call function under test and verify all weights are present
@@ -305,6 +307,7 @@ class TestSaveActivations(unittest.TestCase):
             reduce_range=False,
             activation_type=QuantType.QInt8,
             weight_type=QuantType.QInt8,
+            optimize_model=False,
         )
 
         # Call function under test and verify all weights are present

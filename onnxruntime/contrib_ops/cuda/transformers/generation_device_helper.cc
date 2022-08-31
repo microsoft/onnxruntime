@@ -510,7 +510,7 @@ Status GreedySearchProcessLogits(
   const Tensor& input = next_token_scores_value.Get<Tensor>();
 
   constexpr int axis = 1;
-  const unsigned top_k = static_cast<unsigned>(1);
+  constexpr unsigned top_k = static_cast<unsigned>(1);
   constexpr bool largest = true;
   constexpr bool sorted = false;
 
