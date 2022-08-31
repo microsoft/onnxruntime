@@ -229,9 +229,11 @@ MatMulReplaceWithQLinear::MatMulReplaceWithQLinear()
     : matmul_int_to_float_replacer_{MatMulIntToFloatReplacer()},
       qlinear_matmul_replacer_{kOnnxDomain} {
 }
+
 Status SplitReplaceWithQuant::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
   return SplitReplacer().Run(graph, selected_nodes);
 }
+
 Status MatMulReplaceWithQLinear::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
   // if the output is empty there were no Q nodes selected, so replace with MatMulIntegerToFloat
   // otherwise replace with QLinearMatMul
