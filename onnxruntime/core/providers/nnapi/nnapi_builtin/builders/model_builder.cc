@@ -53,7 +53,6 @@ void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
 }
 
 Status ModelBuilder::Prepare() {
-  // nnapi_model_ = std::make_unique<Model>(graph_viewer_);
   RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksModel_create(&nnapi_model_->model_));
   ORT_RETURN_IF_ERROR(GetTargetDevices());
   PreprocessNodeUnits();
