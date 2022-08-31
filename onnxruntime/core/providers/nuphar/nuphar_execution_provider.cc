@@ -149,7 +149,8 @@ void NupharExecutionProvider::CreateTVMTarget() {
 
 std::vector<std::unique_ptr<ComputeCapability>>
 NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                       const std::vector<const KernelRegistry*>&) const {
+                                       const std::vector<const KernelRegistry*>&,
+                                       const IKernelTypeStrResolver&) const {
   // Perform shape inference. If shape inference failed,
   // do not run the model through Nuphar
   if (!ShapeInference(graph_viewer, *whole_graph_shape_infer_).IsOK()) {

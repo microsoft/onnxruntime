@@ -54,7 +54,8 @@ class NupharExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                const std::vector<const KernelRegistry*>& kernel_registries) const override;
+                const std::vector<const KernelRegistry*>& kernel_registries,
+                const IKernelTypeStrResolver& kernel_type_str_resolver) const override;
 
   Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                  std::vector<NodeComputeInfo>& node_compute_funcs) override;
