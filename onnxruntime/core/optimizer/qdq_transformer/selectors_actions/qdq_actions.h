@@ -61,7 +61,6 @@ struct ConvReplaceWithQLinear : ReplaceWithQLinear {
 };
 
 struct SplitReplaceWithQuant : public Action {
-
   Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
 };
 struct MatMulReplaceWithQLinear : public Action {
