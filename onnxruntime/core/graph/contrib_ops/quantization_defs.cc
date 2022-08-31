@@ -31,6 +31,32 @@ using ONNX_NAMESPACE::OPTIONAL_VALUE;
 using ONNX_NAMESPACE::DbgOperatorSetTracker;
 #endif
 
+static void CheckFitsInsideBoundingBox(const ONNX_NAMESPACE::TensorShapeProto& input_shape, const google::protobuf::RepeatedField<int64_t>& bounding_box_dims, const MSFPType& msfp_type)
+{
+  bool all_dim_values = true;
+  int64_t numel = 1;
+
+  for (auto i = 0; i < bounding_box_dims.size(); i++)
+  {
+    auto dim = input_shape.dim(bounding_box_dims[i]);
+    if (!dim.has_dim_value())
+    {
+      all_dim_values = false;
+      break;
+    }
+    numel *= dim.dim_value();
+  }
+
+  auto is_standard_msfp = msfp_type == MSFPType::MSFP_1_4_8_16 || msfp_type == MSFPType::MSFP_1_8_8_16;
+
+  // all standard MSFP types use a bounding box size of 16
+  if (all_dim_values && is_standard_msfp && numel > 16)
+  {
+      fail_shape_inference("The number of elements in the bounding box dimensions exceeds the bounding box size.")
+  }
+}
+
+
 void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index, ::google::protobuf::int32 expectedType, bool isScalar, int expectedTensorSize) {
   if (ctx.getNumInputs() > static_cast<size_t>(index)) {
     auto data_type = ctx.getInputType(index);
@@ -248,6 +274,136 @@ Scale and zero point must have same shape. They must be either scalar (per tenso
 
         auto& input_shape = getInputShape(ctx, 0);
         updateOutputShape(ctx, 0, input_shape);
+      }));
+
+  static const char* QuantizeMSFP_ver1_doc = R"DOC(
+The MSFP quantization operator. It consumes a full precision tensor and computes an MSFP tensor.)DOC";
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(QuantizeMSFP, 1, OpSchema()
+      .Attr(
+          "MSFPType",
+          "The type of MSFP - must match with the MSFPType enum",
+          AttributeProto::INT)
+      .Attr(
+        "bounding_box_dims",
+        "Each bounding box spans these dimensions. If not specified, then it is up to the implementation to decide.",
+        AttributeProto::INTS,
+        false)
+      .Input(
+          0,
+          "x",
+          "N-D full precision input tensor to be quantized.",
+          "T1")
+      .Output(
+          0,
+          "y",
+          "1-D, contiguous MSFP data",
+          "T2")
+      .Output(
+          1,
+          "shape",
+          "Shape of x",
+          "T3")
+      .Output(
+          2,
+          "strides",
+          "Strides of x",
+          "T3")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float)", "tensor(bfloat16)"},
+          "Constrain the input to float and bfloat.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(uint8)"},
+          "Constrain y to uint8.")
+      .TypeConstraint(
+          "T3",
+          {"tensor(int64)"},
+          "Constrain shape and strides to uint64.")
+      .SetDoc(QuantizeMSFP_ver1_doc)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        auto& input_shape = getInputShape(ctx, 0);
+        auto bounding_box_dims_proto = ctx.getAttribute("bounding_box_dims");
+        if(bounding_box_dims_proto != nullptr)
+        {
+          auto bounding_box_dims = bounding_box_dims_proto->ints();
+          auto msfp_type = static_cast<MSFPType>(ctx.getAttribute("MSFPType")->i());
+          CheckFitsInsideBoundingBox(input_shape, bounding_box_dims, msfp_type);
+        }
+
+        auto num_dims = input_shape.dim_size();
+        ONNX_NAMESPACE::TensorShapeProto::Dimension num_dims_proto;
+        num_dims_proto.set_dim_value(num_dims);
+        updateOutputShape(ctx, 1, {num_dims_proto});
+        updateOutputShape(ctx, 2, {num_dims_proto});
+      }));
+
+  static const char* DequantizeMSFP_ver1_doc = R"DOC(
+The MSFP dequantization operator. It consumes the raw MSFP data and some metadata such as the shape and strides of the original tensor and computes the dequantized tensor.)DOC";
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeMSFP, 1, OpSchema()
+      .Attr(
+          "MSFPType",
+          "The type of MSFP - must match with the MSFPType enum",
+          AttributeProto::INT)
+      .Attr(
+        "bounding_box_dims",
+        "Each bounding box spans these dimensions. If not specified, then it is up to the implementation to decide.",
+        AttributeProto::INTS)
+      .Attr("dtype",
+            "The datatype to dequantize to.",
+            AttributeProto::INT,
+            static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)) // default
+      .Input(
+          0,
+          "x",
+          "1-D, contiguous, raw, MSFP data to be de-quantized.",
+          "T1")
+      .Input(
+          1,
+          "shape",
+          "shape of the original tensor.",
+          "T2")
+      .Input(
+          2,
+          "strides",
+          "strides of the original tensor.",
+          "T2")
+      .Output(
+          0,
+          "y",
+          "de-quantized tensor.",
+          "T3")
+      .TypeConstraint(
+          "T1",
+          {"tensor(uint8)"},
+          "Constrain the input to uint8.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(int64)"},
+          "Constrain shape and strides to uint64.")
+      .TypeConstraint(
+          "T3",
+          {"tensor(float)", "tensor(bfloat16)"},
+          "Constrain y to float and bfloat16.")
+      .SetDoc(DequantizeMSFP_ver1_doc)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          if (hasInputShape(ctx, 0))
+          {
+            auto& input_shape = getInputShape(ctx, 0);
+            if (input_shape.dim_size() != 1u)
+            {
+              fail_shape_inference("Shape of quantized tensor must be 1D.")
+            }
+          }
+
+          auto y_type = ctx.getOutputType(0);
+          auto dtype_proto = ctx.getAttribute("dtype");
+          y_type->mutable_tensor_type()->set_elem_type(dtype_proto->i());
       }));
 
   ONNX_MS_OPERATOR_SET_SCHEMA(ReduceSumInteger, 1, OpSchema()

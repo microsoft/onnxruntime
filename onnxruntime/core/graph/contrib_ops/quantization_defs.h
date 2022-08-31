@@ -21,4 +21,19 @@ void ValidateTypeAndShapeForScaleAndZP(
     int expectedTensorSize = 0);
 
 }
+
+// Goal is to upstream this enum to ONNX
+// Names follow the convention of MSFP_<# sign bits>_<# mantissa bits>_<# exponent bits>_<size of bounding box>
+enum class MSFPType : int64_t
+{
+    // 1 sign bit, 8 mantissa bits, 8 exponent bits, 16 numbers per bounding box
+    MSFP_1_8_8_16,
+
+    // 1 sign bit, 8 mantissa bits, 8 exponent bits, 16 numbers per bounding box
+    MSFP_1_4_8_16,
+
+    // Reserved for custom MSFP types
+    Custom_MSFP_0,
+    Custom_MSFP_1
+};
 }  // namespace onnxruntime
