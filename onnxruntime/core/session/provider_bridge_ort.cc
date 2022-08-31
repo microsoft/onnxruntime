@@ -29,10 +29,8 @@
 #include "core/framework/sparse_utils.h"
 #include "core/graph/graph_proto_serializer.h"
 
-#if defined(USE_TENSORRT) || defined(USE_CUDA)
-// warning C4505: 'onnxruntime::StrDup': unreferenced function with internal linkage has been removed
+#include "core/session/onnxruntime_c_api.h"
 #include "core/common/string_helper.h"
-#endif
 
 #ifdef ENABLE_TRAINING
 #ifdef ENABLE_TRAINING_TORCH_INTEROP

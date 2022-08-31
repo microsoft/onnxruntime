@@ -773,23 +773,15 @@ namespace Microsoft.ML.OnnxRuntime
 
             if (prepackedWeightsContainer == null)
             {
-                var modelPathBytes = NativeOnnxValueHelper.GetPlatformSerializedString(modelPath);
-                using (PinnedGCHandle pinnedTrainHandle = new PinnedGCHandle(GCHandle.Alloc(modelPathBytes, GCHandleType.Pinned)))
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, modelPathBytes,
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
                     options.Handle, out session));
-                }
             }
 
             else
             {
-                var modelPathBytes = NativeOnnxValueHelper.GetPlatformSerializedString(modelPath);
-                using (PinnedGCHandle pinnedTrainHandle = new PinnedGCHandle(GCHandle.Alloc(modelPathBytes, GCHandleType.Pinned)))
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionWithPrepackedWeightsContainer(
-                    envHandle, modelPathBytes,
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionWithPrepackedWeightsContainer(
+                    envHandle, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
                     options.Handle, prepackedWeightsContainer.Pointer, out session));
-                }
             }
 
             InitWithSessionHandle(session, options);

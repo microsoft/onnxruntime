@@ -589,11 +589,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (!_enableProfiling && value)
                 {
-                    var pathPrefixBytes = NativeOnnxValueHelper.GetPlatformSerializedString(ProfileOutputPathPrefix);
-                    using (PinnedGCHandle pinnedTrainHandle = new PinnedGCHandle(GCHandle.Alloc(pathPrefixBytes, GCHandleType.Pinned)))
-                    {
-                        NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableProfiling(handle, pathPrefixBytes));
-                    }
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableProfiling(handle, NativeOnnxValueHelper.GetPlatformSerializedString(ProfileOutputPathPrefix)));
                     _enableProfiling = true;
                 }
                 else if (_enableProfiling && !value)
@@ -619,11 +615,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (value != _optimizedModelFilePath)
                 {
-                    var pathBytes = NativeOnnxValueHelper.GetPlatformSerializedString(value);
-                    using (PinnedGCHandle pinnedTrainHandle = new PinnedGCHandle(GCHandle.Alloc(pathBytes, GCHandleType.Pinned)))
-                    {
-                        NativeApiStatus.VerifySuccess(NativeMethods.OrtSetOptimizedModelFilePath(handle, pathBytes));
-                    }
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtSetOptimizedModelFilePath(handle, NativeOnnxValueHelper.GetPlatformSerializedString(value)));
                     _optimizedModelFilePath = value;
                 }
             }

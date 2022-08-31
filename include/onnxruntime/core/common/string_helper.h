@@ -3,15 +3,8 @@
 
 #pragma once
 
-#include "core/session/onnxruntime_c_api.h"
-
+// forward declaration
+struct OrtAllocator;
 namespace onnxruntime {
-#if defined(USE_TENSORRT) || defined(USE_CUDA) || defined(ENABLE_TRAINING_ON_DEVICE)
-static char* StrDup(const std::string& str, _Inout_ OrtAllocator* allocator) {
-  char* output_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
-  memcpy(output_string, str.c_str(), str.size());
-  output_string[str.size()] = '\0';
-  return output_string;
-}
-#endif
+char* StrDup(const std::string& str, OrtAllocator* allocator);
 }  // namespace onnxruntime

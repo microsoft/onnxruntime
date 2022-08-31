@@ -207,7 +207,7 @@ namespace Microsoft.ML.OnnxRuntime
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /*(ONNStatus*)*/ DOrtGetLearningRate(
                                                     IntPtr /*(OrtTrainingSession*)*/ session,
-                                                    ref float learningRate
+                                                    out float learningRate
                                                     );
 
             public static DOrtGetLearningRate OrtGetLearningRate;

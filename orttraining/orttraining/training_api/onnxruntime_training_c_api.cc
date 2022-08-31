@@ -217,11 +217,11 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::SetLearningRate, _Inout_ OrtTrainingSession
 }
 
 ORT_API_STATUS_IMPL(OrtTrainingApis::GetLearningRate, _Inout_ OrtTrainingSession* sess,
-                    _Out_ float& learning_rate) {
+                    _Out_ float* learning_rate) {
   API_IMPL_BEGIN
 
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
-  learning_rate = session->GetLearningRate();
+  *learning_rate = session->GetLearningRate();
   return nullptr;
   API_IMPL_END
 }

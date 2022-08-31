@@ -33,7 +33,7 @@ ORT_API_STATUS_IMPL(EvalStep, _In_ const OrtTrainingSession* session, _In_opt_ c
 
 ORT_API_STATUS_IMPL(SetLearningRate, _Inout_ OrtTrainingSession* sess, _In_ float learning_rate);
 
-ORT_API_STATUS_IMPL(GetLearningRate, _Inout_ OrtTrainingSession* sess, _Out_ float& learning_rate);
+ORT_API_STATUS_IMPL(GetLearningRate, _Inout_ OrtTrainingSession* sess, _Out_ float* learning_rate);
 
 ORT_API_STATUS_IMPL(OptimizerStep, _Inout_ OrtTrainingSession* session, _In_opt_ const OrtRunOptions* run_options);
 

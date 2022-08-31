@@ -49,11 +49,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="checkpointPath"> absolute path to checkpoint</param>
         private void LoadCheckpoint(string checkpointPath)
         {
-            var checkpointPathBytes = NativeOnnxValueHelper.GetPlatformSerializedString(checkpointPath);
-            using (PinnedGCHandle pinnedTrainHandle = new PinnedGCHandle(GCHandle.Alloc(checkpointPathBytes, GCHandleType.Pinned)))
-            {
-                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtLoadCheckpoint(checkpointPathBytes, out handle));
-            }
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtLoadCheckpoint(NativeOnnxValueHelper.GetPlatformSerializedString(checkpointPath), out handle));
         }
 
 #region SafeHandle
