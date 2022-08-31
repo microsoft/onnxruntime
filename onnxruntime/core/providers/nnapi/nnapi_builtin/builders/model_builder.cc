@@ -64,7 +64,6 @@ Status ModelBuilder::Prepare() {
   ORT_RETURN_IF_ERROR(RegisterModelInputs());
   ORT_RETURN_IF_ERROR(AddOperations());
   ORT_RETURN_IF_ERROR(RegisterModelOutputs());
-  // RegisterModelShaper();
 
   return Status::OK();
 }
@@ -397,10 +396,6 @@ Status ModelBuilder::RegisterModelOutputs() {
 
   return Status::OK();
 }
-
-/* void ModelBuilder::RegisterModelShaper() {
-  nnapi_model_->SetShaper(shaper_);
-} */
 
 Status ModelBuilder::AddNewOperand(const std::string& name,
                                    const OperandType& operand_type,

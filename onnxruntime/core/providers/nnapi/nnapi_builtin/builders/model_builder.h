@@ -127,8 +127,6 @@ class ModelBuilder {
   android::nn::wrapper::ExecutePreference exe_pref_{
       android::nn::wrapper::ExecutePreference::PREFER_FAST_SINGLE_ANSWER};
 
-/*   Shaper shaper_;
- */
   std::unordered_map<std::string, uint32_t> operand_indices_;
   std::unordered_map<std::string, android::nn::wrapper::OperandType> operand_types_;
 
