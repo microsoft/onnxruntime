@@ -188,6 +188,22 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptions,
   return CreateNotEnabledStatus("CUDA");
 }
 
+ORT_API_STATUS_IMPL(UpdateCUDAProviderArenaCfg, _Inout_ OrtCUDAProviderOptionsV2* cuda_options,
+                    const* OrtArenaCfg memory_arena_cfg);
+{
+  ORT_UNUSED_PARAMETER(cuda_options);
+  ORT_UNUSED_PARAMETER(memory_arena_cfg);
+  return CreateNotEnabledStatus("CUDA");
+}
+
+ORT_API_STATUS_IMPL(UpdateCUDAProviderComputeStream, _Inout_ OrtCUDAProviderOptionsV2* cuda_options,
+                    const* void* compute_stream)
+{
+  ORT_UNUSED_PARAMETER(cuda_options);
+  ORT_UNUSED_PARAMETER(user_compute_stream);
+  return CreateNotEnabledStatus("CUDA");
+}
+
 ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
   ORT_UNUSED_PARAMETER(cuda_options);

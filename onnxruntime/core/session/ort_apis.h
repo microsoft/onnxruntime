@@ -337,6 +337,10 @@ ORT_API_STATUS_IMPL(UpdateCUDAProviderOptions, _Inout_ OrtCUDAProviderOptionsV2*
                     _In_reads_(num_keys) const char* const* provider_options_keys,
                     _In_reads_(num_keys) const char* const* provider_options_values,
                     size_t num_keys);
+ORT_API_STATUS_IMPL(UpdateCUDAProviderArenaCfg, _Inout_ OrtCUDAProviderOptionsV2* cuda_options,
+                    const* OrtArenaCfg memory_arena_cfg);
+ORT_API_STATUS_IMPL(UpdateCUDAProviderComputeStream, _Inout_ OrtCUDAProviderOptionsV2* cuda_options,
+                    const* void* compute_stream);
 ORT_API_STATUS_IMPL(GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 ORT_API(void, ReleaseCUDAProviderOptions, _Frees_ptr_opt_ OrtCUDAProviderOptionsV2*);
 

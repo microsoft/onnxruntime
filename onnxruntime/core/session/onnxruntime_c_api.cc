@@ -2569,6 +2569,8 @@ static constexpr OrtApi ort_api_1_to_12 = {
 
     // Start of Version 13 API in progress, safe to modify/rename/rearrange until we ship
     &OrtApis::GetTrainingApi,
+    &OrtApis::UpdateCUDAProviderArenaCfg,
+    &OrtApis::UpdateCUDAProviderComputeStream,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

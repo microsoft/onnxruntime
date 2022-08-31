@@ -1668,6 +1668,45 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptions,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderArenaCfg,
+                    _Inout_ OrtCUDAProviderOptionsV2* cuda_options,
+                    const* OrtArenaCfg memory_arena_cfg) {
+  API_IMPL_BEGIN
+#ifdef USE_CUDA
+    if (memory_arena_cfg == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Provided OrtArenaCfg value cannot be empty");
+    }
+
+    cuda_options->default_memory_arena = memory_arena_cfg;
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(cuda_options);
+  ORT_UNUSED_PARAMETER(memory_arena_cfg);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderComputeStream,
+                    _Inout_ OrtCUDAProviderOptionsV2* cuda_options,
+                    const* void* compute_stream) {
+  API_IMPL_BEGIN
+#ifdef USE_CUDA
+  cuda_options->user_compute_stream = compute_stream;
+  if (compute_stream == nullptr) {
+    cuda_options->has_user_compute_stream = 0;
+  } else {
+    cuda_options->has_user_compute_stream = 1;
+  }
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(cuda_options);
+  ORT_UNUSED_PARAMETER(compute_stream);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
   API_IMPL_BEGIN

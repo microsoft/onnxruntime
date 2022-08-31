@@ -3283,6 +3283,36 @@ struct OrtApi {
                   _In_reads_(num_keys) const char* const* provider_options_values,
                   _In_ size_t num_keys);
 
+    /** \brief Set memory arena config in a CUDA Execution Provider.
+  *
+  * Please refer to https://onnxruntime.ai/docs/get-started/with-c.html#features
+  * to know the OrtArenaCfg options and possible values
+  *
+  * \param[in] cuda_options
+  * \param[in] memory_arena_cfg OrtArenaCfg object to update cude_options.default_memory_arena_cfg with
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.13.
+  */
+  ORT_API2_STATUS(UpdateCUDAProviderArenaCfg, _Inout_ OrtCUDAProviderOptionsV2* cuda_options,
+                  const* OrtArenaCfg memory_arena_cfg);
+
+      /** \brief Set compute stream in a CUDA Execution Provider.
+  *
+  * Please refer to https://onnxruntime.ai/docs/get-started/with-c.html#features
+  * to know the OrtArenaCfg options and possible values
+  *
+  * \param[in] cuda_options
+  * \param[in] user_compute_stream Compute stream to update cude_options.user_compute_stream (and cuda_options.has_user_compute_stream if necessary)
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.13.
+  */
+  ORT_API2_STATUS(UpdateCUDAProviderComputeStream, _Inout_ OrtCUDAProviderOptionsV2* cuda_options,
+                  const* void* compute_stream);
+
   /**
   * Get serialized CUDA provider options string.
   *
