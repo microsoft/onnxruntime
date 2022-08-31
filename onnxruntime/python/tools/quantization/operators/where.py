@@ -7,13 +7,14 @@ from .qdq_base_operator import QDQOperatorBase
 
 class QWhere(QuantOperatorBase):
     def quantize(self):
+
         node = self.node
         (
             quantized_input_names,
             zero_point_name,
             scale_name,
             nodes,
-        ) = self.quantizer.quantize_inputs(node, [0])
+        ) = self.quantizer.quantize_inputs(node, [1, 2])
         if quantized_input_names is None:
             return super().quantize()
         quantized_output_name = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
@@ -52,4 +53,4 @@ class QDQWhere(QDQOperatorBase):
             self.quantizer.quantize_tensor(node.input[2])
         if not self.disable_qdq_for_node_output:
             for output in node.output:
-                self.quantizer.quantize_tensor(output, node.input[1])
+                self.quantizer.quantize_tensor(output)
