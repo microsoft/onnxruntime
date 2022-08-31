@@ -214,7 +214,6 @@ def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwri
 
 
 def optimize_onnx_model(
-    model_name,
     onnx_model_path,
     optimized_model_path,
     model_type,
@@ -399,7 +398,6 @@ def validate_and_optimize_onnx(
             use_external_data_format,
         )
         optimize_onnx_model(
-            model_name,
             onnx_model_path,
             optimized_model_path,
             model_type,
