@@ -37,6 +37,63 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
+__global__ void AddBiasTransposeTrt(const T* input, const T* biases, T* output) {
+  // Input:  BxSxMxNxH (Format 2)
+  // Output: SxBxNxMxH
+  // B is batch_size, S is sequence_length, M is number of matrices, N is num_heads, H is head_size
+
+  int n = threadIdx.y;
+  int s = blockIdx.x;
+  int b = blockIdx.y;
+  int m = blockIdx.z;  // matrix id
+
+  const int head_size = blockDim.x;
+  const int num_heads = blockDim.y;
+
+  const int sequence_length = gridDim.x;
+  const int batch_size = gridDim.y;
+  const int M = gridDim.z;
+  const int H = head_size;
+  const int NH = num_heads * head_size;
+  const int NHS = NH * sequence_length;
+
+  int in_offset = n * head_size + (m + s * M) * NH + b * NHS * M;
+  const int out_offset = s * batch_size * M * NH + b * M * NH + n * M * H + m * H;
+
+  const int h = threadIdx.x;
+  if (h < head_size) {
+    output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+  }
+}
+
+template <typename T>
+__global__ void AddBiasTransposeTrtLarge(const int head_size, const T* input, const T* biases, T* output) {
+  int n = threadIdx.y;
+  int s = blockIdx.x;
+  int b = blockIdx.y;
+  int m = blockIdx.z;
+
+  const int stride = blockDim.x;
+  const int num_heads = blockDim.y;
+
+  const int sequence_length = gridDim.x;
+  const int batch_size = gridDim.y;
+  const int M = gridDim.z;
+  const int H = head_size;
+  const int NH = num_heads * H;
+  const int NHS = NH * sequence_length;
+  int in_offset = n * H + (m + s * M) * NH + b * NHS * M;
+  const int out_offset = s * batch_size * M * NH + b * M * NH + n * M * H + m * H;
+
+  int h = threadIdx.x;
+  while (h < H) {
+    output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+    h += stride;
+  }
+}
+
+
+template <typename T>
 __global__ void AddBiasTransposeQKV(const T* input, const T* biases, T* output) {
   // Input:  BxSxMxNxH  (Format 1)
   // Output: MxBxNxSxH
@@ -156,14 +213,20 @@ void InvokeAddBiasTranspose(
   const dim3 grid(sequence_length, batch_size, num_matrices);
   if (head_size * num_heads <= max_threads_per_block) {
     const dim3 block(head_size, num_heads, 1);
-    if (format == 1) {
+    if (format == 2) {
+      AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(input, biases, output);
+    }
+    else if (format == 1) {
       AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(input, biases, output);
     } else {
       AddBiasTranspose<T><<<grid, block, 0, stream>>>(input, biases, output);
     }
   } else {
     const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
-    if (format == 1) {
+    if (format == 2) {
+      AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(head_size, input, biases, output);
+    }
+    else if (format == 1) {
       AddBiasTransposeQKVLarge<T><<<grid, block, 0, stream>>>(head_size, input, biases, output);
     } else {
       AddBiasTransposeLarge<T><<<grid, block, 0, stream>>>(head_size, input, biases, output);
