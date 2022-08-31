@@ -25,6 +25,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_tf_crop_and_resize) {
 
   test.AddInput<float>("X", {H, W}, X);
   test.AddInput<float>("roi", {4}, roi);
+  test.AddInput<float>("", {0}, scales);        // opset13 requires either 'sizes' or 'scales' must be provided, but not both of them
   test.AddInput<int64_t>("sizes", {2}, sizes);
 
   std::vector<float> Y = {7.600004f, 7.9f, 8.2f,
@@ -354,6 +355,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1_WithSizes) {
 
     test.AddInput<float>("X", {N, C, H, W}, X);
     test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("", {0}, scales);
     test.AddInput<int64_t>("sizes", {4}, sizes, scales_and_sizes_in_initializer);
 
     std::vector<float> Y = {3.5f, 5.5f};
@@ -480,6 +482,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_pytorch_half_pixel) {
 
   test.AddInput<float>("X", {H, W}, X);
   test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("", {0}, scales);
   test.AddInput<int64_t>("sizes", {2}, sizes);
 
   std::vector<float> Y = {1.6666666f, 7.0f, 12.333333f};
@@ -507,6 +510,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixe
 
   test.AddInput<uint8_t>("X", {N, H, W, C}, X);
   test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("", {0}, scales);
   test.AddInput<int64_t>("sizes", {4}, sizes);
 
   std::vector<uint8_t> Y = {1, 7, 12};
@@ -536,6 +540,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixe
 
   test.AddInput<int8_t>("X", {N, H, W, C}, X);
   test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("", {0}, scales);
   test.AddInput<int64_t>("sizes", {4}, sizes);
 
   std::vector<int8_t> Y = {0, 2, -9};
@@ -716,6 +721,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_3DTrilinear_pytorch_half_pixel) 
 
   test.AddInput<float>("X", {D, H, W}, X);
   test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("", {0}, scales);
   test.AddInput<int64_t>("sizes", {3}, sizes);
 
   std::vector<float> Y = {1.6666666f, 7.0f, 12.333333f};
@@ -842,7 +848,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_WithSizes) {
 
   test.AddInput<float>("X", {N, C, H, W}, X);
   test.AddInput<float>("roi", {0}, roi);
-  test.AddInput<float>("scales", {0}, scales);
+  test.AddInput<float>("", {0}, scales);
   test.AddInput<int64_t>("sizes", {4}, sizes);
 
   std::vector<float> Y = {1.0f, 2.0f, 4.0f};
@@ -869,6 +875,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_tf_half_pixel) {
 
   test.AddInput<float>("X", {N, C, H, W}, X);
   test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {0}, scales);
   test.AddInput<int64_t>("sizes", {4}, sizes);
 
   std::vector<float> Y = {6.0f, 8.0f,
@@ -973,6 +980,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSampleTest_WithSizes_CeilMode) {
 
   test.AddInput<float>("X", {N, C, H, W}, X);
   test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("", {0}, scales);
   test.AddInput<int64_t>("sizes", {4}, sizes);
 
   std::vector<float> Y = {1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
@@ -1001,6 +1009,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample5dTest_WithSizes_CeilMode) {
 
   test.AddInput<float>("X", {1, N, C, H, W}, X);
   test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("", {0}, scales);
   test.AddInput<int64_t>("sizes", {5}, sizes);
 
   std::vector<float> Y = {1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
@@ -1171,7 +1180,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Sizes) {
 
     test.AddInput<float>("X", {N, C, H, W}, X);
     test.AddInput<float>("roi", {0}, roi);
-    test.AddInput<float>("scales", {0}, scales, sizes_in_initializer);
+    test.AddInput<float>("", {0}, scales);
     test.AddInput<int64_t>("sizes", {4}, sizes, sizes_in_initializer);
 
     std::vector<float> Y = {1.0f, 1.0f, 2.0f, 2.0f,
@@ -1378,6 +1387,7 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest_MultiChannel) {
 
   test.AddInput<float>("X", {N, C, H, W}, X);
   test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("", {0}, scales);
   test.AddInput<int64_t>("sizes", {4}, sizes);
 
   std::vector<float> Y = {-0.543341f, -0.308515f, 0.0807175f, 0.644203f, 1.06533f, 1.48645f, 2.04994f, 2.43917f, 2.674f,
