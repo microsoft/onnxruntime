@@ -1119,7 +1119,7 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     private native void addXnnpack(
-        long apiHandle, long nativeHandle, String[] po_key, String [] po_val) throws OrtException;
+        long apiHandle, long nativeHandle, String[] po_key, String[] po_val) throws OrtException;
   }
 
   /** Used to control logging and termination of a call to {@link OrtSession#run}. */
