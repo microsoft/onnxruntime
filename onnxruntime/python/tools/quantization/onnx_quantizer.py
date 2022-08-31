@@ -495,7 +495,7 @@ class ONNXQuantizer:
         scale_sub_name = input_name + "_scale_Sub"
         scale_sub_node = onnx.helper.make_node(
             "Sub",
-            [reduce_max_node.output[0], zero_min_node.output[0]],
+            [zero_max_node.output[0], zero_min_node.output[0]],
             [scale_sub_name + ":0"],
             scale_sub_name,
         )

@@ -124,10 +124,11 @@ class QDQQuantizer(ONNXQuantizer):
         )
 
         # Register the chosen dynamic subgraph compute quantization parameter function based on symmetric and qtype
-        self.compute_quantization_parameters_function = self.create_dynamic_subgraph_function(
-            self.input_qType, self.is_activation_symmetric
-        )
-        self.model.model.functions.append(self.compute_quantization_parameters_function)
+        if not static:
+            self.compute_quantization_parameters_function = self.create_dynamic_subgraph_function(
+                self.input_qType, self.is_activation_symmetric
+            )
+            self.model.model.functions.append(self.compute_quantization_parameters_function)
 
     def _is_tensor_quantizable(self, tensor_name):
         """
@@ -251,11 +252,14 @@ class QDQQuantizer(ONNXQuantizer):
         if symmetric:
             """
             Create nodes for dynamic symmetric quantization of input and add them to nodes_list
-                parameter input_name: Name of the input.
-                parameter nodes_list: new nodes are appended to this list.
-                return: scale_name, zero_point_name, scale_shape, zero_point_shape.
+                parameter qType: UInt8 or Int8.
+                parameter symmetric: is scale and zp calculation symmetric?
+                return: compute quantization parameters function.
+
+            scale = max(abs(rmin), abs(rmax)) / (qrange / 2)
+            zp = (qmax + qmin) / 2
             """
-            input_name = "cqp"
+            input_name = "compute_quantization_parameters"
             qrange_name = (
                 self.fixed_qrange_int8_name if qType == onnx_proto.TensorProto.INT8 else self.fixed_qrange_uint8_name
             )
@@ -377,12 +381,15 @@ class QDQQuantizer(ONNXQuantizer):
             )
         else:
             """
-            Create nodes for asymmetric dynamic quantization of input and add them to nodes_list_ref
-                parameter input_name: Name of the input.
-                parameter nodes_list: new nodes are appended to this list.
-                return: scale_name, zero_point_name, scale_shape, zero_point_shape.
+            Create nodes for dynamic asymmetric quantization of input and add them to nodes_list
+                parameter qType: UInt8 or Int8.
+                parameter symmetric: is scale and zp calculation symmetric?
+                return: compute quantization parameters function.
+
+            scale = (rmax - rmin) / qrange
+            zp = round(qmin - (rmin / scale))
             """
-            input_name = "cqp"
+            input_name = "compute_quantization_parameters"
             # Reduce min and Reduce max
             input_scale_name = input_name + "_scale"
             input_zp_name = input_name + "_zero_point"
