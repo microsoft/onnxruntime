@@ -1522,7 +1522,7 @@ public class InferenceTest {
           options.addCoreML();
           break;
         case XNNPACK:
-          options.addXnnpack();
+          options.addXnnpack(new HashMap<String, String>());
           break;
         case NUPHAR:
           options.addNuphar(true, "");

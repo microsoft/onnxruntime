@@ -622,15 +622,36 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addROC
  * Signature: (JILjava/lang/String)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addXnnpack(
-    JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle) {
+    JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle,
+    jobjectArray configKeyArr, jobjectArray configValueArr) {
   (void)jobj;
 #ifdef USE_XNNPACK
   const OrtApi* api = (const OrtApi*)apiHandle;
   OrtSessionOptions* options = (OrtSessionOptions*)optionsHandle;
-  checkOrtStatus(jniEnv, api, api->SessionOptionsAppendExecutionProvider(options, "XNNPACK", 0, 0, 0));
+  int key_count = (*jniEnv)->GetArrayLength(jniEnv, configKeyArr);
+  if (key_count != (*jniEnv)->GetArrayLength(jniEnv, configValueArr)) {
+    throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), "Xnnapck provider options' key-value don't match.");
+  }
+  const char* key_array[key_count];
+  const char* value_array[key_count];
+  jstring jkey_array[key_count];
+  jstring jvalue_array[key_count];
+  for (int i = 0; i < key_count; i++) {
+    jkey_array[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configKeyArr, i));
+    jvalue_array[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configValueArr, i));
+    key_array[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jkey_array[i], NULL);
+    value_array[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jvalue_array[i], NULL);
+  }
+  checkOrtStatus(jniEnv, api, api->SessionOptionsAppendExecutionProvider(options, "XNNPACK", key_array, value_array, key_count));
+  for (int i = 0; i < key_count; i++) {
+    (*jniEnv)->ReleaseStringUTFChars(jniEnv, jkey_array[i], key_array[i]);
+    (*jniEnv)->ReleaseStringUTFChars(jniEnv, jvalue_array[i], value_array[i]);
+  }
 #else
   (void)apiHandle;
   (void)optionsHandle;
+  (void)configKeyArr;
+  (void)configValueArr;
   throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), "This binary was not compiled with Xnnapck support.");
 #endif
 }

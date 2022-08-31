@@ -989,12 +989,20 @@ public class OrtSession implements AutoCloseable {
 
     /**
      * Adds Xnnpack as an execution backend.
-     *
+     * @param provider_options options pass to XNNAPCK EP for initialization.
      * @throws OrtException If there was an error in native code.
      */
-    public void addXnnpack() throws OrtException {
+    public void addXnnpack(Map<String, String> provider_options) throws OrtException {
       checkClosed();
-      addXnnpack(OnnxRuntime.ortApiHandle, nativeHandle);
+      String[] po_key = new String[provider_options.size()];
+      String[] po_val = new String[provider_options.size()];
+      int i = 0;
+      for (Map.Entry<String, String> entry : provider_options.entrySet()) {
+        po_key[i] = entry.getKey();
+        po_val[i] = entry.getValue();
+        i++;
+      }
+      addXnnpack(OnnxRuntime.ortApiHandle, nativeHandle, po_key, po_val);
     }
 
     private native void setExecutionMode(long apiHandle, long nativeHandle, int mode)
@@ -1109,7 +1117,7 @@ public class OrtSession implements AutoCloseable {
     private native void addCoreML(long apiHandle, long nativeHandle, int coreMLFlags)
         throws OrtException;
 
-    private native void addXnnpack(long apiHandle, long nativeHandle) throws OrtException;
+    private native void addXnnpack(long apiHandle, long nativeHandle, String[] po_key, String [] po_val) throws OrtException;
   }
 
   /** Used to control logging and termination of a call to {@link OrtSession#run}. */
