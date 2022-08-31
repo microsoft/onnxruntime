@@ -82,7 +82,7 @@ Status TrainingSession::SchedulerStep() noexcept {
   return scheduler_->Step();
 }
 
-size_t TrainingSession::GetParametersSize(const bool trainable_only) const noexcept {
+size_t TrainingSession::GetParametersSize(const bool trainable_only) const {
   return module_->GetParametersSize(trainable_only);
 }
 

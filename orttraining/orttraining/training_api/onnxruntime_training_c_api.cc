@@ -291,10 +291,8 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CopyParametersToBuffer, _Inout_ OrtTraining
                     _Inout_ OrtValue& parameters_buffer, bool trainable_only) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
-  Status status = session->CopyParametersToBuffer(parameters_buffer, trainable_only);
-
-  if (!status.IsOK())
-    return onnxruntime::ToOrtStatus(status);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->CopyParametersToBuffer(parameters_buffer, trainable_only));
+  
   return nullptr;
   API_IMPL_END
 }
@@ -303,10 +301,8 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CopyBufferToParameters, _Inout_ OrtTraining
                     _Inout_ OrtValue& parameters_buffer, bool trainable_only) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
-  Status status = session->CopyBufferToParameters(parameters_buffer, trainable_only);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->CopyBufferToParameters(parameters_buffer, trainable_only));
 
-  if (!status.IsOK())
-    return onnxruntime::ToOrtStatus(status);
   return nullptr;
   API_IMPL_END
 }

@@ -238,9 +238,11 @@ struct OrtTrainingApi {
   /** \brief Copy parameters onto contiguous buffer held by parameters_buffer
   *
   * The parameters_buffer has to be of the size given by GetParametersSize api call,
-  * with matching setting for 'trainable_only'. The OrtValue must be pre-allocated onto
+  * with matching setting for 'trainable_only'. All the target parameters must be of the same
+  * datatype. The OrtValue must be pre-allocated onto
   * the desired device. This is a complementary function to 'CopyBufferToParameters'.
   * Parameter ordering is preserved.
+  * User is responsible for allocating/freeing the 'parameters_buffer'.
   *
   * \param[in] sess The training session.
   * \param[in] trainable_only Whether to skip non-trainable parameters
@@ -255,9 +257,11 @@ struct OrtTrainingApi {
   /** \brief Copy parameter values from contiguous buffer held by parameters_buffer onto parameters
   *
   * The parameters_buffer has to be of the size given by GetParametersSize api call,
-  * with matching setting for 'trainable_only'. This is a complementary function to 'CopyBufferToParameters'
+  * with matching setting for 'trainable_only'. All the target parameters must be of the same
+  * datatype. This is a complementary function to 'CopyBufferToParameters'
   * and can be used to load updated buffer values onto the parameters. 
   * Parameter ordering is preserved.
+  * User is responsible for allocating/freeing the 'parameters_buffer'.
   *
   * \param[in] sess The training session.
   * \param[in] trainable_only Whether to skip non-trainable parameters

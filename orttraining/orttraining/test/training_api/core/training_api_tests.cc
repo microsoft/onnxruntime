@@ -60,7 +60,7 @@ TEST(TrainingApiTest, ModuleParametersSize) {
   auto model = std::make_unique<onnxruntime::training::api::Module>(ToUTF8String(model_uri),
                                                                     state.module_checkpoint_state.named_parameters, session_option,
                                                                     *env, std::vector<std::shared_ptr<IExecutionProvider>>());
-  size_t params_size;
+  size_t params_size=0;
   for (auto& param : model->Parameters()) {
     params_size += param->Data().Get<Tensor>().Shape().Size();
   }

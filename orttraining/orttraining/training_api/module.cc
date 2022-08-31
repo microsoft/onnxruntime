@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/safeint.h"
 #include "core/framework/execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
@@ -195,9 +196,9 @@ size_t Module::GetEvalModeOutputCount() const noexcept {
   return eval_output_names_.size();
 }
 
-size_t Module::GetParametersSize(const bool trainable_only) const noexcept {
-  size_t parameters_size = 0;
-  for (auto& it : named_parameters_) {
+size_t Module::GetParametersSize(const bool trainable_only) const {
+  SafeInt<size_t> parameters_size = 0;
+  for (const auto& it : named_parameters_) {
     if (trainable_only && !it.second->RequiresGrad()) {
       continue;
     }
@@ -216,16 +217,18 @@ std::vector<std::shared_ptr<Parameter>> Module::Parameters() const {
 
 Status Module::CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only) {
   ORT_ENFORCE(parameters_buffer.IsAllocated(), "Parameters buffer should be pre-allocated.");
-  ORT_ENFORCE(parameters_buffer.IsTensor(), "Parameters buffer should of tensor type.");
+  ORT_ENFORCE(parameters_buffer.IsTensor(), "Parameters buffer should be of tensor type.");
   auto* init_tensor = parameters_buffer.GetMutable<Tensor>();
   ORT_ENFORCE(nullptr != init_tensor);
-  ORT_ENFORCE(init_tensor->Shape().Size() == static_cast<int64_t>(GetParametersSize(trainable_only)),
-              "Parameters buffer size incorrect.");
+  auto expected_buffer_size = static_cast<int64_t>(GetParametersSize(trainable_only));
+  ORT_ENFORCE(init_tensor->Shape().Size() == expected_buffer_size,
+              "Parameters buffer size incorrect. Expected:",expected_buffer_size,
+              ", Actual:", init_tensor->Shape().Size());
 
   const DataTransferManager& sess_data_transfer_manager = train_sess_->GetDataTransferManager();
 
   size_t offset = 0;
-  for (auto& param_name : weight_names_) {
+  for (const auto& param_name : weight_names_) {
     auto& param = named_parameters_.at(param_name);
     if (trainable_only && !param->RequiresGrad()) {
       continue;
@@ -257,16 +260,18 @@ Status Module::CopyParametersToBuffer(OrtValue& parameters_buffer, const bool tr
 
 Status Module::CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only) {
   ORT_ENFORCE(parameters_buffer.IsAllocated(), "Parameters buffer should be pre-allocated.");
-  ORT_ENFORCE(parameters_buffer.IsTensor(), "Parameters buffer should of tensor type.");
+  ORT_ENFORCE(parameters_buffer.IsTensor(), "Parameters buffer should be of tensor type.");
   auto* init_tensor = parameters_buffer.GetMutable<Tensor>();
   ORT_ENFORCE(nullptr != init_tensor);
-  ORT_ENFORCE(init_tensor->Shape().Size() == static_cast<int64_t>(GetParametersSize(trainable_only)),
-              "Parameters buffer size incorrect.");
+  auto expected_buffer_size = static_cast<int64_t>(GetParametersSize(trainable_only));
+  ORT_ENFORCE(init_tensor->Shape().Size() == expected_buffer_size,
+              "Parameters buffer size incorrect. Expected:",expected_buffer_size,
+              ", Actual:", init_tensor->Shape().Size());
 
   const DataTransferManager& sess_data_transfer_manager = train_sess_->GetDataTransferManager();
 
   size_t offset = 0;
-  for (auto& param_name : weight_names_) {
+  for (const auto& param_name : weight_names_) {
     auto& param = named_parameters_.at(param_name);
     if (trainable_only && !param->RequiresGrad()) {
       continue;
