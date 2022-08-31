@@ -67,6 +67,13 @@ Status CQPQuantizeLinearFusion::ApplyImpl(Graph& graph, bool& modified, int grap
         cqp_node.MutableInputDefs()[0]
     };
 
+    InlinedVector<NodeArg*> output_defs{
+        cqp_node.MutableInputDefs()[0],
+        mtf_input_args[1],  // B of MatmulIntegerToFloat
+        mtf_input_args[3],  // B_Scale of MatmulIntegerToFloat
+        &optional_node_arg,
+        &optional_node_arg};
+
     std::cout <<"\n has input defs \n";
 
     std::string op_type = "DynamicQuantizeLinear";
