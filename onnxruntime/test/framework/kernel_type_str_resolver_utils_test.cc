@@ -14,10 +14,10 @@
 
 namespace onnxruntime::test {
 
-static Status LoadRequiredOpsFromOpSchemas(KernelTypeStrResolver& kernel_type_str_resolver) {
+static Status LoadLayoutTransformationRequiredOpsFromOpSchemas(KernelTypeStrResolver& kernel_type_str_resolver) {
   const auto required_op_ids = kernel_type_str_resolver_utils::GetLayoutTransformationRequiredOpIdentifiers();
   const auto schema_registry = SchemaRegistryManager{};
-  for (auto op_id : required_op_ids) {
+  for (const auto& op_id : required_op_ids) {
     const auto* op_schema = schema_registry.GetSchema(std::string{op_id.op_type}, op_id.since_version,
                                                       std::string{op_id.domain});
     ORT_RETURN_IF(op_schema == nullptr, "Failed to get op schema.");
@@ -26,9 +26,9 @@ static Status LoadRequiredOpsFromOpSchemas(KernelTypeStrResolver& kernel_type_st
   return Status::OK();
 }
 
-TEST(KernelTypeStrResolverUtilsTest, VerifyRequiredOpsResolver) {
+TEST(KernelTypeStrResolverUtilsTest, VerifyLayoutTransformationRequiredOpsResolver) {
   KernelTypeStrResolver expected_resolver;
-  ASSERT_STATUS_OK(LoadRequiredOpsFromOpSchemas(expected_resolver));
+  ASSERT_STATUS_OK(LoadLayoutTransformationRequiredOpsFromOpSchemas(expected_resolver));
 
   KernelTypeStrResolver actual_resolver;
   ASSERT_STATUS_OK(
@@ -40,7 +40,7 @@ TEST(KernelTypeStrResolverUtilsTest, VerifyRequiredOpsResolver) {
 // run this test manually to output a hard-coded byte array
 TEST(KernelTypeStrResolverUtilsTest, DISABLED_PrintExpectedLayoutTransformationRequiredOpsResolverByteArray) {
   KernelTypeStrResolver expected_resolver;
-  ASSERT_STATUS_OK(LoadRequiredOpsFromOpSchemas(expected_resolver));
+  ASSERT_STATUS_OK(LoadLayoutTransformationRequiredOpsFromOpSchemas(expected_resolver));
 
   flatbuffers::DetachedBuffer buffer;
   gsl::span<const uint8_t> buffer_span;
