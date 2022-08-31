@@ -10,111 +10,18 @@
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
+static constexpr int32_t MAXIMUM_RECOMPUTE_COUNT = 3;
 
-namespace memory_alleviation {
-
-AlleviationStratagy ParseFromIntFlag(const int32_t& flag_int) {
-  if (flag_int == 0) {
-    return AlleviationStratagy::None;
-  } else if (flag_int == 1) {
-    return AlleviationStratagy::Recompute;
-  } else if (flag_int == 2) {
-    return AlleviationStratagy::OffloadToCPUMemory;
-  } else {
-    ORT_THROW("Unknown memory alleviation strategy: ", flag_int);
-  }
-}
-}  // namespace memory_alleviation
-
-namespace {
-
-int32_t SatisfyGeluRecomputeCondition(Graph& /*graph*/,
-                                      const Node& node, std::vector<Node*>& nodes,
-                                      std::unordered_map<NodeIndex, bool>& /*is_forward_op_map*/) {
-  static const InlinedHashSet<std::string_view> target_optypes = {"Gelu", "FastGelu", "BiasGelu"};
-  if (target_optypes.find(node.OpType()) == target_optypes.end()) {
-    return 0;
-  }
-
-  nodes.push_back(const_cast<Node*>(&node));
-  return 1;
-}
-
-int32_t SatisfyTileRecomputeCondition(Graph& /*graph*/, const Node& node, std::vector<Node*>& nodes,
-                                      std::unordered_map<NodeIndex, bool>& /*is_forward_op_map*/) {
-  static const InlinedHashSet<std::string_view> target_optypes = {"Tile"};
-  if (target_optypes.find(node.OpType()) == target_optypes.end()) {
-    return 0;
-  }
-
-  nodes.push_back(const_cast<Node*>(&node));
-  return 1;
-}
-
-// TODO(pengwa): So far this subgraph detection is bound to Ads clrv3 model, we need generalize
-// the approach detecting for other  models.
-int32_t SatisfyDropoutReshapeMatmulCondition(
+Status MemoryAlleviation::PrepareCandidateNodes(
     Graph& graph,
-    const Node& node,
-    std::vector<Node*>& nodes,
-    std::unordered_map<NodeIndex, bool>& is_forward_op_map,
-    std::unordered_map<std::string, std::pair<bool, bool>>& fw_op_output_arg_used_map) {
-  if (node.OpType() != "Reshape") {
-    return 0;
-  }
-
-  const Node* prev_node = graph.GetProducerNode(node.InputDefs()[0]->Name());
-  if (prev_node->OpType() != "Dropout" && prev_node->OpType() != "BitmaskDropout" &&
-      !fw_op_output_arg_used_map[prev_node->InputDefs()[0]->Name()].second) {
-    return 0;
-  }
-
-  const Node* prev_prev_node = graph.GetProducerNode(prev_node->InputDefs()[0]->Name());
-  if (prev_prev_node->OpType() != "Where" &&
-      !fw_op_output_arg_used_map[prev_prev_node->InputDefs()[0]->Name()].second) {
-    return 0;
-  }
-
-  // Check input of Dropout is also used by backward.
-  std::vector<const Node*> next_nodes;
-  next_nodes = graph.GetConsumerNodes(node.OutputDefs()[0]->Name());
-  bool find_matmul_in_fw = false;
-  bool find_matmul_in_bw = false;
-  for (auto next_node : next_nodes) {
-    if ((next_node->OpType() == "MatMul" || next_node->OpType() == "FusedMatMul")) {
-      if (is_forward_op_map[next_node->Index()]) {
-        find_matmul_in_fw = true;
-      } else {
-        find_matmul_in_bw = true;
-      }
-    }
-  }
-
-  if (find_matmul_in_fw && find_matmul_in_bw) {
-    std::cout << "DropoutRecompute: ready to recompute " << node.Name() << node.OpType() << prev_node->OpType()
-              << prev_node->Name() << std::endl;
-    nodes.push_back(const_cast<Node*>(prev_prev_node));
-    nodes.push_back(const_cast<Node*>(prev_node));
-    nodes.push_back(const_cast<Node*>(&node));
-    return 1;
-  }
-
-  return 0;
-}
-
-}  // namespace
-
-Status MemoryAlleviation::ApplyImpl(Graph& graph,
-                                    bool& modified,
-                                    int /*graph_level*/,
-                                    const logging::Logger& /*logger*/) const {
+    std::unordered_map<std::string, std::pair<bool, bool>>& fw_op_output_arg_used_map,
+    std::unordered_map<NodeIndex, bool>& is_forward_op_map) const {
   GraphViewer graph_viewer(graph);
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
 
-  std::unordered_map<NodeIndex, bool> is_forward_op_map;
-  std::unordered_map<std::string, const Node*> name_to_node_map;
+  is_forward_op_map.clear();
   std::unordered_map<std::string, std::unordered_set<const Node*>> node_arg_name_to_consumer_node_map;
-
+  std::unordered_map<std::string, const Node*> name_to_node_map;
   bool is_forward = true;
   size_t dropout_node_index = 0;
   for (size_t i = 0; i < node_ids.size(); ++i) {
@@ -146,7 +53,7 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph,
     }
   }
 
-  std::unordered_map<std::string, std::pair<bool, bool>> fw_op_output_arg_used_map;
+  fw_op_output_arg_used_map.clear();
   for (auto& kv : node_arg_name_to_consumer_node_map) {
     for (auto& consumer_node : kv.second) {
       if (is_forward_op_map[consumer_node->Index()]) {
@@ -156,6 +63,111 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph,
       }
     }
   }
+
+  return Status::OK();
+}
+
+Status MemoryAlleviation::CheckRecomputeCondition(
+    Graph& graph,
+    const Node& node,
+    std::vector<const Node*>& nodes,
+    const std::unordered_map<std::string, std::pair<bool, bool>>& fw_op_output_arg_used_map) const {
+  const Node* start_node = &node;
+  if (node.OpType() == "Reshape") {
+    const Node* prev_node = graph.GetProducerNode(node.InputDefs()[0]->Name());
+    start_node = prev_node;
+    nodes.push_back(&node);
+  }
+
+  bool need_check = recompute_op_type_to_input_arg_index_map_.find(start_node->OpType()) !=
+                    recompute_op_type_to_input_arg_index_map_.end();
+
+  if (!need_check) {
+    nodes.clear();
+    return Status::OK();
+  }
+
+  std::deque<std::pair<const Node*, int>> q;
+  std::set<std::pair<const Node*, int>> visited_output_args_map;
+
+  /// Start node handling....
+  nodes.push_back(start_node);
+  const auto& input_arg_indices = recompute_op_type_to_input_arg_index_map_.at(start_node->OpType());
+  for (auto it = start_node->InputEdgesBegin(), end = start_node->InputEdgesEnd(); it != end; ++it) {
+    const Node::EdgeEnd& input_edge = *it;
+    // For start node, we only trace back from the specified output port.
+    if (std::find(input_arg_indices.begin(), input_arg_indices.end(), it->GetSrcArgIndex()) !=
+        input_arg_indices.end()) {
+      std::pair<const Node*, int> p = std::make_pair<const Node*, int>(&(input_edge.GetNode()),
+                                                                       input_edge.GetDstArgIndex());
+      visited_output_args_map.insert({p});
+      q.push_back(p);
+    }
+  }
+
+  while (nodes.size() < MAXIMUM_RECOMPUTE_COUNT && !q.empty()) {
+    std::deque<std::pair<const Node*, int>> next_q;
+
+    // For each node, check it's parent input args.
+    while (!q.empty()) {
+      std::pair<const Node*, int> p = q.front();
+      q.pop_front();
+
+      if (std::find(visited_output_args_map.begin(), visited_output_args_map.end(), p) !=
+          visited_output_args_map.end()) {
+        continue;
+      }
+
+      visited_output_args_map.insert({p});
+
+      const Node* n = p.first;
+      // Intermediate node handling....
+      for (auto it = n->InputEdgesBegin(), end = n->InputEdgesEnd(); it != end; ++it) {
+        // If op is not cheap to recompute, then we stop here.
+        if (cheap_to_recompute_op_type_list_.find(it->GetNode().OpType()) == cheap_to_recompute_op_type_list_.end()) {
+          continue;
+        }
+
+        std::vector<std::pair<const Node*, int>> next_input_args;
+        const auto& functor = cheap_to_recompute_op_type_list_.at(n->OpType());
+        if (functor(graph, it->GetNode(), next_input_args)) {
+          if (std::find(nodes.begin(), nodes.end(), &(it->GetNode())) == nodes.end()) {
+            nodes.push_back(&(it->GetNode()));
+          }
+
+          // continue track the input args of cheap computed nodes.
+          for (auto next_input_arg_it = next_input_args.begin();
+               next_input_arg_it != next_input_args.end(); ++next_input_arg_it) {
+            // If the input arg of recomputed node not exist in bw, then we need trace back.
+            if (!fw_op_output_arg_used_map.at(next_input_arg_it->first->OutputDefs()[next_input_arg_it->second]->Name()).second) {
+              next_q.push_back(*next_input_arg_it);
+            };
+          }
+        }
+      }
+    }
+
+    q = next_q;
+  }
+
+  // If input args are not found in bw, but op count exceed MAXIMUM_RECOMPUTE_COUNT, skip recompute.
+  if (!q.empty()) {
+    nodes.clear();
+  } else {
+    std::rotate(nodes.rbegin(), nodes.rbegin() + 1, nodes.rend());
+  }
+
+  return Status::OK();
+}
+
+Status MemoryAlleviation::ApplyImpl(
+    Graph& graph,
+    bool& modified,
+    int /*graph_level*/,
+    const logging::Logger& /*logger*/) const {
+  std::unordered_map<std::string, std::pair<bool, bool>> fw_op_output_arg_used_map;
+  std::unordered_map<NodeIndex, bool> is_forward_op_map;
+  ORT_RETURN_IF_ERROR(PrepareCandidateNodes(graph, fw_op_output_arg_used_map, is_forward_op_map));
 
   std::vector<std::string> candidate_node_arg_names;
   std::vector<NodeIndex> candidate_node_ids;
@@ -169,6 +181,8 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph,
     }
   }
 
+  GraphViewer graph_viewer(graph);
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
   // Traverse backward from the bottom of the graph, so that the recompute nodes
   // for lower layers are executed earlier
   for (int i = static_cast<int>(node_ids.size() - 1); i >= 0; --i) {
@@ -187,104 +201,46 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph,
         output_indices_to_replace.push_back(k);
       }
     }
-    std::vector<Node*> to_duplicated_nodes;
-    int32_t gelu_recompute_flag = 0;
-    int32_t dropout_recompute_flag = 0;
-    int32_t tile_recompute_flag = 0;
-    if ((enable_gelu_recompute_ &&
-         (gelu_recompute_flag = SatisfyGeluRecomputeCondition(graph, node, to_duplicated_nodes, is_forward_op_map))) ||
-        (enable_dropout_recompute_ &&
-         (dropout_recompute_flag = SatisfyDropoutReshapeMatmulCondition(
-              graph, node, to_duplicated_nodes, is_forward_op_map, fw_op_output_arg_used_map))) ||
-        (enable_tile_recompute_ &&
-         (tile_recompute_flag = SatisfyTileRecomputeCondition(graph, node, to_duplicated_nodes, is_forward_op_map)))) {
+
+    std::vector<const Node*> to_duplicated_nodes;
+    ORT_RETURN_IF_ERROR(CheckRecomputeCondition(graph, node, to_duplicated_nodes, fw_op_output_arg_used_map));
+    if (to_duplicated_nodes.size() > 0) {
       std::unordered_map<NodeArg*, NodeArg*> self_contained_outputs_map;
 
-      int32_t action = gelu_recompute_flag * enable_gelu_recompute_ +
-                       dropout_recompute_flag * enable_dropout_recompute_ +
-                       tile_recompute_flag * enable_tile_recompute_;
-
-      if (action == 1) {  // Recompute nodes
-        for (Node* to_duplicated_node : to_duplicated_nodes) {
-          std::vector<NodeArg*> new_input_args;
-          new_input_args.reserve(to_duplicated_node->MutableInputDefs().size());
-          for (NodeArg* input_arg : to_duplicated_node->MutableInputDefs()) {
-            new_input_args.push_back(self_contained_outputs_map.find(input_arg) == self_contained_outputs_map.end()
-                                         ? input_arg
-                                         : self_contained_outputs_map[input_arg]);
-          }
-
-          std::vector<NodeArg*> new_output_args;
-          new_output_args.reserve(to_duplicated_node->MutableOutputDefs().size());
-          for (size_t k = 0; k < to_duplicated_node->MutableOutputDefs().size(); ++k) {
-            const auto& output = to_duplicated_node->MutableOutputDefs()[k];
-            new_output_args.push_back(&graph.GetOrCreateNodeArg(graph_utils::RecomputeName(output->Name()),
-                                                                output->TypeAsProto()));
-
-            self_contained_outputs_map[output] = new_output_args.back();
-          }
-
-          Node& recompute_node = graph.AddNode(to_duplicated_node->Name() + "_recompute",
-                                               to_duplicated_node->OpType(),
-                                               "Recompute of " + to_duplicated_node->Name(),
-                                               new_input_args,
-                                               new_output_args,
-                                               &to_duplicated_node->GetAttributes(),
-                                               to_duplicated_node->Domain());
-
-          recompute_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
-          recompute_node.SetExecutionProviderType(to_duplicated_node->GetExecutionProviderType());
-
-          replacement_node = &recompute_node;
-
-          std::cout << "Node " << node.Name() << " is recomputed" << std::endl;
-        }
-      } else if (action == 2) {
-        // offload
-        Node* last_node = to_duplicated_nodes.back();
-        if (last_node->MutableOutputDefs().size() > 1) {
-          std::cout << "offload currently only handle the first output when there is multiple outputs, for nodes"
-                    << last_node->Name() << "(" << last_node->OpType() << ")" << std::endl;
-        }
+      for (const Node* to_duplicated_node : to_duplicated_nodes) {
+        Node* node_to_replicated = const_cast<Node*>(to_duplicated_node);
         std::vector<NodeArg*> new_input_args;
-        new_input_args.push_back(last_node->MutableOutputDefs()[0]);
+        new_input_args.reserve(node_to_replicated->MutableInputDefs().size());
+        for (NodeArg* input_arg : node_to_replicated->MutableInputDefs()) {
+          new_input_args.push_back(self_contained_outputs_map.find(input_arg) == self_contained_outputs_map.end()
+                                       ? input_arg
+                                       : self_contained_outputs_map[input_arg]);
+        }
 
         std::vector<NodeArg*> new_output_args;
-        const auto& output = last_node->MutableOutputDefs()[0];
-        new_output_args.push_back(&graph.GetOrCreateNodeArg(output->Name() + "_copy_to_host",
-                                                            output->TypeAsProto()));
+        new_output_args.reserve(node_to_replicated->MutableOutputDefs().size());
+        for (size_t k = 0; k < node_to_replicated->MutableOutputDefs().size(); ++k) {
+          const auto& output = node_to_replicated->MutableOutputDefs()[k];
+          new_output_args.push_back(&graph.GetOrCreateNodeArg(graph_utils::RecomputeName(output->Name()),
+                                                              output->TypeAsProto()));
 
-        // KNOWN ISSUE: this offload copy did not help run bigger batch size, need investigate why.
-        Node& memcpy_to_host_node = graph.AddNode(last_node->Name() + "_copy_to_host",
-                                                  "MemcpyToHost",
-                                                  "host copy of " + last_node->Name(),
-                                                  new_input_args,
-                                                  new_output_args,
-                                                  {},
-                                                  kOnnxDomain);
-        memcpy_to_host_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_HIGH));
-        memcpy_to_host_node.SetExecutionProviderType(last_node->GetExecutionProviderType());
+          self_contained_outputs_map[output] = new_output_args.back();
+        }
 
-        std::vector<NodeArg*> new_output_args2;
-        const auto& output2 = last_node->MutableOutputDefs()[0];
-        new_output_args2.push_back(&graph.GetOrCreateNodeArg(output2->Name() + "_copy_to_device",
-                                                             output2->TypeAsProto()));
+        Node& recompute_node = graph.AddNode(node_to_replicated->Name() + "_recompute",
+                                             node_to_replicated->OpType(),
+                                             "Recompute of " + node_to_replicated->Name(),
+                                             new_input_args,
+                                             new_output_args,
+                                             &node_to_replicated->GetAttributes(),
+                                             node_to_replicated->Domain());
 
-        Node& memcpy_to_device_node = graph.AddNode(last_node->Name() + "_copy_to_device",
-                                                    "MemcpyFromHost",
-                                                    "device copy of " + last_node->Name(),
-                                                    memcpy_to_host_node.MutableOutputDefs(),
-                                                    new_output_args2,
-                                                    {},
-                                                    kOnnxDomain);
+        recompute_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
+        recompute_node.SetExecutionProviderType(node_to_replicated->GetExecutionProviderType());
 
-        memcpy_to_device_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
-        memcpy_to_device_node.SetExecutionProviderType(last_node->GetExecutionProviderType());
-        replacement_node = &memcpy_to_device_node;
+        replacement_node = &recompute_node;
 
-        std::cout << "Node " << node.Name() << " is offloaded" << std::endl;
-      } else {
-        ORT_ENFORCE(false, "should not go here.");
+        std::cout << "Node " << node.Name() << " is recomputed" << std::endl;
       }
 
       if (replacement_node) {
