@@ -39,30 +39,6 @@ class SkipLayerNormSmall : public IKernelExplorer {
   ParamsT params_{};
 };
 
-template <typename T, int ThreadsPerBlock, int VecSize>
-class SkipLayerNormLarge : public IKernelExplorer {
- public:
-  SkipLayerNormLarge(DeviceArray& output, DeviceArray& input, DeviceArray& skip,
-                     DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
-                     float epsilon, int hidden_size, int element_count)
-      : params_(this->Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
-                static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()), static_cast<T*>(beta.ptr()),
-                static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
-
-  void Run() override {
-    ORT_THROW_IF_ERROR((contrib::rocm::SkipLayerNormLargeOp<T, ThreadsPerBlock>(&params_)));
-  }
-
-  bool IsSupported() {
-    Status status = contrib::rocm::SkipLayerNormLargeOp<T, ThreadsPerBlock>(&params_);
-    return status.IsOK();
-  }
-
- private:
-  using ParamsT = contrib::rocm::SkipLayerNormParams<T>;
-  ParamsT params_{};
-};
-
 #define REGISTER_OP(name, type, threads_per_block, vec_size)                                                   \
   py::class_<name<type, threads_per_block, vec_size>>(m, #name "_" #type "_" #threads_per_block "_" #vec_size) \
       .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&,                                    \
@@ -89,21 +65,9 @@ class SkipLayerNormLarge : public IKernelExplorer {
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 320)                        \
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 384)
 
-#define REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(name, type) \
-  REGISTER_OP(name, type, 32, 1)                          \
-  REGISTER_OP(name, type, 64, 1)                          \
-  REGISTER_OP(name, type, 128, 1)                         \
-  REGISTER_OP(name, type, 192, 1)                         \
-  REGISTER_OP(name, type, 256, 1)                         \
-  REGISTER_OP(name, type, 320, 1)                         \
-  REGISTER_OP(name, type, 384, 1)
-
 void InitSkipLayerNorm(py::module m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(SkipLayerNormSmall, half);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(SkipLayerNormSmall, float);
-
-  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(SkipLayerNormLarge, half);
-  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(SkipLayerNormLarge, float);
 }
 
 }  // namespace onnxruntime
