@@ -176,8 +176,6 @@ class ModelBuilder {
   common::Status RegisterModelInputs();
   common::Status AddOperations();
   common::Status RegisterModelOutputs();
-  // After constructing the NNAPI model, will set the shape inferencing record to the Model
-  void RegisterModelShaper();
 
   // Get all quantized inputs in the underlying graph_viewer
   void GetAllQuantizedOpInputs();
