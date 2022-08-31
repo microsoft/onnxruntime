@@ -265,29 +265,29 @@ class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {
 
 class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
  public:
-  TriggerDownstreamStep(NotificationIndex notification_index) : SequentialExecutionPlan::ExecutionStep(),
-                                                                notification_idx(notification_index),
-                                                                func_([](NotificationIndex notification_index, void* ctx, size_t /*stream_idx*/, bool& continue_flag) {
-                                                                  ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
-                                                                  ScheduleDownstream(*execution_context, notification_index, execution_context->SingleThreadMode());
-                                                                  continue_flag = true;
-                                                                  return Status::OK();
-                                                                }) {
+  TriggerDownstreamStep(size_t trigger_point_index) : SequentialExecutionPlan::ExecutionStep(),
+                                                      trigger_point_index(trigger_point_index),
+                                                      func_([](size_t trigger, void* ctx, size_t /*stream_idx*/, bool& continue_flag) {
+                                                        ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
+                                                        ScheduleDownstream(*execution_context, trigger, execution_context->SingleThreadMode());
+                                                        continue_flag = true;
+                                                        return Status::OK();
+                                                      }) {
   }
 
   StepCommandFn GetStepFun() override {
-    return std::bind(func_, notification_idx, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    return std::bind(func_, trigger_point_index, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
   }
 
   virtual std::string Dump() const override {
     std::stringstream ss;
-    ss << "TriggerDownstreamStep: trigger downstream of notification: " << notification_idx << ". ";
+    ss << "TriggerDownstreamStep: trigger downstream of trigger point: " << trigger_point_index << ". ";
     return ss.str();
   }
 
  private:
-  NotificationIndex notification_idx;
-  std::function<Status(NotificationIndex notification_idx, void* ctx, size_t stream_idx, bool& continue_flag)> func_;
+  size_t trigger_point_index;
+  std::function<Status(size_t trigger_point_index, void* ctx, size_t stream_idx, bool& continue_flag)> func_;
 };
 
 class PlannerImpl {
@@ -1937,6 +1937,8 @@ class PlannerImpl {
       }
     }
     // 2. for each node, if any of its consumer partitioned to another stream, generate a notification
+    size_t num_trigger_points = 0;
+    InlinedHashMap<NodeIndex, size_t> node_to_trigger_points;
     size_t num_notifications = 0;
     InlinedHashMap<NodeIndex, NotificationIndex> node_to_notification;
     for (size_t i = 0; i < num_logic_streams_; ++i) {
@@ -1944,7 +1946,23 @@ class PlannerImpl {
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
           if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()) {
-            node_to_notification[node_index] = num_notifications++;
+            node_to_trigger_points[node_index] = num_trigger_points++;
+
+            bool requires_notification = false;
+            for (auto* output : node->OutputDefs()) {
+              if (output->Exists()) {
+                OrtValueIndex output_arg_idx;
+                ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(output->Name(), output_arg_idx));
+                if (std::find(it->InputDefs().begin(), it->InputDefs().end(), output) != it->InputDefs().end() &&
+                    plan_.allocation_plan[output_arg_idx].location.device.Type() != OrtDevice::CPU) {
+                  requires_notification = true;
+                  break;
+                }
+              }
+            }
+            if (requires_notification) {
+              node_to_notification[node_index] = num_notifications++;
+            }
             break;
           }
         }
@@ -2049,14 +2067,14 @@ class PlannerImpl {
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
           if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()) {
-            // find the notificaiton id
-            auto notfication_it = node_to_notification.find(it->Index());
-            ORT_ENFORCE(notfication_it != node_to_notification.end());
-            NotificationIndex notification_index = notfication_it->second;
+            // find the trigger_point_id
+            auto trigger_point_it = node_to_trigger_points.find(it->Index());
+            ORT_ENFORCE(trigger_point_it != node_to_trigger_points.end());
+            size_t trigger_point_index = trigger_point_it->second;
             // push a barrier
             size_t barrier_id = plan_.num_barriers++;
-            plan_.downstream_map[notification_index].push_back({i,
-                                                                static_cast<int>(execution_plan[i]->steps_.size())});
+            plan_.downstream_map[trigger_point_index].push_back({i,
+                                                                 static_cast<int>(execution_plan[i]->steps_.size())});
             execution_plan[i]->steps_.emplace_back(std::make_unique<BarrierStep>(barrier_id));
 #ifdef ENABLE_TRAINING
             // keep node index first, will turn it to pc index later
@@ -2065,26 +2083,14 @@ class PlannerImpl {
             // collect the inputs arguments from input node.
             // if the arguments are on same cpu device, then don't need to wait on notification
             // barrier is enough
-            bool require_wait = false;
-            for (auto* input : node->InputDefs()) {
-              if (!input->Exists())
-                continue;
-              if (std::find(it->OutputDefs().begin(), it->OutputDefs().end(), input) != it->OutputDefs().end() &&
-                  // for the case when we wait on a cpu tensor generated from device kernel (for example, shape kernel)
-                  // we don't need to wait on notificaiton.
-                  (plan_.allocation_plan[Index(input->Name())].location.device != plan_.execution_plan[i]->device_ ||
-                   plan_.allocation_plan[Index(input->Name())].location.device.Type() != OrtDevice::CPU)) {
-                require_wait = true;
-                break;
-              }
-            }
-            if (require_wait) {
+            auto notification_it = node_to_notification.find(it->Index());
+            if (notification_it != node_to_notification.end()) {
               // push a wait command if has EP registered it.
               auto wait_handle = stream_handle_registry.GetWaitHandle(
-                  execution_plan[plan_.notification_owners[notfication_it->second]]->device_.Type(),
+                  execution_plan[plan_.notification_owners[notification_it->second]]->device_.Type(),
                   execution_plan[i]->device_.Type());
               if (wait_handle) {
-                execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_index));
+                execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_it->second));
 #ifdef ENABLE_TRAINING
                 execution_plan[i]->step_pc.push_back(node_index);
 #endif
@@ -2124,27 +2130,17 @@ class PlannerImpl {
           NotificationIndex notification_index = notification_it->second;
           execution_plan[i]->steps_.emplace_back(std::make_unique<ActivateNotificationStep>(notification_index));
 #ifdef ENABLE_TRAINING
-          // calculate the min consmer;
-          // auto& order = graph_viewer_.GetNodesInTopologicalOrder();
-          // size_t distance = graph_viewer_.NumberOfNodes();
-          // for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-          //   auto order_it = std::find(order.begin(), order.end(), it->Index());
-          //   size_t cur_distance = std::distance(order.begin(), order_it);
-          //   distance = std::min(distance, cur_distance);
-          // }
-          // // if node doesn't have any consumer, use the current node index
-          // auto consumer_index = distance < order.size() ? order[distance] : node_index;
-          // // set the notification step as the triggering part of next node.
           execution_plan[i]->step_pc.push_back(node_index);
 #endif
-          if (no_down_stream_notifications.find(notification_index) == no_down_stream_notifications.end()) {
-            // notify downstreams
-            execution_plan[i]->steps_.emplace_back(std::make_unique<TriggerDownstreamStep>(notification_index));
+        }
+        auto trigger_point_it = node_to_trigger_points.find(node_index);
+        if (trigger_point_it != node_to_trigger_points.end()) {
+          // notify downstreams
+          execution_plan[i]->steps_.emplace_back(std::make_unique<TriggerDownstreamStep>(trigger_point_it->second));
 #ifdef ENABLE_TRAINING
-            // set the notification step as the triggering part of next node.
-            execution_plan[i]->step_pc.push_back(node_index);
+          // set the notification step as the triggering part of next node.
+          execution_plan[i]->step_pc.push_back(node_index);
 #endif
-          }
         }
       }
     }
@@ -2263,7 +2259,8 @@ class PlannerImpl {
     return Status::OK();
   }
 
-  static bool IsNonTensor(const onnxruntime::NodeArg& nodearg) {
+  static bool
+  IsNonTensor(const onnxruntime::NodeArg& nodearg) {
     // TODO: unclear why we should go through a string-representation of type
     auto ptype = nodearg.Type();
     auto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(ptype);
@@ -2277,7 +2274,7 @@ class PlannerImpl {
   }
 #endif
 
-  // For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
+// For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   void AdjustInplaceLifeIntervals() {
     InlinedHashMap<OrtValueIndex, std::vector<OrtValueIndex>> inplace_reuse_buffer;
