@@ -76,7 +76,7 @@ bool IsPaddingTypeSupported(AutoPadType auto_pad);
 
 using XnnpackOperator = std::unique_ptr<struct xnn_operator, XnnpackOperatorDeleter>;
 
-std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& conv_unit, const Node& activation,
+std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& conv_unit, const NodeUnit& activation,
                                                          const GraphViewer& graph);
 std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& unit_node);
 

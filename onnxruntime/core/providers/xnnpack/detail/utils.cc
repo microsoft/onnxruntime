@@ -185,10 +185,11 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
 }
 
 // Fuse activation with node_unit.
-std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& node_unit, const Node& activation,
+std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& node_unit, const NodeUnit& activation_unit,
                                                          const GraphViewer& graph) {
   std::unique_ptr<IndexedSubGraph::MetaDef> metadef = std::make_unique<IndexedSubGraph::MetaDef>();
   IndexedSubGraph::MetaDef& def = *metadef;
+  const Node& activation = activation_unit.GetNode();
 
   // we use the op type/domain to match the static xnnpack Conv or MaxPool kernel
   // registration

@@ -156,11 +156,9 @@ static void AddComputeCapabilityForNodeUnit(const NodeUnit& node_unit,
     process_node(node_unit.GetNode());
   }
 
-  if (RequestDynamicSchema(node_unit)) {
-    sub_graph->schema_source = IndexedSubGraph::SourceOfSchema::REUSE_OR_CREATE;
-  } else {
-    sub_graph->schema_source = IndexedSubGraph::SourceOfSchema::EXISTING;
-  }
+  sub_graph->schema_source = RequestDynamicSchema(node_unit)
+                                 ? IndexedSubGraph::SourceOfSchema::REUSE_OR_CREATE
+                                 : IndexedSubGraph::SourceOfSchema::EXISTING;
   adder(std::move(sub_graph));
 }
 
@@ -206,10 +204,10 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
     if (n == nullptr) {
       continue;
     }
-    const NodeUnit& node_unit = *node_unit_map[n];
     // if node is part of a QDQ group,
     // we will mark it compatible in the first call as long as we support the target node.
-    const Node& node = *n;
+    const NodeUnit& node_unit = *node_unit_map[n];
+
     bool request_node = false;
     // any node in NodeUnit will trigger IsNodeSupported, so we just check once.
     if (node_unit_supported_result.count(&node_unit)) {
@@ -237,8 +235,8 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
           // GraphPartitioner will match the statically registered xnnpack NHWC Conv kernel instead of
           // calling IExecutionProvider::Compile
           ComputeCapability& capability = *iter->second;
-          capability.sub_graph->SetMetaDef(FuseActivation(*fuse_with, node, graph));
-          capability.sub_graph->nodes.push_back(node.Index());
+          capability.sub_graph->SetMetaDef(FuseActivation(*fuse_with, node_unit, graph));
+          capability.sub_graph->nodes.push_back(node_unit.Index());
           capability.sub_graph->schema_source = IndexedSubGraph::SourceOfSchema::EXISTING;
         }
       }
