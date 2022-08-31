@@ -94,6 +94,8 @@ Which of these methods you use depends on your configuration. Saving and loading
 
 Saving the trained parameters of the model (the state dictionary, or state_dict) is more flexible than the first approach as long as you have access to the original model code.
 
+There are two main reasons why you may choose to use a different approach than native PyTorch to perform inference on your model. The first is that you must running in an environment that contains a Python runtime and the PyTorch libraries and associated dependencies. If you want to run on an environemnt, such as web or mobile or specialized hardware, running PyTorch inference with native PyTorch will not work. The second is performance. Out of the box, PyTorch is mostly a research tool and the resulting model may not give the performance that your application needs.
+
 ## Inference with TorchScript
 
 If you are running in an environment that is more constrained and you cannot install PyTorch or other python libraries, you have the option of performing inference with PyTorch models that have been converted to TorchScript. TorchScript is a subset of Python that allows you to create serializable models that can be loaded and executed in non Python environments. It is also optimized for the language constructs most used by deep learning models.
@@ -129,9 +131,11 @@ model.eval()
 ...
 ```
 
+Whilst you do not need to have a Python runtime in your environment to perform inference on your PyTorch model using the TorchScript approach, you do need to install the PyTorch cpp binaries and these may be too large for your environment. You may not also get the performance you need for you application.
+
 ## Inference with ONNXRuntime
 
-When performance is paramount you can use ONNXRuntime to perform inference on a PyTorch model. With ONNXRuntime, you can reduce latency and memory and increase throughput. You can also run a single model on cloud, edge, web  or mobile, using the language bindings and libraries provided with ONNXRuntime.
+When performance and portability are paramount, you can use ONNXRuntime to perform inference on a PyTorch model. With ONNXRuntime, you can reduce latency and memory and increase throughput. You can also run a single model on cloud, edge, web  or mobile, using the language bindings and libraries provided with ONNXRuntime.
 
 The first step is to export your PyTorch model to ONNX format using the PyTorch ONNX exporter.
 
@@ -174,7 +178,6 @@ Out of the box, ONNXRuntime applies a series of optimizations to the ONNX graph,
 You can also improve the performance of the ONNX model by quantizing it.
 
 If the application is running in constrained environments, such as mobile and edge you can build a reduced size runtime, based on the model or models that the application runs.
-
 
 ## Further reading
 
