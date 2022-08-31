@@ -137,6 +137,7 @@ __device__ inline void LayerNormSmall(const T* input_v, const hipcub::KeyValuePa
       VecT* beta_val = reinterpret_cast<VecT*>(&beta_v);
       *beta_val = *reinterpret_cast<const VecT*>(&beta[threadIdx.x * ILP]);
     }
+
     VecT* gamma_val = reinterpret_cast<VecT*>(&gamma_v);
     *gamma_val = *reinterpret_cast<const VecT*>(&gamma[threadIdx.x * ILP]);
 

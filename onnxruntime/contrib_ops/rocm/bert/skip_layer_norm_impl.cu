@@ -95,6 +95,7 @@ __global__ void SkipLayerNormKernelSmall(
       VecT* bias_val = reinterpret_cast<VecT*>(&bias_v);
       *bias_val = *reinterpret_cast<const VecT*>(&bias[threadIdx.x * ILP]);
     }
+
     T rldval_sum = T(0.f);
     T rldvalsq_sum = T(0.f);
 #pragma unroll
