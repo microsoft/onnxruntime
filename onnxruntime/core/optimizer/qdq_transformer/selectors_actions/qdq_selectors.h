@@ -184,12 +184,15 @@ class InputVariadicSelector : public BaseSelector {
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
+
+//  DQ node -> node -> Variadic Q nodes
 class OutputVariadicSelector : public BaseSelector {
  public:
   OutputVariadicSelector() : BaseSelector(std::make_unique<VariadicNodeGroupSelector>()) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
+
 // DQ nodes for X, W and optionally B -> node -> Q
 class ConvSelector : public BaseSelector {
  public:
