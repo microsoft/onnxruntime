@@ -48,6 +48,7 @@ def _pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
     except AttributeError:
         return _CAST_PYTORCH_TO_ONNX[scalar_type]
 
+
 # For pointer needed for PythonOp execution, we firstly append it into a global store to hold a
 # reference (in case it is released after module exported).
 NONTENSOR_OBJECT_POINTER_STORE = {}
@@ -205,6 +206,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
 # This code can be cleaned up once support for PyTorch version < 1.11 is dropped.
 try:
     from torch.onnx import SymbolicContext
+
 
     def _export(ctx: SymbolicContext, g, *args, **kwargs):
         n = ctx.cur_node
