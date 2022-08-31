@@ -261,7 +261,6 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     10,
     kNupharExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
     nuphar::NupharKernel);
 
@@ -271,7 +270,6 @@ ONNX_OPERATOR_KERNEL_EX(
     11,
     kNupharExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
     nuphar::NupharKernel);
 
