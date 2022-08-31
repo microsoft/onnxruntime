@@ -8,6 +8,7 @@
 #include "core/providers/rocm/rocm_fence.h"
 #include "core/providers/rocm/rocm_fwd.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
+#include "core/providers/rocm/rocm_profiler.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/rocm/rocm_contrib_kernels.h"
@@ -141,13 +142,13 @@ ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
   // here may be bad, and the destroy calls can throw.
   // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-dtor-noexcept
   try {
-    ROCBLAS_CALL(rocblas_destroy_handle(rocblas_handle_));
+    ROCBLAS_CALL_THROW(rocblas_destroy_handle(rocblas_handle_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "rocblas_destroy_handle threw:" << ex.what();
   }
 
   try {
-    MIOPEN_CALL(miopenDestroy(miopen_handle_));
+    MIOPEN_CALL_THROW(miopenDestroy(miopen_handle_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "miopenDestroy threw:" << ex.what();
   }
@@ -210,8 +211,12 @@ ROCMExecutionProvider::~ROCMExecutionProvider() {
   }
 
   if (!external_stream_ && stream_) {
-    HIP_CALL(hipStreamDestroy(stream_));
+    HIP_CALL_THROW(hipStreamDestroy(stream_));
   }
+}
+
+std::unique_ptr<profiling::EpProfiler> ROCMExecutionProvider::GetProfiler() {
+  return std::make_unique<profiling::RocmProfiler>();
 }
 
 ROCMExecutionProvider::PerThreadContext& ROCMExecutionProvider::GetPerThreadContext() const {

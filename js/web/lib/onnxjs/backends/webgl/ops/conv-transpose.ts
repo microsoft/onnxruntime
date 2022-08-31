@@ -91,7 +91,7 @@ const createUnpackedConvTransposeProgramInfo =
     ivec4 coords = getOutputCoords();
     int batch = coords.x;
     int output_channel = coords.y;
-    
+
     ivec2 loc = coords.zw + pads;
 
     int group_id = output_channel / ${outputChannelsPerGroup};
@@ -192,7 +192,7 @@ export const parseConvTransposeAttributes: OperatorInitialization<ConvTransposeA
 
 const validateInputs = (inputs: Tensor[], attributes: ConvTransposeAttributes): void => {
   // Refer to the below link for all input checks
-  // https://github.com/onnx/onnx/blob/master/docs/Operators.md#Conv
+  // https://github.com/onnx/onnx/blob/main/docs/Operators.md#Conv
   if (!inputs || (inputs.length !== 2 && inputs.length !== 3)) {
     throw new Error('Conv requires 2 or 3 inputs');
   }
