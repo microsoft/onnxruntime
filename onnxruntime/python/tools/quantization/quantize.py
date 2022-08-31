@@ -14,7 +14,7 @@ from .quant_utils import QuantFormat, QuantizationMode, QuantType, load_model, m
 from .registry import IntegerOpsRegistry, QLinearOpsRegistry
 
 
-class QuantConfig:
+class StaticQuantConfig:
     def __init__(
         self,
         quant_format=QuantFormat.QDQ,
@@ -87,13 +87,13 @@ class QuantConfig:
                                                      MinMax and when CalibMovingAverage is set to True.
         """
         if extra_options is None:
-            extra_options = dict()
+            extra_options = {}
         if nodes_to_exclude is None:
-            nodes_to_exclude = list()
+            nodes_to_exclude = []
         if nodes_to_quantize is None:
-            nodes_to_quantize = list()
+            nodes_to_quantize = []
         if op_types_to_quantize is None:
-            op_types_to_quantize = list()
+            op_types_to_quantize = []
         self.quant_format = quant_format
         self.op_types_to_quantize = op_types_to_quantize
         self.per_channel = per_channel
@@ -105,6 +105,70 @@ class QuantConfig:
         self.optimize_model = optimize_model
         self.use_external_data_format = use_external_data_format
         self.calibrate_method = calibrate_method
+        self.extra_options = extra_options
+
+
+class DynamicQuantConfig:
+    def __int__(
+        self,
+        op_types_to_quantize=None,
+        per_channel=False,
+        reduce_range=False,
+        weight_type=QuantType.QInt8,
+        nodes_to_quantize=None,
+        nodes_to_exclude=None,
+        optimize_model=True,
+        use_external_data_format=False,
+        extra_options=None,
+    ):
+        """
+        :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default
+        :param per_channel: quantize weights per channel
+        :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
+        :param weight_type: quantization data type of weight. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
+        :param nodes_to_quantize:
+            List of nodes names to quantize. When this list is not None only the nodes in this list
+            are quantized.
+            example:
+            [
+                'Conv__224',
+                'Conv__252'
+            ]
+        :param nodes_to_exclude:
+            List of nodes names to exclude. The nodes in this list will be excluded from quantization
+            when it is not None.
+        :param optimize_model: optimize model before quantization.
+        :param use_external_data_format: option used for large size (>2GB) model. Set to False by default.
+        :param extra_options:
+            key value pair dictionary for various options in different case. Current used:
+                extra.Sigmoid.nnapi = True/False  (Default is False)
+                ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
+                WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
+                EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
+                                              Dyanmic mode currently is supported. Will support more in future.
+                ForceQuantizeNoInputCheck = True/False : By default, some latent operators like maxpool, transpose, do not quantize
+                                                         if their input is not quantized already. Setting to True to force such operator
+                                                         always quantize input and so generate quantized output. Also the True behavior
+                                                         could be disabled per node using the nodes_to_exclude.
+                MatMulConstBOnly = True/False: Default is True for dynamic mode. If enabled, only MatMul with const B will be quantized.
+
+        """
+        if extra_options is None:
+            extra_options = {}
+        if nodes_to_exclude is None:
+            nodes_to_exclude = []
+        if nodes_to_quantize is None:
+            nodes_to_quantize = []
+        if op_types_to_quantize is None:
+            op_types_to_quantize = []
+        self.op_types_to_quantize = op_types_to_quantize
+        self.per_channel = per_channel
+        self.reduce_range = reduce_range
+        self.weight_type = weight_type
+        self.nodes_to_quantize = nodes_to_quantize
+        self.nodes_to_exclude = nodes_to_exclude
+        self.optimize_model = optimize_model
+        self.use_external_data_format = use_external_data_format
         self.extra_options = extra_options
 
 
@@ -140,7 +204,7 @@ def quantize_static(model_input, model_output, calibration_data_reader: Calibrat
         qc = kwargs["quant_config"]
 
     else:
-        qc = QuantConfig(
+        qc = StaticQuantConfig(
             quant_format=kwargs["quant_format"] if "quant_format" in kwargs else QuantFormat.QDQ,
             op_types_to_quantize=kwargs["op_types_to_quantize"] if "op_types_to_quantize" in kwargs else None,
             per_channel=kwargs["per_channel"] if "per_channel" in kwargs else False,
@@ -237,78 +301,55 @@ def quantize_static(model_input, model_output, calibration_data_reader: Calibrat
         )
 
 
-def quantize_dynamic(
-    model_input: Path,
-    model_output: Path,
-    op_types_to_quantize=[],
-    per_channel=False,
-    reduce_range=False,
-    weight_type=QuantType.QInt8,
-    nodes_to_quantize=[],
-    nodes_to_exclude=[],
-    optimize_model=True,
-    use_external_data_format=False,
-    extra_options={},
-):
+def quantize_dynamic(model_input: Path, model_output: Path, **kwargs):
     """
         Given an onnx model, create a quantized onnx model and save it into a file
     :param model_input: file path of model to quantize
     :param model_output: file path of quantized model
-    :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default
-    :param per_channel: quantize weights per channel
-    :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
-    :param weight_type: quantization data type of weight. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
-    :param nodes_to_quantize:
-        List of nodes names to quantize. When this list is not None only the nodes in this list
-        are quantized.
-        example:
-        [
-            'Conv__224',
-            'Conv__252'
-        ]
-    :param nodes_to_exclude:
-        List of nodes names to exclude. The nodes in this list will be excluded from quantization
-        when it is not None.
-    :param optimize_model: optimize model before quantization.
-    :param use_external_data_format: option used for large size (>2GB) model. Set to False by default.
-    :param extra_options:
-        key value pair dictionary for various options in different case. Current used:
-            extra.Sigmoid.nnapi = True/False  (Default is False)
-            ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
-            WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
-            EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
-                                          Dyanmic mode currently is supported. Will support more in future.
-            ForceQuantizeNoInputCheck = True/False : By default, some latent operators like maxpool, transpose, do not quantize
-                                                     if their input is not quantized already. Setting to True to force such operator
-                                                     always quantize input and so generate quantized output. Also the True behavior
-                                                     could be disabled per node using the nodes_to_exclude.
-            MatMulConstBOnly = True/False: Default is True for dynamic mode. If enabled, only MatMul with const B will be quantized.
+
     """
+    if "quant_config" in kwargs:
+        qc = kwargs["quant_config"]
+
+    else:
+        qc = DynamicQuantConfig(
+            op_types_to_quantize=kwargs["op_types_to_quantize"] if "op_types_to_quantize" in kwargs else None,
+            per_channel=kwargs["per_channel"] if "per_channel" in kwargs else False,
+            reduce_range=kwargs["reduce_range"] if "reduce_range" in kwargs else False,
+            weight_type=kwargs["weight_type"] if "weight_type" in kwargs else QuantType.QInt8,
+            nodes_to_quantize=kwargs["nodes_to_quantize"] if "nodes_to_quantize" in kwargs else None,
+            nodes_to_exclude=kwargs["nodes_to_exclude"] if "nodes_to_exclude" in kwargs else None,
+            optimize_model=kwargs["optimize_model"] if "optimize_model" in kwargs else True,
+            use_external_data_format=kwargs["use_external_data_format"]
+            if "use_external_data_format" in kwargs
+            else False,
+            extra_options=kwargs["extra_options"] if "extra_options" in kwargs else None,
+        )
 
     mode = QuantizationMode.IntegerOps
 
-    if not op_types_to_quantize or len(op_types_to_quantize) == 0:
-        op_types_to_quantize = list(IntegerOpsRegistry.keys())
+    if not qc.op_types_to_quantize or len(qc.op_types_to_quantize) == 0:
+        qc.op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
-    model = load_model(Path(model_input), optimize_model)
+    model = load_model(Path(model_input), qc.optimize_model)
 
-    if "MatMulConstBOnly" not in extra_options:
-        extra_options["MatMulConstBOnly"] = True
+    if "MatMulConstBOnly" not in qc.extra_options:
+        qc.extra_options["MatMulConstBOnly"] = True
 
     quantizer = ONNXQuantizer(
         model,
-        per_channel,
-        reduce_range,
+        qc.per_channel,
+        qc.reduce_range,
         mode,
         False,  # static
-        weight_type,
+        qc.weight_type,
         QuantType.QUInt8,  # dynamic activation only supports uint8
         None,
-        nodes_to_quantize,
-        nodes_to_exclude,
-        op_types_to_quantize,
-        extra_options,
+        qc.nodes_to_quantize,
+        qc.nodes_to_exclude,
+        qc.op_types_to_quantize,
+        qc.extra_options,
     )
 
     quantizer.quantize_model()
-    quantizer.model.save_model_to_file(model_output, use_external_data_format)
+    quantizer.model.save_model_to_file(model_output, qc.use_external_data_format)
