@@ -37,6 +37,7 @@ namespace test {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 namespace {
+[[maybe_unused]]
 void TestModelLoad(const ORTCHAR_T* model_file_name, const std::function<void(const Graph&)>& check_graph) {
   SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};

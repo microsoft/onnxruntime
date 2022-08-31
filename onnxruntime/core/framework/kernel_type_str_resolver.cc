@@ -138,7 +138,7 @@ Status KernelTypeStrResolver::SaveToOrtFormat(
   std::vector<fb::Offset<fbs::OpIdKernelTypeStrArgsEntry>> fbs_op_kernel_type_str_args{};
   fbs_op_kernel_type_str_args.reserve(op_kernel_type_str_map_.size());
 
-  for (const auto op_kernel_type_str_map_it : sorted_op_kernel_type_str_map_its) {
+  for (const auto& op_kernel_type_str_map_it : sorted_op_kernel_type_str_map_its) {
     const auto& [op_id, kernel_type_str_map] = *op_kernel_type_str_map_it;
 
     std::vector<fb::Offset<fbs::KernelTypeStrArgsEntry>> fbs_kernel_type_str_args{};

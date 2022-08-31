@@ -246,7 +246,7 @@ namespace Dml
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
             GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const onnxruntime::KernelRegistry*>& kernel_registries,
-                const IKernelTypeStrResolver& kernel_type_str_resolver) const final override;
+                const onnxruntime::IKernelTypeStrResolver& kernel_type_str_resolver) const final override;
 
         onnxruntime::common::Status OnSessionInitializationEnd() override
         {
