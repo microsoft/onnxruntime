@@ -169,7 +169,7 @@ model_quant = 'path/to/the/model.quant.onnx'
 quantized_model = quantize_dynamic(model_fp32, model_quant)
 ```
 
-- Static quantization: please refer to the [end-to-end examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/quantization).
+- Static quantization: please refer to the [end-to-end examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/quantization/image_classification/cpu).
 
 ### Method selection
 {: .no_toc}
