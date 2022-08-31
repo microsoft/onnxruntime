@@ -3,14 +3,12 @@ import os
 import tempfile
 
 import onnx
-import pytest
 import torch
 
 import onnxruntime.training.onnxblock as onnxblock
-from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector
-from onnxruntime.training.onnxblock import TrainingModule, TrainingOptimizer
+from onnxruntime.training.onnxblock import Module, TrainingOptimizer
 
 
 class SimpleNet(torch.nn.Module):
@@ -92,7 +90,6 @@ def _get_onnx_model(torch_model, model_inputs):
 
 
 def _create_training_models():
-
     # Given
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
@@ -125,19 +122,19 @@ def test_train_step():
     forward_inputs.push_back(OrtValue.ortvalue_from_numpy(inputs)._ortvalue)
     forward_inputs.push_back(OrtValue.ortvalue_from_numpy(labels)._ortvalue)
 
-    with tempfile.TemporaryDirectory() as checkpoint_dir_name:
+    with tempfile.TemporaryDirectory() as temp_dir:
         # Save models & checkpoint files to load them later.
-        checkpoint_file_path = os.path.join(checkpoint_dir_name, "checkpoint")
+        checkpoint_file_path = os.path.join(temp_dir, "checkpoint")
         onnxblock.save_checkpoint((trainable_params, non_trainable_params), checkpoint_file_path)
 
-        model_file_path = os.path.join(checkpoint_dir_name, "training_model.onnx")
+        model_file_path = os.path.join(temp_dir, "training_model.onnx")
         onnx.save(onnx_model, model_file_path)
 
-        # Create a Training Module and Training Optimizer.
-        model = TrainingModule(model_file_path, checkpoint_file_path)
-
+        # Create a Module.
+        model = Module(model_file_path, checkpoint_file_path)
         model.train()
-        model(forward_inputs)
+        fetches = model(forward_inputs)
+        assert fetches
 
 
 def test_eval_step():
@@ -153,24 +150,25 @@ def test_eval_step():
     forward_inputs.push_back(OrtValue.ortvalue_from_numpy(inputs)._ortvalue)
     forward_inputs.push_back(OrtValue.ortvalue_from_numpy(labels)._ortvalue)
 
-    with tempfile.TemporaryDirectory() as checkpoint_dir_name:
+    with tempfile.TemporaryDirectory() as temp_dir:
         # Save models & checkpoint files to load them later.
-        checkpoint_file_path = os.path.join(checkpoint_dir_name, "checkpoint")
+        checkpoint_file_path = os.path.join(temp_dir, "checkpoint")
         onnxblock.save_checkpoint((trainable_params, non_trainable_params), checkpoint_file_path)
 
-        model_file_path = os.path.join(checkpoint_dir_name, "training_model.onnx")
+        model_file_path = os.path.join(temp_dir, "training_model.onnx")
         onnx.save(onnx_model, model_file_path)
 
-        eval_model_file_path = os.path.join(checkpoint_dir_name, "eval_model.onnx")
+        eval_model_file_path = os.path.join(temp_dir, "eval_model.onnx")
         onnx.save(eval_model, eval_model_file_path)
 
-        # Create a Training Module and Training Optimizer.
-        model = TrainingModule(model_file_path, checkpoint_file_path, eval_model_file_path)
+        # Create a Module.
+        model = Module(model_file_path, checkpoint_file_path, eval_model_file_path)
         model.train()
         model(forward_inputs)
 
         model.eval()
-        model(forward_inputs)
+        fetches = model(forward_inputs)
+        assert fetches
 
 
 def test_optimizer_step():
@@ -186,24 +184,25 @@ def test_optimizer_step():
     forward_inputs.push_back(OrtValue.ortvalue_from_numpy(inputs)._ortvalue)
     forward_inputs.push_back(OrtValue.ortvalue_from_numpy(labels)._ortvalue)
 
-    with tempfile.TemporaryDirectory() as checkpoint_dir_name:
+    with tempfile.TemporaryDirectory() as temp_dir:
         # Save models & checkpoint files to load them later.
-        checkpoint_file_path = os.path.join(checkpoint_dir_name, "checkpoint")
+        checkpoint_file_path = os.path.join(temp_dir, "checkpoint")
         onnxblock.save_checkpoint((trainable_params, non_trainable_params), checkpoint_file_path)
 
-        model_file_path = os.path.join(checkpoint_dir_name, "training_model.onnx")
+        model_file_path = os.path.join(temp_dir, "training_model.onnx")
         onnx.save(onnx_model, model_file_path)
 
-        optimizer_file_path = os.path.join(checkpoint_dir_name, "optimizer.onnx")
+        optimizer_file_path = os.path.join(temp_dir, "optimizer.onnx")
         onnx.save(optimizer_model, optimizer_file_path)
 
         # Create a Training Module and Training Optimizer.
-        model = TrainingModule(model_file_path, checkpoint_file_path)
-        optimizer = TrainingOptimizer(optimizer_file_path, model.get_model())
+        model = Module(model_file_path, checkpoint_file_path)
+        optimizer = TrainingOptimizer(optimizer_file_path, model)
 
         model.train()
         model(forward_inputs)
         optimizer.step()
+        # TODO : Check if parameters changed from before and after optimizer step.
 
 
 def test_training_module_checkpoint():
@@ -219,64 +218,26 @@ def test_training_module_checkpoint():
     forward_inputs.push_back(OrtValue.ortvalue_from_numpy(inputs)._ortvalue)
     forward_inputs.push_back(OrtValue.ortvalue_from_numpy(labels)._ortvalue)
 
-    with tempfile.TemporaryDirectory() as checkpoint_dir_name:
+    with tempfile.TemporaryDirectory() as temp_dir:
         # Save models & checkpoint files to load them later.
-        checkpoint_file_path = os.path.join(checkpoint_dir_name, "checkpoint")
+        checkpoint_file_path = os.path.join(temp_dir, "checkpoint")
         onnxblock.save_checkpoint((trainable_params, non_trainable_params), checkpoint_file_path)
 
-        model_file_path = os.path.join(checkpoint_dir_name, "training_model.onnx")
+        model_file_path = os.path.join(temp_dir, "training_model.onnx")
         onnx.save(onnx_model, model_file_path)
 
-        optimizer_file_path = os.path.join(checkpoint_dir_name, "optimizer.onnx")
+        optimizer_file_path = os.path.join(temp_dir, "optimizer.onnx")
         onnx.save(optimizer_model, optimizer_file_path)
 
         # Create a Training Module and Training Optimizer.
-        model = TrainingModule(model_file_path, checkpoint_file_path)
+        model = Module(model_file_path, checkpoint_file_path)
 
         model.train()
         model(forward_inputs)
 
-        checkpoint_save_path = os.path.join(checkpoint_dir_name, "checkpoint_export.ckpt")
+        checkpoint_save_path = os.path.join(temp_dir, "checkpoint_export.ckpt")
 
         model.save_checkpoint(checkpoint_save_path)
-        # Re initialoize the TrainingModule with the checkpoint file.
-        model = TrainingModule(model_file_path, checkpoint_save_path)
 
-
-def test_training_optimizer_checkpoint():
-    # Initialize Models
-    simple_model, onnx_model, optimizer_model, _ = _create_training_models()
-    trainable_params, non_trainable_params = simple_model.parameters()
-
-    # Generating random data for testing.
-    inputs = torch.randn(64, 784).numpy()
-    labels = torch.randint(high=10, size=(64,), dtype=torch.int32).numpy()
-    forward_inputs = OrtValueVector()
-    forward_inputs.reserve(2)
-    forward_inputs.push_back(OrtValue.ortvalue_from_numpy(inputs)._ortvalue)
-    forward_inputs.push_back(OrtValue.ortvalue_from_numpy(labels)._ortvalue)
-
-    with tempfile.TemporaryDirectory() as checkpoint_dir_name:
-        # Save models & checkpoint files to load them later.
-        checkpoint_file_path = os.path.join(checkpoint_dir_name, "checkpoint")
-        onnxblock.save_checkpoint((trainable_params, non_trainable_params), checkpoint_file_path)
-
-        model_file_path = os.path.join(checkpoint_dir_name, "training_model.onnx")
-        onnx.save(onnx_model, model_file_path)
-
-        optimizer_file_path = os.path.join(checkpoint_dir_name, "optimizer.onnx")
-        onnx.save(optimizer_model, optimizer_file_path)
-
-        # Create a Training Module and Training Optimizer.
-        model = TrainingModule(model_file_path, checkpoint_file_path)
-        optimizer = TrainingOptimizer(optimizer_file_path, model.get_model())
-
-        model.train()
-        model(forward_inputs)
-        optimizer.step()
-
-        optimizer_save_path = os.path.join(checkpoint_dir_name, "optimizer_ckpt.ckpt")
-        optimizer.save_checkpoint(optimizer_save_path)
-
-        # Re Loading the checkpoint to the Optimizer.
-        optimizer.load_checkpoint(optimizer_save_path)
+        # TODO : Load checkpoint to a zeroed model and assert parameters are different.
+        assert os.path.exists(checkpoint_save_path)

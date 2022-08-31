@@ -1,2 +1,2 @@
-from .training_module import TrainingModule
+from .module import Module
 from .training_optimizer import TrainingOptimizer
