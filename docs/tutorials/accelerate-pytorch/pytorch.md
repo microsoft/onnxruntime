@@ -12,7 +12,7 @@ Learn about PyTorch and how to perform inference with PyTorch models.
 
 PyTorch dominates the deep learning landscape with its readily digestible and flexible API; the large number of ready-made models available, particularly in the natural language (NLP) domain; as well as its domain specific libraries.
 
-With its growing ecosystem of developers and applications, this articles runs through inference with PyTorch, including optimizations that you can make along the way as well as options for deploying your PyTorch model so that you can use it to inference.
+With its growing ecosystem of developers and applications, this articles is a quick tour through inference with PyTorch. There are a number of different ways to perform inference with PyTorch; these are enumerated below.
 
 This article assumes that you are looking for information about performing inference with your PyTorch model rather than how to train a PyTorch model.
 
