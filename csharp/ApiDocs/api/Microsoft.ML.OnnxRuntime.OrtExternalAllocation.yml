@@ -1,0 +1,673 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.OrtExternalAllocation
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtExternalAllocation
+  id: OrtExternalAllocation
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.OrtExternalAllocation.#ctor(Microsoft.ML.OnnxRuntime.OrtMemoryInfo,System.Int64[],Microsoft.ML.OnnxRuntime.Tensors.TensorElementType,System.IntPtr,System.Int64)
+  - Microsoft.ML.OnnxRuntime.OrtExternalAllocation.ElementType
+  - Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Info
+  - Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Pointer
+  - Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Shape
+  - Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Size
+  langs:
+  - csharp
+  - vb
+  name: OrtExternalAllocation
+  nameWithType: OrtExternalAllocation
+  fullName: Microsoft.ML.OnnxRuntime.OrtExternalAllocation
+  type: Class
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: OrtExternalAllocation
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 321
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nThis class represents an arbitrary buffer of memory\nallocated and owned by the user. It can be either a CPU, GPU or other device memory\nthat can be suitably represented by IntPtr.\nThis is just a composite of the buffer related information.\nThe memory is assumed to be pinned if necessary and usable immediately\nin the native code.\n"
+  example: []
+  syntax:
+    content: public class OrtExternalAllocation
+    content.vb: Public Class OrtExternalAllocation
+  inheritance:
+  - System.Object
+  inheritedMembers:
+  - System.Object.Equals(System.Object)
+  - System.Object.Equals(System.Object,System.Object)
+  - System.Object.GetHashCode
+  - System.Object.GetType
+  - System.Object.MemberwiseClone
+  - System.Object.ReferenceEquals(System.Object,System.Object)
+  - System.Object.ToString
+  modifiers.csharp:
+  - public
+  - class
+  modifiers.vb:
+  - Public
+  - Class
+- uid: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.#ctor(Microsoft.ML.OnnxRuntime.OrtMemoryInfo,System.Int64[],Microsoft.ML.OnnxRuntime.Tensors.TensorElementType,System.IntPtr,System.Int64)
+  commentId: M:Microsoft.ML.OnnxRuntime.OrtExternalAllocation.#ctor(Microsoft.ML.OnnxRuntime.OrtMemoryInfo,System.Int64[],Microsoft.ML.OnnxRuntime.Tensors.TensorElementType,System.IntPtr,System.Int64)
+  id: '#ctor(Microsoft.ML.OnnxRuntime.OrtMemoryInfo,System.Int64[],Microsoft.ML.OnnxRuntime.Tensors.TensorElementType,System.IntPtr,System.Int64)'
+  parent: Microsoft.ML.OnnxRuntime.OrtExternalAllocation
+  langs:
+  - csharp
+  - vb
+  name: OrtExternalAllocation(OrtMemoryInfo, Int64[], TensorElementType, IntPtr, Int64)
+  nameWithType: OrtExternalAllocation.OrtExternalAllocation(OrtMemoryInfo, Int64[], TensorElementType, IntPtr, Int64)
+  fullName: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.OrtExternalAllocation(Microsoft.ML.OnnxRuntime.OrtMemoryInfo, System.Int64[], Microsoft.ML.OnnxRuntime.Tensors.TensorElementType, System.IntPtr, System.Int64)
+  type: Constructor
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: .ctor
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 331
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nConstructor\n"
+  example: []
+  syntax:
+    content: public OrtExternalAllocation(OrtMemoryInfo memInfo, long[] shape, TensorElementType elementType, IntPtr pointer, long sizeInBytes)
+    parameters:
+    - id: memInfo
+      type: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+      description: use to accurately describe a piece of memory that this is wrapping
+    - id: shape
+      type: System.Int64[]
+      description: shape of this buffer
+    - id: elementType
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+      description: element type
+    - id: pointer
+      type: System.IntPtr
+      description: the actual pointer to memory
+    - id: sizeInBytes
+      type: System.Int64
+      description: size of the allocation in bytes
+    content.vb: Public Sub New(memInfo As OrtMemoryInfo, shape As Long(), elementType As TensorElementType, pointer As IntPtr, sizeInBytes As Long)
+  overload: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.#ctor*
+  nameWithType.vb: OrtExternalAllocation.OrtExternalAllocation(OrtMemoryInfo, Int64(), TensorElementType, IntPtr, Int64)
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.OrtExternalAllocation(Microsoft.ML.OnnxRuntime.OrtMemoryInfo, System.Int64(), Microsoft.ML.OnnxRuntime.Tensors.TensorElementType, System.IntPtr, System.Int64)
+  name.vb: OrtExternalAllocation(OrtMemoryInfo, Int64(), TensorElementType, IntPtr, Int64)
+- uid: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Info
+  commentId: P:Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Info
+  id: Info
+  parent: Microsoft.ML.OnnxRuntime.OrtExternalAllocation
+  langs:
+  - csharp
+  - vb
+  name: Info
+  nameWithType: OrtExternalAllocation.Info
+  fullName: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Info
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Info
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 366
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nOrtMemoryInfo\n"
+  example: []
+  syntax:
+    content: public OrtMemoryInfo Info { get; }
+    parameters: []
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+    content.vb: Public ReadOnly Property Info As OrtMemoryInfo
+  overload: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Info*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Shape
+  commentId: P:Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Shape
+  id: Shape
+  parent: Microsoft.ML.OnnxRuntime.OrtExternalAllocation
+  langs:
+  - csharp
+  - vb
+  name: Shape
+  nameWithType: OrtExternalAllocation.Shape
+  fullName: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Shape
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Shape
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 370
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nShape\n"
+  example: []
+  syntax:
+    content: public long[] Shape { get; }
+    parameters: []
+    return:
+      type: System.Int64[]
+    content.vb: Public ReadOnly Property Shape As Long()
+  overload: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Shape*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.ElementType
+  commentId: P:Microsoft.ML.OnnxRuntime.OrtExternalAllocation.ElementType
+  id: ElementType
+  parent: Microsoft.ML.OnnxRuntime.OrtExternalAllocation
+  langs:
+  - csharp
+  - vb
+  name: ElementType
+  nameWithType: OrtExternalAllocation.ElementType
+  fullName: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.ElementType
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ElementType
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 374
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nData type\n"
+  example: []
+  syntax:
+    content: public TensorElementType ElementType { get; }
+    parameters: []
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+    content.vb: Public ReadOnly Property ElementType As TensorElementType
+  overload: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.ElementType*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Pointer
+  commentId: P:Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Pointer
+  id: Pointer
+  parent: Microsoft.ML.OnnxRuntime.OrtExternalAllocation
+  langs:
+  - csharp
+  - vb
+  name: Pointer
+  nameWithType: OrtExternalAllocation.Pointer
+  fullName: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Pointer
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Pointer
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 378
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nActual memory ptr\n"
+  example: []
+  syntax:
+    content: public IntPtr Pointer { get; }
+    parameters: []
+    return:
+      type: System.IntPtr
+    content.vb: Public ReadOnly Property Pointer As IntPtr
+  overload: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Pointer*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Size
+  commentId: P:Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Size
+  id: Size
+  parent: Microsoft.ML.OnnxRuntime.OrtExternalAllocation
+  langs:
+  - csharp
+  - vb
+  name: Size
+  nameWithType: OrtExternalAllocation.Size
+  fullName: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Size
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Size
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 382
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nSize of the allocation in bytes\n"
+  example: []
+  syntax:
+    content: public long Size { get; }
+    parameters: []
+    return:
+      type: System.Int64
+    content.vb: Public ReadOnly Property Size As Long
+  overload: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Size*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: System.Object
+  commentId: T:System.Object
+  parent: System
+  isExternal: true
+  name: Object
+  nameWithType: Object
+  fullName: System.Object
+- uid: System.Object.Equals(System.Object)
+  commentId: M:System.Object.Equals(System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object)
+  nameWithType: Object.Equals(Object)
+  fullName: System.Object.Equals(System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.Equals(System.Object,System.Object)
+  commentId: M:System.Object.Equals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object, Object)
+  nameWithType: Object.Equals(Object, Object)
+  fullName: System.Object.Equals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetHashCode
+  commentId: M:System.Object.GetHashCode
+  parent: System.Object
+  isExternal: true
+  name: GetHashCode()
+  nameWithType: Object.GetHashCode()
+  fullName: System.Object.GetHashCode()
+  spec.csharp:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetType
+  commentId: M:System.Object.GetType
+  parent: System.Object
+  isExternal: true
+  name: GetType()
+  nameWithType: Object.GetType()
+  fullName: System.Object.GetType()
+  spec.csharp:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.MemberwiseClone
+  commentId: M:System.Object.MemberwiseClone
+  parent: System.Object
+  isExternal: true
+  name: MemberwiseClone()
+  nameWithType: Object.MemberwiseClone()
+  fullName: System.Object.MemberwiseClone()
+  spec.csharp:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ReferenceEquals(System.Object,System.Object)
+  commentId: M:System.Object.ReferenceEquals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: ReferenceEquals(Object, Object)
+  nameWithType: Object.ReferenceEquals(Object, Object)
+  fullName: System.Object.ReferenceEquals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ToString
+  commentId: M:System.Object.ToString
+  parent: System.Object
+  isExternal: true
+  name: ToString()
+  nameWithType: Object.ToString()
+  fullName: System.Object.ToString()
+  spec.csharp:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System
+  commentId: N:System
+  isExternal: true
+  name: System
+  nameWithType: System
+  fullName: System
+- uid: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.#ctor*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtExternalAllocation.#ctor
+  name: OrtExternalAllocation
+  nameWithType: OrtExternalAllocation.OrtExternalAllocation
+  fullName: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.OrtExternalAllocation
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  parent: Microsoft.ML.OnnxRuntime
+  name: OrtMemoryInfo
+  nameWithType: OrtMemoryInfo
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+- uid: System.Int64[]
+  isExternal: true
+  name: Int64[]
+  nameWithType: Int64[]
+  fullName: System.Int64[]
+  nameWithType.vb: Int64()
+  fullName.vb: System.Int64()
+  name.vb: Int64()
+  spec.csharp:
+  - uid: System.Int64
+    name: Int64
+    nameWithType: Int64
+    fullName: System.Int64
+    isExternal: true
+  - name: '[]'
+    nameWithType: '[]'
+    fullName: '[]'
+  spec.vb:
+  - uid: System.Int64
+    name: Int64
+    nameWithType: Int64
+    fullName: System.Int64
+    isExternal: true
+  - name: ()
+    nameWithType: ()
+    fullName: ()
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  name: TensorElementType
+  nameWithType: TensorElementType
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+- uid: System.IntPtr
+  commentId: T:System.IntPtr
+  parent: System
+  isExternal: true
+  name: IntPtr
+  nameWithType: IntPtr
+  fullName: System.IntPtr
+- uid: System.Int64
+  commentId: T:System.Int64
+  parent: System
+  isExternal: true
+  name: Int64
+  nameWithType: Int64
+  fullName: System.Int64
+- uid: Microsoft.ML.OnnxRuntime.Tensors
+  commentId: N:Microsoft.ML.OnnxRuntime.Tensors
+  name: Microsoft.ML.OnnxRuntime.Tensors
+  nameWithType: Microsoft.ML.OnnxRuntime.Tensors
+  fullName: Microsoft.ML.OnnxRuntime.Tensors
+- uid: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Info*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Info
+  name: Info
+  nameWithType: OrtExternalAllocation.Info
+  fullName: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Info
+- uid: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Shape*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Shape
+  name: Shape
+  nameWithType: OrtExternalAllocation.Shape
+  fullName: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Shape
+- uid: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.ElementType*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtExternalAllocation.ElementType
+  name: ElementType
+  nameWithType: OrtExternalAllocation.ElementType
+  fullName: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.ElementType
+- uid: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Pointer*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Pointer
+  name: Pointer
+  nameWithType: OrtExternalAllocation.Pointer
+  fullName: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Pointer
+- uid: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Size*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Size
+  name: Size
+  nameWithType: OrtExternalAllocation.Size
+  fullName: Microsoft.ML.OnnxRuntime.OrtExternalAllocation.Size

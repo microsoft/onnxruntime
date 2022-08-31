@@ -10,3 +10,9 @@
 
 # build pipelines
 /tools/ci_build/github/azure-pipelines @microsoft/onnxruntime-es
+
+# Dependencies
+requirements-dev.txt @microsoft/onnxruntime-admin
+requirements-doc.txt @microsoft/onnxruntime-admin
+requirements-training.txt @microsoft/onnxruntime-admin
+requirements.txt.in @microsoft/onnxruntime-admin

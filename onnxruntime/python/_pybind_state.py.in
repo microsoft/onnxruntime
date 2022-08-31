@@ -28,6 +28,7 @@ if platform.system() == "Windows":
                           "(other than %SystemRoot%\System32), "
                           "make sure it can be found by setting the correct path.")
 
+@ONNXRUNTIME_IMPORT_PYTORCH_TO_RESOLVE_DLLS@
 @ONNXRUNTIME_SETDLOPENFLAGS_GLOBAL@
 from .onnxruntime_pybind11_state import *  # noqa
 @ONNXRUNTIME_SETDLOPENFLAGS_LOCAL@
