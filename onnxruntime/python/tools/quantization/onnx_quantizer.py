@@ -455,6 +455,7 @@ class ONNXQuantizer:
             [get_qrange_for_qType(qType)],
         )
         self.model.add_initializer(initializer_qrange)
+        # Ensures the range always includes 0
         initializer_qvalue = onnx.helper.make_tensor(self.fixed_zero_name, onnx_proto.TensorProto.FLOAT, [], [0.0])
         self.model.add_initializer(initializer_qvalue)
 
