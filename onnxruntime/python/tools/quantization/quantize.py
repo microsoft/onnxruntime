@@ -13,6 +13,8 @@ from .qdq_quantizer import QDQQuantizer
 from .quant_utils import QuantFormat, QuantizationMode, QuantType, load_model, model_has_pre_process_metadata
 from .registry import IntegerOpsRegistry, QLinearOpsRegistry
 
+Execution_Providers = ["CPU", "TRT", "NNAPI", "SNE", "CUSTOM"]
+
 
 class StaticQuantConfig:
     def __init__(
@@ -29,6 +31,7 @@ class StaticQuantConfig:
         use_external_data_format=False,
         calibrate_method=CalibrationMethod.MinMax,
         extra_options=None,
+        execution_provider="CUSTOM",
     ):
         """
         :param quant_format: QuantFormat{QOperator, QDQ}.
@@ -86,6 +89,8 @@ class StaticQuantConfig:
                                                      the minimum and maximum values. Effective only when the calibration method selected is
                                                      MinMax and when CalibMovingAverage is set to True.
         """
+        if execution_provider not in Execution_Providers:
+            raise TypeError(f"Unknown execution provider: {execution_provider}")
         if extra_options is None:
             extra_options = {}
         if nodes_to_exclude is None:
@@ -94,18 +99,32 @@ class StaticQuantConfig:
             nodes_to_quantize = []
         if op_types_to_quantize is None:
             op_types_to_quantize = []
-        self.quant_format = quant_format
-        self.op_types_to_quantize = op_types_to_quantize
-        self.per_channel = per_channel
-        self.reduce_range = reduce_range
-        self.activation_type = activation_type
-        self.weight_type = weight_type
-        self.nodes_to_quantize = nodes_to_quantize
-        self.nodes_to_exclude = nodes_to_exclude
-        self.optimize_model = optimize_model
-        self.use_external_data_format = use_external_data_format
-        self.calibrate_method = calibrate_method
-        self.extra_options = extra_options
+        if execution_provider == "CUSTOM":
+            self.quant_format = quant_format
+            self.op_types_to_quantize = op_types_to_quantize
+            self.per_channel = per_channel
+            self.reduce_range = reduce_range
+            self.activation_type = activation_type
+            self.weight_type = weight_type
+            self.nodes_to_quantize = nodes_to_quantize
+            self.nodes_to_exclude = nodes_to_exclude
+            self.optimize_model = optimize_model
+            self.use_external_data_format = use_external_data_format
+            self.calibrate_method = calibrate_method
+            self.extra_options = extra_options
+            self.execution_provider = execution_provider
+        elif execution_provider == "CPU":
+            # TODO : change this config once our team decides default value
+            self.execution_provider = execution_provider
+        elif execution_provider == "TRT":
+            # TODO : change this config once our team decides default value
+            self.execution_provider = execution_provider
+        elif execution_provider == "NNAPI":
+            # TODO : change this config once our team decides default value
+            self.execution_provider = execution_provider
+        elif execution_provider == "SNE":
+            # TODO : change this config once our team decides default value
+            self.execution_provider = execution_provider
 
 
 class DynamicQuantConfig:
@@ -120,6 +139,7 @@ class DynamicQuantConfig:
         optimize_model=True,
         use_external_data_format=False,
         extra_options=None,
+        execution_provider="CUSTOM",
     ):
         """
         :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default
@@ -153,6 +173,9 @@ class DynamicQuantConfig:
                 MatMulConstBOnly = True/False: Default is True for dynamic mode. If enabled, only MatMul with const B will be quantized.
 
         """
+        if execution_provider not in Execution_Providers:
+            raise TypeError(f"Unknown execution provider: {execution_provider}")
+
         if extra_options is None:
             extra_options = {}
         if nodes_to_exclude is None:
@@ -161,15 +184,29 @@ class DynamicQuantConfig:
             nodes_to_quantize = []
         if op_types_to_quantize is None:
             op_types_to_quantize = []
-        self.op_types_to_quantize = op_types_to_quantize
-        self.per_channel = per_channel
-        self.reduce_range = reduce_range
-        self.weight_type = weight_type
-        self.nodes_to_quantize = nodes_to_quantize
-        self.nodes_to_exclude = nodes_to_exclude
-        self.optimize_model = optimize_model
-        self.use_external_data_format = use_external_data_format
-        self.extra_options = extra_options
+        if execution_provider == "CUSTOM":
+            self.op_types_to_quantize = op_types_to_quantize
+            self.per_channel = per_channel
+            self.reduce_range = reduce_range
+            self.weight_type = weight_type
+            self.nodes_to_quantize = nodes_to_quantize
+            self.nodes_to_exclude = nodes_to_exclude
+            self.optimize_model = optimize_model
+            self.use_external_data_format = use_external_data_format
+            self.extra_options = extra_options
+            self.execution_provider = execution_provider
+        elif execution_provider == "CPU":
+            # TODO : change this config once our team decides default value
+            self.execution_provider = execution_provider
+        elif execution_provider == "TRT":
+            # TODO : change this config once our team decides default value
+            self.execution_provider = execution_provider
+        elif execution_provider == "NNAPI":
+            # TODO : change this config once our team decides default value
+            self.execution_provider = execution_provider
+        elif execution_provider == "SNE":
+            # TODO : change this config once our team decides default value
+            self.execution_provider = execution_provider
 
 
 def check_static_quant_arguments(quant_format: QuantFormat, activation_type: QuantType, weight_type: QuantType):
