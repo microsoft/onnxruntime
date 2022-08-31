@@ -22,7 +22,7 @@ class IKernelExplorer {
     for (int i = 0; i < 5; i++) {
       Run();
     }
-    Timer timer;
+    Timer timer{Stream()};
     timer.Start();
     for (int i = 0; i < repeats_; i++) {
       Run();
@@ -31,12 +31,16 @@ class IKernelExplorer {
     return timer.Duration() / repeats_;
   }
 
-  virtual ~IKernelExplorer() = default;
+  virtual ~IKernelExplorer() {
+    if (stream_ != nullptr) {
+      HIP_CHECK(hipStreamDestroy(stream_));
+    }
+  }
 
  protected:
   hipStream_t Stream() { return stream_; }
 
  private:
-  hipStream_t stream_{0};
+  hipStream_t stream_{[]() { hipStream_t stream; HIP_CHECK(hipStreamCreate(&stream)); return stream; }()};
   int repeats_{100};
 };
