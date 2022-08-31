@@ -989,6 +989,8 @@ public class OrtSession implements AutoCloseable {
 
     /**
      * Adds Xnnpack as an execution backend.
+     * Needs to list all options here if a new option supported
+     * current supported options: {}
      *
      * @param provider_options options pass to XNNAPCK EP for initialization.
      * @throws OrtException If there was an error in native code.
