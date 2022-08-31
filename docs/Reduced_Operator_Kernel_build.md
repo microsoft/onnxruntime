@@ -60,7 +60,7 @@ The opset can match either the opset import for each model, or the initial ONNX 
 e.g. if a model imports opset 12 of ONNX, all ONNX operators in that model can be listed under opset 12 for the 'ai.onnx' domain.
 
 [Netron](https://netron.app/) can be used to view an ONNX model properties to discover the opset imports.
-Additionally, the ONNX operator specs for [DNN](https://github.com/onnx/onnx/blob/master/docs/Operators.md) and [traditional ML](https://github.com/onnx/onnx/blob/master/docs/Operators-ml.md) operators list the individual operator versions.
+Additionally, the ONNX operator specs for [DNN](https://github.com/onnx/onnx/blob/main/docs/Operators.md) and [traditional ML](https://github.com/onnx/onnx/blob/main/docs/Operators-ml.md) operators list the individual operator versions.
 
 ### Type reduction format
 

@@ -182,7 +182,7 @@ def handle_final_scan_outputs(node, nf, scan_outputs, state_outputs, num_directi
 def convert_loop_to_scan(node, out_main_graph, keep_unconvertible_loop_ops):
     assert node.op_type == "Loop"
 
-    # https://github.com/onnx/onnx/blob/master/docs/Operators.md#inputs-2---
+    # https://github.com/onnx/onnx/blob/main/docs/Operators.md#inputs-2---
     initial_state_names = node.input[2:]  # exclude M and cond.
 
     loop_subgraph_input_i = node.attribute[0].g.input[0]

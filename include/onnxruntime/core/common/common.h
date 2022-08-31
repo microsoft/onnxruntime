@@ -42,10 +42,6 @@ namespace onnxruntime {
 
 using TimePoint = std::chrono::high_resolution_clock::time_point;
 
-// Using statements for common classes that we refer to in ONNXRuntime very often.
-// TODO(Task:137) Remove 'using' statements from header files
-using common::Status;
-
 #ifdef _WIN32
 #define ORT_UNUSED_PARAMETER(x) (x)
 #else

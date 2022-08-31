@@ -292,7 +292,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
       zero_seq_index_cache_size = zero_seq_count * num_directions_;
       zero_seq_index_cache.resize(zero_seq_index_cache_size);
       for (int64_t i = 0; i < zero_seq_count; ++i) {
-        zero_seq_index_cache[zero_seq_count + i] = static_cast<int32_t>(batch_size + zero_seq_index_cache[i]);
+        zero_seq_index_cache[static_cast<size_t>(zero_seq_count) + i] = static_cast<int32_t>(batch_size + zero_seq_index_cache[i]);
       }
     }
 
