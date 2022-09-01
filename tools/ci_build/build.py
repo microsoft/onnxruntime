@@ -757,24 +757,33 @@ def install_python_deps(numpy_version=""):
     run_subprocess([sys.executable, "-m", "pip", "install"] + dep_packages)
 
 
-def setup_test_data(build_dir, configs):
-    # create a shortcut for test models if there is a 'models'
-    # folder in build_dir
+def setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, configs):
+    # create the symlink/shortcut of onnx models dir under build_dir
+    # currently, there're 2 sources of onnx models, one is build in OS image, another is
+    # from {source_dir}/js/test, which is downloaded from onnx web.
     if is_windows():
-        src_model_dir = os.path.join(build_dir, "models")
-        if os.path.exists("C:\\local\\models") and not os.path.exists(src_model_dir):
-            log.debug("creating shortcut %s -> %s" % ("C:\\local\\models", src_model_dir))
-            run_subprocess(["mklink", "/D", "/J", src_model_dir, "C:\\local\\models"], shell=True)
+        src_model_dir = os.path.join(build_dir, dest_model_dir_name)
+        if os.path.exists(source_onnx_model_dir) and not os.path.exists(src_model_dir):
+            log.debug("creating shortcut %s -> %s" % (source_onnx_model_dir, src_model_dir))
+            run_subprocess(["mklink", "/D", "/J", src_model_dir, source_onnx_model_dir], shell=True)
         for config in configs:
             config_build_dir = get_config_build_dir(build_dir, config)
             os.makedirs(config_build_dir, exist_ok=True)
-            dest_model_dir = os.path.join(config_build_dir, "models")
-            if os.path.exists("C:\\local\\models") and not os.path.exists(dest_model_dir):
-                log.debug("creating shortcut %s -> %s" % ("C:\\local\\models", dest_model_dir))
-                run_subprocess(["mklink", "/D", "/J", dest_model_dir, "C:\\local\\models"], shell=True)
+            dest_model_dir = os.path.join(config_build_dir, dest_model_dir_name)
+            if os.path.exists(source_onnx_model_dir) and not os.path.exists(dest_model_dir):
+                log.debug("creating shortcut %s -> %s" % (source_onnx_model_dir, dest_model_dir))
+                run_subprocess(["mklink", "/D", "/J", dest_model_dir, source_onnx_model_dir], shell=True)
             elif os.path.exists(src_model_dir) and not os.path.exists(dest_model_dir):
                 log.debug("creating shortcut %s -> %s" % (src_model_dir, dest_model_dir))
                 run_subprocess(["mklink", "/D", "/J", dest_model_dir, src_model_dir], shell=True)
+    else:
+        # On Linux, building is in docker.
+        # So, it's useless when it's called in building stage.
+        # `ln -s` in workflows, like linux-ci-pipeline, couldn't removed.
+        src_model_dir = os.path.join(build_dir, dest_model_dir_name)
+        if os.path.exists(source_onnx_model_dir) and not os.path.exists(src_model_dir):
+            log.debug(f"create symlink {source_onnx_model_dir} -> {src_model_dir}")
+            os.symlink(source_onnx_model_dir, src_model_dir, target_is_directory=True)
 
 
 def use_dev_mode(args):
@@ -2585,7 +2594,9 @@ def main():
             install_python_deps(args.numpy_version)
 
         if args.enable_onnx_tests:
-            setup_test_data(build_dir, configs)
+            source_onnx_model_dir = "C:\\local\\models" if is_windows() else "/data/models"
+            dest_model_dir_name = "models"
+            setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, configs)
 
         if args.use_cuda and args.cuda_version is None:
             if is_windows():
