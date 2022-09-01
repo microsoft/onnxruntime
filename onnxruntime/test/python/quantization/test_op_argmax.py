@@ -20,9 +20,35 @@ from op_test_utils import (
     check_op_type_count,
     check_qtype_by_node_type,
 )
-
+import onnxruntime
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
+def check_fraction_correct(testcase, model_path_origin, model_path_to_check, inputs, tolerance=.05):
+    sess_options = onnxruntime.SessionOptions()
+    sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL  # TODO: ENABLE_ALL?
+
+    origin_sess = onnxruntime.InferenceSession(
+        model_path_origin, sess_options=sess_options, providers=["CPUExecutionProvider"]
+    )
+    origin_results = origin_sess.run([], inputs)
+    # enable QDQ transformers
+    sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+    target_sess = onnxruntime.InferenceSession(
+        model_path_to_check,
+        sess_options=sess_options,
+        providers=["CPUExecutionProvider"],
+    )
+
+    target_results = target_sess.run([], inputs)
+    testcase.assertEqual(len(origin_results), len(target_results), "result count are different")
+    # np.set_printoptions(threshold=sys.maxsize)
+    for idx, ref_output in enumerate(origin_results):
+        output = target_results[idx]
+        a = np.array(output)
+        b = np.array(ref_output)
+        fraction_wrong = np.sum(a!=b) / (a.shape[0] * a.shape[1] * a.shape[2])
+        assert fraction_wrong < tolerance, "fraction incorrect ("+str(fraction_wrong)+") exceeds tolerance ("+str(tolerance)+")"
+            
 
 class TestOpArgMax(TestCaseTempDir):
     def input_feeds(self, n, name2shape):
@@ -150,7 +176,7 @@ class TestOpArgMax(TestCaseTempDir):
         }
         check_qtype_by_node_type(self, model_uint8_path, qnode_io_qtypes)
         data_reader.rewind()
-        check_model_correctness(self, model_fp32_path, model_uint8_path, data_reader.get_next())
+        check_fraction_correct(self, model_fp32_path, model_uint8_path, data_reader.get_next())
 
         # Verify QDQ mode
         data_reader.rewind()
@@ -173,7 +199,7 @@ class TestOpArgMax(TestCaseTempDir):
         }
         check_qtype_by_node_type(self, model_uint8_qdq_path, qnode_io_qtypes)
         data_reader.rewind()
-        check_model_correctness(self, model_fp32_path, model_uint8_qdq_path, data_reader.get_next())
+        check_fraction_correct(self, model_fp32_path, model_uint8_qdq_path, data_reader.get_next())
 
         # Verify QDQ mode for TensorRT
         data_reader.rewind()
@@ -197,7 +223,7 @@ class TestOpArgMax(TestCaseTempDir):
         }
         check_qtype_by_node_type(self, model_uint8_qdq_trt_path, qnode_io_qtypes)
         data_reader.rewind()
-        check_model_correctness(self, model_fp32_path, model_uint8_qdq_trt_path, data_reader.get_next())
+        check_fraction_correct(self, model_fp32_path, model_uint8_qdq_trt_path, data_reader.get_next())
 
         # Verify QDQ Dynamic
         data_reader.rewind()
@@ -213,7 +239,7 @@ class TestOpArgMax(TestCaseTempDir):
         qdqnode_counts = {"QuantizeLinear": 1, "DequantizeLinear": 2, "ArgMax": 1}
         check_op_type_count(self, model_uint8_qdq_dyn_path, **qdqnode_counts)
         data_reader.rewind()
-        check_model_correctness(self, model_fp32_path, model_uint8_qdq_dyn_path, data_reader.get_next())
+        check_fraction_correct(self, model_fp32_path, model_uint8_qdq_dyn_path, data_reader.get_next())
 
         data_reader.rewind()
         quantize_dynamic(
@@ -238,7 +264,7 @@ class TestOpArgMax(TestCaseTempDir):
         )
 
         data_reader.rewind()
-        check_model_correctness(self, model_t_int8_qdq_dyn_path, model_t_uint8_qdq_dyn_path, data_reader.get_next())
+        check_fraction_correct(self, model_t_int8_qdq_dyn_path, model_t_uint8_qdq_dyn_path, data_reader.get_next())
 
     def test_quantize_argmax(self):
         self.quantize_argmax_test(QuantType.QUInt8, QuantType.QUInt8)
