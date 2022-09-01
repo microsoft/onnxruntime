@@ -135,7 +135,7 @@ body:
       label: Model File
       placeholder: Attach the file corresponding to your model if possible.
     validations:
-      required: true
+      required: false
   - type: dropdown
     id: quant
     attributes:
