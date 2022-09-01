@@ -13,7 +13,7 @@ from .qdq_quantizer import QDQQuantizer
 from .quant_utils import QuantFormat, QuantizationMode, QuantType, load_model, model_has_pre_process_metadata
 from .registry import IntegerOpsRegistry, QLinearOpsRegistry
 
-Execution_Providers = ["CPU", "TRT", "NNAPI", "SNE", "CUSTOM"]
+EXECUTION_PROVIDERS = frozenset(["CPU", "TRT", "NNAPI", "SNE", "CUSTOM"])
 
 
 class StaticQuantConfig:
@@ -75,7 +75,7 @@ class StaticQuantConfig:
                                                              could be disabled per node using the nodes_to_exclude.
                     MatMulConstBOnly = True/False: Default is False for static mode. If enabled, only MatMul with const B will be quantized.
                     AddQDQPairToWeight = True/False : Default is False which quantizes floating-point weight and feeds it to
-                                                      soley inserted DeQuantizeLinear node. If True, it remains floating-point weight and
+                                                      solely inserted DeQuantizeLinear node. If True, it remains floating-point weight and
                                                       inserts both QuantizeLinear/DeQuantizeLinear nodes to weight.
                     OpTypesToExcludeOutputQuantizatioin = list of op type : Default is []. If any op type is specified, it won't quantize
                                                                             the output of ops with this specific op types.
@@ -96,7 +96,7 @@ class StaticQuantConfig:
                 ValueError: Raise ValueError if execution provider is unknown
         """
 
-        if execution_provider not in Execution_Providers:
+        if execution_provider not in EXECUTION_PROVIDERS:
             raise ValueError(f"Unknown execution provider: {execution_provider}")
         extra_options = extra_options or {}
         nodes_to_exclude = nodes_to_exclude or []
@@ -186,7 +186,7 @@ class DynamicQuantConfig:
             Raises:
                 ValueError: Raise ValueError if execution provider is unknown
         """
-        if execution_provider not in Execution_Providers:
+        if execution_provider not in EXECUTION_PROVIDERS:
             raise ValueError(f"Unknown execution provider: {execution_provider}")
         extra_options = extra_options or {}
         nodes_to_exclude = nodes_to_exclude or []
