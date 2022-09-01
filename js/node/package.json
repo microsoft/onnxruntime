@@ -26,7 +26,8 @@
     "build": "tsc && node ./script/build",
     "test": "tsc --build ../scripts && node ../scripts/prepare-onnx-node-tests && mocha ./test/test-main",
     "prepack": "node ./script/prepack",
-    "rebuildr": "tsc && node ./script/build --rebuild --config=RelWithDebInfo"
+    "rebuildr": "tsc && node ./script/build --rebuild --config=RelWithDebInfo",
+    "download": "tsc --build ../scripts && node ../scripts/prepare-onnx-node-tests"
   },
   "keywords": [
     "ONNX",

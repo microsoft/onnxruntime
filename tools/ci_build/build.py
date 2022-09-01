@@ -2020,7 +2020,7 @@ def run_nodejs_tests(nodejs_binding_dir):
     run_subprocess(args, cwd=nodejs_binding_dir)
 
 def download_onnx_models(nodejs_binding_dir):
-    args = ["npm", "run", "prepare-node-tests", "--", "--timeout=90000"]
+    args = ["npm", "run", "download", "--", "--timeout=90000"]
     if is_windows():
         args = ["cmd", "/c"] + args
     run_subprocess(args, cwd=nodejs_binding_dir)
@@ -2721,7 +2721,7 @@ def main():
             nodejs_binding_dir = os.path.normpath(os.path.join(source_dir, "js", "node"))
             run_nodejs_tests(nodejs_binding_dir)
         else:
-            nodejs_binding_dir = os.path.normpath(os.path.join(source_dir, "js"))
+            nodejs_binding_dir = os.path.normpath(os.path.join(source_dir, "js", "node"))
             download_onnx_models(nodejs_binding_dir)
 
         nodejs_test_data_dir = os.path.join(source_dir, "js", "test")
