@@ -357,6 +357,15 @@ GraphEdge GraphEdge::CreateGraphEdge(const Node& node, const Node::EdgeEnd& edge
                          GetNodeOutputName(node, edge_end.GetSrcArgIndex()));
 }
 
+const Node::EdgeEnd* GetInputEdge(const Node& node, int arg_index) {
+  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
+    if (arg_index == it->GetDstArgIndex()) {
+      return &(*it);
+    }
+  }
+  return nullptr;
+}
+
 /** Returns a vector of the input GraphEdges of a node. */
 std::vector<GraphEdge> GraphEdge::GetNodeInputEdges(const Node& node) {
   std::vector<GraphEdge> input_edges;
@@ -719,16 +728,6 @@ void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrapper<Nod
     RemoveNodeOutputEdges(graph, node);
     graph.RemoveNode(node.Index());
   }
-}
-
-const Node::EdgeEnd*
-GetInputEdge(const Node& node, int arg_index) {
-  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
-    if (arg_index == it->GetDstArgIndex()) {
-      return &(*it);
-    }
-  }
-  return nullptr;
 }
 
 const Node* GetInputNode(const Node& node, int arg_index) {

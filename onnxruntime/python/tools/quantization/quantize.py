@@ -4,28 +4,13 @@
 # license information.
 # --------------------------------------------------------------------------
 import logging
+import tempfile
 from pathlib import Path
 
-from onnx import onnx_pb as onnx_proto
-
 from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator
-from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
-from .quant_utils import (
-    QuantFormat,
-    QuantizationMode,
-    QuantizedInitializer,
-    QuantizedValue,
-    QuantizedValueType,
-    QuantType,
-    attribute_to_kwarg,
-    find_by_name,
-    generate_identified_filename,
-    get_elem_index,
-    get_mul_node,
-    load_model,
-)
+from .quant_utils import QuantFormat, QuantizationMode, QuantType, load_model, model_has_pre_process_metadata
 from .registry import IntegerOpsRegistry, QLinearOpsRegistry
 
 
@@ -91,7 +76,8 @@ def quantize_static(
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
-    :param optimize_model: optimize model before quantization.
+    :param optimize_model: Deprecating Soon! Optimize model before quantization. NOT recommended, optimization will
+        change the computation graph, making debugging of quantization loss difficult.
     :param use_external_data_format: option used for large size (>2GB) model. Set to False by default.
     :param calibrate_method:
         Current calibration methods supported are MinMax and Entropy.
@@ -134,6 +120,12 @@ def quantize_static(
 
     model = load_model(Path(model_input), optimize_model)
 
+    pre_processed: bool = model_has_pre_process_metadata(model)
+    if not pre_processed:
+        logging.warning(
+            "Please consider pre-processing before quantization. See https://github.com/microsoft/onnxruntime-inference-examples/blob/main/quantization/image_classification/cpu/ReadMe.md"
+        )
+
     calib_extra_options_keys = [
         ("CalibTensorRangeSymmetric", "symmetric"),
         ("CalibMovingAverage", "moving_average"),
@@ -142,15 +134,19 @@ def quantize_static(
     calib_extra_options = {
         key: extra_options.get(name) for (name, key) in calib_extra_options_keys if name in extra_options
     }
-    calibrator = create_calibrator(
-        model,
-        op_types_to_quantize,
-        calibrate_method=calibrate_method,
-        use_external_data_format=use_external_data_format,
-        extra_options=calib_extra_options,
-    )
-    calibrator.collect_data(calibration_data_reader)
-    tensors_range = calibrator.compute_range()
+
+    with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
+        calibrator = create_calibrator(
+            model,
+            op_types_to_quantize,
+            augmented_model_path=Path(quant_tmp_dir).joinpath("augmented_model.onnx").as_posix(),
+            calibrate_method=calibrate_method,
+            use_external_data_format=use_external_data_format,
+            extra_options=calib_extra_options,
+        )
+        calibrator.collect_data(calibration_data_reader)
+        tensors_range = calibrator.compute_range()
+        del calibrator
 
     check_static_quant_arguments(quant_format, activation_type, weight_type)
 
@@ -187,6 +183,10 @@ def quantize_static(
 
     quantizer.quantize_model()
     quantizer.model.save_model_to_file(model_output, use_external_data_format)
+    if not pre_processed:
+        logging.warning(
+            "Please consider pre-processing before quantization. See https://github.com/microsoft/onnxruntime-inference-examples/blob/main/quantization/image_classification/cpu/ReadMe.md"
+        )
 
 
 def quantize_dynamic(

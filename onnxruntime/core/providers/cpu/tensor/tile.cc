@@ -153,7 +153,7 @@ Status Tile::Compute(OpKernelContext* ctx) const {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'repeat' input tensor must have the same length as the 'input' tensor");
 
   // Calculate the shape of the output tensor
-  const auto* repeats = repeats_tensor.template Data<int64_t>();
+  const auto* repeats = repeats_tensor.Data<int64_t>();
   auto output_dims = input_shape.AsShapeVector();
   for (size_t axis = 0; axis < input_rank; axis++) {
     output_dims[axis] *= repeats[axis];

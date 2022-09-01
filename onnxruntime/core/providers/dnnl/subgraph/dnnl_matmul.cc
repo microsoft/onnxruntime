@@ -4,21 +4,44 @@
 #include "dnnl_matmul.h"
 #include "dnnl_subgraph.h"
 #include "dnnl_subgraph_primitive.h"
+#include "dnnl_util.h"
 #include <vector>
+#include <unordered_set>
+#include <string>
 
 namespace onnxruntime {
 namespace ort_dnnl {
 
 DnnlMatMul::DnnlMatMul() {}
 
+// This handles ONNX defined "MatMul" as well as two other variations of MatMul
+// "MatMulPostOps" is a OneDNN only fusion of MatMul and upto 32 elementwise or binary ops.
+//    See dnnl_subgraph_transformer.cc MatMulBinaryEltwise(...).
+// "FusedMatMul" is a ContribOperator defined here:
+//    https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#com.microsoft.FusedMatMul
+//    Depending on its attributes "FusedMatMul" can transpose eather input to the MatMul and scale the resulting output
 void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
+  std::unordered_set<std::string> binary_ops = {"Add", "Div", "Mul", "Sub"};
+  std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp", "LeakyRelu", "Log", "Relu",
+                                                     "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
+
   auto eng = sp.GetEngine();
 
-  bool has_add = false;
-  if (node.OpType() == "MatMulAdd") {
-    has_add = true;
-    //if fused with add, need a third input
-    assert(node.Input(IN_BINARY).Exists());
+  bool has_postop_fusion = false;
+  std::vector<std::string> post_ops;
+
+  if (node.OpType() == "MatMulPostOps") {
+    has_postop_fusion = true;
+    post_ops = node.GetPostOps();
+
+    int binary_count = 0;
+    // Check we have enough inputs for MatMul and the binary post ops
+    for (size_t i = 0; i < post_ops.size(); ++i) {
+      if (binary_ops.count(post_ops[i]) != 0) {
+        assert(node.Input(IN_BINARY_0 + binary_count).Exists());
+        binary_count++;
+      }
+    }
   }
 
   bool is_fusedmatmul = false;
@@ -28,8 +51,8 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   bool transBatchB = false;
   float alpha = 1.0;
   if (node.OpType() == "FusedMatMul") {
-  // Fused matmul is matmul modified to behave like numpy: 
-  //https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
+  // Fused matmul is matmul modified to behave like numpy:
+  // https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
     is_fusedmatmul = true;
     transA = GetTransA(node);
     transBatchA = GetTransBatchA(node);
@@ -42,7 +65,7 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto weights_dims = sp.GetMemory(node.Input(IN_B)).get_desc().dims();
 
 
-  //If this is required for transposed inputs, then this will be done later on in the code.
+  // If this is required for transposed inputs, then this will be done later on in the code.
   if (src_dims.size() != weights_dims.size()) {
       while (src_dims.size() < weights_dims.size() && (!transA && !transBatchA)) {
         src_dims.insert(src_dims.begin(), 1);
@@ -65,7 +88,7 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dataB_mem = sp.GetMemory(node.Input(IN_B));
 
 
-  //Holds transposed matrices A and B. ToDo: Eliminate its usage if in place transpose is possbile for FusedMatmul
+  // Holds transposed matrices A and B. ToDo: Eliminate its usage if in place transpose is possbile for FusedMatmul
   dnnl::memory::desc transposedA_md;
   dnnl::memory transposedA_mem;
 
@@ -113,7 +136,6 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       transposedB_mem = dnnl::memory(transposedB_md, eng, nullptr);
       void* handle = intermediateB_mem.get_data_handle();
       transposedB_mem.set_data_handle(handle);
-      
     }
   }
 
@@ -123,14 +145,13 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   } else {
     src_md = dnnl::memory::desc(src_dims, node.Input(IN_A).Type(), dnnl::memory::format_tag::any);
   }
-    
+
   dnnl::memory::desc weights_md;
   if (transB || transBatchB) {
     weights_md = transposedB_md;
   } else {
     weights_md = dnnl::memory::desc(weights_dims, node.Input(IN_B).Type(), dnnl::memory::format_tag::any);
   }
-    
 
   auto output_shape = src_dims;
   if (transA || transBatchA) {
@@ -142,50 +163,79 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   } else {
     output_shape.emplace_back(weights_dims.back());
   }
-    
+
   for (size_t i = 0; i < output_shape.size() - 2; i++) {
     if (output_shape[i] == 1) {
-        if (transB || transBatchB) {
+      if (transB || transBatchB) {
         output_shape[i] = transposedB_dims[i];
       } else {
-          output_shape[i] = weights_dims[i];
-        }
-        
+        output_shape[i] = weights_dims[i];
+      }
     }
   }
 
   /*
   create a post op binary with possible unsqueezing in order to make sure onednn properly broadcast
-  current limitation 
+  current limitation
   1. is no unsqueeze for matmul output as it is not exposed due to post op fusion
   2. the third input has to be reordered to plain format (eg, no memory format propogation if the third input is internal to subgraph)
   3. adding 1s to front (unsqueeze/expand) in logical dims would possibly fail if physcial layout is not plain format
   */
   dnnl::primitive_attr attr;
-  if (has_add) {
+  if (has_postop_fusion) {
+    int binary_count = 0;
     dnnl::post_ops ops;
-    auto ori_binary_mem_desc = sp.GetMemory(node.Input(IN_BINARY).Name()).get_desc();
-    auto ori_binary_mem_dims = ori_binary_mem_desc.dims();
-    auto binary_mem_dims = ori_binary_mem_dims;
-    if (ori_binary_mem_dims.size() != output_shape.size()) {
-      if (ori_binary_mem_dims.size() > output_shape.size()) {
-        ORT_THROW("add fusion with matmul output broadcasting by unsqueezing is not supported");
-      }
-      //expand the third input (from the binary op) is possible
-      while (binary_mem_dims.size() < output_shape.size()) {
-        binary_mem_dims.insert(binary_mem_dims.begin(), 1);
+    for (size_t i = 0; i < post_ops.size(); ++i) {
+      dnnl::algorithm algo = dnnl_util::OrtOperatorToDnnlAlgorithm(post_ops[i]);
+      // Handle Binary post ops including the input memory
+      if (binary_ops.count(post_ops[i]) != 0) {
+        auto ori_binary_md = sp.GetMemory(node.Input(IN_BINARY_0 + binary_count).Name()).get_desc();
+        auto ori_binary_dims = ori_binary_md.dims();
+        auto binary_mem_dims = ori_binary_dims;
+        if (ori_binary_dims.size() != output_shape.size()) {
+          if (ori_binary_dims.size() > output_shape.size()) {
+            ORT_THROW("add fusion with matmul output broadcasting by unsqueezing is not supported");
+          }
+          // expand the input (from the binary op) if needed to support broadcasting
+          while (binary_mem_dims.size() < output_shape.size()) {
+            binary_mem_dims.insert(binary_mem_dims.begin(), 1);
+          }
+        }
+
+        // expand the dims by 1s (should always be possible)
+        // will throw exception if not possible
+        auto binary_md = ori_binary_md.reshape(binary_mem_dims);
+        // Possible improvment: use format any to choose the best layout
+        ops.append_binary(algo, binary_md);
+        binary_count++;
+        // Handle Elementwise post ops. Some of these require obtaining an 'alpha' attribute
+      } else if (elementwise_ops.count(post_ops[i]) != 0) {
+        float post_op_alpha = 0.0;
+        switch (algo) {
+          case dnnl::algorithm::eltwise_relu: {
+            // Need to check operator since both Relu and LeakyRelu are covered by algorithm::eltwise_relu
+            if (post_ops[i] == "LeakyRelu") {
+              post_op_alpha = GetFloatAttr(node, "alpha", /*default_alpha*/ 0.01f);
+            } else {
+              post_op_alpha = 0.0;
+            }
+            break;
+          }
+          case dnnl::algorithm::eltwise_elu: {
+            post_op_alpha = GetFloatAttr(node, "alpha", /*default_alpha*/ 1.0f);
+            break;
+          }
+          default:
+            post_op_alpha = 0.0;
+        }
+        ops.append_eltwise(1.0f, algo, post_op_alpha, 0.0f);
       }
     }
-
-    //expand the dims by 1s (should always be possible)
-    //will throw exception if not possible
-    auto binary_mem_desc = ori_binary_mem_desc.reshape(binary_mem_dims);
-    //TODO: use format any to choose the best layout
-    ops.append_binary(dnnl::algorithm::binary_add, binary_mem_desc);
     attr.set_post_ops(ops);
   }
 
-  if (is_fusedmatmul) {       // Set the scaling of output as a post op in the primitive attribute, taking the value from alpha attribute
+  if (is_fusedmatmul) {
+    // Set the scaling of output as a post op in the primitive attribute, taking the value from alpha attribute
     std::vector<float> alphaScale({alpha});
     attr.set_output_scales(0, alphaScale);
   }
@@ -193,7 +243,6 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dst_md = dnnl::memory::desc(output_shape, node.Output(OUT_Y).Type(), dnnl::memory::format_tag::any);
 
   auto matmul_d = dnnl::matmul::desc(src_md, weights_md, dst_md);
-
   auto matmul_pd = dnnl::matmul::primitive_desc(matmul_d, attr, eng);
 
   dnnl::memory matmul_src_mem, matmul_weights_mem;
@@ -211,35 +260,41 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     matmul_weights_mem = sp.GetMemoryAndReshape(node.Input(IN_B), matmul_pd.weights_desc(), eng);
   }
 
-  //a default memory map for matmul
+  // a default memory map for matmul
   std::unordered_map<int, dnnl::memory> mem_map({{DNNL_ARG_SRC, matmul_src_mem},
                                                  {DNNL_ARG_WEIGHTS, matmul_weights_mem},
                                                  {DNNL_ARG_DST, matmul_dst_mem}});
 
-  //add to memory map with extra third input if fused with add
-  if (has_add) {
-    dnnl::algorithm algo;
-    dnnl::memory::desc binary_mem_desc;
-    matmul_pd.get_primitive_attr().get_post_ops().get_params_binary(0, algo, binary_mem_desc);
-    assert(algo == dnnl::algorithm::binary_add);
-    auto binary_post_op_mem = sp.GetMemoryAndReshape(node.Input(IN_BINARY), binary_mem_desc, eng);
-    mem_map[DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1] = binary_post_op_mem;
+  // add to memory map with extra third input if fused with add
+  if (has_postop_fusion) {
+    // add to memory map for extra binary inputs
+    int binary_count = 0;
+    for (size_t i = 0; i < post_ops.size(); ++i) {
+      if (binary_ops.count(post_ops[i]) != 0) {
+        dnnl::algorithm algo;
+        dnnl::memory::desc binary_mem_desc;
+        matmul_pd.get_primitive_attr().get_post_ops().get_params_binary(static_cast<int>(i), algo, binary_mem_desc);
+        auto binary_post_op_mem = sp.GetMemoryAndReshape(node.Input(IN_BINARY_0 + binary_count), binary_mem_desc, eng);
+        mem_map[DNNL_ARG_ATTR_MULTIPLE_POST_OP(static_cast<int>(i)) | DNNL_ARG_SRC_1] = binary_post_op_mem;
+        binary_count++;
+      }
+    }
   }
 
   sp.AddPrimitive(matmul_prim, mem_map);
-
   sp.SetMemory(node.Output(OUT_Y), matmul_dst_mem);
 }
 
-dnnl::memory::dims DnnlMatMul::GetStrides(dnnl::memory::dims& data_dims, 
-                                          bool trans, 
-                                          bool transBatch, 
+dnnl::memory::dims DnnlMatMul::GetStrides(dnnl::memory::dims& data_dims,
+                                          bool trans,
+                                          bool transBatch,
                                           dnnl::memory::dims& transposed_dims) {
   std::vector<uint32_t> permA;
   std::vector<uint32_t> N_A;
   auto ndata_dims = data_dims.size();
   uint32_t M_A, Batch;
-  for (uint32_t i = 0; i < ndata_dims; i++)  // Temp vector to hold indices of the dims, will be used to track transposes required
+  // Temp vector to hold indices of the dims, will be used to track transposes required
+  for (uint32_t i = 0; i < ndata_dims; i++)
     permA.push_back(i);
   Batch = permA[0];              // Batch Dimension
   M_A = permA[ndata_dims - 1];  // M Dimension
@@ -319,6 +374,14 @@ float DnnlMatMul::GetAlpha(DnnlNode& node) {
     return attr->second().f();
   }
   return 1.0;
+}
+
+float DnnlMatMul::GetFloatAttr(DnnlNode& node, std::string attr_name, float default_value) {
+  auto attr = node.Attributes().find(attr_name);
+  if (attr != node.Attributes().end()) {
+    return attr->second().f();
+  }
+  return default_value;
 }
 
 }  // namespace ort_dnnl

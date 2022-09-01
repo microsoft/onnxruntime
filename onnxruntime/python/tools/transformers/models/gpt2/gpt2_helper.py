@@ -10,11 +10,13 @@ import pickle
 import random
 import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Dict, List, Tuple, Union
 
 import numpy
+import onnx
 import torch
 from transformers import GPT2Config, GPT2LMHeadModel, GPT2Model, TFGPT2Model
 
@@ -455,18 +457,47 @@ class Gpt2Helper:
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
-        torch_onnx_export(
-            model,
-            args=tuple(input_list),
-            f=onnx_model_path,
-            input_names=input_names,
-            output_names=output_names,
-            dynamic_axes=dynamic_axes,
-            opset_version=11,
-            do_constant_folding=True,
-            use_external_data_format=use_external_data_format,
-            verbose=verbose,
-        )
+        if use_external_data_format:
+            # We let PyTorch export onnx to a temp directory first, then convert external data to one file.
+            with tempfile.TemporaryDirectory() as tmp_dir_name:
+                temp_onnx_model_path = os.path.join(tmp_dir_name, "gpt2.onnx")
+                Path(temp_onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
+
+                torch_onnx_export(
+                    model,
+                    args=tuple(input_list),
+                    f=temp_onnx_model_path,
+                    export_params=True,
+                    input_names=input_names,
+                    output_names=output_names,
+                    dynamic_axes=dynamic_axes,
+                    opset_version=11,
+                    do_constant_folding=True,
+                    use_external_data_format=True,
+                    verbose=verbose,
+                )
+
+                model = onnx.load_model(temp_onnx_model_path, load_external_data=True)
+                OnnxModel.save(
+                    model,
+                    onnx_model_path,
+                    save_as_external_data=True,
+                    all_tensors_to_one_file=True,
+                )
+        else:
+            torch_onnx_export(
+                model,
+                args=tuple(input_list),
+                f=onnx_model_path,
+                export_params=True,
+                input_names=input_names,
+                output_names=output_names,
+                dynamic_axes=dynamic_axes,
+                opset_version=11,
+                do_constant_folding=True,
+                use_external_data_format=False,
+                verbose=verbose,
+            )
 
     @staticmethod
     def optimize_onnx(

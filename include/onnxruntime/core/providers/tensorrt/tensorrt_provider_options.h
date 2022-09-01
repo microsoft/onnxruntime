@@ -29,4 +29,5 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_engine_decryption_enable;             // enable engine decryption. Default 0 = false, nonzero = true
   const char* trt_engine_decryption_lib_path;   // specify engine decryption library path
   int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
+  int trt_context_memory_sharing_enable;        // enable context memory sharing between subgraphs. Default 0 = false, nonzero = true
 };

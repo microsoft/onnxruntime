@@ -291,6 +291,7 @@ class TorchParser(ParserBase):
             "Storage": StorageType,
             "ConstQuantizerPtr": ConstQuantizerPtrType,
             "Stream": StreamType,
+            "SymInt": SymIntType,
         }
         identifier = self._expect_token(TokenKind.IDENTIFIER)
         base_type_parser = base_type_parsers.get(identifier.value)

@@ -109,14 +109,16 @@ struct Node__EdgeIterator {
   virtual int GetDstArgIndex() const = 0;
 };
 
-// There are two ways to route a function, one is a virtual method and the other is a function pointer (or pointer to member function)
-// The function pointers are nicer in that they directly call the target function, but they cannot be used in cases where we're calling
-// a specific implementation of a virtual class member. Trying to get a pointer to member of a virtual function will return a thunk that
-// calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
-// function pointer implementation in this case.
-//The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
-//However, we do not allocate this type on heap.
-//Please do not new or delete this type(and subtypes).
+// There are two ways to route a function, one is a virtual method and the other is a function pointer (or pointer to
+// member function).
+// The function pointers are nicer in that they directly call the target function, but they cannot be used in cases
+// where we're calling a specific implementation of a virtual class member. Trying to get a pointer to member of a
+// virtual function will return a thunk that calls the virtual function (which will lead to infinite recursion in the
+// bridge). There is no known way to get the non virtual member function pointer implementation in this case.
+// The suppressed warning is:
+//  "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
+// However, we do not allocate this type on heap.
+// Please do not new or delete this type(and subtypes).
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26436)
@@ -145,6 +147,12 @@ struct ProviderHost {
   virtual void* CPUAllocator__Alloc(CPUAllocator* p, size_t size) = 0;
   virtual void CPUAllocator__Free(CPUAllocator* p, void* allocation) = 0;
 
+  virtual unsigned int GetThreadId() = 0;
+  virtual unsigned int GetProcessId() = 0;
+
+  virtual std::string demangle(const char* name) = 0;
+  virtual std::string demangle(const std::string& name) = 0;
+
 #ifdef USE_CUDA
   virtual std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
@@ -155,8 +163,8 @@ struct ProviderHost {
   virtual void cuda__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
   virtual void cuda__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
 
-  virtual bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
-  virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
 #endif
 
 #ifdef USE_ROCM
@@ -169,8 +177,8 @@ struct ProviderHost {
   virtual void rocm__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
   virtual void rocm__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
 
-  virtual bool RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
-  virtual bool RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual Status RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual void RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
 #endif
 
   virtual std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
@@ -215,7 +223,6 @@ struct ProviderHost {
   // IExecutionProvider
   virtual AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, int id, OrtMemType mem_type) = 0;
   virtual void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) = 0;
-  virtual void IExecutionProvider__TryInsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) = 0;
   virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
                                                                                             const std::vector<const KernelRegistry*>& kernel_registries) = 0;
   //!!! This API will be deprecated soon
@@ -225,7 +232,7 @@ struct ProviderHost {
 
   virtual int IExecutionProvider__GenerateMetaDefId(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) = 0;
 
-  virtual void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, std::shared_ptr<AllocatorManager> allocator_manager) = 0;
+  virtual void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, AllocatorManager& allocator_manager) = 0;
   // Status
   virtual std::string Status__ToString(const Status* p) = 0;
 
@@ -312,6 +319,7 @@ struct ProviderHost {
   virtual void AttributeProto__operator_delete(ONNX_NAMESPACE::AttributeProto* p) = 0;
   virtual void AttributeProto__operator_assign(ONNX_NAMESPACE::AttributeProto* p, const ONNX_NAMESPACE::AttributeProto& v) = 0;
 
+  virtual const std::string& AttributeProto__name(const ONNX_NAMESPACE::AttributeProto* p) const = 0;
   virtual ONNX_NAMESPACE::AttributeProto_AttributeType AttributeProto__type(const ONNX_NAMESPACE::AttributeProto* p) = 0;
   virtual int AttributeProto__ints_size(const ONNX_NAMESPACE::AttributeProto* p) = 0;
   virtual int AttributeProto__floats_size(const ONNX_NAMESPACE::AttributeProto* p) = 0;
@@ -358,6 +366,13 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::GraphProto* ModelProto__mutable_graph(ONNX_NAMESPACE::ModelProto* p) = 0;
 
   virtual void ModelProto__set_ir_version(ONNX_NAMESPACE::ModelProto* p, int64_t value) = 0;
+
+  // NodeProto
+  virtual std::unique_ptr<ONNX_NAMESPACE::NodeProto> NodeProto__construct() = 0;
+  virtual void NodeProto__operator_delete(ONNX_NAMESPACE::NodeProto* p) = 0;
+  virtual void NodeProto__operator_assign(ONNX_NAMESPACE::NodeProto* p, const ONNX_NAMESPACE::NodeProto& v) = 0;
+  virtual int NodeProto__attribute_size(ONNX_NAMESPACE::NodeProto* p) = 0;
+  virtual const ONNX_NAMESPACE::AttributeProto& NodeProto__attribute(const ONNX_NAMESPACE::NodeProto* p, int index) const = 0;
 
   // TensorProto
   virtual std::unique_ptr<ONNX_NAMESPACE::TensorProto> TensorProto__construct() = 0;
@@ -585,6 +600,7 @@ struct ProviderHost {
   virtual ConstPointerContainer<std::vector<NodeArg*>> Node__InputDefs(const Node* p) noexcept = 0;
   virtual ConstPointerContainer<std::vector<NodeArg*>> Node__OutputDefs(const Node* p) noexcept = 0;
   virtual NodeIndex Node__Index(const Node* p) noexcept = 0;
+  virtual std::vector<gsl::not_null<const Graph*>> Node__GetSubgraphs(const Node* p) const noexcept = 0;
 
   virtual void Node__ToProto(const Node* p, ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) = 0;
 
@@ -626,6 +642,8 @@ struct ProviderHost {
   virtual std::unique_ptr<NodeAttributes_Iterator> NodeAttributes__end(const NodeAttributes* p) = 0;
   virtual std::unique_ptr<NodeAttributes_Iterator> NodeAttributes__find(const NodeAttributes* p, const std::string& key) = 0;
   virtual void NodeAttributes__insert(NodeAttributes* p, const NodeAttributes& v) = 0;
+  virtual void NodeAttributes__emplace(NodeAttributes* p, const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) = 0;
+  virtual void NodeAttributes__reserve(NodeAttributes* p, size_t size) = 0;
 
   // Model
   virtual void Model__operator_delete(Model* p) = 0;
@@ -648,6 +666,8 @@ struct ProviderHost {
   virtual const std::vector<const NodeArg*>& Graph__GetInputs(const Graph* p) noexcept = 0;
   virtual bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) = 0;
 
+  virtual const Node* Graph__ParentNode(const Graph* p) const = 0;
+
   // GraphViewer
   virtual void GraphViewer__operator_delete(GraphViewer* p) = 0;
   virtual std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* p, const logging::Logger& logger) = 0;
@@ -659,7 +679,9 @@ struct ProviderHost {
   virtual const NodeArg* GraphViewer__GetNodeArg(const GraphViewer* p, const std::string& name) = 0;
 
   virtual bool GraphViewer__IsSubgraph(const GraphViewer* p) = 0;
+  virtual const Graph& GraphViewer__GetGraph(const GraphViewer* p) const = 0;
   virtual bool GraphViewer__IsConstantInitializer(const GraphViewer* p, const std::string& name, bool check_outer_scope) = 0;
+  virtual const Node* GraphViewer__ParentNode(const GraphViewer* p) = 0;
   virtual int GraphViewer__NumberOfNodes(const GraphViewer* p) noexcept = 0;
   virtual int GraphViewer__MaxNodeIndex(const GraphViewer* p) noexcept = 0;
 
@@ -733,7 +755,9 @@ struct ProviderHost {
   // Tensor
   virtual std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) = 0;
   virtual std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset) = 0;
-  virtual void Tensor__operator_delete(Tensor* p) = 0;
+  virtual std::unique_ptr<Tensor> Tensor__construct_default() = 0;
+  virtual void Tensor__move_assign(Tensor& lhs, Tensor&& rhs) noexcept = 0;
+  virtual void Tensor__operator_delete(Tensor* p) noexcept = 0;
 
   virtual void Tensor__InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) = 0;
   virtual void Tensor__InitOrtValue(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& location, OrtValue& ort_value) = 0;
@@ -819,7 +843,8 @@ struct ProviderHost {
 
   // AllocatorManager
   virtual void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) = 0;
-  virtual AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p, int id, OrtMemType mem_type) = 0;
+  virtual AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p,
+                                                      OrtMemType mem_type, OrtDevice device) = 0;
 
 #if defined(ENABLE_TRAINING) && defined(ORT_USE_NCCL)
   virtual training::DistributedRunContext& GetDistributedRunContextInstance() = 0;

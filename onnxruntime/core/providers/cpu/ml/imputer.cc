@@ -4,7 +4,7 @@
 #include "core/providers/cpu/ml/imputer.h"
 #include <cmath>
 /**
-https://github.com/onnx/onnx/blob/master/onnx/defs/traditionalml/defs.cc
+https://github.com/onnx/onnx/blob/main/onnx/defs/traditionalml/defs.cc
 ONNX_OPERATOR_SCHEMA(Imputer)
 .SetDomain("ai.onnx.ml")
 .SetDoc(R"DOC(
@@ -81,12 +81,12 @@ common::Status ComputeByType(OpKernelContext* context,
     return Status(ONNXRUNTIME, FAIL, "Empty input dimensions.");
   }
 
-  const T* x_data = X.template Data<T>();
+  const T* x_data = X.Data<T>();
   size_t x_size = x_shape.Size();
   int64_t stride = dims.size() == 1 ? dims[0] : dims[1];
 
   Tensor* Y = context->Output(0, x_shape);
-  T* y_data = Y->template MutableData<T>();
+  T* y_data = Y->MutableData<T>();
   if (imputed_values.size() == static_cast<size_t>(stride)) {
     for (size_t i = 0; i < x_size; i++) {
       if (std::isnan(static_cast<float>(x_data[i])) && std::isnan(static_cast<float>(replaced_value))) {

@@ -123,6 +123,11 @@ Status Shaper::Concat(const std::vector<std::string>& input_names,
   SHAPER_FUNC(Concat, input_names, axis, output_name);
 }
 
+Status Shaper::Split(const std::string& input_name, int32_t axis,
+                     const std::vector<std::string>& output_names) {
+  SHAPER_FUNC(Split, input_name, axis, output_names);
+}
+
 Status Shaper::Squeeze(const std::string& input_name,
                        const std::vector<int32_t>& axes,
                        const std::string& output_name) {
@@ -134,6 +139,13 @@ Status Shaper::DepthToSpace(const std::string& input_name,
                             bool nchw,
                             const std::string& output_name) {
   SHAPER_FUNC(DepthToSpace, input_name, blocksize, nchw, output_name);
+}
+
+Status Shaper::Gather(const std::string& input_name1,
+                      const std::string& input_name2,
+                      const int32_t axis,
+                      const std::string& output_name) {
+  SHAPER_FUNC(Gather, input_name1, input_name2, axis, output_name);
 }
 
 Status Shaper::ResizeUsingScales(const std::string& input_name,
@@ -148,6 +160,12 @@ Status Shaper::ResizeUsingOutputSizes(const std::string& input_name,
                                       bool nchw,
                                       const std::string& output_name) {
   SHAPER_FUNC(ResizeUsingOutputSizes, input_name, output_h, output_w, nchw, output_name);
+}
+
+Status Shaper::Pad(const std::string& input_name,
+                   const std::vector<int32_t>& pads,
+                   const std::string& output_name) {
+  SHAPER_FUNC(Pad, input_name, pads, output_name);
 }
 
 #undef SHAPER_FUNC
@@ -349,13 +367,6 @@ Status Shaper::ConcatImpl(const std::vector<std::string>& input_names,
   std::vector<Shape> dimens;
   for (const auto& input_name : input_names) {
     const Shape& dimen = shape_map_.at(input_name);
-    if (!dimens.empty()) {
-      for (size_t i = 0; i < dimens[0].size(); i++) {
-        if ((int32_t)i == axis)
-          continue;
-      }
-    }
-
     dimens.push_back(dimen);
   }
 
@@ -372,6 +383,24 @@ Status Shaper::ConcatImpl(const std::vector<std::string>& input_names,
   }
 
   shape_map_[output_name] = output_dimen;
+  return Status::OK();
+}
+
+Status Shaper::SplitImpl(const std::string& input_name, int32_t axis,
+                         const std::vector<std::string>& output_names) {
+  const auto& input_shape = shape_map_.at(input_name);
+  const auto count = output_names.size();
+
+  ORT_RETURN_IF_NOT(input_shape[axis] % count == 0,
+                    "count [", count, "] does not evenly divide dimension ", axis, " [", input_shape[axis], "]");
+
+  Shape output_shape = input_shape;
+  output_shape[axis] = input_shape[axis] / count;
+
+  for (const auto& output_name : output_names) {
+    shape_map_[output_name] = output_shape;
+  }
+
   return Status::OK();
 }
 
@@ -428,6 +457,30 @@ Status Shaper::DepthToSpaceImpl(const std::string& input_name,
   return Status::OK();
 }
 
+Status Shaper::GatherImpl(const std::string& input_name1,
+                          const std::string& input_name2,
+                          const int32_t axis,
+                          const std::string& output_name) {
+  const Shape& input_dimen = shape_map_.at(input_name1);
+  const Shape& indices_dimen = shape_map_.at(input_name2);
+
+  std::vector<uint32_t> output_dimen;
+  output_dimen.reserve(indices_dimen.size() + input_dimen.size() - 1);
+
+  // Calculate the output dim
+  for (int32_t i = 0; i < axis; ++i)
+    output_dimen.push_back(input_dimen[i]);
+
+  for (const auto dim : indices_dimen)
+    output_dimen.push_back(dim);
+
+  for (size_t i = axis + 1; i < input_dimen.size(); ++i)
+    output_dimen.push_back(input_dimen[i]);
+
+  shape_map_[output_name] = output_dimen;
+  return Status::OK();
+}
+
 Status Shaper::ResizeUsingScalesImpl(const std::string& input_name,
                                      const float scale_h, const float scale_w,
                                      bool nchw,
@@ -457,6 +510,19 @@ Status Shaper::ResizeUsingOutputSizesImpl(const std::string& input_name,
     output_dimen[2] = output_w;
   }
   shape_map_[output_name] = output_dimen;
+  return Status::OK();
+}
+
+Status Shaper::PadImpl(const std::string& input_name,
+                       const std::vector<int32_t>& pads,
+                       const std::string& output_name) {
+  Shape padded_shape = shape_map_.at(input_name);
+  const size_t rank = padded_shape.size();
+  ORT_RETURN_IF_NOT(pads.size() == 2 * rank, "Expected 2*rank (", 2 * rank, ") pad values but got ", pads.size());
+  for (size_t i = 0; i < rank; ++i) {
+    padded_shape[i] += pads[2*i] + pads[2*i + 1];
+  }
+  shape_map_[output_name] = padded_shape;
   return Status::OK();
 }
 

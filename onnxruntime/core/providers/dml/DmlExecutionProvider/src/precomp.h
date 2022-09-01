@@ -52,6 +52,7 @@
 #include "External/DirectMLHelpers/GeneratedSchemaTypes.h"
 #include "External/DirectMLHelpers/SchemaHelpers.h"
 #include "External/DirectMLHelpers/GeneratedSchemaHelpers.h"
+#include "External/DirectMLHelpers/DirectMLX.h"
 
 using Microsoft::WRL::ComPtr;
 

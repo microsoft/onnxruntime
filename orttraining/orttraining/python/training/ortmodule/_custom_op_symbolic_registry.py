@@ -3,10 +3,11 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from torch.onnx import register_custom_op_symbolic
-from torch.onnx.symbolic_helper import parse_args, _get_tensor_dim_size, _get_tensor_sizes
-import torch.onnx.symbolic_helper as sym_help
 import torch
+import torch.onnx.symbolic_helper as sym_help
+from packaging.version import Version
+from torch.onnx import register_custom_op_symbolic
+from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, parse_args
 
 
 class CustomOpSymbolicRegistry:
@@ -20,7 +21,9 @@ class CustomOpSymbolicRegistry:
     def register_all(cls):
         for name, fn in cls._SYMBOLICS.items():
             # Symbolic name is in format: domain::name
-            register_custom_op_symbolic(name, fn, 1)
+            # Exporter will fail to register symbolic with non-empty domain when torch version is < 1.11.0.
+            if Version(torch.__version__) >= Version("1.11.0") or name.startswith("::"):
+                register_custom_op_symbolic(name, fn, 1)
 
 
 def register_symbolic(name, domain=""):
@@ -73,7 +76,7 @@ def nll_loss(g, self, target, weight, reduction, ignore_index):
 @register_symbolic("embedding")
 def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
     output = g.op(
-        "org.pytorch.aten::ATen", weight, indices, padding_idx, scale_grad_by_freq, sparse, operator_s="aten::embedding"
+        "org.pytorch.aten::ATen", weight, indices, padding_idx, scale_grad_by_freq, sparse, operator_s="embedding"
     )
     indices_shape = _get_tensor_sizes(indices)
     if indices_shape is not None and hasattr(weight.type(), "with_sizes"):
@@ -84,19 +87,19 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
 
 @register_symbolic("bitwise_or")
 def bitwise_or(g, self, other):
-    return g.op("org.pytorch.aten::ATen", self, other, operator_s="aten::bitwise_or", overload_name_s="Tensor")
+    return g.op("org.pytorch.aten::ATen", self, other, operator_s="bitwise_or", overload_name_s="Tensor")
 
 
 @register_symbolic("diagonal")
 def diagonal(g, self, offset, dim1, dim2):
-    return g.op("org.pytorch.aten::ATen", self, offset, dim1, dim2, operator_s="aten::diagonal")
+    return g.op("org.pytorch.aten::ATen", self, offset, dim1, dim2, operator_s="diagonal")
 
 
 @register_symbolic("multinomial")
 def multinomial(g, self, num_samples, replacement=False, generator=None):
     if generator is not None and not sym_help._is_none(generator):
         raise RuntimeError("Unsupported: ONNX does not support generator for multinomial")
-    return g.op("org.pytorch.aten::ATen", self, num_samples, replacement, generator, operator_s="aten::multinomial")
+    return g.op("org.pytorch.aten::ATen", self, num_samples, replacement, generator, operator_s="multinomial")
 
 
 @register_symbolic("max_pool2d")
@@ -112,7 +115,7 @@ def max_pool2d(g, self, kernel_size, stride, padding, dilation, ceil_mode):
         padding,
         dilation,
         ceil_mode,
-        operator_s="aten::max_pool2d_with_indices",
+        operator_s="max_pool2d_with_indices",
         outputs=2,
     )[0]
 
@@ -121,38 +124,34 @@ def max_pool2d(g, self, kernel_size, stride, padding, dilation, ceil_mode):
 def max(g, self, dim_or_y=None, keepdim=None):
     # torch.max(input), returns the max value in the tensor
     if dim_or_y is None and keepdim is None:
-        return g.op("org.pytorch.aten::ATen", self, operator_s="aten::max")
+        return g.op("org.pytorch.aten::ATen", self, operator_s="max")
     # torch.max(input, other)
     if keepdim is None:
         return g.op("Max", self, dim_or_y)
     # torch.max(input, dim, keepdim), returns (max_values, max_indices)
-    return g.op(
-        "org.pytorch.aten::ATen", self, dim_or_y, keepdim, operator_s="aten::max", overload_name_s="dim", outputs=2
-    )
+    return g.op("org.pytorch.aten::ATen", self, dim_or_y, keepdim, operator_s="max", overload_name_s="dim", outputs=2)
 
 
 @register_symbolic("min")
 def min(g, self, dim_or_y=None, keepdim=None):
     # torch.min(input), returns the min value in the tensor
     if dim_or_y is None and keepdim is None:
-        return g.op("org.pytorch.aten::ATen", self, operator_s="aten::min")
+        return g.op("org.pytorch.aten::ATen", self, operator_s="min")
     # torch.min(input, other)
     if keepdim is None:
         return g.op("Min", self, dim_or_y)
     # torch.min(input, dim, keepdim), returns (min_values, min_indices)
-    return g.op(
-        "org.pytorch.aten::ATen", self, dim_or_y, keepdim, operator_s="aten::min", overload_name_s="dim", outputs=2
-    )
+    return g.op("org.pytorch.aten::ATen", self, dim_or_y, keepdim, operator_s="min", overload_name_s="dim", outputs=2)
 
 
 @register_symbolic("unfold")
 def unfold(g, input, dimension, size, step):
-    return g.op("org.pytorch.aten::ATen", input, dimension, size, step, operator_s="aten::unfold")
+    return g.op("org.pytorch.aten::ATen", input, dimension, size, step, operator_s="unfold")
 
 
 @register_symbolic("argmax")
 def argmax(g, input, dim, keepdim):
-    return g.op("org.pytorch.aten::ATen", input, dim, keepdim, operator_s="aten::argmax")
+    return g.op("org.pytorch.aten::ATen", input, dim, keepdim, operator_s="argmax")
 
 
 @register_symbolic("avg_pool2d")
@@ -169,33 +168,13 @@ def avg_pool2d(g, self, kernel_size, stride, padding, ceil_mode, count_include_p
         ceil_mode,
         count_include_pad,
         divisor_override,
-        operator_s="aten::avg_pool2d",
+        operator_s="avg_pool2d",
     )
 
 
 @register_symbolic("adaptive_avg_pool2d")
 def adaptive_avg_pool2d(g, self, output_size):
-    return g.op("org.pytorch.aten::ATen", self, output_size, operator_s="aten::_adaptive_avg_pool2d")
-
-
-@register_symbolic("binary_cross_entropy_with_logits")
-def binary_cross_entropy_with_logits(g, self, target, weight, pos_weight, reduction):
-    # If weight is not None, we need to check if it requires grad and add gradient graph accordingly.
-    # But current custom_gradient_registry doesn't support such None checking,
-    # So doesn't support non-None weight for now.
-    if weight is None or sym_help._is_none(weight):
-        return g.op(
-            "org.pytorch.aten::ATen",
-            self,
-            target,
-            weight,
-            pos_weight,
-            reduction,
-            operator_s="aten::binary_cross_entropy_with_logits",
-        )
-    from torch.onnx.symbolic_opset12 import binary_cross_entropy_with_logits as bce
-
-    return bce(g, self, target, weight, pos_weight, reduction)
+    return g.op("org.pytorch.aten::ATen", self, output_size, operator_s="_adaptive_avg_pool2d")
 
 
 @register_symbolic("numpy_T")
@@ -209,7 +188,7 @@ def numpy_T(g, self):
     else:
         # if we don't have dim information we cannot
         # output a permute so use ATen instead
-        return g.op("com.microsoft::ATenOp", self, name_s="aten::numpy_T")
+        return g.op("org.pytorch.aten::ATen", self, operator_s="numpy_T")
 
 
 @register_symbolic("squeeze")
@@ -222,6 +201,36 @@ def squeeze(g, self, dim=None):
         return squeeze_with_if(g, self, dim)
     squeeze_dim = sym_help._get_const(dim, "i", "dim")
     return sym_help._squeeze_helper(g, self, axes_i=[squeeze_dim])
+
+
+# Exporter's prim::ConstantChunk uses multiple Slice nodes, which is fine for inference.
+# For training, the gradient graph will be multiple SliceGrad and one Sum, which is inefficient compared to
+# exporting to Split with SplitGrad as gradient graph.
+@register_symbolic("ConstantChunk", "prim")
+def prim_ConstantChunk(g, self, chunks, dim):
+    if chunks == 1:
+        return self
+    input_shape_dim = g.op(
+        "Gather", g.op("Shape", self), g.op("Constant", value_t=torch.tensor([dim], dtype=torch.long)), axis_i=0
+    )
+    chunk_size_minus_1 = g.op("Constant", value_t=torch.tensor([chunks - 1], dtype=torch.long))
+    chunk_dim = g.op(
+        "Div",
+        g.op("Add", input_shape_dim, chunk_size_minus_1),
+        g.op("Constant", value_t=torch.tensor([chunks], dtype=torch.long)),
+    )
+    return g.op(
+        "Split",
+        self,
+        g.op(
+            "Concat",
+            g.op("Expand", chunk_dim, chunk_size_minus_1),
+            g.op("Sub", input_shape_dim, g.op("Mul", chunk_dim, chunk_size_minus_1)),
+            axis_i=0,
+        ),
+        axis_i=dim,
+        outputs=chunks,
+    )
 
 
 # For torch.einsum.

@@ -393,7 +393,7 @@ TEST_F(GraphTest, UnusedValueInfoSerializes) {
 TEST_F(GraphTest, WrongOpset) {
   ModelProto m;
   m.set_ir_version(3);
-  //No Op registered for Unique with domain_version of 1
+  // No Op registered for Unique with domain_version of 1
   ImportOpset(m, "", 1);
   GraphProto& g = *m.mutable_graph();
   NodeProto* node = g.add_node();
@@ -415,7 +415,7 @@ TEST_F(GraphTest, WrongOpset) {
 TEST_F(GraphTest, ExtraInput) {
   ModelProto m;
   m.set_ir_version(3);
-  //Node () has input size 2 not in range [min=1, max=1].
+  // Node () has input size 2 not in range [min=1, max=1].
   ImportOpset(m, "", 11);
   GraphProto& g = *m.mutable_graph();
   NodeProto* node = g.add_node();
@@ -485,7 +485,7 @@ TEST_F(GraphTest, FunctionOpsetImportTest) {
       /*ASSERT_TRUE(!schema->HasFunction() && !schema->HasContextDependentFunction());*/
       continue;
     }
-    
+
     const auto& domain_version_map = func_ptr->Body().DomainToVersionMap();
     // validate schema for each node in the function body can be found
     for (auto& n : func_ptr->Body().Nodes()) {
@@ -505,7 +505,7 @@ TEST_F(GraphTest, LocalCustomRegistryWrongOpsetImportVersion) {
   ASSERT_TRUE(registry->RegisterOpSet(schema, "FakeTestDomain", 0, 1).IsOK());
   ModelProto m;
   m.set_ir_version(3);
-  //Should be 1, but we put 11 herer so the model loading will fail
+  // Should be 1, but we put 11 herer so the model loading will fail
   ImportOpset(m, "FakeTestDomain", 11);
   GraphProto& g = *m.mutable_graph();
   NodeProto* node = g.add_node();
@@ -540,7 +540,7 @@ TEST_F(GraphTest, ReverseDFS) {
    *                 node_4 (Add)  -------------------  <-- request stop
    *                     |
    *                  SinkNode
-  */
+   */
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
 
@@ -771,7 +771,7 @@ TEST_F(GraphTest, GraphConstruction_CheckIsAcyclic) {
   EXPECT_TRUE(equal_proto_1_and_2);
 
   // Load the model again to ensure that it's still the right thing.
-  //EXPECT_EQ(Model::Load(model_proto2, &model2), Status::OK());
+  // EXPECT_EQ(Model::Load(model_proto2, &model2), Status::OK());
   model2.reset(new Model(model_proto2, nullptr, *logger_));
   Graph& graph2 = model2->MainGraph();
   for (auto& node : graph2.Nodes()) {
@@ -1238,7 +1238,7 @@ TEST_F(GraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained) {
   // serialize and reload so we check the loaded from proto path in SetGraphInputsOutputs
   auto proto = model.ToProto();
   std::string s1;
-  //std::stringstream s1;
+  // std::stringstream s1;
   model.ToProto().SerializeToString(&s1);
 
   ModelProto model_proto;
@@ -1307,7 +1307,7 @@ TEST_F(GraphTest, UnusedInitializerAndNodeArgsAreIgnored) {
   // serialize and reload so we check the loaded from proto path in SetGraphInputsOutputs
   auto proto = model.ToProto();
   std::string s1;
-  //std::stringstream s1;
+  // std::stringstream s1;
   model.ToProto().SerializeToString(&s1);
 
   ModelProto model_proto;
@@ -1426,7 +1426,7 @@ TEST_F(GraphTest, GraphConstruction_TypeInference) {
    *                        node_4 (Max)
    *                             |
    *                          SinkNode
-  */
+   */
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
 
@@ -1780,8 +1780,7 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), data_shape, tensor_data.data(),
                        OrtMemoryInfo(onnxruntime::CPU, OrtAllocatorType::OrtDeviceAllocator), ort_value);
   const InlinedHashMap<std::string, OrtValue> injection_initializers = {
-      {initializer_name, ort_value}
-  };
+      {initializer_name, ort_value}};
 
   // We do not need actual files there since we are not going to load it.
   const auto tensor_data_dir_path = Path::Parse(ToPathString("."));
@@ -1946,7 +1945,7 @@ TEST_F(GraphTest, SparseInitializerHandling) {
     ValidateSparseTensorProto(model_proto_get.graph().sparse_initializer().at(0));
   }
 }
-#endif  //!defined(DISABLE_SPARSE_TENSORS)
+#endif  //! defined(DISABLE_SPARSE_TENSORS)
 
 TEST_F(GraphTest, SetInputsAndSetOutputs_NewInputAndOutput) {
   std::shared_ptr<Model> model;
@@ -2107,5 +2106,14 @@ TEST_F(GraphTest, ConstantsBecomeInitializersAndInputs) {
   Status st = Model::Load(std::move(m), model, nullptr, *logger_);
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 }
+
+TEST_F(GraphTest, SubgraphOutputIsOuterScopeValue) {
+  std::shared_ptr<Model> model;
+  common::Status st = Model::Load(ORT_TSTR("./testdata/ort_github_issue_11536.onnx"), model, nullptr, *logger_);
+  ASSERT_FALSE(st.IsOK());
+  EXPECT_THAT(st.ErrorMessage(),
+              ::testing::ContainsRegex("Subgraph output \\(.*\\) is an outer scope value being returned directly."));
+}
+
 }  // namespace test
 }  // namespace onnxruntime

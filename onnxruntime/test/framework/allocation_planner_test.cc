@@ -181,7 +181,7 @@ class PlannerTest : public ::testing::Test {
   profiling::Profiler profiler_;
   std::unique_ptr<SessionState> state_;
   ShapeMap shape_map_;
-  std::unique_ptr<SequentialExecutionPlan> plan_;
+  std::optional<SequentialExecutionPlan> plan_;
 
  public:
   PlannerTest()
