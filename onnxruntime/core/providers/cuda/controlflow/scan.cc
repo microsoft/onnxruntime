@@ -39,7 +39,7 @@ Scan<9>::Scan(const OpKernelInfo& info) : onnxruntime::Scan<9>(info) {
     // We could potentially keep a single instance and reuse it if that isn't performant enough.
     const OpKernelInfo& info = OpKernel::Info();
     Transpose transpose_kernel = cuda::Transpose(info);
-    return cuda::Transpose::DoTranspose(transpose_kernel, stream ? static_cast<cudaStream_t>(stream->handle) : nullptr, permutations, input, output);
+    return cuda::Transpose::DoTranspose(transpose_kernel, stream, permutations, input, output);
   };
 
   // copy into base class
