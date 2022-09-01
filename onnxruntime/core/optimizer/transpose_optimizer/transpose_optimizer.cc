@@ -968,9 +968,9 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
 }
 
 static bool HandleResize(HandlerArgs& args) {
-  // TODO: Only the CPU Resize kernel handles NCHW input currently.
-  // Adjust this restriction once the other EP's Resize
-  // kernel supports NCHW input.
+  // TODO: Only the CPU Resize kernel handles NHWC input.
+  // Adjust this restriction once the other EPs' Resize
+  // kernel(s) supports NHWC input.
   if (args.node.GetExecutionProviderType() != "CPUExecutionProvider") {
     return false;
   }
