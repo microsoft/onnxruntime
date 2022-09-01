@@ -32,11 +32,11 @@ struct Col2ImAttributes {
 
   explicit Col2ImAttributes(const OpKernelInfo& info) {
     // Make sure empty strides, pads or dilations are defaulted to 1 if necessary
-    ORT_ENFORCE(info.GetAttrs("strides", strides).IsOK());
+    ORT_THROW_IF_ERROR(info.GetAttrs("strides", strides).IsOK());
     gsl::span<const int64_t> pads_span;
-    ORT_ENFORCE(info.GetAttrsAsSpan("pads", pads_span).IsOK());
+    ORT_THROW_IF_ERROR(info.GetAttrsAsSpan("pads", pads_span).IsOK());
     pads.assign(pads_span.cbegin(), pads_span.cend());
-    ORT_ENFORCE(info.GetAttrs("dilations", dilations).IsOK());
+    ORT_THROW_IF_ERROR(info.GetAttrs("dilations", dilations).IsOK());
   }
 
   ~Col2ImAttributes() = default;
