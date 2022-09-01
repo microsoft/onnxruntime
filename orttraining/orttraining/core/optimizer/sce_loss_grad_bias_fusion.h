@@ -9,12 +9,12 @@ namespace onnxruntime {
 
 /**
 @Class SceLossGradBiasFusion
-Fuse SoftmaxCrossEntropyLossInternalGrad + Sum/Add to SoftmaxCrossEntropyLossInternalGrad.
+Fuse SoftmaxCrossEntropyLossInternalGrad + Reshape(optional) + Sum/Add to SoftmaxCrossEntropyLossInternalGrad.
 If it's Sum Op, it requires that it has only 2 inputs. Sum/Add must be non-broadcasting computation.
 */
 class SceLossGradBiasFusion : public GraphTransformer {
  public:
-  SceLossGradBiasFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
+  explicit SceLossGradBiasFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("SceLossGradBiasFusion", compatible_execution_providers) {
   }
 

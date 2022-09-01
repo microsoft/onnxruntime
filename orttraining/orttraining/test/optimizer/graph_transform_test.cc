@@ -33,7 +33,7 @@ using namespace std;
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
-namespace test{
+namespace test {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
 
@@ -203,7 +203,8 @@ TEST_F(GraphTransformationTests, DropoutWithZeroRatioElimination) {
 
 template <typename T>
 void RunSceLossGradBiasFusionTest(bool has_reshape, bool is_add_op, bool is_bias_lhs_input, bool has_weight,
-                                  bool has_ignore_index, const std::string& reduction, const logging::Logger& logger) {
+                                  bool has_ignore_index, const std::string& reduction, int opset_version,
+                                  const logging::Logger& logger) {
   std::string bias_op_type = is_add_op ? "Add" : "Sum";
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* dY_arg = builder.MakeInput<T>({{}});
@@ -275,23 +276,29 @@ void RunSceLossGradBiasFusionTest(bool has_reshape, bool is_add_op, bool is_bias
   };
 
   std::unique_ptr<GraphTransformer> transformer = std::make_unique<SceLossGradBiasFusion>();
-  TestGraphTransformer(build_test_case, 14, logger, std::move(transformer), TransformerLevel::Level2, 1,
+  TestGraphTransformer(build_test_case, opset_version, logger, std::move(transformer), TransformerLevel::Level2, 1,
                        pre_graph_checker, post_graph_checker);
 }
 
+void RunSceLossGradBiasFusionTestWrapper(int opset_version, const logging::Logger& logger) {
+  RunSceLossGradBiasFusionTest<float>(false, false, false, true, true, "none", opset_version, logger);
+  RunSceLossGradBiasFusionTest<MLFloat16>(false, false, true, true, false, "mean", opset_version, logger);
+  RunSceLossGradBiasFusionTest<float>(false, false, false, false, false, "sum", opset_version, logger);
+  RunSceLossGradBiasFusionTest<MLFloat16>(false, true, true, true, true, "none", opset_version, logger);
+  RunSceLossGradBiasFusionTest<float>(false, true, false, true, false, "mean", opset_version, logger);
+  RunSceLossGradBiasFusionTest<MLFloat16>(false, true, true, false, false, "sum", opset_version, logger);
+  RunSceLossGradBiasFusionTest<float>(true, false, false, true, true, "none", opset_version, logger);
+  RunSceLossGradBiasFusionTest<MLFloat16>(true, false, true, true, false, "mean", opset_version, logger);
+  RunSceLossGradBiasFusionTest<float>(true, false, false, false, false, "sum", opset_version, logger);
+  RunSceLossGradBiasFusionTest<MLFloat16>(true, true, true, true, true, "none", opset_version, logger);
+  RunSceLossGradBiasFusionTest<float>(true, true, false, true, false, "mean", opset_version, logger);
+  RunSceLossGradBiasFusionTest<MLFloat16>(true, true, true, false, false, "sum", opset_version, logger);
+}
+
 TEST_F(GraphTransformationTests, SceLossGradBiasFusion) {
-  RunSceLossGradBiasFusionTest<float>(false, false, false, true, true, "none", *logger_);
-  RunSceLossGradBiasFusionTest<MLFloat16>(false, false, true, true, false, "mean", *logger_);
-  RunSceLossGradBiasFusionTest<float>(false, false, false, false, false, "sum", *logger_);
-  RunSceLossGradBiasFusionTest<MLFloat16>(false, true, true, true, true, "none", *logger_);
-  RunSceLossGradBiasFusionTest<float>(false, true, false, true, false, "mean", *logger_);
-  RunSceLossGradBiasFusionTest<MLFloat16>(false, true, true, false, false, "sum", *logger_);
-  RunSceLossGradBiasFusionTest<float>(true, false, false, true, true, "none", *logger_);
-  RunSceLossGradBiasFusionTest<MLFloat16>(true, false, true, true, false, "mean", *logger_);
-  RunSceLossGradBiasFusionTest<float>(true, false, false, false, false, "sum", *logger_);
-  RunSceLossGradBiasFusionTest<MLFloat16>(true, true, true, true, true, "none", *logger_);
-  RunSceLossGradBiasFusionTest<float>(true, true, false, true, false, "mean", *logger_);
-  RunSceLossGradBiasFusionTest<MLFloat16>(true, true, true, false, false, "sum", *logger_);
+  RunSceLossGradBiasFusionTestWrapper(12, *logger_);
+  RunSceLossGradBiasFusionTestWrapper(13, *logger_);
+  RunSceLossGradBiasFusionTestWrapper(14, *logger_);
 }
 
 TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {

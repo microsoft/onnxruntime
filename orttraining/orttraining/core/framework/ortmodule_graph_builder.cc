@@ -449,8 +449,8 @@ void OrtModuleGraphBuilder::FindModuleOutputNeededForBackward() {
     }
   }
 
-  // Graph resolve will have the YieldOp outputs' shapes infered. To avoid lossing these information when
-  // transfering model from backend to frontend (in case any graph optimization requires these shape information),
+  // Graph resolve will have the YieldOp outputs' shapes inferred. To avoid lossing these information when
+  // transferring model from backend to frontend (in case any graph optimization requires these shape information),
   // add them to graph's ValueInfo.
   for (const auto& node_def : yield_node->OutputDefs()) {
     if (node_def->TypeAsProto()) {

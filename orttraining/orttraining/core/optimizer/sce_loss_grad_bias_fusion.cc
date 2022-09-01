@@ -7,11 +7,12 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 
-using namespace ONNX_NAMESPACE;
-using namespace ::onnxruntime::common;
-
 namespace onnxruntime {
 
+/**
+Fuse SoftmaxCrossEntropyLossInternalGrad + Reshape(optional) + Sum/Add to SoftmaxCrossEntropyLossInternalGrad.
+If it's Sum Op, it requires that it has only 2 inputs. Sum/Add must be non-broadcasting computation.
+*/
 Status SceLossGradBiasFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                         const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
@@ -78,9 +79,9 @@ Status SceLossGradBiasFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     if (scegrad_inputs.size() >= 5) {
       new_scegrad_node_inputs.emplace_back(scegrad_inputs[4]);
     } else {
-      TensorProto ignore_index_initializer_proto;
+      ONNX_NAMESPACE::TensorProto ignore_index_initializer_proto;
       ignore_index_initializer_proto.set_name(graph.GenerateNodeArgName("sce_grad_ignore_index"));
-      ignore_index_initializer_proto.set_data_type(TensorProto_DataType_INT64);
+      ignore_index_initializer_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
       ignore_index_initializer_proto.add_int64_data(static_cast<int64_t>(-1));
       new_scegrad_node_inputs.emplace_back(&graph_utils::AddInitializer(graph, ignore_index_initializer_proto));
     }
