@@ -4,6 +4,7 @@
 #include "op_builder.h"
 
 #include <onnx/onnx_pb.h>
+#include <algorithm>
 
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
@@ -256,7 +257,7 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
                              " doesn't have valid type: ", tensor.data_type());
   }
   Initializer unpacked_tensor(tensor, model_builder.GetGraphViewer().ModelPath());
-  // could be float/u8 s8, so we have to use raw data here.
+  // could be float/u8/s8, so we have to use raw data here.
   src = unpacked_tensor.DataAsByteSpan().data();
   const auto x_t = shape[0], y_t = shape[1];
   Shape dest_shape = {y_t, x_t};
@@ -2495,15 +2496,14 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     }
 
     std::vector<int32_t> indices(unpacked_tensor.size());
-    // see https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#type-punning-arrays for the usage of memcpy here
+
     if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-      for (uint32_t i = 0; i < unpacked_tensor.size(); i++) {
-        indices[i] = SafeInt<int32_t>(unpacked_tensor.DataAsSpan<int64_t>()[i]);
-      }
+      auto indice_span = unpacked_tensor.DataAsSpan<int64_t>();
+      std::transform(indice_span.begin(), indice_span.end(), indices.begin(),
+                     [](int64_t indice_n) -> int32_t { return SafeInt<int32_t>(indice_n); });
     } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-      for (uint32_t i = 0; i < unpacked_tensor.size(); i++) {
-        indices[i] = SafeInt<int32_t>(unpacked_tensor.DataAsSpan<int32_t>()[i]);
-      }
+      auto indice_span = unpacked_tensor.DataAsSpan<int32_t>();
+      indices.assign(indice_span.begin(), indice_span.end());
     }
 
     OperandType indices_operand_type(Type::TENSOR_INT32, indices_dimen);
@@ -2816,9 +2816,10 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   // assume pads_initializer has int64 data, per ONNX spec
   std::vector<int32_t> converted_pads_data{};
   converted_pads_data.reserve(2 * data_rank);
+  auto pads_span = pads_initializer_raw_data.DataAsSpan<int64_t>();
   for (size_t i = 0; i < data_rank; ++i) {
-    converted_pads_data.push_back(pads_initializer_raw_data.DataAsSpan<int64_t>()[i]);
-    converted_pads_data.push_back(pads_initializer_raw_data.DataAsSpan<int64_t>()[i + data_rank]);
+    converted_pads_data.push_back(SafeInt<int32_t>(pads_span[i]));
+    converted_pads_data.push_back(SafeInt<int32_t>(pads_span[i + data_rank]));
   }
 
   const Shape converted_pads_shape{data_rank, 2};

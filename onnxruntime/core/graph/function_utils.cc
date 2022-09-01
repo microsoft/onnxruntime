@@ -28,7 +28,7 @@ static int GetVersionForDomain(const std::string& domain, const M<std::string, i
 
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
     const Graph& graph,
-    const IndexedSubGraph& nodes_to_fuse, bool allow_anytype_tensor) {
+    const IndexedSubGraph& nodes_to_fuse, bool allow_aggregated_tensor_type) {
   const auto* meta_def = nodes_to_fuse.GetMetaDef();
 
   using ONNX_NAMESPACE::OpSchema;
@@ -41,12 +41,12 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
     op_schema->TypeAndShapeInferenceFunction(meta_def->type_and_shape_inference_function);
   }
 
-  if (allow_anytype_tensor) {
-    // if CreateSchema is used to create a schema with the 'any' type constraint,
-    // the caller (EP or otherwise) must manually check any constraints.
-    // A EP or function calls `CreateSchema` with flag allow_anytype_tensor=true, should check a node carefully
-    // whether all constraints are satisfied. Once created, this schema will match all corresponding registered kernels
-    // whenever input/output type is.
+  if (allow_aggregated_tensor_type) {
+    // The generated schema will use the same type constraint for all inputs and outputs,
+    // and that type constraint will match all tensor types.
+    // Due to this, a user of this style of schema must manually check whether any applicable type constraints
+    // for each input or output are satisfied prior to creating a node that uses this schema
+    //
     op_schema->TypeConstraint("TAggregatedTypes", ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat(),
                               "all_tensor_types_with_bfloat");
   }
@@ -57,16 +57,18 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
     // inputs must have a type. can be inferred for outputs.
     ORT_ENFORCE(input_arg->Type() != nullptr);
     op_schema->Input(i, input, "",
-                     allow_anytype_tensor ? "TAggregatedTypes" : *input_arg->Type(),
-                     OpSchema::FormalParameterOption::Single, /*is_homogeneous=*/!allow_anytype_tensor);
+                     allow_aggregated_tensor_type ? "TAggregatedTypes" : *input_arg->Type(),
+                     OpSchema::FormalParameterOption::Single, /*is_homogeneous=*/!allow_aggregated_tensor_type);
+    i++;
   }
 
   i = 0;
   for (const auto& output : meta_def->outputs) {
     const auto* output_arg = graph.GetNodeArg(output);
     op_schema->Output(i, output, "",
-                      allow_anytype_tensor ? "TAggregatedTypes" : *output_arg->Type(),
-                      OpSchema::FormalParameterOption::Single, /*is_homogeneous=*/!allow_anytype_tensor);
+                      allow_aggregated_tensor_type ? "TAggregatedTypes" : *output_arg->Type(),
+                      OpSchema::FormalParameterOption::Single, /*is_homogeneous=*/!allow_aggregated_tensor_type);
+    i++;
   }
   op_schema->Finalize();
 

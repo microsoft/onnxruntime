@@ -54,7 +54,7 @@ bool GetResizeScales(const InitializedTensorSet& initializers,
     return false;
   Initializer unpacked_tensor(scales_tensor);
   auto scales_data = unpacked_tensor.DataAsSpan<float>();
-  scales = std::vector<float>{scales_data.begin(), scales_data.begin() + 4};
+  scales = std::vector<float>{scales_data.begin(), scales_data.end()};
   return true;
 }
 
@@ -70,7 +70,7 @@ bool GetResizeOutputSizes(const InitializedTensorSet& initializers,
     return false;
   Initializer unpacked_tensor(sizes_tensor);
   auto sizes_data = unpacked_tensor.DataAsSpan<int64_t>();
-  sizes = std::vector<int64_t>{sizes_data.begin(), sizes_data.begin() + 4};
+  sizes = std::vector<int64_t>{sizes_data.begin(), sizes_data.end()};
   return true;
 }
 

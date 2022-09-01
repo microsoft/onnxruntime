@@ -290,10 +290,10 @@ Status ModelBuilder::RegisterInitializers() {
     const uint8_t* src = nullptr;
     // TensorProto_DataType_UINT8 or TensorProto_DataType_FLOAT:
     Initializer unpacked_tensor(tensor, graph_viewer_.ModelPath());
-    ORT_RETURN_IF_NOT(size == unpacked_tensor.DataAsByteSpan().size(),
+    size_t size_in_bytes = unpacked_tensor.DataAsByteSpan().size();
+    ORT_RETURN_IF_NOT(size == size_in_bytes,
                       "initializer tensor: ", tensor.name(), "'s size: ",
-                      unpacked_tensor.DataAsByteSpan().size(),
-                      " should match the calculated size: ", size);
+                      size_in_bytes, " should match the calculated size: ", size);
     src = unpacked_tensor.DataAsByteSpan().data();
     uint8_t* dest = nnapi_model_->mem_initializers_->GetDataPtr() + offset;
     memcpy(dest, src, size);

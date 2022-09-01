@@ -129,7 +129,7 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
 // For ops are not lay-out sensitive and does not defined in
 // onnx-domain, it will be created dynamicly
 static bool RequestDynamicSchema(const NodeUnit& node_unit) {
-  static const InlinedHashSet<absl::string_view> dynamic_schema_set = {"QLinearSoftmax"};
+  static const InlinedHashSet<std::string_view> dynamic_schema_set = {"QLinearSoftmax"};
   std::string key = node_unit.UnitType() == NodeUnit::Type::QDQGroup
                                                 ? "QLinear" + node_unit.OpType() : node_unit.OpType();
   return dynamic_schema_set.contains(key);
