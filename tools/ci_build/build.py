@@ -69,10 +69,11 @@ _check_python_version()
 
 
 def _openvino_verify_device_type(device_read):
-    choices = ["CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"]
+    choices = ["CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"]
 
     choices1 = [
         "CPU_FP32_NO_PARTITION",
+        "CPU_FP16_NO_PARTITION",
         "GPU_FP32_NO_PARTITION",
         "GPU_FP16_NO_PARTITION",
         "VAD-M_FP16_NO_PARTITION",
@@ -991,6 +992,7 @@ def generate_build_tree(
             "-Donnxruntime_USE_OPENVINO_GPU_FP32=" + ("ON" if args.use_openvino == "GPU_FP32" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_GPU_FP16=" + ("ON" if args.use_openvino == "GPU_FP16" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_CPU_FP32=" + ("ON" if args.use_openvino == "CPU_FP32" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_CPU_FP16=" + ("ON" if args.use_openvino == "CPU_FP16" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_VAD_M=" + ("ON" if args.use_openvino == "VAD-M_FP16" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_VAD_F=" + ("ON" if args.use_openvino == "VAD-F_FP32" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_MYRIAD_NP="
@@ -1001,6 +1003,8 @@ def generate_build_tree(
             + ("ON" if args.use_openvino == "GPU_FP16_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_CPU_FP32_NP="
             + ("ON" if args.use_openvino == "CPU_FP32_NO_PARTITION" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_CPU_FP16_NP="
+            + ("ON" if args.use_openvino == "CPU_FP16_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_VAD_M_NP="
             + ("ON" if args.use_openvino == "VAD-M_FP16_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_VAD_F_NP="
