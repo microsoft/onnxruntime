@@ -11,7 +11,8 @@ For general usage and build purpose of ORT-Mobile Android, please see the [docum
 This android application is mainly aimed for testing:
 
 - Model used: A simple [sigmoid ONNX model](https://github.com/onnx/onnx/blob/f9b0cc99344869c246b8f4011b8586a39841284c/onnx/backend/test/data/node/test_sigmoid/model.onnx) (converted to ORT format under `app\src\androidTest\assets` folder).
-    - Here's a [documentation](https://github.com/microsoft/onnxruntime/blob/main/docs/ONNX_Runtime_for_Mobile_Platforms.md#1-create-ort-format-model-and-configuration-file-with-required-operators) about how you can convert an ONNX model into ORT format.
+    - Here's [documentation](https://onnxruntime.ai/docs/reference/ort-format-models.html#convert-onnx-models-to-ort-format) about how you can convert an ONNX model into ORT format.
+    - Run `python -m onnxruntime.tools.convert_onnx_models_to_ort --optimization_style=Fixed /path/to/model.onnx` and rename the resulting .ort file accordingly.
 - Main test file: An android instrumentation test under `app\src\androidtest\java\ai.onnxruntime.example.javavalidator\SimpleTest.kt`
 - The main dependency of this application is `onnxruntime` aar package under `app\libs`.
 - The MainActivity of this application is set to be empty.
