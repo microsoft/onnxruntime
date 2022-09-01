@@ -79,7 +79,7 @@ e2e_graph = helper.make_graph(
 )
 # ...
 ```
-For more usage of ONNX helper, please visit the document [Python API Overview](https://github.com/onnx/onnx/blob/master/docs/PythonAPIOverview.md).
+For more usage of ONNX helper, please visit the document [Python API Overview](https://github.com/onnx/onnx/blob/main/docs/PythonAPIOverview.md).
 
 ### Run E2E Model in Python
 ```python

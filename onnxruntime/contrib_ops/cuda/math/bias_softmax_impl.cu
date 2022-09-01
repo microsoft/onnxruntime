@@ -10,9 +10,9 @@
 #include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/math/binary_elementwise_ops_impl_functors.cuh"
+#include "core/providers/cuda/math/softmax_common.h"
 #include "core/providers/cuda/math/softmax_warpwise_impl.cuh"
 #include "core/providers/cuda/shared_inc/accumulation_type.h"
-#include "core/providers/cuda/shared_inc/softmax.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::cuda;
@@ -126,9 +126,9 @@ __global__ void BiasSoftmaxWarpForward(output_t* output, const input_t* input, c
 template <typename T>
 Status BiasSoftmaxImpl(cudaStream_t stream, cudnnHandle_t cudnn_handle, T* output_data, const T* input_data,
                        const T* bias_data, int element_count, int batch_count, bool is_inner_broadcast,
-                       int bias_broadcast_size, size_t element_size) {
+                       int bias_broadcast_size) {
   if (element_count == 0) return Status::OK();
-  if (element_count <= 1024 && element_count * static_cast<int>(element_size) <= 4096) {
+  if (element_count <= 1024 && element_count * static_cast<int>(sizeof(T)) <= 4096) {
     typedef AccumulationType_t<T> AccT;
     int log2_elements = log2_ceil(element_count);
     const int next_power_of_two = 1 << log2_elements;
@@ -215,7 +215,7 @@ Status BiasSoftmaxImpl(cudaStream_t stream, cudnnHandle_t cudnn_handle, T* outpu
                         static_cast<size_t>(batch_count * element_count));
 
   // invoke cuda DNN library for Y = softmax(X)
-  std::vector<int64_t> dims({batch_count, 1, 1, element_count});
+  const int64_t dims[]{batch_count, 1, 1, element_count};
   const auto alpha = Consts<T>::One;
   const auto beta = Consts<T>::Zero;
   CudnnTensor input_tensor, output_tensor;
@@ -227,7 +227,7 @@ Status BiasSoftmaxImpl(cudaStream_t stream, cudnnHandle_t cudnn_handle, T* outpu
 #define SPECIALIZED_BIAS_SOFTMAX_IMPL(T)                                                                          \
   template Status BiasSoftmaxImpl<T>(cudaStream_t stream, cudnnHandle_t cudnn_handle, T * output_data,            \
                                      const T* input_data, const T* bias_data, int element_count, int batch_count, \
-                                     bool is_inner_broadcast, int bias_broadcast_size, size_t element_size);
+                                     bool is_inner_broadcast, int bias_broadcast_size);
 
 // MIOpen doesn't support double so ROCm kernel doesn't have double support for now.
 SPECIALIZED_BIAS_SOFTMAX_IMPL(float)

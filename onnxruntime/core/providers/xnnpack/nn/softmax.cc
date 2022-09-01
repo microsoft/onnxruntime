@@ -138,8 +138,8 @@ Softmax::Softmax(const OpKernelInfo& info) : OpKernel{info} {
   Status status = info.GetAttr<int64_t>("axis", &axis);
   // our op checker function has ensured that axis must be the last dim
   // The "semantic" meaning of axis has changed in opset-13.
-  // Please compare: https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softmax
-  // with https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-11 for detailed explanations
+  // Please compare: https://github.com/onnx/onnx/blob/main/docs/Operators.md#Softmax
+  // with https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Softmax-11 for detailed explanations
   if (status.IsOK()) {
     axis_ = gsl::narrow_cast<int>(axis);
   } else {

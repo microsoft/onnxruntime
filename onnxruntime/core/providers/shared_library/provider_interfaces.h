@@ -147,6 +147,12 @@ struct ProviderHost {
   virtual void* CPUAllocator__Alloc(CPUAllocator* p, size_t size) = 0;
   virtual void CPUAllocator__Free(CPUAllocator* p, void* allocation) = 0;
 
+  virtual unsigned int GetThreadId() = 0;
+  virtual unsigned int GetProcessId() = 0;
+
+  virtual std::string demangle(const char* name) = 0;
+  virtual std::string demangle(const std::string& name) = 0;
+
 #ifdef USE_CUDA
   virtual std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
@@ -157,8 +163,8 @@ struct ProviderHost {
   virtual void cuda__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
   virtual void cuda__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
 
-  virtual bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
-  virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
 #endif
 
 #ifdef USE_ROCM
@@ -171,8 +177,8 @@ struct ProviderHost {
   virtual void rocm__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
   virtual void rocm__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
 
-  virtual bool RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
-  virtual bool RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual Status RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual void RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
 #endif
 
   virtual std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,

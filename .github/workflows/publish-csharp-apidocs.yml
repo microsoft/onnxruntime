@@ -1,12 +1,11 @@
-name: Update C# API Docs Windows
+name: Update C# API Docs
 on:
   push:
     branches:
       - main
-      - csharp-doc-update
 jobs:
   publish:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
     - name: Setup .NET
