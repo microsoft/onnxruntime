@@ -80,7 +80,6 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func):
     np.random.seed(0)
     input_x = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
     skip = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
-    bias = np.random.rand(hidden_size).astype(dtype)
     gamma = np.random.rand(hidden_size).astype(dtype)
     beta = np.random.rand(hidden_size).astype(dtype)
     bias = np.random.rand(hidden_size).astype(dtype)
@@ -89,7 +88,6 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func):
 
     input_d = ke.DeviceArray(input_x)
     skip_d = ke.DeviceArray(skip)
-    bias_d = ke.DeviceArray(bias)
     gamma_d = ke.DeviceArray(gamma)
     beta_d = ke.DeviceArray(beta)
     bias_d = ke.DeviceArray(bias)
