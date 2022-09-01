@@ -131,14 +131,11 @@ namespace Microsoft.ML.OnnxRuntime
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> TrainStep(
             IReadOnlyCollection<FixedBufferOnnxValue> inputValues)
         {
-            using (var cleanupList = new DisposableList<IDisposable>())
+            using (var ortValues = new DisposableList<OrtValue>((int)_trainOutputCount))
             {
                 IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
-
-                var ortValues = new DisposableList<OrtValue>((int)_trainOutputCount);
-                cleanupList.Add(ortValues);
-
                 IntPtr[] outputValuesArray = new IntPtr[(int)_trainOutputCount];
+
                 NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtTrainStep(_nativeHandle, _builtInRunOptions.Handle, (UIntPtr)inputValues.Count,
                     inputValuesArray, (UIntPtr)_trainOutputCount, outputValuesArray));
                 foreach (var v in outputValuesArray)
@@ -174,14 +171,11 @@ namespace Microsoft.ML.OnnxRuntime
             RunOptions options,
             IReadOnlyCollection<FixedBufferOnnxValue> inputValues)
         {
-            using (var cleanupList = new DisposableList<IDisposable>())
+            using (var ortValues = new DisposableList<OrtValue>((int)_trainOutputCount))
             {
                 IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
-
-                var ortValues = new DisposableList<OrtValue>((int)_trainOutputCount);
-                cleanupList.Add(ortValues);
-
                 IntPtr[] outputValuesArray = new IntPtr[(int)_trainOutputCount];
+
                 NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtTrainStep(_nativeHandle, options.Handle, (UIntPtr)inputValues.Count,
                     inputValuesArray, (UIntPtr)_trainOutputCount, outputValuesArray));
                 foreach (var v in outputValuesArray)
@@ -383,7 +377,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             catch (Exception)
             {
-                DisposeHelper(true);
+                CleanupHelper(true);
                 throw;
             }
         }
@@ -453,7 +447,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         ~TrainingSession()
         {
-            DisposeHelper(false);
+            Dispose(false);
         }
 
         /// <summary>
@@ -461,7 +455,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void Dispose()
         {
-            DisposeHelper(true);
+            Dispose(true);
             GC.SuppressFinalize(this);
         }
 
@@ -469,25 +463,30 @@ namespace Microsoft.ML.OnnxRuntime
         /// IDisposable implementation
         /// </summary>
         /// <param name="disposing">true if invoked from Dispose() method</param>
-        protected virtual void DisposeHelper(bool disposing)
+        protected virtual void Dispose(bool disposing)
         {
             if (_disposed)
             {
                 return;
             }
+            CleanupHelper(disposing);
+            _disposed = true;
+        }
 
+        private void CleanupHelper(bool disposing)
+        {
             if (disposing)
             {
-                if (_builtInSessionOptions != null)
-                {
-                    _builtInSessionOptions.Dispose();
-                    _builtInSessionOptions = null;
-                }
-
                 if (_builtInRunOptions != null)
                 {
                     _builtInRunOptions.Dispose();
                     _builtInRunOptions = null;
+                }
+
+                if (_builtInSessionOptions != null)
+                {
+                    _builtInSessionOptions.Dispose();
+                    _builtInSessionOptions = null;
                 }
             }
 
@@ -497,10 +496,9 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeTrainingMethods.OrtReleaseTrainingSession(_nativeHandle);
                 _nativeHandle = IntPtr.Zero;
             }
-            _disposed = true;
         }
 
-    #endregion
+        #endregion
     }
 #endif
 }
