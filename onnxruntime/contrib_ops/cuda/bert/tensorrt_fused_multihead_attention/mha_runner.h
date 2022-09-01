@@ -17,12 +17,8 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
-#include <cuda.h>
-#include <cublas_v2.h>
-//#include "zeroPadding2d.h"
-#include "fused_multihead_attention_common.h"
+#include <memory>
+#include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/fused_multihead_attention_common.h"
 
 namespace onnxruntime {
 namespace contrib {

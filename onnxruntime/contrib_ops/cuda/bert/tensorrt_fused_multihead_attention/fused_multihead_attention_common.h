@@ -16,7 +16,7 @@
  */
 #pragma once
 
-#include <stdint.h>
+#include <cstdint>
 #include "core/providers/cuda/cuda_common.h"
 
 #define USE_INT8_ATTENTION 0
@@ -25,16 +25,15 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-enum Data_type
-{
-    DATA_TYPE_BOOL,
-    DATA_TYPE_E8M10,
-    DATA_TYPE_E8M7,
-    DATA_TYPE_FP16,
-    DATA_TYPE_FP32,
-    DATA_TYPE_INT4,
-    DATA_TYPE_INT8,
-    DATA_TYPE_INT32
+enum Data_type {
+  DATA_TYPE_BOOL,
+  DATA_TYPE_E8M10,
+  DATA_TYPE_E8M7,
+  DATA_TYPE_FP16,
+  DATA_TYPE_FP32,
+  DATA_TYPE_INT4,
+  DATA_TYPE_INT8,
+  DATA_TYPE_INT32
 };
 
 constexpr int32_t kSM_70 = 70;

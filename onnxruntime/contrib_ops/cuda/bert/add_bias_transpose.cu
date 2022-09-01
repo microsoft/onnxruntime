@@ -92,7 +92,6 @@ __global__ void AddBiasTransposeTrtLarge(const int head_size, const T* input, co
   }
 }
 
-
 template <typename T>
 __global__ void AddBiasTransposeQKV(const T* input, const T* biases, T* output) {
   // Input:  BxSxMxNxH  (Format 1)
@@ -215,8 +214,7 @@ void InvokeAddBiasTranspose(
     const dim3 block(head_size, num_heads, 1);
     if (format == 2) {
       AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(input, biases, output);
-    }
-    else if (format == 1) {
+    } else if (format == 1) {
       AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(input, biases, output);
     } else {
       AddBiasTranspose<T><<<grid, block, 0, stream>>>(input, biases, output);
@@ -225,8 +223,7 @@ void InvokeAddBiasTranspose(
     const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
     if (format == 2) {
       AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(head_size, input, biases, output);
-    }
-    else if (format == 1) {
+    } else if (format == 1) {
       AddBiasTransposeQKVLarge<T><<<grid, block, 0, stream>>>(head_size, input, biases, output);
     } else {
       AddBiasTransposeLarge<T><<<grid, block, 0, stream>>>(head_size, input, biases, output);

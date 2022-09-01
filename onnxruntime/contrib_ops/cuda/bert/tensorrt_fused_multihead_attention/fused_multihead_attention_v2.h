@@ -19,8 +19,7 @@
 // The kernels for sm70 are copied from FasterTransformer
 #pragma once
 
-#include "fused_multihead_attention.h"
-#include "fused_multihead_attention_common.h"
+#include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/fused_multihead_attention.h"
 #include <cstdint>
 
 namespace onnxruntime {
