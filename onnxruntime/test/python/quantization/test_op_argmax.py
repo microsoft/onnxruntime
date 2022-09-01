@@ -47,7 +47,9 @@ def check_fraction_correct(testcase, model_path_origin, model_path_to_check, inp
         a = np.array(output)
         b = np.array(ref_output)
         fraction_wrong = np.sum(a!=b) / (a.shape[0] * a.shape[1] * a.shape[2])
-        assert fraction_wrong < tolerance, "fraction incorrect ("+str(fraction_wrong)+") exceeds tolerance ("+str(tolerance)+")"
+        assert fraction_wrong < tolerance, (
+            "fraction incorrect ("+str(fraction_wrong)+") exceeds tolerance ("+str(tolerance)+")"
+        )
             
 
 class TestOpArgMax(TestCaseTempDir):
