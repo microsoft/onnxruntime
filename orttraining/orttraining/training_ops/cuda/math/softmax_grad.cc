@@ -103,7 +103,7 @@ Status SoftmaxGrad::ComputeInternal(OpKernelContext* ctx) const {
 
   utils::MLTypeCallDispatcher<SOFTMAX_GRAD_TYPES> t_disp(dY->GetElementType());
   Status status = t_disp.InvokeRet<Status, DispatchSoftmaxGradImpl>(
-      Stream(), CudnnHandle(), is_transpose_required ? transposed_dX.get() : dX,
+      Stream(ctx), GetCudnnHandle(ctx), is_transpose_required ? transposed_dX.get() : dX,
       is_transpose_required ? transposed_dY.get() : dY, is_transpose_required ? transposed_Y.get() : Y, element_count,
       batch_count, is_log_softmax_);
   ORT_RETURN_IF_ERROR(status);
