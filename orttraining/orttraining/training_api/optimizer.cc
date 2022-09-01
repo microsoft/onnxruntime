@@ -22,7 +22,7 @@ constexpr char GROUP_ZERO_NAME[] = "group0";
 // TODO: Conolidate with frontend tooling
 const std::vector<std::string> MOMENT_STATE_NAMES{"momentum0", "momentum1"};
 
-constexpr std::array<const char*, 6> AdamWOptimizerInputs = {
+constexpr std::array AdamWOptimizerInputs = {
     "learning_rate",
     "step",
     "params",
@@ -30,20 +30,20 @@ constexpr std::array<const char*, 6> AdamWOptimizerInputs = {
     "first_order_moments",
     "second_order_moments"};
 
-template <std::size_t NumInputs>
-Status GraphInputsAreExpected(const gsl::span<std::string> actual_graph_inputs,
-                              const std::array<const char*, NumInputs>& expected_graph_inputs) {
+Status GraphInputsAreExpected(gsl::span<std::string> actual_graph_inputs,
+                              gsl::span<const char* const> expected_graph_inputs) {
   const auto stringify = [](const auto& container) {
     if (container.empty()) {
       return std::string("[]");
     }
-    std::ostringstream container_stream("[");
+    std::string container_str("[");
     for (const auto& val : container) {
-      container_stream << val << ", ";
+      container_str += std::string(val) + ", ";
     }
-    container_stream << "\b\b]";
+    container_str.pop_back();
+    container_str.back() = ']';
 
-    return container_stream.str();
+    return container_str;
   };
 
   const auto construct_unexpected_input_status = [&stringify](const auto& actual_inputs, const auto& expected_inputs) {
@@ -51,15 +51,14 @@ Status GraphInputsAreExpected(const gsl::span<std::string> actual_graph_inputs,
     error_stream << "Invalid graph inputs."
                  << "\n\tExpected: " << stringify(expected_inputs)
                  << "\n\tActual: " << stringify(actual_inputs);
-    return Status(onnxruntime::common::StatusCategory::ONNXRUNTIME, onnxruntime::common::StatusCode::INVALID_ARGUMENT,
-                  error_stream.str());
+    return ORT_MAKE_STATUS(StatusCategory::ONNXRUNTIME, StatusCode::INVALID_ARGUMENT, error_stream.str());
   };
 
-  if (actual_graph_inputs.size() != NumInputs) {
+  if (actual_graph_inputs.size() != expected_graph_inputs.size()) {
     return construct_unexpected_input_status(actual_graph_inputs, expected_graph_inputs);
   }
 
-  for (size_t input_idx = 0; input_idx < NumInputs; ++input_idx) {
+  for (size_t input_idx = 0; input_idx < expected_graph_inputs.size(); ++input_idx) {
     if (actual_graph_inputs[input_idx] != expected_graph_inputs[input_idx]) {
       return construct_unexpected_input_status(actual_graph_inputs, expected_graph_inputs);
     }
@@ -96,22 +95,22 @@ Status Optimizer::ConstructInputs() {
     std::vector<Tensor> params, grads, first_order_moments, second_order_moments;
 
     // Collect all the non user defined inputs from the named_parameters_.
-    for (auto& name_parameter_pair : named_parameters_) {
-      if (name_parameter_pair.second->RequiresGrad()) {
+    for (auto& [parameter_name, parameter] : named_parameters_) {
+      if (parameter->RequiresGrad()) {
         // Collect parameters and prepare for tensorseq creation
-        auto* param_tensor = name_parameter_pair.second->Data().GetMutable<Tensor>();
+        auto* param_tensor = parameter->Data().GetMutable<Tensor>();
         params.emplace_back(
             Tensor(param_tensor->DataType(), param_tensor->Shape(),
                    param_tensor->MutableDataRaw(), param_tensor->Location()));
 
         // Collect gradients and prepare for tensorseq creation
-        auto* grad_tensor = name_parameter_pair.second->Gradient().GetMutable<Tensor>();
+        auto* grad_tensor = parameter->Gradient().GetMutable<Tensor>();
         grads.emplace_back(
             Tensor(grad_tensor->DataType(), grad_tensor->Shape(),
                    grad_tensor->MutableDataRaw(), grad_tensor->Location()));
 
         // Collect first order moments and prepare for tensorseq creation
-        auto* first_order_moment_tensor = param_named_optimizer_states.at(name_parameter_pair.first)
+        auto* first_order_moment_tensor = param_named_optimizer_states.at(parameter_name)
                                               .momentum_named_states.at(MOMENT_STATE_NAMES[0])
                                               .GetMutable<Tensor>();
         first_order_moments.emplace_back(
@@ -119,7 +118,7 @@ Status Optimizer::ConstructInputs() {
                    first_order_moment_tensor->MutableDataRaw(), first_order_moment_tensor->Location()));
 
         // Collect second order moments and prepare for tensorseq creation
-        auto* second_order_moment_tensor = param_named_optimizer_states.at(name_parameter_pair.first)
+        auto* second_order_moment_tensor = param_named_optimizer_states.at(parameter_name)
                                                .momentum_named_states.at(MOMENT_STATE_NAMES[1])
                                                .GetMutable<Tensor>();
         second_order_moments.emplace_back(

@@ -33,13 +33,13 @@ void ClipGradNorm(T total_norm, T max_norm, TensorSeq& gradients) {
   }
 }
 
-void PopulateOutput(OpKernelContext* ctx, const TensorSeq* gradients, TensorSeq* clipped_gradients) {
-  if (const_cast<TensorSeq*>(gradients) == clipped_gradients) {
-    return;
+Status PopulateOutput(OpKernelContext* ctx, const TensorSeq* gradients, TensorSeq* clipped_gradients) {
+  if (gradients == clipped_gradients) {
+    return Status::OK();
   }
 
   AllocatorPtr alloc;
-  ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc).IsOK(), "InplaceClipGradNorm: Unable to get an allocator.");
+  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
 
   clipped_gradients->SetType(gradients->DataType());
   clipped_gradients->Reserve(gradients->Size());
@@ -48,6 +48,8 @@ void PopulateOutput(OpKernelContext* ctx, const TensorSeq* gradients, TensorSeq*
     CopyCpuTensor(&grad, &target_tensor);
     clipped_gradients->Add(std::move(target_tensor));  // Add will check for type consistency
   }
+
+  return Status::OK();
 }
 
 }  // namespace
@@ -73,7 +75,7 @@ Status InplaceClipGradNorm<T>::Compute(OpKernelContext* ctx) const {
 
   // Populate the output sequence tensors.
   TensorSeq* clipped_gradients = ctx->Output<TensorSeq>(0);
-  PopulateOutput(ctx, gradients, clipped_gradients);
+  ORT_RETURN_IF_ERROR(PopulateOutput(ctx, gradients, clipped_gradients));
 
   return Status::OK();
 }
