@@ -24,7 +24,8 @@ To update the ORT file format schema and generated files:
     ```
 
 # ORT FB format version history
-In [ort_format_version.h](../ort_format_version.h), see `IsOrtModelVersionSupported()` for version array and `kOrtModelVersion` for currently supported version.
+In [ort_format_version.h](../ort_format_version.h), see `IsOrtModelVersionSupported()` for the supported versions and
+`kOrtModelVersion` for the current version.
 
 ## Version 1. History begins
 Initial support for FlatBuffers that includes Model support. Graph support including Attributes, Tensors, Tensor Sequences, Maps and Sequences. Constant initializers are also supported. Constant nodes are converted to constant initializers in the ORT format.
@@ -37,3 +38,8 @@ Support for storing `graph_doc_string` field in Model (ORT FlatBuffers format).
 
 ## Version 4.
 Update kernel def hashing to not depend on ordering of type constraint types (NOT BACKWARDS COMPATIBLE).
+
+## Version 5.
+Deprecate kernel def hashes and add KernelTypeStrResolver info to replace them (NOT BACKWARDS COMPATIBLE).
+The change to the ORT format itself is not backwards compatibility-breaking, but ORT does not provide backwards
+compatibility for processing older models with missing KernelTypeStrResolver info.
