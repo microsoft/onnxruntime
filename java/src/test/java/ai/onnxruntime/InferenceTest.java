@@ -32,6 +32,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Collections;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -1522,7 +1523,7 @@ public class InferenceTest {
           options.addCoreML();
           break;
         case XNNPACK:
-          options.addXnnpack(new HashMap<String, String>());
+          options.addXnnpack(Collections.emptyMap());
           break;
         case NUPHAR:
           options.addNuphar(true, "");

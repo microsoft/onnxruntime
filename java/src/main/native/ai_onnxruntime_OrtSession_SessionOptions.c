@@ -4,6 +4,7 @@
  */
 #include <jni.h>
 #include <string.h>
+#include <stdio.h>
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "OrtJniUtil.h"
 #include "ai_onnxruntime_OrtSession_SessionOptions.h"
@@ -618,19 +619,30 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addROC
 
 /*
  * Class::    ai_onnxruntime_OrtSession_SessionOptions
- * Method:    addXnnpack
+ * Method:    appendExecutionProvider
  * Signature: (JILjava/lang/String)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addXnnpack(
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_sessionOptionsAppendExecutionProvider(
     JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle,
-    jobjectArray configKeyArr, jobjectArray configValueArr) {
+    jstring jepName, jobjectArray configKeyArr, jobjectArray configValueArr) {
   (void)jobj;
-#ifdef USE_XNNPACK
+  char errMsgBuf[512];
+  const char* epName = (*jniEnv)->GetStringUTFChars(jniEnv, jepName, NULL);
+  if (strcmp(epName, "XNNPACK") == 0) {
+#ifndef USE_XNNPACK
+    throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), "This binary was not compiled with Xnnpack support.");
+#endif
+  } else {
+    snprintf(errMsgBuf, 512, "Java Interface doesn't support this EP %s", epName);
+    throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), errMsgBuf);
+  }
+
   const OrtApi* api = (const OrtApi*)apiHandle;
   OrtSessionOptions* options = (OrtSessionOptions*)optionsHandle;
   int key_count = (*jniEnv)->GetArrayLength(jniEnv, configKeyArr);
   if (key_count != (*jniEnv)->GetArrayLength(jniEnv, configValueArr)) {
-    throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), "Xnnapck provider options' key-value don't match.");
+    snprintf(errMsgBuf, 512, "Provider options of %s key-value don't match.", epName);
+    throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), errMsgBuf);
   }
   const char* key_array[key_count];
   const char* value_array[key_count];
@@ -642,16 +654,10 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addXnn
     key_array[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jkey_array[i], NULL);
     value_array[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jvalue_array[i], NULL);
   }
-  checkOrtStatus(jniEnv, api, api->SessionOptionsAppendExecutionProvider(options, "XNNPACK", key_array, value_array, key_count));
+  checkOrtStatus(jniEnv, api, api->SessionOptionsAppendExecutionProvider(options, epName, key_array, value_array, key_count));
   for (int i = 0; i < key_count; i++) {
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, jkey_array[i], key_array[i]);
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, jvalue_array[i], value_array[i]);
   }
-#else
-  (void)apiHandle;
-  (void)optionsHandle;
-  (void)configKeyArr;
-  (void)configValueArr;
-  throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), "This binary was not compiled with Xnnapck support.");
-#endif
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv, jepName, epName);
 }
