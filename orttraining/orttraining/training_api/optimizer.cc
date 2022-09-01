@@ -51,7 +51,7 @@ Status GraphInputsAreExpected(gsl::span<std::string> actual_graph_inputs,
     error_stream << "Invalid graph inputs."
                  << "\n\tExpected: " << stringify(expected_inputs)
                  << "\n\tActual: " << stringify(actual_inputs);
-    return ORT_MAKE_STATUS(StatusCategory::ONNXRUNTIME, StatusCode::INVALID_ARGUMENT, error_stream.str());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, error_stream.str());
   };
 
   if (actual_graph_inputs.size() != expected_graph_inputs.size()) {
