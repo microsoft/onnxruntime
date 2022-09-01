@@ -246,7 +246,7 @@ def quantize_static(model_input, model_output, calibration_data_reader: Calibrat
             op_types_to_quantize=kwargs["op_types_to_quantize"] if "op_types_to_quantize" in kwargs else None,
             per_channel=kwargs["per_channel"] if "per_channel" in kwargs else False,
             reduce_range=kwargs["reduce_range"] if "reduce_range" in kwargs else False,
-            activation_type=kwargs["activation_type"] if "activation_type" in kwargs else QuantType.QInt8,
+            activation_type=kwargs.get("activation_type") or QuantType.QInt8,
             weight_type=kwargs["weight_type"] if "weight_type" in kwargs else QuantType.QInt8,
             nodes_to_quantize=kwargs["nodes_to_quantize"] if "nodes_to_quantize" in kwargs else None,
             nodes_to_exclude=kwargs["nodes_to_exclude"] if "nodes_to_exclude" in kwargs else None,
