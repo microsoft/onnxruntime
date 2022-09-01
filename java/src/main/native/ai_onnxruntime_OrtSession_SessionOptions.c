@@ -639,15 +639,17 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_sessio
 
   const OrtApi* api = (const OrtApi*)apiHandle;
   OrtSessionOptions* options = (OrtSessionOptions*)optionsHandle;
+  const int MAX_CONFIG_SIZE = 20;
   int keyCount = (*jniEnv)->GetArrayLength(jniEnv, configKeyArr);
-  if (keyCount != (*jniEnv)->GetArrayLength(jniEnv, configValueArr)) {
-    snprintf(errMsgBuf, 512, "Provider options of %s key-value don't match.", epName);
+  if (keyCount != (*jniEnv)->GetArrayLength(jniEnv, configValueArr) || MAX_CONFIG_SIZE < keyCount) {
+    snprintf(errMsgBuf, 512, "Provider options of %s key-value don't match or config num is more than %d.",
+             epName, MAX_CONFIG_SIZE);
     throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), errMsgBuf);
   }
-  const char* keyArray[keyCount];
-  const char* valueArray[keyCount];
-  jstring jkeyArray[keyCount];
-  jstring jvalueArray[keyCount];
+  const char* keyArray[MAX_CONFIG_SIZE];
+  const char* valueArray[MAX_CONFIG_SIZE];
+  jstring jkeyArray[MAX_CONFIG_SIZE];
+  jstring jvalueArray[MAX_CONFIG_SIZE];
   for (int i = 0; i < keyCount; i++) {
     jkeyArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configKeyArr, i));
     jvalueArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configValueArr, i));
