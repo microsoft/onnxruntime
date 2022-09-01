@@ -37,11 +37,11 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return nullptr;
   }
 
-  cublasHandle_t PerThreadCublasHandle() {
+  cublasHandle_t PerThreadDefaultCublasHandle() {
     return GetPerThreadContext().CublasHandle();
   }
 
-  cudnnHandle_t PerThreadCudnnHandle() {
+  cudnnHandle_t PerThreadDefaultCudnnHandle() {
     return GetPerThreadContext().CudnnHandle();
   }
 
@@ -52,7 +52,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   void AddDeferredReleaseCPUPtr(void* p, cudaStream_t stream);
 
-  //GPU scratch buffer need to be allocated on stream
+  // GPU scratch buffer need to be allocated on stream
   template <typename T>
   IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, Stream* stream, WaitNotificationFn wait_fn) const {
     if (count_or_bytes == 0)
@@ -163,12 +163,12 @@ class CUDAExecutionProvider : public IExecutionProvider {
     }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  bool IsGraphCaptureAllowed() const;
-  void CaptureBegin();
-  void CaptureEnd();
-  bool IsGraphCaptured() const;
-  Status ReplayGraph();
-  void IncrementRegularRunCountBeforeGraphCapture();
+    bool IsGraphCaptureAllowed() const;
+    void CaptureBegin();
+    void CaptureEnd();
+    bool IsGraphCaptured() const;
+    Status ReplayGraph();
+    void IncrementRegularRunCountBeforeGraphCapture();
 #endif
 
    private:
@@ -186,10 +186,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
     CUDAGraph cuda_graph_;
     bool is_graph_captured_ = false;
     int regular_run_count_before_graph_capture_ = 0;
-    const int min_num_runs_before_cuda_graph_capture_ = 1; // required min regular runs before graph capture for the necessary memory allocations.
+    const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
 
 #endif
-
   };
 
   using PerThreadContextMap = std::unordered_map<const CUDAExecutionProvider*, std::weak_ptr<PerThreadContext>>;
