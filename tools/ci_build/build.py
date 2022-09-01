@@ -384,7 +384,7 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="3.1.3", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="3.1.19", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -654,6 +654,12 @@ def parse_arguments():
         cupti library must be added to PATH beforehand.",
     )
 
+    parser.add_argument(
+        "--enable_rocm_profiling",
+        action="store_true",
+        help="enable rocm kernel profiling.",
+    )
+
     parser.add_argument("--use_xnnpack", action="store_true", help="Enable xnnpack EP.")
 
     args = parser.parse_args()
@@ -917,6 +923,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS="
         + ("ON" if args.enable_external_custom_op_schemas else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_PROFILING=" + ("ON" if args.enable_cuda_profiling else "OFF"),
+        "-Donnxruntime_ENABLE_ROCM_PROFILING=" + ("ON" if args.enable_rocm_profiling else "OFF"),
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
     ]
     if args.external_graph_transformer_path:
@@ -949,7 +956,8 @@ def generate_build_tree(
             add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_VERSION", args.cuda_version)
         # TODO: this variable is not really needed
         add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_HOME", cuda_home)
-        add_default_definition(cmake_extra_defines, "onnxruntime_CUDNN_HOME", cudnn_home)
+        if cudnn_home:
+            add_default_definition(cmake_extra_defines, "onnxruntime_CUDNN_HOME", cudnn_home)
 
     if is_windows():
         if args.enable_msvc_static_runtime:
@@ -1343,7 +1351,7 @@ def setup_cuda_vars(args):
         cuda_home_valid = cuda_home is not None and os.path.exists(cuda_home)
         cudnn_home_valid = cudnn_home is not None and os.path.exists(cudnn_home)
 
-        if not cuda_home_valid or not cudnn_home_valid:
+        if not cuda_home_valid or (not is_windows() and not cudnn_home_valid):
             raise BuildError(
                 "cuda_home and cudnn_home paths must be specified and valid.",
                 "cuda_home='{}' valid={}. cudnn_home='{}' valid={}".format(

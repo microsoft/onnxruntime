@@ -1,0 +1,636 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.NodeMetadata
+  commentId: T:Microsoft.ML.OnnxRuntime.NodeMetadata
+  id: NodeMetadata
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.NodeMetadata.Dimensions
+  - Microsoft.ML.OnnxRuntime.NodeMetadata.ElementType
+  - Microsoft.ML.OnnxRuntime.NodeMetadata.IsTensor
+  - Microsoft.ML.OnnxRuntime.NodeMetadata.OnnxValueType
+  - Microsoft.ML.OnnxRuntime.NodeMetadata.SymbolicDimensions
+  langs:
+  - csharp
+  - vb
+  name: NodeMetadata
+  nameWithType: NodeMetadata
+  fullName: Microsoft.ML.OnnxRuntime.NodeMetadata
+  type: Class
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: NodeMetadata
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 1109
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nResembles type and shape information of session-graph nodes, used for communicating the shape/type of input/output nodes\n"
+  example: []
+  syntax:
+    content: public class NodeMetadata
+    content.vb: Public Class NodeMetadata
+  inheritance:
+  - System.Object
+  inheritedMembers:
+  - System.Object.Equals(System.Object)
+  - System.Object.Equals(System.Object,System.Object)
+  - System.Object.GetHashCode
+  - System.Object.GetType
+  - System.Object.MemberwiseClone
+  - System.Object.ReferenceEquals(System.Object,System.Object)
+  - System.Object.ToString
+  modifiers.csharp:
+  - public
+  - class
+  modifiers.vb:
+  - Public
+  - Class
+- uid: Microsoft.ML.OnnxRuntime.NodeMetadata.OnnxValueType
+  commentId: P:Microsoft.ML.OnnxRuntime.NodeMetadata.OnnxValueType
+  id: OnnxValueType
+  parent: Microsoft.ML.OnnxRuntime.NodeMetadata
+  langs:
+  - csharp
+  - vb
+  name: OnnxValueType
+  nameWithType: NodeMetadata.OnnxValueType
+  fullName: Microsoft.ML.OnnxRuntime.NodeMetadata.OnnxValueType
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: OnnxValueType
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 1123
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nType value of the node\n"
+  example: []
+  syntax:
+    content: public OnnxValueType OnnxValueType { get; }
+    parameters: []
+    return:
+      type: Microsoft.ML.OnnxRuntime.OnnxValueType
+      description: A value of OnnxValueType enum
+    content.vb: Public ReadOnly Property OnnxValueType As OnnxValueType
+  overload: Microsoft.ML.OnnxRuntime.NodeMetadata.OnnxValueType*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.NodeMetadata.Dimensions
+  commentId: P:Microsoft.ML.OnnxRuntime.NodeMetadata.Dimensions
+  id: Dimensions
+  parent: Microsoft.ML.OnnxRuntime.NodeMetadata
+  langs:
+  - csharp
+  - vb
+  name: Dimensions
+  nameWithType: NodeMetadata.Dimensions
+  fullName: Microsoft.ML.OnnxRuntime.NodeMetadata.Dimensions
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Dimensions
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 1129
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nShape\n"
+  example: []
+  syntax:
+    content: public int[] Dimensions { get; }
+    parameters: []
+    return:
+      type: System.Int32[]
+      description: Array of dimensions
+    content.vb: Public ReadOnly Property Dimensions As Integer()
+  overload: Microsoft.ML.OnnxRuntime.NodeMetadata.Dimensions*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.NodeMetadata.SymbolicDimensions
+  commentId: P:Microsoft.ML.OnnxRuntime.NodeMetadata.SymbolicDimensions
+  id: SymbolicDimensions
+  parent: Microsoft.ML.OnnxRuntime.NodeMetadata
+  langs:
+  - csharp
+  - vb
+  name: SymbolicDimensions
+  nameWithType: NodeMetadata.SymbolicDimensions
+  fullName: Microsoft.ML.OnnxRuntime.NodeMetadata.SymbolicDimensions
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: SymbolicDimensions
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 1135
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nSymbolic dimensions\n"
+  example: []
+  syntax:
+    content: public string[] SymbolicDimensions { get; }
+    parameters: []
+    return:
+      type: System.String[]
+      description: Array of symbolic dimensions if present.
+    content.vb: Public ReadOnly Property SymbolicDimensions As String()
+  overload: Microsoft.ML.OnnxRuntime.NodeMetadata.SymbolicDimensions*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.NodeMetadata.ElementType
+  commentId: P:Microsoft.ML.OnnxRuntime.NodeMetadata.ElementType
+  id: ElementType
+  parent: Microsoft.ML.OnnxRuntime.NodeMetadata
+  langs:
+  - csharp
+  - vb
+  name: ElementType
+  nameWithType: NodeMetadata.ElementType
+  fullName: Microsoft.ML.OnnxRuntime.NodeMetadata.ElementType
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ElementType
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 1141
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\n.NET type that corresponds to this Node.\n"
+  example: []
+  syntax:
+    content: public Type ElementType { get; }
+    parameters: []
+    return:
+      type: System.Type
+      description: System.Type
+    content.vb: Public ReadOnly Property ElementType As Type
+  overload: Microsoft.ML.OnnxRuntime.NodeMetadata.ElementType*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.NodeMetadata.IsTensor
+  commentId: P:Microsoft.ML.OnnxRuntime.NodeMetadata.IsTensor
+  id: IsTensor
+  parent: Microsoft.ML.OnnxRuntime.NodeMetadata
+  langs:
+  - csharp
+  - vb
+  name: IsTensor
+  nameWithType: NodeMetadata.IsTensor
+  fullName: Microsoft.ML.OnnxRuntime.NodeMetadata.IsTensor
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: IsTensor
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 1147
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nWhether it is a Tensor\n"
+  example: []
+  syntax:
+    content: public bool IsTensor { get; }
+    parameters: []
+    return:
+      type: System.Boolean
+      description: currently always returns true
+    content.vb: Public ReadOnly Property IsTensor As Boolean
+  overload: Microsoft.ML.OnnxRuntime.NodeMetadata.IsTensor*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: System.Object
+  commentId: T:System.Object
+  parent: System
+  isExternal: true
+  name: Object
+  nameWithType: Object
+  fullName: System.Object
+- uid: System.Object.Equals(System.Object)
+  commentId: M:System.Object.Equals(System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object)
+  nameWithType: Object.Equals(Object)
+  fullName: System.Object.Equals(System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.Equals(System.Object,System.Object)
+  commentId: M:System.Object.Equals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object, Object)
+  nameWithType: Object.Equals(Object, Object)
+  fullName: System.Object.Equals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetHashCode
+  commentId: M:System.Object.GetHashCode
+  parent: System.Object
+  isExternal: true
+  name: GetHashCode()
+  nameWithType: Object.GetHashCode()
+  fullName: System.Object.GetHashCode()
+  spec.csharp:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetType
+  commentId: M:System.Object.GetType
+  parent: System.Object
+  isExternal: true
+  name: GetType()
+  nameWithType: Object.GetType()
+  fullName: System.Object.GetType()
+  spec.csharp:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.MemberwiseClone
+  commentId: M:System.Object.MemberwiseClone
+  parent: System.Object
+  isExternal: true
+  name: MemberwiseClone()
+  nameWithType: Object.MemberwiseClone()
+  fullName: System.Object.MemberwiseClone()
+  spec.csharp:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ReferenceEquals(System.Object,System.Object)
+  commentId: M:System.Object.ReferenceEquals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: ReferenceEquals(Object, Object)
+  nameWithType: Object.ReferenceEquals(Object, Object)
+  fullName: System.Object.ReferenceEquals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ToString
+  commentId: M:System.Object.ToString
+  parent: System.Object
+  isExternal: true
+  name: ToString()
+  nameWithType: Object.ToString()
+  fullName: System.Object.ToString()
+  spec.csharp:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System
+  commentId: N:System
+  isExternal: true
+  name: System
+  nameWithType: System
+  fullName: System
+- uid: Microsoft.ML.OnnxRuntime.NodeMetadata.OnnxValueType*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.NodeMetadata.OnnxValueType
+  name: OnnxValueType
+  nameWithType: NodeMetadata.OnnxValueType
+  fullName: Microsoft.ML.OnnxRuntime.NodeMetadata.OnnxValueType
+- uid: Microsoft.ML.OnnxRuntime.OnnxValueType
+  commentId: T:Microsoft.ML.OnnxRuntime.OnnxValueType
+  parent: Microsoft.ML.OnnxRuntime
+  name: OnnxValueType
+  nameWithType: OnnxValueType
+  fullName: Microsoft.ML.OnnxRuntime.OnnxValueType
+- uid: Microsoft.ML.OnnxRuntime.NodeMetadata.Dimensions*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.NodeMetadata.Dimensions
+  name: Dimensions
+  nameWithType: NodeMetadata.Dimensions
+  fullName: Microsoft.ML.OnnxRuntime.NodeMetadata.Dimensions
+- uid: System.Int32[]
+  isExternal: true
+  name: Int32[]
+  nameWithType: Int32[]
+  fullName: System.Int32[]
+  nameWithType.vb: Int32()
+  fullName.vb: System.Int32()
+  name.vb: Int32()
+  spec.csharp:
+  - uid: System.Int32
+    name: Int32
+    nameWithType: Int32
+    fullName: System.Int32
+    isExternal: true
+  - name: '[]'
+    nameWithType: '[]'
+    fullName: '[]'
+  spec.vb:
+  - uid: System.Int32
+    name: Int32
+    nameWithType: Int32
+    fullName: System.Int32
+    isExternal: true
+  - name: ()
+    nameWithType: ()
+    fullName: ()
+- uid: Microsoft.ML.OnnxRuntime.NodeMetadata.SymbolicDimensions*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.NodeMetadata.SymbolicDimensions
+  name: SymbolicDimensions
+  nameWithType: NodeMetadata.SymbolicDimensions
+  fullName: Microsoft.ML.OnnxRuntime.NodeMetadata.SymbolicDimensions
+- uid: System.String[]
+  isExternal: true
+  name: String[]
+  nameWithType: String[]
+  fullName: System.String[]
+  nameWithType.vb: String()
+  fullName.vb: System.String()
+  name.vb: String()
+  spec.csharp:
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: '[]'
+    nameWithType: '[]'
+    fullName: '[]'
+  spec.vb:
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: ()
+    nameWithType: ()
+    fullName: ()
+- uid: Microsoft.ML.OnnxRuntime.NodeMetadata.ElementType*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.NodeMetadata.ElementType
+  name: ElementType
+  nameWithType: NodeMetadata.ElementType
+  fullName: Microsoft.ML.OnnxRuntime.NodeMetadata.ElementType
+- uid: System.Type
+  commentId: T:System.Type
+  parent: System
+  isExternal: true
+  name: Type
+  nameWithType: Type
+  fullName: System.Type
+- uid: Microsoft.ML.OnnxRuntime.NodeMetadata.IsTensor*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.NodeMetadata.IsTensor
+  name: IsTensor
+  nameWithType: NodeMetadata.IsTensor
+  fullName: Microsoft.ML.OnnxRuntime.NodeMetadata.IsTensor
+- uid: System.Boolean
+  commentId: T:System.Boolean
+  parent: System
+  isExternal: true
+  name: Boolean
+  nameWithType: Boolean
+  fullName: System.Boolean

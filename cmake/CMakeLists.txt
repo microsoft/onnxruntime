@@ -40,6 +40,10 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
+if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 7)
+  message(FATAL_ERROR  "GCC version must not less than 7")
+endif()
+
 # Options
 option(onnxruntime_RUN_ONNX_TESTS "Enable ONNX Compatibility Testing" OFF)
 option(onnxruntime_GENERATE_TEST_REPORTS "Enable test report generation" OFF)
@@ -190,6 +194,7 @@ option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
 option(onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH "Path to external transformer src dir")
 
 option(onnxruntime_ENABLE_CUDA_PROFILING "Enable CUDA kernel profiling" OFF)
+option(onnxruntime_ENABLE_ROCM_PROFILING "Enable ROCM kernel profiling" OFF)
 
 option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 
@@ -864,10 +869,6 @@ if (onnxruntime_DISABLE_OPTIONAL_TYPE)
   add_compile_definitions(DISABLE_OPTIONAL_TYPE)
 endif()
 
-if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
-  message(FATAL_ERROR "onnxruntime_CUDNN_HOME required for onnxruntime_USE_CUDA")
-endif()
-
 get_filename_component(ONNXRUNTIME_ROOT "${ONNXRUNTIME_ROOT}" ABSOLUTE)
 get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
 get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
@@ -1032,9 +1033,15 @@ set(onnxruntime_LINK_DIRS )
 if (onnxruntime_USE_CUDA)
       #TODO: combine onnxruntime_CUDNN_HOME and onnxruntime_CUDA_HOME, assume they are the same
       if (WIN32)
-        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib/x64 ${onnxruntime_CUDA_HOME}/x64/lib64)
+        if(onnxruntime_CUDNN_HOME)
+          list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib/x64)
+        endif()
+        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDA_HOME}/x64/lib64)
       else()
-        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib64 ${onnxruntime_CUDA_HOME}/lib64)
+        if(onnxruntime_CUDNN_HOME)
+          list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib64)
+        endif()
+        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDA_HOME}/lib64)
       endif()
 endif()
 
@@ -1124,6 +1131,8 @@ else()
   check_cxx_compiler_flag(-Wundefined-var-template HAS_UNDEFINED_VAR_TEMPLATE)
   check_cxx_compiler_flag(-Wformat-truncation HAS_FORMAT_TRUNCATION)
   check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
+  check_cxx_compiler_flag(-Wenum-constexpr-conversion HAS_ENUM_CONSTEXPR_CONVERSION)
+  check_cxx_compiler_flag(-Wdeprecated-builtins HAS_DEPRECATED_BUILTINS)
 
   if (HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -1142,6 +1151,13 @@ else()
   endif()
   if (HAS_UNDEFINED_VAR_TEMPLATE)
     list(APPEND ORT_WARNING_FLAGS -Wno-undefined-var-template)
+  endif()
+  if (HAS_DEPRECATED_BUILTINS)
+    list(APPEND ORT_WARNING_FLAGS -Wno-deprecated-builtins)
+  endif()
+
+  if (HAS_ENUM_CONSTEXPR_CONVERSION)
+    target_compile_options(${PROTOBUF_LIB} PRIVATE "-Wno-enum-constexpr-conversion")
   endif()
 endif()
 
@@ -1802,8 +1818,9 @@ if (onnxruntime_USE_CUDA)
   enable_language(CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
   set(CMAKE_CUDA_STANDARD 17)
-  file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
-
+  if(onnxruntime_CUDNN_HOME)
+    file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
+  endif()
   if (NOT CMAKE_CUDA_ARCHITECTURES)
     if (CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
       # Support for Jetson/Tegra ARM devices
@@ -1921,6 +1938,10 @@ endif()
 
 if (onnxruntime_ENABLE_CUDA_PROFILING)
   add_compile_definitions(ENABLE_CUDA_PROFILING)
+endif()
+
+if (onnxruntime_ENABLE_ROCM_PROFILING)
+  add_compile_definitions(ENABLE_ROCM_PROFILING)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)

@@ -1,0 +1,2387 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession
+  commentId: T:Microsoft.ML.OnnxRuntime.InferenceSession
+  id: InferenceSession
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.Byte[])
+  - Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)
+  - Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.SessionOptions)
+  - Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.SessionOptions,Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)
+  - Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.String)
+  - Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.String,Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)
+  - Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.String,Microsoft.ML.OnnxRuntime.SessionOptions)
+  - Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.String,Microsoft.ML.OnnxRuntime.SessionOptions,Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)
+  - Microsoft.ML.OnnxRuntime.InferenceSession.CreateIoBinding
+  - Microsoft.ML.OnnxRuntime.InferenceSession.Dispose
+  - Microsoft.ML.OnnxRuntime.InferenceSession.Dispose(System.Boolean)
+  - Microsoft.ML.OnnxRuntime.InferenceSession.EndProfiling
+  - Microsoft.ML.OnnxRuntime.InferenceSession.Finalize
+  - Microsoft.ML.OnnxRuntime.InferenceSession.InputMetadata
+  - Microsoft.ML.OnnxRuntime.InferenceSession.ModelMetadata
+  - Microsoft.ML.OnnxRuntime.InferenceSession.OutputMetadata
+  - Microsoft.ML.OnnxRuntime.InferenceSession.OverridableInitializerMetadata
+  - Microsoft.ML.OnnxRuntime.InferenceSession.ProfilingStartTimeNs
+  - Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue})
+  - Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue})
+  - Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)
+  - Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String})
+  - Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},Microsoft.ML.OnnxRuntime.RunOptions)
+  - Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue})
+  - Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)
+  - Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue})
+  - Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue})
+  - Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)
+  - Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String})
+  - Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},Microsoft.ML.OnnxRuntime.RunOptions)
+  - Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue})
+  - Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)
+  - Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBinding(Microsoft.ML.OnnxRuntime.RunOptions,Microsoft.ML.OnnxRuntime.OrtIoBinding)
+  - Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBindingAndNames(Microsoft.ML.OnnxRuntime.RunOptions,Microsoft.ML.OnnxRuntime.OrtIoBinding,System.String[])
+  langs:
+  - csharp
+  - vb
+  name: InferenceSession
+  nameWithType: InferenceSession
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession
+  type: Class
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: InferenceSession
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 21
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nRepresents an Inference Session on an ONNX Model.\nThis is a IDisposable class and it must be disposed of\nusing either a explicit call to Dispose() method or\na pattern of using() block. If this is a member of another\nclass that class must also become IDisposable and it must\ndispose of InferfenceSession in its Dispose() method.\n"
+  example: []
+  syntax:
+    content: 'public class InferenceSession : IDisposable'
+    content.vb: >-
+      Public Class InferenceSession
+          Implements IDisposable
+  inheritance:
+  - System.Object
+  implements:
+  - System.IDisposable
+  inheritedMembers:
+  - System.Object.Equals(System.Object)
+  - System.Object.Equals(System.Object,System.Object)
+  - System.Object.GetHashCode
+  - System.Object.GetType
+  - System.Object.MemberwiseClone
+  - System.Object.ReferenceEquals(System.Object,System.Object)
+  - System.Object.ToString
+  modifiers.csharp:
+  - public
+  - class
+  modifiers.vb:
+  - Public
+  - Class
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.String)
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.String)
+  id: '#ctor(System.String)'
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: InferenceSession(String)
+  nameWithType: InferenceSession.InferenceSession(String)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.InferenceSession(System.String)
+  type: Constructor
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: .ctor
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 55
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nConstructs an InferenceSession from a model file\n"
+  example: []
+  syntax:
+    content: public InferenceSession(string modelPath)
+    parameters:
+    - id: modelPath
+      type: System.String
+      description: ''
+    content.vb: Public Sub New(modelPath As String)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.#ctor*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.String,Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.String,Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)
+  id: '#ctor(System.String,Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)'
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: InferenceSession(String, PrePackedWeightsContainer)
+  nameWithType: InferenceSession.InferenceSession(String, PrePackedWeightsContainer)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.InferenceSession(System.String, Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)
+  type: Constructor
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: .ctor
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 70
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nConstructs an InferenceSession from a model file and it will use \nthe provided pre-packed weights container to store and share pre-packed buffers \nof shared initializers across sessions if any.\n"
+  example: []
+  syntax:
+    content: public InferenceSession(string modelPath, PrePackedWeightsContainer prepackedWeightsContainer)
+    parameters:
+    - id: modelPath
+      type: System.String
+      description: Model path
+    - id: prepackedWeightsContainer
+      type: Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer
+      description: "Instance of PrepackedWeightsContainer. \nLifetime of &apos;prepackedWeightsContainer&apos; must be\nmanaged by the user and it must outlive any sessions reliant on it"
+    content.vb: Public Sub New(modelPath As String, prepackedWeightsContainer As PrePackedWeightsContainer)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.#ctor*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.String,Microsoft.ML.OnnxRuntime.SessionOptions)
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.String,Microsoft.ML.OnnxRuntime.SessionOptions)
+  id: '#ctor(System.String,Microsoft.ML.OnnxRuntime.SessionOptions)'
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: InferenceSession(String, SessionOptions)
+  nameWithType: InferenceSession.InferenceSession(String, SessionOptions)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.InferenceSession(System.String, Microsoft.ML.OnnxRuntime.SessionOptions)
+  type: Constructor
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: .ctor
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 82
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nConstructs an InferenceSession from a model file, with some additional session options\n"
+  example: []
+  syntax:
+    content: public InferenceSession(string modelPath, SessionOptions options)
+    parameters:
+    - id: modelPath
+      type: System.String
+      description: ''
+    - id: options
+      type: Microsoft.ML.OnnxRuntime.SessionOptions
+      description: ''
+    content.vb: Public Sub New(modelPath As String, options As SessionOptions)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.#ctor*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.String,Microsoft.ML.OnnxRuntime.SessionOptions,Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.String,Microsoft.ML.OnnxRuntime.SessionOptions,Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)
+  id: '#ctor(System.String,Microsoft.ML.OnnxRuntime.SessionOptions,Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)'
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: InferenceSession(String, SessionOptions, PrePackedWeightsContainer)
+  nameWithType: InferenceSession.InferenceSession(String, SessionOptions, PrePackedWeightsContainer)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.InferenceSession(System.String, Microsoft.ML.OnnxRuntime.SessionOptions, Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)
+  type: Constructor
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: .ctor
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 98
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nConstructs an InferenceSession from a model file, with some additional session options\nand it will use the provided pre-packed weights container to store and share pre-packed buffers \nof shared initializers across sessions if any.\n"
+  example: []
+  syntax:
+    content: public InferenceSession(string modelPath, SessionOptions options, PrePackedWeightsContainer prepackedWeightsContainer)
+    parameters:
+    - id: modelPath
+      type: System.String
+      description: Model path
+    - id: options
+      type: Microsoft.ML.OnnxRuntime.SessionOptions
+      description: Session options
+    - id: prepackedWeightsContainer
+      type: Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer
+      description: "Instance of PrepackedWeightsContainer. \nLifetime of &apos;prepackedWeightsContainer&apos; must be\nmanaged by the user and it must outlive any sessions reliant on it"
+    content.vb: Public Sub New(modelPath As String, options As SessionOptions, prepackedWeightsContainer As PrePackedWeightsContainer)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.#ctor*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.Byte[])
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.Byte[])
+  id: '#ctor(System.Byte[])'
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: InferenceSession(Byte[])
+  nameWithType: InferenceSession.InferenceSession(Byte[])
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.InferenceSession(System.Byte[])
+  type: Constructor
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: .ctor
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 108
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nConstructs an InferenceSession from a model data in byte array\n"
+  example: []
+  syntax:
+    content: public InferenceSession(byte[] model)
+    parameters:
+    - id: model
+      type: System.Byte[]
+      description: ''
+    content.vb: Public Sub New(model As Byte())
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.#ctor*
+  nameWithType.vb: InferenceSession.InferenceSession(Byte())
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.InferenceSession(System.Byte())
+  name.vb: InferenceSession(Byte())
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)
+  id: '#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)'
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: InferenceSession(Byte[], PrePackedWeightsContainer)
+  nameWithType: InferenceSession.InferenceSession(Byte[], PrePackedWeightsContainer)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.InferenceSession(System.Byte[], Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)
+  type: Constructor
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: .ctor
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 123
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nConstructs an InferenceSession from a model data (in byte array) and it will use \nthe provided pre-packed weights container to store and share pre-packed buffers \nof shared initializers across sessions if any.\n"
+  example: []
+  syntax:
+    content: public InferenceSession(byte[] model, PrePackedWeightsContainer prepackedWeightsContainer)
+    parameters:
+    - id: model
+      type: System.Byte[]
+      description: Model as byte array
+    - id: prepackedWeightsContainer
+      type: Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer
+      description: "Instance of PrepackedWeightsContainer. \nLifetime of &apos;prepackedWeightsContainer&apos; must be\nmanaged by the user and it must outlive any sessions reliant on it"
+    content.vb: Public Sub New(model As Byte(), prepackedWeightsContainer As PrePackedWeightsContainer)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.#ctor*
+  nameWithType.vb: InferenceSession.InferenceSession(Byte(), PrePackedWeightsContainer)
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.InferenceSession(System.Byte(), Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)
+  name.vb: InferenceSession(Byte(), PrePackedWeightsContainer)
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.SessionOptions)
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.SessionOptions)
+  id: '#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.SessionOptions)'
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: InferenceSession(Byte[], SessionOptions)
+  nameWithType: InferenceSession.InferenceSession(Byte[], SessionOptions)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.InferenceSession(System.Byte[], Microsoft.ML.OnnxRuntime.SessionOptions)
+  type: Constructor
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: .ctor
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 134
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nConstructs an InferenceSession from a model data in byte array, with some additional session options\n"
+  example: []
+  syntax:
+    content: public InferenceSession(byte[] model, SessionOptions options)
+    parameters:
+    - id: model
+      type: System.Byte[]
+      description: ''
+    - id: options
+      type: Microsoft.ML.OnnxRuntime.SessionOptions
+      description: ''
+    content.vb: Public Sub New(model As Byte(), options As SessionOptions)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.#ctor*
+  nameWithType.vb: InferenceSession.InferenceSession(Byte(), SessionOptions)
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.InferenceSession(System.Byte(), Microsoft.ML.OnnxRuntime.SessionOptions)
+  name.vb: InferenceSession(Byte(), SessionOptions)
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.SessionOptions,Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.SessionOptions,Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)
+  id: '#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.SessionOptions,Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)'
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: InferenceSession(Byte[], SessionOptions, PrePackedWeightsContainer)
+  nameWithType: InferenceSession.InferenceSession(Byte[], SessionOptions, PrePackedWeightsContainer)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.InferenceSession(System.Byte[], Microsoft.ML.OnnxRuntime.SessionOptions, Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)
+  type: Constructor
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: .ctor
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 149
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nConstructs an InferenceSession from a model data (in byte array) with some additional\nsession options and it will use the provided pre-packed weights container to store\nand share pre-packed buffers of shared initializers across sessions if any.\n"
+  example: []
+  syntax:
+    content: public InferenceSession(byte[] model, SessionOptions options, PrePackedWeightsContainer prepackedWeightsContainer)
+    parameters:
+    - id: model
+      type: System.Byte[]
+      description: Model as byte array
+    - id: options
+      type: Microsoft.ML.OnnxRuntime.SessionOptions
+      description: Session Options
+    - id: prepackedWeightsContainer
+      type: Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer
+      description: "Instance of PrepackedWeightsContainer. \nLifetime of &apos;prepackedWeightsContainer&apos; must be\nmanaged by the user and it must outlive any sessions reliant on it"
+    content.vb: Public Sub New(model As Byte(), options As SessionOptions, prepackedWeightsContainer As PrePackedWeightsContainer)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.#ctor*
+  nameWithType.vb: InferenceSession.InferenceSession(Byte(), SessionOptions, PrePackedWeightsContainer)
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.InferenceSession(System.Byte(), Microsoft.ML.OnnxRuntime.SessionOptions, Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)
+  name.vb: InferenceSession(Byte(), SessionOptions, PrePackedWeightsContainer)
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.InputMetadata
+  commentId: P:Microsoft.ML.OnnxRuntime.InferenceSession.InputMetadata
+  id: InputMetadata
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: InputMetadata
+  nameWithType: InferenceSession.InputMetadata
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.InputMetadata
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: InputMetadata
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 157
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nMeta data regarding the input nodes, keyed by input names\n"
+  example: []
+  syntax:
+    content: public IReadOnlyDictionary<string, NodeMetadata> InputMetadata { get; }
+    parameters: []
+    return:
+      type: System.Collections.Generic.IReadOnlyDictionary{System.String,Microsoft.ML.OnnxRuntime.NodeMetadata}
+    content.vb: Public ReadOnly Property InputMetadata As IReadOnlyDictionary(Of String, NodeMetadata)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.InputMetadata*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.OutputMetadata
+  commentId: P:Microsoft.ML.OnnxRuntime.InferenceSession.OutputMetadata
+  id: OutputMetadata
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: OutputMetadata
+  nameWithType: InferenceSession.OutputMetadata
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.OutputMetadata
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: OutputMetadata
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 168
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nMetadata regarding the output nodes, keyed by output names\n"
+  example: []
+  syntax:
+    content: public IReadOnlyDictionary<string, NodeMetadata> OutputMetadata { get; }
+    parameters: []
+    return:
+      type: System.Collections.Generic.IReadOnlyDictionary{System.String,Microsoft.ML.OnnxRuntime.NodeMetadata}
+    content.vb: Public ReadOnly Property OutputMetadata As IReadOnlyDictionary(Of String, NodeMetadata)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.OutputMetadata*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.OverridableInitializerMetadata
+  commentId: P:Microsoft.ML.OnnxRuntime.InferenceSession.OverridableInitializerMetadata
+  id: OverridableInitializerMetadata
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: OverridableInitializerMetadata
+  nameWithType: InferenceSession.OverridableInitializerMetadata
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.OverridableInitializerMetadata
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: OverridableInitializerMetadata
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 179
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nMetadata regarding the overridable initializers, keyed by node names\n"
+  example: []
+  syntax:
+    content: public IReadOnlyDictionary<string, NodeMetadata> OverridableInitializerMetadata { get; }
+    parameters: []
+    return:
+      type: System.Collections.Generic.IReadOnlyDictionary{System.String,Microsoft.ML.OnnxRuntime.NodeMetadata}
+    content.vb: Public ReadOnly Property OverridableInitializerMetadata As IReadOnlyDictionary(Of String, NodeMetadata)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.OverridableInitializerMetadata*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue})
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue})
+  id: Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue})
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: Run(IReadOnlyCollection<NamedOnnxValue>)
+  nameWithType: InferenceSession.Run(IReadOnlyCollection<NamedOnnxValue>)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.NamedOnnxValue>)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Run
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 192
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nRuns the loaded model for the given inputs, and fetches all the outputs.\n"
+  example: []
+  syntax:
+    content: public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs)
+    parameters:
+    - id: inputs
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue}
+      description: specify a collection of <xref href="Microsoft.ML.OnnxRuntime.NamedOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the input values.
+    return:
+      type: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection{Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue}
+      description: Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.
+    content.vb: Public Function Run(inputs As IReadOnlyCollection(Of NamedOnnxValue)) As IDisposableReadOnlyCollection(Of DisposableNamedOnnxValue)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.Run*
+  nameWithType.vb: InferenceSession.Run(IReadOnlyCollection(Of NamedOnnxValue))
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.NamedOnnxValue))
+  name.vb: Run(IReadOnlyCollection(Of NamedOnnxValue))
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String})
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String})
+  id: Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String})
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: Run(IReadOnlyCollection<NamedOnnxValue>, IReadOnlyCollection<String>)
+  nameWithType: InferenceSession.Run(IReadOnlyCollection<NamedOnnxValue>, IReadOnlyCollection<String>)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.NamedOnnxValue>, System.Collections.Generic.IReadOnlyCollection<System.String>)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Run
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 205
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nRuns the loaded model for the given inputs, and fetches the outputs specified in <code data-dev-comment-type=\"paramref\" class=\"paramref\">outputNames</code>.\n"
+  example: []
+  syntax:
+    content: public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames)
+    parameters:
+    - id: inputs
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.NamedOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the input values.
+    - id: outputNames
+      type: System.Collections.Generic.IReadOnlyCollection{System.String}
+      description: Specify a collection of string that indicates the output names to fetch.
+    return:
+      type: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection{Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue}
+      description: Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.
+    content.vb: Public Function Run(inputs As IReadOnlyCollection(Of NamedOnnxValue), outputNames As IReadOnlyCollection(Of String)) As IDisposableReadOnlyCollection(Of DisposableNamedOnnxValue)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.Run*
+  nameWithType.vb: InferenceSession.Run(IReadOnlyCollection(Of NamedOnnxValue), IReadOnlyCollection(Of String))
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.NamedOnnxValue), System.Collections.Generic.IReadOnlyCollection(Of System.String))
+  name.vb: Run(IReadOnlyCollection(Of NamedOnnxValue), IReadOnlyCollection(Of String))
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},Microsoft.ML.OnnxRuntime.RunOptions)
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},Microsoft.ML.OnnxRuntime.RunOptions)
+  id: Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},Microsoft.ML.OnnxRuntime.RunOptions)
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: Run(IReadOnlyCollection<NamedOnnxValue>, IReadOnlyCollection<String>, RunOptions)
+  nameWithType: InferenceSession.Run(IReadOnlyCollection<NamedOnnxValue>, IReadOnlyCollection<String>, RunOptions)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.NamedOnnxValue>, System.Collections.Generic.IReadOnlyCollection<System.String>, Microsoft.ML.OnnxRuntime.RunOptions)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Run
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 217
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nRuns the loaded model for the given inputs, and fetches the specified outputs in <code data-dev-comment-type=\"paramref\" class=\"paramref\">outputNames</code>. Uses the given RunOptions for this run.\n"
+  example: []
+  syntax:
+    content: public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames, RunOptions options)
+    parameters:
+    - id: inputs
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.NamedOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the input values.
+    - id: outputNames
+      type: System.Collections.Generic.IReadOnlyCollection{System.String}
+      description: Specify a collection of string that indicates the output names to fetch.
+    - id: options
+      type: Microsoft.ML.OnnxRuntime.RunOptions
+      description: ''
+    return:
+      type: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection{Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue}
+      description: Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.
+    content.vb: Public Function Run(inputs As IReadOnlyCollection(Of NamedOnnxValue), outputNames As IReadOnlyCollection(Of String), options As RunOptions) As IDisposableReadOnlyCollection(Of DisposableNamedOnnxValue)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.Run*
+  nameWithType.vb: InferenceSession.Run(IReadOnlyCollection(Of NamedOnnxValue), IReadOnlyCollection(Of String), RunOptions)
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.NamedOnnxValue), System.Collections.Generic.IReadOnlyCollection(Of System.String), Microsoft.ML.OnnxRuntime.RunOptions)
+  name.vb: Run(IReadOnlyCollection(Of NamedOnnxValue), IReadOnlyCollection(Of String), RunOptions)
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue})
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue})
+  id: Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue})
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: Run(IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>)
+  nameWithType: InferenceSession.Run(IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection<System.String>, System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue>)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Run
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 236
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nRuns the loaded model for the given inputs, and fetches all the outputs.\n"
+  example: []
+  syntax:
+    content: public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<string> inputNames, IReadOnlyCollection<FixedBufferOnnxValue> inputValues)
+    parameters:
+    - id: inputNames
+      type: System.Collections.Generic.IReadOnlyCollection{System.String}
+      description: Specify a collection of string that indicates the input names. Should match <code data-dev-comment-type="paramref" class="paramref">inputValues</code>.
+    - id: inputValues
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the input values.
+    return:
+      type: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection{Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue}
+      description: Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.
+    content.vb: Public Function Run(inputNames As IReadOnlyCollection(Of String), inputValues As IReadOnlyCollection(Of FixedBufferOnnxValue)) As IDisposableReadOnlyCollection(Of DisposableNamedOnnxValue)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.Run*
+  nameWithType.vb: InferenceSession.Run(IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue))
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection(Of System.String), System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue))
+  name.vb: Run(IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue))
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String})
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String})
+  id: Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String})
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: Run(IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>, IReadOnlyCollection<String>)
+  nameWithType: InferenceSession.Run(IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>, IReadOnlyCollection<String>)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection<System.String>, System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue>, System.Collections.Generic.IReadOnlyCollection<System.String>)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Run
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 252
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nRuns the loaded model for the given inputs, and fetches the outputs specified in <code data-dev-comment-type=\"paramref\" class=\"paramref\">outputNames</code>.\n"
+  example: []
+  syntax:
+    content: public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<string> inputNames, IReadOnlyCollection<FixedBufferOnnxValue> inputValues, IReadOnlyCollection<string> outputNames)
+    parameters:
+    - id: inputNames
+      type: System.Collections.Generic.IReadOnlyCollection{System.String}
+      description: Specify a collection of string that indicates the input names. Should match <code data-dev-comment-type="paramref" class="paramref">inputValues</code>.
+    - id: inputValues
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the input values.
+    - id: outputNames
+      type: System.Collections.Generic.IReadOnlyCollection{System.String}
+      description: Specify a collection of string that indicates the output names to fetch.
+    return:
+      type: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection{Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue}
+      description: Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.
+    content.vb: Public Function Run(inputNames As IReadOnlyCollection(Of String), inputValues As IReadOnlyCollection(Of FixedBufferOnnxValue), outputNames As IReadOnlyCollection(Of String)) As IDisposableReadOnlyCollection(Of DisposableNamedOnnxValue)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.Run*
+  nameWithType.vb: InferenceSession.Run(IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue), IReadOnlyCollection(Of String))
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection(Of System.String), System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue), System.Collections.Generic.IReadOnlyCollection(Of System.String))
+  name.vb: Run(IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue), IReadOnlyCollection(Of String))
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},Microsoft.ML.OnnxRuntime.RunOptions)
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},Microsoft.ML.OnnxRuntime.RunOptions)
+  id: Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},Microsoft.ML.OnnxRuntime.RunOptions)
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: Run(IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>, IReadOnlyCollection<String>, RunOptions)
+  nameWithType: InferenceSession.Run(IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>, IReadOnlyCollection<String>, RunOptions)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection<System.String>, System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue>, System.Collections.Generic.IReadOnlyCollection<System.String>, Microsoft.ML.OnnxRuntime.RunOptions)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Run
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 268
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nRuns the loaded model for the given inputs, and fetches the specified outputs in <code data-dev-comment-type=\"paramref\" class=\"paramref\">outputNames</code>. Uses the given RunOptions for this run.\n"
+  example: []
+  syntax:
+    content: public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<string> inputNames, IReadOnlyCollection<FixedBufferOnnxValue> inputValues, IReadOnlyCollection<string> outputNames, RunOptions options)
+    parameters:
+    - id: inputNames
+      type: System.Collections.Generic.IReadOnlyCollection{System.String}
+      description: Specify a collection of string that indicates the input names. Should match <code data-dev-comment-type="paramref" class="paramref">inputValues</code>.
+    - id: inputValues
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the input values.
+    - id: outputNames
+      type: System.Collections.Generic.IReadOnlyCollection{System.String}
+      description: Specify a collection of string that indicates the output names to fetch.
+    - id: options
+      type: Microsoft.ML.OnnxRuntime.RunOptions
+      description: ''
+    return:
+      type: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection{Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue}
+      description: Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.
+    content.vb: Public Function Run(inputNames As IReadOnlyCollection(Of String), inputValues As IReadOnlyCollection(Of FixedBufferOnnxValue), outputNames As IReadOnlyCollection(Of String), options As RunOptions) As IDisposableReadOnlyCollection(Of DisposableNamedOnnxValue)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.Run*
+  nameWithType.vb: InferenceSession.Run(IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue), IReadOnlyCollection(Of String), RunOptions)
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection(Of System.String), System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue), System.Collections.Generic.IReadOnlyCollection(Of System.String), Microsoft.ML.OnnxRuntime.RunOptions)
+  name.vb: Run(IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue), IReadOnlyCollection(Of String), RunOptions)
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue})
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue})
+  id: Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue})
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: Run(IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>, IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>)
+  nameWithType: InferenceSession.Run(IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>, IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection<System.String>, System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue>, System.Collections.Generic.IReadOnlyCollection<System.String>, System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue>)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Run
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 300
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nRuns the loaded model for the given inputs and outputs.\n\nOutputs need to be created with correct type and dimension to accept the fetched data.\n"
+  example: []
+  syntax:
+    content: public void Run(IReadOnlyCollection<string> inputNames, IReadOnlyCollection<FixedBufferOnnxValue> inputValues, IReadOnlyCollection<string> outputNames, IReadOnlyCollection<FixedBufferOnnxValue> outputValues)
+    parameters:
+    - id: inputNames
+      type: System.Collections.Generic.IReadOnlyCollection{System.String}
+      description: Specify a collection of string that indicates the input names. Should match <code data-dev-comment-type="paramref" class="paramref">inputValues</code>.
+    - id: inputValues
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the input values.
+    - id: outputNames
+      type: System.Collections.Generic.IReadOnlyCollection{System.String}
+      description: Specify a collection of string that indicates the output names. Should match <code data-dev-comment-type="paramref" class="paramref">outputValues</code>.
+    - id: outputValues
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the output values.
+    content.vb: Public Sub Run(inputNames As IReadOnlyCollection(Of String), inputValues As IReadOnlyCollection(Of FixedBufferOnnxValue), outputNames As IReadOnlyCollection(Of String), outputValues As IReadOnlyCollection(Of FixedBufferOnnxValue))
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.Run*
+  nameWithType.vb: InferenceSession.Run(IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue), IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue))
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection(Of System.String), System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue), System.Collections.Generic.IReadOnlyCollection(Of System.String), System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue))
+  name.vb: Run(IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue), IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue))
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)
+  id: Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: Run(IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>, IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>, RunOptions)
+  nameWithType: InferenceSession.Run(IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>, IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>, RunOptions)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection<System.String>, System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue>, System.Collections.Generic.IReadOnlyCollection<System.String>, System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue>, Microsoft.ML.OnnxRuntime.RunOptions)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Run
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 319
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nRuns the loaded model for the given inputs and outputs. Uses the given RunOptions for this run.\n\nOutputs need to be created with correct type and dimension to accept the fetched data.\n"
+  example: []
+  syntax:
+    content: public void Run(IReadOnlyCollection<string> inputNames, IReadOnlyCollection<FixedBufferOnnxValue> inputValues, IReadOnlyCollection<string> outputNames, IReadOnlyCollection<FixedBufferOnnxValue> outputValues, RunOptions options)
+    parameters:
+    - id: inputNames
+      type: System.Collections.Generic.IReadOnlyCollection{System.String}
+      description: Specify a collection of string that indicates the input names. Should match <code data-dev-comment-type="paramref" class="paramref">inputValues</code>.
+    - id: inputValues
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the input values.
+    - id: outputNames
+      type: System.Collections.Generic.IReadOnlyCollection{System.String}
+      description: Specify a collection of string that indicates the output names. Should match <code data-dev-comment-type="paramref" class="paramref">outputValues</code>.
+    - id: outputValues
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the output values.
+    - id: options
+      type: Microsoft.ML.OnnxRuntime.RunOptions
+      description: ''
+    content.vb: Public Sub Run(inputNames As IReadOnlyCollection(Of String), inputValues As IReadOnlyCollection(Of FixedBufferOnnxValue), outputNames As IReadOnlyCollection(Of String), outputValues As IReadOnlyCollection(Of FixedBufferOnnxValue), options As RunOptions)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.Run*
+  nameWithType.vb: InferenceSession.Run(IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue), IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue), RunOptions)
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection(Of System.String), System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue), System.Collections.Generic.IReadOnlyCollection(Of System.String), System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue), Microsoft.ML.OnnxRuntime.RunOptions)
+  name.vb: Run(IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue), IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue), RunOptions)
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue})
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue})
+  id: Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue})
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: Run(IReadOnlyCollection<NamedOnnxValue>, IReadOnlyCollection<NamedOnnxValue>)
+  nameWithType: InferenceSession.Run(IReadOnlyCollection<NamedOnnxValue>, IReadOnlyCollection<NamedOnnxValue>)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.NamedOnnxValue>, System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.NamedOnnxValue>)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Run
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 365
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nRuns the loaded model for the given inputs and outputs.\n\nOutputs need to be created with correct type and dimension to receive the fetched data.\n"
+  example: []
+  syntax:
+    content: public void Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<NamedOnnxValue> outputs)
+    parameters:
+    - id: inputs
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.NamedOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the input values.
+    - id: outputs
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.NamedOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the output values.
+    content.vb: Public Sub Run(inputs As IReadOnlyCollection(Of NamedOnnxValue), outputs As IReadOnlyCollection(Of NamedOnnxValue))
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.Run*
+  nameWithType.vb: InferenceSession.Run(IReadOnlyCollection(Of NamedOnnxValue), IReadOnlyCollection(Of NamedOnnxValue))
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.NamedOnnxValue), System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.NamedOnnxValue))
+  name.vb: Run(IReadOnlyCollection(Of NamedOnnxValue), IReadOnlyCollection(Of NamedOnnxValue))
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)
+  id: Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: Run(IReadOnlyCollection<NamedOnnxValue>, IReadOnlyCollection<NamedOnnxValue>, RunOptions)
+  nameWithType: InferenceSession.Run(IReadOnlyCollection<NamedOnnxValue>, IReadOnlyCollection<NamedOnnxValue>, RunOptions)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.NamedOnnxValue>, System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.NamedOnnxValue>, Microsoft.ML.OnnxRuntime.RunOptions)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Run
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 381
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\n\nRuns the loaded model for the given inputs and outputs. Uses the given RunOptions for this run.\n\nOutputs need to be created with correct type and dimension to receive the fetched data.\n"
+  example: []
+  syntax:
+    content: public void Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<NamedOnnxValue> outputs, RunOptions options)
+    parameters:
+    - id: inputs
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.NamedOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the input values.
+    - id: outputs
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.NamedOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the output values.
+    - id: options
+      type: Microsoft.ML.OnnxRuntime.RunOptions
+      description: ''
+    content.vb: Public Sub Run(inputs As IReadOnlyCollection(Of NamedOnnxValue), outputs As IReadOnlyCollection(Of NamedOnnxValue), options As RunOptions)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.Run*
+  nameWithType.vb: InferenceSession.Run(IReadOnlyCollection(Of NamedOnnxValue), IReadOnlyCollection(Of NamedOnnxValue), RunOptions)
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.NamedOnnxValue), System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.NamedOnnxValue), Microsoft.ML.OnnxRuntime.RunOptions)
+  name.vb: Run(IReadOnlyCollection(Of NamedOnnxValue), IReadOnlyCollection(Of NamedOnnxValue), RunOptions)
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue})
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue})
+  id: Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue})
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: Run(IReadOnlyCollection<NamedOnnxValue>, IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>)
+  nameWithType: InferenceSession.Run(IReadOnlyCollection<NamedOnnxValue>, IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.NamedOnnxValue>, System.Collections.Generic.IReadOnlyCollection<System.String>, System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue>)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Run
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 415
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nRuns the loaded model for the given inputs and outputs.\n\nOutputs need to be created with correct type and dimension to receive the fetched data.\n"
+  example: []
+  syntax:
+    content: public void Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames, IReadOnlyCollection<FixedBufferOnnxValue> outputValues)
+    parameters:
+    - id: inputs
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.NamedOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the input values.
+    - id: outputNames
+      type: System.Collections.Generic.IReadOnlyCollection{System.String}
+      description: Specify a collection of string that indicates the output names. Should match <code data-dev-comment-type="paramref" class="paramref">outputValues</code>.
+    - id: outputValues
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the output values.
+    content.vb: Public Sub Run(inputs As IReadOnlyCollection(Of NamedOnnxValue), outputNames As IReadOnlyCollection(Of String), outputValues As IReadOnlyCollection(Of FixedBufferOnnxValue))
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.Run*
+  nameWithType.vb: InferenceSession.Run(IReadOnlyCollection(Of NamedOnnxValue), IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue))
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.NamedOnnxValue), System.Collections.Generic.IReadOnlyCollection(Of System.String), System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue))
+  name.vb: Run(IReadOnlyCollection(Of NamedOnnxValue), IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue))
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)
+  id: Run(System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: Run(IReadOnlyCollection<NamedOnnxValue>, IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>, RunOptions)
+  nameWithType: InferenceSession.Run(IReadOnlyCollection<NamedOnnxValue>, IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>, RunOptions)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.NamedOnnxValue>, System.Collections.Generic.IReadOnlyCollection<System.String>, System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue>, Microsoft.ML.OnnxRuntime.RunOptions)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Run
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 432
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nRuns the loaded model for the given inputs and outputs. Uses the given RunOptions for this run.\n\nOutputs need to be created with correct type and dimension to receive the fetched data.\n"
+  example: []
+  syntax:
+    content: public void Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames, IReadOnlyCollection<FixedBufferOnnxValue> outputValues, RunOptions options)
+    parameters:
+    - id: inputs
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.NamedOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the input values.
+    - id: outputNames
+      type: System.Collections.Generic.IReadOnlyCollection{System.String}
+      description: Specify a collection of string that indicates the output names. Should match <code data-dev-comment-type="paramref" class="paramref">outputValues</code>.
+    - id: outputValues
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the output values.
+    - id: options
+      type: Microsoft.ML.OnnxRuntime.RunOptions
+      description: ''
+    content.vb: Public Sub Run(inputs As IReadOnlyCollection(Of NamedOnnxValue), outputNames As IReadOnlyCollection(Of String), outputValues As IReadOnlyCollection(Of FixedBufferOnnxValue), options As RunOptions)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.Run*
+  nameWithType.vb: InferenceSession.Run(IReadOnlyCollection(Of NamedOnnxValue), IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue), RunOptions)
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.NamedOnnxValue), System.Collections.Generic.IReadOnlyCollection(Of System.String), System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue), Microsoft.ML.OnnxRuntime.RunOptions)
+  name.vb: Run(IReadOnlyCollection(Of NamedOnnxValue), IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue), RunOptions)
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue})
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue})
+  id: Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue})
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: Run(IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>, IReadOnlyCollection<NamedOnnxValue>)
+  nameWithType: InferenceSession.Run(IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>, IReadOnlyCollection<NamedOnnxValue>)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection<System.String>, System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue>, System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.NamedOnnxValue>)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Run
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 475
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\n\nRuns the loaded model for the given inputs and outputs.\n\nOutputs need to be created with correct type and dimension to receive the fetched data.\n"
+  example: []
+  syntax:
+    content: public void Run(IReadOnlyCollection<string> inputNames, IReadOnlyCollection<FixedBufferOnnxValue> inputValues, IReadOnlyCollection<NamedOnnxValue> outputs)
+    parameters:
+    - id: inputNames
+      type: System.Collections.Generic.IReadOnlyCollection{System.String}
+      description: Specify a collection of string that indicates the input names. Should match <code data-dev-comment-type="paramref" class="paramref">inputValues</code>.
+    - id: inputValues
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the input values.
+    - id: outputs
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.NamedOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the output values.
+    content.vb: Public Sub Run(inputNames As IReadOnlyCollection(Of String), inputValues As IReadOnlyCollection(Of FixedBufferOnnxValue), outputs As IReadOnlyCollection(Of NamedOnnxValue))
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.Run*
+  nameWithType.vb: InferenceSession.Run(IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue), IReadOnlyCollection(Of NamedOnnxValue))
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection(Of System.String), System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue), System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.NamedOnnxValue))
+  name.vb: Run(IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue), IReadOnlyCollection(Of NamedOnnxValue))
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)
+  id: Run(System.Collections.Generic.IReadOnlyCollection{System.String},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: Run(IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>, IReadOnlyCollection<NamedOnnxValue>, RunOptions)
+  nameWithType: InferenceSession.Run(IReadOnlyCollection<String>, IReadOnlyCollection<FixedBufferOnnxValue>, IReadOnlyCollection<NamedOnnxValue>, RunOptions)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection<System.String>, System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue>, System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.NamedOnnxValue>, Microsoft.ML.OnnxRuntime.RunOptions)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Run
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 493
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\n\nRuns the loaded model for the given inputs and outputs. Uses the given RunOptions for this run.\n\nOutputs need to be created with correct type and dimension to receive the fetched data.\n"
+  example: []
+  syntax:
+    content: public void Run(IReadOnlyCollection<string> inputNames, IReadOnlyCollection<FixedBufferOnnxValue> inputValues, IReadOnlyCollection<NamedOnnxValue> outputs, RunOptions options)
+    parameters:
+    - id: inputNames
+      type: System.Collections.Generic.IReadOnlyCollection{System.String}
+      description: Specify a collection of string that indicates the input names. Should match <code data-dev-comment-type="paramref" class="paramref">inputValues</code>.
+    - id: inputValues
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the input values.
+    - id: outputs
+      type: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue}
+      description: Specify a collection of <xref href="Microsoft.ML.OnnxRuntime.NamedOnnxValue" data-throw-if-not-resolved="false"></xref> that indicates the output values.
+    - id: options
+      type: Microsoft.ML.OnnxRuntime.RunOptions
+      description: ''
+    content.vb: Public Sub Run(inputNames As IReadOnlyCollection(Of String), inputValues As IReadOnlyCollection(Of FixedBufferOnnxValue), outputs As IReadOnlyCollection(Of NamedOnnxValue), options As RunOptions)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.Run*
+  nameWithType.vb: InferenceSession.Run(IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue), IReadOnlyCollection(Of NamedOnnxValue), RunOptions)
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.Run(System.Collections.Generic.IReadOnlyCollection(Of System.String), System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue), System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.NamedOnnxValue), Microsoft.ML.OnnxRuntime.RunOptions)
+  name.vb: Run(IReadOnlyCollection(Of String), IReadOnlyCollection(Of FixedBufferOnnxValue), IReadOnlyCollection(Of NamedOnnxValue), RunOptions)
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.CreateIoBinding
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.CreateIoBinding
+  id: CreateIoBinding
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: CreateIoBinding()
+  nameWithType: InferenceSession.CreateIoBinding()
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.CreateIoBinding()
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: CreateIoBinding
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 532
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nCreate OrtIoBinding instance to bind pre-allocated buffers\nto input/output\n"
+  example: []
+  syntax:
+    content: public OrtIoBinding CreateIoBinding()
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtIoBinding
+      description: A new instance of OrtIoBinding
+    content.vb: Public Function CreateIoBinding As OrtIoBinding
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.CreateIoBinding*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBinding(Microsoft.ML.OnnxRuntime.RunOptions,Microsoft.ML.OnnxRuntime.OrtIoBinding)
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBinding(Microsoft.ML.OnnxRuntime.RunOptions,Microsoft.ML.OnnxRuntime.OrtIoBinding)
+  id: RunWithBinding(Microsoft.ML.OnnxRuntime.RunOptions,Microsoft.ML.OnnxRuntime.OrtIoBinding)
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: RunWithBinding(RunOptions, OrtIoBinding)
+  nameWithType: InferenceSession.RunWithBinding(RunOptions, OrtIoBinding)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBinding(Microsoft.ML.OnnxRuntime.RunOptions, Microsoft.ML.OnnxRuntime.OrtIoBinding)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: RunWithBinding
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 547
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nThis method runs inference on the OrtIoBinding instance\nThe method does not return anything. This is a lightweight version of \nRunWithBindingAndNames(). When you bind pre-allocated buffers to the output values\nyou may not want to fetch the outputs since you already have access to them so you can spare\nthe expense of fetching them and pairing with names.\nYou can still fetch the outputs by calling OrtIOBinding.GetOutputValues()\n"
+  example: []
+  syntax:
+    content: public void RunWithBinding(RunOptions runOptions, OrtIoBinding ioBinding)
+    parameters:
+    - id: runOptions
+      type: Microsoft.ML.OnnxRuntime.RunOptions
+      description: runOptions
+    - id: ioBinding
+      type: Microsoft.ML.OnnxRuntime.OrtIoBinding
+      description: ioBinding instance to use
+    content.vb: Public Sub RunWithBinding(runOptions As RunOptions, ioBinding As OrtIoBinding)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBinding*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBindingAndNames(Microsoft.ML.OnnxRuntime.RunOptions,Microsoft.ML.OnnxRuntime.OrtIoBinding,System.String[])
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBindingAndNames(Microsoft.ML.OnnxRuntime.RunOptions,Microsoft.ML.OnnxRuntime.OrtIoBinding,System.String[])
+  id: RunWithBindingAndNames(Microsoft.ML.OnnxRuntime.RunOptions,Microsoft.ML.OnnxRuntime.OrtIoBinding,System.String[])
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: RunWithBindingAndNames(RunOptions, OrtIoBinding, String[])
+  nameWithType: InferenceSession.RunWithBindingAndNames(RunOptions, OrtIoBinding, String[])
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBindingAndNames(Microsoft.ML.OnnxRuntime.RunOptions, Microsoft.ML.OnnxRuntime.OrtIoBinding, System.String[])
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: RunWithBindingAndNames
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 565
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nThis method return a collection of DisposableNamedOnnxValue as in other interfaces\nQuery names from OrtIoBinding object and pair then with the array of OrtValues returned\nfrom OrtIoBinding.GetOutputValues()\n\n"
+  example: []
+  syntax:
+    content: public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> RunWithBindingAndNames(RunOptions runOptions, OrtIoBinding ioBinding, string[] names = null)
+    parameters:
+    - id: runOptions
+      type: Microsoft.ML.OnnxRuntime.RunOptions
+      description: RunOptions
+    - id: ioBinding
+      type: Microsoft.ML.OnnxRuntime.OrtIoBinding
+      description: OrtIoBinding instance with bindings
+    - id: names
+      type: System.String[]
+      description: >-
+        optional parameter. If you already know the names of the outputs you can save a native
+
+        call to retrieve output names. They will be paired with the returned OrtValues and combined into DisposbleNamedOnnxValues.
+
+        Otherwise, the method will retrieve output names from the OrtIoBinding instance.
+
+        It is an error if you supply a different number of names than the returned outputs
+    return:
+      type: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection{Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue}
+      description: A disposable collection of DisposableNamedOnnxValue that encapsulate output OrtValues
+    content.vb: Public Function RunWithBindingAndNames(runOptions As RunOptions, ioBinding As OrtIoBinding, names As String() = Nothing) As IDisposableReadOnlyCollection(Of DisposableNamedOnnxValue)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBindingAndNames*
+  nameWithType.vb: InferenceSession.RunWithBindingAndNames(RunOptions, OrtIoBinding, String())
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+  fullName.vb: Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBindingAndNames(Microsoft.ML.OnnxRuntime.RunOptions, Microsoft.ML.OnnxRuntime.OrtIoBinding, System.String())
+  name.vb: RunWithBindingAndNames(RunOptions, OrtIoBinding, String())
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.EndProfiling
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.EndProfiling
+  id: EndProfiling
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: EndProfiling()
+  nameWithType: InferenceSession.EndProfiling()
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.EndProfiling()
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: EndProfiling
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 605
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nEnds profiling for the session.\n"
+  example: []
+  syntax:
+    content: public string EndProfiling()
+    return:
+      type: System.String
+      description: Returns the profile file name.
+    content.vb: Public Function EndProfiling As String
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.EndProfiling*
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.ModelMetadata
+  commentId: P:Microsoft.ML.OnnxRuntime.InferenceSession.ModelMetadata
+  id: ModelMetadata
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: ModelMetadata
+  nameWithType: InferenceSession.ModelMetadata
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.ModelMetadata
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ModelMetadata
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 736
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nThis property queries model metadata, constructs\nan instance of ModelMetadata and caches it\n"
+  example: []
+  syntax:
+    content: public ModelMetadata ModelMetadata { get; }
+    parameters: []
+    return:
+      type: Microsoft.ML.OnnxRuntime.ModelMetadata
+      description: Instance of ModelMetdata
+    content.vb: Public ReadOnly Property ModelMetadata As ModelMetadata
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.ModelMetadata*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.ProfilingStartTimeNs
+  commentId: P:Microsoft.ML.OnnxRuntime.InferenceSession.ProfilingStartTimeNs
+  id: ProfilingStartTimeNs
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: ProfilingStartTimeNs
+  nameWithType: InferenceSession.ProfilingStartTimeNs
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.ProfilingStartTimeNs
+  type: Property
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ProfilingStartTimeNs
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 755
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nReturn the nanoseconds of profiling&apos;s start time\nOn some platforms, this timer may not be as precise as nanoseconds\nFor instance, on Windows and MacOS, the precision will be ~100ns\n"
+  example: []
+  syntax:
+    content: public ulong ProfilingStartTimeNs { get; }
+    parameters: []
+    return:
+      type: System.UInt64
+    content.vb: Public ReadOnly Property ProfilingStartTimeNs As ULong
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.ProfilingStartTimeNs*
+  modifiers.csharp:
+  - public
+  - get
+  modifiers.vb:
+  - Public
+  - ReadOnly
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Finalize
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.Finalize
+  id: Finalize
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: Finalize()
+  nameWithType: InferenceSession.Finalize()
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Finalize()
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Finalize
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 1052
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nFinalizer. to cleanup session in case it runs\nand the user forgets to Dispose() of the session\n"
+  example: []
+  syntax:
+    content: protected void Finalize()
+    content.vb: Protected Sub Finalize
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.Finalize*
+  modifiers.csharp:
+  - protected
+  modifiers.vb:
+  - Protected
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Dispose
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.Dispose
+  id: Dispose
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: Dispose()
+  nameWithType: InferenceSession.Dispose()
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Dispose()
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Dispose
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 1060
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nIDisposable implementation\n"
+  example: []
+  syntax:
+    content: public void Dispose()
+    content.vb: Public Sub Dispose
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.Dispose*
+  implements:
+  - System.IDisposable.Dispose
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Dispose(System.Boolean)
+  commentId: M:Microsoft.ML.OnnxRuntime.InferenceSession.Dispose(System.Boolean)
+  id: Dispose(System.Boolean)
+  parent: Microsoft.ML.OnnxRuntime.InferenceSession
+  langs:
+  - csharp
+  - vb
+  name: Dispose(Boolean)
+  nameWithType: InferenceSession.Dispose(Boolean)
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Dispose(System.Boolean)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Dispose
+    path: ../src/Microsoft.ML.OnnxRuntime/InferenceSession.shared.cs
+    startLine: 1070
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nIDisposable implementation\n"
+  example: []
+  syntax:
+    content: protected virtual void Dispose(bool disposing)
+    parameters:
+    - id: disposing
+      type: System.Boolean
+      description: true if invoked from Dispose() method
+    content.vb: Protected Overridable Sub Dispose(disposing As Boolean)
+  overload: Microsoft.ML.OnnxRuntime.InferenceSession.Dispose*
+  modifiers.csharp:
+  - protected
+  - virtual
+  modifiers.vb:
+  - Protected
+  - Overridable
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: System.Object
+  commentId: T:System.Object
+  parent: System
+  isExternal: true
+  name: Object
+  nameWithType: Object
+  fullName: System.Object
+- uid: System.IDisposable
+  commentId: T:System.IDisposable
+  parent: System
+  isExternal: true
+  name: IDisposable
+  nameWithType: IDisposable
+  fullName: System.IDisposable
+- uid: System.Object.Equals(System.Object)
+  commentId: M:System.Object.Equals(System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object)
+  nameWithType: Object.Equals(Object)
+  fullName: System.Object.Equals(System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.Equals(System.Object,System.Object)
+  commentId: M:System.Object.Equals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object, Object)
+  nameWithType: Object.Equals(Object, Object)
+  fullName: System.Object.Equals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetHashCode
+  commentId: M:System.Object.GetHashCode
+  parent: System.Object
+  isExternal: true
+  name: GetHashCode()
+  nameWithType: Object.GetHashCode()
+  fullName: System.Object.GetHashCode()
+  spec.csharp:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetType
+  commentId: M:System.Object.GetType
+  parent: System.Object
+  isExternal: true
+  name: GetType()
+  nameWithType: Object.GetType()
+  fullName: System.Object.GetType()
+  spec.csharp:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.MemberwiseClone
+  commentId: M:System.Object.MemberwiseClone
+  parent: System.Object
+  isExternal: true
+  name: MemberwiseClone()
+  nameWithType: Object.MemberwiseClone()
+  fullName: System.Object.MemberwiseClone()
+  spec.csharp:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ReferenceEquals(System.Object,System.Object)
+  commentId: M:System.Object.ReferenceEquals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: ReferenceEquals(Object, Object)
+  nameWithType: Object.ReferenceEquals(Object, Object)
+  fullName: System.Object.ReferenceEquals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ToString
+  commentId: M:System.Object.ToString
+  parent: System.Object
+  isExternal: true
+  name: ToString()
+  nameWithType: Object.ToString()
+  fullName: System.Object.ToString()
+  spec.csharp:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System
+  commentId: N:System
+  isExternal: true
+  name: System
+  nameWithType: System
+  fullName: System
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.#ctor*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.InferenceSession.#ctor
+  name: InferenceSession
+  nameWithType: InferenceSession.InferenceSession
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.InferenceSession
+- uid: System.String
+  commentId: T:System.String
+  parent: System
+  isExternal: true
+  name: String
+  nameWithType: String
+  fullName: System.String
+- uid: Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer
+  commentId: T:Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer
+  parent: Microsoft.ML.OnnxRuntime
+  name: PrePackedWeightsContainer
+  nameWithType: PrePackedWeightsContainer
+  fullName: Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions
+  commentId: T:Microsoft.ML.OnnxRuntime.SessionOptions
+  parent: Microsoft.ML.OnnxRuntime
+  name: SessionOptions
+  nameWithType: SessionOptions
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions
+- uid: System.Byte[]
+  isExternal: true
+  name: Byte[]
+  nameWithType: Byte[]
+  fullName: System.Byte[]
+  nameWithType.vb: Byte()
+  fullName.vb: System.Byte()
+  name.vb: Byte()
+  spec.csharp:
+  - uid: System.Byte
+    name: Byte
+    nameWithType: Byte
+    fullName: System.Byte
+    isExternal: true
+  - name: '[]'
+    nameWithType: '[]'
+    fullName: '[]'
+  spec.vb:
+  - uid: System.Byte
+    name: Byte
+    nameWithType: Byte
+    fullName: System.Byte
+    isExternal: true
+  - name: ()
+    nameWithType: ()
+    fullName: ()
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.InputMetadata*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.InferenceSession.InputMetadata
+  name: InputMetadata
+  nameWithType: InferenceSession.InputMetadata
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.InputMetadata
+- uid: System.Collections.Generic.IReadOnlyDictionary{System.String,Microsoft.ML.OnnxRuntime.NodeMetadata}
+  commentId: T:System.Collections.Generic.IReadOnlyDictionary{System.String,Microsoft.ML.OnnxRuntime.NodeMetadata}
+  parent: System.Collections.Generic
+  definition: System.Collections.Generic.IReadOnlyDictionary`2
+  name: IReadOnlyDictionary<String, NodeMetadata>
+  nameWithType: IReadOnlyDictionary<String, NodeMetadata>
+  fullName: System.Collections.Generic.IReadOnlyDictionary<System.String, Microsoft.ML.OnnxRuntime.NodeMetadata>
+  nameWithType.vb: IReadOnlyDictionary(Of String, NodeMetadata)
+  fullName.vb: System.Collections.Generic.IReadOnlyDictionary(Of System.String, Microsoft.ML.OnnxRuntime.NodeMetadata)
+  name.vb: IReadOnlyDictionary(Of String, NodeMetadata)
+  spec.csharp:
+  - uid: System.Collections.Generic.IReadOnlyDictionary`2
+    name: IReadOnlyDictionary
+    nameWithType: IReadOnlyDictionary
+    fullName: System.Collections.Generic.IReadOnlyDictionary
+    isExternal: true
+  - name: <
+    nameWithType: <
+    fullName: <
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: Microsoft.ML.OnnxRuntime.NodeMetadata
+    name: NodeMetadata
+    nameWithType: NodeMetadata
+    fullName: Microsoft.ML.OnnxRuntime.NodeMetadata
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: System.Collections.Generic.IReadOnlyDictionary`2
+    name: IReadOnlyDictionary
+    nameWithType: IReadOnlyDictionary
+    fullName: System.Collections.Generic.IReadOnlyDictionary
+    isExternal: true
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: Microsoft.ML.OnnxRuntime.NodeMetadata
+    name: NodeMetadata
+    nameWithType: NodeMetadata
+    fullName: Microsoft.ML.OnnxRuntime.NodeMetadata
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Collections.Generic.IReadOnlyDictionary`2
+  commentId: T:System.Collections.Generic.IReadOnlyDictionary`2
+  isExternal: true
+  name: IReadOnlyDictionary<TKey, TValue>
+  nameWithType: IReadOnlyDictionary<TKey, TValue>
+  fullName: System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>
+  nameWithType.vb: IReadOnlyDictionary(Of TKey, TValue)
+  fullName.vb: System.Collections.Generic.IReadOnlyDictionary(Of TKey, TValue)
+  name.vb: IReadOnlyDictionary(Of TKey, TValue)
+  spec.csharp:
+  - uid: System.Collections.Generic.IReadOnlyDictionary`2
+    name: IReadOnlyDictionary
+    nameWithType: IReadOnlyDictionary
+    fullName: System.Collections.Generic.IReadOnlyDictionary
+    isExternal: true
+  - name: <
+    nameWithType: <
+    fullName: <
+  - name: TKey
+    nameWithType: TKey
+    fullName: TKey
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - name: TValue
+    nameWithType: TValue
+    fullName: TValue
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: System.Collections.Generic.IReadOnlyDictionary`2
+    name: IReadOnlyDictionary
+    nameWithType: IReadOnlyDictionary
+    fullName: System.Collections.Generic.IReadOnlyDictionary
+    isExternal: true
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - name: TKey
+    nameWithType: TKey
+    fullName: TKey
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - name: TValue
+    nameWithType: TValue
+    fullName: TValue
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Collections.Generic
+  commentId: N:System.Collections.Generic
+  isExternal: true
+  name: System.Collections.Generic
+  nameWithType: System.Collections.Generic
+  fullName: System.Collections.Generic
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.OutputMetadata*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.InferenceSession.OutputMetadata
+  name: OutputMetadata
+  nameWithType: InferenceSession.OutputMetadata
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.OutputMetadata
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.OverridableInitializerMetadata*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.InferenceSession.OverridableInitializerMetadata
+  name: OverridableInitializerMetadata
+  nameWithType: InferenceSession.OverridableInitializerMetadata
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.OverridableInitializerMetadata
+- uid: Microsoft.ML.OnnxRuntime.NamedOnnxValue
+  commentId: T:Microsoft.ML.OnnxRuntime.NamedOnnxValue
+  parent: Microsoft.ML.OnnxRuntime
+  name: NamedOnnxValue
+  nameWithType: NamedOnnxValue
+  fullName: Microsoft.ML.OnnxRuntime.NamedOnnxValue
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Run*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.InferenceSession.Run
+  name: Run
+  nameWithType: InferenceSession.Run
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Run
+- uid: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue}
+  commentId: T:System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue}
+  parent: System.Collections.Generic
+  definition: System.Collections.Generic.IReadOnlyCollection`1
+  name: IReadOnlyCollection<NamedOnnxValue>
+  nameWithType: IReadOnlyCollection<NamedOnnxValue>
+  fullName: System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.NamedOnnxValue>
+  nameWithType.vb: IReadOnlyCollection(Of NamedOnnxValue)
+  fullName.vb: System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.NamedOnnxValue)
+  name.vb: IReadOnlyCollection(Of NamedOnnxValue)
+  spec.csharp:
+  - uid: System.Collections.Generic.IReadOnlyCollection`1
+    name: IReadOnlyCollection
+    nameWithType: IReadOnlyCollection
+    fullName: System.Collections.Generic.IReadOnlyCollection
+    isExternal: true
+  - name: <
+    nameWithType: <
+    fullName: <
+  - uid: Microsoft.ML.OnnxRuntime.NamedOnnxValue
+    name: NamedOnnxValue
+    nameWithType: NamedOnnxValue
+    fullName: Microsoft.ML.OnnxRuntime.NamedOnnxValue
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: System.Collections.Generic.IReadOnlyCollection`1
+    name: IReadOnlyCollection
+    nameWithType: IReadOnlyCollection
+    fullName: System.Collections.Generic.IReadOnlyCollection
+    isExternal: true
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - uid: Microsoft.ML.OnnxRuntime.NamedOnnxValue
+    name: NamedOnnxValue
+    nameWithType: NamedOnnxValue
+    fullName: Microsoft.ML.OnnxRuntime.NamedOnnxValue
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection{Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue}
+  commentId: T:Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection{Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue}
+  parent: Microsoft.ML.OnnxRuntime
+  definition: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection`1
+  name: IDisposableReadOnlyCollection<DisposableNamedOnnxValue>
+  nameWithType: IDisposableReadOnlyCollection<DisposableNamedOnnxValue>
+  fullName: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection<Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue>
+  nameWithType.vb: IDisposableReadOnlyCollection(Of DisposableNamedOnnxValue)
+  fullName.vb: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue)
+  name.vb: IDisposableReadOnlyCollection(Of DisposableNamedOnnxValue)
+  spec.csharp:
+  - uid: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection`1
+    name: IDisposableReadOnlyCollection
+    nameWithType: IDisposableReadOnlyCollection
+    fullName: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection
+  - name: <
+    nameWithType: <
+    fullName: <
+  - uid: Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue
+    name: DisposableNamedOnnxValue
+    nameWithType: DisposableNamedOnnxValue
+    fullName: Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection`1
+    name: IDisposableReadOnlyCollection
+    nameWithType: IDisposableReadOnlyCollection
+    fullName: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - uid: Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue
+    name: DisposableNamedOnnxValue
+    nameWithType: DisposableNamedOnnxValue
+    fullName: Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Collections.Generic.IReadOnlyCollection`1
+  commentId: T:System.Collections.Generic.IReadOnlyCollection`1
+  isExternal: true
+  name: IReadOnlyCollection<T>
+  nameWithType: IReadOnlyCollection<T>
+  fullName: System.Collections.Generic.IReadOnlyCollection<T>
+  nameWithType.vb: IReadOnlyCollection(Of T)
+  fullName.vb: System.Collections.Generic.IReadOnlyCollection(Of T)
+  name.vb: IReadOnlyCollection(Of T)
+  spec.csharp:
+  - uid: System.Collections.Generic.IReadOnlyCollection`1
+    name: IReadOnlyCollection
+    nameWithType: IReadOnlyCollection
+    fullName: System.Collections.Generic.IReadOnlyCollection
+    isExternal: true
+  - name: <
+    nameWithType: <
+    fullName: <
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: System.Collections.Generic.IReadOnlyCollection`1
+    name: IReadOnlyCollection
+    nameWithType: IReadOnlyCollection
+    fullName: System.Collections.Generic.IReadOnlyCollection
+    isExternal: true
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection`1
+  commentId: T:Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection`1
+  name: IDisposableReadOnlyCollection<T>
+  nameWithType: IDisposableReadOnlyCollection<T>
+  fullName: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection<T>
+  nameWithType.vb: IDisposableReadOnlyCollection(Of T)
+  fullName.vb: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection(Of T)
+  name.vb: IDisposableReadOnlyCollection(Of T)
+  spec.csharp:
+  - uid: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection`1
+    name: IDisposableReadOnlyCollection
+    nameWithType: IDisposableReadOnlyCollection
+    fullName: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection
+  - name: <
+    nameWithType: <
+    fullName: <
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection`1
+    name: IDisposableReadOnlyCollection
+    nameWithType: IDisposableReadOnlyCollection
+    fullName: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Collections.Generic.IReadOnlyCollection{System.String}
+  commentId: T:System.Collections.Generic.IReadOnlyCollection{System.String}
+  parent: System.Collections.Generic
+  definition: System.Collections.Generic.IReadOnlyCollection`1
+  name: IReadOnlyCollection<String>
+  nameWithType: IReadOnlyCollection<String>
+  fullName: System.Collections.Generic.IReadOnlyCollection<System.String>
+  nameWithType.vb: IReadOnlyCollection(Of String)
+  fullName.vb: System.Collections.Generic.IReadOnlyCollection(Of System.String)
+  name.vb: IReadOnlyCollection(Of String)
+  spec.csharp:
+  - uid: System.Collections.Generic.IReadOnlyCollection`1
+    name: IReadOnlyCollection
+    nameWithType: IReadOnlyCollection
+    fullName: System.Collections.Generic.IReadOnlyCollection
+    isExternal: true
+  - name: <
+    nameWithType: <
+    fullName: <
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: System.Collections.Generic.IReadOnlyCollection`1
+    name: IReadOnlyCollection
+    nameWithType: IReadOnlyCollection
+    fullName: System.Collections.Generic.IReadOnlyCollection
+    isExternal: true
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.RunOptions
+  commentId: T:Microsoft.ML.OnnxRuntime.RunOptions
+  parent: Microsoft.ML.OnnxRuntime
+  name: RunOptions
+  nameWithType: RunOptions
+  fullName: Microsoft.ML.OnnxRuntime.RunOptions
+- uid: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+  commentId: T:Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+  parent: Microsoft.ML.OnnxRuntime
+  name: FixedBufferOnnxValue
+  nameWithType: FixedBufferOnnxValue
+  fullName: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+- uid: System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue}
+  commentId: T:System.Collections.Generic.IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue}
+  parent: System.Collections.Generic
+  definition: System.Collections.Generic.IReadOnlyCollection`1
+  name: IReadOnlyCollection<FixedBufferOnnxValue>
+  nameWithType: IReadOnlyCollection<FixedBufferOnnxValue>
+  fullName: System.Collections.Generic.IReadOnlyCollection<Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue>
+  nameWithType.vb: IReadOnlyCollection(Of FixedBufferOnnxValue)
+  fullName.vb: System.Collections.Generic.IReadOnlyCollection(Of Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue)
+  name.vb: IReadOnlyCollection(Of FixedBufferOnnxValue)
+  spec.csharp:
+  - uid: System.Collections.Generic.IReadOnlyCollection`1
+    name: IReadOnlyCollection
+    nameWithType: IReadOnlyCollection
+    fullName: System.Collections.Generic.IReadOnlyCollection
+    isExternal: true
+  - name: <
+    nameWithType: <
+    fullName: <
+  - uid: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+    name: FixedBufferOnnxValue
+    nameWithType: FixedBufferOnnxValue
+    fullName: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: System.Collections.Generic.IReadOnlyCollection`1
+    name: IReadOnlyCollection
+    nameWithType: IReadOnlyCollection
+    fullName: System.Collections.Generic.IReadOnlyCollection
+    isExternal: true
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - uid: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+    name: FixedBufferOnnxValue
+    nameWithType: FixedBufferOnnxValue
+    fullName: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.CreateIoBinding*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.InferenceSession.CreateIoBinding
+  name: CreateIoBinding
+  nameWithType: InferenceSession.CreateIoBinding
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.CreateIoBinding
+- uid: Microsoft.ML.OnnxRuntime.OrtIoBinding
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtIoBinding
+  parent: Microsoft.ML.OnnxRuntime
+  name: OrtIoBinding
+  nameWithType: OrtIoBinding
+  fullName: Microsoft.ML.OnnxRuntime.OrtIoBinding
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBinding*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBinding
+  name: RunWithBinding
+  nameWithType: InferenceSession.RunWithBinding
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBinding
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBindingAndNames*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBindingAndNames
+  name: RunWithBindingAndNames
+  nameWithType: InferenceSession.RunWithBindingAndNames
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBindingAndNames
+- uid: System.String[]
+  isExternal: true
+  name: String[]
+  nameWithType: String[]
+  fullName: System.String[]
+  nameWithType.vb: String()
+  fullName.vb: System.String()
+  name.vb: String()
+  spec.csharp:
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: '[]'
+    nameWithType: '[]'
+    fullName: '[]'
+  spec.vb:
+  - uid: System.String
+    name: String
+    nameWithType: String
+    fullName: System.String
+    isExternal: true
+  - name: ()
+    nameWithType: ()
+    fullName: ()
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.EndProfiling*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.InferenceSession.EndProfiling
+  name: EndProfiling
+  nameWithType: InferenceSession.EndProfiling
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.EndProfiling
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.ModelMetadata*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.InferenceSession.ModelMetadata
+  name: ModelMetadata
+  nameWithType: InferenceSession.ModelMetadata
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.ModelMetadata
+- uid: Microsoft.ML.OnnxRuntime.ModelMetadata
+  commentId: T:Microsoft.ML.OnnxRuntime.ModelMetadata
+  parent: Microsoft.ML.OnnxRuntime
+  name: ModelMetadata
+  nameWithType: ModelMetadata
+  fullName: Microsoft.ML.OnnxRuntime.ModelMetadata
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.ProfilingStartTimeNs*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.InferenceSession.ProfilingStartTimeNs
+  name: ProfilingStartTimeNs
+  nameWithType: InferenceSession.ProfilingStartTimeNs
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.ProfilingStartTimeNs
+- uid: System.UInt64
+  commentId: T:System.UInt64
+  parent: System
+  isExternal: true
+  name: UInt64
+  nameWithType: UInt64
+  fullName: System.UInt64
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Finalize*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.InferenceSession.Finalize
+  name: Finalize
+  nameWithType: InferenceSession.Finalize
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Finalize
+- uid: Microsoft.ML.OnnxRuntime.InferenceSession.Dispose*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.InferenceSession.Dispose
+  name: Dispose
+  nameWithType: InferenceSession.Dispose
+  fullName: Microsoft.ML.OnnxRuntime.InferenceSession.Dispose
+- uid: System.IDisposable.Dispose
+  commentId: M:System.IDisposable.Dispose
+  parent: System.IDisposable
+  isExternal: true
+  name: Dispose()
+  nameWithType: IDisposable.Dispose()
+  fullName: System.IDisposable.Dispose()
+  spec.csharp:
+  - uid: System.IDisposable.Dispose
+    name: Dispose
+    nameWithType: IDisposable.Dispose
+    fullName: System.IDisposable.Dispose
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.IDisposable.Dispose
+    name: Dispose
+    nameWithType: IDisposable.Dispose
+    fullName: System.IDisposable.Dispose
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Boolean
+  commentId: T:System.Boolean
+  parent: System
+  isExternal: true
+  name: Boolean
+  nameWithType: Boolean
+  fullName: System.Boolean

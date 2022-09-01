@@ -510,7 +510,7 @@ Status GreedySearchProcessLogits(
   const Tensor& input = next_token_scores_value.Get<Tensor>();
 
   constexpr int axis = 1;
-  const unsigned top_k = static_cast<unsigned>(1);
+  constexpr unsigned top_k = static_cast<unsigned>(1);
   constexpr bool largest = true;
   constexpr bool sorted = false;
 
@@ -520,8 +520,8 @@ Status GreedySearchProcessLogits(
                            *topk_scores, *topk_indices));
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("topk_scores", topk_scores);
-  dumper->Print("topk_indices", topk_indices);
+  dumper->Print("topk_scores", *(topk_scores.get()));
+  dumper->Print("topk_indices", *(topk_indices.get()));
 #endif
 
   const int64_t* next_token_indices = topk_indices->Data<int64_t>();
