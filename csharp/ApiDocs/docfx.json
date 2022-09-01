@@ -9,7 +9,7 @@
           "src": "../"
         }
       ],
-      "dest": "dest",
+      "dest": "csharp",
       "disableGitFeatures": false,
       "disableDefaultFilter": false
     }
@@ -22,12 +22,10 @@
           "api/**.html",
           "api/index.md",
           "api/**/index.md"
-        ] 
+        ]
       },
       {
         "files": [
-          //"articles/**.md",
-          //"articles/**/
           "toc.yml\",",
           "toc.yml",
           "*.md",
@@ -49,15 +47,15 @@
         ],
         "exclude": [
           "obj/**",
-          "dest/**"
+          "dest/**",
+          "csharp/**"
         ]
       }
     ],
-    "dest": "dest",
+    "dest": "csharp",
     "globalMetadataFiles": [],
     "fileMetadataFiles": [],
     "template": [
-      //"default"
       "_exported_templates/default"
     ],
     "postProcessors": [],

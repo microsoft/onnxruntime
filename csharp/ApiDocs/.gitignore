@@ -8,3 +8,5 @@
 /**/obj/
 _site
 dest
+csharp
+*.txt

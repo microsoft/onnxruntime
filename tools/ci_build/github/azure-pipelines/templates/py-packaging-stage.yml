@@ -417,22 +417,25 @@ stages:
             PythonVersion: '3.10'
             MsbuildPlatform: x64
             buildArch: x64
-          Python37_x86:
-            PythonVersion: '3.7'
-            MsbuildPlatform: Win32
-            buildArch: x86
-          Python38_x86:
-            PythonVersion: '3.8'
-            MsbuildPlatform: Win32
-            buildArch: x86
-          Python39_x86:
-            PythonVersion: '3.9'
-            MsbuildPlatform: Win32
-            buildArch: x86
-          Python310_x86:
-            PythonVersion: '3.10'
-            MsbuildPlatform: Win32
-            buildArch: x86
+          # Training build cannot support Win32 for now because one or more of its python
+          # dependencies does not support Win32. So, don't build a training package for Win32
+          ${{ if not(contains(parameters.build_py_parameters, '--enable_training')) }}:
+            Python37_x86:
+              PythonVersion: '3.7'
+              MsbuildPlatform: Win32
+              buildArch: x86
+            Python38_x86:
+              PythonVersion: '3.8'
+              MsbuildPlatform: Win32
+              buildArch: x86
+            Python39_x86:
+              PythonVersion: '3.9'
+              MsbuildPlatform: Win32
+              buildArch: x86
+            Python310_x86:
+              PythonVersion: '3.10'
+              MsbuildPlatform: Win32
+              buildArch: x86
       variables:
         OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
         EnvSetupScript: setup_env.bat
@@ -865,7 +868,7 @@ stages:
 
   - ${{ if eq(parameters.enable_mac_silicon, true) }}:
     - job: MacOS_silicon_py_Wheels
-      timeoutInMinutes: 90
+      timeoutInMinutes: 120
       workspace:
         clean: all
       pool:

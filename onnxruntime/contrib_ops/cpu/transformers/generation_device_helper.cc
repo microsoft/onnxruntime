@@ -468,8 +468,8 @@ Status GreedySearchProcessLogits(
          topk_indices));
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("topk_scores", *(topk_scores.get()));
-  dumper->Print("topk_indices", *(topk_indices.get()));
+  dumper->Print("topk_scores", topk_scores);
+  dumper->Print("topk_indices", topk_indices);
 #endif
 
   gsl::span<const int64_t> next_token_indices = topk_indices.DataAsSpan<int64_t>();

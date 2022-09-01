@@ -26,7 +26,7 @@ using namespace ::onnxruntime::common;
 using namespace std;
 
 namespace onnxruntime {
-// spec: https://github.com/onnx/onnx/blob/master/docs/Operators.md#OneHot
+// spec: https://github.com/onnx/onnx/blob/main/docs/Operators.md#OneHot
 
 // T1: indices, T2: depth, T3: values
 #define REG_TYPED_ONE_HOT_OP_V9_10(types_str, in_type, out_type, depth_type) \
