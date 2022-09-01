@@ -1131,6 +1131,8 @@ else()
   check_cxx_compiler_flag(-Wundefined-var-template HAS_UNDEFINED_VAR_TEMPLATE)
   check_cxx_compiler_flag(-Wformat-truncation HAS_FORMAT_TRUNCATION)
   check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
+  check_cxx_compiler_flag(-Wenum-constexpr-conversion HAS_ENUM_CONSTEXPR_CONVERSION)
+  check_cxx_compiler_flag(-Wdeprecated-builtins HAS_DEPRECATED_BUILTINS)
 
   if (HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -1149,6 +1151,13 @@ else()
   endif()
   if (HAS_UNDEFINED_VAR_TEMPLATE)
     list(APPEND ORT_WARNING_FLAGS -Wno-undefined-var-template)
+  endif()
+  if (HAS_DEPRECATED_BUILTINS)
+    list(APPEND ORT_WARNING_FLAGS -Wno-deprecated-builtins)
+  endif()
+
+  if (HAS_ENUM_CONSTEXPR_CONVERSION)
+    target_compile_options(${PROTOBUF_LIB} PRIVATE "-Wno-enum-constexpr-conversion")
   endif()
 endif()
 
