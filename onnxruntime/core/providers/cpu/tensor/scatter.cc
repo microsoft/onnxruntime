@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//https://github.com/onnx/onnx/blob/master/docs/Operators.md#Scatter
+//https://github.com/onnx/onnx/blob/main/docs/Operators.md#Scatter
 #include <type_traits>
 
 #include "gsl/gsl"
@@ -179,7 +179,7 @@ Status GetIndices(
     const Tensor& data_input, const Tensor& indices_input, int64_t axis,
     std::vector<int64_t>& indices_data) {
   const auto& input_data_shape = data_input.Shape();
-  const auto* indices_data_raw = indices_input.template Data<TIndex>();
+  const auto* indices_data_raw = indices_input.Data<TIndex>();
   const auto num_indices = indices_input.Shape().Size();
   const auto axis_dim_limit = input_data_shape[axis];
 
@@ -222,9 +222,9 @@ Status ScatterData(
   // we do not copy
   if (src_base != dst_base) {
     if (std::is_same<Tdata, std::string>::value) {
-      const auto* str_begin = data_input->template Data<std::string>();
+      const auto* str_begin = data_input->Data<std::string>();
       const std::string* str_end = str_begin + input_elements;
-      auto* dst = data_output->template MutableData<std::string>();
+      auto* dst = data_output->MutableData<std::string>();
       std::copy(str_begin, str_end, dst);
     } else {
       memcpy(static_cast<void*>(dst_base), static_cast<const void*>(src_base), total_input_bytes);

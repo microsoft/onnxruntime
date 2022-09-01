@@ -1,0 +1,213 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+  id: OrtLoggingLevel
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR
+  - Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL
+  - Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_INFO
+  - Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE
+  - Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING
+  langs:
+  - csharp
+  - vb
+  name: OrtLoggingLevel
+  nameWithType: OrtLoggingLevel
+  fullName: Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+  type: Enum
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtLoggingLevel.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: OrtLoggingLevel
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtLoggingLevel.shared.cs
+    startLine: 8
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nLog severity levels\n"
+  example: []
+  syntax:
+    content: public enum OrtLoggingLevel
+    content.vb: Public Enum OrtLoggingLevel
+  modifiers.csharp:
+  - public
+  - enum
+  modifiers.vb:
+  - Public
+  - Enum
+- uid: Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE
+  id: ORT_LOGGING_LEVEL_VERBOSE
+  parent: Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+  langs:
+  - csharp
+  - vb
+  name: ORT_LOGGING_LEVEL_VERBOSE
+  nameWithType: OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE
+  fullName: Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtLoggingLevel.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ORT_LOGGING_LEVEL_VERBOSE
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtLoggingLevel.shared.cs
+    startLine: 10
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ORT_LOGGING_LEVEL_VERBOSE = 0
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_INFO
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_INFO
+  id: ORT_LOGGING_LEVEL_INFO
+  parent: Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+  langs:
+  - csharp
+  - vb
+  name: ORT_LOGGING_LEVEL_INFO
+  nameWithType: OrtLoggingLevel.ORT_LOGGING_LEVEL_INFO
+  fullName: Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_INFO
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtLoggingLevel.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ORT_LOGGING_LEVEL_INFO
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtLoggingLevel.shared.cs
+    startLine: 11
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ORT_LOGGING_LEVEL_INFO = 1
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING
+  id: ORT_LOGGING_LEVEL_WARNING
+  parent: Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+  langs:
+  - csharp
+  - vb
+  name: ORT_LOGGING_LEVEL_WARNING
+  nameWithType: OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING
+  fullName: Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtLoggingLevel.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ORT_LOGGING_LEVEL_WARNING
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtLoggingLevel.shared.cs
+    startLine: 12
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ORT_LOGGING_LEVEL_WARNING = 2
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR
+  id: ORT_LOGGING_LEVEL_ERROR
+  parent: Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+  langs:
+  - csharp
+  - vb
+  name: ORT_LOGGING_LEVEL_ERROR
+  nameWithType: OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR
+  fullName: Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtLoggingLevel.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ORT_LOGGING_LEVEL_ERROR
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtLoggingLevel.shared.cs
+    startLine: 13
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ORT_LOGGING_LEVEL_ERROR = 3
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL
+  id: ORT_LOGGING_LEVEL_FATAL
+  parent: Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+  langs:
+  - csharp
+  - vb
+  name: ORT_LOGGING_LEVEL_FATAL
+  nameWithType: OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL
+  fullName: Microsoft.ML.OnnxRuntime.OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtLoggingLevel.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ORT_LOGGING_LEVEL_FATAL
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtLoggingLevel.shared.cs
+    startLine: 14
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: ORT_LOGGING_LEVEL_FATAL = 4
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+  parent: Microsoft.ML.OnnxRuntime
+  name: OrtLoggingLevel
+  nameWithType: OrtLoggingLevel
+  fullName: Microsoft.ML.OnnxRuntime.OrtLoggingLevel

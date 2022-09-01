@@ -96,27 +96,20 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   size_t element_size = sizeof(T);
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  if (!LaunchSkipLayerNormKernel<CudaT>(
+  return LaunchSkipLayerNormKernel<CudaT>(
           Stream(),
-          reinterpret_cast<CudaT*>(output->template MutableData<T>()),
-          reinterpret_cast<const CudaT*>(input->template Data<T>()),
-          reinterpret_cast<const CudaT*>(skip->template Data<T>()),
-          reinterpret_cast<const CudaT*>(gamma->template Data<T>()),
-          (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->template Data<T>()) : nullptr,
-          (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->template Data<T>()) : nullptr,
+          reinterpret_cast<CudaT*>(output->MutableData<T>()),
+          reinterpret_cast<const CudaT*>(input->Data<T>()),
+          reinterpret_cast<const CudaT*>(skip->Data<T>()),
+          reinterpret_cast<const CudaT*>(gamma->Data<T>()),
+          (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->Data<T>()) : nullptr,
+          (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,
           epsilon_,
           hidden_size,
           static_cast<int>(element_count),
-          element_size)) {
-    // Get last error to reset it to cudaSuccess.
-    CUDA_CALL(cudaGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
-
-  return Status::OK();
+          element_size);
 }
 
-}  //namespace cuda
+}  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
-

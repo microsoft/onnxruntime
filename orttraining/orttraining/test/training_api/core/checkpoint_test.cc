@@ -161,6 +161,36 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
 }
 
 /**
+ * Load ONNX model with parameters set to 0 from file path, Load Checkpoint weights into the Model,
+ * Then compare the new weights to 0 to make sure they were changed after loading checkpoint to model.
+ */
+TEST(CheckpointApiTest, LoadCheckpointToModel) {
+  // Phase 1: Load a Model with weights set to zero.
+  auto model_uri = MODEL_FOLDER "training_api/zero_model.onnx";
+  ONNX_NAMESPACE::ModelProto p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model));
+  // Phase 2: Load the checkpoint weights into the Model.
+  // Call Load APIs
+  PathString checkpoint_path = ORT_TSTR("testdata/training_api/load_checkpoint");
+  ASSERT_STATUS_OK(LoadCheckpointToModel(checkpoint_path, p_model));
+
+  // Phase 3: Make sure the Model's weights are not equal to zero after loading the new ones.
+  // Load imported initializers into the Model
+  for (auto& init : p_model.graph().initializer()) {
+    // Convert the tensor bytes to a float vector to compare.
+    ASSERT_TRUE(init.has_raw_data());
+    size_t len = init.raw_data().size() / sizeof(float);
+    InlinedVector<float> float_values(len);
+    std::copy(init.raw_data().data(), init.raw_data().data() + init.raw_data().size(), reinterpret_cast<char*>(&float_values.front()));
+
+    // Make sure the weights are no longer a zero.
+    for (size_t i = 0; i < len; i++) {
+      ASSERT_NE(float_values[i], 0.0f);
+    }
+  }
+}
+
+/**
  * Create Module with sets of parameters,
  * Create Optimizer passing in Module's parameters.
  * Save Optimizer states into ORT checkpoint files,
@@ -172,7 +202,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
   /// Phase 1 - Test Preparison
   /// Prepare the data and dest folder for saving checkpoint.
   /// Also cooked the data for test result comparison.
-  auto model_uri = MODEL_FOLDER "training_api/gradient_graph.onnx";
+  auto model_uri = MODEL_FOLDER "training_api/training_model.onnx";
   auto optim_uri = MODEL_FOLDER "training_api/adamw.onnx";
 
   // Generate randomized weight values using synthetic data generator.
@@ -183,11 +213,11 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
   const std::vector<int64_t> fc2_bias_shape{fc2_weight_dim_in};
 
   onnxruntime::training::test::training_api::SyntheticDataLoader data_loader;
-  auto sample = std::make_unique<onnxruntime::training::test::training_api::SyntheticSampleBatch>();
-  sample->AddFloatInput(fc1_weight_shape);
-  sample->AddFloatInput(fc1_bias_shape);
-  sample->AddFloatInput(fc2_weight_shape);
-  sample->AddFloatInput(fc2_bias_shape);
+  auto sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
+  sample.AddFloatInput(fc1_weight_shape);
+  sample.AddFloatInput(fc1_bias_shape);
+  sample.AddFloatInput(fc2_weight_shape);
+  sample.AddFloatInput(fc2_bias_shape);
   data_loader.AddSyntheticSampleBatch(std::move(sample));
 
   std::vector<OrtValue*> all_weights_values;
@@ -313,15 +343,15 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
 
   float f_data = 0.5f;
   std::string f_property_name("float_number");
-  property_bag.AddProperty<float>(f_property_name, f_data);
+  property_bag.AddProperty(f_property_name, f_data);
 
   int64_t i_data = 400;
   std::string i_property_name("dataset_epoch_index");
-  property_bag.AddProperty<int64_t>(i_property_name, i_data);
+  property_bag.AddProperty(i_property_name, i_data);
 
   std::string s_data("/data/path/train.bin");
   std::string s_property_name("train_data_path");
-  property_bag.AddProperty<std::string>(s_property_name, s_data);
+  property_bag.AddProperty(s_property_name, s_data);
 
   // Remove the tempoprary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");

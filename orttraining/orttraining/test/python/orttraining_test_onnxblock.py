@@ -133,9 +133,16 @@ def _to_numpy(tensor):
     return tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
 
 
-def _get_models(device, batch_size, input_size, hidden_size, output_size):
+def _get_models(device, batch_size, input_size, hidden_size, output_size, zero_flag=False):
     """Returns the pt and onnx models for SimpleNet"""
     pt_model = SimpleNet(input_size, hidden_size, output_size).to(device)
+
+    # setting all initial weights to zero
+    if zero_flag:
+        with torch.no_grad():
+            for param in pt_model.parameters():
+                param.zero_()
+
     x = torch.randn(batch_size, input_size, device=device)
     onnx_model = _get_onnx_model(pt_model, (x,))
 
@@ -338,10 +345,6 @@ def test_mse_loss_training_graph_execution():
         # assert loss is close
         assert np.allclose(ort_outs[0], _to_numpy(torch_outs))
 
-        # assert all the gradients are close
-        for ort_grad, pt_param in zip(ort_outs[1:], pt_model.parameters()):
-            assert np.allclose(ort_grad, _to_numpy(pt_param.grad))
-
 
 def test_crossentropy_loss_training_graph_execution():
     # Given
@@ -377,10 +380,6 @@ def test_crossentropy_loss_training_graph_execution():
         # assert loss is close
         assert np.allclose(ort_outs[0], _to_numpy(torch_outs))
 
-        # assert all the gradients are close
-        for ort_grad, pt_param in zip(ort_outs[1:], pt_model.parameters()):
-            assert np.allclose(ort_grad, _to_numpy(pt_param.grad))
-
 
 def test_bcewithlogits_loss_training_graph_execution():
     # Given
@@ -415,10 +414,6 @@ def test_bcewithlogits_loss_training_graph_execution():
         # Then
         # assert loss is close
         assert np.allclose(ort_outs[0], _to_numpy(torch_outs))
-
-        # assert all the gradients are close
-        for ort_grad, pt_param in zip(ort_outs[1:], pt_model.parameters()):
-            assert np.allclose(ort_grad, _to_numpy(pt_param.grad))
 
 
 @pytest.mark.parametrize(
@@ -549,9 +544,49 @@ def test_save_checkpoint():
     with tempfile.TemporaryDirectory() as checkpoint_dir_name:
         checkpoint_file_path = os.path.join(checkpoint_dir_name, "checkpoint")
         onnxblock.save_checkpoint((trainable_params, non_trainable_params), checkpoint_file_path)
-
         # Then
         assert os.path.exists(checkpoint_file_path)
+
+
+def test_load_checkpoint():
+    # Given
+    device = "cuda"
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    _, zero_onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size, zero_flag=True)
+    for i in range(len(zero_onnx_model.graph.initializer)):
+        zero_np = onnx.numpy_helper.to_array(zero_onnx_model.graph.initializer[i])
+        assert np.allclose(zero_np, np.zeros(zero_np.shape))
+
+    _, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+
+    # Copy of onnx_model for comparison
+    onnx_model_copy = copy.deepcopy(onnx_model)
+
+    simple_model = SimpleTrainingModelWithMSELoss()
+
+    # When
+    simple_model.requires_grad("fc2.weight", False)
+    simple_model.requires_grad("fc1.bias", False)
+
+    with onnxblock.onnx_model(onnx_model):
+        _ = simple_model(onnx_model.graph.output[0].name)
+    trainable_params, non_trainable_params = simple_model.parameters()
+
+    with tempfile.TemporaryDirectory() as checkpoint_dir_name:
+        checkpoint_file_path = os.path.join(checkpoint_dir_name, "checkpoint")
+        onnxblock.save_checkpoint((trainable_params, non_trainable_params), checkpoint_file_path)
+
+        # Load checkpoint parameters to the new simple model
+        onnxblock.load_checkpoint_to_model(checkpoint_file_path, zero_onnx_model)
+
+        # Then
+        onnx_model_copy.graph.initializer.sort(key=lambda x: x.name)
+        zero_onnx_model.graph.initializer.sort(key=lambda x: x.name)
+
+        for i, _ in enumerate(onnx_model_copy.graph.initializer):
+            onnx_np = onnx.numpy_helper.to_array(onnx_model_copy.graph.initializer[i])
+            zero_np = onnx.numpy_helper.to_array(zero_onnx_model.graph.initializer[i])
+            assert np.allclose(onnx_np, zero_np)
 
 
 def test_set_requires_grad_on_parameters():

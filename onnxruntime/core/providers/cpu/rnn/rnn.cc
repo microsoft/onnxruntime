@@ -51,7 +51,7 @@ template <typename T>
 void ApplyActivationToBatches(const Tensor* sequence_lens, const T* h_prev, T* Y_buffer_data_current_frame,
                               int64_t time_step, int64_t batch_size, int64_t hidden_size,
                               T alpha, T beta, T clip, std::function<T(T, T, T)> activation_func) {
-  const int* seq_len_data = sequence_lens ? sequence_lens->template Data<int>() : nullptr;
+  const int* seq_len_data = sequence_lens ? sequence_lens->Data<int>() : nullptr;
 
   for (int batch = 0; batch < batch_size; batch++) {
     bool valid = true;
@@ -79,13 +79,13 @@ void Assign_Y_h(const T* Y_buffer_data, Tensor* Y_h, const Tensor* sequence_lens
   for (int batch = 0; batch < batch_size; batch++) {
     int64_t last_time_step = isReverse ? 0 : seq_length - 1;
     if (nullptr != sequence_lens && !isReverse)
-      last_time_step = sequence_lens->template Data<int>()[batch] - 1;
+      last_time_step = sequence_lens->Data<int>()[batch] - 1;
     int64_t y_offset = last_time_step * num_directions * batch_size * hidden_size +
                        direction * batch_size * hidden_size +
                        batch * hidden_size;
     int64_t Y_h_offset = direction * batch_size * hidden_size + batch * hidden_size;
     math::CopyVector<T, CPUMathUtil>(static_cast<int>(hidden_size), Y_buffer_data + y_offset,
-                                     Y_h->template MutableData<T>() + Y_h_offset,
+                                     Y_h->MutableData<T>() + Y_h_offset,
                                      &CPUMathUtil::Instance());
   }
 }
@@ -95,8 +95,8 @@ void ClearMissingFrames(T* Y_buffer_data, const Tensor* sequence_lens,
                         int64_t num_directions, int64_t batch_size, int64_t seq_length, int64_t hidden_size) {
   for (int direction = 0; direction < num_directions; direction++) {
     for (int batch = 0; batch < batch_size; batch++) {
-      if (sequence_lens->template Data<int>()[batch] < seq_length) {
-        for (int seq = sequence_lens->template Data<int>()[batch]; seq < seq_length; seq++) {
+      if (sequence_lens->Data<int>()[batch] < seq_length) {
+        for (int seq = sequence_lens->Data<int>()[batch]; seq < seq_length; seq++) {
           int64_t offset =
               seq * num_directions * batch_size * hidden_size +
               direction * batch_size * hidden_size +
@@ -155,7 +155,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
   void* Y_data;
   BufferUniquePtr Y_matmul_buffer;
   if (Y != nullptr)
-    Y_buffer_data = Y->template MutableData<float>();
+    Y_buffer_data = Y->MutableData<float>();
   else {
     Y_data = alloc->Alloc(SafeInt<size_t>(sizeof(float)) * seq_length * num_directions * batch_size * hidden_size_);
     Y_matmul_buffer = BufferUniquePtr(Y_data, BufferDeleter(alloc));
@@ -170,8 +170,8 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
 
     if (B != nullptr) {
       EigenMatrixMapRowMajor<float>(x_matmul_w_buffer_data, seq_length * batch_size, hidden_size_).rowwise() =
-          ConstEigenVectorMap<float>(B->template Data<float>() + direction * 2 * hidden_size_, hidden_size_).transpose() +
-          ConstEigenVectorMap<float>(B->template Data<float>() + direction * 2 * hidden_size_ + hidden_size_, hidden_size_).transpose();
+          ConstEigenVectorMap<float>(B->Data<float>() + direction * 2 * hidden_size_, hidden_size_).transpose() +
+          ConstEigenVectorMap<float>(B->Data<float>() + direction * 2 * hidden_size_ + hidden_size_, hidden_size_).transpose();
     } else {
       math::Set<float, CPUMathUtil>(seq_length * batch_size * hidden_size_, 0, x_matmul_w_buffer_data, &CPUMathUtil::Instance());
     }
@@ -184,8 +184,8 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
         static_cast<int>(hidden_size_),
         static_cast<int>(input_size),
         1,
-        X.template Data<float>(),
-        W.template Data<float>() + direction * hidden_size_ * input_size,
+        X.Data<float>(),
+        W.Data<float>() + direction * hidden_size_ * input_size,
         1,
         x_matmul_w_buffer_data,
         tp);
@@ -202,7 +202,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
           // the shape of initial_h is [num_directions, batch_size, hidden_size]
           // so pick the offset (multiple of Y_frame_size == batch_size * hidden_size_)
           // based on the direction
-          h_prev = initial_h->template Data<float>() + (direction * Y_frame_size);
+          h_prev = initial_h->Data<float>() + (direction * Y_frame_size);
         }
       } else {
         if (isReverse)
@@ -221,7 +221,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
             static_cast<int>(hidden_size_),
             1,
             h_prev,
-            R.template Data<float>() + direction * hidden_size_ * hidden_size_,
+            R.Data<float>() + direction * hidden_size_ * hidden_size_,
             0,
             Y_buffer_data_current_frame,
             tp);
@@ -253,7 +253,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
     DumpMatrix("Y", Y_buffer_data, (int)(seq_length * num_directions * batch_size), (int)hidden_size_);
 
   if (Y_h != nullptr)
-    DumpMatrix("Y_h", Y_h->template Data<float>(), (int)(num_directions * batch_size), (int)hidden_size_);
+    DumpMatrix("Y_h", Y_h->Data<float>(), (int)(num_directions * batch_size), (int)hidden_size_);
 
   return Status::OK();
 }

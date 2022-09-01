@@ -302,6 +302,15 @@ Status LoadOpsetImportOrtFormat(const flatbuffers::Vector<flatbuffers::Offset<fb
   return Status::OK();
 }
 
+bool IsOrtFormatModel(const PathString& filename) {
+  const auto len = filename.size();
+  return len > 4 &&
+         filename[len - 4] == ORT_TSTR('.') &&
+         ToLowerPathChar(filename[len - 3]) == ORT_TSTR('o') &&
+         ToLowerPathChar(filename[len - 2]) == ORT_TSTR('r') &&
+         ToLowerPathChar(filename[len - 1]) == ORT_TSTR('t');
+}
+
 bool IsOrtFormatModelBytes(const void* bytes, int num_bytes) {
   return num_bytes > 8 &&  // check buffer is large enough to contain identifier so we don't read random memory
          fbs::InferenceSessionBufferHasIdentifier(bytes);

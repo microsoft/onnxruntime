@@ -393,7 +393,7 @@ template <typename T>
 struct WritableSliceIterator {
   WritableSliceIterator(Tensor& tensor, gsl::span<const int64_t> starts,
                         gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
-      : input_(tensor.template MutableData<T>()), extents_(extents), skips_(tensor.Shape(), extents, steps), indices_(extents.size(), 0) {
+      : input_(tensor.MutableData<T>()), extents_(extents), skips_(tensor.Shape(), extents, steps), indices_(extents.size(), 0) {
     auto dims = tensor.Shape().GetDims();
     Init(dims, starts, steps);
   }
@@ -404,7 +404,7 @@ struct WritableSliceIterator {
   // Also supports arbitrary positive and negative stepping along individual axes
   WritableSliceIterator(Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts,
                         gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
-      : input_(tensor.template MutableData<T>()), extents_(extents), skips_(tensor_shape, extents, steps), indices_(extents.size(), 0) {
+      : input_(tensor.MutableData<T>()), extents_(extents), skips_(tensor_shape, extents, steps), indices_(extents.size(), 0) {
     auto dims = tensor_shape.GetDims();
     Init(dims, starts, steps);
   }

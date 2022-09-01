@@ -17,8 +17,8 @@ class T5DecoderSubgraph : public Subgraph {
       const std::string& attribute_name,
       const GraphViewer& subgraph_in) : Subgraph(node_in, attribute_name, subgraph_in),
                                         has_hidden_state_(false) {
-        first_present_output_index_ = 1;
-      }
+    first_present_output_index_ = 1;
+  }
 
   // Create inputs for first inference of decoder subgraph.
   Status CreateInitialFeeds(

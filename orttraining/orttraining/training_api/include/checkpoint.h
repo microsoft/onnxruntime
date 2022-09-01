@@ -20,10 +20,10 @@
  *    ii. optimizer state:
  *        a instance of data class `OptimizerCheckpointState` managed along with Optimizer class,
  *    iii. user defined training properties, for example 'epoch', 'best_score':
- *        a instance of data class `PropertyBag` managed along with CheckpointProperty classes.
+ *        a instance of data class `PropertyBag`.
  *
  *    In terms of class dependencies, Checkpoint implementations are dependent on (and on top of)
- *        Parameter/Module/Optimizer/CheckpointProperty, NOT vice versa.
+ *        Parameter/Module/Optimizer, NOT vice versa.
  *
  * 2. A directory of files:
  *    checkpoint/
@@ -81,6 +81,15 @@ Status SaveCheckpoint(const std::vector<ONNX_NAMESPACE::TensorProto>& trainable_
  */
 Status LoadCheckpoint(const PathString& checkpoint_path,
                       CheckpointState& checkpoint_state);
+
+/**
+ * @brief Load training states from ORT checkpoint into a ModelProto.
+ * @param checkpoint_path folder where checkpoint is stored.
+ * @param model_proto Model Proto.
+ * @return Status
+ */
+Status LoadCheckpointToModel(const PathString& checkpoint_path,
+                             ONNX_NAMESPACE::ModelProto& model_proto);
 
 }  // namespace api
 }  // namespace training

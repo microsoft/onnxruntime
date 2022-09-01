@@ -146,7 +146,7 @@ class IAllocator {
     size_t alloc_size = count_or_bytes;
 
     // if T is not void, 'count_or_bytes' == number of items so allow for that
-    ORT_IF_CONSTEXPR(!std::is_void<T>::value) {
+    if constexpr(!std::is_void<T>::value) {
       // sizeof(void) isn't valid, but the compiler isn't smart enough to ignore that this line isn't
       // reachable if T is void. use std::conditional to 'use' void* in the sizeof call
       if (!CalcMemSizeForArray(

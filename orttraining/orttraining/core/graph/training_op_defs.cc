@@ -1387,6 +1387,36 @@ void RegisterTrainingOpSchemas() {
         }
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(InplaceClipGradNorm)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "InplaceClipGradNorm operator, taking multiple gradients as inputs (seq<tensor>). "
+          "InplaceClipGradNorm should be used in conjunction with optimizers that accept seq<tensor> "
+          "gradients as input, since this op takes a sequence of tensors as input and outputs a sequence of tensors "
+          "there by avoiding the need for SequenceConstruct (and making any unnecessary copy)."
+          "Please note that the gradient clipping happens inplace.")
+      .Input(0, "gradients", "Sequence of gradients computed in this iteration.", "S_GRAD")
+      .Output(0, "clipped_gradients", "Gradients after being clipped as per given inputs and attributes.", "S_GRAD")
+      .Attr(
+          "max_norm",
+          "Coefficient of previously accumulated gradient in running average.",
+          AttributeProto::FLOAT,
+          1.0f)
+      .Attr(
+          "norm_type",
+          "Type of normalization to perform during execution of clip grad norm."
+          "Currently, the only norm supported is the frobenius norm (which is also the default).",
+          AttributeProto::STRING,
+          std::string("fro"))
+      .TypeConstraint(
+          "S_GRAD",
+          {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
+          "Constrain gradients' types.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(LambOptimizer, RegisterLambOpSchema);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(InPlaceAccumulator)
@@ -2161,6 +2191,65 @@ Example 4:
                       "Constrain input 'ratio' types to float tensors.")
       .TypeConstraint("T2", {"tensor(bool)"}, "Constrain 'training_mode' type to boolean tensor.")
       .TypeConstraint("T3", {"tensor(uint32)"}, "Constrain 'mask' type to bit-packed uint32 tensor.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasSoftmaxDropout)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "dropout_output, mask, softmax_output = Dropout(Softmax(data + bias), ratio), "
+          "Intended to specialize the Add + Softmax + Dropout pattern commonly found in transformer models.")
+      .Attr("axis", "apply softmax to elements for dimensions axis or higher", AttributeProto::INT,
+            static_cast<int64_t>(1))
+      .Attr("is_inner_broadcast",
+            "true if broadcast bias across input for dimensions broadcast_axis to axis-1, "
+            "otherwise broadcast bias across input for dimensions 0 to broadcast_axis-1",
+            AttributeProto::INT)
+      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.",
+            AttributeProto::INT, OPTIONAL_VALUE)
+      .AllowUncheckedAttributes()
+      .Input(0, "data", "The input data as Tensor.", "T")
+      .Input(1, "bias", "The bias (or mask) as Tensor.", "T")
+      .Input(2, "ratio",
+             "The ratio of random dropout, with value in [0, 1). If this input was not set, "
+             "or if it was set to 0, the output would be a simple copy of the input. "
+             "If it's non-zero, output will be a random dropout of the scaled input, which is typically "
+             "the case during training. It is an optional value, if not specified it will default to 0.5.",
+             "T1", OpSchema::Optional)
+      .Output(0, "dropout_output", "The dropout output.", "T")
+      .Output(1, "mask", "The output mask of dropout.", "tensor(bool)")
+      .Output(2, "softmax_output", "The Softmax output for backward.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input 'ratio' types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+        updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
+        propagateElemTypeFromInputToOutput(ctx, 0, 2);
+        if (hasNInputShapes(ctx, 1)) {
+          propagateShapeFromInputToOutput(ctx, 0, 1);
+          propagateShapeFromInputToOutput(ctx, 0, 2);
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxDropoutGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Gradient of BiasSoftmaxDropout Op.")
+      .Attr("axis", "apply softmax to elements for dimensions axis or higher", AttributeProto::INT)
+      .AllowUncheckedAttributes()
+      .Input(0, "dy", "The gradient tensor from output.", "T")
+      .Input(1, "mask", "The mask output of the dropout.", "tensor(bool)")
+      .Input(2, "softmax_y", "The output of Softmax.", "T")
+      .Input(3, "ratio",
+             "Same value as the ratio input supplied to the dropout op with value in [0, 1). "
+             "If this input is not specified, a default value of 0.5 is used.",
+             "T1", OpSchema::Optional)
+      .Output(0, "dx", "Gradient of the input.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input 'ratio' types to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BroadcastGradientArgs)
       .SetDomain(kMSDomain)
