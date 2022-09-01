@@ -145,7 +145,7 @@ Status QkvToContext(
     fused_fp16_runner->run(qkv, nullptr, padding_offset, temp_output, nullptr, stream);
 
     // temp_output has shape SxBxNxH, transpose to output BxSxNxH
-    // TODO: support input/output shape SxBxNH, then we can remove this transpose.
+    // Unlike TensorRT using shape SxBxNH, we need transpose to shape BxSxNH (same as input shape).
     return LaunchTransTrt(stream, sequence_length, batch_size, head_size, num_heads,
                           max_threads_per_block, temp_output, output);
   } else {
@@ -209,8 +209,9 @@ Status QkvToContext(
       ORT_ENFORCE(mask_index_dims.size() == 1);
       // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
       const int* mask_start = (mask_index_dims.at(0) > batch_size) ? mask_index + batch_size : nullptr;
-      ORT_RETURN_IF_ERROR(ComputeSoftmaxWithMask1D<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads,
-                                                      mask_index, mask_start, extra_add_qk, scratch1, scratch2, is_unidirectional));
+      ORT_RETURN_IF_ERROR(ComputeSoftmaxWithMask1D<T>(
+          stream, all_sequence_length, sequence_length, batch_size, num_heads,
+          mask_index, mask_start, extra_add_qk, scratch1, scratch2, is_unidirectional));
     } else {  // no mask
       ORT_RETURN_IF_ERROR(
           ComputeSoftmax<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, extra_add_qk,

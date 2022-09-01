@@ -69,7 +69,7 @@ struct Fused_multihead_attention_params_v2 {
   // See https://confluence.nvidia.com/pages/viewpage.action?pageId=302779721 for details.
   bool enable_i2f_trick{};
 
-  // array of length b+1 holding prefix sum of actual sequence lenghts
+  // array of length b+1 holding prefix sum of actual sequence lengths
   int32_t* cu_seqlens{};
 
   // use C/32 Format.
@@ -358,21 +358,21 @@ class FusedMultiHeadAttentionXMMAKernelV2
 
     bool forceUnroll = params.force_unroll;
     if (!forceUnroll && !params.ignore_b1opt && mSM >= kSM_75) {
-      const struct
-      {
+      const struct {
         uint32_t mSM;
         Data_type mDataType;
         int32_t mS;
         int32_t mMaxBatch;
-      } unrollList[] = { {kSM_75, DATA_TYPE_FP16, 256, 1},
-                         {kSM_75, DATA_TYPE_FP16, 384, 1},
+      } unrollList[] = {
+        {kSM_75, DATA_TYPE_FP16, 256, 1},
+        {kSM_75, DATA_TYPE_FP16, 384, 1},
 #if CUDA_VERSION >= 11000
-                         {kSM_80, DATA_TYPE_FP16, 128, 4},
-                         {kSM_80, DATA_TYPE_FP16, 256, 4},
-                         {kSM_80, DATA_TYPE_FP16, 384, 4},
+        {kSM_80, DATA_TYPE_FP16, 128, 4},
+        {kSM_80, DATA_TYPE_FP16, 256, 4},
+        {kSM_80, DATA_TYPE_FP16, 384, 4},
 
-                         {kSM_86, DATA_TYPE_FP16, 128, 4},
-                         {kSM_86, DATA_TYPE_FP16, 256, 4},
+        {kSM_86, DATA_TYPE_FP16, 128, 4},
+        {kSM_86, DATA_TYPE_FP16, 256, 4},
 #endif
       };
       for (uint32_t i = 0u; i < sizeof(unrollList) / sizeof(unrollList[0]); ++i) {

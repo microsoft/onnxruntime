@@ -37,7 +37,6 @@ enum Data_type {
 };
 
 constexpr int32_t kSM_70 = 70;
-constexpr int32_t kSM_72 = 72;
 constexpr int32_t kSM_75 = 75;
 constexpr int32_t kSM_80 = 80;
 constexpr int32_t kSM_86 = 86;
