@@ -243,7 +243,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     ORT_RETURN_IF_ERROR(ReorganizeWeights(&W, &R, B, w_data, weightspace_bytes, w_desc, rnn_desc));
   }
 
-  int32_t zero_seq_count = 0;
+  int64_t zero_seq_count = 0;
   std::vector<int32_t> zero_seq_index_cache(batch_size, 0);
   int64_t zero_seq_index_cache_size = 0;
 
@@ -277,8 +277,8 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (zero_seq_count && num_directions_ > 1) {
     zero_seq_index_cache_size = zero_seq_count * num_directions_;
     zero_seq_index_cache.resize(zero_seq_index_cache_size);
-    for (int i = 0; i < zero_seq_count; ++i) {
-      zero_seq_index_cache[zero_seq_count + i] = static_cast<int32_t>(batch_size + zero_seq_index_cache[i]);
+    for (int64_t i = 0; i < zero_seq_count; ++i) {
+      zero_seq_index_cache[zero_seq_count + i] = static_cast<size_t>(batch_size + zero_seq_index_cache[i]);
     }
   }
 

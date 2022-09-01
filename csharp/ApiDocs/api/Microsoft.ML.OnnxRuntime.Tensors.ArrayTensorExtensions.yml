@@ -1,0 +1,796 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions
+  id: ArrayTensorExtensions
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  children:
+  - Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(``0[])
+  - Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(``0[0:,0:,0:,0:],System.Boolean)
+  - Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(``0[0:,0:,0:],System.Boolean)
+  - Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(``0[0:,0:],System.Boolean)
+  - Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(System.Array,System.Boolean)
+  langs:
+  - csharp
+  - vb
+  name: ArrayTensorExtensions
+  nameWithType: ArrayTensorExtensions
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions
+  type: Class
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/ArrayTensorExtensions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ArrayTensorExtensions
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/ArrayTensorExtensions.shared.cs
+    startLine: 19
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  syntax:
+    content: public static class ArrayTensorExtensions
+    content.vb: Public Module ArrayTensorExtensions
+  inheritance:
+  - System.Object
+  inheritedMembers:
+  - System.Object.Equals(System.Object)
+  - System.Object.Equals(System.Object,System.Object)
+  - System.Object.GetHashCode
+  - System.Object.GetType
+  - System.Object.MemberwiseClone
+  - System.Object.ReferenceEquals(System.Object,System.Object)
+  - System.Object.ToString
+  modifiers.csharp:
+  - public
+  - static
+  - class
+  modifiers.vb:
+  - Public
+  - Module
+- uid: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(``0[])
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(``0[])
+  id: ToTensor``1(``0[])
+  isExtensionMethod: true
+  parent: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions
+  langs:
+  - csharp
+  - vb
+  name: ToTensor<T>(T[])
+  nameWithType: ArrayTensorExtensions.ToTensor<T>(T[])
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor<T>(T[])
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/ArrayTensorExtensions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ToTensor
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/ArrayTensorExtensions.shared.cs
+    startLine: 27
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nCreates a copy of this single-dimensional array as a DenseTensor&lt;T>\n"
+  example: []
+  syntax:
+    content: public static DenseTensor<T> ToTensor<T>(this T[] array)
+    parameters:
+    - id: array
+      type: '{T}[]'
+      description: The array to create a DenseTensor&lt;T> from.
+    typeParameters:
+    - id: T
+      description: Type contained in the array to copy to the DenseTensor&lt;T>.
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor{{T}}
+      description: A 1-dimensional DenseTensor&lt;T> with the same length and content as <code data-dev-comment-type="paramref" class="paramref">array</code>.
+    content.vb: >-
+      <ExtensionAttribute>
+
+      Public Shared Function ToTensor(Of T)(array As T()) As DenseTensor(Of T)
+  overload: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor*
+  nameWithType.vb: ArrayTensorExtensions.ToTensor(Of T)(T())
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor(Of T)(T())
+  name.vb: ToTensor(Of T)(T())
+- uid: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(``0[0:,0:],System.Boolean)
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(``0[0:,0:],System.Boolean)
+  id: ToTensor``1(``0[0:,0:],System.Boolean)
+  isExtensionMethod: true
+  parent: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions
+  langs:
+  - csharp
+  - vb
+  name: ToTensor<T>(T[,], Boolean)
+  nameWithType: ArrayTensorExtensions.ToTensor<T>(T[,], Boolean)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor<T>(T[,], System.Boolean)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/ArrayTensorExtensions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ToTensor
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/ArrayTensorExtensions.shared.cs
+    startLine: 44
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nCreates a copy of this two-dimensional array as a DenseTensor&lt;T>\n"
+  example: []
+  syntax:
+    content: public static DenseTensor<T> ToTensor<T>(this T[, ] array, bool reverseStride = false)
+    parameters:
+    - id: array
+      type: '{T}[,]'
+      description: The array to create a DenseTensor&lt;T> from.
+    - id: reverseStride
+      type: System.Boolean
+      description: 'False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): row-major.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): column-major.'
+    typeParameters:
+    - id: T
+      description: Type contained in the array to copy to the DenseTensor&lt;T>.
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor{{T}}
+      description: A 2-dimensional DenseTensor&lt;T> with the same dimensions and content as <code data-dev-comment-type="paramref" class="paramref">array</code>.
+    content.vb: >-
+      <ExtensionAttribute>
+
+      Public Shared Function ToTensor(Of T)(array As T(,), reverseStride As Boolean = False) As DenseTensor(Of T)
+  overload: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor*
+  nameWithType.vb: ArrayTensorExtensions.ToTensor(Of T)(T(,), Boolean)
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor(Of T)(T(,), System.Boolean)
+  name.vb: ToTensor(Of T)(T(,), Boolean)
+- uid: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(``0[0:,0:,0:],System.Boolean)
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(``0[0:,0:,0:],System.Boolean)
+  id: ToTensor``1(``0[0:,0:,0:],System.Boolean)
+  isExtensionMethod: true
+  parent: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions
+  langs:
+  - csharp
+  - vb
+  name: ToTensor<T>(T[,,], Boolean)
+  nameWithType: ArrayTensorExtensions.ToTensor<T>(T[,,], Boolean)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor<T>(T[,,], System.Boolean)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/ArrayTensorExtensions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ToTensor
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/ArrayTensorExtensions.shared.cs
+    startLine: 74
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nCreates a copy of this three-dimensional array as a DenseTensor&lt;T>\n"
+  example: []
+  syntax:
+    content: public static DenseTensor<T> ToTensor<T>(this T[,, ] array, bool reverseStride = false)
+    parameters:
+    - id: array
+      type: '{T}[,,]'
+      description: The array to create a DenseTensor&lt;T> from.
+    - id: reverseStride
+      type: System.Boolean
+      description: 'False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.'
+    typeParameters:
+    - id: T
+      description: Type contained in the array to copy to the DenseTensor&lt;T>.
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor{{T}}
+      description: A 3-dimensional DenseTensor&lt;T> with the same dimensions and content as <code data-dev-comment-type="paramref" class="paramref">array</code>.
+    content.vb: >-
+      <ExtensionAttribute>
+
+      Public Shared Function ToTensor(Of T)(array As T(,,), reverseStride As Boolean = False) As DenseTensor(Of T)
+  overload: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor*
+  nameWithType.vb: ArrayTensorExtensions.ToTensor(Of T)(T(,,), Boolean)
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor(Of T)(T(,,), System.Boolean)
+  name.vb: ToTensor(Of T)(T(,,), Boolean)
+- uid: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(``0[0:,0:,0:,0:],System.Boolean)
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(``0[0:,0:,0:,0:],System.Boolean)
+  id: ToTensor``1(``0[0:,0:,0:,0:],System.Boolean)
+  isExtensionMethod: true
+  parent: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions
+  langs:
+  - csharp
+  - vb
+  name: ToTensor<T>(T[,,,], Boolean)
+  nameWithType: ArrayTensorExtensions.ToTensor<T>(T[,,,], Boolean)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor<T>(T[,,,], System.Boolean)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/ArrayTensorExtensions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ToTensor
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/ArrayTensorExtensions.shared.cs
+    startLine: 104
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nCreates a copy of this four-dimensional array as a DenseTensor&lt;T>\n"
+  example: []
+  syntax:
+    content: public static DenseTensor<T> ToTensor<T>(this T[,,, ] array, bool reverseStride = false)
+    parameters:
+    - id: array
+      type: '{T}[,,,]'
+      description: The array to create a DenseTensor&lt;T> from.
+    - id: reverseStride
+      type: System.Boolean
+      description: 'False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.'
+    typeParameters:
+    - id: T
+      description: Type contained in the array to copy to the DenseTensor&lt;T>.
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor{{T}}
+      description: A 4-dimensional DenseTensor&lt;T> with the same dimensions and content as <code data-dev-comment-type="paramref" class="paramref">array</code>.
+    content.vb: >-
+      <ExtensionAttribute>
+
+      Public Shared Function ToTensor(Of T)(array As T(,,,), reverseStride As Boolean = False) As DenseTensor(Of T)
+  overload: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor*
+  nameWithType.vb: ArrayTensorExtensions.ToTensor(Of T)(T(,,,), Boolean)
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor(Of T)(T(,,,), System.Boolean)
+  name.vb: ToTensor(Of T)(T(,,,), Boolean)
+- uid: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(System.Array,System.Boolean)
+  commentId: M:Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(System.Array,System.Boolean)
+  id: ToTensor``1(System.Array,System.Boolean)
+  isExtensionMethod: true
+  parent: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions
+  langs:
+  - csharp
+  - vb
+  name: ToTensor<T>(Array, Boolean)
+  nameWithType: ArrayTensorExtensions.ToTensor<T>(Array, Boolean)
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor<T>(System.Array, System.Boolean)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/Tensors/ArrayTensorExtensions.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ToTensor
+    path: ../src/Microsoft.ML.OnnxRuntime/Tensors/ArrayTensorExtensions.shared.cs
+    startLine: 135
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime.Tensors
+  summary: "\nCreates a copy of this n-dimensional array as a DenseTensor&lt;T>\n"
+  example: []
+  syntax:
+    content: public static DenseTensor<T> ToTensor<T>(this Array array, bool reverseStride = false)
+    parameters:
+    - id: array
+      type: System.Array
+      description: The array to create a DenseTensor&lt;T> from.
+    - id: reverseStride
+      type: System.Boolean
+      description: 'False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.'
+    typeParameters:
+    - id: T
+      description: Type contained in the array to copy to the DenseTensor&lt;T>.
+    return:
+      type: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor{{T}}
+      description: A n-dimensional DenseTensor&lt;T> with the same dimensions and content as <code data-dev-comment-type="paramref" class="paramref">array</code>.
+    content.vb: >-
+      <ExtensionAttribute>
+
+      Public Shared Function ToTensor(Of T)(array As Array, reverseStride As Boolean = False) As DenseTensor(Of T)
+  overload: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor*
+  nameWithType.vb: ArrayTensorExtensions.ToTensor(Of T)(Array, Boolean)
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor(Of T)(System.Array, System.Boolean)
+  name.vb: ToTensor(Of T)(Array, Boolean)
+references:
+- uid: Microsoft.ML.OnnxRuntime.Tensors
+  commentId: N:Microsoft.ML.OnnxRuntime.Tensors
+  name: Microsoft.ML.OnnxRuntime.Tensors
+  nameWithType: Microsoft.ML.OnnxRuntime.Tensors
+  fullName: Microsoft.ML.OnnxRuntime.Tensors
+- uid: System.Object
+  commentId: T:System.Object
+  parent: System
+  isExternal: true
+  name: Object
+  nameWithType: Object
+  fullName: System.Object
+- uid: System.Object.Equals(System.Object)
+  commentId: M:System.Object.Equals(System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object)
+  nameWithType: Object.Equals(Object)
+  fullName: System.Object.Equals(System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.Equals(System.Object,System.Object)
+  commentId: M:System.Object.Equals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object, Object)
+  nameWithType: Object.Equals(Object, Object)
+  fullName: System.Object.Equals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetHashCode
+  commentId: M:System.Object.GetHashCode
+  parent: System.Object
+  isExternal: true
+  name: GetHashCode()
+  nameWithType: Object.GetHashCode()
+  fullName: System.Object.GetHashCode()
+  spec.csharp:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetType
+  commentId: M:System.Object.GetType
+  parent: System.Object
+  isExternal: true
+  name: GetType()
+  nameWithType: Object.GetType()
+  fullName: System.Object.GetType()
+  spec.csharp:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.MemberwiseClone
+  commentId: M:System.Object.MemberwiseClone
+  parent: System.Object
+  isExternal: true
+  name: MemberwiseClone()
+  nameWithType: Object.MemberwiseClone()
+  fullName: System.Object.MemberwiseClone()
+  spec.csharp:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ReferenceEquals(System.Object,System.Object)
+  commentId: M:System.Object.ReferenceEquals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: ReferenceEquals(Object, Object)
+  nameWithType: Object.ReferenceEquals(Object, Object)
+  fullName: System.Object.ReferenceEquals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ToString
+  commentId: M:System.Object.ToString
+  parent: System.Object
+  isExternal: true
+  name: ToString()
+  nameWithType: Object.ToString()
+  fullName: System.Object.ToString()
+  spec.csharp:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System
+  commentId: N:System
+  isExternal: true
+  name: System
+  nameWithType: System
+  fullName: System
+- uid: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor
+  name: ToTensor
+  nameWithType: ArrayTensorExtensions.ToTensor
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor
+- uid: '{T}[]'
+  isExternal: true
+  name: T[]
+  nameWithType: T[]
+  fullName: T[]
+  nameWithType.vb: T()
+  fullName.vb: T()
+  name.vb: T()
+  spec.csharp:
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: '[]'
+    nameWithType: '[]'
+    fullName: '[]'
+  spec.vb:
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: ()
+    nameWithType: ()
+    fullName: ()
+- uid: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor{{T}}
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.DenseTensor{``0}
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  definition: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1
+  name: DenseTensor<T>
+  nameWithType: DenseTensor<T>
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor<T>
+  nameWithType.vb: DenseTensor(Of T)
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor(Of T)
+  name.vb: DenseTensor(Of T)
+  spec.csharp:
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1
+    name: DenseTensor
+    nameWithType: DenseTensor
+    fullName: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor
+  - name: <
+    nameWithType: <
+    fullName: <
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1
+    name: DenseTensor
+    nameWithType: DenseTensor
+    fullName: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1
+  name: DenseTensor<T>
+  nameWithType: DenseTensor<T>
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor<T>
+  nameWithType.vb: DenseTensor(Of T)
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor(Of T)
+  name.vb: DenseTensor(Of T)
+  spec.csharp:
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1
+    name: DenseTensor
+    nameWithType: DenseTensor
+    fullName: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor
+  - name: <
+    nameWithType: <
+    fullName: <
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1
+    name: DenseTensor
+    nameWithType: DenseTensor
+    fullName: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: '{T}[,]'
+  isExternal: true
+  name: T[,]
+  nameWithType: T[,]
+  fullName: T[,]
+  nameWithType.vb: T(,)
+  fullName.vb: T(,)
+  name.vb: T(,)
+  spec.csharp:
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: '[,]'
+    nameWithType: '[,]'
+    fullName: '[,]'
+  spec.vb:
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: (,)
+    nameWithType: (,)
+    fullName: (,)
+- uid: System.Boolean
+  commentId: T:System.Boolean
+  parent: System
+  isExternal: true
+  name: Boolean
+  nameWithType: Boolean
+  fullName: System.Boolean
+- uid: '{T}[,,]'
+  isExternal: true
+  name: T[,,]
+  nameWithType: T[,,]
+  fullName: T[,,]
+  nameWithType.vb: T(,,)
+  fullName.vb: T(,,)
+  name.vb: T(,,)
+  spec.csharp:
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: '[,,]'
+    nameWithType: '[,,]'
+    fullName: '[,,]'
+  spec.vb:
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: (,,)
+    nameWithType: (,,)
+    fullName: (,,)
+- uid: '{T}[,,,]'
+  isExternal: true
+  name: T[,,,]
+  nameWithType: T[,,,]
+  fullName: T[,,,]
+  nameWithType.vb: T(,,,)
+  fullName.vb: T(,,,)
+  name.vb: T(,,,)
+  spec.csharp:
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: '[,,,]'
+    nameWithType: '[,,,]'
+    fullName: '[,,,]'
+  spec.vb:
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: (,,,)
+    nameWithType: (,,,)
+    fullName: (,,,)
+- uid: System.Array
+  commentId: T:System.Array
+  parent: System
+  isExternal: true
+  name: Array
+  nameWithType: Array
+  fullName: System.Array

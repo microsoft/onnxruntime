@@ -13,25 +13,20 @@ from typing import Dict, List
 
 import numpy as np
 import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnx import TensorProto, helper
+from op_test_utils import generate_random_initializer
 
 import onnxruntime
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 from onnxruntime.quantization.calibrate import CalibrationDataReader
 from onnxruntime.quantization.qdq_loss_debug import (
     collect_activations,
+    compute_activation_error,
+    compute_weight_error,
     create_activation_matching,
+    create_weight_matching,
     modify_model_output_intermediate_tensors,
 )
-
-
-def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
-    """
-    Helper function to generate initializers for test inputs
-    """
-    tensor = np.random.normal(0, 0.3, tensor_shape).astype(tensor_dtype)
-    init = numpy_helper.from_array(tensor, input_name)
-    return init
 
 
 def construct_test_model1(test_model_path: str, activations_as_outputs=False):
@@ -62,32 +57,28 @@ def construct_test_model1(test_model_path: str, activations_as_outputs=False):
     x4_output = helper.make_tensor_value_info("Conv2Out", TensorProto.FLOAT, [1, 3, 1, 3])
     x5_output = helper.make_tensor_value_info("Conv3Out", TensorProto.FLOAT, [1, 3, 1, 3])
     x6_output = helper.make_tensor_value_info("AddOut", TensorProto.FLOAT, [1, 3, 1, 3])
-    w1 = generate_input_initializer([3, 3, 1, 1], np.float32, "W1")
-    b1 = generate_input_initializer([3], np.float32, "B1")
-    w3 = generate_input_initializer([3, 3, 1, 1], np.float32, "W3")
-    b3 = generate_input_initializer([3], np.float32, "B3")
-    w5 = generate_input_initializer([3, 3, 1, 1], np.float32, "W5")
-    b5 = generate_input_initializer([3], np.float32, "B5")
-    relu_node_1 = helper.make_node("Relu", ["input"], ["Relu1Out"], name="Relu1")
-    conv_node_1 = helper.make_node("Conv", ["Relu1Out", "W1", "B1"], ["Conv1Out"], name="Conv1")
-    relu_node_2 = helper.make_node("Relu", ["Conv1Out"], ["Relu2Out"], name="Relu2")
-    conv_node_2 = helper.make_node("Conv", ["Relu2Out", "W3", "B3"], ["Conv2Out"], name="Conv2")
-    conv_node_3 = helper.make_node("Conv", ["Relu1Out", "W5", "B5"], ["Conv3Out"], name="Conv3")
-    add_node = helper.make_node("Add", ["Conv2Out", "Conv3Out"], ["AddOut"], name="Add")
+
+    initializer = []
+    initializer.append(generate_random_initializer("W1", [3, 3, 1, 1], np.float32))
+    initializer.append(generate_random_initializer("B1", [3], np.float32))
+    initializer.append(generate_random_initializer("W3", [3, 3, 1, 1], np.float32))
+    initializer.append(generate_random_initializer("B3", [3], np.float32))
+    initializer.append(generate_random_initializer("W5", [3, 3, 1, 1], np.float32))
+    initializer.append(generate_random_initializer("B5", [3], np.float32))
+
+    nodes = []
+    nodes.append(helper.make_node("Relu", ["input"], ["Relu1Out"], name="Relu1"))
+    nodes.append(helper.make_node("Conv", ["Relu1Out", "W1", "B1"], ["Conv1Out"], name="Conv1"))
+    nodes.append(helper.make_node("Relu", ["Conv1Out"], ["Relu2Out"], name="Relu2"))
+    nodes.append(helper.make_node("Conv", ["Relu2Out", "W3", "B3"], ["Conv2Out"], name="Conv2"))
+    nodes.append(helper.make_node("Conv", ["Relu1Out", "W5", "B5"], ["Conv3Out"], name="Conv3"))
+    nodes.append(helper.make_node("Add", ["Conv2Out", "Conv3Out"], ["AddOut"], name="Add"))
 
     # we are keeping all tensors in the output anyway for verification purpose
     outputs = [x6_output]
     if activations_as_outputs:
         outputs.extend([x1_output, x2_output, x3_output, x4_output, x5_output])
-    graph = helper.make_graph(
-        [relu_node_1, conv_node_1, relu_node_2, conv_node_2, conv_node_3, add_node], "test_graph_4", [input_vi], outputs
-    )
-    graph.initializer.add().CopyFrom(w1)
-    graph.initializer.add().CopyFrom(b1)
-    graph.initializer.add().CopyFrom(w3)
-    graph.initializer.add().CopyFrom(b3)
-    graph.initializer.add().CopyFrom(w5)
-    graph.initializer.add().CopyFrom(b5)
+    graph = helper.make_graph(nodes, "test_graph_relu_conv", [input_vi], outputs, initializer=initializer)
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
     onnx.save(model, test_model_path)
 
@@ -95,13 +86,13 @@ def construct_test_model1(test_model_path: str, activations_as_outputs=False):
 class TestDataReader(CalibrationDataReader):
     """Random Data Input Generator"""
 
-    def __init__(self):
+    def __init__(self, input_shape=[1, 3, 1, 3]):
         self.preprocess_flag = True
         self.enum_data_dicts = []
         self.count = 2
         self.input_data_list = []
         for _ in range(self.count):
-            self.input_data_list.append(np.random.normal(0, 0.33, [1, 3, 1, 3]).astype(np.float32))
+            self.input_data_list.append(np.random.normal(0, 0.33, input_shape).astype(np.float32))
 
     def get_next(self):
         if self.preprocess_flag:
@@ -188,6 +179,7 @@ class TestSaveActivations(unittest.TestCase):
             reduce_range=False,
             activation_type=QuantType.QInt8,
             weight_type=QuantType.QInt8,
+            optimize_model=False,
         )
 
         data_reader.rewind()
@@ -214,6 +206,117 @@ class TestSaveActivations(unittest.TestCase):
             self.assertTrue(compare_dict[tensor_name]["post_qdq"])
 
         self.assertFalse(compare_dict.get("Conv1Out"))
+
+        activations_error = compute_activation_error(compare_dict)
+        for tensor_name in tensor_names:
+            self.assertGreater(
+                activations_error[tensor_name]["xmodel_err"],
+                0.01,
+                f"{tensor_name} cross model error {activations_error[tensor_name]['xmodel_err']} exceeds threashold.",
+            )
+            self.assertGreater(
+                activations_error[tensor_name]["qdq_err"],
+                0.01,
+                f"{tensor_name} qdq error {activations_error[tensor_name]['qdq_err']} exceeds threashold.",
+            )
+
+    def test_create_weight_matching(self):
+        # Setup: create float model:
+        float_model_path = str(Path(self._tmp_model_dir.name) / "float_model3.onnx")
+        construct_test_model1(float_model_path, activations_as_outputs=False)
+
+        # Setup: create qdq model:
+        data_reader = TestDataReader()
+        qdq_model_path = str(Path(self._tmp_model_dir.name) / "qdq_model3.onnx")
+        quantize_static(
+            float_model_path,
+            qdq_model_path,
+            data_reader,
+            quant_format=QuantFormat.QDQ,
+            per_channel=False,
+            reduce_range=False,
+            activation_type=QuantType.QInt8,
+            weight_type=QuantType.QInt8,
+            optimize_model=False,
+        )
+
+        # Call function under test and verify all weights are present
+        matched_weights = create_weight_matching(float_model_path, qdq_model_path)
+        weight_names = ["W1", "W3", "W5", "B1", "B3", "B5"]
+        for weight_name in weight_names:
+            float_array = matched_weights[weight_name]["float"]
+            dq_array = matched_weights[weight_name]["dequantized"]
+            self.assertEqual(float_array.shape, dq_array.shape)
+
+        weights_error = compute_weight_error(matched_weights)
+        for weight_name in weight_names:
+            self.assertGreater(
+                weights_error[weight_name],
+                0.1,
+                f"{weight_name} quantization error {weights_error[weight_name]} too big!",
+            )
+
+    def test_create_weight_matching_per_channel(self):
+
+        # float model
+        #         (input)
+        #           |
+        #          Add
+        #       /   |   \
+        #  MatMul MatMul MatMul
+        #     |     |      |
+        # (output)(output)(output)
+        float_model_path = str(Path(self._tmp_model_dir.name) / "float_model4.onnx")
+        initializers = []
+        input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [5, 5])
+        output_tensor1 = helper.make_tensor_value_info("M", TensorProto.FLOAT, [5, 5])
+        output_tensor2 = helper.make_tensor_value_info("N", TensorProto.FLOAT, [5, 5])
+        output_tensor3 = helper.make_tensor_value_info("O", TensorProto.FLOAT, [5, 5])
+
+        add_weight_data = np.random.normal(0, 0.1, [5, 5]).astype(np.float32)
+        initializers.append(onnx.numpy_helper.from_array(add_weight_data, name="P"))
+        matmul_weight_data_1 = np.random.normal(0, 0.1, [5, 5]).astype(np.float32)
+        initializers.append(onnx.numpy_helper.from_array(matmul_weight_data_1, name="Q"))
+        matmul_weight_data_2 = np.random.normal(0, 0.1, [5, 5]).astype(np.float32)
+        initializers.append(onnx.numpy_helper.from_array(matmul_weight_data_2, name="R"))
+        initializers.append(onnx.numpy_helper.from_array(matmul_weight_data_2, name="S"))
+
+        add_node = onnx.helper.make_node("Add", ["input", "P"], ["T"], name="Add")
+        matmul_node_1 = onnx.helper.make_node("MatMul", ["T", "Q"], ["M"], name="MatMul1")
+        matmul_node_2 = onnx.helper.make_node("MatMul", ["T", "R"], ["N"], name="MatMul2")
+        matmul_node_3 = onnx.helper.make_node("MatMul", ["T", "S"], ["O"], name="MatMul3")
+
+        graph = helper.make_graph(
+            [add_node, matmul_node_1, matmul_node_2, matmul_node_3],
+            "QDQ_Test",
+            [input_tensor],
+            [output_tensor1, output_tensor2, output_tensor3],
+            initializer=initializers,
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        onnx.save(model, float_model_path)
+
+        # Setup: create qdq model:
+        qdq_model_path = str(Path(self._tmp_model_dir.name) / "qdq_model4.onnx")
+        quantize_static(
+            float_model_path,
+            qdq_model_path,
+            TestDataReader([5, 5]),
+            quant_format=QuantFormat.QDQ,
+            per_channel=True,
+            reduce_range=False,
+            activation_type=QuantType.QInt8,
+            weight_type=QuantType.QInt8,
+            optimize_model=False,
+        )
+
+        # Call function under test and verify all weights are present
+        matched_weights = create_weight_matching(float_model_path, qdq_model_path)
+        weight_names = ["P", "Q", "R", "S"]
+        for weight_name in weight_names:
+            float_array = matched_weights[weight_name]["float"]
+            dq_array = matched_weights[weight_name]["dequantized"]
+            self.assertEqual(float_array.shape, dq_array.shape)
 
 
 if __name__ == "__main__":

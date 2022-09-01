@@ -4,7 +4,15 @@ import numpy as np
 import onnx
 from onnx import onnx_pb as onnx_proto
 
-from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, find_by_name, get_mul_node, ms_domain
+from ..quant_utils import (
+    TENSOR_NAME_QUANT_SUFFIX,
+    QuantizedValue,
+    QuantizedValueType,
+    attribute_to_kwarg,
+    find_by_name,
+    get_mul_node,
+    ms_domain,
+)
 from .base_operator import QuantOperatorBase
 from .matmul import QOpMatMul
 from .qdq_base_operator import QDQOperatorBase
@@ -85,7 +93,7 @@ class QLinearGemm(QOpMatMul):
                 node.input[2], node.input[0], node.input[1], get_beta(self.node)
             )
 
-        qgemm_output = node.output[0] + "_quantized"
+        qgemm_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
         qgemm_name = qgemm_name = node.name + "_quant" if node.name != "" else ""
 
         kwargs = {}

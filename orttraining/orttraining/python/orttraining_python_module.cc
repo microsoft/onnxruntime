@@ -39,6 +39,9 @@ void addGlobalMethods(py::module& m, Environment& env);
 void addObjectMethods(py::module& m, Environment& env, ExecutionProviderRegistrationFn ep_registration_fn);
 void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn);
 void addObjectMethodsForEager(py::module& m);
+#ifdef ENABLE_LAZY_TENSOR
+void addObjectMethodsForLazyTensor(py::module& m);
+#endif
 void InitArray();
 
 
@@ -159,7 +162,7 @@ void ORTTrainingPythonEnv::AddExecutionProvider(const std::string& provider_type
                                         std::move(execution_provider)});
 }
 
-void ORTTrainingPythonEnv::RegisterExtExecutionProviderInfo(const std::string& provider_type, 
+void ORTTrainingPythonEnv::RegisterExtExecutionProviderInfo(const std::string& provider_type,
                                       const std::string& provider_lib_path,
                                       const ProviderOptions& default_options){
   ext_execution_provider_info_map_.insert({provider_type, {provider_lib_path, default_options}});
@@ -309,7 +312,7 @@ void ORTTrainingRegisterExecutionProviders(InferenceSession* sess, const std::ve
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   m.doc() = "pybind11 stateful interface to ORTTraining";
   RegisterExceptions(m);
-  
+
   Environment& env = GetTrainingORTEnv();
   addGlobalMethods(m, env);
   addObjectMethods(m, env, ORTTrainingRegisterExecutionProviders);
@@ -325,25 +328,29 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
     LOGS(default_logger, WARNING) << "Init provider bridge failed.";
   }
 #endif
-  
+
   addObjectMethodsForTraining(m, ORTTrainingRegisterExecutionProviders);
 #ifdef ENABLE_EAGER_MODE
   addObjectMethodsForEager(m);
 #endif
-  
-  m.def("_register_provider_lib", [](const std::string& name, 
+
+#ifdef ENABLE_LAZY_TENSOR
+  addObjectMethodsForLazyTensor(m);
+#endif
+
+  m.def("_register_provider_lib", [](const std::string& name,
                                      const std::string& provider_shared_lib_path,
                                      const ProviderOptions& default_options) {
     GetTrainingEnv().RegisterExtExecutionProviderInfo(name, provider_shared_lib_path, default_options);
   });
 
   m.def(
-      "get_available_providers", []() -> const std::vector<std::string>& { 
+      "get_available_providers", []() -> const std::vector<std::string>& {
         return GetTrainingEnv().GetAvailableTrainingExecutionProviderTypes(); },
       "Return list of available Execution Providers in this installed version of Onnxruntime. "
       "The order of elements represents the default priority order of Execution Providers "
       "from highest to lowest.");
-  
+
   m.def("clear_training_ep_instances", []() -> void {
          ort_training_env->ClearExecutionProviderInstances();
          },
