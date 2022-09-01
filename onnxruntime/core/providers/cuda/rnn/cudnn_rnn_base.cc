@@ -38,13 +38,13 @@ void CudnnRnnBase<T>::SetWeightBias(const cudnnHandle_t handle,
 
   cudnnGetTensorNdDescriptor(m_desc, 3, &dt, &num_dims, dims.data(), strides.data());
   int count = dims[0] * dims[1] * dims[2];
-  cudaMemcpyAsync(matrix_mem_offset, matrix_pos + matrix_offset, count * sizeof(T), cudaMemcpyDeviceToDevice);
+  CUDA_CALL_THROW(cudaMemcpyAsync(matrix_mem_offset, matrix_pos + matrix_offset, count * sizeof(T), cudaMemcpyDeviceToDevice, Stream()));
   matrix_offset += count;
 
   if (bias_pos != nullptr) {
     cudnnGetTensorNdDescriptor(b_desc, 3, &dt, &num_dims, dims.data(), strides.data());
     int bias_count = dims[0] * dims[1] * dims[2];
-    cudaMemcpyAsync(bias_mem_offset, bias_pos + bias_offset, bias_count * sizeof(T), cudaMemcpyDeviceToDevice);
+    CUDA_CALL_THROW(cudaMemcpyAsync(bias_mem_offset, bias_pos + bias_offset, bias_count * sizeof(T), cudaMemcpyDeviceToDevice, Stream()));
     bias_offset += bias_count;
   }
 }
