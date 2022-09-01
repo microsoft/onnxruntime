@@ -1967,11 +1967,11 @@ class PlannerImpl {
                 OrtValueIndex output_arg_idx;
                 ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(output->Name(), output_arg_idx));
                 // there are two cases we need notification:
-                // 1. the consumer is not in the same stream, and it consumes a non-cpu tensor
-                // 2. the consumer is in the same stream, but it consumer a CPU tensor.
+                // 1. the consumer is not in the same stream, and the producer is not Shape
+                // 2. the consumer is in the same stream, but it consumer a CPU tensor from an non-shape op.
                 //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
                 //    in this case, the FIFO can't gurantee the cpu tensor is ready when resize kernel is launching
-                if ((node_stream_map_[it->Index()] != i && plan_.allocation_plan[output_arg_idx].location.device.Type() != OrtDevice::CPU) ||
+                if ((node_stream_map_[it->Index()] != i && it->OpType() != "Shape") ||
                     (node_stream_map_[it->Index()] == i && plan_.allocation_plan[output_arg_idx].location.device.Type() == OrtDevice::CPU)) {
                   requires_notification = true;
                   break;
@@ -2036,34 +2036,15 @@ class PlannerImpl {
           // check whether we need to wait on notification
           auto notification_it = node_to_notification.find(it->Index());
           if (notification_it != node_to_notification.end()) {
-            bool requires_wait = false;
-            // two cases need wait:
-            // a. the tensor is on CPU and we are in the same stream
-            // b. the tensor is on GPU and we are not in the same stream
-            for (auto* input_args : node->InputDefs()) {
-              if (input_args->Exists()) {
-                if (std::find(it->OutputDefs().begin(), it->OutputDefs().end(), input_args) != it->OutputDefs().end()) {
-                  OrtValueIndex input_arg_idx;
-                  ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(input_args->Name(), input_arg_idx));
-                  if ((node_stream_map_[it->Index()] == i && plan_.allocation_plan[input_arg_idx].location.device.Type() == OrtDevice::CPU) ||
-                      (node_stream_map_[it->Index()] != i && plan_.allocation_plan[input_arg_idx].location.device.Type() != OrtDevice::CPU)) {
-                    requires_wait = true;
-                    break;
-                  }
-                }
-              }
-            }
-            if (requires_wait) {
-              // push a wait command if has EP registered it.
-              auto wait_handle = stream_handle_registry.GetWaitHandle(
-                  execution_plan[plan_.notification_owners[notification_it->second]]->device_.Type(),
-                  execution_plan[i]->device_.Type());
-              if (wait_handle) {
-                execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_it->second));
+            // push a wait command if has EP registered it.
+            auto wait_handle = stream_handle_registry.GetWaitHandle(
+                execution_plan[plan_.notification_owners[notification_it->second]]->device_.Type(),
+                execution_plan[i]->device_.Type());
+            if (wait_handle) {
+              execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_it->second));
 #ifdef ENABLE_TRAINING
-                execution_plan[i]->step_pc.push_back(node_index);
+              execution_plan[i]->step_pc.push_back(node_index);
 #endif
-              }
             }
           }
         }
