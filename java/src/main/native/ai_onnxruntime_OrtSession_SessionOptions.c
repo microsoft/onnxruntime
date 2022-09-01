@@ -639,7 +639,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_sessio
 
   const OrtApi* api = (const OrtApi*)apiHandle;
   OrtSessionOptions* options = (OrtSessionOptions*)optionsHandle;
-  const int MAX_CONFIG_SIZE = 20;
+  #define  MAX_CONFIG_SIZE  20
   int keyCount = (*jniEnv)->GetArrayLength(jniEnv, configKeyArr);
   if (keyCount != (*jniEnv)->GetArrayLength(jniEnv, configValueArr) || MAX_CONFIG_SIZE < keyCount) {
     snprintf(errMsgBuf, 512, "Provider options of %s key-value don't match or config num is more than %d.",
