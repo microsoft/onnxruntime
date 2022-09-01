@@ -639,25 +639,25 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_sessio
 
   const OrtApi* api = (const OrtApi*)apiHandle;
   OrtSessionOptions* options = (OrtSessionOptions*)optionsHandle;
-  int key_count = (*jniEnv)->GetArrayLength(jniEnv, configKeyArr);
-  if (key_count != (*jniEnv)->GetArrayLength(jniEnv, configValueArr)) {
+  int keyCount = (*jniEnv)->GetArrayLength(jniEnv, configKeyArr);
+  if (keyCount != (*jniEnv)->GetArrayLength(jniEnv, configValueArr)) {
     snprintf(errMsgBuf, 512, "Provider options of %s key-value don't match.", epName);
     throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), errMsgBuf);
   }
-  const char* key_array[key_count];
-  const char* value_array[key_count];
-  jstring jkey_array[key_count];
-  jstring jvalue_array[key_count];
-  for (int i = 0; i < key_count; i++) {
-    jkey_array[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configKeyArr, i));
-    jvalue_array[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configValueArr, i));
-    key_array[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jkey_array[i], NULL);
-    value_array[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jvalue_array[i], NULL);
+  const char* keyArray[keyCount];
+  const char* valueArray[keyCount];
+  jstring jkeyArray[keyCount];
+  jstring jvalueArray[keyCount];
+  for (int i = 0; i < keyCount; i++) {
+    jkeyArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configKeyArr, i));
+    jvalueArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configValueArr, i));
+    keyArray[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jkeyArray[i], NULL);
+    valueArray[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jvalueArray[i], NULL);
   }
-  checkOrtStatus(jniEnv, api, api->SessionOptionsAppendExecutionProvider(options, epName, key_array, value_array, key_count));
-  for (int i = 0; i < key_count; i++) {
-    (*jniEnv)->ReleaseStringUTFChars(jniEnv, jkey_array[i], key_array[i]);
-    (*jniEnv)->ReleaseStringUTFChars(jniEnv, jvalue_array[i], value_array[i]);
+  checkOrtStatus(jniEnv, api, api->SessionOptionsAppendExecutionProvider(options, epName, keyArray, valueArray, keyCount));
+  for (int i = 0; i < keyCount; i++) {
+    (*jniEnv)->ReleaseStringUTFChars(jniEnv, jkeyArray[i], keyArray[i]);
+    (*jniEnv)->ReleaseStringUTFChars(jniEnv, jvalueArray[i], valueArray[i]);
   }
   (*jniEnv)->ReleaseStringUTFChars(jniEnv, jepName, epName);
 }
