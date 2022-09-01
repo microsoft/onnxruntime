@@ -39,7 +39,6 @@ Status CQPQuantizeLinearFusion::ApplyImpl(Graph& graph, bool& modified, int grap
         !graph_utils::IsSupportedProvider(quant_node, GetCompatibleExecutionProviders())) {
       continue;
     }
-    std::cout << "\n found a quant node \n";
 
     const Node* p_cqp_node = graph_utils::FirstParentByType(quant_node, "ComputeQuantizationParameters");
     if (p_cqp_node == nullptr) {
@@ -47,8 +46,6 @@ Status CQPQuantizeLinearFusion::ApplyImpl(Graph& graph, bool& modified, int grap
     }
 
     Node& cqp_node = *graph.GetNode(p_cqp_node->Index());
-    std::cout << "\n found a cqp node \n";
-    std::cout << cqp_node << "\n\n";
 
     // for (auto it = cqp_node.OutputEdgesBegin(); it != cqp_node.OutputEdgesEnd(); ++it) {
     //   std::cout << *it << "\n";
@@ -56,7 +53,6 @@ Status CQPQuantizeLinearFusion::ApplyImpl(Graph& graph, bool& modified, int grap
 
     // Check Nodes' Edges count and Nodes' outputs are not in Graph output
     if (!optimizer_utils::CheckOutputEdges(graph, cqp_node, 4)) {
-      std::cout << "\n is output \n";
       continue;
     }
 
@@ -68,22 +64,18 @@ Status CQPQuantizeLinearFusion::ApplyImpl(Graph& graph, bool& modified, int grap
     };
 
     InlinedVector<NodeArg*> output_defs{
-        cqp_node.MutableInputDefs()[0],
-        mtf_input_args[1],  // B of MatmulIntegerToFloat
-        mtf_input_args[3],  // B_Scale of MatmulIntegerToFloat
-        &optional_node_arg,
-        &optional_node_arg};
-
-    std::cout <<"\n has input defs \n";
+        quant_node.MutableOutputDefs()[0],
+        cqp_node.MutableOutputDefs()[0],
+        cqp_node.MutableOutputDefs()[1]};
 
     std::string op_type = "DynamicQuantizeLinear";
     Node& fused_node = graph.AddNode(quant_node.Name(),
                                      op_type,
                                      "",
                                      input_defs,
-                                     quant_node.MutableOutputDefs(),
+                                     output_defs,
                                      nullptr,
-                                     kMSDomain);
+                                     kOnnxDomain);
     // Assign provider to this new node. Provider should be same as the provider for old node.
     fused_node.SetExecutionProviderType(quant_node.GetExecutionProviderType());
 
