@@ -968,6 +968,13 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
 }
 
 static bool HandleResize(HandlerArgs& args) {
+  // TODO: Only the CPU Resize kernel handles NCHW input currently.
+  // Adjust this restriction once the other EP's Resize
+  // kernel supports NCHW input.
+  if (args.node.GetExecutionProviderType() != "CPUExecutionProvider") {
+    return false;
+  }
+
   auto inputs = args.node.Inputs();
   int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
 
