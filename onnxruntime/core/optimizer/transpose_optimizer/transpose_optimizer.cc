@@ -1698,7 +1698,10 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
 // ONNX spec.
 // See https://github.com/microsoft/onnxruntime/pull/10824 for
 // a similar fix applied to the CPU Resize kernel.
-#ifndef USE_CUDA
+// Per tests included in #10824, the ROCM EP also generates
+// incorrect results when this handler is used, so the Resize 
+// handler is not enabled even for those builds.
+#if !defined(USE_CUDA) && !defined(USE_ROCM)
     {"Resize", resize_handler},
 #endif
     {"ReduceSum", reduce_sum_handler},
