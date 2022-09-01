@@ -4,6 +4,36 @@
 
 namespace onnxruntime {
 
+    struct StreamPool {
+        ~StreamPool() {
+            for (const auto& s : streams_) {
+                CUDA_CALL_THROW(cudaStreamDestroy(s));
+            }
+        }
+        cudaStream_t GetStream() {
+          if (streams_.empty()) {
+            cudaStream_t stream;
+            CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+            return stream;
+          } else {
+            cudaStream_t stream = streams_.back();
+            streams_.pop_back();
+			return stream;
+          }
+        }
+		
+        void PutStream(cudaStream_t stream) {
+          ORT_ENFORCE(stream);
+          streams_.push_back(stream);
+        }
+        std::vector<cudaStream_t> streams_;
+    };
+
+    struct StreamPool& GetStreamPool() {
+      thread_local StreamPool stream_pool;
+      return stream_pool;
+    }
+
 struct CudaNotification : public synchronize::Notification {
   CudaNotification(Stream* s) : Notification(s) {
     CUDA_CALL_THROW(cudaEventCreateWithFlags(&event_, cudaEventDisableTiming));
@@ -52,7 +82,7 @@ CudaStream::CudaStream(cudaStream_t stream, const OrtDevice& device, bool own_fl
 CudaStream::~CudaStream() {
   if (own_stream_) {
     if (handle)
-      cudaStreamDestroy(static_cast<cudaStream_t>(handle));
+      GetStreamPool().PutStream(static_cast<cudaStream_t>(handle));
 
     cublasDestroy(cublas_handle_);
     cudnnDestroy(cudnn_handle_);
@@ -95,9 +125,7 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
   stream_handle_registry.RegisterWaitFn(device_type, OrtDevice::CPU, WaitCudaNotificationOnHost);
   if (!use_existing_stream)
     stream_handle_registry.RegisterCreateStreamFn(device_type, [](const OrtDevice& device) {
-      cudaStream_t stream = nullptr;
-      // CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
-      CUDA_CALL_THROW(cudaStreamCreate(&stream));
+      cudaStream_t stream = GetStreamPool().GetStream();
       return std::make_unique<CudaStream>(stream, device, true, nullptr, nullptr);
     });
   else
