@@ -777,9 +777,6 @@ def setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, confi
                 log.debug("creating shortcut %s -> %s" % (src_model_dir, dest_model_dir))
                 run_subprocess(["mklink", "/D", "/J", dest_model_dir, src_model_dir], shell=True)
     else:
-        # On Linux, building is in docker.
-        # So, it's useless when it's called in building stage.
-        # `ln -s` in workflows, like linux-ci-pipeline, couldn't removed.
         src_model_dir = os.path.join(build_dir, dest_model_dir_name)
         if os.path.exists(source_onnx_model_dir) and not os.path.exists(src_model_dir):
             log.debug(f"create symlink {source_onnx_model_dir} -> {src_model_dir}")
@@ -2593,11 +2590,6 @@ def main():
         if args.enable_pybind and is_windows():
             install_python_deps(args.numpy_version)
 
-        if args.enable_onnx_tests:
-            source_onnx_model_dir = "C:\\local\\models" if is_windows() else "/data/models"
-            dest_model_dir_name = "models"
-            setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, configs)
-
         if args.use_cuda and args.cuda_version is None:
             if is_windows():
                 # cuda_version is used while generating version_info.py on Windows.
@@ -2711,6 +2703,11 @@ def main():
         build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, args.target)
 
     if args.test:
+        if args.enable_onnx_tests:
+            source_onnx_model_dir = "C:\\local\\models" if is_windows() else "/data/models"
+            dest_model_dir_name = "models"
+            setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, configs)
+
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs)
 
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
