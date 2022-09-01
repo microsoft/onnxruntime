@@ -73,6 +73,7 @@ private:
     bool m_isOnesided;
     bool m_isInverse;
 
+    uint32_t m_dftLength = 0;
     uint32_t m_outputDataSize = 0;
     uint32_t m_inputDataSize = 0;
     uint32_t m_outputIdx = 0;
@@ -119,6 +120,7 @@ private:
         uint32_t OutputSizes[4];
         uint32_t OutputStrides[4];
         float Scale;
+        uint32_t DFTLength;
     };
 
 public:
@@ -196,10 +198,21 @@ public:
 
         // Get DFT Length
         ML_CHECK_VALID_ARGUMENT(m_axis < inputDimsSize)
-        auto dftLength = m_inputDims[m_axis];
+        m_dftLength = m_inputDims[m_axis];
+        if (context->IsInputValid(1))
+        {
+            // If dft_length is specified, then we should honor the shape.
+            // If onesided this will be adjusted later on.
+            ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
+            ORT_THROW_IF_FAILED(context->QueryInterface(IID_PPV_ARGS(&contextPrivate)));
+            ComPtr<IMLOperatorTensor> dftLengthTensor;
+            ORT_THROW_IF_FAILED(contextPrivate->GetConstantInputTensor(1, &dftLengthTensor));
+            MLOperatorTensor tensor(dftLengthTensor.Get());
+            m_dftLength = gsl::narrow_cast<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
+        }
 
         // Calculate passes
-        m_numPasses = static_cast<unsigned>(log2(dftLength));
+        m_numPasses = static_cast<unsigned>(log2(m_dftLength));
         bool hasOnePass = m_numPasses == 1;
         bool hasOddPasses = m_numPasses % 2;
         bool hasEvenPasses = !hasOddPasses;
@@ -276,7 +289,7 @@ public:
             rootParameters[i].InitAsUnorderedAccessView(i);
         }
 
-        int constantCount = 21;
+        int constantCount = 22;
         rootParameters[uavCount].InitAsConstants(constantCount, 0);
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
@@ -385,7 +398,7 @@ public:
             outputUnknown.As(&outputResource);
 
             auto isPowerOfTwo = [](uint32_t n) { return (n != 0) && ((n & (n - 1)) == 0); };
-            if (isPowerOfTwo(m_inputDims[m_axis]))
+            if (isPowerOfTwo(m_dftLength))
             {
                 StockhamFFT(inputResource.Get(), outputResource.Get(), commandList.Get());
             }
@@ -429,6 +442,7 @@ public:
         // Each iteration of the below loop represents 1 level in the Stockham DFT
         // Dispatch in a loop
         DFTShaderConstants constants = {};
+        constants.DFTLength = m_dftLength;
         constants.DFTIteration = 0;
         constants.IsInverse = m_isInverse;
 
@@ -521,7 +535,7 @@ public:
             // Set root constants
             commandList->SetComputeRoot32BitConstants(
                 2, // root parameter index
-                21, // Constant count
+                22, // Constant count
                 &constants,
                 0 // offset
             );
