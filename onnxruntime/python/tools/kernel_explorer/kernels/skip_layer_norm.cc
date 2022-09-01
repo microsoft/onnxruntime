@@ -6,7 +6,6 @@
 #include <hip/hip_fp16.h>
 #include <pybind11/pybind11.h>
 
-#include "contrib_ops/rocm/bert/skip_layer_norm_impl_kernel.h"
 #include "contrib_ops/rocm/bert/skip_layer_norm_op.h"
 #include "python/tools/kernel_explorer/device_array.h"
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"

@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/rocm/rocm_common.h"
 #include "contrib_ops/rocm/bert/skip_layer_norm.h"
+
+#include "core/providers/rocm/rocm_common.h"
 #include "contrib_ops/rocm/bert/skip_layer_norm_impl.h"
 
 namespace onnxruntime {
