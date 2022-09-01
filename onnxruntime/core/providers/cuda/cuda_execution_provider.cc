@@ -165,7 +165,7 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(cublas_handle_)));
-  ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(cublas_lt_handle_)));
+  ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasLtDestroy(cublas_lt_handle_)));
   ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(cudnn_handle_)))
 }
 
