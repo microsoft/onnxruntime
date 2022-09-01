@@ -22,8 +22,8 @@ def get_bert_sizes():
 
 def dtype_to_funcs(dtype):
     type_map = {
-        "float16": list(filter(lambda x: "SkipLayerNormLarge_half" in x or "SkipLayerNormSmall_half" in x, dir(ke))),
-        "float32": list(filter(lambda x: "SkipLayerNormLarge_float" in x or "SkipLayerNormSmall_float" in x, dir(ke))),
+        "float16": list(filter(lambda x: "SkipLayerNormSmall_half" in x, dir(ke))),
+        "float32": list(filter(lambda x: "SkipLayerNormSmall_float" in x, dir(ke))),
     }
     return type_map[dtype]
 
