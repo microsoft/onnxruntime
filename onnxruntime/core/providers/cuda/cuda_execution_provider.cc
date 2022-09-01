@@ -243,6 +243,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
       use_ep_level_unified_stream_ = true;
     } else {
       stream_ = nullptr;
+      use_ep_level_unified_stream_ = true;
     }
   }
 
