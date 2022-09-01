@@ -82,6 +82,18 @@ Status TrainingSession::SchedulerStep() noexcept {
   return scheduler_->Step();
 }
 
+size_t TrainingSession::GetParametersSize(const bool trainable_only) const {
+  return module_->GetParametersSize(trainable_only);
+}
+
+Status TrainingSession::CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only) {
+  return module_->CopyParametersToBuffer(parameters_buffer, trainable_only);
+}
+
+Status TrainingSession::CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only) {
+  return module_->CopyBufferToParameters(parameters_buffer, trainable_only);
+}
+
 }  // namespace api
 }  // namespace training
 }  // namespace onnxruntime
