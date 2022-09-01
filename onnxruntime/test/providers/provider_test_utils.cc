@@ -289,8 +289,8 @@ struct TensorCheck<MLFloat16> {
       sort_expected_and_actual_buffers<float>(f_expected, f_output);
     }
 
-  const bool has_abs_err = params.absolute_error_.has_value();
-  const bool has_rel_err = params.relative_error_.has_value();
+    const bool has_abs_err = params.absolute_error_.has_value();
+    const bool has_rel_err = params.relative_error_.has_value();
 
     float threshold = 0.001f;
 #if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
@@ -319,8 +319,6 @@ struct TensorCheck<MLFloat16> {
                 << "i:" << i << ", provider_type: " << provider_type;
           }
         }
-
-
       }
     }
   }
