@@ -87,7 +87,7 @@ QDQDynamicRegistry = {
     "Attention": QDQAttention,
     "LSTM": QDQLSTM,
 }
-IntegerOpsRegistry.update(CommonOpsRegistry)  # Is this ok?
+QDQDynamicRegistry.update(CommonOpsRegistry)  # Is this ok?
 
 
 def CreateDefaultOpQuantizer(onnx_quantizer, node):
@@ -110,6 +110,5 @@ def CreateQDQQuantizer(onnx_quantizer, node):
         if node.op_type in QDQDynamicRegistry.keys():
             return QDQDynamicRegistry[node.op_type](onnx_quantizer, node)
         else:
-            logging.warning("WARNING: {} not supported for Dynamic QDQ quantization.".format(node.op_type))
             return None
     return QDQOperatorBase(onnx_quantizer, node)
