@@ -3842,7 +3842,7 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
     auto schema_key = GenerateSchemaKey(&sub_graph, nullptr);
     if (!reusable_fused_schema_map_.contains(schema_key)) {
       fused_schemas_containers_.push_back(
-          function_utils::CreateSchema(*this, sub_graph, /*allow_anytype_tensor=*/true));
+          function_utils::CreateSchema(*this, sub_graph, /*allow_aggregated_tensor_type=*/true));
       reusable_fused_schema_map_.emplace(schema_key, *fused_schemas_containers_.back());
     }
 
@@ -3872,16 +3872,13 @@ void Graph::CancelFuseSubGraph(const Node& fused_node) {
 #if !defined(ORT_MINIMAL_BUILD)
   // Remove the temporary schema from schema container container
   const auto* temp_schema_ptr = fused_node.Op();
-  auto it = std::find_if(
-      fused_schemas_containers_.begin(), fused_schemas_containers_.end(),
-      [temp_schema_ptr](const std::unique_ptr<ONNX_NAMESPACE::OpSchema>& schema) {
-        return schema.get() == temp_schema_ptr;
-      });
-  if (it != fused_schemas_containers_.end()) {
-    // remove reference first, otherwise we will be trapped into UB
-    reusable_fused_schema_map_.erase(GenerateSchemaKey(nullptr, temp_schema_ptr));
-    fused_schemas_containers_.erase(it);
-  }
+#define RemoveNodeInContainer(container, func) container.erase( \
+    std::remove_if(container.begin(), container.end(), func), container.end());
+
+  RemoveNodeInContainer(fused_schemas_containers_, [temp_schema_ptr](const std::unique_ptr<ONNX_NAMESPACE::OpSchema>& schema) {
+    return schema.get() == temp_schema_ptr;
+  });
+  reusable_fused_schema_map_.erase(GenerateSchemaKey(nullptr, temp_schema_ptr));
 #endif
 
   // Remove the fused_node

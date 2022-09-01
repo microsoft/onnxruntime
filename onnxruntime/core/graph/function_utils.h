@@ -24,7 +24,7 @@ namespace function_utils {
  */
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
                                                        const IndexedSubGraph& nodes_to_fuse,
-                                                       bool allow_anytype_tensor = false);
+                                                       bool allow_aggregated_tensor_type = false);
 
 /** Create a OpSchema given from a local function in onnx model.
 * @param function_domain The domain of the function.
