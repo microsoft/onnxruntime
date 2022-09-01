@@ -816,7 +816,7 @@ if (onnxruntime_USE_OPENVINO)
   add_dependencies(onnxruntime_providers_openvino onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${OpenVINO_INCLUDE_DIR} ${OPENVINO_INCLUDE_DIR_LIST} ${PYTHON_INCLUDE_DIRS} $ENV{OPENCL_INCS})
   target_link_libraries(onnxruntime_providers_openvino ${ONNXRUNTIME_PROVIDERS_SHARED} ${OPENVINO_LIB_LIST} ${ABSEIL_LIBS})
-  
+
   target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_MAJOR=${VERSION_MAJOR_PART})
   target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_MINOR=${VERSION_MINOR_PART})
   target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_BUILD=${VERSION_BUILD_PART})
@@ -1137,7 +1137,7 @@ if (onnxruntime_USE_DML)
   if (GDK_PLATFORM STREQUAL Scarlett)
     target_link_libraries(onnxruntime_providers_dml PRIVATE ${gdk_dx_libs})
   else()
-    target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib)
+    target_link_libraries(onnxruntime_providers_dml PRIVATE dxguid.lib d3d12.lib dxgi.lib)
   endif()
 
   target_link_libraries(onnxruntime_providers_dml PRIVATE delayimp.lib)
@@ -1517,7 +1517,7 @@ if (onnxruntime_USE_XNNPACK)
     "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.cc"
   )
-  
+
   source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_xnnpack_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_xnnpack ${onnxruntime_providers_xnnpack_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_xnnpack
