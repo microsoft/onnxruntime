@@ -238,32 +238,30 @@ def quantize_static(model_input, model_output, calibration_data_reader: Calibrat
 
     """
     if "quant_config" in kwargs:
-        qc = kwargs["quant_config"]
+        quant_config = kwargs["quant_config"]
 
     else:
-        qc = StaticQuantConfig(
-            quant_format=kwargs["quant_format"] if "quant_format" in kwargs else QuantFormat.QDQ,
-            op_types_to_quantize=kwargs["op_types_to_quantize"] if "op_types_to_quantize" in kwargs else None,
-            per_channel=kwargs["per_channel"] if "per_channel" in kwargs else False,
-            reduce_range=kwargs["reduce_range"] if "reduce_range" in kwargs else False,
+        quant_config = StaticQuantConfig(
+            quant_format=kwargs.get("quant_format") or QuantFormat.QDQ,
+            op_types_to_quantize=kwargs.get("op_types_to_quantize") or None,
+            per_channel=kwargs.get("per_channel") or False,
+            reduce_range=kwargs.get("reduce_range") or False,
             activation_type=kwargs.get("activation_type") or QuantType.QInt8,
-            weight_type=kwargs["weight_type"] if "weight_type" in kwargs else QuantType.QInt8,
-            nodes_to_quantize=kwargs["nodes_to_quantize"] if "nodes_to_quantize" in kwargs else None,
-            nodes_to_exclude=kwargs["nodes_to_exclude"] if "nodes_to_exclude" in kwargs else None,
-            optimize_model=kwargs["optimize_model"] if "optimize_model" in kwargs else True,
-            use_external_data_format=kwargs["use_external_data_format"]
-            if "use_external_data_format" in kwargs
-            else False,
-            calibrate_method=kwargs["calibrate_method"] if "calibrate_method" in kwargs else CalibrationMethod.MinMax,
-            extra_options=kwargs["extra_options"] if "extra_options" in kwargs else None,
+            weight_type=kwargs.get("weight_type") or QuantType.QInt8,
+            nodes_to_quantize=kwargs.get("nodes_to_quantize") or None,
+            nodes_to_exclude=kwargs.get("nodes_to_exclude") or None,
+            optimize_model=kwargs.get("optimize_model") or True,
+            use_external_data_format=kwargs.get("use_external_data_format") or False,
+            calibrate_method=kwargs.get("calibrate_method") or CalibrationMethod.MinMax,
+            extra_options=kwargs.get("extra_options") or None,
         )
 
     mode = QuantizationMode.QLinearOps
 
-    if not qc.op_types_to_quantize or len(qc.op_types_to_quantize) == 0:
-        qc.op_types_to_quantize = list(QLinearOpsRegistry.keys())
+    if not quant_config.op_types_to_quantize or len(quant_config.op_types_to_quantize) == 0:
+        quant_config.op_types_to_quantize = list(QLinearOpsRegistry.keys())
 
-    model = load_model(Path(model_input), qc.optimize_model)
+    model = load_model(Path(model_input), quant_config.optimize_model)
 
     pre_processed: bool = model_has_pre_process_metadata(model)
     if not pre_processed:
@@ -279,57 +277,59 @@ def quantize_static(model_input, model_output, calibration_data_reader: Calibrat
         ("CalibMovingAverageConstant", "averaging_constant"),
     ]
     calib_extra_options = {
-        key: qc.extra_options.get(name) for (name, key) in calib_extra_options_keys if name in qc.extra_options
+        key: quant_config.extra_options.get(name)
+        for (name, key) in calib_extra_options_keys
+        if name in quant_config.extra_options
     }
 
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
         calibrator = create_calibrator(
             model,
-            qc.op_types_to_quantize,
+            quant_config.op_types_to_quantize,
             augmented_model_path=Path(quant_tmp_dir).joinpath("augmented_model.onnx").as_posix(),
-            calibrate_method=qc.calibrate_method,
-            use_external_data_format=qc.use_external_data_format,
+            calibrate_method=quant_config.calibrate_method,
+            use_external_data_format=quant_config.use_external_data_format,
             extra_options=calib_extra_options,
         )
         calibrator.collect_data(calibration_data_reader)
         tensors_range = calibrator.compute_range()
         del calibrator
 
-    check_static_quant_arguments(qc.quant_format, qc.activation_type, qc.weight_type)
+    check_static_quant_arguments(quant_config.quant_format, quant_config.activation_type, quant_config.weight_type)
 
-    if qc.quant_format is QuantFormat.QOperator:
+    if quant_config.quant_format is QuantFormat.QOperator:
         quantizer = ONNXQuantizer(
             model,
-            qc.per_channel,
-            qc.reduce_range,
+            quant_config.per_channel,
+            quant_config.reduce_range,
             mode,
             True,  # static
-            qc.weight_type,
-            qc.activation_type,
+            quant_config.weight_type,
+            quant_config.activation_type,
             tensors_range,
-            qc.nodes_to_quantize,
-            qc.nodes_to_exclude,
-            qc.op_types_to_quantize,
-            qc.extra_options,
+            quant_config.nodes_to_quantize,
+            quant_config.nodes_to_exclude,
+            quant_config.op_types_to_quantize,
+            quant_config.extra_options,
         )
     else:
         quantizer = QDQQuantizer(
             model,
-            qc.per_channel,
-            qc.reduce_range,
+            quant_config.per_channel,
+            quant_config.reduce_range,
             mode,
             True,  # static
-            qc.weight_type,
-            qc.activation_type,
+            quant_config.weight_type,
+            quant_config.activation_type,
             tensors_range,
-            qc.nodes_to_quantize,
-            qc.nodes_to_exclude,
-            qc.op_types_to_quantize,
-            qc.extra_options,
+            quant_config.nodes_to_quantize,
+            quant_config.nodes_to_exclude,
+            quant_config.op_types_to_quantize,
+            quant_config.extra_options,
         )
 
     quantizer.quantize_model()
-    quantizer.model.save_model_to_file(model_output, qc.use_external_data_format)
+    quantizer.model.save_model_to_file(model_output, quant_config.use_external_data_format)
     if not pre_processed:
         logging.warning(
             "Please consider pre-processing before quantization. See "
@@ -346,47 +346,45 @@ def quantize_dynamic(model_input: Path, model_output: Path, **kwargs):
 
     """
     if "quant_config" in kwargs:
-        qc = kwargs["quant_config"]
+        quant_config = kwargs["quant_config"]
 
     else:
-        qc = DynamicQuantConfig(
-            op_types_to_quantize=kwargs["op_types_to_quantize"] if "op_types_to_quantize" in kwargs else None,
-            per_channel=kwargs["per_channel"] if "per_channel" in kwargs else False,
-            reduce_range=kwargs["reduce_range"] if "reduce_range" in kwargs else False,
-            weight_type=kwargs["weight_type"] if "weight_type" in kwargs else QuantType.QInt8,
-            nodes_to_quantize=kwargs["nodes_to_quantize"] if "nodes_to_quantize" in kwargs else None,
-            nodes_to_exclude=kwargs["nodes_to_exclude"] if "nodes_to_exclude" in kwargs else None,
-            optimize_model=kwargs["optimize_model"] if "optimize_model" in kwargs else True,
-            use_external_data_format=kwargs["use_external_data_format"]
-            if "use_external_data_format" in kwargs
-            else False,
-            extra_options=kwargs["extra_options"] if "extra_options" in kwargs else None,
+        quant_config = DynamicQuantConfig(
+            op_types_to_quantize=kwargs.get("op_types_to_quantize") or None,
+            per_channel=kwargs.get("per_channel") or False,
+            reduce_range=kwargs.get("reduce_range") or False,
+            weight_type=kwargs.get("weight_type") or QuantType.QInt8,
+            nodes_to_quantize=kwargs.get("nodes_to_quantize") or None,
+            nodes_to_exclude=kwargs.get("nodes_to_exclude") or None,
+            optimize_model=kwargs.get("optimize_model") or True,
+            use_external_data_format=kwargs.get("use_external_data_format") or False,
+            extra_options=kwargs.get("extra_options") or None,
         )
 
     mode = QuantizationMode.IntegerOps
 
-    if not qc.op_types_to_quantize or len(qc.op_types_to_quantize) == 0:
-        qc.op_types_to_quantize = list(IntegerOpsRegistry.keys())
+    if not quant_config.op_types_to_quantize or len(quant_config.op_types_to_quantize) == 0:
+        quant_config.op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
-    model = load_model(Path(model_input), qc.optimize_model)
+    model = load_model(Path(model_input), quant_config.optimize_model)
 
-    if "MatMulConstBOnly" not in qc.extra_options:
-        qc.extra_options["MatMulConstBOnly"] = True
+    if "MatMulConstBOnly" not in quant_config.extra_options:
+        quant_config.extra_options["MatMulConstBOnly"] = True
 
     quantizer = ONNXQuantizer(
         model,
-        qc.per_channel,
-        qc.reduce_range,
+        quant_config.per_channel,
+        quant_config.reduce_range,
         mode,
         False,  # static
-        qc.weight_type,
+        quant_config.weight_type,
         QuantType.QUInt8,  # dynamic activation only supports uint8
         None,
-        qc.nodes_to_quantize,
-        qc.nodes_to_exclude,
-        qc.op_types_to_quantize,
-        qc.extra_options,
+        quant_config.nodes_to_quantize,
+        quant_config.nodes_to_exclude,
+        quant_config.op_types_to_quantize,
+        quant_config.extra_options,
     )
 
     quantizer.quantize_model()
-    quantizer.model.save_model_to_file(model_output, qc.use_external_data_format)
+    quantizer.model.save_model_to_file(model_output, quant_config.use_external_data_format)
