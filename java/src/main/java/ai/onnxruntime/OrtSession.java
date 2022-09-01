@@ -1004,7 +1004,8 @@ public class OrtSession implements AutoCloseable {
         po_val[i] = entry.getValue();
         i++;
       }
-      sessionOptionsAppendExecutionProvider(OnnxRuntime.ortApiHandle, nativeHandle, "XNNPACK", po_key, po_val);
+      sessionOptionsAppendExecutionProvider(
+        OnnxRuntime.ortApiHandle, nativeHandle, "XNNPACK", po_key, po_val);
     }
 
     private native void setExecutionMode(long apiHandle, long nativeHandle, int mode)
