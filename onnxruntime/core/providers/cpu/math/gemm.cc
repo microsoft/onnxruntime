@@ -217,7 +217,7 @@ Status Gemm<T>::Compute(OpKernelContext* context) const {
   const auto* A = context->Input<Tensor>(0);
   const auto* B = context->Input<Tensor>(1);
   const auto* C = context->Input<Tensor>(2);
-#if 1
+#if 0
   FILE* fp;
   fopen_s(&fp, "Native.log", "a+");
   fprintf(fp, "current node id - %s\n", context->GetNodeName().c_str());
@@ -246,7 +246,7 @@ Status Gemm<T>::Compute(OpKernelContext* context) const {
   ComputeGemm(trans_A_, trans_B_, M, N, K, alpha_, A->Data<T>(), B->Data<T>(), beta_,
               c_data, c_shape, y_data, thread_pool);
 
-#if 1
+#if 0
   // Debug
 
   if (A->Shape().NumDimensions() == 2) {
@@ -318,7 +318,7 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
   const auto* A = context->Input<Tensor>(0);
   const auto* B = packed_b_ ? nullptr : context->Input<Tensor>(1);
   const auto* C = context->Input<Tensor>(2);
-#if 1
+#if 0
   FILE* fp;
   fopen_s(&fp, "Native.log", "a+");
   fprintf(fp, "current node id - %s\n", context->GetNodeName().c_str());
@@ -364,7 +364,7 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
         static_cast<size_t>(N),
         thread_pool);
   }
-#if 1
+#if 0
   // Debug
   // const auto* C = context->Input<Tensor>(2);
 
