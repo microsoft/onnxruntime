@@ -45,7 +45,16 @@ void KernelDef::CalculateHash() {
   // kernel definition)
 
   hash_str(op_name_);
-  hash_int(op_since_version_start_);
+
+  if constexpr (onnxruntime::endian::native == onnxruntime::endian::little) {
+    hash_int(op_since_version_start_);
+  } else {
+    const uint8_t* c = (const uint8_t*)&op_since_version_start_;
+    hash_int((uint32_t)c[0] |
+           (uint32_t)c[1] << 8 |
+           (uint32_t)c[2] << 16 |
+           (uint32_t)c[3] << 24);
+  }
 
   // If we include op_since_version_end_ the hash of an existing op changes when it's superseded.
   // e.g. Unsqueeze 11 had no end version until Unsqueeze 13, at which point the existing op is changed to have

@@ -92,7 +92,7 @@ __global__ void ConcatTensorToTensorLarge(const int tensor_add_sequence_length,
   }
 }
 
-bool LaunchConcatTensorToTensor(cudaStream_t stream,
+Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                 const int all_sequence_length,
                                 const int sequence_length,
                                 const int batch_size,
@@ -133,10 +133,10 @@ bool LaunchConcatTensorToTensor(cudaStream_t stream,
                                                                    tensor_out);
     }
   }
-  return CUDA_CALL(cudaPeekAtLastError());
+  return CUDA_CALL(cudaGetLastError());
 }
 
-bool LaunchConcatTensorToTensor(cudaStream_t stream,
+Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                 const int all_sequence_length,
                                 const int sequence_length,
                                 const int batch_size,
@@ -193,10 +193,10 @@ bool LaunchConcatTensorToTensor(cudaStream_t stream,
                                                                   tensor_out);
     }
   }
-  return CUDA_CALL(cudaPeekAtLastError());
+  return CUDA_CALL(cudaGetLastError());
 }
 
-bool LaunchConcatPastToPresent(cudaStream_t stream,
+Status LaunchConcatPastToPresent(cudaStream_t stream,
                                const int all_sequence_length,
                                const int sequence_length,
                                const int batch_size,
@@ -220,7 +220,7 @@ bool LaunchConcatPastToPresent(cudaStream_t stream,
       present);
 }
 
-bool LaunchConcatPastToPresent(cudaStream_t stream,
+Status LaunchConcatPastToPresent(cudaStream_t stream,
                                const int all_sequence_length,
                                const int sequence_length,
                                const int batch_size,
