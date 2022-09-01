@@ -968,13 +968,6 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
 }
 
 static bool HandleResize(HandlerArgs& args) {
-  // TODO: Only the CPU Resize kernel handles NHWC input.
-  // Adjust this restriction once the other EPs' Resize
-  // kernel(s) supports NHWC input.
-  if (args.node.GetExecutionProviderType() != "CPUExecutionProvider") {
-    return false;
-  }
-
   auto inputs = args.node.Inputs();
   int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
 
@@ -1698,7 +1691,16 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
     {"Split", split_handler},
     {"Shape", shape_handler},
     {"Pad", pad_handler},
+// The CUDA Resize kernel assumes that the input is NCHW and
+// Resize can't be supported in ORT builds with CUDA enabled.
+// TODO: Enable this once the CUDA Resize kernel is implemented
+// "generically" (i.e.) aligning with the generic nature of the
+// ONNX spec.
+// See https://github.com/microsoft/onnxruntime/pull/10824 for
+// a similar fix applied to the CPU Resize kernel.
+#ifndef USE_CUDA
     {"Resize", resize_handler},
+#endif
     {"ReduceSum", reduce_sum_handler},
 
     {"ReduceLogSum", reduce_op_handler},
