@@ -217,7 +217,7 @@ Status Gemm::Compute(OpKernelContext* context) const {
   // if input is empty tensor, return as nothing need to be calculated and we've set the shape for the output
   if (M == 0 || N == 0)
     return Status::OK();
-
+  printf("compute GEMM\n");
   auto Y = context->Output(0, {M, N}); 
   
   //const TensorShape* c_shape = C != nullptr ? &C->Shape() : nullptr;

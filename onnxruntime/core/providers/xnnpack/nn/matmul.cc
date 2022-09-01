@@ -120,7 +120,7 @@ Status MatMul::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
 Status MatMul::Compute(OpKernelContext* ctx) const {
 
   //concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
-  printf("reched MATMUL XNNPACK \n");
+  //printf("reched MATMUL XNNPACK \n");
   const Tensor* a = ctx->Input<Tensor>(0);
   const auto& b_shape = b_shape_;
 
@@ -163,7 +163,7 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
   const size_t lda = helper.Lda(trans_a);
   const size_t ldb = helper.Ldb(trans_b);
 
-  if (max_len > 1 && a->Shape().NumDimensions() > 2) {
+  /* if (max_len > 1 && a->Shape().NumDimensions() > 2) {
     printf("we got a true batch\n");
     printf("a->Shape()[0] - %d\n", (int)a->Shape()[0]);
     printf("a->Shape()[1] - %d\n", (int)a->Shape()[1]);
@@ -171,7 +171,7 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
     printf("y->Shape()[0] - %d\n", (int)y->Shape()[0]);
     printf("y->Shape()[1] - %d\n", (int)y->Shape()[1]);
     printf("y->Shape()[2] - %d\n", (int)y->Shape()[2]);
-  }
+  }*/
 
   xnn_status status = xnn_setup_fully_connected_nc_f32(
       op0_.get(),
