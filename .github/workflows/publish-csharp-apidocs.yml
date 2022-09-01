@@ -48,6 +48,7 @@ jobs:
         MOVE csharp/ApiDocs/csharp docs/api
         rm -r -fo csharp/ApiDocs/obj
         rm -r -fo csharp/ApiDocs/bin
+        rm -r -fo csharp/ApiDocs/api/*.yml
         rm -r -fo csharp/ApiDocs/log.txt
         rm -r -fo csharp/src
     - name: Git Checkin
