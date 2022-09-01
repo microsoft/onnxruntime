@@ -53,38 +53,20 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
 
   int i = 0;
   for (const auto& input : meta_def->inputs) {
-    /*
     const auto *input_arg = graph.GetNodeArg(input);
     // inputs must have a type. can be inferred for outputs.
     ORT_ENFORCE(input_arg->Type() != nullptr);
     op_schema->Input(i, input, "",
-                     allow_anytype_tensor ? "TAggregatedTypes" : *input_arg->Type(),*/
-    //                 OpSchema::FormalParameterOption::Single, /*is_homogeneous=*/!allow_anytype_tensor);
-    if (allow_anytype_tensor) {
-      op_schema->Input(i, input, "",
-                       "TAggregatedTypes", OpSchema::FormalParameterOption::Single, false);
-    } else {
-      const auto *input_arg = graph.GetNodeArg(input);
-      // inputs must have a type. can be inferred for outputs.
-      ORT_ENFORCE(input_arg->Type() != nullptr);
-      op_schema->Input(i, input, "", *input_arg->Type());
-    }
+                     allow_anytype_tensor ? "TAggregatedTypes" : *input_arg->Type(),
+                     OpSchema::FormalParameterOption::Single, /*is_homogeneous=*/!allow_anytype_tensor);
   }
 
   i = 0;
   for (const auto& output : meta_def->outputs) {
-    /*
     const auto* output_arg = graph.GetNodeArg(output);
     op_schema->Output(i, output, "",
-                      allow_anytype_tensor ? "TAggregatedTypes" : *output_arg->Type(),*/
-    // OpSchema::FormalParameterOption::Single, /*is_homogeneous=*/!allow_anytype_tensor);
-    if (allow_anytype_tensor) {
-      op_schema->Output(i, output, "",
-                        "TAggregatedTypes", OpSchema::FormalParameterOption::Single, false);
-    } else {
-      const auto* output_arg = graph.GetNodeArg(output);
-      op_schema->Output(i, output, "", *output_arg->Type());
-    }
+                      allow_anytype_tensor ? "TAggregatedTypes" : *output_arg->Type(),
+                      OpSchema::FormalParameterOption::Single, /*is_homogeneous=*/!allow_anytype_tensor);
   }
   op_schema->Finalize();
 
