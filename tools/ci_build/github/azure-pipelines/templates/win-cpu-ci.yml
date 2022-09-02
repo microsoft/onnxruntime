@@ -161,6 +161,10 @@ jobs:
       msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
+  - script: |
+     mklink /D /J models C:\local\models
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Create models link'
 
   - ${{ if and(eq(parameters.BuildConfig, 'RelWithDebInfo'), eq(parameters.RunOnnxRuntimeTests, true)) }}:
       - task: DotNetCoreCLI@2
