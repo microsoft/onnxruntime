@@ -6,6 +6,7 @@
 #include <hip/hip_runtime.h>
 #include <hip/hip_fp16.h>
 
+#include <chrono>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -19,8 +20,22 @@
 #include "contrib_ops/rocm/bert/util.h"
 
 namespace onnxruntime {
-namespace contrib {
 namespace rocm {
+namespace tunable {
+
+class Timer {
+ public:
+  explicit Timer(hipStream_t stream);
+  void Start();
+  void End();
+  float Duration();
+  ~Timer();
+
+ private:
+  hipStream_t stream_;
+  hipEvent_t start_;
+  hipEvent_t end_;
+};
 
 struct OpParams {
   OpParams() : stream{} {}
@@ -150,6 +165,7 @@ class TunableOp {
       }
     }
     ORT_ENFORCE(id >= 0, "Cannot found viable op");
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
     return id;
   }
 
@@ -166,6 +182,6 @@ class TunableOp {
   bool tuning_{false};
 };
 
+}  // namespace tunable
 }  // namespace rocm
-}  // namespace contrib
 }  // namespace onnxruntime

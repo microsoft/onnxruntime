@@ -4,9 +4,10 @@
 #pragma once
 
 #include <hip/hip_runtime.h>
+#include "core/providers/rocm/tunable/tunable.h"
 #include "contrib_ops/rocm/bert/util.h"
 
-using onnxruntime::contrib::rocm::Timer;
+using onnxruntime::rocm::tunable::Timer;
 
 /// Wrapping around Op and TunableOp
 class IKernelExplorer {
