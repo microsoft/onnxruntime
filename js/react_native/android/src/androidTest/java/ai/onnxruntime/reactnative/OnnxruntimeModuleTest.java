@@ -40,10 +40,10 @@ public class OnnxruntimeModuleTest {
 
   @Test
   public void onnxruntime_module() throws Exception {
-    MockitoSession mockSession = mockitoSession().mockStatic(Arguments.class).startMocking();
+    MockitoSession mockSession = mockitoSession().strictness(Strictness.LENIENT).mockStatic(Arguments.class).startMocking();
     try {
-      lenient().when(Arguments.createMap()).thenAnswer(i -> new JavaOnlyMap());
-      lenient().when(Arguments.createArray()).thenAnswer(i -> new JavaOnlyArray());
+      when(Arguments.createMap()).thenAnswer(i -> new JavaOnlyMap());
+      when(Arguments.createArray()).thenAnswer(i -> new JavaOnlyArray());
 
       OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
 
