@@ -44,7 +44,7 @@ class TestWhereModel(unittest.TestCase):
 
         graph = helper.make_graph(
             [node],
-            "qlinear_where_op_test",
+            "quant_where_op_test",
             [input_condition, input_x, input_y],
             [out_put],
             initializer=initializers,
@@ -53,7 +53,6 @@ class TestWhereModel(unittest.TestCase):
         save(model, model_path)
 
     def quantize_where_test(self, activation_type, weight_type, extra_options={}):
-        np.random.seed(1)
         model_fp32_path = "where_fp32.onnx"
         input_shape = [2, 2]
         self.construct_model(model_fp32_path, input_shape)
@@ -68,8 +67,8 @@ class TestWhereModel(unittest.TestCase):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_uint8_path = "where_{}{}.onnx".format(activation_type_str, weight_type_str)
-        model_uint8_qdq_path = "where_{}{}_qdq.onnx".format(activation_type_str, weight_type_str)
+        model_uint8_path = f"where_{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_uint8_qdq_path = f"where_{}{}_qdq.onnx".format(activation_type_str, weight_type_str)
 
         # Verify QOperator mode
         data_reader.rewind()
