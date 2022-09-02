@@ -239,7 +239,11 @@ const session = await ort.InferenceSession.create("<path to model>");
 
 If a session is created using an input byte array containing the ORT format model data, by default we will copy the model bytes at the time of session creation to ensure the model bytes buffer is valid.
 
-You may also enable the option to use the model bytes directly by setting the Session Options config `session.use_ort_model_bytes_directly` to `1`.  This may reduce the peak memory usage of ONNX Runtime Mobile, but you will need to guarantee that the model bytes are valid throughout the lifespan of the ORT session. For ONNX Runtime Web, this option is set by default.
+You may also enable the option to use the model bytes directly by setting the SessionOptions config entry `session.use_ort_model_bytes_directly` to `1`.  This may reduce the peak memory usage of ONNX Runtime Mobile, but you will need to guarantee that the model bytes are valid throughout the lifespan of the ORT session. For ONNX Runtime Web, this option is set by default.
+
+If `session.use_ort_model_bytes_directly` is enabled there is also an option to directly use the model bytes for initializers to further reduce peak memory usage. Set the Session Options config entry `session.use_ort_model_bytes_for_initializers` to `1` to enable this.
+Note that if an initializer gets pre-packed it will undo the peak memory usage saving from using the model bytes directly for that initializer, as a new buffer for the pre-packed data needs to be allocated. Pre-packing is an optional performance optimization that involves changing the initializer layout to the optimal ordering for the current platform if it differs. If reducing peak memory usage is more important than potential performance optimizations pre-packing can be disabled by setting `session.disable_prepacking` to `1`.
+
 
 C++ API
 ```c++
