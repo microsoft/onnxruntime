@@ -22,7 +22,7 @@ class XnnpackKernel : public OpKernel {
   }
 
  private:
-  mutable pthreadpool_t xnnpack_threadpool_{nullptr};
+  pthreadpool_t xnnpack_threadpool_{nullptr};
 };
 }  // namespace xnnpack
 }  // namespace onnxruntime

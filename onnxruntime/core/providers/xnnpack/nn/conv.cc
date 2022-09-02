@@ -523,7 +523,8 @@ Status Conv::Compute(OpKernelContext* context) const {
   }
 
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_convolution2d_nhwc_f32 returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_convolution2d_nhwc_",
+                           OpTypeToString(conv_type_), "returned ", status);
   }
 
   status = xnn_run_operator(op0_.get(), t_pool);

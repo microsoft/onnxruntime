@@ -21,7 +21,7 @@ struct XnnpackExecutionProviderInfo {
       xnn_thread_pool_size = std::stoi(po.at("thread_num"));
     }
     // future: parse ProviderOptions
-  };
+  }
 };
 
 
