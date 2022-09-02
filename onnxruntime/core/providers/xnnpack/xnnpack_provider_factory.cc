@@ -14,7 +14,7 @@ struct XnnpackProviderFactory : IExecutionProviderFactory {
       : info_{provider_options} {
   }
 
-  std::unique_ptr<IExecutionProvider> CreateProvider() {
+  std::unique_ptr<IExecutionProvider> CreateProvider() override {
     return std::make_unique<XnnpackExecutionProvider>(info_);
   }
 
