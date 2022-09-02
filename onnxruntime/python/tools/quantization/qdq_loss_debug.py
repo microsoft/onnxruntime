@@ -343,9 +343,13 @@ def compute_signal_to_quantization_noice_ratio(
     left = numpy.concatenate(xlist).flatten()
     right = numpy.concatenate(ylist).flatten()
 
-    Ps = numpy.linalg.norm(left)
-    Pn = numpy.linalg.norm(left - right) + numpy.finfo("float").eps
-    return 20 * math.log10(Ps / Pn)
+    tensor_norm = numpy.linalg.norm(left)
+    diff_norm = numpy.linalg.norm(left - right)
+    min_val =  numpy.finfo("float").eps * 2
+    res = tensor_norm / diff_norm
+    res = max(min_val, res)
+
+    return 20 * math.log10(res)
 
 
 def compute_weight_error(
