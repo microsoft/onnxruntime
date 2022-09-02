@@ -36,8 +36,8 @@ Quantization in ONNX Runtime refers to 8 bit linear quantization of an ONNX mode
 ## ONNX quantization representation format
 There are two ways to represent quantized ONNX models:
 - Operator-oriented (QOperator). All the quantized operators have their own ONNX definitions, like QLinearConv, MatMulInteger and etc.
-- Tensor-oriented (QDQ; Quantize and DeQuantize). This format inserts DeQuantizeLinear(QuantizeLinear(tensor)) between the original operators to simulate the quantization and dequantization process. The QuantizeLinear and DeQuantizeLinear operators also carry the quantization parameters.Models generated in the following ways are in the QDQ format:
-  - Models quantized by quantize_static API below with `quant_format=QuantFormat.QDQ`.
+- Tensor-oriented (QDQ; Quantize and DeQuantize). This format inserts DeQuantizeLinear(QuantizeLinear(tensor)) between the original operators to simulate the quantization and dequantization process. In Static Quantization, the QuantizeLinear and DeQuantizeLinear operators also carry the quantization parameters. In Dynamic Quantization, a ComputeQuantizationParameters function proto is inserted to calculate quantization parameters on the fly. Models generated in the following ways are in the QDQ format:
+  - Models quantized by quantize_static or quantize_dynamic API, explained below, with `quant_format=QuantFormat.QDQ`.
   - Quantization-Aware training (QAT) models converted from Tensorflow or exported from PyTorch.
   - Quantized models converted from TFLite and other frameworks.
 
