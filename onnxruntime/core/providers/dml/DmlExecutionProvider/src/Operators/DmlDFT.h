@@ -238,7 +238,7 @@ public:
         if (oscillateFirstTemporaryThenOutput || oscillateBetweenTwoTemporaries)
         {
             m_resourceLoopList.push_back({});
-            m_resourceLoopList.back().Resource = CreateTemporaryResource(temporarySize);
+            m_resourceLoopList.back().Resource = nullptr;
             m_resourceLoopList.back().Sizes = temporarySize;
             m_resourceLoopList.back().Strides = temporaryStrides;
         }
@@ -247,7 +247,7 @@ public:
         if (oscillateBetweenTwoTemporaries)
         {
             m_resourceLoopList.push_back({});
-            m_resourceLoopList.back().Resource = CreateTemporaryResource(temporarySize);
+            m_resourceLoopList.back().Resource = nullptr;
             m_resourceLoopList.back().Sizes = temporarySize;
             m_resourceLoopList.back().Strides = temporaryStrides;
         }
@@ -263,7 +263,7 @@ public:
         if (oscillateFirstOutputThenTemporary)
         {
             m_resourceLoopList.push_back({});
-            m_resourceLoopList.back().Resource = CreateTemporaryResource(temporarySize);
+            m_resourceLoopList.back().Resource = nullptr;
             m_resourceLoopList.back().Sizes = temporarySize;
             m_resourceLoopList.back().Strides = temporaryStrides;
         }
@@ -319,43 +319,6 @@ public:
         ORT_THROW_IF_FAILED(m_device->CreateComputePipelineState(&computePsoDesc, IID_ID3D12PipelineState, &m_pipelineState));
     }
 
-    // Keep the temporary resources around so they are not destroyed while the operator is running
-    std::vector<ComPtr<ID3D12Resource>> resourceCache_ = {};
-    ComPtr<ID3D12Resource> CreateTemporaryResource(std::array<uint32_t, 4>& size)
-    {
-        // Regardless of inverse or onesided, temp resources are always in the middle of the
-        // middle of the computation passes, and as such will not be half length due to onesidedness.
-        // Consequently the input size can be used. However, a correction to double the size when
-        // real valued inputs are supplied must be made.
-        ComPtr<ID3D12Resource> output;
-        auto heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-        auto bufferByteSize = sizeof(float) * std::accumulate(size.begin(), size.end(), 1, std::multiplies());
-        D3D12_RESOURCE_DESC resourceDesc = {
-            D3D12_RESOURCE_DIMENSION_BUFFER,
-            0,
-            static_cast<uint64_t>(bufferByteSize),
-            1,
-            1,
-            1,
-            DXGI_FORMAT_UNKNOWN,
-            {1, 0},
-            D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
-        };
-
-        ORT_THROW_IF_FAILED(m_device->CreateCommittedResource(
-            &heapProperties,
-            D3D12_HEAP_FLAG_NONE,
-            &resourceDesc,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-            nullptr,
-            IID_PPV_ARGS(&output)));
-
-        resourceCache_.push_back(output);
-
-        return output;
-    }
-
     // Computes the outputs of the kernel.  This may be called multiple times
     // simultaneously within the same instance of the class.  Implementations
     // of this method must be thread-safe.
@@ -400,10 +363,10 @@ public:
             auto isPowerOfTwo = [](uint32_t n) { return (n != 0) && ((n & (n - 1)) == 0); };
             if (isPowerOfTwo(m_dftLength))
             {
-                StockhamFFT(inputResource.Get(), outputResource.Get(), commandList.Get());
+                StockhamFFT(context, inputResource.Get(), outputResource.Get(), commandList.Get());
             }
             else {
-                BluesteinZChirp(inputResource.Get(), outputResource.Get(), commandList.Get());
+                BluesteinZChirp(context, inputResource.Get(), outputResource.Get(), commandList.Get());
             }
             return S_OK;
         }
@@ -414,6 +377,7 @@ public:
     }
 
     void StockhamFFT(
+        IMLOperatorKernelContext* context,
         ID3D12Resource* inputResource,
         ID3D12Resource* outputResource,
         ID3D12GraphicsCommandList* commandList)
@@ -449,6 +413,14 @@ public:
         auto resourceLoopList = m_resourceLoopList;
         resourceLoopList[0].Resource = inputResource;
         resourceLoopList[m_outputIdx].Resource = outputResource;
+        for (int i = 1; i < resourceLoopList.size(); i++) {
+            if (i != m_outputIdx)
+            {
+                auto& sizes = resourceLoopList[i].Sizes;
+                auto bufferByteSize = sizeof(float) * std::accumulate(sizes.begin(), sizes.end(), 1, std::multiplies());
+                context->AllocateTemporaryData(bufferByteSize, &resourceLoopList[i].Resource);                
+            }
+        }
 
         for (unsigned index = 0; index < m_numPasses; index++)
         {
@@ -547,6 +519,7 @@ public:
     }
 
     void BluesteinZChirp(
+        IMLOperatorKernelContext* /*context*/,
         ID3D12Resource* /*inputResource*/,
         ID3D12Resource* /*outputResource*/,
         ID3D12GraphicsCommandList* /*commandList*/)
