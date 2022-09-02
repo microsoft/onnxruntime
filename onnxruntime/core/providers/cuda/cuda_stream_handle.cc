@@ -4,35 +4,46 @@
 
 namespace onnxruntime {
 
-    struct StreamPool {
-        ~StreamPool() {
-            for (const auto& s : streams_) {
-                CUDA_CALL_THROW(cudaStreamDestroy(s));
-            }
-        }
-        cudaStream_t GetStream() {
-          if (streams_.empty()) {
-            cudaStream_t stream;
-            CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
-            return stream;
-          } else {
-            cudaStream_t stream = streams_.back();
-            streams_.pop_back();
-			return stream;
-          }
-        }
-		
-        void PutStream(cudaStream_t stream) {
-          ORT_ENFORCE(stream);
-          streams_.push_back(stream);
-        }
-        std::vector<cudaStream_t> streams_;
-    };
+struct CudaStreamBundle {
+  cudaStream_t cuda_stream_{};
+  cudnnHandle_t cudnn_handle_{};
+  cublasHandle_t cublas_handle_{};
+};
 
-    struct StreamPool& GetStreamPool() {
-      thread_local StreamPool stream_pool;
-      return stream_pool;
+struct StreamPool {
+  ~StreamPool() {
+    for (const auto& s : streams_) {
+      cudaStreamDestroy(s.cuda_stream_);
+      cublasDestroy(s.cublas_handle_);
+      cudnnDestroy(s.cudnn_handle_);
     }
+  }
+  CudaStreamBundle GetStream() {
+    if (streams_.empty()) {
+      CudaStreamBundle stream_bundle;
+      CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_bundle.cuda_stream_, cudaStreamNonBlocking));
+      CUBLAS_CALL_THROW(cublasCreate(&stream_bundle.cublas_handle_));
+      CUBLAS_CALL_THROW(cublasSetStream(stream_bundle.cublas_handle_, stream_bundle.cuda_stream_));
+      CUDNN_CALL_THROW(cudnnCreate(&stream_bundle.cudnn_handle_));
+      CUDNN_CALL_THROW(cudnnSetStream(stream_bundle.cudnn_handle_, stream_bundle.cuda_stream_));
+      return stream_bundle;
+    } else {
+      CudaStreamBundle stream = streams_.back();
+      streams_.pop_back();
+      return stream;
+    }
+  }
+
+  void PutStream(CudaStreamBundle stream) {
+    streams_.push_back(stream);
+  }
+  std::vector<CudaStreamBundle> streams_;
+};
+
+struct StreamPool& GetStreamPool() {
+  thread_local StreamPool stream_pool;
+  return stream_pool;
+}
 
 struct CudaNotification : public synchronize::Notification {
   CudaNotification(Stream* s) : Notification(s) {
@@ -67,10 +78,8 @@ struct CudaNotification : public synchronize::Notification {
 CudaStream::CudaStream(cudaStream_t stream, const OrtDevice& device, bool own_flag,
                        cudnnHandle_t external_cudnn_handle, cublasHandle_t external_cublas_handle) : Stream(stream, device), own_stream_(own_flag) {
   if (own_flag) {
-    CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
-    CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
-    CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
-    CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
+    cublas_handle_ = external_cublas_handle;
+    cudnn_handle_ = external_cudnn_handle;
   } else {
     cublas_handle_ = external_cublas_handle;
     CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
@@ -81,11 +90,7 @@ CudaStream::CudaStream(cudaStream_t stream, const OrtDevice& device, bool own_fl
 
 CudaStream::~CudaStream() {
   if (own_stream_) {
-    if (handle)
-      GetStreamPool().PutStream(static_cast<cudaStream_t>(handle));
-
-    cublasDestroy(cublas_handle_);
-    cudnnDestroy(cudnn_handle_);
+    GetStreamPool().PutStream({static_cast<cudaStream_t>(handle), cudnn_handle_, cublas_handle_});
   }
 }
 
@@ -125,8 +130,8 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
   stream_handle_registry.RegisterWaitFn(device_type, OrtDevice::CPU, WaitCudaNotificationOnHost);
   if (!use_existing_stream)
     stream_handle_registry.RegisterCreateStreamFn(device_type, [](const OrtDevice& device) {
-      cudaStream_t stream = GetStreamPool().GetStream();
-      return std::make_unique<CudaStream>(stream, device, true, nullptr, nullptr);
+      CudaStreamBundle stream_bundle = GetStreamPool().GetStream();
+      return std::make_unique<CudaStream>(stream_bundle.cuda_stream_, device, true, stream_bundle.cudnn_handle_, stream_bundle.cublas_handle_);
     });
   else
     stream_handle_registry.RegisterCreateStreamFn(device_type, [external_stream, external_cudnn_handle, external_cublas_handle](const OrtDevice& device) {
