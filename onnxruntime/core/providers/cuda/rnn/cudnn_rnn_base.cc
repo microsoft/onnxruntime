@@ -78,7 +78,6 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
                                           IAllocatorUniquePtr<void>& reorganized_w_data,
                                           size_t& weightspace_bytes,
                                           CudnnRNN& rnn_desc) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
   // RNN W[num_directions_, hidden_size_, input_size]
   // RNN R[num_directions_, hidden_size_, hidden_size_]
   // RNN B[num_directions_, 2*hidden_size_]
