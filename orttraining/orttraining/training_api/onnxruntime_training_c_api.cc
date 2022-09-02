@@ -278,6 +278,41 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::SaveCheckpoint, _In_ const ORTCHAR_T* check
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtTrainingApis::GetParametersSize, _Inout_ OrtTrainingSession* sess,
+                    _Out_ size_t* out, bool trainable_only) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  *out = session->GetParametersSize(trainable_only);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::CopyParametersToBuffer, _Inout_ OrtTrainingSession* sess,
+                    _Inout_ OrtValue* parameters_buffer, bool trainable_only) {
+  API_IMPL_BEGIN
+  if (parameters_buffer == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "parameters_buffer is null.");
+  }
+  auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->CopyParametersToBuffer(*parameters_buffer, trainable_only));
+  
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::CopyBufferToParameters, _Inout_ OrtTrainingSession* sess,
+                    _Inout_ OrtValue* parameters_buffer, bool trainable_only) {
+  API_IMPL_BEGIN
+  if (parameters_buffer == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "parameters_buffer is null.");
+  }
+  auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->CopyBufferToParameters(*parameters_buffer, trainable_only));
+
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API(void, OrtTrainingApis::ReleaseTrainingSession, _Frees_ptr_opt_ OrtTrainingSession* session) {
   delete reinterpret_cast<onnxruntime::training::api::TrainingSession*>(session);
 }
@@ -299,6 +334,9 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::OptimizerStep,
     &OrtTrainingApis::RegisterLRScheduler,
     &OrtTrainingApis::SchedulerStep,
+    &OrtTrainingApis::GetParametersSize,
+    &OrtTrainingApis::CopyParametersToBuffer,
+    &OrtTrainingApis::CopyBufferToParameters,
     &OrtTrainingApis::ReleaseTrainingSession,
     &OrtTrainingApis::ReleaseCheckpointState,
 };
