@@ -651,8 +651,8 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExe
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, jvalueArray[i], valueArray[i]);
   }
   (*jniEnv)->ReleaseStringUTFChars(jniEnv, jepName, epName);
-  free(keyArray);
-  free(valueArray);
-  free(jkeyArray);
-  free(jvalueArray);
+  free((void*)keyArray);
+  free((void*)valueArray);
+  free((void*)jkeyArray);
+  free((void*)jvalueArray);
 }
