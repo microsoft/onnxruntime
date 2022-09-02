@@ -33,10 +33,7 @@ limitations under the License.
 using namespace onnxruntime::cuda;
 using namespace cub;
 
-#define CHECK_CUDA(expr)  \
-  if (!CUDA_CALL(expr)) { \
-    return false;         \
-  }
+#define CHECK_CUDA(expr) CUDA_RETURN_IF_ERROR(expr)
 
 namespace onnxruntime {
 namespace contrib {
@@ -72,7 +69,7 @@ size_t GetAttentionWorkspaceSize(
 }
 
 template <typename T>
-bool QkvToContext(
+Status QkvToContext(
     const cudaDeviceProp& prop,
     cublasHandle_t& cublas,
     cudaStream_t stream,
@@ -104,10 +101,8 @@ bool QkvToContext(
 
   // input should be BxSx3xNxH => scratch3: 3xBxNxSxH
   if (bias == nullptr) {
-    if (!LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads,
-                        max_threads_per_block, false, input, scratch3)) {
-      return false;
-    }
+    ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads,
+                        max_threads_per_block, false, input, scratch3));
   } else {
     const int format = 1;  // BxSxMxNxH
     const bool enable_half4 = true;
@@ -115,9 +110,7 @@ bool QkvToContext(
                            sequence_length, num_heads, head_size,
                            input, bias, scratch3,
                            enable_half4);
-    if (!CUDA_CALL(cudaPeekAtLastError())) {
-      return false;
-    }
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
   }
 
   // now scratch3 has Q, K, V: each has size BxNxSxH
@@ -136,10 +129,9 @@ bool QkvToContext(
   // past_v (BxNxS'xH) + v (BxNxSxH) => present_v (BxNxS*xH)
   const int present_size_per_batch = all_sequence_length * head_size;
   if (nullptr != present) {
-    if (!LaunchConcatPastToPresent(stream, all_sequence_length, sequence_length, batch_size, head_size, num_heads,
-                                   max_threads_per_block, past, k, present)) {
-      return false;
-    }
+    ORT_RETURN_IF_ERROR(
+      LaunchConcatPastToPresent(stream, all_sequence_length, sequence_length, batch_size, head_size, num_heads,
+                                   max_threads_per_block, past, k, present));
 
     // update pointers to present_k and present_v.
     k = present;
@@ -159,14 +151,12 @@ bool QkvToContext(
   // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
   float alpha = use_raw_attention_mask ? one : rsqrt_head_size;
 
-  if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
+  CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
           cublas, CUBLAS_OP_T, CUBLAS_OP_N,
           all_sequence_length, sequence_length, head_size,
           &alpha, k, head_size, present_size_per_batch,
           q, head_size, size_per_batch,
-          &zero, scratch1, all_sequence_length, temp_matrix_size, batches, prop))) {
-    return false;
-  }
+          &zero, scratch1, all_sequence_length, temp_matrix_size, batches, prop));
 
   // apply softmax and store result P to scratch2: BxNxSxS*
   if (use_raw_attention_mask) {  // 2d, 3d or 4d attention mask
@@ -174,43 +164,37 @@ bool QkvToContext(
     const int max_sequence_length = mask_dimension == 4 ? static_cast<int>(mask_index_dims.at(3)) : 0;
 
     T* persistent_softmax_workspace = scratch1;  // replace Q*K' in place with masked score for persistent softmax.
-    if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads,
+    ORT_RETURN_IF_ERROR(
+      ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads,
                                       mask_index, nullptr, extra_add_qk, scratch1, scratch2,
                                       is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
-                                      use_persistent_softmax, persistent_softmax_workspace)) {
-      return false;
-    }
+                                      use_persistent_softmax, persistent_softmax_workspace));
   } else if (nullptr != mask_index) {  // 1d mask index
     ORT_ENFORCE(mask_index_dims.size() == 1);
     // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
     const int* mask_start = (mask_index_dims.at(0) > batch_size) ? mask_index + batch_size : nullptr;
-    if (!ComputeSoftmaxWithMask1D<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads,
-                                     mask_index, mask_start, extra_add_qk, scratch1, scratch2, is_unidirectional)) {
-      return false;
-    }
+    ORT_RETURN_IF_ERROR(ComputeSoftmaxWithMask1D<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads,
+                                     mask_index, mask_start, extra_add_qk, scratch1, scratch2, is_unidirectional));
   } else {  // no mask
-    if (!ComputeSoftmax<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, extra_add_qk,
-                           scratch1, scratch2, is_unidirectional)) {
-      return false;
-    }
+    ORT_RETURN_IF_ERROR(
+      ComputeSoftmax<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, extra_add_qk,
+                           scratch1, scratch2, is_unidirectional));
   }
 
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
-  if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
+  CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N,
           head_size, sequence_length, all_sequence_length,
           &one, v, head_size, present_size_per_batch,
           scratch2, all_sequence_length, temp_matrix_size,
-          &zero, scratch3, head_size, size_per_batch, batches, prop))) {
-    return false;
-  }
+          &zero, scratch3, head_size, size_per_batch, batches, prop));
 
   // scratch3 is BxNxSxH, transpose to output BxSxNxH
   return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads,
                         max_threads_per_block, false, scratch3, output);
 }
 
-bool LaunchAttentionKernel(
+Status LaunchAttentionKernel(
     const cudaDeviceProp& prop,
     cudaStream_t stream,
     cublasHandle_t& cublas,
@@ -266,7 +250,7 @@ bool LaunchAttentionKernel(
 }
 
 template <typename T>
-bool DecoderQkvToContext(
+Status DecoderQkvToContext(
     const cudaDeviceProp& prop,
     cudaStream_t stream,
     cublasHandle_t& cublas,
@@ -301,51 +285,43 @@ bool DecoderQkvToContext(
 
   const T* q = qkv_buffer;
   // transpose q and copy them to qkv_buffer
-  if (!LaunchTransQkv(stream, 1, sequence_length, batch_size, head_size, num_heads,
-                      max_threads_per_block, true, gemm_query_buffer, qkv_buffer)) {
-    return false;
-  }
+  ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, head_size, num_heads,
+                      max_threads_per_block, true, gemm_query_buffer, qkv_buffer));
 
   const T* k = qkv_buffer + k_buffer_offset;
   const T* v = qkv_buffer + v_buffer_offset;
   if (!has_layer_state || !use_past) {
     if (!static_kv) {
       // transpose kv and copy them to qkv_buffer
-      if (!LaunchTransQkv(stream, 2, sequence_length, batch_size, head_size, num_heads,
-                          max_threads_per_block, true, gemm_kv_buffer, qkv_buffer + k_buffer_offset)) {
-        return false;
-      }
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 2, sequence_length, batch_size, head_size, num_heads,
+                          max_threads_per_block, true, gemm_kv_buffer, qkv_buffer + k_buffer_offset));
     } else {
       // transpose kv and copy them to qkv_buffer
-      if (!LaunchTransQkv(stream, 2, kv_sequence_length, batch_size, head_size, num_heads,
-                          max_threads_per_block, true, gemm_kv_buffer, qkv_buffer + k_buffer_offset)) {
-        return false;
-      }
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 2, kv_sequence_length, batch_size, head_size, num_heads,
+                          max_threads_per_block, true, gemm_kv_buffer, qkv_buffer + k_buffer_offset));
     }
   } else {
     if (!static_kv) {
       // transpose kv and copy them to temp_buffer
-      if (!LaunchTransQkv(stream, 2, sequence_length, batch_size, head_size, num_heads,
-                          max_threads_per_block, true, gemm_kv_buffer, temp_qkv_buffer)) {
-        return false;
-      }
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 2, sequence_length, batch_size, head_size, num_heads,
+                          max_threads_per_block, true, gemm_kv_buffer, temp_qkv_buffer));
       // concat cache-k with k and copy to qkv_buffer
-      if (nullptr != key_cache && !LaunchConcatTensorToTensor(stream, kv_sequence_length,
+      if (nullptr != key_cache) {
+        ORT_RETURN_IF_ERROR(LaunchConcatTensorToTensor(stream, kv_sequence_length,
                                                               sequence_length, batch_size, head_size, num_heads,
                                                               max_threads_per_block, 1,
                                                               key_cache,
                                                               temp_qkv_buffer,
-                                                              qkv_buffer + k_buffer_offset)) {
-        return false;
+                                                              qkv_buffer + k_buffer_offset));
       }
       // concat cache-v with v and copy to qkv_buffer
-      if (nullptr != value_cache && !LaunchConcatTensorToTensor(stream, kv_sequence_length,
+      if (nullptr != value_cache) {
+        ORT_RETURN_IF_ERROR(LaunchConcatTensorToTensor(stream, kv_sequence_length,
                                                                 sequence_length, batch_size, head_size, num_heads,
                                                                 max_threads_per_block, 1,
                                                                 value_cache,
                                                                 temp_qkv_buffer + k_buffer_offset,
-                                                                qkv_buffer + v_buffer_offset)) {
-        return false;
+                                                                qkv_buffer + v_buffer_offset));
       }
     }
   }
@@ -382,23 +358,19 @@ bool DecoderQkvToContext(
   const int strideA = kv_sequence_length * head_size;
   const int strideB = sequence_length * head_size;
   if (use_past && static_kv) {
-    if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
+    CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
             cublas, CUBLAS_OP_T, CUBLAS_OP_N,
             kv_sequence_length, sequence_length, head_size,
             &alpha, key_cache, head_size, strideA,
             q, head_size, strideB,
-            &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, prop))) {
-      return false;
-    }
+            &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, prop));
   } else {
-    if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
+    CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
             cublas, CUBLAS_OP_T, CUBLAS_OP_N,
             kv_sequence_length, sequence_length, head_size,
             &alpha, k, head_size, strideA,
             q, head_size, strideB,
-            &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, prop))) {
-      return false;
-    }
+            &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, prop));
   }
 
   constexpr bool is_unidirectional = false;
@@ -406,38 +378,30 @@ bool DecoderQkvToContext(
   if (has_key_padding_mask) {
     constexpr int mask_dimension = 2;
     constexpr int max_sequence_length = 0;
-    if (!ComputeSoftmaxWithRawMask<T>(stream, kv_sequence_length, sequence_length, batch_size, num_heads,
+    ORT_RETURN_IF_ERROR(ComputeSoftmaxWithRawMask<T>(stream, kv_sequence_length, sequence_length, batch_size, num_heads,
                                       nullptr, key_padding_mask, add_before_softmax, scratch1, scratch2,
                                       is_unidirectional, 1.0f, mask_dimension, max_sequence_length,
-                                      false, nullptr)) {
-      return false;
-    }
+                                      false, nullptr));
   } else {
-    if (!ComputeSoftmax<T>(stream, kv_sequence_length, sequence_length, batch_size, num_heads,
-                           add_before_softmax, scratch1, scratch2, is_unidirectional)) {
-      return false;
-    }
+    ORT_RETURN_IF_ERROR(ComputeSoftmax<T>(stream, kv_sequence_length, sequence_length, batch_size, num_heads,
+                           add_before_softmax, scratch1, scratch2, is_unidirectional));
   }
 
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
   if (use_past && static_kv) {
-    if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
+    CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
             cublas, CUBLAS_OP_N, CUBLAS_OP_N,
             head_size, sequence_length, kv_sequence_length,
             &one, value_cache, head_size, strideA,
             scratch2, kv_sequence_length, temp_matrix_size,
-            &zero, scratch3, head_size, strideB, BN, prop))) {
-      return false;
-    }
+            &zero, scratch3, head_size, strideB, BN, prop));
   } else {
-    if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
+    CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
             cublas, CUBLAS_OP_N, CUBLAS_OP_N,
             head_size, sequence_length, kv_sequence_length,
             &one, v, head_size, strideA,
             scratch2, kv_sequence_length, temp_matrix_size,
-            &zero, scratch3, head_size, strideB, BN, prop))) {
-      return false;
-    }
+            &zero, scratch3, head_size, strideB, BN, prop));
   }
 
   // scratch3 is BxNxSxH, transpose to output SxBxNxH
@@ -445,7 +409,7 @@ bool DecoderQkvToContext(
                         max_threads_per_block, true, scratch3, output);
 }
 
-bool LaunchDecoderAttentionKernel(
+Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& prop,
     cudaStream_t stream,
     cublasHandle_t& cublas,

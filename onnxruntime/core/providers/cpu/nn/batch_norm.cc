@@ -19,7 +19,7 @@
 #include "core/providers/cpu/nn/batch_norm_helper.h"
 
 namespace onnxruntime {
-// spec: https://github.com/onnx/onnx/blob/master/docs/Operators.md#BatchNormalization
+// spec: https://github.com/onnx/onnx/blob/main/docs/Operators.md#BatchNormalization
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(BatchNormalization, 7, 8, float,
                                          KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
