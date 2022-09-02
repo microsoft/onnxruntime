@@ -1,0 +1,573 @@
+﻿<!DOCTYPE html>
+<!--[if IE]><![endif]-->
+<html>
+  
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <title>Class OrtIoBinding
+   </title>
+    <meta name="viewport" content="width=device-width">
+    <meta name="title" content="Class OrtIoBinding
+   ">
+    <meta name="generator" content="docfx 2.59.3.0">
+    
+    <link rel="shortcut icon" href="../favicon.ico">
+    <link rel="stylesheet" href="../styles/docfx.vendor.css">
+    <link rel="stylesheet" href="../styles/docfx.css">
+    <link rel="stylesheet" href="../styles/main.css">
+    <meta property="docfx:navrel" content="../toc.html">
+    <meta property="docfx:tocrel" content="toc.html">
+    
+    
+    
+  </head>
+  <body data-spy="scroll" data-target="#affix" data-offset="120">
+    <div id="wrapper">
+      <header>
+        
+        <nav id="autocollapse" class="navbar navbar-inverse ng-scope" role="navigation">
+          <div class="container">
+            <div class="navbar-header">
+              <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+              </button>
+              
+              <a class="navbar-brand" href="../index.html">
+                <img id="logo" class="svg" src="../logo.svg" alt="">
+              </a>
+            </div>
+            <div class="collapse navbar-collapse" id="navbar">
+              <form class="navbar-form navbar-right" role="search" id="search">
+                <div class="form-group">
+                  <input type="text" class="form-control" id="search-query" placeholder="Search" autocomplete="off">
+                </div>
+              </form>
+            </div>
+          </div>
+        </nav>
+        
+        <div class="subnav navbar navbar-default">
+          <div class="container hide-when-search" id="breadcrumb">
+            <ul class="breadcrumb">
+              <li></li>
+            </ul>
+          </div>
+        </div>
+      </header>
+      <div role="main" class="container body-content hide-when-search">
+        
+        <div class="sidenav hide-when-search">
+          <a class="btn toc-toggle collapse" data-toggle="collapse" href="#sidetoggle" aria-expanded="false" aria-controls="sidetoggle">Show / Hide Table of Contents</a>
+          <div class="sidetoggle collapse" id="sidetoggle">
+            <div id="sidetoc"></div>
+          </div>
+        </div>
+        <div class="article row grid-right">
+          <div class="col-md-10">
+            <article class="content wrap" id="_content" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding">
+  
+  
+  <h1 id="Microsoft_ML_OnnxRuntime_OrtIoBinding" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding" class="text-break">Class OrtIoBinding
+  </h1>
+  <div class="markdown level0 summary"><p>This class enables binding of inputs and/or outputs to pre-allocated
+memory. This enables interesting scenarios. For example, if your input
+already resides in some pre-allocated memory like GPU, you can bind
+that piece of memory to an input name and shape and onnxruntime will use that as input.
+Other traditional inputs can also be bound that already exists as Tensors.</p>
+<p>Note, that this arrangement is designed to minimize data copies and to that effect
+your memory allocations must match what is expected by the model, whether you run on
+CPU or GPU. Data copy will still be made, if your pre-allocated memory location does not
+match the one expected by the model. However, copies with OrtIoBindings are only done once,
+at the time of the binding, not at run time. This means, that if your input data required a copy,
+your further input modifications would not be seen by onnxruntime unless you rebind it, even if it is
+the same buffer. If you require the scenario where data is copied, OrtIOBinding may not be the best match
+for your use case.</p>
+<p>The fact that data copy is not made during runtime also has performance implications.</p>
+</div>
+  <div class="markdown level0 conceptual"></div>
+  <div class="inheritance">
+    <h5>Inheritance</h5>
+    <div class="level0"><span class="xref">System.Object</span></div>
+    <div class="level1"><span class="xref">OrtIoBinding</span></div>
+  </div>
+  <h6><strong>Namespace</strong>: <a class="xref" href="Microsoft.ML.OnnxRuntime.html">Microsoft.ML.OnnxRuntime</a></h6>
+  <h6><strong>Assembly</strong>: cs.temp.dll.dll</h6>
+  <h5 id="Microsoft_ML_OnnxRuntime_OrtIoBinding_syntax">Syntax</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public class OrtIoBinding : SafeHandle</code></pre>
+  </div>
+  <h3 id="properties">Properties
+  </h3>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtIoBinding_IsInvalid_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.IsInvalid*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtIoBinding_IsInvalid" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.IsInvalid">IsInvalid</h4>
+  <div class="markdown level1 summary"><p>Overrides SafeHandle.IsInvalid</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override bool IsInvalid { get; }</code></pre>
+  </div>
+  <h5 class="propertyValue">Property Value</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Boolean</span></td>
+        <td><p>returns true if handle is equal to Zero</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h3 id="methods">Methods
+  </h3>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtIoBinding_BindInput_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.BindInput*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtIoBinding_BindInput_System_String_Microsoft_ML_OnnxRuntime_FixedBufferOnnxValue_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.BindInput(System.String,Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue)">BindInput(String, FixedBufferOnnxValue)</h4>
+  <div class="markdown level1 summary"><p>Bind the input with the given name as an OrtValue Tensor allocated in pinned managed memory.
+Instance of FixedBufferOnnxValue owns the memory and should be alive until the end of execution.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void BindInput(string name, FixedBufferOnnxValue fixedValue)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.String</span></td>
+        <td><span class="parametername">name</span></td>
+        <td><p>name of input</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a></td>
+        <td><span class="parametername">fixedValue</span></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtIoBinding_BindInput_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.BindInput*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtIoBinding_BindInput_System_String_Microsoft_ML_OnnxRuntime_OrtExternalAllocation_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.BindInput(System.String,Microsoft.ML.OnnxRuntime.OrtExternalAllocation)">BindInput(String, OrtExternalAllocation)</h4>
+  <div class="markdown level1 summary"><p>Bind externally (not from OrtAllocator) allocated memory as input.
+The model will read the specified input from that memory
+possibly avoiding the need to copy between devices. The user code continues to own
+the chunk of externally allocated memory, and the allocation should be alive until the end of execution.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void BindInput(string name, OrtExternalAllocation allocation)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.String</span></td>
+        <td><span class="parametername">name</span></td>
+        <td><p>name</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtExternalAllocation.html">OrtExternalAllocation</a></td>
+        <td><span class="parametername">allocation</span></td>
+        <td><p>non ort allocated memory</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtIoBinding_BindInput_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.BindInput*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtIoBinding_BindInput_System_String_Microsoft_ML_OnnxRuntime_Tensors_TensorElementType_System_Int64___Microsoft_ML_OnnxRuntime_OrtMemoryAllocation_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.BindInput(System.String,Microsoft.ML.OnnxRuntime.Tensors.TensorElementType,System.Int64[],Microsoft.ML.OnnxRuntime.OrtMemoryAllocation)">BindInput(String, TensorElementType, Int64[], OrtMemoryAllocation)</h4>
+  <div class="markdown level1 summary"><p>Bind a piece of pre-allocated native memory as a OrtValue Tensor with a given shape
+to an input with a given name. The model will read the specified input from that memory
+possibly avoiding the need to copy between devices. OrtMemoryAllocation continues to own
+the chunk of native memory, and the allocation should be alive until the end of execution.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void BindInput(string name, TensorElementType elementType, long[] shape, OrtMemoryAllocation allocation)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.String</span></td>
+        <td><span class="parametername">name</span></td>
+        <td><p>of the input</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.html">TensorElementType</a></td>
+        <td><span class="parametername">elementType</span></td>
+        <td><p>Tensor element type</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">System.Int64</span>[]</td>
+        <td><span class="parametername">shape</span></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtMemoryAllocation.html">OrtMemoryAllocation</a></td>
+        <td><span class="parametername">allocation</span></td>
+        <td><p>native memory allocation</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtIoBinding_BindOutput_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.BindOutput*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtIoBinding_BindOutput_System_String_Microsoft_ML_OnnxRuntime_FixedBufferOnnxValue_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.BindOutput(System.String,Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue)">BindOutput(String, FixedBufferOnnxValue)</h4>
+  <div class="markdown level1 summary"><p>Bind model output to a given instance of FixedBufferOnnxValue which owns the underlying
+pinned managed memory and should be alive for the time of execution.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void BindOutput(string name, FixedBufferOnnxValue fixedValue)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.String</span></td>
+        <td><span class="parametername">name</span></td>
+        <td><p>of the output</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a></td>
+        <td><span class="parametername">fixedValue</span></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtIoBinding_BindOutput_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.BindOutput*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtIoBinding_BindOutput_System_String_Microsoft_ML_OnnxRuntime_OrtExternalAllocation_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.BindOutput(System.String,Microsoft.ML.OnnxRuntime.OrtExternalAllocation)">BindOutput(String, OrtExternalAllocation)</h4>
+  <div class="markdown level1 summary"><p>Bind externally (not from OrtAllocator) allocated memory as output.
+The model will read the specified input from that memory
+possibly avoiding the need to copy between devices. The user code continues to own
+the chunk of externally allocated memory, and the allocation should be alive until the end of execution.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void BindOutput(string name, OrtExternalAllocation allocation)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.String</span></td>
+        <td><span class="parametername">name</span></td>
+        <td><p>name</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtExternalAllocation.html">OrtExternalAllocation</a></td>
+        <td><span class="parametername">allocation</span></td>
+        <td><p>non ort allocated memory</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtIoBinding_BindOutput_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.BindOutput*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtIoBinding_BindOutput_System_String_Microsoft_ML_OnnxRuntime_Tensors_TensorElementType_System_Int64___Microsoft_ML_OnnxRuntime_OrtMemoryAllocation_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.BindOutput(System.String,Microsoft.ML.OnnxRuntime.Tensors.TensorElementType,System.Int64[],Microsoft.ML.OnnxRuntime.OrtMemoryAllocation)">BindOutput(String, TensorElementType, Int64[], OrtMemoryAllocation)</h4>
+  <div class="markdown level1 summary"><p>Bind model output to an OrtValue as Tensor with a given type and shape. An instance of OrtMemoryAllocaiton
+owns the memory and should be alive for the time of execution.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void BindOutput(string name, TensorElementType elementType, long[] shape, OrtMemoryAllocation allocation)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.String</span></td>
+        <td><span class="parametername">name</span></td>
+        <td><p>of the output</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.TensorElementType.html">TensorElementType</a></td>
+        <td><span class="parametername">elementType</span></td>
+        <td><p>tensor element type</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">System.Int64</span>[]</td>
+        <td><span class="parametername">shape</span></td>
+        <td><p>tensor shape</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtMemoryAllocation.html">OrtMemoryAllocation</a></td>
+        <td><span class="parametername">allocation</span></td>
+        <td><p>allocated memory</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtIoBinding_BindOutputToDevice_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.BindOutputToDevice*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtIoBinding_BindOutputToDevice_System_String_Microsoft_ML_OnnxRuntime_OrtMemoryInfo_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.BindOutputToDevice(System.String,Microsoft.ML.OnnxRuntime.OrtMemoryInfo)">BindOutputToDevice(String, OrtMemoryInfo)</h4>
+  <div class="markdown level1 summary"><p>This function will bind model output with the given name to a device
+specified by the memInfo.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void BindOutputToDevice(string name, OrtMemoryInfo memInfo)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.String</span></td>
+        <td><span class="parametername">name</span></td>
+        <td><p>output name</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.html">OrtMemoryInfo</a></td>
+        <td><span class="parametername">memInfo</span></td>
+        <td><p>instance of memory info</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtIoBinding_ClearBoundInputs_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.ClearBoundInputs*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtIoBinding_ClearBoundInputs" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.ClearBoundInputs">ClearBoundInputs()</h4>
+  <div class="markdown level1 summary"><p>Clear all bound inputs and start anew</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void ClearBoundInputs()</code></pre>
+  </div>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtIoBinding_ClearBoundOutputs_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.ClearBoundOutputs*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtIoBinding_ClearBoundOutputs" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.ClearBoundOutputs">ClearBoundOutputs()</h4>
+  <div class="markdown level1 summary"><p>Clear all bound outputs</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void ClearBoundOutputs()</code></pre>
+  </div>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtIoBinding_GetOutputNames_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.GetOutputNames*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtIoBinding_GetOutputNames" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.GetOutputNames">GetOutputNames()</h4>
+  <div class="markdown level1 summary"><p>Returns an array of output names in the same order they were bound</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public string[] GetOutputNames()</code></pre>
+  </div>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.String</span>[]</td>
+        <td><p>array of output names</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtIoBinding_GetOutputValues_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.GetOutputValues*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtIoBinding_GetOutputValues" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.GetOutputValues">GetOutputValues()</h4>
+  <div class="markdown level1 summary"></div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public IDisposableReadOnlyCollection&lt;OrtValue&gt; GetOutputValues()</code></pre>
+  </div>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection-1.html">IDisposableReadOnlyCollection</a>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.OrtValue.html">OrtValue</a>&gt;</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtIoBinding_ReleaseHandle_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.ReleaseHandle*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtIoBinding_ReleaseHandle" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.ReleaseHandle">ReleaseHandle()</h4>
+  <div class="markdown level1 summary"><p>Overrides SafeHandle.ReleaseHandle() to properly dispose of
+the native instance of OrtIoBidning</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override bool ReleaseHandle()</code></pre>
+  </div>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Boolean</span></td>
+        <td><p>always returns true</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtIoBinding_SynchronizeBoundInputs_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.SynchronizeBoundInputs*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtIoBinding_SynchronizeBoundInputs" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.SynchronizeBoundInputs">SynchronizeBoundInputs()</h4>
+  <div class="markdown level1 summary"><p>Blocks until device completes all preceding requested tasks.
+Useful for memory synchronization.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void SynchronizeBoundInputs()</code></pre>
+  </div>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtIoBinding_SynchronizeBoundOutputs_" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.SynchronizeBoundOutputs*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtIoBinding_SynchronizeBoundOutputs" data-uid="Microsoft.ML.OnnxRuntime.OrtIoBinding.SynchronizeBoundOutputs">SynchronizeBoundOutputs()</h4>
+  <div class="markdown level1 summary"><p>Blocks until device completes all preceding requested tasks.
+Useful for memory synchronization.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void SynchronizeBoundOutputs()</code></pre>
+  </div>
+</article>
+          </div>
+          
+          <div class="hidden-sm col-md-2" role="complementary">
+            <div class="sideaffix">
+              <div class="contribution">
+                <ul class="nav">
+                </ul>
+              </div>
+              <nav class="bs-docs-sidebar hidden-print hidden-xs hidden-sm affix" id="affix">
+                <h5>In This Article</h5>
+                <div></div>
+              </nav>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <footer>
+        <div class="grad-bottom"></div>
+        <div class="footer">
+          <div class="container">
+            <span class="pull-right">
+              <a href="#top">Back to top</a>
+            </span>
+          </div>
+        </div>
+      </footer>
+    </div>
+    
+    <script type="text/javascript" src="../styles/docfx.vendor.js"></script>
+    <script type="text/javascript" src="../styles/docfx.js"></script>
+    <script type="text/javascript" src="../styles/main.js"></script>
+  </body>
+</html>

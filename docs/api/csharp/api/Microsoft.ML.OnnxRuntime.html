@@ -1,0 +1,277 @@
+﻿<!DOCTYPE html>
+<!--[if IE]><![endif]-->
+<html>
+  
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <title>Namespace Microsoft.ML.OnnxRuntime
+   </title>
+    <meta name="viewport" content="width=device-width">
+    <meta name="title" content="Namespace Microsoft.ML.OnnxRuntime
+   ">
+    <meta name="generator" content="docfx 2.59.3.0">
+    
+    <link rel="shortcut icon" href="../favicon.ico">
+    <link rel="stylesheet" href="../styles/docfx.vendor.css">
+    <link rel="stylesheet" href="../styles/docfx.css">
+    <link rel="stylesheet" href="../styles/main.css">
+    <meta property="docfx:navrel" content="../toc.html">
+    <meta property="docfx:tocrel" content="toc.html">
+    
+    
+    
+  </head>
+  <body data-spy="scroll" data-target="#affix" data-offset="120">
+    <div id="wrapper">
+      <header>
+        
+        <nav id="autocollapse" class="navbar navbar-inverse ng-scope" role="navigation">
+          <div class="container">
+            <div class="navbar-header">
+              <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+              </button>
+              
+              <a class="navbar-brand" href="../index.html">
+                <img id="logo" class="svg" src="../logo.svg" alt="">
+              </a>
+            </div>
+            <div class="collapse navbar-collapse" id="navbar">
+              <form class="navbar-form navbar-right" role="search" id="search">
+                <div class="form-group">
+                  <input type="text" class="form-control" id="search-query" placeholder="Search" autocomplete="off">
+                </div>
+              </form>
+            </div>
+          </div>
+        </nav>
+        
+        <div class="subnav navbar navbar-default">
+          <div class="container hide-when-search" id="breadcrumb">
+            <ul class="breadcrumb">
+              <li></li>
+            </ul>
+          </div>
+        </div>
+      </header>
+      <div role="main" class="container body-content hide-when-search">
+        
+        <div class="sidenav hide-when-search">
+          <a class="btn toc-toggle collapse" data-toggle="collapse" href="#sidetoggle" aria-expanded="false" aria-controls="sidetoggle">Show / Hide Table of Contents</a>
+          <div class="sidetoggle collapse" id="sidetoggle">
+            <div id="sidetoc"></div>
+          </div>
+        </div>
+        <div class="article row grid-right">
+          <div class="col-md-10">
+            <article class="content wrap" id="_content" data-uid="Microsoft.ML.OnnxRuntime">
+  
+  <h1 id="Microsoft_ML_OnnxRuntime" data-uid="Microsoft.ML.OnnxRuntime" class="text-break">Namespace Microsoft.ML.OnnxRuntime
+  </h1>
+  <div class="markdown level0 summary"></div>
+  <div class="markdown level0 conceptual"></div>
+  <div class="markdown level0 remarks"></div>
+    <h3 id="classes">Classes
+  </h3>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue.html">DisposableNamedOnnxValue</a></h4>
+      <section><p>This class serves as a container for model run output values including
+tensors, sequences of tensors, sequences and maps.
+It extends NamedOnnxValue, exposes the OnnxValueType and Tensor type
+The class must be disposed of.
+It disposes of _ortValueHolder that owns the underlying Ort output value and
+anything else that would need to be disposed by the instance of the class.
+Use factory method CreateFromOrtValue to obtain an instance of the class.</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a></h4>
+      <section><p>Represents an OrtValue with its underlying buffer pinned</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.InferenceSession.html">InferenceSession</a></h4>
+      <section><p>Represents an Inference Session on an ONNX Model.
+This is a IDisposable class and it must be disposed of
+using either a explicit call to Dispose() method or
+a pattern of using() block. If this is a member of another
+class that class must also become IDisposable and it must
+dispose of InferfenceSession in its Dispose() method.</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.ModelMetadata.html">ModelMetadata</a></h4>
+      <section><p>A class that queries and caches model metadata and exposes
+it as properties</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a></h4>
+      <section></section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.NodeMetadata.html">NodeMetadata</a></h4>
+      <section><p>Resembles type and shape information of session-graph nodes, used for communicating the shape/type of input/output nodes</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.OnnxRuntimeException.html">OnnxRuntimeException</a></h4>
+      <section><p>The Exception that is thrown for errors related ton OnnxRuntime</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtAllocator.html">OrtAllocator</a></h4>
+      <section><p>The class exposes native internal allocator for Onnxruntime.
+This allocator enables you to allocate memory from the internal
+memory pools including device allocations. Useful for binding.</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtArenaCfg.html">OrtArenaCfg</a></h4>
+      <section><p>This class encapsulates arena configuration information that will be used to define the behavior
+of an arena based allocator
+See docs/C_API.md for more details</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtCUDAProviderOptions.html">OrtCUDAProviderOptions</a></h4>
+      <section><p>Holds the options for configuring a CUDA Execution Provider instance</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtEnv.html">OrtEnv</a></h4>
+      <section><p>This class initializes the process-global ONNX Runtime environment instance (OrtEnv)</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtExternalAllocation.html">OrtExternalAllocation</a></h4>
+      <section><p>This class represents an arbitrary buffer of memory
+allocated and owned by the user. It can be either a CPU, GPU or other device memory
+that can be suitably represented by IntPtr.
+This is just a composite of the buffer related information.
+The memory is assumed to be pinned if necessary and usable immediately
+in the native code.</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtIoBinding.html">OrtIoBinding</a></h4>
+      <section><p>This class enables binding of inputs and/or outputs to pre-allocated
+memory. This enables interesting scenarios. For example, if your input
+already resides in some pre-allocated memory like GPU, you can bind
+that piece of memory to an input name and shape and onnxruntime will use that as input.
+Other traditional inputs can also be bound that already exists as Tensors.</p>
+<p>Note, that this arrangement is designed to minimize data copies and to that effect
+your memory allocations must match what is expected by the model, whether you run on
+CPU or GPU. Data copy will still be made, if your pre-allocated memory location does not
+match the one expected by the model. However, copies with OrtIoBindings are only done once,
+at the time of the binding, not at run time. This means, that if your input data required a copy,
+your further input modifications would not be seen by onnxruntime unless you rebind it, even if it is
+the same buffer. If you require the scenario where data is copied, OrtIOBinding may not be the best match
+for your use case.</p>
+<p>The fact that data copy is not made during runtime also has performance implications.</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtMemoryAllocation.html">OrtMemoryAllocation</a></h4>
+      <section><p>This class represents memory allocation made by a specific onnxruntime
+allocator. Use OrtAllocator.Allocate() to obtain an instance of this class.
+It implements IDisposable and makes use of the original allocator
+used to allocate the memory. The lifespan of the allocator instance must eclipse the
+lifespan of the allocation. Or, if you prefer, all OrtMemoryAllocation instances must be
+disposed of before the corresponding allocator instances are disposed of.</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.html">OrtMemoryInfo</a></h4>
+      <section><p>This class encapsulates and most of the time owns the underlying native OrtMemoryInfo instance.
+Instance returned from OrtAllocator will not own OrtMemoryInfo, the class must be disposed
+regardless.</p>
+<p>Use this class to query and create OrtAllocator instances so you can pre-allocate memory for model
+inputs/outputs and use it for binding. Instances of the class can also used to created OrtValues bound
+to pre-allocated memory. In that case, the instance of OrtMemoryInfo contains the information about the allocator
+used to allocate the underlying memory.</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtTensorRTProviderOptions.html">OrtTensorRTProviderOptions</a></h4>
+      <section><p>Holds the options for configuring a TensorRT Execution Provider instance</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtValue.html">OrtValue</a></h4>
+      <section><p>Represents a disposable OrtValue.
+This class exposes a native instance of OrtValue.
+The class implements IDisposable via SafeHandle and must
+be disposed.</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer.html">PrePackedWeightsContainer</a></h4>
+      <section><p>This class holds pre-packed weights of shared initializers to be shared across sessions using these initializers
+and thereby provide memory savings by sharing the same pre-packed versions of these shared initializers</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.ProviderOptionsValueHelper.html">ProviderOptionsValueHelper</a></h4>
+      <section><p>This helper class contains methods to handle values of provider options</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.RunOptions.html">RunOptions</a></h4>
+      <section><p>Sets various runtime options.</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.SessionOptions.html">SessionOptions</a></h4>
+      <section><p>Holds the options for creating an InferenceSession</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.SessionOptionsContainer.html">SessionOptionsContainer</a></h4>
+      <section><p>Helper to allow the creation/addition of session options based on pre-defined named entries.</p>
+</section>
+    <h3 id="structs">Structs
+  </h3>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtApi.html">OrtApi</a></h4>
+      <section></section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtApiBase.html">OrtApiBase</a></h4>
+      <section></section>
+    <h3 id="interfaces">Interfaces
+  </h3>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection-1.html">IDisposableReadOnlyCollection&lt;T&gt;</a></h4>
+      <section></section>
+    <h3 id="enums">Enums
+  </h3>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.CoreMLFlags.html">CoreMLFlags</a></h4>
+      <section><p>CoreML flags for use with SessionOptions</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.ExecutionMode.html">ExecutionMode</a></h4>
+      <section><p>Controls whether you want to execute operators in the graph sequentially or in parallel.
+Usually when the model has many branches, setting this option to ExecutionMode.ORT_PARALLEL
+will give you better performance.
+See [ONNX_Runtime_Perf_Tuning.md] for more details.</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.GraphOptimizationLevel.html">GraphOptimizationLevel</a></h4>
+      <section><p>Graph optimization level to use with SessionOptions
+[https://github.com/microsoft/onnxruntime/blob/main/docs/ONNX_Runtime_Graph_Optimizations.md]</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.LogLevel.html">LogLevel</a></h4>
+      <section><p>Logging level used to specify amount of logging when
+creating environment. The lower the value is the more logging
+will be output. A specific value output includes everything
+that higher values output.</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.NnapiFlags.html">NnapiFlags</a></h4>
+      <section><p>NNAPI flags for use with SessionOptions</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.OnnxValueType.html">OnnxValueType</a></h4>
+      <section><p>A type of data that OrtValue encapsulates.</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtAllocatorType.html">OrtAllocatorType</a></h4>
+      <section><p>See documentation for OrtAllocatorType in C API</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtLanguageProjection.html">OrtLanguageProjection</a></h4>
+      <section><p>Language projection property for telemetry event for tracking the source usage of ONNXRUNTIME</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtLoggingLevel.html">OrtLoggingLevel</a></h4>
+      <section><p>Log severity levels</p>
+</section>
+      <h4><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtMemType.html">OrtMemType</a></h4>
+      <section><p>See documentation for OrtMemType in C API</p>
+</section>
+</article>
+          </div>
+          
+          <div class="hidden-sm col-md-2" role="complementary">
+            <div class="sideaffix">
+              <div class="contribution">
+                <ul class="nav">
+                </ul>
+              </div>
+              <nav class="bs-docs-sidebar hidden-print hidden-xs hidden-sm affix" id="affix">
+                <h5>In This Article</h5>
+                <div></div>
+              </nav>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <footer>
+        <div class="grad-bottom"></div>
+        <div class="footer">
+          <div class="container">
+            <span class="pull-right">
+              <a href="#top">Back to top</a>
+            </span>
+          </div>
+        </div>
+      </footer>
+    </div>
+    
+    <script type="text/javascript" src="../styles/docfx.vendor.js"></script>
+    <script type="text/javascript" src="../styles/docfx.js"></script>
+    <script type="text/javascript" src="../styles/main.js"></script>
+  </body>
+</html>

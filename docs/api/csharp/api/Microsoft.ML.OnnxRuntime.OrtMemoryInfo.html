@@ -1,0 +1,622 @@
+﻿<!DOCTYPE html>
+<!--[if IE]><![endif]-->
+<html>
+  
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <title>Class OrtMemoryInfo
+   </title>
+    <meta name="viewport" content="width=device-width">
+    <meta name="title" content="Class OrtMemoryInfo
+   ">
+    <meta name="generator" content="docfx 2.59.3.0">
+    
+    <link rel="shortcut icon" href="../favicon.ico">
+    <link rel="stylesheet" href="../styles/docfx.vendor.css">
+    <link rel="stylesheet" href="../styles/docfx.css">
+    <link rel="stylesheet" href="../styles/main.css">
+    <meta property="docfx:navrel" content="../toc.html">
+    <meta property="docfx:tocrel" content="toc.html">
+    
+    
+    
+  </head>
+  <body data-spy="scroll" data-target="#affix" data-offset="120">
+    <div id="wrapper">
+      <header>
+        
+        <nav id="autocollapse" class="navbar navbar-inverse ng-scope" role="navigation">
+          <div class="container">
+            <div class="navbar-header">
+              <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+              </button>
+              
+              <a class="navbar-brand" href="../index.html">
+                <img id="logo" class="svg" src="../logo.svg" alt="">
+              </a>
+            </div>
+            <div class="collapse navbar-collapse" id="navbar">
+              <form class="navbar-form navbar-right" role="search" id="search">
+                <div class="form-group">
+                  <input type="text" class="form-control" id="search-query" placeholder="Search" autocomplete="off">
+                </div>
+              </form>
+            </div>
+          </div>
+        </nav>
+        
+        <div class="subnav navbar navbar-default">
+          <div class="container hide-when-search" id="breadcrumb">
+            <ul class="breadcrumb">
+              <li></li>
+            </ul>
+          </div>
+        </div>
+      </header>
+      <div role="main" class="container body-content hide-when-search">
+        
+        <div class="sidenav hide-when-search">
+          <a class="btn toc-toggle collapse" data-toggle="collapse" href="#sidetoggle" aria-expanded="false" aria-controls="sidetoggle">Show / Hide Table of Contents</a>
+          <div class="sidetoggle collapse" id="sidetoggle">
+            <div id="sidetoc"></div>
+          </div>
+        </div>
+        <div class="article row grid-right">
+          <div class="col-md-10">
+            <article class="content wrap" id="_content" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo">
+  
+  
+  <h1 id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo" class="text-break">Class OrtMemoryInfo
+  </h1>
+  <div class="markdown level0 summary"><p>This class encapsulates and most of the time owns the underlying native OrtMemoryInfo instance.
+Instance returned from OrtAllocator will not own OrtMemoryInfo, the class must be disposed
+regardless.</p>
+<p>Use this class to query and create OrtAllocator instances so you can pre-allocate memory for model
+inputs/outputs and use it for binding. Instances of the class can also used to created OrtValues bound
+to pre-allocated memory. In that case, the instance of OrtMemoryInfo contains the information about the allocator
+used to allocate the underlying memory.</p>
+</div>
+  <div class="markdown level0 conceptual"></div>
+  <div class="inheritance">
+    <h5>Inheritance</h5>
+    <div class="level0"><span class="xref">System.Object</span></div>
+    <div class="level1"><span class="xref">OrtMemoryInfo</span></div>
+  </div>
+  <h6><strong>Namespace</strong>: <a class="xref" href="Microsoft.ML.OnnxRuntime.html">Microsoft.ML.OnnxRuntime</a></h6>
+  <h6><strong>Assembly</strong>: cs.temp.dll.dll</h6>
+  <h5 id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_syntax">Syntax</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public class OrtMemoryInfo : SafeHandle</code></pre>
+  </div>
+  <h3 id="constructors">Constructors
+  </h3>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo__ctor_" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.#ctor*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo__ctor_System_Byte___Microsoft_ML_OnnxRuntime_OrtAllocatorType_System_Int32_Microsoft_ML_OnnxRuntime_OrtMemType_" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.OrtAllocatorType,System.Int32,Microsoft.ML.OnnxRuntime.OrtMemType)">OrtMemoryInfo(Byte[], OrtAllocatorType, Int32, OrtMemType)</h4>
+  <div class="markdown level1 summary"><p>Create an instance of OrtMemoryInfo according to the specification
+Memory info instances are usually used to get a handle of a native allocator
+that is present within the current inference session object. That, in turn, depends
+of what execution providers are available within the binary that you are using and are
+registered with Add methods.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public OrtMemoryInfo(byte[] utf8AllocatorName, OrtAllocatorType allocatorType, int deviceId, OrtMemType memoryType)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Byte</span>[]</td>
+        <td><span class="parametername">utf8AllocatorName</span></td>
+        <td><p>Allocator name. Use of the predefined above.</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtAllocatorType.html">OrtAllocatorType</a></td>
+        <td><span class="parametername">allocatorType</span></td>
+        <td><p>Allocator type</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">System.Int32</span></td>
+        <td><span class="parametername">deviceId</span></td>
+        <td><p>Device id</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtMemType.html">OrtMemType</a></td>
+        <td><span class="parametername">memoryType</span></td>
+        <td><p>Memory type</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo__ctor_" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.#ctor*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo__ctor_System_String_Microsoft_ML_OnnxRuntime_OrtAllocatorType_System_Int32_Microsoft_ML_OnnxRuntime_OrtMemType_" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.#ctor(System.String,Microsoft.ML.OnnxRuntime.OrtAllocatorType,System.Int32,Microsoft.ML.OnnxRuntime.OrtMemType)">OrtMemoryInfo(String, OrtAllocatorType, Int32, OrtMemType)</h4>
+  <div class="markdown level1 summary"><p>Create an instance of OrtMemoryInfo according to the specification.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public OrtMemoryInfo(string allocatorName, OrtAllocatorType allocatorType, int deviceId, OrtMemType memoryType)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.String</span></td>
+        <td><span class="parametername">allocatorName</span></td>
+        <td><p>Allocator name</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtAllocatorType.html">OrtAllocatorType</a></td>
+        <td><span class="parametername">allocatorType</span></td>
+        <td><p>Allocator type</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">System.Int32</span></td>
+        <td><span class="parametername">deviceId</span></td>
+        <td><p>Device id</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtMemType.html">OrtMemType</a></td>
+        <td><span class="parametername">memoryType</span></td>
+        <td><p>Memory type</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h3 id="fields">Fields
+  </h3>
+  
+  
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_allocatorCPU" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.allocatorCPU">allocatorCPU</h4>
+  <div class="markdown level1 summary"><p>Predefined utf8 encoded allocator names. Use them to construct an instance of
+OrtMemoryInfo to avoid UTF-16 to UTF-8 conversion costs.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static readonly byte[] allocatorCPU</code></pre>
+  </div>
+  <h5 class="fieldValue">Field Value</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Byte</span>[]</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_allocatorCUDA" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.allocatorCUDA">allocatorCUDA</h4>
+  <div class="markdown level1 summary"><p>Predefined utf8 encoded allocator names. Use them to construct an instance of
+OrtMemoryInfo to avoid UTF-16 to UTF-8 conversion costs.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static readonly byte[] allocatorCUDA</code></pre>
+  </div>
+  <h5 class="fieldValue">Field Value</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Byte</span>[]</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_allocatorCUDA_PINNED" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.allocatorCUDA_PINNED">allocatorCUDA_PINNED</h4>
+  <div class="markdown level1 summary"><p>Predefined utf8 encoded allocator names. Use them to construct an instance of
+OrtMemoryInfo to avoid UTF-16 to UTF-8 conversion costs.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static readonly byte[] allocatorCUDA_PINNED</code></pre>
+  </div>
+  <h5 class="fieldValue">Field Value</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Byte</span>[]</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  <h3 id="properties">Properties
+  </h3>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_DefaultInstance_" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.DefaultInstance*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_DefaultInstance" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.DefaultInstance">DefaultInstance</h4>
+  <div class="markdown level1 summary"><p>Default CPU based instance</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static OrtMemoryInfo DefaultInstance { get; }</code></pre>
+  </div>
+  <h5 class="propertyValue">Property Value</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.html">OrtMemoryInfo</a></td>
+        <td><p>Singleton instance of a CpuMemoryInfo</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_Id_" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Id*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_Id" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Id">Id</h4>
+  <div class="markdown level1 summary"><p>Returns device ID</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public int Id { get; }</code></pre>
+  </div>
+  <h5 class="propertyValue">Property Value</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Int32</span></td>
+        <td><p>returns integer Id value</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_IsInvalid_" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.IsInvalid*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_IsInvalid" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.IsInvalid">IsInvalid</h4>
+  <div class="markdown level1 summary"><p>Overrides SafeHandle.IsInvalid</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override bool IsInvalid { get; }</code></pre>
+  </div>
+  <h5 class="propertyValue">Property Value</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Boolean</span></td>
+        <td><p>returns true if handle is equal to Zero</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_Name_" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Name*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_Name" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Name">Name</h4>
+  <div class="markdown level1 summary"><p>Name of the allocator associated with the OrtMemoryInfo instance</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public string Name { get; }</code></pre>
+  </div>
+  <h5 class="propertyValue">Property Value</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.String</span></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  <h3 id="methods">Methods
+  </h3>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_Equals_" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Equals*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_Equals_Microsoft_ML_OnnxRuntime_OrtMemoryInfo_" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Equals(Microsoft.ML.OnnxRuntime.OrtMemoryInfo)">Equals(OrtMemoryInfo)</h4>
+  <div class="markdown level1 summary"><p>Compares this instance with another</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public bool Equals(OrtMemoryInfo other)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.html">OrtMemoryInfo</a></td>
+        <td><span class="parametername">other</span></td>
+        <td><p>OrtMemoryInfo to compare to</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Boolean</span></td>
+        <td><p>true if instances are equal according to OrtCompareMemoryInfo.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_Equals_" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Equals*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_Equals_System_Object_" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.Equals(System.Object)">Equals(Object)</h4>
+  <div class="markdown level1 summary"><p>Overrides System.Object.Equals(object)</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override bool Equals(object obj)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Object</span></td>
+        <td><span class="parametername">obj</span></td>
+        <td><p>object to compare to</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Boolean</span></td>
+        <td><p>true if obj is an instance of OrtMemoryInfo and is equal to this</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_GetAllocatorType_" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetAllocatorType*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_GetAllocatorType" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetAllocatorType">GetAllocatorType()</h4>
+  <div class="markdown level1 summary"><p>Fetches allocator type from the underlying OrtAllocator</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public OrtAllocatorType GetAllocatorType()</code></pre>
+  </div>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtAllocatorType.html">OrtAllocatorType</a></td>
+        <td><p>Returns allocator type</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_GetHashCode_" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetHashCode*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_GetHashCode" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetHashCode">GetHashCode()</h4>
+  <div class="markdown level1 summary"><p>Overrides System.Object.GetHashCode()</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override int GetHashCode()</code></pre>
+  </div>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Int32</span></td>
+        <td><p>integer hash value</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_GetMemoryType_" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetMemoryType*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_GetMemoryType" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.GetMemoryType">GetMemoryType()</h4>
+  <div class="markdown level1 summary"><p>The below 2 are really properties but naming them is a challenge
+as names would conflict with the returned type. Also, there are native
+calls behind them so exposing them as Get() would be appropriate.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public OrtMemType GetMemoryType()</code></pre>
+  </div>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtMemType.html">OrtMemType</a></td>
+        <td><p>OrtMemoryType for the instance</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_ReleaseHandle_" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.ReleaseHandle*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_OrtMemoryInfo_ReleaseHandle" data-uid="Microsoft.ML.OnnxRuntime.OrtMemoryInfo.ReleaseHandle">ReleaseHandle()</h4>
+  <div class="markdown level1 summary"><p>Overrides SafeHandle.ReleaseHandle() to properly dispose of
+the native instance of OrtMmeoryInfo</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override bool ReleaseHandle()</code></pre>
+  </div>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Boolean</span></td>
+        <td><p>always returns true</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+</article>
+          </div>
+          
+          <div class="hidden-sm col-md-2" role="complementary">
+            <div class="sideaffix">
+              <div class="contribution">
+                <ul class="nav">
+                </ul>
+              </div>
+              <nav class="bs-docs-sidebar hidden-print hidden-xs hidden-sm affix" id="affix">
+                <h5>In This Article</h5>
+                <div></div>
+              </nav>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <footer>
+        <div class="grad-bottom"></div>
+        <div class="footer">
+          <div class="container">
+            <span class="pull-right">
+              <a href="#top">Back to top</a>
+            </span>
+          </div>
+        </div>
+      </footer>
+    </div>
+    
+    <script type="text/javascript" src="../styles/docfx.vendor.js"></script>
+    <script type="text/javascript" src="../styles/docfx.js"></script>
+    <script type="text/javascript" src="../styles/main.js"></script>
+  </body>
+</html>
