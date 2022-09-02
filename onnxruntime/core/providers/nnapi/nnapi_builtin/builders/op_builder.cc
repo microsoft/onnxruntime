@@ -128,7 +128,7 @@ static Status AddNnapiSqueeze(ModelBuilder& model_builder,
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
 
-  Shape input_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), input);
+  const auto& input_shape(shaper[input]);
   auto input_dims = input_shape.size();
   for (auto& axis : axes) {
     axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_dims));
@@ -157,7 +157,7 @@ static Status AddNnapiSqueeze(ModelBuilder& model_builder,
   input_indices.push_back(operand_indices.at(axes_name));  // axes
 
   // Shape inference calculation for squeeze
-  Shape input_dimen = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), input);
+  Shape input_dimen = shaper[input];
   int32_t input_size = static_cast<int32_t>(input_dimen.size());
   std::unordered_set<int32_t> axes_to_be_squeezed;
 
@@ -798,15 +798,12 @@ bool TransposeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
 
 Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& initializers(model_builder.GetInitializerTensors());
-  const auto& graph_viewer = model_builder.GetGraphViewer();
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
   NodeAttrHelper helper(node_unit);
   auto& shaper(model_builder.GetShaper());
-  const auto* input_node_arg = graph_viewer.GetNodeArg(input);
-  const auto* shape_proto = input_node_arg->Shape();
-  auto input_dims = static_cast<int32_t>(shape_proto->dim_size());
+  auto input_dims = static_cast<int32_t>(shaper[input].size());
   std::vector<int32_t> perm = helper.Get("perm", std::vector<int32_t>());
   if (perm.empty()) {
     for (int32_t i = input_dims - 1; i >= 0; i--)
@@ -962,6 +959,7 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
 }
 
 Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  auto& shaper(model_builder.GetShaper());
   const auto& initializers(model_builder.GetInitializerTensors());
   auto input = node_unit.Inputs()[0].node_arg.Name();
 
@@ -971,7 +969,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   const int64_t* raw_shape = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
   const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
 
-  Shape input_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), input);
+  Shape input_shape = shaper[input];
   std::vector<int32_t> shape(size);
   for (uint32_t i = 0; i < size; i++) {
     int32_t dim = SafeInt<int32_t>(raw_shape[i]);
@@ -1011,6 +1009,7 @@ void UnsqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, cons
 }
 
 Status UnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  auto& shaper(model_builder.GetShaper());
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
 
   // NNAPI does not support unsqueeze, here we utilize unsqueeze's axes input to compute output shape
@@ -1018,7 +1017,7 @@ Status UnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   std::vector<int32_t> axes;
   ORT_RETURN_IF_ERROR(GetAxesForSqueezeAndUnSqueeze(model_builder, node_unit, axes));
 
-  Shape input_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), input);
+  Shape input_shape = shaper[input];
   auto input_dims = input_shape.size();
   std::vector<int32_t> shape;
   const auto size = SafeInt<uint32_t>(input_dims + axes.size());  // "output rank"
@@ -1199,7 +1198,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   std::vector<int32_t> onnx_pads, onnx_strides, kernel_shape;
   bool use_auto_pad = false;
   int32_t nnapi_padding_code = ANEURALNETWORKS_PADDING_VALID;
-  Shape input_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), input);
+  Shape input_shape = shaper[input];
   if (is_average_pool || op_type == "MaxPool") {
     const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
     kernel_shape = helper.Get("kernel_shape", std::vector<int32_t>{0, 0});
@@ -1458,7 +1457,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
   bool use_auto_pad = false;
   int32_t nnapi_padding_code = ANEURALNETWORKS_PADDING_SAME;
-  Shape input_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), input);
+  Shape input_shape = shaper[input];
   const auto& kernel_shape = shaper[weight];
   const auto weight_size_y = kernel_shape[1];
   const auto weight_size_x = kernel_shape[2];
@@ -2417,8 +2416,9 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   int h_idx = use_nchw ? 2 : 1;
   int w_idx = use_nchw ? 3 : 2;
 
-  int32_t output_h = shaper[output][h_idx];
-  int32_t output_w = shaper[output][w_idx];
+  const auto& output_shape = shaper[output];
+  int32_t output_h = output_shape[h_idx];
+  int32_t output_w = output_shape[w_idx];
 
   InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
@@ -2441,7 +2441,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   }
 
   OperandType output_operand_type = operand_types.at(input);
-  output_operand_type.SetDimensions(shaper[output]);
+  output_operand_type.SetDimensions(output_shape);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(operationCode, input_indices,
                                                  {output}, {output_operand_type}));
 
@@ -2679,7 +2679,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& inputs = node_unit.Inputs();
-  Shape input_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), inputs[0].node_arg.Name());
+  Shape input_shape = shaper[inputs[0].node_arg.Name()];
   TensorShapeVector input_shape_64(input_shape.cbegin(), input_shape.cend());
   SliceOp::PrepareForComputeMetadata compute_metadata(input_shape_64);
 
@@ -2748,7 +2748,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   // No shape inference for Slice, everything is calculated here, we only need to add the output shape
   // to the shaper
   shaper.AddShape(output, nnapi_output_shape);
-  const OperandType output_operand_type(operand_types.at(input).type, nnapi_output_shape);
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
 
   InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
@@ -2856,7 +2856,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   // `pads` input
   // convert from [begin_1, begin_2, ..., end_1, end_2, ...] to [begin_1, end_1, begin_2, end_2, ...]
   // convert from int64_t to int32_t
-  Shape data_shape = GetShapeInfoFromNodeArg(model_builder.GetGraphViewer(), data);
+  Shape data_shape = shaper[data];
   const uint32_t data_rank = SafeInt<uint32_t>(data_shape.size());
 
   const auto& pads = inputs[1].node_arg.Name();
@@ -2917,6 +2917,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
 
   const OperandType output_operand_type{operand_types.at(data).type, shaper[output]};
   const auto op_code = ANEURALNETWORKS_PAD_V2;
+
   return model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type});
 }
 
