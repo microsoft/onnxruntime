@@ -246,9 +246,9 @@ int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dim
   size_t* p_dims = nullptr;
   void* p_string_data = nullptr;
 
-  ONNXType* TensorType;
-  RETURN_ERROR_CODE_IF_ERROR(GetValueType, tensor, TensorType);
-  if(*TensorType!=ONNX_TYPE_TENSOR) {
+  ONNXType tensor_type;
+  RETURN_ERROR_CODE_IF_ERROR(GetValueType, tensor, &tensor_type);
+  if(tensor_type!=ONNX_TYPE_TENSOR) {
     return ORT_FAIL;
   }
 
