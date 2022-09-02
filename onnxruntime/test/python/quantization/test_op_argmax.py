@@ -23,7 +23,7 @@ from op_test_utils import (
 import onnxruntime
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
-def check_fraction_correct(testcase, model_path_origin, model_path_to_check, inputs, tolerance=.05):
+def check_fraction_correct(testcase, model_path_origin, model_path_to_check, inputs, tolerance=0.05):
     sess_options = onnxruntime.SessionOptions()
     sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL  # TODO: ENABLE_ALL?
 
@@ -46,9 +46,9 @@ def check_fraction_correct(testcase, model_path_origin, model_path_to_check, inp
         output = target_results[idx]
         a = np.array(output)
         b = np.array(ref_output)
-        fraction_wrong = np.sum(a!=b) / (a.shape[0] * a.shape[1] * a.shape[2])
+        fraction_wrong = np.sum(a != b) / (a.shape[0] * a.shape[1] * a.shape[2])
         assert fraction_wrong < tolerance, (
-            "fraction incorrect ("+str(fraction_wrong)+") exceeds tolerance ("+str(tolerance)+")"
+            "fraction incorrect (" + str(fraction_wrong) + ") exceeds tolerance (" + str(tolerance) + ")"
         )
             
 
