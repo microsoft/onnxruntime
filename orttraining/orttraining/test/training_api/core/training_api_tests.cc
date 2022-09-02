@@ -121,7 +121,7 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   auto model = std::make_unique<onnxruntime::training::api::Module>(ToUTF8String(model_uri),
                                                                     state.module_checkpoint_state.named_parameters, session_option,
                                                                     *env, std::vector<std::shared_ptr<IExecutionProvider>>());
-  ASSERT_EQ(model->GetTrainModeOutputCount(), 1);
+  ASSERT_EQ(model->GetTrainingModelOutputCount(), 1);
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
   onnxruntime::training::api::utils::CreateInputOrtValue<int32_t>(

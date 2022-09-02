@@ -27,8 +27,10 @@
 #include "core/session/provider_bridge_ort.h"
 #include "core/util/math.h"
 #include "core/framework/sparse_utils.h"
-#include "core/common/string_helper.h"
 #include "core/graph/graph_proto_serializer.h"
+
+#include "core/session/onnxruntime_c_api.h"
+#include "core/common/string_helper.h"
 
 #ifdef ENABLE_TRAINING
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
