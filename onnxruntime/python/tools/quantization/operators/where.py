@@ -6,7 +6,6 @@ from .qdq_base_operator import QDQOperatorBase
 
 
 class QWhere(QuantOperatorBase):
-
     def should_quantize(self):
         return True
 
@@ -63,6 +62,9 @@ class QDQWhere(QDQOperatorBase):
             if not self.disable_qdq_for_node_output:
                 for output in node.output:
                     self.quantizer.quantize_tensor(output)
-        elif self.quantizer.is_tensor_quantized(node.input[1]) and self.quantizer.is_tensor_quantized(
-                node.input[2]) and not self.disable_qdq_for_node_output:
+        elif (
+            self.quantizer.is_tensor_quantized(node.input[1])
+            and self.quantizer.is_tensor_quantized(node.input[2])
+            and not self.disable_qdq_for_node_output
+        ):
             self.quantizer.quantize_tensor(output)
