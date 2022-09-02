@@ -224,17 +224,18 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   int k = input_hidden_size;
   int64_t size_of_attention_scores = ((int64_t)batch_size) * num_heads_ * sequence_length * sequence_length;
 
-  // union(transposed, context_layer),  union(stacked, attention probs, attention scores)
-  auto gemm_buffer_quantized = GetScratchBuffer<int8_t>(m * n / 3 * 4 + std::max((int64_t)m * n, 2 * size_of_attention_scores));
+  // transposed qkv_layer,  union(stacked, attention probs + attention scores)
+  auto gemm_buffer_quantized = GetScratchBuffer<int8_t>(m * n + std::max((int64_t)m * n, 2 * size_of_attention_scores));
 
   int8_t* stacked_qkv_layers = gemm_buffer_quantized.get() + ((int64_t)m * n);
   int8_t* tranposed_qkv_layers = gemm_buffer_quantized.get();
-  const int8_t* q_layer = tranposed_qkv_layers;
-  const int8_t* k_layer = tranposed_qkv_layers + ((int64_t)batch_size * sequence_length * hidden_size);
+  int8_t* q_layer = tranposed_qkv_layers;
+  int8_t* k_layer = tranposed_qkv_layers + ((int64_t)batch_size * sequence_length * hidden_size);
   int8_t* v_layer = tranposed_qkv_layers + ((int64_t)batch_size * sequence_length * hidden_size * 2);
+  int8_t* v_layer_T = q_layer;                                               // rewrite q_layer after qk matmul
   int8_t* attention_scores = stacked_qkv_layers + size_of_attention_scores;  // rewrite to stacked_qkv_layers after they are transposed
   int8_t* attention_probs = stacked_qkv_layers;                              // rewrite to stacked_qkv_layers after they are transposed
-  float* context_layer = (float*)gemm_buffer_quantized.get();                // rewrite q_layer after it is not used, it is float value
+  int8_t* context_layer = k_layer;                                           // rewrite k_layer after it is not used, it is float value
 
   // debug_print((const float*)merged_qkv_alpha_.get(), 3 * hidden_size, hidden_size, "merged_qkv_alpha");
   // debug_print((const float*)merged_qkv_bias_.get(), 3 * hidden_size, hidden_size, "merged_qkv_bias");
@@ -271,21 +272,21 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
                       batch_size, num_heads_, sequence_length);
   // debug_print(attention_probs, size_of_attention_scores, sequence_length, "attention_probs");
 
-  float beta = 0.0f;
+  // Transpose v_layer from BxNxSxH to NxNxHxS to use tensor core int8 matmul
+  QOrderBatchTransposeInt8Matrix(stream, device_prop, batch_size * num_heads_, sequence_length, head_size, v_layer, v_layer_T);
+
   const float context_layer_alpha = static_cast<float>((double)*scale_attn_probs_data * const_scale_qkv_layer_[2] / *scale_output_data);
-  CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedEx(CublasHandle(), CUBLAS_OP_N, CUBLAS_OP_N,
-                                                    head_size, sequence_length, sequence_length, &context_layer_alpha,
-                                                    v_layer, CUDA_R_8I, head_size, sequence_length * head_size,
-                                                    attention_probs, CUDA_R_8I, sequence_length, sequence_length * sequence_length,
-                                                    &beta, context_layer, CUDA_R_32F, head_size, sequence_length * head_size,
-                                                    batch_size * num_heads_,
-                                                    CUBLAS_COMPUTE_32F,
-                                                    CUBLAS_GEMM_DEFAULT));
+  ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
+                                      batch_size * num_heads_, sequence_length, head_size, sequence_length,
+                                      &context_layer_alpha, attention_probs, v_layer_T, batch_size * num_heads_,
+                                      nullptr, nullptr, nullptr, 1, context_layer,
+                                      CUBLASLT_ORDER_COL));
   // debug_print(context_layer, batch_size * sequence_length * hidden_size, head_size, "context_layer");
 
-  // from BxNxSxH float, transpose to output BxSxNxH, and convert to int8
-  LaunchTransCtxNarrowCast(stream, device_prop, batch_size, sequence_length, num_heads_, head_size,
-                           context_layer, output->MutableData<int8_t>());
+  // scratch3 is BxNxSxH, transpose to output BxSxNxH
+  LaunchTransCtx(stream, sequence_length, batch_size, head_size / 4, num_heads_, device_prop.maxThreadsPerBlock,
+                 false, (const float*)context_layer, (float*)output->MutableData<int8_t>());
+
   // debug_print(output->Data<int8_t>(), batch_size * sequence_length * hidden_size, hidden_size, "output");
 
   LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();

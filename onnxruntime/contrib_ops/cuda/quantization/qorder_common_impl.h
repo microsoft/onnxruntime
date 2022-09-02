@@ -91,6 +91,9 @@ void LaunchTransCtxNarrowCast(cudaStream_t stream, const cudaDeviceProp& device_
                               const int batch_size, const int sequence_length, const int num_heads, const int head_size,
                               const float* input, int8_t* output);
 
+void QOrderBatchTransposeInt8Matrix(cudaStream_t stream, const cudaDeviceProp& device_prop,
+                                    const int batch_size, const int rows, const int cols,
+                                    const int8_t* input, int8_t* output);
 
 }  // namespace cuda
 }  // namespace contrib
