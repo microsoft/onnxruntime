@@ -202,3 +202,41 @@ def _load_bart_model():
     }
 
     return model, model_desc
+
+
+def assert_all_states_close_ort(state_dict_pre_checkpoint, state_dict_post_checkpoint, reshape_states=False):
+    """Assert that the two ORTTrainer (hierarchical) state dictionaries are very close for all states"""
+
+    assert ("model" in state_dict_pre_checkpoint) == ("model" in state_dict_post_checkpoint)
+    assert ("optimizer" in state_dict_pre_checkpoint) == ("optimizer" in state_dict_post_checkpoint)
+
+    if "model" in state_dict_pre_checkpoint:
+        for model_state_key in state_dict_pre_checkpoint["model"]["full_precision"]:
+            if reshape_states:
+                assert_allclose(
+                    state_dict_pre_checkpoint["model"]["full_precision"][model_state_key],
+                    state_dict_post_checkpoint["model"]["full_precision"][model_state_key].reshape(
+                        state_dict_pre_checkpoint["model"]["full_precision"][model_state_key].shape
+                    ),
+                )
+            else:
+                assert_allclose(
+                    state_dict_pre_checkpoint["model"]["full_precision"][model_state_key],
+                    state_dict_post_checkpoint["model"]["full_precision"][model_state_key],
+                )
+
+    if "optimizer" in state_dict_pre_checkpoint:
+        for model_state_key in state_dict_pre_checkpoint["optimizer"]:
+            for optimizer_state_key in state_dict_pre_checkpoint["optimizer"][model_state_key]:
+                if reshape_states:
+                    assert_allclose(
+                        state_dict_pre_checkpoint["optimizer"][model_state_key][optimizer_state_key],
+                        state_dict_post_checkpoint["optimizer"][model_state_key][optimizer_state_key].reshape(
+                            state_dict_pre_checkpoint["optimizer"][model_state_key][optimizer_state_key].shape
+                        ),
+                    )
+                else:
+                    assert_allclose(
+                        state_dict_pre_checkpoint["optimizer"][model_state_key][optimizer_state_key],
+                        state_dict_post_checkpoint["optimizer"][model_state_key][optimizer_state_key],
+                    )
