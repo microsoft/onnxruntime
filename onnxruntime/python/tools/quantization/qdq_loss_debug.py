@@ -343,12 +343,10 @@ def compute_signal_to_quantization_noice_ratio(
     left = numpy.concatenate(xlist).flatten()
     right = numpy.concatenate(ylist).flatten()
 
-    tensor_norm = numpy.linalg.norm(left)
-    diff_norm = numpy.linalg.norm(left - right)
-    min_val =  numpy.finfo("float").eps * 2
+    epsilon = numpy.finfo("float").eps
+    tensor_norm = max(numpy.linalg.norm(left), epsilon)
+    diff_norm = max(numpy.linalg.norm(left - right), epsilon)
     res = tensor_norm / diff_norm
-    res = max(min_val, res)
-
     return 20 * math.log10(res)
 
 
