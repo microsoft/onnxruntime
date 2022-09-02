@@ -6,23 +6,32 @@ from .qdq_base_operator import QDQOperatorBase
 
 
 class QWhere(QuantOperatorBase):
-    def quantize(self):
 
+    def should_quantize(self):
+        return True
+
+    def quantize(self):
         node = self.node
+        if not self.quantizer.force_quantize_no_input_check:
+            self.quantizer.new_nodes += [node]
+            return
+
         (
             quantized_input_names,
             zero_point_name,
             scale_name,
             nodes,
         ) = self.quantizer.quantize_inputs(node, [1, 2])
+
+        assert node.op_type == "Where"
         if quantized_input_names is None:
             return super().quantize()
-        quantized_output_name = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
+        quantized_output_names = [node.output[0] + TENSOR_NAME_QUANT_SUFFIX]
         q_output = QuantizedValue(
             node.output[0],
-            quantized_output_name,
-            scale_name,
-            zero_point_name,
+            quantized_output_names[0],
+            scale_name[0],
+            zero_point_name[0],
             QuantizedValueType.Input,
         )
         self.quantizer.quantized_value_map[node.output[0]] = q_output
@@ -33,12 +42,10 @@ class QWhere(QuantOperatorBase):
         kwargs = {}
         for attribute in node.attribute:
             kwargs.update(attribute_to_kwarg(attribute))
-
-        quantized_input_names = quantized_input_names.extend(node.input[1:])
+        input_names = [node.input[0], quantized_input_names[0], quantized_input_names[1]]
         quantized_node = onnx.helper.make_node(
-            node.op_type, quantized_input_names, quantized_output_name, quantized_node_name, **kwargs
+            node.op_type, input_names, quantized_output_names, quantized_node_name, **kwargs
         )
-
         nodes.append(quantized_node)
         self.quantizer.new_nodes += nodes
 
@@ -47,10 +54,15 @@ class QDQWhere(QDQOperatorBase):
     def quantize(self):
         node = self.node
         assert node.op_type == "Where"
-        if not self.quantizer.is_tensor_quantized(node.input[1]):
-            self.quantizer.quantize_tensor(node.input[1])
-        if not self.quantizer.is_tensor_quantized(node.input[2]):
-            self.quantizer.quantize_tensor(node.input[2])
-        if not self.disable_qdq_for_node_output:
-            for output in node.output:
-                self.quantizer.quantize_tensor(output)
+        if self.quantizer.force_quantize_no_input_check:
+
+            if not self.quantizer.is_tensor_quantized(node.input[1]):
+                self.quantizer.quantize_tensor(node.input[1])
+            if not self.quantizer.is_tensor_quantized(node.input[2]):
+                self.quantizer.quantize_tensor(node.input[2])
+            if not self.disable_qdq_for_node_output:
+                for output in node.output:
+                    self.quantizer.quantize_tensor(output)
+        elif self.quantizer.is_tensor_quantized(node.input[1]) and self.quantizer.is_tensor_quantized(
+                node.input[2]) and not self.disable_qdq_for_node_output:
+            self.quantizer.quantize_tensor(output)

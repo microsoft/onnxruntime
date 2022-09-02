@@ -40,6 +40,7 @@ class TestWhereModel(unittest.TestCase):
             "Where",
             inputs=["condition", "x", "y"],
             outputs=["z"],
+            name="where_node",
         )
 
         graph = helper.make_graph(
@@ -83,8 +84,8 @@ class TestWhereModel(unittest.TestCase):
         )
         qnode_counts = {
             "Where": 1,
-            "QuantizeLinear": 0,
-            "DequantizeLinear": 0,
+            "QuantizeLinear": 2,
+            "DequantizeLinear": 1,
         }
         check_op_type_count(self, model_uint8_path, **qnode_counts)
         qnode_io_qtypes = {
@@ -125,15 +126,8 @@ class TestWhereModel(unittest.TestCase):
         check_model_correctness(self, model_fp32_path, model_uint8_qdq_path, data_reader.get_next())
 
     def test_quantize_where_u8u8(self):
-        self.quantize_where_test(QuantType.QUInt8, QuantType.QUInt8, extra_options={})
+        self.quantize_where_test(QuantType.QUInt8, QuantType.QUInt8, extra_options={"ForceQuantizeNoInputCheck": True})
         print(__name__)
-
-    def test_quantize_concat_s8s8(self):
-        self.quantize_where_test(
-            QuantType.QInt8,
-            QuantType.QInt8,
-            extra_options={"ActivationSymmetric": True},
-        )
 
 
 if __name__ == "__main__":
