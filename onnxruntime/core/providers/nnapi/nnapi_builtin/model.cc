@@ -61,7 +61,7 @@ const android::nn::wrapper::OperandType& Model::GetInputType(const std::string& 
   return operand_types_.at(name);
 }
 
-android::nn::wrapper::OperandType Model::GetOutputType(const std::string& name, const Execution& execution) const {
+android::nn::wrapper::OperandType Model::GetOutputType(const std::string& name, Execution& execution) const {
   const auto& nnapi_output_name = onnx_to_nnapi_output_map_.at(name);
   const auto& output_type = operand_types_.at(nnapi_output_name);
   android::nn::wrapper::OperandType type(

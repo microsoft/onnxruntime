@@ -71,7 +71,7 @@ class Model {
   // Returns the data type and dimension of the given input/output
   // Please note the output type will have updated dimensions
   const android::nn::wrapper::OperandType& GetInputType(const std::string& name) const;
-  android::nn::wrapper::OperandType GetOutputType(const std::string& name, const Execution& execution) const;
+  android::nn::wrapper::OperandType GetOutputType(const std::string& name, Execution& execution) const;
 
   // Set the mapping between input/output name and ORT kernel context
   // input/output index, at execution time
@@ -173,7 +173,7 @@ class Execution {
   Execution(const Execution&) = delete;
   Execution& operator=(const Execution&) = delete;
 
-  const Shaper& GetShaper() const { return shaper_; }
+  Shaper& GetShaper() { return shaper_; }
 
   // Set the input/output data buffers
   // These need to be called before calling Predict()

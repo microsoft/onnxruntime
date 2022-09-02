@@ -26,7 +26,12 @@ class Shaper {
 
   void AddShape(const std::string& name, const Shape& shape);
 
-  inline const Shape& operator[](const std::string& key) const {
+  inline const Shape& operator[](const std::string& key) {
+    if (shape_map_.find(key) != shape_map_.end()) {
+      return shape_map_.at(key);
+    }
+    const auto& shape = GetShapeInfoFromNodeArg(*graph_viewer_, key);
+    shape_map_.insert(std::make_pair(key, shape));
     return shape_map_.at(key);
   }
 
