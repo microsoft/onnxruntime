@@ -509,7 +509,6 @@ typedef struct OrtMIGraphXProviderOptions {
   int migraphx_int8_enable;  // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
 } OrtMIGraphXProviderOptions;
 
-
 /** \brief OpenVINO Provider Options
 *
 * \see OrtApi::SessionOptionsAppendExecutionProvider_OpenVINO

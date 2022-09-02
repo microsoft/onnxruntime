@@ -510,21 +510,20 @@ Status Conv::Compute(OpKernelContext* context) const {
   xnn_status status = xnn_status_invalid_state;
   if (conv_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_setup_convolution2d_nhwc_f32(op0_.get(), N, H, W, X.Data<float>(), Y->MutableData<float>(),
-                                              nullptr /*threadpool*/);  // TBD: how to handle threading
+                                              t_pool /*threadpool*/);  // TBD: how to handle threading
   } else if (conv_type_ == OpComputeType::op_compute_type_qs8) {
     status = xnn_setup_convolution2d_nhwc_qs8(op0_.get(), N, H, W, X.Data<int8_t>(), Y->MutableData<int8_t>(),
-                                              nullptr /*threadpool*/);  // TBD: how to handle threading
+                                              t_pool /*threadpool*/);  // TBD: how to handle threading
   } else if (conv_type_ == OpComputeType::op_compute_type_qu8) {
     status = xnn_setup_convolution2d_nhwc_qu8(op0_.get(), N, H, W, X.Data<uint8_t>(), Y->MutableData<uint8_t>(),
-                                              nullptr /*threadpool*/);  // TBD: how to handle threading
+                                              t_pool /*threadpool*/);  // TBD: how to handle threading
   } else if (conv_type_ == OpComputeType::op_compute_type_qs8_per_channel) {
     status = xnn_setup_convolution2d_nhwc_qc8(op0_.get(), N, H, W, X.Data<int8_t>(), Y->MutableData<int8_t>(),
-                                              nullptr /*threadpool*/);  // TBD: how to handle threading
+                                              t_pool /*threadpool*/);  // TBD: how to handle threading
   }
 
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_convolution2d_nhwc_",
-                           OpTypeToString(conv_type_), "returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_convolution2d_nhwc_f32 returned ", status);
   }
 
   status = xnn_run_operator(op0_.get(), t_pool);

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -86,8 +87,12 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
 using namespace xnnpack;
 
-XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& /*info*/)
+XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
     : IExecutionProvider{kXnnpackExecutionProvider, true} {
+  if (info.xnn_thread_pool_size > 1) {
+      xnnpack_thread_pool_.reset(
+          pthreadpool_create(static_cast<size_t>(info.xnn_thread_pool_size )));
+  }
 }
 
 // implement RegisterAllocator to test/validate sharing the CPU EP's allocator
