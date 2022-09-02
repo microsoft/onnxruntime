@@ -67,8 +67,8 @@ class TestWhereModel(unittest.TestCase):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_uint8_path = f"where_{}{}.onnx".format(activation_type_str, weight_type_str)
-        model_uint8_qdq_path = f"where_{}{}_qdq.onnx".format(activation_type_str, weight_type_str)
+        model_uint8_path = f"where_{activation_type_str}{weight_type_str}.onnx"
+        model_uint8_qdq_path = f"where_{activation_type_str}{weight_type_str}_qdq.onnx"
 
         # Verify QOperator mode
         data_reader.rewind()
