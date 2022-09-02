@@ -13,11 +13,37 @@
 namespace onnxruntime {
 // placeholder for future use. no options currently
 struct XnnpackExecutionProviderInfo {
+  int xnn_thread_pool_size;
   XnnpackExecutionProviderInfo() = default;
 
-  XnnpackExecutionProviderInfo(const ProviderOptions&) {
-    // future: parse ProviderOptions
+  XnnpackExecutionProviderInfo(const ProviderOptions&){
+      // future: parse ProviderOptions
+  };
+};
+
+class XnnpackThreadPool {
+ public:
+  XnnpackThreadPool() = default;
+
+  void InitializeWithPoolSize(int64_t num_threads) {
+#if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
+    if (num_threads > 1) {
+      threadpool_.reset(
+          pthreadpool_create(static_cast<size_t>(num_threads)));
+    }
+    printf("%zd\n", pthreadpool_get_threads_count(threadpool_.get()));
+#endif
   }
+  pthreadpool_t Get() {
+    return threadpool_.get();
+  }
+
+ private:
+#if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
+  // Thread pool with smart-pointer for lifetime management.
+  std::unique_ptr<pthreadpool, decltype(&pthreadpool_destroy)> threadpool_{
+      nullptr, &pthreadpool_destroy};
+#endif
 };
 
 class XnnpackExecutionProvider : public IExecutionProvider {

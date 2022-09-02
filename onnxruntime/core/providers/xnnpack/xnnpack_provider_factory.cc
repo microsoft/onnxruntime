@@ -14,10 +14,9 @@ struct XnnpackProviderFactory : IExecutionProviderFactory {
       : info_{provider_options} {
   }
 
-std::unique_ptr<IExecutionProvider> XnnpackProviderFactory::CreateProvider(const SessionOptions* options) {
-  info_.xnn_thread_pool_size = options->intra_op_param.thread_pool_size;
-  return std::make_unique<XnnpackExecutionProvider>(info_);
-}
+  std::unique_ptr<IExecutionProvider> CreateProvider() {
+    return std::make_unique<XnnpackExecutionProvider>(info_);
+  }
 
  private:
   XnnpackExecutionProviderInfo info_;
