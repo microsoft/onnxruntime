@@ -423,7 +423,7 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const 
 static std::pair<COMPARE_RESULT, std::string> CompareTensorOrtValueAndTensorTypeProto(const ONNX_NAMESPACE::TypeProto_Tensor& t,
                                                                                       const Ort::Value& o) {
   // below code doesn't work
-  //if (((TensorTypeBase*)o.Type())->GetElementType() != DataTypeImpl::ElementTypeFromProto(t.elem_type())) {
+  // if (((TensorTypeBase*)o.Type())->GetElementType() != DataTypeImpl::ElementTypeFromProto(t.elem_type())) {
   //	return COMPARE_RESULT::TYPE_MISMATCH;
   //}
 
@@ -445,7 +445,7 @@ static std::pair<COMPARE_RESULT, std::string> CompareTensorOrtValueAndTensorType
     if (tensor_shape_proto.dim_size() == 0) {
       oss << "(unknown)";
     } else {
-      oss << tensor_shape_proto;
+      oss << utils::GetTensorShapeFromTensorShapeProto(tensor_shape_proto);
     }
     oss << "', real output is ";
     VectorToString(shape, oss);

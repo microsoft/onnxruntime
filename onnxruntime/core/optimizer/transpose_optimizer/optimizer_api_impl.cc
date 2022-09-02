@@ -244,11 +244,13 @@ void ApiValueInfo::UnsqueezeDims(const std::vector<int64_t>& axes) {
 
 // <ApiTensor>
 std::vector<int64_t> ApiTensor::Shape() const {
-  return utils::GetTensorShapeFromTensorProto(tensor_proto_);
+  TensorShape shape = utils::GetTensorShapeFromTensorProto(tensor_proto_);
+  const auto dims = shape.GetDims();
+  return std::vector<int64_t>{dims.cbegin(), dims.cend()};
 }
 
 size_t ApiTensor::NumElements() const {
-  int64_t size = TensorShape(utils::GetTensorShapeFromTensorProto(tensor_proto_)).Size();
+  int64_t size = utils::GetTensorShapeFromTensorProto(tensor_proto_).Size();
   ORT_ENFORCE(size >= 0, "Failed to get size of TensorProto");
   return gsl::narrow_cast<size_t>(size);
 }

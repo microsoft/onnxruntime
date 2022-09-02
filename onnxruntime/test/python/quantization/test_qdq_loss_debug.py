@@ -21,6 +21,8 @@ from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 from onnxruntime.quantization.calibrate import CalibrationDataReader
 from onnxruntime.quantization.qdq_loss_debug import (
     collect_activations,
+    compute_activation_error,
+    compute_weight_error,
     create_activation_matching,
     create_weight_matching,
     modify_model_output_intermediate_tensors,
@@ -177,6 +179,7 @@ class TestSaveActivations(unittest.TestCase):
             reduce_range=False,
             activation_type=QuantType.QInt8,
             weight_type=QuantType.QInt8,
+            optimize_model=False,
         )
 
         data_reader.rewind()
@@ -204,6 +207,19 @@ class TestSaveActivations(unittest.TestCase):
 
         self.assertFalse(compare_dict.get("Conv1Out"))
 
+        activations_error = compute_activation_error(compare_dict)
+        for tensor_name in tensor_names:
+            self.assertGreater(
+                activations_error[tensor_name]["xmodel_err"],
+                0.01,
+                f"{tensor_name} cross model error {activations_error[tensor_name]['xmodel_err']} exceeds threashold.",
+            )
+            self.assertGreater(
+                activations_error[tensor_name]["qdq_err"],
+                0.01,
+                f"{tensor_name} qdq error {activations_error[tensor_name]['qdq_err']} exceeds threashold.",
+            )
+
     def test_create_weight_matching(self):
         # Setup: create float model:
         float_model_path = str(Path(self._tmp_model_dir.name) / "float_model3.onnx")
@@ -221,6 +237,7 @@ class TestSaveActivations(unittest.TestCase):
             reduce_range=False,
             activation_type=QuantType.QInt8,
             weight_type=QuantType.QInt8,
+            optimize_model=False,
         )
 
         # Call function under test and verify all weights are present
@@ -230,6 +247,14 @@ class TestSaveActivations(unittest.TestCase):
             float_array = matched_weights[weight_name]["float"]
             dq_array = matched_weights[weight_name]["dequantized"]
             self.assertEqual(float_array.shape, dq_array.shape)
+
+        weights_error = compute_weight_error(matched_weights)
+        for weight_name in weight_names:
+            self.assertGreater(
+                weights_error[weight_name],
+                0.1,
+                f"{weight_name} quantization error {weights_error[weight_name]} too big!",
+            )
 
     def test_create_weight_matching_per_channel(self):
 
@@ -282,6 +307,7 @@ class TestSaveActivations(unittest.TestCase):
             reduce_range=False,
             activation_type=QuantType.QInt8,
             weight_type=QuantType.QInt8,
+            optimize_model=False,
         )
 
         # Call function under test and verify all weights are present

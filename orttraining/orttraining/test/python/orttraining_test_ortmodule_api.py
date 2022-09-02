@@ -3758,7 +3758,7 @@ def test_primitive_inputs(bool_argument, int_argument, float_argument):
     input1 = torch.randn(N, D_in, device=device)
     pt_out = pt_model(input1, bool_argument, int_argument, float_argument)
     ort_out = ort_model(input1, bool_argument, int_argument, float_argument)
-    _test_helpers.assert_values_are_close(pt_out, ort_out)
+    _test_helpers.assert_values_are_close(pt_out, ort_out, rtol=1e-03, atol=1e-04)
 
 
 @pytest.mark.parametrize("bool_arguments", [(True, False), (False, True)])

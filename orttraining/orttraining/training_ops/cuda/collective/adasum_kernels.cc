@@ -36,7 +36,7 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
 
   for (int i = 0; i < num_tensors; ++i) {
     const Tensor* x_tensor = context->Input<Tensor>(i);
-    CUDA_CALL(cudaMemcpyAsync((uint8_t*)data_buffer_ptr.get() + tensor_offsets[i], x_tensor->DataRaw(),
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync((uint8_t*)data_buffer_ptr.get() + tensor_offsets[i], x_tensor->DataRaw(),
                               tensor_sizes[i], cudaMemcpyDeviceToHost, Stream()));
   }
 
@@ -52,7 +52,7 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
 
   for (int i = 0; i < num_tensors; i++) {
     Tensor* y_tensor = context->Output(i, context->Input<Tensor>(i)->Shape());
-    CUDA_CALL(cudaMemcpyAsync(y_tensor->MutableDataRaw(), (uint8_t*)data_buffer + tensor_offsets[i],
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(y_tensor->MutableDataRaw(), (uint8_t*)data_buffer + tensor_offsets[i],
                               tensor_sizes[i], cudaMemcpyHostToDevice, Stream()));
   }
   return Status::OK();

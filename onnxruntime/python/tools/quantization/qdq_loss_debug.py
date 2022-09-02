@@ -40,9 +40,10 @@ is a list of tensors, one from each model run
 """
 
 import logging
+import math
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Union
+from typing import Callable, Dict, List, Optional, Sequence, Union
 
 import numpy
 import onnx
@@ -102,7 +103,7 @@ def modify_model_output_intermediate_tensors(
             name=reshape_output,
         )
         model.graph.node.append(reshape_node)
-        reshape_output_value_info = helper.make_tensor_value_info(reshape_output, TensorProto.FLOAT, [1])
+        reshape_output_value_info = helper.make_tensor_value_info(reshape_output, TensorProto.FLOAT, [-1])
         model.graph.output.append(reshape_output_value_info)
     return model
 
@@ -143,8 +144,8 @@ def collect_activations(
     intermediate_outputs = []
     for input_d in input_reader:
         intermediate_outputs.append(inference_session.run(None, input_d))
-        if not intermediate_outputs:
-            raise RuntimeError("No data is collected while running augmented model!")
+    if not intermediate_outputs:
+        raise RuntimeError("No data is collected while running augmented model!")
 
     output_dict = {}
     output_info = inference_session.get_outputs()
@@ -276,8 +277,8 @@ def create_weight_matching(float_model_path: str, qdq_model_path: str) -> Dict[s
         Dict for comparing weight tensors. E.g.
         ```
         qdq_weight_cmp = create_weight_matching(float_model, qdq_model)
-        print(qdq_weight_cmp['activation1']['float'][0])
-        print(qdq_weight_cmp['activation1']['dequantized'][0])
+        print(qdq_weight_cmp['activation1']['float'])
+        print(qdq_weight_cmp['activation1']['dequantized'])
         ```
     """
     float_onnx_model = ONNXModel(load_model(Path(float_model_path), need_optimize=False))
@@ -323,3 +324,52 @@ def create_weight_matching(float_model_path: str, qdq_model_path: str) -> Dict[s
         matched_weights[weight_name] = {"float": weight_float, "dequantized": weight_quant}
 
     return matched_weights
+
+
+def compute_signal_to_quantization_noice_ratio(
+    x: Union[Sequence[numpy.ndarray], numpy.ndarray], y: Union[Sequence[numpy.ndarray], numpy.ndarray]
+) -> float:
+    if isinstance(x, numpy.ndarray):
+        xlist = [x]
+    else:
+        xlist = x
+    if isinstance(y, numpy.ndarray):
+        ylist = [y]
+    else:
+        ylist = y
+    if len(xlist) != len(ylist):
+        raise RuntimeError("Unequal number of tensors to compare!")
+
+    left = numpy.concatenate(xlist).flatten()
+    right = numpy.concatenate(ylist).flatten()
+
+    Ps = numpy.linalg.norm(left)
+    Pn = numpy.linalg.norm(left - right) + numpy.finfo("float").eps
+    return 20 * math.log10(Ps / Pn)
+
+
+def compute_weight_error(
+    weights_match: Dict[str, Dict[str, numpy.ndarray]],
+    err_func: Callable[[numpy.ndarray, numpy.ndarray], float] = compute_signal_to_quantization_noice_ratio,
+) -> Dict[str, float]:
+    result: Dict[str, float] = {}
+    for weight_name, weight_match in weights_match.items():
+        result[weight_name] = err_func(weight_match["float"], weight_match["dequantized"])
+    return result
+
+
+def compute_activation_error(
+    activations_match: Dict[str, Dict[str, Sequence[numpy.ndarray]]],
+    err_func: Callable[
+        [Sequence[numpy.ndarray], Sequence[numpy.ndarray]], float
+    ] = compute_signal_to_quantization_noice_ratio,
+) -> Dict[str, Dict[str, float]]:
+    result: Dict[str, Dict[str, float]] = {}
+    for name, match in activations_match.items():
+        err_result: Dict[str, float] = {}
+        err_result["qdq_err"] = err_func(match["pre_qdq"], match["post_qdq"])
+        float_activation = match["float"]
+        if float_activation:
+            err_result["xmodel_err"] = err_func(float_activation, match["post_qdq"])
+        result[name] = err_result
+    return result

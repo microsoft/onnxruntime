@@ -1,0 +1,100 @@
+### YamlMime:TableOfContent
+- uid: Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  items:
+  - uid: Microsoft.ML.OnnxRuntime.CoreMLFlags
+    name: CoreMLFlags
+  - uid: Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue
+    name: DisposableNamedOnnxValue
+  - uid: Microsoft.ML.OnnxRuntime.ExecutionMode
+    name: ExecutionMode
+  - uid: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+    name: FixedBufferOnnxValue
+  - uid: Microsoft.ML.OnnxRuntime.GraphOptimizationLevel
+    name: GraphOptimizationLevel
+  - uid: Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection`1
+    name: IDisposableReadOnlyCollection<T>
+    name.vb: IDisposableReadOnlyCollection(Of T)
+  - uid: Microsoft.ML.OnnxRuntime.InferenceSession
+    name: InferenceSession
+  - uid: Microsoft.ML.OnnxRuntime.LogLevel
+    name: LogLevel
+  - uid: Microsoft.ML.OnnxRuntime.ModelMetadata
+    name: ModelMetadata
+  - uid: Microsoft.ML.OnnxRuntime.NamedOnnxValue
+    name: NamedOnnxValue
+  - uid: Microsoft.ML.OnnxRuntime.NnapiFlags
+    name: NnapiFlags
+  - uid: Microsoft.ML.OnnxRuntime.NodeMetadata
+    name: NodeMetadata
+  - uid: Microsoft.ML.OnnxRuntime.OnnxRuntimeException
+    name: OnnxRuntimeException
+  - uid: Microsoft.ML.OnnxRuntime.OnnxValueType
+    name: OnnxValueType
+  - uid: Microsoft.ML.OnnxRuntime.OrtAllocator
+    name: OrtAllocator
+  - uid: Microsoft.ML.OnnxRuntime.OrtAllocatorType
+    name: OrtAllocatorType
+  - uid: Microsoft.ML.OnnxRuntime.OrtApi
+    name: OrtApi
+  - uid: Microsoft.ML.OnnxRuntime.OrtApiBase
+    name: OrtApiBase
+  - uid: Microsoft.ML.OnnxRuntime.OrtArenaCfg
+    name: OrtArenaCfg
+  - uid: Microsoft.ML.OnnxRuntime.OrtCUDAProviderOptions
+    name: OrtCUDAProviderOptions
+  - uid: Microsoft.ML.OnnxRuntime.OrtEnv
+    name: OrtEnv
+  - uid: Microsoft.ML.OnnxRuntime.OrtExternalAllocation
+    name: OrtExternalAllocation
+  - uid: Microsoft.ML.OnnxRuntime.OrtIoBinding
+    name: OrtIoBinding
+  - uid: Microsoft.ML.OnnxRuntime.OrtLanguageProjection
+    name: OrtLanguageProjection
+  - uid: Microsoft.ML.OnnxRuntime.OrtLoggingLevel
+    name: OrtLoggingLevel
+  - uid: Microsoft.ML.OnnxRuntime.OrtMemoryAllocation
+    name: OrtMemoryAllocation
+  - uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+    name: OrtMemoryInfo
+  - uid: Microsoft.ML.OnnxRuntime.OrtMemType
+    name: OrtMemType
+  - uid: Microsoft.ML.OnnxRuntime.OrtTensorRTProviderOptions
+    name: OrtTensorRTProviderOptions
+  - uid: Microsoft.ML.OnnxRuntime.OrtValue
+    name: OrtValue
+  - uid: Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer
+    name: PrePackedWeightsContainer
+  - uid: Microsoft.ML.OnnxRuntime.ProviderOptionsValueHelper
+    name: ProviderOptionsValueHelper
+  - uid: Microsoft.ML.OnnxRuntime.RunOptions
+    name: RunOptions
+  - uid: Microsoft.ML.OnnxRuntime.SessionOptions
+    name: SessionOptions
+  - uid: Microsoft.ML.OnnxRuntime.SessionOptionsContainer
+    name: SessionOptionsContainer
+- uid: Microsoft.ML.OnnxRuntime.Tensors
+  name: Microsoft.ML.OnnxRuntime.Tensors
+  items:
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions
+    name: ArrayTensorExtensions
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.BFloat16
+    name: BFloat16
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1
+    name: DenseTensor<T>
+    name.vb: DenseTensor(Of T)
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.Float16
+    name: Float16
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+    name: Tensor
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+    name: Tensor<T>
+    name.vb: Tensor(Of T)
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.TensorBase
+    name: TensorBase
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+    name: TensorElementType
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementTypeInfo
+    name: TensorElementTypeInfo
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.TensorTypeInfo
+    name: TensorTypeInfo

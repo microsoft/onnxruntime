@@ -1,0 +1,686 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.SessionOptionsContainer
+  commentId: T:Microsoft.ML.OnnxRuntime.SessionOptionsContainer
+  id: SessionOptionsContainer
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration(Microsoft.ML.OnnxRuntime.SessionOptions,System.String,System.Boolean)
+  - Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Create(System.String,System.Boolean)
+  - Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Register(System.Action{Microsoft.ML.OnnxRuntime.SessionOptions})
+  - Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Register(System.String,System.Action{Microsoft.ML.OnnxRuntime.SessionOptions})
+  - Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Reset
+  langs:
+  - csharp
+  - vb
+  name: SessionOptionsContainer
+  nameWithType: SessionOptionsContainer
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptionsContainer
+  type: Class
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptionsContainer.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: SessionOptionsContainer
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptionsContainer.shared.cs
+    startLine: 11
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nHelper to allow the creation/addition of session options based on pre-defined named entries.\n"
+  example: []
+  syntax:
+    content: public static class SessionOptionsContainer
+    content.vb: Public Module SessionOptionsContainer
+  inheritance:
+  - System.Object
+  inheritedMembers:
+  - System.Object.Equals(System.Object)
+  - System.Object.Equals(System.Object,System.Object)
+  - System.Object.GetHashCode
+  - System.Object.GetType
+  - System.Object.MemberwiseClone
+  - System.Object.ReferenceEquals(System.Object,System.Object)
+  - System.Object.ToString
+  modifiers.csharp:
+  - public
+  - static
+  - class
+  modifiers.vb:
+  - Public
+  - Module
+- uid: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Register(System.Action{Microsoft.ML.OnnxRuntime.SessionOptions})
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Register(System.Action{Microsoft.ML.OnnxRuntime.SessionOptions})
+  id: Register(System.Action{Microsoft.ML.OnnxRuntime.SessionOptions})
+  parent: Microsoft.ML.OnnxRuntime.SessionOptionsContainer
+  langs:
+  - csharp
+  - vb
+  name: Register(Action<SessionOptions>)
+  nameWithType: SessionOptionsContainer.Register(Action<SessionOptions>)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Register(System.Action<Microsoft.ML.OnnxRuntime.SessionOptions>)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptionsContainer.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Register
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptionsContainer.shared.cs
+    startLine: 28
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nRegister the default handler. This is used when a configuration name is not provided.\n"
+  example: []
+  syntax:
+    content: public static void Register(Action<SessionOptions> defaultHandler)
+    parameters:
+    - id: defaultHandler
+      type: System.Action{Microsoft.ML.OnnxRuntime.SessionOptions}
+      description: >
+        Handler that applies the default settings to a SessionOptions instance.
+    content.vb: Public Shared Sub Register(defaultHandler As Action(Of SessionOptions))
+  overload: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Register*
+  nameWithType.vb: SessionOptionsContainer.Register(Action(Of SessionOptions))
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+  fullName.vb: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Register(System.Action(Of Microsoft.ML.OnnxRuntime.SessionOptions))
+  name.vb: Register(Action(Of SessionOptions))
+- uid: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Register(System.String,System.Action{Microsoft.ML.OnnxRuntime.SessionOptions})
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Register(System.String,System.Action{Microsoft.ML.OnnxRuntime.SessionOptions})
+  id: Register(System.String,System.Action{Microsoft.ML.OnnxRuntime.SessionOptions})
+  parent: Microsoft.ML.OnnxRuntime.SessionOptionsContainer
+  langs:
+  - csharp
+  - vb
+  name: Register(String, Action<SessionOptions>)
+  nameWithType: SessionOptionsContainer.Register(String, Action<SessionOptions>)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Register(System.String, System.Action<Microsoft.ML.OnnxRuntime.SessionOptions>)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptionsContainer.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Register
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptionsContainer.shared.cs
+    startLine: 38
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nRegister a named handler.\n"
+  example: []
+  syntax:
+    content: public static void Register(string configuration, Action<SessionOptions> handler)
+    parameters:
+    - id: configuration
+      type: System.String
+      description: Configuration name.
+    - id: handler
+      type: System.Action{Microsoft.ML.OnnxRuntime.SessionOptions}
+      description: "\nHandler that applies the settings for the configuration to a SessionOptions instance.\n"
+    content.vb: Public Shared Sub Register(configuration As String, handler As Action(Of SessionOptions))
+  overload: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Register*
+  nameWithType.vb: SessionOptionsContainer.Register(String, Action(Of SessionOptions))
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+  fullName.vb: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Register(System.String, System.Action(Of Microsoft.ML.OnnxRuntime.SessionOptions))
+  name.vb: Register(String, Action(Of SessionOptions))
+- uid: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Create(System.String,System.Boolean)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Create(System.String,System.Boolean)
+  id: Create(System.String,System.Boolean)
+  parent: Microsoft.ML.OnnxRuntime.SessionOptionsContainer
+  langs:
+  - csharp
+  - vb
+  name: Create(String, Boolean)
+  nameWithType: SessionOptionsContainer.Create(String, Boolean)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Create(System.String, System.Boolean)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptionsContainer.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Create
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptionsContainer.shared.cs
+    startLine: 52
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nCreate a SessionOptions instance with configuration applied.\n"
+  example: []
+  syntax:
+    content: public static SessionOptions Create(string configuration = null, bool useDefaultAsFallback = true)
+    parameters:
+    - id: configuration
+      type: System.String
+      description: "\nConfiguration to use. \nIf not provided, the default set of session options will be applied if useDefaultAsFallback is true.\n"
+    - id: useDefaultAsFallback
+      type: System.Boolean
+      description: "\nIf configuration is not provided or not found, use the default session options.\n"
+    return:
+      type: Microsoft.ML.OnnxRuntime.SessionOptions
+      description: SessionOptions with configuration applied.
+    content.vb: Public Shared Function Create(configuration As String = Nothing, useDefaultAsFallback As Boolean = True) As SessionOptions
+  overload: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Create*
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+- uid: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Reset
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Reset
+  id: Reset
+  parent: Microsoft.ML.OnnxRuntime.SessionOptionsContainer
+  langs:
+  - csharp
+  - vb
+  name: Reset()
+  nameWithType: SessionOptionsContainer.Reset()
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Reset()
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptionsContainer.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Reset
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptionsContainer.shared.cs
+    startLine: 58
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nReset by removing all registered handlers.\n"
+  example: []
+  syntax:
+    content: public static void Reset()
+    content.vb: Public Shared Sub Reset
+  overload: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Reset*
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+- uid: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration(Microsoft.ML.OnnxRuntime.SessionOptions,System.String,System.Boolean)
+  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration(Microsoft.ML.OnnxRuntime.SessionOptions,System.String,System.Boolean)
+  id: ApplyConfiguration(Microsoft.ML.OnnxRuntime.SessionOptions,System.String,System.Boolean)
+  isExtensionMethod: true
+  parent: Microsoft.ML.OnnxRuntime.SessionOptionsContainer
+  langs:
+  - csharp
+  - vb
+  name: ApplyConfiguration(SessionOptions, String, Boolean)
+  nameWithType: SessionOptionsContainer.ApplyConfiguration(SessionOptions, String, Boolean)
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration(Microsoft.ML.OnnxRuntime.SessionOptions, System.String, System.Boolean)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/SessionOptionsContainer.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: ApplyConfiguration
+    path: ../src/Microsoft.ML.OnnxRuntime/SessionOptionsContainer.shared.cs
+    startLine: 73
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nApply a configuration to a SessionOptions instance.\n"
+  example: []
+  syntax:
+    content: public static SessionOptions ApplyConfiguration(this SessionOptions options, string configuration = null, bool useDefaultAsFallback = true)
+    parameters:
+    - id: options
+      type: Microsoft.ML.OnnxRuntime.SessionOptions
+      description: SessionOptions to apply configuration to.
+    - id: configuration
+      type: System.String
+      description: Configuration to use.
+    - id: useDefaultAsFallback
+      type: System.Boolean
+      description: "\nUse the default configuration if &apos;configuration&apos; is not provided or not found.\n"
+    return:
+      type: Microsoft.ML.OnnxRuntime.SessionOptions
+      description: Updated SessionOptions instance.
+    content.vb: >-
+      <ExtensionAttribute>
+
+      Public Shared Function ApplyConfiguration(options As SessionOptions, configuration As String = Nothing, useDefaultAsFallback As Boolean = True) As SessionOptions
+  overload: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration*
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: System.Object
+  commentId: T:System.Object
+  parent: System
+  isExternal: true
+  name: Object
+  nameWithType: Object
+  fullName: System.Object
+- uid: System.Object.Equals(System.Object)
+  commentId: M:System.Object.Equals(System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object)
+  nameWithType: Object.Equals(Object)
+  fullName: System.Object.Equals(System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.Equals(System.Object,System.Object)
+  commentId: M:System.Object.Equals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object, Object)
+  nameWithType: Object.Equals(Object, Object)
+  fullName: System.Object.Equals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetHashCode
+  commentId: M:System.Object.GetHashCode
+  parent: System.Object
+  isExternal: true
+  name: GetHashCode()
+  nameWithType: Object.GetHashCode()
+  fullName: System.Object.GetHashCode()
+  spec.csharp:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetType
+  commentId: M:System.Object.GetType
+  parent: System.Object
+  isExternal: true
+  name: GetType()
+  nameWithType: Object.GetType()
+  fullName: System.Object.GetType()
+  spec.csharp:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.MemberwiseClone
+  commentId: M:System.Object.MemberwiseClone
+  parent: System.Object
+  isExternal: true
+  name: MemberwiseClone()
+  nameWithType: Object.MemberwiseClone()
+  fullName: System.Object.MemberwiseClone()
+  spec.csharp:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ReferenceEquals(System.Object,System.Object)
+  commentId: M:System.Object.ReferenceEquals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: ReferenceEquals(Object, Object)
+  nameWithType: Object.ReferenceEquals(Object, Object)
+  fullName: System.Object.ReferenceEquals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ToString
+  commentId: M:System.Object.ToString
+  parent: System.Object
+  isExternal: true
+  name: ToString()
+  nameWithType: Object.ToString()
+  fullName: System.Object.ToString()
+  spec.csharp:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System
+  commentId: N:System
+  isExternal: true
+  name: System
+  nameWithType: System
+  fullName: System
+- uid: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Register*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Register
+  name: Register
+  nameWithType: SessionOptionsContainer.Register
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Register
+- uid: System.Action{Microsoft.ML.OnnxRuntime.SessionOptions}
+  commentId: T:System.Action{Microsoft.ML.OnnxRuntime.SessionOptions}
+  parent: System
+  definition: System.Action`1
+  name: Action<SessionOptions>
+  nameWithType: Action<SessionOptions>
+  fullName: System.Action<Microsoft.ML.OnnxRuntime.SessionOptions>
+  nameWithType.vb: Action(Of SessionOptions)
+  fullName.vb: System.Action(Of Microsoft.ML.OnnxRuntime.SessionOptions)
+  name.vb: Action(Of SessionOptions)
+  spec.csharp:
+  - uid: System.Action`1
+    name: Action
+    nameWithType: Action
+    fullName: System.Action
+    isExternal: true
+  - name: <
+    nameWithType: <
+    fullName: <
+  - uid: Microsoft.ML.OnnxRuntime.SessionOptions
+    name: SessionOptions
+    nameWithType: SessionOptions
+    fullName: Microsoft.ML.OnnxRuntime.SessionOptions
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: System.Action`1
+    name: Action
+    nameWithType: Action
+    fullName: System.Action
+    isExternal: true
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - uid: Microsoft.ML.OnnxRuntime.SessionOptions
+    name: SessionOptions
+    nameWithType: SessionOptions
+    fullName: Microsoft.ML.OnnxRuntime.SessionOptions
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Action`1
+  commentId: T:System.Action`1
+  isExternal: true
+  name: Action<T>
+  nameWithType: Action<T>
+  fullName: System.Action<T>
+  nameWithType.vb: Action(Of T)
+  fullName.vb: System.Action(Of T)
+  name.vb: Action(Of T)
+  spec.csharp:
+  - uid: System.Action`1
+    name: Action
+    nameWithType: Action
+    fullName: System.Action
+    isExternal: true
+  - name: <
+    nameWithType: <
+    fullName: <
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: System.Action`1
+    name: Action
+    nameWithType: Action
+    fullName: System.Action
+    isExternal: true
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.String
+  commentId: T:System.String
+  parent: System
+  isExternal: true
+  name: String
+  nameWithType: String
+  fullName: System.String
+- uid: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Create*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Create
+  name: Create
+  nameWithType: SessionOptionsContainer.Create
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Create
+- uid: System.Boolean
+  commentId: T:System.Boolean
+  parent: System
+  isExternal: true
+  name: Boolean
+  nameWithType: Boolean
+  fullName: System.Boolean
+- uid: Microsoft.ML.OnnxRuntime.SessionOptions
+  commentId: T:Microsoft.ML.OnnxRuntime.SessionOptions
+  parent: Microsoft.ML.OnnxRuntime
+  name: SessionOptions
+  nameWithType: SessionOptions
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptions
+- uid: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Reset*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Reset
+  name: Reset
+  nameWithType: SessionOptionsContainer.Reset
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.Reset
+- uid: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration
+  name: ApplyConfiguration
+  nameWithType: SessionOptionsContainer.ApplyConfiguration
+  fullName: Microsoft.ML.OnnxRuntime.SessionOptionsContainer.ApplyConfiguration

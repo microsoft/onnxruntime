@@ -17,7 +17,7 @@ jobs:
 
   # generated from tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
   container:
-    image: onnxruntimecibuildenvironment.azurecr.io/rocm-ci-pipeline-env:rocm5.2
+    image: onnxruntimecibuildenvironment.azurecr.io/rocm-ci-pipeline-env:rocm5.2.3
     endpoint: onnxruntimecibuildenvironmentforamd
     options: --privileged -e HIP_VISIBLE_DEVICES --security-opt seccomp=unconfined --shm-size=1024m --device=/dev/kfd --device=/dev/dri  --group-add $(video) --group-add $(render)
 
@@ -52,7 +52,7 @@ jobs:
         --enable_training_torch_interop \
         --mpi_home /opt/ompi \
         --use_rocm \
-        --rocm_version=5.2 \
+        --rocm_version=5.2.3 \
         --rocm_home /opt/rocm \
         --nccl_home /opt/rocm \
         --update \
@@ -106,7 +106,7 @@ jobs:
           --skip_memory_metrics
         python ../../orttraining/tools/ci_test/compare_huggingface.py \
           ci-pipeline-actual.json \
-          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bert-large-rocm5.2.json
+          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bert-large-rocm5.2.3.json
     displayName: 'Run Python Hugging-Face BERT-L test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
@@ -135,7 +135,7 @@ jobs:
           --skip_memory_metrics
         python ../../orttraining/tools/ci_test/compare_huggingface.py \
           ci-pipeline-actual.json \
-          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.gpt2-rocm5.2.json
+          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.gpt2-rocm5.2.3.json
     displayName: 'Run Python Hugging-Face GPT2 test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
@@ -218,7 +218,7 @@ jobs:
           --skip_memory_metrics
         python ../../orttraining/tools/ci_test/compare_huggingface.py \
           ci-pipeline-actual.json \
-          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.distilbert-base-rocm5.2.json
+          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.distilbert-base-rocm5.2.3.json
     displayName: 'Run Python Hugging-Face DistilBERT test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed

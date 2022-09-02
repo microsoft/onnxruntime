@@ -188,4 +188,8 @@ inline std::ostream& operator<<(std::ostream& out, const Status& status) {
 }
 
 }  // namespace common
+
+// make Status directly available in the onnxruntime namespace as it is widely used
+using common::Status;
+
 }  // namespace onnxruntime

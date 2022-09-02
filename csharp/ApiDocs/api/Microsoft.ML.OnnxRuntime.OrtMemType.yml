@@ -1,0 +1,180 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.OrtMemType
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtMemType
+  id: OrtMemType
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.OrtMemType.Cpu
+  - Microsoft.ML.OnnxRuntime.OrtMemType.CpuInput
+  - Microsoft.ML.OnnxRuntime.OrtMemType.CpuOutput
+  - Microsoft.ML.OnnxRuntime.OrtMemType.Default
+  langs:
+  - csharp
+  - vb
+  name: OrtMemType
+  nameWithType: OrtMemType
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemType
+  type: Enum
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: OrtMemType
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 22
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nSee documentation for OrtMemType in C API\n"
+  example: []
+  syntax:
+    content: public enum OrtMemType
+    content.vb: Public Enum OrtMemType
+  modifiers.csharp:
+  - public
+  - enum
+  modifiers.vb:
+  - Public
+  - Enum
+- uid: Microsoft.ML.OnnxRuntime.OrtMemType.CpuInput
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtMemType.CpuInput
+  id: CpuInput
+  parent: Microsoft.ML.OnnxRuntime.OrtMemType
+  langs:
+  - csharp
+  - vb
+  name: CpuInput
+  nameWithType: OrtMemType.CpuInput
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemType.CpuInput
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: CpuInput
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 24
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: CpuInput = -2
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtMemType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.OrtMemType.CpuOutput
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtMemType.CpuOutput
+  id: CpuOutput
+  parent: Microsoft.ML.OnnxRuntime.OrtMemType
+  langs:
+  - csharp
+  - vb
+  name: CpuOutput
+  nameWithType: OrtMemType.CpuOutput
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemType.CpuOutput
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: CpuOutput
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 25
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: CpuOutput = -1
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtMemType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.OrtMemType.Cpu
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtMemType.Cpu
+  id: Cpu
+  parent: Microsoft.ML.OnnxRuntime.OrtMemType
+  langs:
+  - csharp
+  - vb
+  name: Cpu
+  nameWithType: OrtMemType.Cpu
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemType.Cpu
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Cpu
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 26
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: Cpu = -1
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtMemType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+- uid: Microsoft.ML.OnnxRuntime.OrtMemType.Default
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtMemType.Default
+  id: Default
+  parent: Microsoft.ML.OnnxRuntime.OrtMemType
+  langs:
+  - csharp
+  - vb
+  name: Default
+  nameWithType: OrtMemType.Default
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemType.Default
+  type: Field
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Default
+    path: ../src/Microsoft.ML.OnnxRuntime/OrtAllocator.shared.cs
+    startLine: 27
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: Default = 0
+    return:
+      type: Microsoft.ML.OnnxRuntime.OrtMemType
+  modifiers.csharp:
+  - public
+  - const
+  modifiers.vb:
+  - Public
+  - Const
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: Microsoft.ML.OnnxRuntime.OrtMemType
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtMemType
+  parent: Microsoft.ML.OnnxRuntime
+  name: OrtMemType
+  nameWithType: OrtMemType
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemType
