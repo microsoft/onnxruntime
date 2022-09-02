@@ -265,29 +265,29 @@ class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {
 
 class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
  public:
-  TriggerDownstreamStep(NotificationIndex notification_index) : SequentialExecutionPlan::ExecutionStep(),
-                                                                notification_idx(notification_index),
-                                                                func_([](NotificationIndex notification_index, void* ctx, size_t /*stream_idx*/, bool& continue_flag) {
-                                                                  ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
-                                                                  ScheduleDownstream(*execution_context, notification_index, execution_context->SingleThreadMode());
-                                                                  continue_flag = true;
-                                                                  return Status::OK();
-                                                                }) {
+  TriggerDownstreamStep(size_t trigger_point_index) : SequentialExecutionPlan::ExecutionStep(),
+                                                      trigger_point_index(trigger_point_index),
+                                                      func_([](size_t trigger, void* ctx, size_t /*stream_idx*/, bool& continue_flag) {
+                                                        ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
+                                                        ScheduleDownstream(*execution_context, trigger, execution_context->SingleThreadMode());
+                                                        continue_flag = true;
+                                                        return Status::OK();
+                                                      }) {
   }
 
   StepCommandFn GetStepFun() override {
-    return std::bind(func_, notification_idx, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    return std::bind(func_, trigger_point_index, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
   }
 
   virtual std::string Dump() const override {
     std::stringstream ss;
-    ss << "TriggerDownstreamStep: trigger downstream of notification: " << notification_idx << ". ";
+    ss << "TriggerDownstreamStep: trigger downstream of trigger point: " << trigger_point_index << ". ";
     return ss.str();
   }
 
  private:
-  NotificationIndex notification_idx;
-  std::function<Status(NotificationIndex notification_idx, void* ctx, size_t stream_idx, bool& continue_flag)> func_;
+  size_t trigger_point_index;
+  std::function<Status(size_t trigger_point_index, void* ctx, size_t stream_idx, bool& continue_flag)> func_;
 };
 
 class PlannerImpl {
@@ -1936,81 +1936,57 @@ class PlannerImpl {
         execution_plan.emplace_back(nullptr);
       }
     }
-    // 2. for each node, if any of its consumer partitioned to another stream, generate a notification
+    // 2. determing following things:
+    //    a. which node need to generate notification
+    //    b. which node need to trigger downstream
+    size_t num_trigger_points = 0;
+    InlinedHashMap<NodeIndex, size_t> node_to_trigger_points;
     size_t num_notifications = 0;
     InlinedHashMap<NodeIndex, NotificationIndex> node_to_notification;
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-          if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()) {
-            node_to_notification[node_index] = num_notifications++;
+          // if the output node is not in the same stream, generate a trigger point
+          if (node_stream_map_[it->Index()] != i) {
+            node_to_trigger_points[node_index] = num_trigger_points;
+            num_trigger_points++;
             break;
           }
         }
       }
     }
-    // if any node outputs sit on non-device memory, and its consumer is in the same stream
-    // we also need to generate a notification.
-    // for example, in stream A we have:
-    //  ..., MemCpyToHost(...host_data_ptr), ....., Reshape(...., host_data_ptr)
-    // Before launch Reshape kernel, we need to make sure the MemCpyToHost is done.
-    // So we need to make the stream A like:
-    // ..., MemCpyToHost(...host_data_ptr), Activate(N1), ....., Wait(N1), Reshape(...., host_data_ptr)
-    // key: the consumer of non-device tensor
-    // value: the list of in-stream notification indices that current nodes depends on.
-    InlinedHashMap<NodeIndex, InlinedVector<NotificationIndex>> in_stream_sync_nodes_to_notification;
-    InlinedHashSet<NotificationIndex> no_down_stream_notifications;
-    // TODO: for current ORT, the only possibility of this In-Stream wait is wait on CPU tensors.
-    // Need to fix it in the future if we have other cases.
-    const OrtDevice::DeviceType non_device_type = OrtDevice::CPU;
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
-
-        onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
-        const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
-        auto& node_device_mem_location = ep->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info();
-
-        InlinedHashSet<const Node*> producers;
-        for (auto* input : node->InputDefs()) {
-          if (!input->Exists())
-            continue;
-          OrtValueIndex input_arg_idx;
-          ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(input->Name(), input_arg_idx));
-          if (plan_.allocation_plan[input_arg_idx].location.device != node_device_mem_location.device) {
-            ORT_ENFORCE(plan_.allocation_plan[input_arg_idx].location.device.Type() == OrtDevice::CPU);
-            const Node* producer;
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-            producer = graph_viewer_.GetProducerNode(input->Name());
-#else
-            // minimal build does not have GetProducerNode, so we manually loop the graph to find the producer.
-            for (auto& n : graph_viewer_.Nodes()) {
-              for (auto* node_input : n.InputDefs()) {
-                if (node_input->Name() == input->Name()) {
-                  producer = &n;
-                  break;
+        for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+          bool requires_notification = false;
+          // !! special case, Shape op's output is ready for all the EPs, so don't need notification
+          if (node->OpType() != "Shape") {
+            for (auto* output : node->OutputDefs()) {
+              if (output->Exists()) {
+                if (std::find(it->InputDefs().begin(), it->InputDefs().end(), output) != it->InputDefs().end()) {
+                  OrtValueIndex output_arg_idx;
+                  ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(output->Name(), output_arg_idx));
+                  // there are two cases we need notification:
+                  // 1. the consumer is not in the same stream
+                  // 2. the consumer is in the same stream(non-cpu device), but it consumer a CPU tensor from an non-shape op.
+                  //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
+                  //    in this case, the FIFO can't gurantee the cpu tensor is ready when resize kernel is launching
+                  if (node_stream_map_[it->Index()] != i ||
+                      (node_stream_map_[it->Index()] == i &&
+                       execution_plan[i]->device_.Type() != OrtDevice::CPU &&
+                       plan_.allocation_plan[output_arg_idx].location.device.Type() == OrtDevice::CPU)) {
+                    requires_notification = true;
+                    break;
+                  }
                 }
               }
             }
-#endif
-            // whether producer in the same stream
-            if (producer && std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), producer->Index()) != stream_nodes_[i].end()) {
-              producers.insert(producer);
-            }
           }
-        }
-        if (!producers.empty()) {
-          for (auto* producer : producers) {
-            auto it = node_to_notification.find(producer->Index());
-            if (it != node_to_notification.end()) {
-              // the producer already have a notification
-              in_stream_sync_nodes_to_notification[node_index].push_back(it->second);
-            } else {
-              node_to_notification[producer->Index()] = num_notifications;
-              no_down_stream_notifications.insert(num_notifications);
-              in_stream_sync_nodes_to_notification[node_index].push_back(num_notifications++);
-            }
+          if (requires_notification) {
+            node_to_notification[node_index] = num_notifications;
+            num_notifications++;
           }
         }
       }
@@ -2044,67 +2020,53 @@ class PlannerImpl {
           // add dependency for current logic stream
           dependence_graph_[node_index].insert(stream_nodes_[i][j - 1]);
         }
-        // auto cur_stream_idx = node_stream_map_[node_index];
-        //  check if any producer is not in current stream, if yes, create a wait
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
+          //  check whether we need to add barrier
           if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()) {
-            // find the notificaiton id
-            auto notfication_it = node_to_notification.find(it->Index());
-            ORT_ENFORCE(notfication_it != node_to_notification.end());
-            NotificationIndex notification_index = notfication_it->second;
+            // find the trigger_point_id
+            auto trigger_point_it = node_to_trigger_points.find(it->Index());
+            ORT_ENFORCE(trigger_point_it != node_to_trigger_points.end());
+            size_t trigger_point_index = trigger_point_it->second;
             // push a barrier
             size_t barrier_id = plan_.num_barriers++;
-            plan_.downstream_map[notification_index].push_back({i,
-                                                                static_cast<int>(execution_plan[i]->steps_.size())});
+            plan_.downstream_map[trigger_point_index].push_back({i,
+                                                                 static_cast<int>(execution_plan[i]->steps_.size())});
             execution_plan[i]->steps_.emplace_back(std::make_unique<BarrierStep>(barrier_id));
 #ifdef ENABLE_TRAINING
             // keep node index first, will turn it to pc index later
             execution_plan[i]->step_pc.push_back(node_index);
 #endif
-            // collect the inputs arguments from input node.
-            // if the arguments are on same cpu device, then don't need to wait on notification
-            // barrier is enough
-            bool require_wait = false;
-            for (auto* input : node->InputDefs()) {
-              if (!input->Exists())
-                continue;
-              if (std::find(it->OutputDefs().begin(), it->OutputDefs().end(), input) != it->OutputDefs().end() &&
-                  // for the case when we wait on a cpu tensor generated from device kernel (for example, shape kernel)
-                  // we don't need to wait on notificaiton.
-                  (plan_.allocation_plan[Index(input->Name())].location.device != plan_.execution_plan[i]->device_ ||
-                   plan_.allocation_plan[Index(input->Name())].location.device.Type() != OrtDevice::CPU)) {
-                require_wait = true;
-                break;
-              }
-            }
-            if (require_wait) {
-              // push a wait command if has EP registered it.
-              auto wait_handle = stream_handle_registry.GetWaitHandle(
-                  execution_plan[plan_.notification_owners[notfication_it->second]]->device_.Type(),
-                  execution_plan[i]->device_.Type());
-              if (wait_handle) {
-                execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_index));
-#ifdef ENABLE_TRAINING
-                execution_plan[i]->step_pc.push_back(node_index);
-#endif
-              }
-            }
           }
-        }
-        // wait for in_stream notification if any
-        auto in_stream_notificaiton_it = in_stream_sync_nodes_to_notification.find(node->Index());
-        if (in_stream_notificaiton_it != in_stream_sync_nodes_to_notification.end()) {
-          for (auto& notification_idx : in_stream_notificaiton_it->second) {
-            // we don't need barrier for in-stream wait
-            auto wait_handle = stream_handle_registry.GetWaitHandle(
-                execution_plan[plan_.notification_owners[notification_idx]]->device_.Type(),
-                non_device_type);
-            if (wait_handle) {
-              execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_idx));
+          // check whether we need to wait on notification
+          auto notification_it = node_to_notification.find(it->Index());
+          if (notification_it != node_to_notification.end()) {
+            // push a wait command if has EP registered it.
+            // find which tensor we consumed to decide which wait handle to use
+            // if there are multiple tensors consumed on different devices, need to wait on all of them
+            // for example, if a cuda kernel A produce a cpu tensor C and a gpu tensor C', cuda kernel B
+            // depends on both C and C', we need to wait on both GPU and CPU.
+            InlinedHashSet<OrtDevice::DeviceType> devices_to_wait_on;
+            for (auto* inputs : node->InputDefs()) {
+              if (inputs->Exists()) {
+                if (std::find(it->OutputDefs().begin(), it->OutputDefs().end(), inputs) != it->OutputDefs().end()) {
+                  OrtValueIndex input_arg_idx;
+                  ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(inputs->Name(), input_arg_idx));
+                  auto& consumer_device = plan_.allocation_plan[input_arg_idx].location.device;
+                  if (devices_to_wait_on.find(consumer_device.Type()) == devices_to_wait_on.end()) {
+                    auto wait_handle = stream_handle_registry.GetWaitHandle(
+                        execution_plan[plan_.notification_owners[notification_it->second]]->device_.Type(),
+                        consumer_device.Type());
+                    if (wait_handle) {
+                      execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_it->second));
 #ifdef ENABLE_TRAINING
-              execution_plan[i]->step_pc.push_back(node_index);
+                      execution_plan[i]->step_pc.push_back(node_index);
 #endif
+                    }
+                    devices_to_wait_on.insert(consumer_device.Type());
+                  }
+                }
+              }
             }
           }
         }
@@ -2124,27 +2086,18 @@ class PlannerImpl {
           NotificationIndex notification_index = notification_it->second;
           execution_plan[i]->steps_.emplace_back(std::make_unique<ActivateNotificationStep>(notification_index));
 #ifdef ENABLE_TRAINING
-          // calculate the min consmer;
-          // auto& order = graph_viewer_.GetNodesInTopologicalOrder();
-          // size_t distance = graph_viewer_.NumberOfNodes();
-          // for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-          //   auto order_it = std::find(order.begin(), order.end(), it->Index());
-          //   size_t cur_distance = std::distance(order.begin(), order_it);
-          //   distance = std::min(distance, cur_distance);
-          // }
-          // // if node doesn't have any consumer, use the current node index
-          // auto consumer_index = distance < order.size() ? order[distance] : node_index;
-          // // set the notification step as the triggering part of next node.
           execution_plan[i]->step_pc.push_back(node_index);
 #endif
-          if (no_down_stream_notifications.find(notification_index) == no_down_stream_notifications.end()) {
-            // notify downstreams
-            execution_plan[i]->steps_.emplace_back(std::make_unique<TriggerDownstreamStep>(notification_index));
+        }
+        // check if any trigger point generated by this node, if yes, push a trigger
+        auto trigger_point_it = node_to_trigger_points.find(node_index);
+        if (trigger_point_it != node_to_trigger_points.end()) {
+          // notify downstreams
+          execution_plan[i]->steps_.emplace_back(std::make_unique<TriggerDownstreamStep>(trigger_point_it->second));
 #ifdef ENABLE_TRAINING
-            // set the notification step as the triggering part of next node.
-            execution_plan[i]->step_pc.push_back(node_index);
+          // set the notification step as the triggering part of next node.
+          execution_plan[i]->step_pc.push_back(node_index);
 #endif
-          }
         }
       }
     }
@@ -2263,7 +2216,8 @@ class PlannerImpl {
     return Status::OK();
   }
 
-  static bool IsNonTensor(const onnxruntime::NodeArg& nodearg) {
+  static bool
+  IsNonTensor(const onnxruntime::NodeArg& nodearg) {
     // TODO: unclear why we should go through a string-representation of type
     auto ptype = nodearg.Type();
     auto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(ptype);
@@ -2277,7 +2231,7 @@ class PlannerImpl {
   }
 #endif
 
-  // For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
+// For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   void AdjustInplaceLifeIntervals() {
     InlinedHashMap<OrtValueIndex, std::vector<OrtValueIndex>> inplace_reuse_buffer;
