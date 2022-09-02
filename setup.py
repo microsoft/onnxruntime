@@ -518,17 +518,17 @@ if enable_training:
         # To support the package consisting of both openvino and training modules part of it
         package_name = "onnxruntime-training"
 
-    # we want put default training packages to pypi. pypi does not accept package with a local version.
-    if not default_training_package_device or nightly_build:
-        if cuda_version:
-            # removing '.' to make Cuda version number in the same form as Pytorch.
-            local_version = "+cu" + cuda_version.replace(".", "")
-        elif rocm_version:
-            # removing '.' to make Rocm version number in the same form as Pytorch.
-            local_version = "+rocm" + rocm_version.replace(".", "")
-        else:
-            # cpu version for documentation
-            local_version = "+cpu"
+        # we want put default training packages to pypi. pypi does not accept package with a local version.
+        if not default_training_package_device or nightly_build:
+            if cuda_version:
+                # removing '.' to make Cuda version number in the same form as Pytorch.
+                local_version = "+cu" + cuda_version.replace(".", "")
+            elif rocm_version:
+                # removing '.' to make Rocm version number in the same form as Pytorch.
+                local_version = "+rocm" + rocm_version.replace(".", "")
+            else:
+                # cpu version for documentation
+                local_version = "+cpu"
 
 if package_name == "onnxruntime-nuphar":
     packages += ["onnxruntime.nuphar"]
