@@ -1,0 +1,728 @@
+﻿<!DOCTYPE html>
+<!--[if IE]><![endif]-->
+<html>
+  
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <title>Class DenseTensor&lt;T&gt;
+   </title>
+    <meta name="viewport" content="width=device-width">
+    <meta name="title" content="Class DenseTensor&lt;T&gt;
+   ">
+    <meta name="generator" content="docfx 2.59.3.0">
+    
+    <link rel="shortcut icon" href="../favicon.ico">
+    <link rel="stylesheet" href="../styles/docfx.vendor.css">
+    <link rel="stylesheet" href="../styles/docfx.css">
+    <link rel="stylesheet" href="../styles/main.css">
+    <meta property="docfx:navrel" content="../toc.html">
+    <meta property="docfx:tocrel" content="toc.html">
+    
+    
+    
+  </head>
+  <body data-spy="scroll" data-target="#affix" data-offset="120">
+    <div id="wrapper">
+      <header>
+        
+        <nav id="autocollapse" class="navbar navbar-inverse ng-scope" role="navigation">
+          <div class="container">
+            <div class="navbar-header">
+              <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+              </button>
+              
+              <a class="navbar-brand" href="../index.html">
+                <img id="logo" class="svg" src="../logo.svg" alt="">
+              </a>
+            </div>
+            <div class="collapse navbar-collapse" id="navbar">
+              <form class="navbar-form navbar-right" role="search" id="search">
+                <div class="form-group">
+                  <input type="text" class="form-control" id="search-query" placeholder="Search" autocomplete="off">
+                </div>
+              </form>
+            </div>
+          </div>
+        </nav>
+        
+        <div class="subnav navbar navbar-default">
+          <div class="container hide-when-search" id="breadcrumb">
+            <ul class="breadcrumb">
+              <li></li>
+            </ul>
+          </div>
+        </div>
+      </header>
+      <div role="main" class="container body-content hide-when-search">
+        
+        <div class="sidenav hide-when-search">
+          <a class="btn toc-toggle collapse" data-toggle="collapse" href="#sidetoggle" aria-expanded="false" aria-controls="sidetoggle">Show / Hide Table of Contents</a>
+          <div class="sidetoggle collapse" id="sidetoggle">
+            <div id="sidetoc"></div>
+          </div>
+        </div>
+        <div class="article row grid-right">
+          <div class="col-md-10">
+            <article class="content wrap" id="_content" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1">
+  
+  
+  <h1 id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1" class="text-break">Class DenseTensor&lt;T&gt;
+  </h1>
+  <div class="markdown level0 summary"><p>Represents a multi-dimensional collection of objects of type T that can be accessed by indices.<br>
+DenseTensor stores values in a contiguous sequential block of memory where all values are represented.</p>
+</div>
+  <div class="markdown level0 conceptual"></div>
+  <div class="inheritance">
+    <h5>Inheritance</h5>
+    <div class="level0"><span class="xref">System.Object</span></div>
+    <div class="level1"><a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.TensorBase.html">TensorBase</a></div>
+    <div class="level2"><a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html">Tensor</a>&lt;T&gt;</div>
+    <div class="level3"><span class="xref">DenseTensor&lt;T&gt;</span></div>
+  </div>
+  <div class="implements">
+    <h5>Implements</h5>
+    <div><span class="xref">IList</span></div>
+    <div><span class="xref">IList</span>&lt;T&gt;</div>
+    <div><span class="xref">IReadOnlyList</span>&lt;T&gt;</div>
+    <div><span class="xref">IStructuralComparable</span></div>
+    <div><span class="xref">IStructuralEquatable</span></div>
+  </div>
+  <div class="inheritedMembers">
+    <h5>Inherited Members</h5>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_Length">Tensor&lt;T&gt;.Length</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_Rank">Tensor&lt;T&gt;.Rank</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_IsReversedStride">Tensor&lt;T&gt;.IsReversedStride</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_Dimensions">Tensor&lt;T&gt;.Dimensions</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_Strides">Tensor&lt;T&gt;.Strides</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_Fill__0_">Tensor&lt;T&gt;.Fill(T)</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_CloneEmpty">Tensor&lt;T&gt;.CloneEmpty()</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_CloneEmpty_ReadOnlySpan_System_Int32__">Tensor&lt;T&gt;.CloneEmpty(ReadOnlySpan&lt;Int32&gt;)</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_CloneEmpty__1">Tensor&lt;T&gt;.CloneEmpty&lt;TResult&gt;()</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_GetDiagonal">Tensor&lt;T&gt;.GetDiagonal()</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_GetDiagonal_System_Int32_">Tensor&lt;T&gt;.GetDiagonal(Int32)</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_GetTriangle">Tensor&lt;T&gt;.GetTriangle()</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_GetTriangle_System_Int32_">Tensor&lt;T&gt;.GetTriangle(Int32)</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_GetUpperTriangle">Tensor&lt;T&gt;.GetUpperTriangle()</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_GetUpperTriangle_System_Int32_">Tensor&lt;T&gt;.GetUpperTriangle(Int32)</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_GetTriangle_System_Int32_System_Boolean_">Tensor&lt;T&gt;.GetTriangle(Int32, Boolean)</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_Item_System_Int32___">Tensor&lt;T&gt;.Item[Int32[]]</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_Item_ReadOnlySpan_System_Int32__">Tensor&lt;T&gt;.Item[ReadOnlySpan&lt;Int32&gt;]</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_Compare_Microsoft_ML_OnnxRuntime_Tensors_Tensor__0__Microsoft_ML_OnnxRuntime_Tensors_Tensor__0__">Tensor&lt;T&gt;.Compare(Tensor&lt;T&gt;, Tensor&lt;T&gt;)</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_Equals_Microsoft_ML_OnnxRuntime_Tensors_Tensor__0__Microsoft_ML_OnnxRuntime_Tensors_Tensor__0__">Tensor&lt;T&gt;.Equals(Tensor&lt;T&gt;, Tensor&lt;T&gt;)</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_IsFixedSize">Tensor&lt;T&gt;.IsFixedSize</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_IsReadOnly">Tensor&lt;T&gt;.IsReadOnly</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_Contains__0_">Tensor&lt;T&gt;.Contains(T)</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_ToDenseTensor">Tensor&lt;T&gt;.ToDenseTensor()</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html#Microsoft_ML_OnnxRuntime_Tensors_Tensor_1_GetArrayString_System_Boolean_">Tensor&lt;T&gt;.GetArrayString(Boolean)</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.TensorBase.html#Microsoft_ML_OnnxRuntime_Tensors_TensorBase_GetTypeInfo_Type_">TensorBase.GetTypeInfo(Type)</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.TensorBase.html#Microsoft_ML_OnnxRuntime_Tensors_TensorBase_GetElementTypeInfo_Microsoft_ML_OnnxRuntime_Tensors_TensorElementType_">TensorBase.GetElementTypeInfo(TensorElementType)</a>
+    </div>
+    <div>
+      <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.TensorBase.html#Microsoft_ML_OnnxRuntime_Tensors_TensorBase_GetTypeInfo">TensorBase.GetTypeInfo()</a>
+    </div>
+    <div>
+      <span class="xref">System.Object.ToString()</span>
+    </div>
+    <div>
+      <span class="xref">System.Object.Equals(System.Object)</span>
+    </div>
+    <div>
+      <span class="xref">System.Object.Equals(System.Object, System.Object)</span>
+    </div>
+    <div>
+      <span class="xref">System.Object.ReferenceEquals(System.Object, System.Object)</span>
+    </div>
+    <div>
+      <span class="xref">System.Object.GetHashCode()</span>
+    </div>
+    <div>
+      <span class="xref">System.Object.GetType()</span>
+    </div>
+    <div>
+      <span class="xref">System.Object.MemberwiseClone()</span>
+    </div>
+  </div>
+  <h6><strong>Namespace</strong>: <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.html">Microsoft.ML.OnnxRuntime.Tensors</a></h6>
+  <h6><strong>Assembly</strong>: cs.temp.dll.dll</h6>
+  <h5 id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1_syntax">Syntax</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public class DenseTensor&lt;T&gt; : Tensor&lt;T&gt;</code></pre>
+  </div>
+  <h5 class="typeParameters">Type Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="parametername">T</span></td>
+        <td><p>Type contained within the Tensor. Typically a value type such as int, double, float, etc.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h3 id="constructors">Constructors
+  </h3>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1__ctor_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.#ctor*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1__ctor_Memory__0__ReadOnlySpan_System_Int32__System_Boolean_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.#ctor(Memory{`0},ReadOnlySpan{System.Int32},System.Boolean)">DenseTensor(Memory&lt;T&gt;, ReadOnlySpan&lt;Int32&gt;, Boolean)</h4>
+  <div class="markdown level1 summary"><p>Constructs a new DenseTensor of the specified dimensions, wrapping existing backing memory for the contents.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public DenseTensor(Memory&lt;T&gt; memory, ReadOnlySpan&lt;int&gt; dimensions, bool reverseStride = false)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">Memory</span>&lt;T&gt;</td>
+        <td><span class="parametername">memory</span></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td><span class="xref">ReadOnlySpan</span>&lt;<span class="xref">System.Int32</span>&gt;</td>
+        <td><span class="parametername">dimensions</span></td>
+        <td><p>An span of integers that represent the size of each dimension of the DenseTensor to create.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">System.Boolean</span></td>
+        <td><span class="parametername">reverseStride</span></td>
+        <td><p>False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension
+is most minor (closest together): akin to row-major in a rank-2 tensor.<br>
+True to indicate that the last dimension is most major (farthest apart) and the first dimension is most
+minor (closest together): akin to column-major in a rank-2 tensor.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1__ctor_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.#ctor*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1__ctor_ReadOnlySpan_System_Int32__System_Boolean_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.#ctor(ReadOnlySpan{System.Int32},System.Boolean)">DenseTensor(ReadOnlySpan&lt;Int32&gt;, Boolean)</h4>
+  <div class="markdown level1 summary"><p>Initializes a rank-n Tensor using the dimensions specified in <code data-dev-comment-type="paramref" class="paramref">dimensions</code>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public DenseTensor(ReadOnlySpan&lt;int&gt; dimensions, bool reverseStride = false)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">ReadOnlySpan</span>&lt;<span class="xref">System.Int32</span>&gt;</td>
+        <td><span class="parametername">dimensions</span></td>
+        <td><p>An span of integers that represent the size of each dimension of the DenseTensor to create.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">System.Boolean</span></td>
+        <td><span class="parametername">reverseStride</span></td>
+        <td><p>False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension
+is most minor (closest together): akin to row-major in a rank-2 tensor.<br>
+True to indicate that the last dimension is most major (farthest apart) and the first dimension is most
+minor (closest together): akin to column-major in a rank-2 tensor.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1__ctor_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.#ctor*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1__ctor_System_Int32_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.#ctor(System.Int32)">DenseTensor(Int32)</h4>
+  <div class="markdown level1 summary"><p>Initializes a rank-1 Tensor using the specified <code data-dev-comment-type="paramref" class="paramref">length</code>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public DenseTensor(int length)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Int32</span></td>
+        <td><span class="parametername">length</span></td>
+        <td><p>Size of the 1-dimensional tensor</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h3 id="properties">Properties
+  </h3>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1_Buffer_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.Buffer*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1_Buffer" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.Buffer">Buffer</h4>
+  <div class="markdown level1 summary"><p>Memory storing backing values of this tensor.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public Memory&lt;T&gt; Buffer { get; }</code></pre>
+  </div>
+  <h5 class="propertyValue">Property Value</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">Memory</span>&lt;T&gt;</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  <h3 id="methods">Methods
+  </h3>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1_Clone_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.Clone*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1_Clone" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.Clone">Clone()</h4>
+  <div class="markdown level1 summary"><p>Creates a shallow copy of this tensor, with new backing storage.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override Tensor&lt;T&gt; Clone()</code></pre>
+  </div>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html">Tensor</a>&lt;T&gt;</td>
+        <td><p>A shallow copy of this tensor.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="overrides">Overrides</h5>
+  <div><span class="xref">Microsoft.ML.OnnxRuntime.Tensors.Tensor&lt;T&gt;.Clone()</span></div>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1_CloneEmpty_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.CloneEmpty*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1_CloneEmpty__1_ReadOnlySpan_System_Int32__" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.CloneEmpty``1(ReadOnlySpan{System.Int32})">CloneEmpty&lt;TResult&gt;(ReadOnlySpan&lt;Int32&gt;)</h4>
+  <div class="markdown level1 summary"><p>Creates a new Tensor of a different type with the specified dimensions and the same layout as this tensor
+with elements initialized to their default value.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override Tensor&lt;TResult&gt; CloneEmpty&lt;TResult&gt;(ReadOnlySpan&lt;int&gt; dimensions)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">ReadOnlySpan</span>&lt;<span class="xref">System.Int32</span>&gt;</td>
+        <td><span class="parametername">dimensions</span></td>
+        <td><p>An span of integers that represent the size of each dimension of the DenseTensor to create.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html">Tensor</a>&lt;TResult&gt;</td>
+        <td><p>A new tensor with the same layout as this tensor but different type and dimensions.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="typeParameters">Type Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="parametername">TResult</span></td>
+        <td><p>Type contained in the returned Tensor.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="overrides">Overrides</h5>
+  <div><span class="xref">Microsoft.ML.OnnxRuntime.Tensors.Tensor&lt;T&gt;.CloneEmpty&lt;TResult&gt;(ReadOnlySpan&lt;System.Int32&gt;)</span></div>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1_CopyTo_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.CopyTo*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1_CopyTo__0___System_Int32_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.CopyTo(`0[],System.Int32)">CopyTo(T[], Int32)</h4>
+  <div class="markdown level1 summary"><p>Overrides Tensor.CopyTo(). Copies the content of the Tensor
+to the specified array starting with arrayIndex</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override void CopyTo(T[] array, int arrayIndex)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>T[]</td>
+        <td><span class="parametername">array</span></td>
+        <td><p>destination array</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">System.Int32</span></td>
+        <td><span class="parametername">arrayIndex</span></td>
+        <td><p>start index</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="overrides">Overrides</h5>
+  <div><span class="xref">Microsoft.ML.OnnxRuntime.Tensors.Tensor&lt;T&gt;.CopyTo(T[], System.Int32)</span></div>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1_GetValue_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.GetValue*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1_GetValue_System_Int32_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.GetValue(System.Int32)">GetValue(Int32)</h4>
+  <div class="markdown level1 summary"><p>Gets the value at the specified index, where index is a linearized version of n-dimension indices
+using strides. For a scalar, use index = 0</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override T GetValue(int index)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Int32</span></td>
+        <td><span class="parametername">index</span></td>
+        <td><p>An integer index computed as a dot-product of indices.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">T</span></td>
+        <td><p>The value at the specified position in this Tensor.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="overrides">Overrides</h5>
+  <div><span class="xref">Microsoft.ML.OnnxRuntime.Tensors.Tensor&lt;T&gt;.GetValue(System.Int32)</span></div>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1_IndexOf_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.IndexOf*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1_IndexOf__0_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.IndexOf(`0)">IndexOf(T)</h4>
+  <div class="markdown level1 summary"><p>Determines the index of a specific item in the Tensor&lt;T&gt;.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected override int IndexOf(T item)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">T</span></td>
+        <td><span class="parametername">item</span></td>
+        <td><p>Object to locate</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Int32</span></td>
+        <td><p>The index of item if found in the tensor; otherwise, -1</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="overrides">Overrides</h5>
+  <div><span class="xref">Microsoft.ML.OnnxRuntime.Tensors.Tensor&lt;T&gt;.IndexOf(T)</span></div>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1_Reshape_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.Reshape*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1_Reshape_ReadOnlySpan_System_Int32__" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.Reshape(ReadOnlySpan{System.Int32})">Reshape(ReadOnlySpan&lt;Int32&gt;)</h4>
+  <div class="markdown level1 summary"><p>Reshapes the current tensor to new dimensions, using the same backing storage.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override Tensor&lt;T&gt; Reshape(ReadOnlySpan&lt;int&gt; dimensions)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">ReadOnlySpan</span>&lt;<span class="xref">System.Int32</span>&gt;</td>
+        <td><span class="parametername">dimensions</span></td>
+        <td><p>An span of integers that represent the size of each dimension of the DenseTensor to create.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.Tensor-1.html">Tensor</a>&lt;T&gt;</td>
+        <td><p>A new tensor that reinterprets backing Buffer of this tensor with different dimensions.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="overrides">Overrides</h5>
+  <div><span class="xref">Microsoft.ML.OnnxRuntime.Tensors.Tensor&lt;T&gt;.Reshape(ReadOnlySpan&lt;System.Int32&gt;)</span></div>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1_SetValue_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.SetValue*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_Tensors_DenseTensor_1_SetValue_System_Int32__0_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor`1.SetValue(System.Int32,`0)">SetValue(Int32, T)</h4>
+  <div class="markdown level1 summary"><p>Sets the value at the specified index, where index is a linearized version of n-dimension indices
+using strides. For a scalar, use index = 0</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public override void SetValue(int index, T value)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Int32</span></td>
+        <td><span class="parametername">index</span></td>
+        <td><p>An integer index computed as a dot-product of indices.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">T</span></td>
+        <td><span class="parametername">value</span></td>
+        <td><p>The new value to set at the specified position in this Tensor.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="overrides">Overrides</h5>
+  <div><span class="xref">Microsoft.ML.OnnxRuntime.Tensors.Tensor&lt;T&gt;.SetValue(System.Int32, T)</span></div>
+  <h3 id="implements">Implements</h3>
+  <div>
+      <span class="xref">IList</span>
+  </div>
+  <div>
+      <span class="xref">IList&lt;&gt;</span>
+  </div>
+  <div>
+      <span class="xref">IReadOnlyList&lt;&gt;</span>
+  </div>
+  <div>
+      <span class="xref">IStructuralComparable</span>
+  </div>
+  <div>
+      <span class="xref">IStructuralEquatable</span>
+  </div>
+</article>
+          </div>
+          
+          <div class="hidden-sm col-md-2" role="complementary">
+            <div class="sideaffix">
+              <div class="contribution">
+                <ul class="nav">
+                </ul>
+              </div>
+              <nav class="bs-docs-sidebar hidden-print hidden-xs hidden-sm affix" id="affix">
+                <h5>In This Article</h5>
+                <div></div>
+              </nav>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <footer>
+        <div class="grad-bottom"></div>
+        <div class="footer">
+          <div class="container">
+            <span class="pull-right">
+              <a href="#top">Back to top</a>
+            </span>
+          </div>
+        </div>
+      </footer>
+    </div>
+    
+    <script type="text/javascript" src="../styles/docfx.vendor.js"></script>
+    <script type="text/javascript" src="../styles/docfx.js"></script>
+    <script type="text/javascript" src="../styles/main.js"></script>
+  </body>
+</html>

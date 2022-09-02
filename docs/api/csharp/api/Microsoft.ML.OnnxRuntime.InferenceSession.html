@@ -1,0 +1,1446 @@
+﻿<!DOCTYPE html>
+<!--[if IE]><![endif]-->
+<html>
+  
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <title>Class InferenceSession
+   </title>
+    <meta name="viewport" content="width=device-width">
+    <meta name="title" content="Class InferenceSession
+   ">
+    <meta name="generator" content="docfx 2.59.3.0">
+    
+    <link rel="shortcut icon" href="../favicon.ico">
+    <link rel="stylesheet" href="../styles/docfx.vendor.css">
+    <link rel="stylesheet" href="../styles/docfx.css">
+    <link rel="stylesheet" href="../styles/main.css">
+    <meta property="docfx:navrel" content="../toc.html">
+    <meta property="docfx:tocrel" content="toc.html">
+    
+    
+    
+  </head>
+  <body data-spy="scroll" data-target="#affix" data-offset="120">
+    <div id="wrapper">
+      <header>
+        
+        <nav id="autocollapse" class="navbar navbar-inverse ng-scope" role="navigation">
+          <div class="container">
+            <div class="navbar-header">
+              <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+              </button>
+              
+              <a class="navbar-brand" href="../index.html">
+                <img id="logo" class="svg" src="../logo.svg" alt="">
+              </a>
+            </div>
+            <div class="collapse navbar-collapse" id="navbar">
+              <form class="navbar-form navbar-right" role="search" id="search">
+                <div class="form-group">
+                  <input type="text" class="form-control" id="search-query" placeholder="Search" autocomplete="off">
+                </div>
+              </form>
+            </div>
+          </div>
+        </nav>
+        
+        <div class="subnav navbar navbar-default">
+          <div class="container hide-when-search" id="breadcrumb">
+            <ul class="breadcrumb">
+              <li></li>
+            </ul>
+          </div>
+        </div>
+      </header>
+      <div role="main" class="container body-content hide-when-search">
+        
+        <div class="sidenav hide-when-search">
+          <a class="btn toc-toggle collapse" data-toggle="collapse" href="#sidetoggle" aria-expanded="false" aria-controls="sidetoggle">Show / Hide Table of Contents</a>
+          <div class="sidetoggle collapse" id="sidetoggle">
+            <div id="sidetoc"></div>
+          </div>
+        </div>
+        <div class="article row grid-right">
+          <div class="col-md-10">
+            <article class="content wrap" id="_content" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession">
+  
+  
+  <h1 id="Microsoft_ML_OnnxRuntime_InferenceSession" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession" class="text-break">Class InferenceSession
+  </h1>
+  <div class="markdown level0 summary"><p>Represents an Inference Session on an ONNX Model.
+This is a IDisposable class and it must be disposed of
+using either a explicit call to Dispose() method or
+a pattern of using() block. If this is a member of another
+class that class must also become IDisposable and it must
+dispose of InferfenceSession in its Dispose() method.</p>
+</div>
+  <div class="markdown level0 conceptual"></div>
+  <div class="inheritance">
+    <h5>Inheritance</h5>
+    <div class="level0"><span class="xref">System.Object</span></div>
+    <div class="level1"><span class="xref">InferenceSession</span></div>
+  </div>
+  <h6><strong>Namespace</strong>: <a class="xref" href="Microsoft.ML.OnnxRuntime.html">Microsoft.ML.OnnxRuntime</a></h6>
+  <h6><strong>Assembly</strong>: cs.temp.dll.dll</h6>
+  <h5 id="Microsoft_ML_OnnxRuntime_InferenceSession_syntax">Syntax</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public class InferenceSession : IDisposable</code></pre>
+  </div>
+  <h3 id="constructors">Constructors
+  </h3>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession__ctor_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.#ctor*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession__ctor_System_Byte___" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.Byte[])">InferenceSession(Byte[])</h4>
+  <div class="markdown level1 summary"><p>Constructs an InferenceSession from a model data in byte array</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public InferenceSession(byte[] model)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Byte</span>[]</td>
+        <td><span class="parametername">model</span></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession__ctor_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.#ctor*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession__ctor_System_Byte___Microsoft_ML_OnnxRuntime_PrePackedWeightsContainer_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)">InferenceSession(Byte[], PrePackedWeightsContainer)</h4>
+  <div class="markdown level1 summary"><p>Constructs an InferenceSession from a model data (in byte array) and it will use
+the provided pre-packed weights container to store and share pre-packed buffers
+of shared initializers across sessions if any.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public InferenceSession(byte[] model, PrePackedWeightsContainer prepackedWeightsContainer)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Byte</span>[]</td>
+        <td><span class="parametername">model</span></td>
+        <td><p>Model as byte array</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer.html">PrePackedWeightsContainer</a></td>
+        <td><span class="parametername">prepackedWeightsContainer</span></td>
+        <td><p>Instance of PrepackedWeightsContainer.
+Lifetime of 'prepackedWeightsContainer' must be
+managed by the user and it must outlive any sessions reliant on it</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession__ctor_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.#ctor*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession__ctor_System_Byte___Microsoft_ML_OnnxRuntime_SessionOptions_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.SessionOptions)">InferenceSession(Byte[], SessionOptions)</h4>
+  <div class="markdown level1 summary"><p>Constructs an InferenceSession from a model data in byte array, with some additional session options</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public InferenceSession(byte[] model, SessionOptions options)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Byte</span>[]</td>
+        <td><span class="parametername">model</span></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.SessionOptions.html">SessionOptions</a></td>
+        <td><span class="parametername">options</span></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession__ctor_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.#ctor*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession__ctor_System_Byte___Microsoft_ML_OnnxRuntime_SessionOptions_Microsoft_ML_OnnxRuntime_PrePackedWeightsContainer_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.Byte[],Microsoft.ML.OnnxRuntime.SessionOptions,Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)">InferenceSession(Byte[], SessionOptions, PrePackedWeightsContainer)</h4>
+  <div class="markdown level1 summary"><p>Constructs an InferenceSession from a model data (in byte array) with some additional
+session options and it will use the provided pre-packed weights container to store
+and share pre-packed buffers of shared initializers across sessions if any.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public InferenceSession(byte[] model, SessionOptions options, PrePackedWeightsContainer prepackedWeightsContainer)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Byte</span>[]</td>
+        <td><span class="parametername">model</span></td>
+        <td><p>Model as byte array</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.SessionOptions.html">SessionOptions</a></td>
+        <td><span class="parametername">options</span></td>
+        <td><p>Session Options</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer.html">PrePackedWeightsContainer</a></td>
+        <td><span class="parametername">prepackedWeightsContainer</span></td>
+        <td><p>Instance of PrepackedWeightsContainer.
+Lifetime of 'prepackedWeightsContainer' must be
+managed by the user and it must outlive any sessions reliant on it</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession__ctor_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.#ctor*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession__ctor_System_String_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.String)">InferenceSession(String)</h4>
+  <div class="markdown level1 summary"><p>Constructs an InferenceSession from a model file</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public InferenceSession(string modelPath)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.String</span></td>
+        <td><span class="parametername">modelPath</span></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession__ctor_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.#ctor*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession__ctor_System_String_Microsoft_ML_OnnxRuntime_PrePackedWeightsContainer_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.String,Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)">InferenceSession(String, PrePackedWeightsContainer)</h4>
+  <div class="markdown level1 summary"><p>Constructs an InferenceSession from a model file and it will use
+the provided pre-packed weights container to store and share pre-packed buffers
+of shared initializers across sessions if any.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public InferenceSession(string modelPath, PrePackedWeightsContainer prepackedWeightsContainer)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.String</span></td>
+        <td><span class="parametername">modelPath</span></td>
+        <td><p>Model path</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer.html">PrePackedWeightsContainer</a></td>
+        <td><span class="parametername">prepackedWeightsContainer</span></td>
+        <td><p>Instance of PrepackedWeightsContainer.
+Lifetime of 'prepackedWeightsContainer' must be
+managed by the user and it must outlive any sessions reliant on it</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession__ctor_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.#ctor*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession__ctor_System_String_Microsoft_ML_OnnxRuntime_SessionOptions_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.String,Microsoft.ML.OnnxRuntime.SessionOptions)">InferenceSession(String, SessionOptions)</h4>
+  <div class="markdown level1 summary"><p>Constructs an InferenceSession from a model file, with some additional session options</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public InferenceSession(string modelPath, SessionOptions options)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.String</span></td>
+        <td><span class="parametername">modelPath</span></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.SessionOptions.html">SessionOptions</a></td>
+        <td><span class="parametername">options</span></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession__ctor_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.#ctor*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession__ctor_System_String_Microsoft_ML_OnnxRuntime_SessionOptions_Microsoft_ML_OnnxRuntime_PrePackedWeightsContainer_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.#ctor(System.String,Microsoft.ML.OnnxRuntime.SessionOptions,Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer)">InferenceSession(String, SessionOptions, PrePackedWeightsContainer)</h4>
+  <div class="markdown level1 summary"><p>Constructs an InferenceSession from a model file, with some additional session options
+and it will use the provided pre-packed weights container to store and share pre-packed buffers
+of shared initializers across sessions if any.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public InferenceSession(string modelPath, SessionOptions options, PrePackedWeightsContainer prepackedWeightsContainer)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.String</span></td>
+        <td><span class="parametername">modelPath</span></td>
+        <td><p>Model path</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.SessionOptions.html">SessionOptions</a></td>
+        <td><span class="parametername">options</span></td>
+        <td><p>Session options</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.PrePackedWeightsContainer.html">PrePackedWeightsContainer</a></td>
+        <td><span class="parametername">prepackedWeightsContainer</span></td>
+        <td><p>Instance of PrepackedWeightsContainer.
+Lifetime of 'prepackedWeightsContainer' must be
+managed by the user and it must outlive any sessions reliant on it</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h3 id="properties">Properties
+  </h3>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_InputMetadata_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.InputMetadata*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_InputMetadata" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.InputMetadata">InputMetadata</h4>
+  <div class="markdown level1 summary"><p>Meta data regarding the input nodes, keyed by input names</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public IReadOnlyDictionary&lt;string, NodeMetadata&gt; InputMetadata { get; }</code></pre>
+  </div>
+  <h5 class="propertyValue">Property Value</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">IReadOnlyDictionary</span>&lt;<span class="xref">System.String</span>, <a class="xref" href="Microsoft.ML.OnnxRuntime.NodeMetadata.html">NodeMetadata</a>&gt;</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_ModelMetadata_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.ModelMetadata*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_ModelMetadata" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.ModelMetadata">ModelMetadata</h4>
+  <div class="markdown level1 summary"><p>This property queries model metadata, constructs
+an instance of ModelMetadata and caches it</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public ModelMetadata ModelMetadata { get; }</code></pre>
+  </div>
+  <h5 class="propertyValue">Property Value</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.ModelMetadata.html">ModelMetadata</a></td>
+        <td><p>Instance of ModelMetdata</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_OutputMetadata_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.OutputMetadata*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_OutputMetadata" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.OutputMetadata">OutputMetadata</h4>
+  <div class="markdown level1 summary"><p>Metadata regarding the output nodes, keyed by output names</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public IReadOnlyDictionary&lt;string, NodeMetadata&gt; OutputMetadata { get; }</code></pre>
+  </div>
+  <h5 class="propertyValue">Property Value</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">IReadOnlyDictionary</span>&lt;<span class="xref">System.String</span>, <a class="xref" href="Microsoft.ML.OnnxRuntime.NodeMetadata.html">NodeMetadata</a>&gt;</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_OverridableInitializerMetadata_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.OverridableInitializerMetadata*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_OverridableInitializerMetadata" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.OverridableInitializerMetadata">OverridableInitializerMetadata</h4>
+  <div class="markdown level1 summary"><p>Metadata regarding the overridable initializers, keyed by node names</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public IReadOnlyDictionary&lt;string, NodeMetadata&gt; OverridableInitializerMetadata { get; }</code></pre>
+  </div>
+  <h5 class="propertyValue">Property Value</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">IReadOnlyDictionary</span>&lt;<span class="xref">System.String</span>, <a class="xref" href="Microsoft.ML.OnnxRuntime.NodeMetadata.html">NodeMetadata</a>&gt;</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_ProfilingStartTimeNs_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.ProfilingStartTimeNs*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_ProfilingStartTimeNs" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.ProfilingStartTimeNs">ProfilingStartTimeNs</h4>
+  <div class="markdown level1 summary"><p>Return the nanoseconds of profiling's start time
+On some platforms, this timer may not be as precise as nanoseconds
+For instance, on Windows and MacOS, the precision will be ~100ns</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public ulong ProfilingStartTimeNs { get; }</code></pre>
+  </div>
+  <h5 class="propertyValue">Property Value</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.UInt64</span></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  <h3 id="methods">Methods
+  </h3>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_CreateIoBinding_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.CreateIoBinding*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_CreateIoBinding" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.CreateIoBinding">CreateIoBinding()</h4>
+  <div class="markdown level1 summary"><p>Create OrtIoBinding instance to bind pre-allocated buffers
+to input/output</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public OrtIoBinding CreateIoBinding()</code></pre>
+  </div>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtIoBinding.html">OrtIoBinding</a></td>
+        <td><p>A new instance of OrtIoBinding</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_Dispose_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Dispose*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_Dispose" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Dispose">Dispose()</h4>
+  <div class="markdown level1 summary"><p>IDisposable implementation</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void Dispose()</code></pre>
+  </div>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_Dispose_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Dispose*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_Dispose_System_Boolean_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Dispose(System.Boolean)">Dispose(Boolean)</h4>
+  <div class="markdown level1 summary"><p>IDisposable implementation</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected virtual void Dispose(bool disposing)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.Boolean</span></td>
+        <td><span class="parametername">disposing</span></td>
+        <td><p>true if invoked from Dispose() method</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_EndProfiling_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.EndProfiling*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_EndProfiling" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.EndProfiling">EndProfiling()</h4>
+  <div class="markdown level1 summary"><p>Ends profiling for the session.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public string EndProfiling()</code></pre>
+  </div>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">System.String</span></td>
+        <td><p>Returns the profile file name.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_Finalize_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Finalize*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_Finalize" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Finalize">Finalize()</h4>
+  <div class="markdown level1 summary"><p>Finalizer. to cleanup session in case it runs
+and the user forgets to Dispose() of the session</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">protected void Finalize()</code></pre>
+  </div>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_IReadOnlyCollection_Microsoft_ML_OnnxRuntime_NamedOnnxValue__" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run(IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue})">Run(IReadOnlyCollection&lt;NamedOnnxValue&gt;)</h4>
+  <div class="markdown level1 summary"><p>Runs the loaded model for the given inputs, and fetches all the outputs.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public IDisposableReadOnlyCollection&lt;DisposableNamedOnnxValue&gt; Run(IReadOnlyCollection&lt;NamedOnnxValue&gt; inputs)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a>&gt;</td>
+        <td><span class="parametername">inputs</span></td>
+        <td><p>specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a> that indicates the input values.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection-1.html">IDisposableReadOnlyCollection</a>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue.html">DisposableNamedOnnxValue</a>&gt;</td>
+        <td><p>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_IReadOnlyCollection_Microsoft_ML_OnnxRuntime_NamedOnnxValue__IReadOnlyCollection_Microsoft_ML_OnnxRuntime_NamedOnnxValue__" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run(IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue})">Run(IReadOnlyCollection&lt;NamedOnnxValue&gt;, IReadOnlyCollection&lt;NamedOnnxValue&gt;)</h4>
+  <div class="markdown level1 summary"><p>Runs the loaded model for the given inputs and outputs.</p>
+<p>Outputs need to be created with correct type and dimension to receive the fetched data.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void Run(IReadOnlyCollection&lt;NamedOnnxValue&gt; inputs, IReadOnlyCollection&lt;NamedOnnxValue&gt; outputs)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a>&gt;</td>
+        <td><span class="parametername">inputs</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a> that indicates the input values.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a>&gt;</td>
+        <td><span class="parametername">outputs</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a> that indicates the output values.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_IReadOnlyCollection_Microsoft_ML_OnnxRuntime_NamedOnnxValue__IReadOnlyCollection_Microsoft_ML_OnnxRuntime_NamedOnnxValue__Microsoft_ML_OnnxRuntime_RunOptions_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run(IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)">Run(IReadOnlyCollection&lt;NamedOnnxValue&gt;, IReadOnlyCollection&lt;NamedOnnxValue&gt;, RunOptions)</h4>
+  <div class="markdown level1 summary"><p>Runs the loaded model for the given inputs and outputs. Uses the given RunOptions for this run.</p>
+<p>Outputs need to be created with correct type and dimension to receive the fetched data.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void Run(IReadOnlyCollection&lt;NamedOnnxValue&gt; inputs, IReadOnlyCollection&lt;NamedOnnxValue&gt; outputs, RunOptions options)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a>&gt;</td>
+        <td><span class="parametername">inputs</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a> that indicates the input values.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a>&gt;</td>
+        <td><span class="parametername">outputs</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a> that indicates the output values.</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.RunOptions.html">RunOptions</a></td>
+        <td><span class="parametername">options</span></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_IReadOnlyCollection_Microsoft_ML_OnnxRuntime_NamedOnnxValue__IReadOnlyCollection_System_String__" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run(IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},IReadOnlyCollection{System.String})">Run(IReadOnlyCollection&lt;NamedOnnxValue&gt;, IReadOnlyCollection&lt;String&gt;)</h4>
+  <div class="markdown level1 summary"><p>Runs the loaded model for the given inputs, and fetches the outputs specified in <code data-dev-comment-type="paramref" class="paramref">outputNames</code>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public IDisposableReadOnlyCollection&lt;DisposableNamedOnnxValue&gt; Run(IReadOnlyCollection&lt;NamedOnnxValue&gt; inputs, IReadOnlyCollection&lt;string&gt; outputNames)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a>&gt;</td>
+        <td><span class="parametername">inputs</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a> that indicates the input values.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<span class="xref">System.String</span>&gt;</td>
+        <td><span class="parametername">outputNames</span></td>
+        <td><p>Specify a collection of string that indicates the output names to fetch.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection-1.html">IDisposableReadOnlyCollection</a>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue.html">DisposableNamedOnnxValue</a>&gt;</td>
+        <td><p>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_IReadOnlyCollection_Microsoft_ML_OnnxRuntime_NamedOnnxValue__IReadOnlyCollection_System_String__IReadOnlyCollection_Microsoft_ML_OnnxRuntime_FixedBufferOnnxValue__" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run(IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},IReadOnlyCollection{System.String},IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue})">Run(IReadOnlyCollection&lt;NamedOnnxValue&gt;, IReadOnlyCollection&lt;String&gt;, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt;)</h4>
+  <div class="markdown level1 summary"><p>Runs the loaded model for the given inputs and outputs.</p>
+<p>Outputs need to be created with correct type and dimension to receive the fetched data.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void Run(IReadOnlyCollection&lt;NamedOnnxValue&gt; inputs, IReadOnlyCollection&lt;string&gt; outputNames, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt; outputValues)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a>&gt;</td>
+        <td><span class="parametername">inputs</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a> that indicates the input values.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<span class="xref">System.String</span>&gt;</td>
+        <td><span class="parametername">outputNames</span></td>
+        <td><p>Specify a collection of string that indicates the output names. Should match <code data-dev-comment-type="paramref" class="paramref">outputValues</code>.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a>&gt;</td>
+        <td><span class="parametername">outputValues</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a> that indicates the output values.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_IReadOnlyCollection_Microsoft_ML_OnnxRuntime_NamedOnnxValue__IReadOnlyCollection_System_String__IReadOnlyCollection_Microsoft_ML_OnnxRuntime_FixedBufferOnnxValue__Microsoft_ML_OnnxRuntime_RunOptions_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run(IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},IReadOnlyCollection{System.String},IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)">Run(IReadOnlyCollection&lt;NamedOnnxValue&gt;, IReadOnlyCollection&lt;String&gt;, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt;, RunOptions)</h4>
+  <div class="markdown level1 summary"><p>Runs the loaded model for the given inputs and outputs. Uses the given RunOptions for this run.</p>
+<p>Outputs need to be created with correct type and dimension to receive the fetched data.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void Run(IReadOnlyCollection&lt;NamedOnnxValue&gt; inputs, IReadOnlyCollection&lt;string&gt; outputNames, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt; outputValues, RunOptions options)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a>&gt;</td>
+        <td><span class="parametername">inputs</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a> that indicates the input values.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<span class="xref">System.String</span>&gt;</td>
+        <td><span class="parametername">outputNames</span></td>
+        <td><p>Specify a collection of string that indicates the output names. Should match <code data-dev-comment-type="paramref" class="paramref">outputValues</code>.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a>&gt;</td>
+        <td><span class="parametername">outputValues</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a> that indicates the output values.</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.RunOptions.html">RunOptions</a></td>
+        <td><span class="parametername">options</span></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_IReadOnlyCollection_Microsoft_ML_OnnxRuntime_NamedOnnxValue__IReadOnlyCollection_System_String__Microsoft_ML_OnnxRuntime_RunOptions_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run(IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},IReadOnlyCollection{System.String},Microsoft.ML.OnnxRuntime.RunOptions)">Run(IReadOnlyCollection&lt;NamedOnnxValue&gt;, IReadOnlyCollection&lt;String&gt;, RunOptions)</h4>
+  <div class="markdown level1 summary"><p>Runs the loaded model for the given inputs, and fetches the specified outputs in <code data-dev-comment-type="paramref" class="paramref">outputNames</code>. Uses the given RunOptions for this run.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public IDisposableReadOnlyCollection&lt;DisposableNamedOnnxValue&gt; Run(IReadOnlyCollection&lt;NamedOnnxValue&gt; inputs, IReadOnlyCollection&lt;string&gt; outputNames, RunOptions options)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a>&gt;</td>
+        <td><span class="parametername">inputs</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a> that indicates the input values.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<span class="xref">System.String</span>&gt;</td>
+        <td><span class="parametername">outputNames</span></td>
+        <td><p>Specify a collection of string that indicates the output names to fetch.</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.RunOptions.html">RunOptions</a></td>
+        <td><span class="parametername">options</span></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection-1.html">IDisposableReadOnlyCollection</a>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue.html">DisposableNamedOnnxValue</a>&gt;</td>
+        <td><p>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_IReadOnlyCollection_System_String__IReadOnlyCollection_Microsoft_ML_OnnxRuntime_FixedBufferOnnxValue__" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run(IReadOnlyCollection{System.String},IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue})">Run(IReadOnlyCollection&lt;String&gt;, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt;)</h4>
+  <div class="markdown level1 summary"><p>Runs the loaded model for the given inputs, and fetches all the outputs.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public IDisposableReadOnlyCollection&lt;DisposableNamedOnnxValue&gt; Run(IReadOnlyCollection&lt;string&gt; inputNames, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt; inputValues)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<span class="xref">System.String</span>&gt;</td>
+        <td><span class="parametername">inputNames</span></td>
+        <td><p>Specify a collection of string that indicates the input names. Should match <code data-dev-comment-type="paramref" class="paramref">inputValues</code>.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a>&gt;</td>
+        <td><span class="parametername">inputValues</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a> that indicates the input values.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection-1.html">IDisposableReadOnlyCollection</a>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue.html">DisposableNamedOnnxValue</a>&gt;</td>
+        <td><p>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_IReadOnlyCollection_System_String__IReadOnlyCollection_Microsoft_ML_OnnxRuntime_FixedBufferOnnxValue__IReadOnlyCollection_Microsoft_ML_OnnxRuntime_NamedOnnxValue__" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run(IReadOnlyCollection{System.String},IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue})">Run(IReadOnlyCollection&lt;String&gt;, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt;, IReadOnlyCollection&lt;NamedOnnxValue&gt;)</h4>
+  <div class="markdown level1 summary"><p>Runs the loaded model for the given inputs and outputs.</p>
+<p>Outputs need to be created with correct type and dimension to receive the fetched data.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void Run(IReadOnlyCollection&lt;string&gt; inputNames, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt; inputValues, IReadOnlyCollection&lt;NamedOnnxValue&gt; outputs)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<span class="xref">System.String</span>&gt;</td>
+        <td><span class="parametername">inputNames</span></td>
+        <td><p>Specify a collection of string that indicates the input names. Should match <code data-dev-comment-type="paramref" class="paramref">inputValues</code>.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a>&gt;</td>
+        <td><span class="parametername">inputValues</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a> that indicates the input values.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a>&gt;</td>
+        <td><span class="parametername">outputs</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a> that indicates the output values.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_IReadOnlyCollection_System_String__IReadOnlyCollection_Microsoft_ML_OnnxRuntime_FixedBufferOnnxValue__IReadOnlyCollection_Microsoft_ML_OnnxRuntime_NamedOnnxValue__Microsoft_ML_OnnxRuntime_RunOptions_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run(IReadOnlyCollection{System.String},IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},IReadOnlyCollection{Microsoft.ML.OnnxRuntime.NamedOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)">Run(IReadOnlyCollection&lt;String&gt;, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt;, IReadOnlyCollection&lt;NamedOnnxValue&gt;, RunOptions)</h4>
+  <div class="markdown level1 summary"><p>Runs the loaded model for the given inputs and outputs. Uses the given RunOptions for this run.</p>
+<p>Outputs need to be created with correct type and dimension to receive the fetched data.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void Run(IReadOnlyCollection&lt;string&gt; inputNames, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt; inputValues, IReadOnlyCollection&lt;NamedOnnxValue&gt; outputs, RunOptions options)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<span class="xref">System.String</span>&gt;</td>
+        <td><span class="parametername">inputNames</span></td>
+        <td><p>Specify a collection of string that indicates the input names. Should match <code data-dev-comment-type="paramref" class="paramref">inputValues</code>.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a>&gt;</td>
+        <td><span class="parametername">inputValues</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a> that indicates the input values.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a>&gt;</td>
+        <td><span class="parametername">outputs</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.NamedOnnxValue.html">NamedOnnxValue</a> that indicates the output values.</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.RunOptions.html">RunOptions</a></td>
+        <td><span class="parametername">options</span></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_IReadOnlyCollection_System_String__IReadOnlyCollection_Microsoft_ML_OnnxRuntime_FixedBufferOnnxValue__IReadOnlyCollection_System_String__" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run(IReadOnlyCollection{System.String},IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},IReadOnlyCollection{System.String})">Run(IReadOnlyCollection&lt;String&gt;, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt;, IReadOnlyCollection&lt;String&gt;)</h4>
+  <div class="markdown level1 summary"><p>Runs the loaded model for the given inputs, and fetches the outputs specified in <code data-dev-comment-type="paramref" class="paramref">outputNames</code>.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public IDisposableReadOnlyCollection&lt;DisposableNamedOnnxValue&gt; Run(IReadOnlyCollection&lt;string&gt; inputNames, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt; inputValues, IReadOnlyCollection&lt;string&gt; outputNames)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<span class="xref">System.String</span>&gt;</td>
+        <td><span class="parametername">inputNames</span></td>
+        <td><p>Specify a collection of string that indicates the input names. Should match <code data-dev-comment-type="paramref" class="paramref">inputValues</code>.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a>&gt;</td>
+        <td><span class="parametername">inputValues</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a> that indicates the input values.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<span class="xref">System.String</span>&gt;</td>
+        <td><span class="parametername">outputNames</span></td>
+        <td><p>Specify a collection of string that indicates the output names to fetch.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection-1.html">IDisposableReadOnlyCollection</a>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue.html">DisposableNamedOnnxValue</a>&gt;</td>
+        <td><p>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_IReadOnlyCollection_System_String__IReadOnlyCollection_Microsoft_ML_OnnxRuntime_FixedBufferOnnxValue__IReadOnlyCollection_System_String__IReadOnlyCollection_Microsoft_ML_OnnxRuntime_FixedBufferOnnxValue__" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run(IReadOnlyCollection{System.String},IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},IReadOnlyCollection{System.String},IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue})">Run(IReadOnlyCollection&lt;String&gt;, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt;, IReadOnlyCollection&lt;String&gt;, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt;)</h4>
+  <div class="markdown level1 summary"><p>Runs the loaded model for the given inputs and outputs.</p>
+<p>Outputs need to be created with correct type and dimension to accept the fetched data.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void Run(IReadOnlyCollection&lt;string&gt; inputNames, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt; inputValues, IReadOnlyCollection&lt;string&gt; outputNames, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt; outputValues)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<span class="xref">System.String</span>&gt;</td>
+        <td><span class="parametername">inputNames</span></td>
+        <td><p>Specify a collection of string that indicates the input names. Should match <code data-dev-comment-type="paramref" class="paramref">inputValues</code>.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a>&gt;</td>
+        <td><span class="parametername">inputValues</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a> that indicates the input values.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<span class="xref">System.String</span>&gt;</td>
+        <td><span class="parametername">outputNames</span></td>
+        <td><p>Specify a collection of string that indicates the output names. Should match <code data-dev-comment-type="paramref" class="paramref">outputValues</code>.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a>&gt;</td>
+        <td><span class="parametername">outputValues</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a> that indicates the output values.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_IReadOnlyCollection_System_String__IReadOnlyCollection_Microsoft_ML_OnnxRuntime_FixedBufferOnnxValue__IReadOnlyCollection_System_String__IReadOnlyCollection_Microsoft_ML_OnnxRuntime_FixedBufferOnnxValue__Microsoft_ML_OnnxRuntime_RunOptions_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run(IReadOnlyCollection{System.String},IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},IReadOnlyCollection{System.String},IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},Microsoft.ML.OnnxRuntime.RunOptions)">Run(IReadOnlyCollection&lt;String&gt;, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt;, IReadOnlyCollection&lt;String&gt;, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt;, RunOptions)</h4>
+  <div class="markdown level1 summary"><p>Runs the loaded model for the given inputs and outputs. Uses the given RunOptions for this run.</p>
+<p>Outputs need to be created with correct type and dimension to accept the fetched data.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void Run(IReadOnlyCollection&lt;string&gt; inputNames, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt; inputValues, IReadOnlyCollection&lt;string&gt; outputNames, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt; outputValues, RunOptions options)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<span class="xref">System.String</span>&gt;</td>
+        <td><span class="parametername">inputNames</span></td>
+        <td><p>Specify a collection of string that indicates the input names. Should match <code data-dev-comment-type="paramref" class="paramref">inputValues</code>.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a>&gt;</td>
+        <td><span class="parametername">inputValues</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a> that indicates the input values.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<span class="xref">System.String</span>&gt;</td>
+        <td><span class="parametername">outputNames</span></td>
+        <td><p>Specify a collection of string that indicates the output names. Should match <code data-dev-comment-type="paramref" class="paramref">outputValues</code>.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a>&gt;</td>
+        <td><span class="parametername">outputValues</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a> that indicates the output values.</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.RunOptions.html">RunOptions</a></td>
+        <td><span class="parametername">options</span></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_Run_IReadOnlyCollection_System_String__IReadOnlyCollection_Microsoft_ML_OnnxRuntime_FixedBufferOnnxValue__IReadOnlyCollection_System_String__Microsoft_ML_OnnxRuntime_RunOptions_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.Run(IReadOnlyCollection{System.String},IReadOnlyCollection{Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue},IReadOnlyCollection{System.String},Microsoft.ML.OnnxRuntime.RunOptions)">Run(IReadOnlyCollection&lt;String&gt;, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt;, IReadOnlyCollection&lt;String&gt;, RunOptions)</h4>
+  <div class="markdown level1 summary"><p>Runs the loaded model for the given inputs, and fetches the specified outputs in <code data-dev-comment-type="paramref" class="paramref">outputNames</code>. Uses the given RunOptions for this run.</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public IDisposableReadOnlyCollection&lt;DisposableNamedOnnxValue&gt; Run(IReadOnlyCollection&lt;string&gt; inputNames, IReadOnlyCollection&lt;FixedBufferOnnxValue&gt; inputValues, IReadOnlyCollection&lt;string&gt; outputNames, RunOptions options)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<span class="xref">System.String</span>&gt;</td>
+        <td><span class="parametername">inputNames</span></td>
+        <td><p>Specify a collection of string that indicates the input names. Should match <code data-dev-comment-type="paramref" class="paramref">inputValues</code>.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a>&gt;</td>
+        <td><span class="parametername">inputValues</span></td>
+        <td><p>Specify a collection of <a class="xref" href="Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.html">FixedBufferOnnxValue</a> that indicates the input values.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">IReadOnlyCollection</span>&lt;<span class="xref">System.String</span>&gt;</td>
+        <td><span class="parametername">outputNames</span></td>
+        <td><p>Specify a collection of string that indicates the output names to fetch.</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.RunOptions.html">RunOptions</a></td>
+        <td><span class="parametername">options</span></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection-1.html">IDisposableReadOnlyCollection</a>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue.html">DisposableNamedOnnxValue</a>&gt;</td>
+        <td><p>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_RunWithBinding_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBinding*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_RunWithBinding_Microsoft_ML_OnnxRuntime_RunOptions_Microsoft_ML_OnnxRuntime_OrtIoBinding_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBinding(Microsoft.ML.OnnxRuntime.RunOptions,Microsoft.ML.OnnxRuntime.OrtIoBinding)">RunWithBinding(RunOptions, OrtIoBinding)</h4>
+  <div class="markdown level1 summary"><p>This method runs inference on the OrtIoBinding instance
+The method does not return anything. This is a lightweight version of
+RunWithBindingAndNames(). When you bind pre-allocated buffers to the output values
+you may not want to fetch the outputs since you already have access to them so you can spare
+the expense of fetching them and pairing with names.
+You can still fetch the outputs by calling OrtIOBinding.GetOutputValues()</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public void RunWithBinding(RunOptions runOptions, OrtIoBinding ioBinding)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.RunOptions.html">RunOptions</a></td>
+        <td><span class="parametername">runOptions</span></td>
+        <td><p>runOptions</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtIoBinding.html">OrtIoBinding</a></td>
+        <td><span class="parametername">ioBinding</span></td>
+        <td><p>ioBinding instance to use</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_InferenceSession_RunWithBindingAndNames_" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBindingAndNames*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_InferenceSession_RunWithBindingAndNames_Microsoft_ML_OnnxRuntime_RunOptions_Microsoft_ML_OnnxRuntime_OrtIoBinding_System_String___" data-uid="Microsoft.ML.OnnxRuntime.InferenceSession.RunWithBindingAndNames(Microsoft.ML.OnnxRuntime.RunOptions,Microsoft.ML.OnnxRuntime.OrtIoBinding,System.String[])">RunWithBindingAndNames(RunOptions, OrtIoBinding, String[])</h4>
+  <div class="markdown level1 summary"><p>This method return a collection of DisposableNamedOnnxValue as in other interfaces
+Query names from OrtIoBinding object and pair then with the array of OrtValues returned
+from OrtIoBinding.GetOutputValues()</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public IDisposableReadOnlyCollection&lt;DisposableNamedOnnxValue&gt; RunWithBindingAndNames(RunOptions runOptions, OrtIoBinding ioBinding, string[] names = null)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.RunOptions.html">RunOptions</a></td>
+        <td><span class="parametername">runOptions</span></td>
+        <td><p>RunOptions</p>
+</td>
+      </tr>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.OrtIoBinding.html">OrtIoBinding</a></td>
+        <td><span class="parametername">ioBinding</span></td>
+        <td><p>OrtIoBinding instance with bindings</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">System.String</span>[]</td>
+        <td><span class="parametername">names</span></td>
+        <td><p>optional parameter. If you already know the names of the outputs you can save a native
+call to retrieve output names. They will be paired with the returned OrtValues and combined into DisposbleNamedOnnxValues.
+Otherwise, the method will retrieve output names from the OrtIoBinding instance.
+It is an error if you supply a different number of names than the returned outputs</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.IDisposableReadOnlyCollection-1.html">IDisposableReadOnlyCollection</a>&lt;<a class="xref" href="Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue.html">DisposableNamedOnnxValue</a>&gt;</td>
+        <td><p>A disposable collection of DisposableNamedOnnxValue that encapsulate output OrtValues</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+</article>
+          </div>
+          
+          <div class="hidden-sm col-md-2" role="complementary">
+            <div class="sideaffix">
+              <div class="contribution">
+                <ul class="nav">
+                </ul>
+              </div>
+              <nav class="bs-docs-sidebar hidden-print hidden-xs hidden-sm affix" id="affix">
+                <h5>In This Article</h5>
+                <div></div>
+              </nav>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <footer>
+        <div class="grad-bottom"></div>
+        <div class="footer">
+          <div class="container">
+            <span class="pull-right">
+              <a href="#top">Back to top</a>
+            </span>
+          </div>
+        </div>
+      </footer>
+    </div>
+    
+    <script type="text/javascript" src="../styles/docfx.vendor.js"></script>
+    <script type="text/javascript" src="../styles/docfx.js"></script>
+    <script type="text/javascript" src="../styles/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,478 @@
+﻿<!DOCTYPE html>
+<!--[if IE]><![endif]-->
+<html>
+  
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <title>Class ArrayTensorExtensions
+   </title>
+    <meta name="viewport" content="width=device-width">
+    <meta name="title" content="Class ArrayTensorExtensions
+   ">
+    <meta name="generator" content="docfx 2.59.3.0">
+    
+    <link rel="shortcut icon" href="../favicon.ico">
+    <link rel="stylesheet" href="../styles/docfx.vendor.css">
+    <link rel="stylesheet" href="../styles/docfx.css">
+    <link rel="stylesheet" href="../styles/main.css">
+    <meta property="docfx:navrel" content="../toc.html">
+    <meta property="docfx:tocrel" content="toc.html">
+    
+    
+    
+  </head>
+  <body data-spy="scroll" data-target="#affix" data-offset="120">
+    <div id="wrapper">
+      <header>
+        
+        <nav id="autocollapse" class="navbar navbar-inverse ng-scope" role="navigation">
+          <div class="container">
+            <div class="navbar-header">
+              <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+              </button>
+              
+              <a class="navbar-brand" href="../index.html">
+                <img id="logo" class="svg" src="../logo.svg" alt="">
+              </a>
+            </div>
+            <div class="collapse navbar-collapse" id="navbar">
+              <form class="navbar-form navbar-right" role="search" id="search">
+                <div class="form-group">
+                  <input type="text" class="form-control" id="search-query" placeholder="Search" autocomplete="off">
+                </div>
+              </form>
+            </div>
+          </div>
+        </nav>
+        
+        <div class="subnav navbar navbar-default">
+          <div class="container hide-when-search" id="breadcrumb">
+            <ul class="breadcrumb">
+              <li></li>
+            </ul>
+          </div>
+        </div>
+      </header>
+      <div role="main" class="container body-content hide-when-search">
+        
+        <div class="sidenav hide-when-search">
+          <a class="btn toc-toggle collapse" data-toggle="collapse" href="#sidetoggle" aria-expanded="false" aria-controls="sidetoggle">Show / Hide Table of Contents</a>
+          <div class="sidetoggle collapse" id="sidetoggle">
+            <div id="sidetoc"></div>
+          </div>
+        </div>
+        <div class="article row grid-right">
+          <div class="col-md-10">
+            <article class="content wrap" id="_content" data-uid="Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions">
+  
+  
+  <h1 id="Microsoft_ML_OnnxRuntime_Tensors_ArrayTensorExtensions" data-uid="Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions" class="text-break">Class ArrayTensorExtensions
+  </h1>
+  <div class="markdown level0 summary"></div>
+  <div class="markdown level0 conceptual"></div>
+  <div class="inheritance">
+    <h5>Inheritance</h5>
+    <div class="level0"><span class="xref">System.Object</span></div>
+    <div class="level1"><span class="xref">ArrayTensorExtensions</span></div>
+  </div>
+  <div class="inheritedMembers">
+    <h5>Inherited Members</h5>
+    <div>
+      <span class="xref">System.Object.ToString()</span>
+    </div>
+    <div>
+      <span class="xref">System.Object.Equals(System.Object)</span>
+    </div>
+    <div>
+      <span class="xref">System.Object.Equals(System.Object, System.Object)</span>
+    </div>
+    <div>
+      <span class="xref">System.Object.ReferenceEquals(System.Object, System.Object)</span>
+    </div>
+    <div>
+      <span class="xref">System.Object.GetHashCode()</span>
+    </div>
+    <div>
+      <span class="xref">System.Object.GetType()</span>
+    </div>
+    <div>
+      <span class="xref">System.Object.MemberwiseClone()</span>
+    </div>
+  </div>
+  <h6><strong>Namespace</strong>: <a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.html">Microsoft.ML.OnnxRuntime.Tensors</a></h6>
+  <h6><strong>Assembly</strong>: cs.temp.dll.dll</h6>
+  <h5 id="Microsoft_ML_OnnxRuntime_Tensors_ArrayTensorExtensions_syntax">Syntax</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static class ArrayTensorExtensions</code></pre>
+  </div>
+  <h3 id="methods">Methods
+  </h3>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_Tensors_ArrayTensorExtensions_ToTensor_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_Tensors_ArrayTensorExtensions_ToTensor__1___0___" data-uid="Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(``0[])">ToTensor&lt;T&gt;(T[])</h4>
+  <div class="markdown level1 summary"><p>Creates a copy of this single-dimensional array as a DenseTensor&lt;T&gt;</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static DenseTensor&lt;T&gt; ToTensor&lt;T&gt;(this T[] array)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>T[]</td>
+        <td><span class="parametername">array</span></td>
+        <td><p>The array to create a DenseTensor&lt;T&gt; from.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor-1.html">DenseTensor</a>&lt;T&gt;</td>
+        <td><p>A 1-dimensional DenseTensor&lt;T&gt; with the same length and content as <code data-dev-comment-type="paramref" class="paramref">array</code>.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="typeParameters">Type Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="parametername">T</span></td>
+        <td><p>Type contained in the array to copy to the DenseTensor&lt;T&gt;.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_Tensors_ArrayTensorExtensions_ToTensor_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_Tensors_ArrayTensorExtensions_ToTensor__1___0_0__0__0__0___System_Boolean_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(``0[0:,0:,0:,0:],System.Boolean)">ToTensor&lt;T&gt;(T[,,,], Boolean)</h4>
+  <div class="markdown level1 summary"><p>Creates a copy of this four-dimensional array as a DenseTensor&lt;T&gt;</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static DenseTensor&lt;T&gt; ToTensor&lt;T&gt;(this T[,,, ] array, bool reverseStride = false)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>T[,,,]</td>
+        <td><span class="parametername">array</span></td>
+        <td><p>The array to create a DenseTensor&lt;T&gt; from.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">System.Boolean</span></td>
+        <td><span class="parametername">reverseStride</span></td>
+        <td><p>False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor-1.html">DenseTensor</a>&lt;T&gt;</td>
+        <td><p>A 4-dimensional DenseTensor&lt;T&gt; with the same dimensions and content as <code data-dev-comment-type="paramref" class="paramref">array</code>.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="typeParameters">Type Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="parametername">T</span></td>
+        <td><p>Type contained in the array to copy to the DenseTensor&lt;T&gt;.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_Tensors_ArrayTensorExtensions_ToTensor_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_Tensors_ArrayTensorExtensions_ToTensor__1___0_0__0__0___System_Boolean_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(``0[0:,0:,0:],System.Boolean)">ToTensor&lt;T&gt;(T[,,], Boolean)</h4>
+  <div class="markdown level1 summary"><p>Creates a copy of this three-dimensional array as a DenseTensor&lt;T&gt;</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static DenseTensor&lt;T&gt; ToTensor&lt;T&gt;(this T[,, ] array, bool reverseStride = false)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>T[,,]</td>
+        <td><span class="parametername">array</span></td>
+        <td><p>The array to create a DenseTensor&lt;T&gt; from.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">System.Boolean</span></td>
+        <td><span class="parametername">reverseStride</span></td>
+        <td><p>False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor-1.html">DenseTensor</a>&lt;T&gt;</td>
+        <td><p>A 3-dimensional DenseTensor&lt;T&gt; with the same dimensions and content as <code data-dev-comment-type="paramref" class="paramref">array</code>.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="typeParameters">Type Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="parametername">T</span></td>
+        <td><p>Type contained in the array to copy to the DenseTensor&lt;T&gt;.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_Tensors_ArrayTensorExtensions_ToTensor_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_Tensors_ArrayTensorExtensions_ToTensor__1___0_0__0___System_Boolean_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(``0[0:,0:],System.Boolean)">ToTensor&lt;T&gt;(T[,], Boolean)</h4>
+  <div class="markdown level1 summary"><p>Creates a copy of this two-dimensional array as a DenseTensor&lt;T&gt;</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static DenseTensor&lt;T&gt; ToTensor&lt;T&gt;(this T[, ] array, bool reverseStride = false)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>T[,]</td>
+        <td><span class="parametername">array</span></td>
+        <td><p>The array to create a DenseTensor&lt;T&gt; from.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">System.Boolean</span></td>
+        <td><span class="parametername">reverseStride</span></td>
+        <td><p>False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): row-major.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): column-major.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor-1.html">DenseTensor</a>&lt;T&gt;</td>
+        <td><p>A 2-dimensional DenseTensor&lt;T&gt; with the same dimensions and content as <code data-dev-comment-type="paramref" class="paramref">array</code>.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="typeParameters">Type Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="parametername">T</span></td>
+        <td><p>Type contained in the array to copy to the DenseTensor&lt;T&gt;.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  
+  <a id="Microsoft_ML_OnnxRuntime_Tensors_ArrayTensorExtensions_ToTensor_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor*"></a>
+  <h4 id="Microsoft_ML_OnnxRuntime_Tensors_ArrayTensorExtensions_ToTensor__1_Array_System_Boolean_" data-uid="Microsoft.ML.OnnxRuntime.Tensors.ArrayTensorExtensions.ToTensor``1(Array,System.Boolean)">ToTensor&lt;T&gt;(Array, Boolean)</h4>
+  <div class="markdown level1 summary"><p>Creates a copy of this n-dimensional array as a DenseTensor&lt;T&gt;</p>
+</div>
+  <div class="markdown level1 conceptual"></div>
+  <h5 class="decalaration">Declaration</h5>
+  <div class="codewrapper">
+    <pre><code class="lang-csharp hljs">public static DenseTensor&lt;T&gt; ToTensor&lt;T&gt;(this Array array, bool reverseStride = false)</code></pre>
+  </div>
+  <h5 class="parameters">Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="xref">Array</span></td>
+        <td><span class="parametername">array</span></td>
+        <td><p>The array to create a DenseTensor&lt;T&gt; from.</p>
+</td>
+      </tr>
+      <tr>
+        <td><span class="xref">System.Boolean</span></td>
+        <td><span class="parametername">reverseStride</span></td>
+        <td><p>False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="returns">Returns</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a class="xref" href="Microsoft.ML.OnnxRuntime.Tensors.DenseTensor-1.html">DenseTensor</a>&lt;T&gt;</td>
+        <td><p>A n-dimensional DenseTensor&lt;T&gt; with the same dimensions and content as <code data-dev-comment-type="paramref" class="paramref">array</code>.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+  <h5 class="typeParameters">Type Parameters</h5>
+  <table class="table table-bordered table-striped table-condensed">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="parametername">T</span></td>
+        <td><p>Type contained in the array to copy to the DenseTensor&lt;T&gt;.</p>
+</td>
+      </tr>
+    </tbody>
+  </table>
+</article>
+          </div>
+          
+          <div class="hidden-sm col-md-2" role="complementary">
+            <div class="sideaffix">
+              <div class="contribution">
+                <ul class="nav">
+                </ul>
+              </div>
+              <nav class="bs-docs-sidebar hidden-print hidden-xs hidden-sm affix" id="affix">
+                <h5>In This Article</h5>
+                <div></div>
+              </nav>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <footer>
+        <div class="grad-bottom"></div>
+        <div class="footer">
+          <div class="container">
+            <span class="pull-right">
+              <a href="#top">Back to top</a>
+            </span>
+          </div>
+        </div>
+      </footer>
+    </div>
+    
+    <script type="text/javascript" src="../styles/docfx.vendor.js"></script>
+    <script type="text/javascript" src="../styles/docfx.js"></script>
+    <script type="text/javascript" src="../styles/main.js"></script>
+  </body>
+</html>
