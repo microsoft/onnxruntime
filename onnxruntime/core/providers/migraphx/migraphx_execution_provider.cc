@@ -1039,7 +1039,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         delete static_cast<MIGraphXFuncState*>(state);
     };
 
-    compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
+    compute_info.compute_func = [this](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
       Ort::KernelContext ctx(context);
       MIGraphXFuncState* mgx_state = reinterpret_cast<MIGraphXFuncState*>(state);
 
@@ -1162,11 +1162,11 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         }
       }
 
+      mgx_state->e.set_async_stream(GetComputeStream());
       {
-        // lock to avoid race condition
         std::lock_guard<OrtMutex> lock(*(mgx_state->mgx_mu_ptr));
-        auto prog_outputs = prog.eval(m);
-        HIP_CALL_THROW(hipDeviceSynchronize());
+
+        auto prog_outputs = prog.eval(m, mgx_state->e);
 
         // In case of input parameters are reused as output parameter call hipMemcpy
         auto output_num = prog_outputs.size();

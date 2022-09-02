@@ -33,6 +33,7 @@ struct MIGraphXFuncState {
   bool no_input_shape = false;
   bool fp16_enable = false;
   bool dump_model_ops = false;
+  migraphx::execution_environment e{};
 };
 
 // Logical device representation.
