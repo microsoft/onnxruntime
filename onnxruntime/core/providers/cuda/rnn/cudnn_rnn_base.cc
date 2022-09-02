@@ -90,15 +90,6 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
   // LSTM R[num_directions_, 4*hidden_size_, hidden_size_]
   // LSTM B[num_directions_, 8*hidden_size_]
 
-  // Prepare the weight data
-  reorganized_w_data = GetScratchBuffer<void>(w_size * sizeof(T));
-
-  // In many cases, this allocation is bigger than needed, leaving part of
-  // the buffer unintialized. non-zero garbage data leads to wrong result
-  // in call to cudnnRNNForwardInference()
-  // TODO! refine allocation size for each case.
-  cudaMemset(reorganized_w_data.get(), 0, w_size * sizeof(T));
-
   const T* W_data = W->Data<T>();
   const T* R_data = R->Data<T>();
   const T* B_data = B == nullptr ? nullptr : B->Data<T>();
@@ -278,7 +269,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     zero_seq_index_cache_size = zero_seq_count * num_directions_;
     zero_seq_index_cache.resize(zero_seq_index_cache_size);
     for (int64_t i = 0; i < zero_seq_count; ++i) {
-      zero_seq_index_cache[zero_seq_count + i] = static_cast<size_t>(batch_size + zero_seq_index_cache[i]);
+      zero_seq_index_cache[zero_seq_count + i] = static_cast<int32_t>(batch_size + zero_seq_index_cache[i]);
     }
   }
 
