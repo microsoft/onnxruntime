@@ -16,7 +16,7 @@ parser = argparse.ArgumentParser(
     See https://github.com/cli/cli#installation for details.
     After installation you will also need to setup an auth token to access the ONNX Runtime repository by running
     `gh auth login`. Easiest is to run that from a directory in your local copy of the repo.
-    """
+    """,
 )
 parser.add_argument("--pr", required=True, help="Specify the pull request ID.")
 args = parser.parse_args()
