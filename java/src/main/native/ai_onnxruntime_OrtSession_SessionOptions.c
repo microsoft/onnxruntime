@@ -4,7 +4,7 @@
  */
 #include <jni.h>
 #include <string.h>
-#include <stdio.h>
+#include <stdlib.h>
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "OrtJniUtil.h"
 #include "ai_onnxruntime_OrtSession_SessionOptions.h"
@@ -631,6 +631,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExe
   const OrtApi* api = (const OrtApi*)apiHandle;
   OrtSessionOptions* options = (OrtSessionOptions*)optionsHandle;
   int keyCount = (*jniEnv)->GetArrayLength(jniEnv, configKeyArr);
+
   const char** keyArray = (const char**)malloc(keyCount * sizeof(const char*));
   const char** valueArray = (const char**)malloc(keyCount * sizeof(const char*));
   jstring* jkeyArray = (jstring*)malloc(keyCount * sizeof(jstring));

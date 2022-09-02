@@ -1011,7 +1011,7 @@ public class OrtSession implements AutoCloseable {
     private native void setExecutionMode(long apiHandle, long nativeHandle, int mode)
         throws OrtException;
 
-    private native void setOptimizationLevel(long apiHandle, long nativeHandle, int levelgra
+    private native void setOptimizationLevel(long apiHandle, long nativeHandle, int level)
         throws OrtException;
 
     private native void setInterOpNumThreads(long apiHandle, long nativeHandle, int numThreads)
