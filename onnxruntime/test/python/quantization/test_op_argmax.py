@@ -20,8 +20,10 @@ from op_test_utils import (
     check_op_type_count,
     check_qtype_by_node_type,
 )
+
 import onnxruntime
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
+
 
 def check_fraction_correct(testcase, model_path_origin, model_path_to_check, inputs, tolerance=0.05):
     sess_options = onnxruntime.SessionOptions()
@@ -50,7 +52,7 @@ def check_fraction_correct(testcase, model_path_origin, model_path_to_check, inp
         assert fraction_wrong < tolerance, (
             "fraction incorrect (" + str(fraction_wrong) + ") exceeds tolerance (" + str(tolerance) + ")"
         )
-            
+
 
 class TestOpArgMax(TestCaseTempDir):
     def input_feeds(self, n, name2shape):
