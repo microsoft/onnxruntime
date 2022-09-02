@@ -7,6 +7,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <iostream>
 
 #include "gsl/gsl"
 
@@ -26,12 +27,7 @@ class Shaper {
   void AddShape(const std::string& name, const Shape& shape);
 
   inline const Shape& operator[](const std::string& key) const {
-    if (shape_map_.find(key) != shape_map_.end()) {
-      return shape_map_.at(key);
-    }
-
-    static const auto shape = GetShapeInfoFromNodeArg(*graph_viewer_, key);
-    return shape;
+    return shape_map_.at(key);
   }
 
   // If the shape of certain input is dynamic
