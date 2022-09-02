@@ -509,15 +509,6 @@ typedef struct OrtMIGraphXProviderOptions {
   int migraphx_int8_enable;  // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
 } OrtMIGraphXProviderOptions;
 
-/** \brief Xnnpack Provider Options
- *
- * \see OrtApi::SessionOptionsAppendExecutionProvider_Xnnpack
- */
-typedef struct OrtXnnpackProviderOptions {
-  int xnnpack_fp16_enable;  // enable Xnnpack FP16 precision. Default 0 = false, nonzero = true
-  int xnnpack_int8_enable;  // enable Xnnpack INT8 precision. Default 0 = false, nonzero = true
-} OrtXnnpackProviderOptions;
-
 
 /** \brief OpenVINO Provider Options
 *
