@@ -3,9 +3,9 @@ import time
 
 import numpy as np
 import torch
-from onnxruntime import InferenceSession, SessionOptions
-
 from utils import export_helper
+
+from onnxruntime import InferenceSession, SessionOptions
 
 
 def inference(args):
@@ -35,12 +35,21 @@ def inference(args):
             min_length=min_length,
             max_length=max_length,
             repetition_penalty=repetition_penalty,
-            no_repeat_ngram_size=no_repeat_ngram_size)
+            no_repeat_ngram_size=no_repeat_ngram_size,
+        )
         time_cost = time.time() - start_time
         print("--- %s seconds ---" % (time_cost))
         for j in range(batch_num):
             for i in range(beam):
-                print("batch", j, ": sequence:", i, tokenizer.decode(pred_ids[j * beam + i], skip_special_tokens=True, clean_up_tokenization_spaces=False))
+                print(
+                    "batch",
+                    j,
+                    ": sequence:",
+                    i,
+                    tokenizer.decode(
+                        pred_ids[j * beam + i], skip_special_tokens=True, clean_up_tokenization_spaces=False
+                    ),
+                )
 
         print("ORT inference ...")
         ort_inputs = {
@@ -51,17 +60,25 @@ def inference(args):
             "num_return_sequences": np.array([beam], dtype=np.int32),
             "length_penalty": np.array([1], dtype=np.float32),
             "repetition_penalty": np.array([repetition_penalty], dtype=np.float32),
-            "attention_mask": np.ones(input_data.shape).astype(np.int32) # custom attn_mask, please change as needed
+            "attention_mask": np.ones(input_data.shape).astype(np.int32),  # custom attn_mask, please change as needed
         }
 
-        model_path = os.path.join(args.output, 'model_final.onnx')
+        model_path = os.path.join(args.output, "model_final.onnx")
         sess_options = SessionOptions()
         sess_options.log_severity_level = 4
-        sess = InferenceSession(model_path, sess_options, providers=['CPUExecutionProvider', 'CUDAExecutionProvider'])
+        sess = InferenceSession(model_path, sess_options, providers=["CPUExecutionProvider", "CUDAExecutionProvider"])
         start_time = time.time()
         out = sess.run(None, ort_inputs)
         time_cost = time.time() - start_time
         print("--- %s seconds ---" % (time_cost))
         for j in range(batch_num):
             for i in range(beam):
-                print("batch", j, ": sequence:", i, tokenizer.decode(torch.from_numpy(out[0][j][i]), skip_special_tokens=True, clean_up_tokenization_spaces=False))
+                print(
+                    "batch",
+                    j,
+                    ": sequence:",
+                    i,
+                    tokenizer.decode(
+                        torch.from_numpy(out[0][j][i]), skip_special_tokens=True, clean_up_tokenization_spaces=False
+                    ),
+                )

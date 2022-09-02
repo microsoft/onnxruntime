@@ -1,14 +1,16 @@
-from typing import List, Tuple
 import os
-import glob
+from typing import List, Tuple
+
 import torch
 from transformers import BartConfig, BartForConditionalGeneration, BartTokenizer
-from onnxruntime import InferenceSession, SessionOptions
 from utils import export_summarization_enc_dec_past
-import numpy as np
+
+from onnxruntime import InferenceSession, SessionOptions
+
 
 class PastKeyValuesHelper:
-    """ Helper functions to process past key values for encoder-decoder model"""
+    """Helper functions to process past key values for encoder-decoder model"""
+
     @staticmethod
     def group_by_self_and_cross(present_key_values, concat=False):
         """
@@ -50,6 +52,7 @@ class PastKeyValuesHelper:
             names.extend([prefix + s for s in [f"key_cross_{i}", f"value_cross_{i}"]])
         return names
 
+    @staticmethod
     def get_output_names(past_key_values: Tuple[Tuple[torch.Tensor]]):
         """Process output names of model wrapper
 
@@ -66,6 +69,7 @@ class PastKeyValuesHelper:
             names.extend([prefix + s for s in [f"key_self_{i}", f"value_self_{i}"]])
         return names
 
+    @staticmethod
     def back_group_by_layer(past_key_values: Tuple[Tuple[torch.Tensor]]):
         """
         Reorder past state from grouped by self/cross attention to grouped by layer.
@@ -77,9 +81,17 @@ class PastKeyValuesHelper:
         past_tuples = ()
         half_idx = len(past_key_values) // 2
         for i in range(len(past_key_values) // 4):
-            idx = 2*i
-            past_tuples += ((past_key_values[idx], past_key_values[idx+1], past_key_values[half_idx+idx], past_key_values[half_idx+idx+1]), )
+            idx = 2 * i
+            past_tuples += (
+                (
+                    past_key_values[idx],
+                    past_key_values[idx + 1],
+                    past_key_values[half_idx + idx],
+                    past_key_values[half_idx + idx + 1],
+                ),
+            )
         return past_tuples
+
 
 def config_initialize(args):
 
@@ -87,11 +99,7 @@ def config_initialize(args):
     config = BartConfig.from_pretrained(model_dir)
     tokenizer = BartTokenizer.from_pretrained(model_dir)
     if args.spm_path:
-        tokenizer = BartTokenizer(
-                        args.spm_path,
-                        args.input_text,
-                        args.vocab_path,
-                        config=config)
+        tokenizer = BartTokenizer(args.spm_path, args.input_text, args.vocab_path, config=config)
 
     config.use_decoder = True
     assert tokenizer.eos_token_id == config.decoder_start_token_id
@@ -103,6 +111,7 @@ def config_initialize(args):
 
     return config, tokenizer
 
+
 def model_initialize(config, tokenizer, args):
     """
     model initialization and input data preprcessing
@@ -112,14 +121,15 @@ def model_initialize(config, tokenizer, args):
     device = args.device
     input_text = args.input_text
 
-    model = BartForConditionalGeneration.from_pretrained(
-        model_dir, config=config).eval()
+    model = BartForConditionalGeneration.from_pretrained(model_dir, config=config).eval()
 
     model = model.to(device)
 
-    lang = '__en__'
+    lang = "__en__"
     features = [tokenizer.convert_tokens_to_ids(lang)]
-    features.extend(tokenizer.encode_plus(input_text, add_special_tokens=False, max_length=510, truncation=True)["input_ids"])
+    features.extend(
+        tokenizer.encode_plus(input_text, add_special_tokens=False, max_length=510, truncation=True)["input_ids"]
+    )
     features.append(tokenizer.eos_token_id)
     input_data = torch.LongTensor(features).unsqueeze(0).to(device)
 

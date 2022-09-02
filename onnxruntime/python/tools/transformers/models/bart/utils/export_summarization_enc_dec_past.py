@@ -1,39 +1,33 @@
 import copy
 import os
 import time
-from typing import Any, Dict, Optional
 
-import numpy as np
 import torch
-from onnxruntime import InferenceSession, SessionOptions
 from transformers import BartForConditionalGeneration, file_utils
-
 from utils import export_helper
+
+from onnxruntime import InferenceSession, SessionOptions
 
 
 def decoder_config_update(config):
     """
     Add parameters into decoder config to help expoerting. These parameter
     are later consumed with control flow and assertion
-    
+
     Args:
         config: BART config
     """
 
     new_attributes = {
-        "is_decoder_exported":False,
-        "is_decoder_with_past_exported":False,
-        "during_export":False,
-        "expected_args":{
-            "use_cache": True,
-            "return_dict": True},
-        "expected_inputs":[
-            "decoder_input_ids",
-            "attention_mask",
-            "encoder_outputs"]
+        "is_decoder_exported": False,
+        "is_decoder_with_past_exported": False,
+        "during_export": False,
+        "expected_args": {"use_cache": True, "return_dict": True},
+        "expected_inputs": ["decoder_input_ids", "attention_mask", "encoder_outputs"],
     }
     config.update(new_attributes)
     return config
+
 
 class DecoderWrapper(torch.nn.Module):
     def __init__(self, m):
@@ -42,31 +36,33 @@ class DecoderWrapper(torch.nn.Module):
 
     def forward(self, decoder_input_ids, attention_mask, encoder_hidden_states, *past):
         encoder_outputs = file_utils.ModelOutput()
-        encoder_outputs['last_hidden_state'] = encoder_hidden_states
-        encoder_outputs['hidden_states'] = None
-        encoder_outputs['attentions'] = None
+        encoder_outputs["last_hidden_state"] = encoder_hidden_states
+        encoder_outputs["hidden_states"] = None
+        encoder_outputs["attentions"] = None
         if len(past) == 0:
             past_key_values = None
         else:
             past_key_values = export_helper.PastKeyValuesHelper.back_group_by_layer(past)
         decoder_out = self.m(
-                        None,
-                        encoder_outputs=encoder_outputs,
-                        decoder_input_ids=decoder_input_ids,
-                        attention_mask=attention_mask,
-                        past_key_values=past_key_values,
-                        use_cache=True,
-                        return_dict=True)
+            None,
+            encoder_outputs=encoder_outputs,
+            decoder_input_ids=decoder_input_ids,
+            attention_mask=attention_mask,
+            past_key_values=past_key_values,
+            use_cache=True,
+            return_dict=True,
+        )
         present_self, _ = export_helper.PastKeyValuesHelper.group_by_self_and_cross(decoder_out.past_key_values)
         return decoder_out.logits, present_self
 
+
 def _decoder_forward_wrapper(model, decoder_config, args):
     """
-    Exporting the decoder of BART by inserting torch.onnx.export and wrapper 
+    Exporting the decoder of BART by inserting torch.onnx.export and wrapper
     torch.nn.Module into `forward`.
-    
+
     Args:
-        model: BartForConditionalGeneration 
+        model: BartForConditionalGeneration
         args: User input
         decoder_config: BART config after `decoder_config_update`
     """
@@ -92,10 +88,14 @@ def _decoder_forward_wrapper(model, decoder_config, args):
                 inputs.append(kwargs[k]["last_hidden_state"])
             elif kwargs[k] is not None:
                 inputs.append(kwargs[k].type(torch.int32))
-        
+
         # delete unused key//value
         for k in list(kwargs.keys()):
-            if k not in decoder_config.expected_args and k not in decoder_config.expected_inputs and k != "past_key_values":
+            if (
+                k not in decoder_config.expected_args
+                and k not in decoder_config.expected_inputs
+                and k != "past_key_values"
+            ):
                 del kwargs[k]
 
         encoder_outputs = kwargs["encoder_outputs"]
@@ -110,7 +110,9 @@ def _decoder_forward_wrapper(model, decoder_config, args):
         past_inputs = kwargs["past_key_values"]
         past_input_list = []
         if past_inputs is not None and not decoder_config.is_decoder_with_past_exported:
-            past_input_list = copy.deepcopy(export_helper.PastKeyValuesHelper.group_by_self_and_cross(past_inputs, concat=True))
+            past_input_list = copy.deepcopy(
+                export_helper.PastKeyValuesHelper.group_by_self_and_cross(past_inputs, concat=True)
+            )
 
         # compare `decoder_out_pt` with ORT results.
         decoder_out_pt = self._forward(input_ids, **kwargs)
@@ -191,7 +193,7 @@ def _decoder_forward_wrapper(model, decoder_config, args):
             ort_inputs.pop("encoder_hidden_states")
             sess_options = SessionOptions()
             sess_options.log_severity_level = 4
-            sess = InferenceSession(onnx_model_path, sess_options, providers=['CPUExecutionProvider'])
+            sess = InferenceSession(onnx_model_path, sess_options, providers=["CPUExecutionProvider"])
             out = sess.run(None, ort_inputs)
 
             for ort_out, torch_out in zip(out, [logits] + present):
@@ -232,7 +234,8 @@ def export_decoder(args):
             max_length=max_length,
             repetition_penalty=repetition_penalty,
             no_repeat_ngram_size=no_repeat_ngram_size,
-            use_cache=True)
+            use_cache=True,
+        )
         time_cost = time.time() - start_time
         print("--- %s seconds ---" % (time_cost))
         print(tokenizer.decode(pred_ids[0], skip_special_tokens=True, clean_up_tokenization_spaces=False))

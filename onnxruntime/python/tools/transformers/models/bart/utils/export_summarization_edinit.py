@@ -2,11 +2,10 @@ import os
 import time
 from typing import Any, Dict, Optional
 
-import onnxruntime
 import torch
 from transformers import BartForConditionalGeneration, file_utils
-
 from utils import export_helper
+
 
 class DecoderInitWrapper(torch.nn.Module):
     def __init__(self, m):
@@ -15,9 +14,9 @@ class DecoderInitWrapper(torch.nn.Module):
 
     def forward(self, last_hidden_state, decoder_input_ids, attention_mask):
         encoder_outputs = file_utils.ModelOutput()
-        encoder_outputs['last_hidden_state'] = last_hidden_state
-        encoder_outputs['hidden_states'] = None
-        encoder_outputs['attentions'] = None
+        encoder_outputs["last_hidden_state"] = last_hidden_state
+        encoder_outputs["hidden_states"] = None
+        encoder_outputs["attentions"] = None
         return self.m(
             None,
             encoder_outputs=encoder_outputs,
@@ -25,43 +24,44 @@ class DecoderInitWrapper(torch.nn.Module):
             attention_mask=attention_mask,
             past_key_values=None,
             use_cache=True,
-            return_dict=True)
+            return_dict=True,
+        )
+
 
 class EncoderDecoderInit(torch.nn.Module):
-    def __init__(self,
-                encoder: torch.nn.Module,
-                decoderwrapper: DecoderInitWrapper):
+    def __init__(self, encoder: torch.nn.Module, decoderwrapper: DecoderInitWrapper):
         super().__init__()
         self.encoder = encoder
         self.decoder_init = decoderwrapper
 
-    def forward(self,
-                encoder_input_ids: torch.Tensor,
-                encoder_attention_mask: torch.Tensor,
-                decoder_input_ids: torch.Tensor):
-        encoder_out = self.encoder(
-            encoder_input_ids, encoder_attention_mask)
+    def forward(
+        self, encoder_input_ids: torch.Tensor, encoder_attention_mask: torch.Tensor, decoder_input_ids: torch.Tensor
+    ):
+        encoder_out = self.encoder(encoder_input_ids, encoder_attention_mask)
 
-        encoder_output = encoder_out['last_hidden_state']
-        decoder_out = self.decoder_init(
-            encoder_output, decoder_input_ids, encoder_attention_mask)
+        encoder_output = encoder_out["last_hidden_state"]
+        decoder_out = self.decoder_init(encoder_output, decoder_input_ids, encoder_attention_mask)
         present_self, present_cross = export_helper.PastKeyValuesHelper.group_by_self_and_cross(
-            decoder_out.past_key_values)
+            decoder_out.past_key_values
+        )
         present = present_self + present_cross
 
         return decoder_out.logits, encoder_output, present
 
+
 def _create_encoder_export(args, config):
     """
-    Exporting the excoder part of BART by inserting torch.onnx.export and 
+    Exporting the excoder part of BART by inserting torch.onnx.export and
     wrapper torch.nn.Module into `_prepare_encoder_decoder_kwargs_for_generation`.
-    
+
     Args:
         args: User input.
         config: BART config
     """
+
     def _prepare_encoder_decoder_kwargs_for_generation(
-            self, input_ids: torch.Tensor, model_kwargs, model_input_name: Optional[str] = None) -> Dict[str, Any]:
+        self, input_ids: torch.Tensor, model_kwargs, model_input_name: Optional[str] = None
+    ) -> Dict[str, Any]:
 
         # retrieve encoder hidden states
         # 1. get encoder
@@ -80,20 +80,19 @@ def _create_encoder_export(args, config):
         model_kwargs["encoder_outputs"] = encoder(**encoder_kwargs)
 
         encoder_input_ids = input_ids.type(torch.int32)
-        encoder_attention_mask = encoder_kwargs['attention_mask'].type(torch.int32)
+        encoder_attention_mask = encoder_kwargs["attention_mask"].type(torch.int32)
         decoder_input_ids = (
-            torch.ones((input_ids.shape[0], 1),
-                    dtype=torch.int32, device=input_ids.device) * config.decoder_start_token_id
+            torch.ones((input_ids.shape[0], 1), dtype=torch.int32, device=input_ids.device)
+            * config.decoder_start_token_id
         )
 
         wrapped_decoder = DecoderInitWrapper(self).eval()
         encdecinit = EncoderDecoderInit(encoder, wrapped_decoder)
         # use results from encdecinit here to compare with ORT.
-        _, _, present = encdecinit(
-            encoder_input_ids, encoder_attention_mask, decoder_input_ids)
+        _, _, present = encdecinit(encoder_input_ids, encoder_attention_mask, decoder_input_ids)
         output_past_names = export_helper.PastKeyValuesHelper.get_input_names(present, encoder=True)
 
-        # random name to use in dynamic axes 
+        # random name to use in dynamic axes
         sequence_length = "1"
         num_heads = str(config.encoder_attention_heads)
         hidden_size = str(config.d_model)
@@ -130,8 +129,7 @@ def _create_encoder_export(args, config):
             model_path,
             opset_version=args.opset_version,
             do_constant_folding=False,
-            input_names=["encoder_input_ids",
-                        "encoder_attention_mask", "decoder_input_ids"],
+            input_names=["encoder_input_ids", "encoder_attention_mask", "decoder_input_ids"],
             output_names=["logits", "encoder_hidden_states"] + output_past_names,
             dynamic_axes=dynamic_axes,
             export_params=True,
@@ -158,7 +156,8 @@ def export_encoder(args):
         model, input_data = export_helper.model_initialize(config, tokenizer, args)
         start_time = time.time()
         model._prepare_encoder_decoder_kwargs_for_generation = _create_encoder_export(args, config).__get__(
-              model, BartForConditionalGeneration)
+            model, BartForConditionalGeneration
+        )
 
         pred_ids = model.generate(
             input_data,
@@ -168,8 +167,8 @@ def export_encoder(args):
             min_length=min_length,
             max_length=max_length,
             repetition_penalty=repetition_penalty,
-            no_repeat_ngram_size=no_repeat_ngram_size)
+            no_repeat_ngram_size=no_repeat_ngram_size,
+        )
         time_cost = time.time() - start_time
         print("--- %s seconds ---" % (time_cost))
-        print(tokenizer.decode(
-            pred_ids[0], skip_special_tokens=True, clean_up_tokenization_spaces=False))
+        print(tokenizer.decode(pred_ids[0], skip_special_tokens=True, clean_up_tokenization_spaces=False))

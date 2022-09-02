@@ -1,14 +1,13 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 
 import os
 from email.policy import strict
 
 import onnx
 from onnx import TensorProto, helper
-
 from utils import export_helper
 
 
@@ -53,54 +52,75 @@ def convert_model(args):
     make_dim_proto_numaric(decoder_model, config)
 
     inputs = [
-        "input_ids", "max_length", "min_length", "num_beams", "num_return_sequences", "length_penalty",
-        "repetition_penalty", "", "", "attention_mask"
+        "input_ids",
+        "max_length",
+        "min_length",
+        "num_beams",
+        "num_return_sequences",
+        "length_penalty",
+        "repetition_penalty",
+        "",
+        "",
+        "attention_mask",
     ]
     outputs = ["sequences"]
 
-    node = helper.make_node('BeamSearch', inputs=inputs, outputs=outputs, name=f'BeamSearch_zcode')
+    node = helper.make_node("BeamSearch", inputs=inputs, outputs=outputs, name=f"BeamSearch_zcode")
     node.domain = "com.microsoft"
     # NOTE: take value from args or config
-    node.attribute.extend([
-        helper.make_attribute("eos_token_id", eos_token_id),
-        helper.make_attribute("pad_token_id", pad_token_id),
-        helper.make_attribute("decoder_start_token_id", decoder_start_token_id),
-        helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
-        helper.make_attribute("early_stopping", args.early_stopping),
-        helper.make_attribute("model_type", 1),
-        helper.make_attribute("decoder", decoder_model.graph),
-        helper.make_attribute("encoder", encoder_model.graph),
-    ])
+    node.attribute.extend(
+        [
+            helper.make_attribute("eos_token_id", eos_token_id),
+            helper.make_attribute("pad_token_id", pad_token_id),
+            helper.make_attribute("decoder_start_token_id", decoder_start_token_id),
+            helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
+            helper.make_attribute("early_stopping", args.early_stopping),
+            helper.make_attribute("model_type", 1),
+            helper.make_attribute("decoder", decoder_model.graph),
+            helper.make_attribute("encoder", encoder_model.graph),
+        ]
+    )
 
     # graph inputs
-    input_ids = helper.make_tensor_value_info('input_ids', TensorProto.INT32, ['batch_size', 'sequence_length'])
-    max_length = helper.make_tensor_value_info('max_length', TensorProto.INT32, [1])
-    min_length = helper.make_tensor_value_info('min_length', TensorProto.INT32, [1])
-    num_beams = helper.make_tensor_value_info('num_beams', TensorProto.INT32, [1])
-    num_return_sequences = helper.make_tensor_value_info('num_return_sequences', TensorProto.INT32, [1])
-    length_penalty = helper.make_tensor_value_info('length_penalty', TensorProto.FLOAT, [1])
-    repetition_penalty = helper.make_tensor_value_info('repetition_penalty', TensorProto.FLOAT, [1])
-    attention_mask = helper.make_tensor_value_info('attention_mask', TensorProto.INT32, ['batch_size', 'sequence_length'])
+    input_ids = helper.make_tensor_value_info("input_ids", TensorProto.INT32, ["batch_size", "sequence_length"])
+    max_length = helper.make_tensor_value_info("max_length", TensorProto.INT32, [1])
+    min_length = helper.make_tensor_value_info("min_length", TensorProto.INT32, [1])
+    num_beams = helper.make_tensor_value_info("num_beams", TensorProto.INT32, [1])
+    num_return_sequences = helper.make_tensor_value_info("num_return_sequences", TensorProto.INT32, [1])
+    length_penalty = helper.make_tensor_value_info("length_penalty", TensorProto.FLOAT, [1])
+    repetition_penalty = helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
+    attention_mask = helper.make_tensor_value_info(
+        "attention_mask", TensorProto.INT32, ["batch_size", "sequence_length"]
+    )
 
     graph_inputs = [
-        input_ids, max_length, min_length, num_beams, num_return_sequences, length_penalty,
-        repetition_penalty, attention_mask
+        input_ids,
+        max_length,
+        min_length,
+        num_beams,
+        num_return_sequences,
+        length_penalty,
+        repetition_penalty,
+        attention_mask,
     ]
 
     # graph outputs
-    sequences = helper.make_tensor_value_info('sequences', TensorProto.INT32,
-                                              ['batch_size', 'num_return_sequences', 'max_length'])
+    sequences = helper.make_tensor_value_info(
+        "sequences", TensorProto.INT32, ["batch_size", "num_return_sequences", "max_length"]
+    )
     initializers = []
     graph_outputs = [sequences]
-    new_graph = helper.make_graph([node], 'beam-search-test', graph_inputs, graph_outputs, initializers)
+    new_graph = helper.make_graph([node], "beam-search-test", graph_inputs, graph_outputs, initializers)
 
     opset_import = helper.make_opsetid(domain="com.microsoft", version=1)
     # Create the model
     decoder_model.opset_import.append(opset_import)
-    new_model = helper.make_model(new_graph, producer_name='onnxruntime.transformers', opset_imports=decoder_model.opset_import)
+    new_model = helper.make_model(
+        new_graph, producer_name="onnxruntime.transformers", opset_imports=decoder_model.opset_import
+    )
     # https://github.com/onnx/onnx/blob/main/onnx/helper.py
     onnx.save(new_model, final_path, save_as_external_data=True, all_tensors_to_one_file=False, convert_attribute=True)
     # check model > 2GB
     print(f"--- Check the model with path: {final_path} ---")
     onnx.checker.check_model(final_path, full_check=True)
-    onnx.shape_inference.infer_shapes_path(final_path, strict_mode = True)
+    onnx.shape_inference.infer_shapes_path(final_path, strict_mode=True)
