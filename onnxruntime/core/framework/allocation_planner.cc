@@ -1961,20 +1961,25 @@ class PlannerImpl {
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
           bool requires_notification = false;
-          for (auto* output : node->OutputDefs()) {
-            if (output->Exists()) {
-              if (std::find(it->InputDefs().begin(), it->InputDefs().end(), output) != it->InputDefs().end()) {
-                OrtValueIndex output_arg_idx;
-                ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(output->Name(), output_arg_idx));
-                // there are two cases we need notification:
-                // 1. the consumer is not in the same stream, and the producer is not Shape
-                // 2. the consumer is in the same stream, but it consumer a CPU tensor from an non-shape op.
-                //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
-                //    in this case, the FIFO can't gurantee the cpu tensor is ready when resize kernel is launching
-                if ((node_stream_map_[it->Index()] != i && it->OpType() != "Shape") ||
-                    (node_stream_map_[it->Index()] == i && plan_.allocation_plan[output_arg_idx].location.device.Type() == OrtDevice::CPU)) {
-                  requires_notification = true;
-                  break;
+          // !! special case, Shape op's output is ready for all the EPs, so don't need notification
+          if (node->OpType() != "Shape") {
+            for (auto* output : node->OutputDefs()) {
+              if (output->Exists()) {
+                if (std::find(it->InputDefs().begin(), it->InputDefs().end(), output) != it->InputDefs().end()) {
+                  OrtValueIndex output_arg_idx;
+                  ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(output->Name(), output_arg_idx));
+                  // there are two cases we need notification:
+                  // 1. the consumer is not in the same stream
+                  // 2. the consumer is in the same stream(non-cpu device), but it consumer a CPU tensor from an non-shape op.
+                  //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
+                  //    in this case, the FIFO can't gurantee the cpu tensor is ready when resize kernel is launching
+                  if (node_stream_map_[it->Index()] != i ||
+                      (node_stream_map_[it->Index()] == i &&
+                       execution_plan[i]->device_.Type() != OrtDevice::CPU &&
+                       plan_.allocation_plan[output_arg_idx].location.device.Type() == OrtDevice::CPU)) {
+                    requires_notification = true;
+                    break;
+                  }
                 }
               }
             }
@@ -2037,14 +2042,31 @@ class PlannerImpl {
           auto notification_it = node_to_notification.find(it->Index());
           if (notification_it != node_to_notification.end()) {
             // push a wait command if has EP registered it.
-            auto wait_handle = stream_handle_registry.GetWaitHandle(
-                execution_plan[plan_.notification_owners[notification_it->second]]->device_.Type(),
-                execution_plan[i]->device_.Type());
-            if (wait_handle) {
-              execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_it->second));
+            // find which tensor we consumed to decide which wait handle to use
+            // if there are multiple tensors consumed on different devices, need to wait on all of them
+            // for example, if a cuda kernel A produce a cpu tensor C and a gpu tensor C', cuda kernel B
+            // depends on both C and C', we need to wait on both GPU and CPU.
+            InlinedHashSet<OrtDevice::DeviceType> devices_to_wait_on;
+            for (auto* inputs : node->InputDefs()) {
+              if (inputs->Exists()) {
+                if (std::find(it->OutputDefs().begin(), it->OutputDefs().end(), inputs) != it->OutputDefs().end()) {
+                  OrtValueIndex input_arg_idx;
+                  ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(inputs->Name(), input_arg_idx));
+                  auto& consumer_device = plan_.allocation_plan[input_arg_idx].location.device;
+                  if (devices_to_wait_on.find(consumer_device.Type()) == devices_to_wait_on.end()) {
+                    auto wait_handle = stream_handle_registry.GetWaitHandle(
+                        execution_plan[plan_.notification_owners[notification_it->second]]->device_.Type(),
+                        consumer_device.Type());
+                    if (wait_handle) {
+                      execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_handle, notification_it->second));
 #ifdef ENABLE_TRAINING
-              execution_plan[i]->step_pc.push_back(node_index);
+                      execution_plan[i]->step_pc.push_back(node_index);
 #endif
+                    }
+                    devices_to_wait_on.insert(consumer_device.Type());
+                  }
+                }
+              }
             }
           }
         }
