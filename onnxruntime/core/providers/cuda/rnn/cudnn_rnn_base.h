@@ -152,7 +152,6 @@ class CudnnRnnBase : public CudaKernel {
   Status ReorganizeWeights(const Tensor* W, const Tensor* R, const Tensor* B,
                            IAllocatorUniquePtr<void>& target_w_data,
                            size_t& weightspace_bytes,
-                           CudnnFilterDescriptor& target_w_desc,
                            CudnnRNN& rnn_desc) const;
 
   void SetWeightBias(const cudnnHandle_t handle,

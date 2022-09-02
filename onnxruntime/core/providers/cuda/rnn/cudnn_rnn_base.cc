@@ -77,7 +77,6 @@ template <typename T>
 Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, const Tensor* B,
                                           IAllocatorUniquePtr<void>& reorganized_w_data,
                                           size_t& weightspace_bytes,
-                                          CudnnFilterDescriptor& target_w_desc,
                                           CudnnRNN& rnn_desc) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   // RNN W[num_directions_, hidden_size_, input_size]
@@ -125,7 +124,7 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
                                           CudnnTensor::GetDataType<CudaT>(),
                                           GetDeviceProp()));
 
-    ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, get_B ? B : nullptr, w_data_cache_, weightspace_bytes_cached_, w_desc_cache_, tmp_rnn_desc));
+    ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, get_B ? B : nullptr, w_data_cache_, weightspace_bytes_cached_, tmp_rnn_desc));
     weight_cached_ = true;
   }
 
@@ -226,12 +225,11 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   // Prepare the weight data
   IAllocatorUniquePtr<void> w_data;
   size_t weightspace_bytes = 0; // Only calculated if !weight_cached_, if calculated, gets stored in weightspace_bytes_cached_
-  CudnnFilterDescriptor w_desc;
   if (!weight_cached_) {
     const Tensor& W = *ctx->Input<Tensor>(RNN_Input_Index::W);
     const Tensor& R = *ctx->Input<Tensor>(RNN_Input_Index::R);
     const Tensor* B = ctx->Input<Tensor>(RNN_Input_Index::B);
-    ORT_RETURN_IF_ERROR(ReorganizeWeights(&W, &R, B, w_data, weightspace_bytes, w_desc, rnn_desc));
+    ORT_RETURN_IF_ERROR(ReorganizeWeights(&W, &R, B, w_data, weightspace_bytes, rnn_desc));
   }
 
   int64_t zero_seq_count = 0;
