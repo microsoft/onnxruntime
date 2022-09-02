@@ -67,13 +67,15 @@ def run_skip_layer_norm(batch_size: int, seq_len: int, hidden_size: int, dtype: 
         np.testing.assert_almost_equal(y_ref, output_y, decimal=1e-05)
 
 
+dtypes = ["float32", "float16"]
+
+
 @pytest.mark.parametrize("bert_sizes", get_bert_sizes())
-def test_skip_layer_norm(bert_sizes):
-    dtypes = ["float32", "float16"]
-    for dtype in dtypes:
-        for func in dtype_to_funcs(dtype):
-            print(func)
-            run_skip_layer_norm(*bert_sizes, dtype, func)
+@pytest.mark.parametrize("dtype", dtypes)
+def test_skip_layer_norm(bert_sizes, dtype):
+    for func in dtype_to_funcs(dtype):
+        print(func)
+        run_skip_layer_norm(*bert_sizes, dtype, func)
 
 
 def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func):
@@ -111,7 +113,6 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func):
 
 def profile():
     bert_sizes = get_bert_sizes()
-    dtypes = ["float32"]
     for dtype in dtypes:
         for bert_size in bert_sizes:
             for func in dtype_to_funcs(dtype):
