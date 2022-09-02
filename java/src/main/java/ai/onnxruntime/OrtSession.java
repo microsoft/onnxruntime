@@ -996,22 +996,22 @@ public class OrtSession implements AutoCloseable {
      */
     public void addXnnpack(Map<String, String> providerOptions) throws OrtException {
       checkClosed();
-      String[] po_key = new String[providerOptions.size()];
-      String[] po_val = new String[providerOptions.size()];
+      String[] providerOptionKey = new String[providerOptions.size()];
+      String[] providerOptionVal = new String[providerOptions.size()];
       int i = 0;
       for (Map.Entry<String, String> entry : providerOptions.entrySet()) {
-        po_key[i] = entry.getKey();
-        po_val[i] = entry.getValue();
+        providerOptionKey[i] = entry.getKey();
+        providerOptionVal[i] = entry.getValue();
         i++;
       }
-      sessionOptionsAppendExecutionProvider(
-          OnnxRuntime.ortApiHandle, nativeHandle, "XNNPACK", po_key, po_val);
+      addExecutionProvider(
+          OnnxRuntime.ortApiHandle, nativeHandle, "XNNPACK", providerOptionKey, providerOptionVal);
     }
 
     private native void setExecutionMode(long apiHandle, long nativeHandle, int mode)
         throws OrtException;
 
-    private native void setOptimizationLevel(long apiHandle, long nativeHandle, int level)
+    private native void setOptimizationLevel(long apiHandle, long nativeHandle, int levelgra
         throws OrtException;
 
     private native void setInterOpNumThreads(long apiHandle, long nativeHandle, int numThreads)
@@ -1120,8 +1120,8 @@ public class OrtSession implements AutoCloseable {
     private native void addCoreML(long apiHandle, long nativeHandle, int coreMLFlags)
         throws OrtException;
 
-    private native void sessionOptionsAppendExecutionProvider(
-        long apiHandle, long nativeHandle, String epName, String[] po_key, String[] po_val)
+    private native void addExecutionProvider(
+        long apiHandle, long nativeHandle, String epName, String[] providerOptionKey, String[] providerOptionVal)
         throws OrtException;
   }
 

@@ -619,47 +619,39 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addROC
 
 /*
  * Class::    ai_onnxruntime_OrtSession_SessionOptions
- * Method:    appendExecutionProvider
+ * Method:    addExecutionProvider
  * Signature: (JILjava/lang/String)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_sessionOptionsAppendExecutionProvider(
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExecutionProvider(
     JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle,
     jstring jepName, jobjectArray configKeyArr, jobjectArray configValueArr) {
   (void)jobj;
-  char errMsgBuf[512];
-  const char* epName = (*jniEnv)->GetStringUTFChars(jniEnv, jepName, NULL);
-  if (strcmp(epName, "XNNPACK") == 0) {
-#ifndef USE_XNNPACK
-    throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), "This binary was not compiled with Xnnpack support.");
-#endif
-  } else {
-    snprintf(errMsgBuf, 512, "Java Interface doesn't support this EP %s", epName);
-    throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), errMsgBuf);
-  }
 
+  const char* epName = (*jniEnv)->GetStringUTFChars(jniEnv, jepName, NULL);
   const OrtApi* api = (const OrtApi*)apiHandle;
   OrtSessionOptions* options = (OrtSessionOptions*)optionsHandle;
-  #define  MAX_CONFIG_SIZE  20
   int keyCount = (*jniEnv)->GetArrayLength(jniEnv, configKeyArr);
-  if (keyCount != (*jniEnv)->GetArrayLength(jniEnv, configValueArr) || MAX_CONFIG_SIZE < keyCount) {
-    snprintf(errMsgBuf, 512, "Provider options of %s key-value don't match or config num is more than %d.",
-             epName, MAX_CONFIG_SIZE);
-    throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), errMsgBuf);
-  }
-  const char* keyArray[MAX_CONFIG_SIZE];
-  const char* valueArray[MAX_CONFIG_SIZE];
-  jstring jkeyArray[MAX_CONFIG_SIZE];
-  jstring jvalueArray[MAX_CONFIG_SIZE];
+  const char** keyArray = (const char**)malloc(keyCount * sizeof(const char*));
+  const char** valueArray = (const char**)malloc(keyCount * sizeof(const char*));
+  jstring* jkeyArray = (jstring*)malloc(keyCount * sizeof(jstring));
+  jstring* jvalueArray = (jstring*)malloc(keyCount * sizeof(jstring));
+
   for (int i = 0; i < keyCount; i++) {
     jkeyArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configKeyArr, i));
     jvalueArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configValueArr, i));
     keyArray[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jkeyArray[i], NULL);
     valueArray[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jvalueArray[i], NULL);
   }
+
   checkOrtStatus(jniEnv, api, api->SessionOptionsAppendExecutionProvider(options, epName, keyArray, valueArray, keyCount));
+
   for (int i = 0; i < keyCount; i++) {
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, jkeyArray[i], keyArray[i]);
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, jvalueArray[i], valueArray[i]);
   }
   (*jniEnv)->ReleaseStringUTFChars(jniEnv, jepName, epName);
+  free(keyArray);
+  free(valueArray);
+  free(jkeyArray);
+  free(jvalueArray);
 }
