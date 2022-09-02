@@ -34,11 +34,26 @@ TEST(KernelTypeStrResolverUtilsTest, VerifyLayoutTransformationRequiredOpsResolv
   ASSERT_STATUS_OK(
       kernel_type_str_resolver_utils::AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(actual_resolver));
 
+#if !defined(DISABLE_CONTRIB_OPS)
   ASSERT_EQ(actual_resolver.GetOpKernelTypeStrMap(), expected_resolver.GetOpKernelTypeStrMap());
+#else   // !defined(DISABLE_CONTRIB_OPS)
+  // check that each element of expected_resolver is present and equivalent in actual_resolver
+  const auto& expected_op_kernel_type_str_map = expected_resolver.GetOpKernelTypeStrMap();
+  const auto& actual_op_kernel_type_str_map = actual_resolver.GetOpKernelTypeStrMap();
+
+  for (const auto& [expected_op_id, expected_kernel_type_str_map] : expected_op_kernel_type_str_map) {
+    const auto actual_op_kernel_type_str_map_it = actual_op_kernel_type_str_map.find(expected_op_id);
+    ASSERT_NE(actual_op_kernel_type_str_map_it, actual_op_kernel_type_str_map.end());
+    ASSERT_EQ(actual_op_kernel_type_str_map_it->second, expected_kernel_type_str_map);
+  }
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 }
 
 // run this test manually to output a hard-coded byte array
 TEST(KernelTypeStrResolverUtilsTest, DISABLED_PrintExpectedLayoutTransformationRequiredOpsResolverByteArray) {
+#if defined(DISABLE_CONTRIB_OPS)
+  FAIL() << "Contrib ops must be enabled.";
+#endif  // defined(DISABLE_CONTRIB_OPS)
   KernelTypeStrResolver expected_resolver;
   ASSERT_STATUS_OK(LoadLayoutTransformationRequiredOpsFromOpSchemas(expected_resolver));
 
