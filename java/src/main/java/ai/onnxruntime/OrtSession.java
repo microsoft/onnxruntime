@@ -1121,7 +1121,11 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     private native void addExecutionProvider(
-        long apiHandle, long nativeHandle, String epName, String[] providerOptionKey, String[] providerOptionVal)
+        long apiHandle,
+        long nativeHandle,
+        String epName,
+        String[] providerOptionKey,
+        String[] providerOptionVal)
         throws OrtException;
   }
 
