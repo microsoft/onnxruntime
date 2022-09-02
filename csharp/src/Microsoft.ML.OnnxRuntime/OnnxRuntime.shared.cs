@@ -73,7 +73,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Exception caching: May throw an exception on every call, if the `OrtEnv` constructor threw an exception
         /// during lazy initialization
         /// </summary>
-        internal static IntPtr Handle  
+        internal static IntPtr Handle
         {
             get
             {
