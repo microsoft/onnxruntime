@@ -57,6 +57,7 @@ jobs:
           --mpi_home /opt/ompi \
           --cmake_extra_defines \
               CMAKE_HIP_COMPILER=${ROCM_HOME}/llvm/bin/clang++ \
+              onnxruntime_BUILD_KERNEL_EXPLORER=ON \
           --use_rocm \
           --rocm_version=$(RocmVersion) \
           --rocm_home ${ROCM_HOME} \
@@ -325,6 +326,14 @@ jobs:
     displayName: 'Run C++ BERT-L convergence test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
+
+  - task: CmdLine@2
+    inputs:
+      script: |-
+        export KERNEL_EXPLORER_BUILD_DIR=./build/RelWithDebInfo
+        pytest ./onnxruntime/python/tools/kernel_explorer/
+    displayName: 'Test kernel explorer'
+    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
 
   - script: |
       sudo apt-get update
